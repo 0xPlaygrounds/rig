@@ -33,7 +33,8 @@ pub struct DispatchContext {
 /// [`handlers`](Self::handlers) once when recording starts,
 /// [`begin`](Self::begin) as each dispatch is handed to its handler,
 /// [`event`](Self::event) for every streamed event when
-/// [`keep_events`](Self::keep_events) says so, and
+/// [`keep_events`](Self::keep_events) says so and for the first otherwise,
+/// and
 /// [`resolve`](Self::resolve) when the outcome is known. A recorder is
 /// shared between the driver and its owner, so every method takes `&self`;
 /// it rides in the dispatch observer and uses the platform compatibility bounds.
@@ -54,7 +55,9 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn patch(&self, id: EffectId, kind: EffectKind);
     /// Whether streamed items are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
-    /// One streamed item of `id`.
+    /// One streamed item of `id`: each one when
+    /// [`keep_events`](Self::keep_events) says so, else only the first, which
+    /// a timed recorder stamps.
     fn event(&self, id: EffectId, item: &Item<StreamEvent>);
     /// An error item at its original position in a kept stream. Unlike the
     /// folded outcome, this includes errors after an earlier terminal item.
@@ -78,6 +81,8 @@ pub(crate) struct RecordingObserver {
     pub(crate) recorder: Arc<dyn Recorder + Send + Sync>,
     pub(crate) id: EffectId,
     pub(crate) published: Option<Arc<crate::tool::PublishedContext>>,
+    /// Whether an item streamed yet.
+    pub(crate) streamed: bool,
 }
 
 impl super::Observe for RecordingObserver {
@@ -97,7 +102,10 @@ impl super::Observe for RecordingObserver {
     }
 
     fn event(&mut self, item: &Item<StreamEvent>) {
-        self.recorder.event(self.id, item);
+        // Past the first, an item matters only to a recorder that keeps them.
+        if !std::mem::replace(&mut self.streamed, true) || self.recorder.keep_events() {
+            self.recorder.event(self.id, item);
+        }
     }
 
     fn stream_error(&mut self, error: &ErrorReport) {

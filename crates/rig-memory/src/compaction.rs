@@ -19,13 +19,12 @@ use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{
-    AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
-    UnsupportedOption,
+    AssistantContent, CompletionRequest, CompletionResponse, Message, UnsupportedOption,
 };
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
 };
-use rig_core::message::{ToolCall, ToolResult, ToolResultContent, UserContent};
+use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
 use crate::session::{LogRecord, as_of, history};
@@ -779,11 +778,11 @@ pub struct SummaryLimits {
 }
 
 impl SummaryLimits {
-    /// 16k tokens reserved, summaries up to 12k tokens, 2,000-character
+    /// 16k tokens reserved, summaries up to 32k tokens, 2,000-character
     /// snippets and 400k characters for an unknown window.
     pub const DEFAULT: Self = Self {
         reserve: 16_384,
-        summary_tokens: 12_000,
+        summary_tokens: 32_000,
         snippet_chars: 2_000,
         unknown_window_chars: 400_000,
     };
@@ -828,6 +827,12 @@ impl Default for Summarizer {
     }
 }
 
+/// Tells the model a summary's output limit of `tokens`, as a reply cut
+/// there is not used ([`Summarizer::summary_text`]).
+fn within(tokens: u64) -> String {
+    format!("\n\nKeep it under {tokens} tokens: a longer answer is cut off and thrown away.")
+}
+
 /// Why a summary cannot be used.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -838,6 +843,8 @@ pub enum SummaryError {
     CalledTool,
     /// The model returned no text.
     Empty,
+    /// The reply failed or was filtered, for this reason.
+    Failed(String),
 }
 
 impl fmt::Display for SummaryError {
@@ -846,11 +853,20 @@ impl fmt::Display for SummaryError {
             Self::Truncated => "the summary hit the model's output limit",
             Self::CalledTool => "the model called a tool instead of summarizing",
             Self::Empty => "the model returned no summary",
+            Self::Failed(why) => why,
         })
     }
 }
 
 impl std::error::Error for SummaryError {}
+
+/// Whether `spec` knows what bounds its output: its output limit or its
+/// window. A request to a model that knows neither is sent no output limit,
+/// so its server's default holds; an input limit alone says nothing of the
+/// output.
+pub fn known_limits(spec: &ModelSpec) -> bool {
+    spec.max_output_tokens.is_some() || spec.context_window.is_some()
+}
 
 /// How much of the model's input limit a call after an overflow may
 /// read, as a divisor: half. A bigger one is nearly the refused request
@@ -861,7 +877,11 @@ impl Summarizer {
     /// The request to `spec` for a summary of `older` for `reason`, merged
     /// into `previous` when that is not empty. A summary the user asked for
     /// keeps its focus above all; one after an overflow reads at most
-    /// [`AFTER_OVERFLOW`] of the input limit.
+    /// [`AFTER_OVERFLOW`] of the input limit. The room below the reserve, or
+    /// half the limit when that is more, is split: the summary asks for at
+    /// most half of it, and the older messages fill the rest. A model whose
+    /// output bounds are unknown ([`known_limits`]) is sent no output
+    /// limit, as a turn is not, so its server's default holds.
     pub fn request(
         &self,
         older: &[Arc<Message>],
@@ -874,19 +894,21 @@ impl Summarizer {
             CompactReason::Asked { focus } => focus.trim(),
             _ => "",
         };
-        let budget = spec
-            .input_limit()
-            .map(u64::from)
-            .map(|limit| match reason {
-                CompactReason::Overflow => limit / AFTER_OVERFLOW,
-                _ => limit,
-            })
-            .map_or(limits.unknown_window_chars, |limit| {
-                let tokens =
-                    limit.saturating_sub(limits.reserve.saturating_add(limits.summary_tokens));
+        let (most, budget) = match spec.input_limit().map(u64::from) {
+            None => (self.max_tokens(spec), limits.unknown_window_chars),
+            Some(limit) => {
+                let limit = match reason {
+                    CompactReason::Overflow => limit / AFTER_OVERFLOW,
+                    _ => limit,
+                };
+                // At least half the limit, whatever the reserve leaves.
+                let room = limit.saturating_sub(limits.reserve).max(limit / 2);
+                let most = self.max_tokens(spec).min(room / 2);
                 // Three characters a token, to stay under the window with code.
-                usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
-            });
+                let chars = room.saturating_sub(most).saturating_mul(3);
+                (most, usize::try_from(chars).unwrap_or(usize::MAX))
+            }
+        };
         let conversation = self.serialize(older);
         let conversation = keep_end(&conversation, budget.saturating_sub(previous.len()));
         let mut prompt = format!("<conversation>\n{conversation}\n</conversation>\n\n");
@@ -903,12 +925,17 @@ impl Summarizer {
             let _ = write!(prompt, "\n\nAdditional focus: {focus}");
         }
         prompt.push_str(&self.prompts.format);
+        prompt.push_str(&within(most));
         let options = spec.default_options(None);
         spec.validate(&options)?;
-        Ok(CompletionRequest::new(Message::user(prompt))
+        let request = CompletionRequest::new(Message::user(prompt))
             .preamble(self.prompts.system.clone().into_owned())
-            .options(options)
-            .max_tokens(self.max_tokens(spec)))
+            .options(options);
+        Ok(if known_limits(spec) {
+            request.max_tokens(most)
+        } else {
+            request
+        })
     }
 
     /// The longest summary asked of `spec`: the limit's, or the model's
@@ -923,23 +950,36 @@ impl Summarizer {
     /// itself, the agent's own request with its system prompt and tools cut
     /// before the first message kept, so the provider can read all of it
     /// from its prompt cache: [`SummaryPrompts::in_place`], `focus` when it
-    /// is not empty, and the format.
-    pub fn instruction(&self, focus: &str) -> String {
+    /// is not empty, the format, and the output limit of `tokens` the
+    /// request asks for.
+    pub fn instruction(&self, focus: &str, tokens: u64) -> String {
         let mut text = self.prompts.in_place.clone().into_owned();
         if !focus.is_empty() {
             let _ = write!(text, "\n\nAdditional focus: {focus}");
         }
         text.push_str(&self.prompts.format);
+        text.push_str(&within(tokens));
+        text
+    }
+
+    /// The message that asks, in place, for notes on the tool outputs about
+    /// to be cleared ([`SummaryPrompts::notes`]), with the output limit of
+    /// `tokens` the request asks for.
+    pub fn notes_instruction(&self, tokens: u64) -> String {
+        let mut text = self.prompts.notes.clone().into_owned();
+        text.push_str(&within(tokens));
         text
     }
 
     /// The summary in a finished answer, or why it cannot be used.
     pub fn summary_text(response: &CompletionResponse) -> Result<String, SummaryError> {
-        if matches!(response.finish_reason(), Some(FinishReason::Length)) {
-            return Err(SummaryError::Truncated);
-        }
-        if response.tool_calls().next().is_some() {
-            return Err(SummaryError::CalledTool);
+        match response.stop() {
+            StopReason::Length => return Err(SummaryError::Truncated),
+            StopReason::ToolUse => return Err(SummaryError::CalledTool),
+            StopReason::Error(why) | StopReason::Aborted(why) => {
+                return Err(SummaryError::Failed(why));
+            }
+            _ => {}
         }
         let text = response.text();
         let text = text.trim();

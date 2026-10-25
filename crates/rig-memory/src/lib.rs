@@ -69,7 +69,8 @@ pub use compaction::{
     AFTER_OVERFLOW, COMPACTED, ClearPlan, ClearToolOutputs, Cleared, CompactReason, Compacted,
     CompactionPolicy, NearWindow, Summarizer, SummaryCut, SummaryError, SummaryLimits, SummaryPlan,
     SummaryPrompts, SummaryState, TrackArgument, TrackedSet, Uncompacted, UndoError, apply_summary,
-    estimate_tokens, summarized_prefix, summary_author, summary_in, summary_state, undo_summary,
+    estimate_tokens, known_limits, summarized_prefix, summary_author, summary_in, summary_state,
+    undo_summary,
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
@@ -90,6 +91,6 @@ pub use store::{
 };
 pub use tokens::{
     ATTACHMENT_TOKENS, Anchor, HeuristicTokenCounter, OUTPUT_MARGIN, Prepared, RequestStart,
-    TokenCounter, next_request_tokens, output_room,
+    TURN_OUTPUT, TokenCounter, next_request_tokens,
 };
 pub use writer::Writer;

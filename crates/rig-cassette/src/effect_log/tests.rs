@@ -108,25 +108,14 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
 #[test]
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
-        EffectRecord {
-            purpose: None,
-            turn: None,
-            started_ms: None,
-            finished_ms: None,
-            reviewed: None,
-            disposition: Default::default(),
-            decided_by: None,
-            stream_origin: None,
-            published: None,
-            parent: None,
-            scope: None,
-            id: EffectId::from_raw(1),
-            key: HandlerKey::from("model"),
-            kind: EffectKind::Completion {
+        EffectRecord::new(
+            EffectId::from_raw(1),
+            HandlerKey::from("model"),
+            EffectKind::Completion {
                 request: request().into(),
                 stream: false,
             },
-            outcome: Ok(Answered::Completion(
+            Ok(Answered::Completion(
                 CompletionResponse::new(
                     vec![AssistantContent::text("hi")],
                     Usage::default(),
@@ -135,29 +124,16 @@ fn effect_record_and_log_round_trip() {
                 )
                 .into(),
             )),
-            events: None,
-        },
-        EffectRecord {
-            purpose: None,
-            turn: None,
-            started_ms: None,
-            finished_ms: None,
-            reviewed: None,
-            disposition: Default::default(),
-            decided_by: None,
-            stream_origin: None,
-            published: None,
-            parent: None,
-            scope: None,
-            id: EffectId::from_raw(2),
-            key: HandlerKey::from("tool:add"),
-            kind: EffectKind::ToolCall {
+        ),
+        EffectRecord::new(
+            EffectId::from_raw(2),
+            HandlerKey::from("tool:add"),
+            EffectKind::ToolCall {
                 name: "add".into(),
                 args: "{}".into(),
             },
-            outcome: Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
-            events: None,
-        },
+            Err(ErrorReport::new(ErrorKind::Timeout, "slow")),
+        ),
     ]);
     let json = serde_json::to_string(&log).expect("serializes");
     let back: EffectLog = serde_json::from_str(&json).expect("deserializes");
@@ -289,48 +265,17 @@ fn custom_kind() -> EffectKind {
 }
 
 fn two_records() -> EffectLog {
-    EffectLog::from_records(vec![
-        EffectRecord {
-            purpose: None,
-            turn: None,
-            started_ms: None,
-            finished_ms: None,
-            reviewed: None,
-            disposition: Default::default(),
-            decided_by: None,
-            stream_origin: None,
-            published: None,
-            parent: None,
-            scope: None,
-            id: EffectId::from_raw(1),
-            key: HandlerKey::from("model"),
-            kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Answered::Custom {
-                payload: serde_json::json!({"n": 1}),
-            }),
-            events: None,
-        },
-        EffectRecord {
-            purpose: None,
-            turn: None,
-            started_ms: None,
-            finished_ms: None,
-            reviewed: None,
-            disposition: Default::default(),
-            decided_by: None,
-            stream_origin: None,
-            published: None,
-            parent: None,
-            scope: None,
-            id: EffectId::from_raw(2),
-            key: HandlerKey::from("model"),
-            kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Answered::Custom {
-                payload: serde_json::json!({"n": 2}),
-            }),
-            events: None,
-        },
-    ])
+    let record = |n: u64| {
+        let payload = serde_json::json!({ "n": n });
+        let answer = Ok(rig_core::effect::Answered::Custom { payload });
+        EffectRecord::new(
+            EffectId::from_raw(n),
+            HandlerKey::from("model"),
+            custom_kind(),
+            answer,
+        )
+    };
+    EffectLog::from_records(vec![record(1), record(2)])
 }
 
 /// Serve `kind` from `replayer` as dispatch `id`, unary.

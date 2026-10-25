@@ -906,29 +906,17 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     let key = HandlerKey::from("tool:echo");
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
-        records: vec![EffectRecord {
-            purpose: None,
-            turn: None,
-            started_ms: None,
-            finished_ms: None,
-            reviewed: None,
-            disposition: Default::default(),
-            decided_by: None,
-            stream_origin: None,
-            published: None,
-            parent: None,
-            scope: None,
-            id: EffectId::from_raw(1),
-            key: key.clone(),
-            kind: EffectKind::ToolCall {
+        records: vec![EffectRecord::new(
+            EffectId::from_raw(1),
+            key.clone(),
+            EffectKind::ToolCall {
                 name: "echo".into(),
                 args: "{}".into(),
             },
-            outcome: Ok(Answered::ToolResult {
+            Ok(Answered::ToolResult {
                 result: ToolResult::success(ToolOutput::text("ok")),
             }),
-            events: None,
-        }],
+        )],
     };
     let handlers = Handlers::default();
     super::register_all(&log, &handlers).expect("fresh keys");

@@ -72,13 +72,21 @@ fn restricted_on(
 
 #[test]
 fn cli_allowlists_filter_the_first_request_and_enforce_actual_dispatch() {
-    for (tools, expected, called, executes) in [
-        (None, vec!["allowed", "denied"], "denied", true),
-        (Some(""), vec![], "allowed", false),
-        (Some("allowed"), vec!["allowed"], "allowed", true),
-        (Some("allowed"), vec!["allowed"], "denied", false),
-        (Some("unknown"), vec![], "allowed", false),
-        (Some("unknown, allowed"), vec!["allowed"], "denied", false),
+    // A call of a tool no handler serves is an error, not a refusal.
+    for (tools, expected, called, executes, refused) in [
+        (None, vec!["allowed", "denied"], "denied", true, false),
+        (Some(""), vec![], "allowed", false, true),
+        (Some("allowed"), vec!["allowed"], "allowed", true, false),
+        (Some("allowed"), vec!["allowed"], "denied", false, true),
+        (Some("unknown"), vec![], "allowed", false, true),
+        (
+            Some("unknown, allowed"),
+            vec!["allowed"],
+            "denied",
+            false,
+            true,
+        ),
+        (None, vec!["allowed", "denied"], "missing", false, false),
     ] {
         let model =
             MockCompletionModel::from_stream_turns([calls("c1", called, json!({})), reply("done")]);
@@ -99,6 +107,21 @@ fn cli_allowlists_filter_the_first_request_and_enforce_actual_dispatch() {
         let expected_calls: Vec<_> = executes.then_some(called).into_iter().collect();
         assert_eq!(executed, &expected_calls, "{tools:?}");
         assert_eq!(lines.of("turn_end").len(), 1, "{tools:?}");
+        // A call not run is announced before its result, which says
+        // whether it was refused.
+        let kinds: Vec<Value> = lines
+            .parsed()
+            .iter()
+            .map(|l| at(l, "type").clone())
+            .collect();
+        let call = kinds.iter().position(|kind| kind == "tool_call");
+        let result = kinds.iter().position(|kind| kind == "tool_result");
+        assert!(call.zip(result).is_some_and(|(c, r)| c < r), "{kinds:?}");
+        let said = lines
+            .of("tool_result")
+            .first()
+            .map(|r| at(r, "refused").clone());
+        assert_eq!(said, Some(Value::Bool(refused)), "{tools:?}");
     }
 }
 

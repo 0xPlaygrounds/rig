@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use rig_core::ProviderResponseError;
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::{FinishReason, Message, Usage};
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_harness::commands::RunCommand;
@@ -357,13 +357,15 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     assert_eq!(entries(restarted.world(), agent), live);
 }
 
-/// A conversation whose oldest of three 15k-token reads is past the 40k
-/// kept, and a model that answers the request with `replies`: what it was
-/// sent, and how the turn ended.
-fn overflowing(replies: Vec<Vec<MockStreamEvent>>) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
+/// A conversation of `messages`, and a model that answers the request
+/// with `replies`: what it was sent, and how the turn ended.
+fn overflowing(
+    messages: Vec<Message>,
+    replies: Vec<Vec<MockStreamEvent>>,
+) -> (Vec<String>, Vec<TurnOutcome>, App, Entity) {
     let (mut app, wakes) = start(&MemoryStore::default());
     let model = MockCompletionModel::from_stream_turns(replies);
-    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    let agent = agent(&mut app, &model, 1_000_000, messages);
     assert!(agent.is_some(), "the catalog lists the model");
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     ask(&mut app, &wakes, agent);
@@ -402,11 +404,12 @@ fn limit_input(app: &mut App, agent: Entity, tokens: u32) {
 /// again: no notes are asked of the refused request.
 #[test]
 fn a_request_too_long_is_summarized_in_a_request_of_its_own() {
-    let (sent, _, app, agent) = overflowing(vec![
+    let replies = vec![
         too_long(),
         reply("## Goal\nRead three files."),
         reply("done"),
-    ]);
+    ];
+    let (sent, _, app, agent) = overflowing(read_files(3), replies);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     assert!(!sent.iter().any(|request| request.contains("Stop here")));
     assert!(
@@ -508,20 +511,162 @@ fn a_summary_call_that_times_out_is_retried_once() {
     assert!(!notices.iter().any(|it| it.contains("1/4")), "{notices:?}");
 }
 
-/// A request fits when the window holds it and the whole answer it asks
-/// for; a turn's call, whose output is clamped to the room left, needs
-/// only some.
+/// A request fits when the input limit holds it and the window leaves
+/// room for the least of its answer it needs.
 #[test]
 fn a_request_fits_only_with_room_for_its_answer() {
     let Some(openai) = rig_core::providers::registry::ProviderId::catalog("openai") else {
         return;
     };
     let spec = ModelSpec::new(openai, "m").with_context_window(128_000);
-    assert!(fits(&spec, 100_000, 12_000));
-    // The input fits, but not the 12k summary it asks for.
-    assert!(!fits(&spec, 120_000, 12_000));
-    assert!(fits(&spec, 120_000, 1));
-    assert!(!fits(&spec.with_max_input_tokens(110_000), 120_000, 1));
+    assert!(fits(&spec, 100_000, (64_000, 12_000)));
+    // Within the input limit, but under 4k left for a 64k answer.
+    assert!(!fits(&spec, 120_000, (64_000, 12_000)));
+    assert!(fits(&spec, 120_000, (64_000, 2_000)));
+    assert!(!fits(&spec, 124_000, (64_000, 2_000)));
+    assert!(!fits(
+        &spec.with_max_input_tokens(110_000),
+        120_000,
+        (64_000, 2_000)
+    ));
+}
+
+/// A turn asks for its own limit, or 64k plus any thinking budget within
+/// the model's limit, within the room left. With no room, or a model whose
+/// limits are unknown (`None`), it is left as it is.
+#[test]
+fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
+    let spec = rig_core::catalog::Catalog::builtin().resolve("openrouter/moonshotai/kimi-k3");
+    assert!(spec.is_ok(), "the catalog lists Kimi K3");
+    let Ok(spec) = spec else { return };
+    for (limit, asked, thinking, used, expected) in [
+        (Some(943_718), None, None, 100_000, Some(64_000)),
+        (Some(943_718), Some(200_000), None, 100_000, Some(200_000)),
+        (Some(943_718), None, Some(16_000), 100_000, Some(81_024)),
+        (Some(64_000), None, Some(16_384), 100_000, Some(64_000)),
+        (Some(32_000), None, None, 100_000, Some(32_000)),
+        (Some(943_718), None, None, 1_000_000, Some(44_480)),
+        (Some(943_718), None, None, 1_048_576, None),
+        (Some(943_718), Some(200_000), None, 1_048_576, Some(200_000)),
+        (None, None, None, 100_000, None),
+    ] {
+        let mut spec = spec.spec.clone();
+        spec.max_output_tokens = limit;
+        spec.context_window = spec.context_window.filter(|_| limit.is_some());
+        let mut request = CompletionRequest::new("Answer.");
+        request.max_tokens = asked;
+        request.options.reasoning = thinking.map(|tokens| completion::Reasoning::Budget { tokens });
+        let mut model = ModelRequest::new(request);
+        fit_output(&mut model, &spec, used);
+        assert_eq!(
+            model.request.max_tokens, expected,
+            "{limit:?}, {asked:?}, {thinking:?}, {used}"
+        );
+    }
+}
+
+/// The one request a turn on five 15k reads sends, clearing near the
+/// window, to a model with a 32,000 output limit in a window of `window`,
+/// with a thinking budget of `budget`; and whether it cleared any output.
+fn thinking_turn(window: u32, budget: Option<u32>) -> (Option<CompletionRequest>, bool) {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .near_window = NearWindow::Clear;
+    let model = MockCompletionModel::from_stream_turns(vec![reply("done")]);
+    let Some(agent) = agent(&mut app, &model, window, read_files(5)) else {
+        return (None, false);
+    };
+    let world = app.world_mut();
+    if let Some(mut connection) = world.get_mut::<Connection>(agent) {
+        let mut spec = connection.spec.as_ref().clone();
+        spec.max_output_tokens = Some(32_000);
+        spec.reasoning = rig_core::catalog::ReasoningSupport::Unknown { default: None };
+        connection.spec = Arc::new(spec);
+    }
+    let budget = budget.map(|tokens| completion::Reasoning::Budget { tokens });
+    world.entity_mut(agent).insert(ReasoningSetting(budget));
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let requests = model.requests();
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    let request = requests.first().cloned();
+    let sent = serde_json::to_string(&request).unwrap_or_default();
+    assert!(!asks_summary(&sent), "{sent}");
+    (request, sent.contains("[output cleared"))
+}
+
+/// A thinking budget within 1024 of the output limit leaves the turn
+/// within the window: with room for all it asks, no old output is cleared
+/// and nothing summarized, and the one request asks for the model's
+/// output limit.
+#[test]
+fn a_thinking_budget_near_the_output_limit_is_not_over_the_window() {
+    let (request, cleared) = thinking_turn(1_000_000, Some(31_000));
+    assert!(!cleared);
+    let asked = request.map(|it| (it.max_tokens, it.options.reasoning));
+    let budget = completion::Reasoning::Budget { tokens: 31_000 };
+    assert_eq!(asked, Some((Some(32_000), Some(budget))));
+}
+
+/// A window that cuts the room below the output budget, to no more than
+/// the thinking budget, leaves no room to answer: old outputs are cleared.
+/// The same room without thinking is room enough, and nothing is cleared.
+#[test]
+fn room_cut_to_the_thinking_budget_is_over_the_window() {
+    // Five 15k reads leave about 30k of a 105k window.
+    let window = 105_000;
+    assert!(thinking_turn(window, Some(31_000)).1, "with thinking");
+    assert!(!thinking_turn(window, None).1, "without");
+}
+
+/// A summary asked in place keeps the turn's thinking budget, so its
+/// output limit holds that budget and 1024 more before its answer, within
+/// the model's output limit; with less than the least answer left, it is
+/// not asked in place (`None`).
+#[test]
+fn a_summary_in_place_has_room_for_the_thinking_budget() {
+    let Some(openai) = rig_core::providers::registry::ProviderId::catalog("openai") else {
+        return;
+    };
+    let summarizer = &CompactionPolicy::default().summarizer;
+    for (limit, thinking, expected) in [
+        (128_000, None, Some(32_000)),
+        (128_000, Some(32_000), Some(65_024)),
+        (48_000, Some(32_000), Some(48_000)),
+        (40_000, Some(32_000), None),
+    ] {
+        let mut spec = ModelSpec::new(openai, "m").with_context_window(200_000);
+        spec.max_output_tokens = Some(limit);
+        let mut request = CompletionRequest::new("Answer.");
+        request.options.reasoning = thinking.map(|tokens| completion::Reasoning::Budget { tokens });
+        let mut model = ModelRequest::new(request);
+        let history = [Message::user("Read the code."), Message::assistant("Read.")];
+        model.history = Some(rig_core::conversation::Conversation::from_messages(history));
+        let measure = Measure::of(&model, &spec, None, 1_000);
+        let asked = ask_for(
+            &mut model,
+            Upto::Before(None),
+            (summarizer, Asking::Summary("")),
+            measure,
+        );
+        let max_tokens = asked.filter(|asked| *asked).and(model.request.max_tokens);
+        assert_eq!(max_tokens, expected, "{limit}, {thinking:?}");
+    }
+    // A model whose limits are unknown is asked with no output limit.
+    let spec = ModelSpec::new(openai, "m");
+    let mut model = ModelRequest::new(CompletionRequest::new("Answer."));
+    let history = [Message::user("Read the code."), Message::assistant("Read.")];
+    model.history = Some(rig_core::conversation::Conversation::from_messages(history));
+    let measure = Measure::of(&model, &spec, None, 1_000);
+    let asked = ask_for(
+        &mut model,
+        Upto::Before(None),
+        (summarizer, Asking::Summary("")),
+        measure,
+    );
+    assert_eq!((asked, model.request.max_tokens), (Some(true), None));
 }
 
 /// A conversation summarized before, then one reply that read `count`
@@ -945,22 +1090,197 @@ fn notes_too_big_for_the_input_limit_give_way_to_a_summary() {
     );
 }
 
-/// A request that overflows with no reply in between is compacted, then
-/// the turn fails: once, never a loop.
+/// A request that overflows with no reply in between is compacted, or
+/// cleared when its summary is cut off or filtered, then the turn fails:
+/// one summary, never a loop. With nothing to clear it is not sent again.
+/// The question leaves the conversation.
 #[test]
 fn overflows_without_a_reply_fail_after_one_summary() {
-    let (sent, ended, ..) = overflowing(vec![
+    use FinishReason::{ContentFilter, Length};
+    for (messages, summary, requests, cut) in [
+        (read_files(3), reply("## Goal\nRead three files."), 3, false),
+        (read_files(3), stopped_summary(Length), 3, true),
+        (read_files(3), stopped_summary(ContentFilter), 3, true),
+        (long_conversation(6), stopped_summary(Length), 2, false),
+    ] {
+        let replies = vec![too_long(), summary, too_long(), reply("never asked")];
+        let (sent, ended, mut app, agent) = overflowing(messages, replies);
+        app.update();
+        let asked = Message::user("And the next question?");
+        let conversation = app.world().get::<Conversation>(agent);
+        let kept = conversation.is_some_and(|it| it.messages().iter().any(|m| **m == asked));
+        assert!(!kept, "the question is out of the conversation");
+        let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+        assert_eq!(
+            (sent.len(), summaries),
+            (requests, 1),
+            "one summary: {sent:?}"
+        );
+        let cleared = sent.last().is_some_and(|it| it.contains("[output cleared"));
+        assert_eq!(cleared, cut, "{sent:?}");
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
+            "{ended:?}"
+        );
+    }
+}
+
+/// A model whose limits are unknown has no floor: after an overflow and a
+/// cut summary the cleared request is sent, whatever its thinking budget.
+#[test]
+fn a_model_of_unknown_limits_sends_the_cleared_request_after_a_cut_summary() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let replies = vec![
         too_long(),
-        reply("## Goal\nRead three files."),
-        too_long(),
-        reply("never asked"),
-    ]);
-    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-    assert_eq!((sent.len(), summaries), (3, 1), "one summary: {sent:?}");
-    assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("context window")),
-        "{ended:?}"
+        stopped_summary(FinishReason::Length),
+        reply("done"),
+    ];
+    let model = MockCompletionModel::from_stream_turns(replies);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(3));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else { return };
+    let world = app.world_mut();
+    if let Some(mut connection) = world.get_mut::<Connection>(agent) {
+        let mut spec = connection.spec.as_ref().clone();
+        (
+            spec.context_window,
+            spec.max_input_tokens,
+            spec.max_output_tokens,
+        ) = (None, None, None);
+        spec.reasoning = rig_core::catalog::ReasoningSupport::Unknown { default: None };
+        connection.spec = Arc::new(spec);
+    }
+    let budget = completion::Reasoning::Budget { tokens: 16_000 };
+    world
+        .entity_mut(agent)
+        .insert(ReasoningSetting(Some(budget)));
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let cleared = sent.last().is_some_and(|it| it.contains("[output cleared"));
+    assert!(sent.len() == 3 && cleared, "{sent:?}");
+}
+
+/// A summary that stopped for `reason` after some text.
+fn stopped_summary(reason: FinishReason) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::text("## Goal\nRead the fi"),
+        MockStreamEvent::FinalResponse(rig_core::operation::Finish {
+            reason: Some(reason),
+            ..rig_core::test_utils::mock_final(Usage::default())
+        }),
+    ]
+}
+
+/// A summary cut off near the window is not used or asked again: old tool
+/// outputs are cleared instead and the request goes. After the model's
+/// reply, the next request near the window summarizes afresh.
+#[test]
+fn a_cut_summary_near_the_window_clears_instead_until_the_next_reply() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    /// For each "Compaction failed" notice, whether the answer was in
+    /// the conversation as the agent loop read it.
+    #[derive(Resource, Default)]
+    struct FailedAfterAnswer(Vec<bool>);
+    app.init_resource::<FailedAfterAnswer>().add_systems(
+        AgentPass,
+        (|mut read: MessageReader<Notice>,
+          conversations: Query<&Conversation>,
+          mut seen: ResMut<FailedAfterAnswer>| {
+            let answered = conversations.iter().any(|it| {
+                it.messages()
+                    .iter()
+                    .any(|m| m.final_answer().as_deref() == Some("done"))
+            });
+            let failed = read
+                .read()
+                .filter(|it| it.text.starts_with("Compaction failed"));
+            seen.0.extend(failed.map(|_| answered));
+        })
+        .in_set(Stage::Arrive),
     );
+    let model = MockCompletionModel::from_stream_turns(vec![
+        stopped_summary(FinishReason::Length),
+        counted("done", 99_000),
+        reply("## Goal\nRead three files."),
+        reply("again"),
+    ]);
+    let mut messages = long_conversation(10);
+    messages.extend(read_files(3));
+    let Some(agent) = agent(&mut app, &model, 1_000_000, messages) else {
+        return;
+    };
+    limit_input(&mut app, agent, 100_000);
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
+    let notices = notices(&app).join("\n");
+    assert!(
+        notices.contains("Compaction failed: the summary hit") && notices.contains("instead."),
+        "{notices}"
+    );
+    // The failure is told before the answer comes.
+    assert_eq!(app.world().resource::<FailedAfterAnswer>().0, [false]);
+    app.world_mut().resource_mut::<Ended>().0.clear();
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("again"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [cut, cleared, summary, _]
+            if asks_summary(cut) && cleared.contains("[output cleared") && !asks_summary(cleared)
+                && asks_summary(summary)),
+        "{sent:?}"
+    );
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+}
+
+/// A request whose summary is cut off is not sent when it then does not
+/// fit: past the input limit with nothing to clear, also for a model that
+/// knows only its input limit, or, with a small reserve, inside it after
+/// clearing but with little room to answer.
+#[test]
+fn a_request_that_still_does_not_fit_after_a_cut_summary_is_not_sent() {
+    let mut cleared = long_conversation(20);
+    cleared.extend(read_files(2));
+    for (messages, window, input, reserve, only_input) in [
+        (long_conversation(30), 1_000_000, 120_000, 16_384, false),
+        (long_conversation(30), 1_000_000, 120_000, 16_384, true),
+        (cleared, 122_000, 122_000, 4_096, false),
+    ] {
+        let (mut app, wakes) = start(&MemoryStore::default());
+        let limits = &mut app
+            .world_mut()
+            .resource_mut::<CompactionDefault>()
+            .into_inner()
+            .0;
+        limits.summarizer.limits.reserve = reserve;
+        let model =
+            MockCompletionModel::from_stream_turns(vec![stopped_summary(FinishReason::Length)]);
+        let Some(agent) = agent(&mut app, &model, window, messages) else {
+            return;
+        };
+        limit_input(&mut app, agent, input);
+        if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent)
+            && only_input
+        {
+            let mut spec = connection.spec.as_ref().clone();
+            (spec.context_window, spec.max_output_tokens) = (None, None);
+            connection.spec = Arc::new(spec);
+        }
+        ask(&mut app, &wakes, agent);
+        let sent = sent(&model);
+        assert!(
+            matches!(sent.as_slice(), [summary] if asks_summary(summary)),
+            "{reserve}: {sent:?}"
+        );
+        let ended = &app.world().resource::<Ended>().0;
+        assert!(
+            matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why == NOT_SUMMARIZED),
+            "{reserve}: {ended:?}"
+        );
+    }
 }
 
 /// A long turn whose requests overflow again and again, each time after
@@ -1370,6 +1690,37 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     app.update();
     assert_eq!(entries(app.world(), agent), original);
     assert_eq!(state(&app), Some(SummaryState::default()));
+}
+
+/// A summary near the window that a reviewer cancels lets the request go
+/// as it was, its answer clamped to the room left, when that is a fair
+/// share of its output budget.
+#[test]
+fn a_cancelled_summary_near_the_window_sends_the_request_as_it_was() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    // About 30k tokens, with about 8k of the window left for the answer.
+    let Some(agent) = agent(&mut app, &model, 42_000, long_conversation(6)) else {
+        return;
+    };
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "And the next question?",
+        DeliveryMode::Steer,
+    ));
+    decide(&mut app, &wakes, None);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
+    let requests = model.requests();
+    let limit = requests.get(1).and_then(|request| request.max_tokens);
+    assert!(
+        matches!(requests.as_slice(), [_, _]) && limit.is_some_and(|it| it < 12_000),
+        "a summary, then the request: {limit:?}"
+    );
 }
 
 #[test]
@@ -1898,6 +2249,43 @@ fn noted_turn(
     (bodies(&http), notices(&app), app, agent)
 }
 
+/// Takes the notes out of each notes call, as a reviewer that cancels it.
+fn cancel_notes(mut calls: Query<&mut Noting, ReadyToSettle>) {
+    for mut noting in &mut calls {
+        noting.notes = None;
+    }
+}
+
+/// A notes call a reviewer cancels clears nothing, and a request that
+/// still leaves too little room to answer is not sent: the turn fails.
+#[test]
+fn a_cancelled_notes_call_under_the_floor_fails_the_turn() {
+    let notes = streamed(reasoned(8, "- shell `readings`: noted"), None);
+    let http = rig_core::test_utils::SequencedHttpClient::new(vec![
+        shells(1, "readings", 0),
+        shells(2, "log", 640_000),
+        shells(3, "log", 200_000),
+        notes,
+        streamed(reasoned(9, "never asked"), None),
+    ]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.add_tool(Shell)
+        .add_systems(AgentPass, cancel_notes.in_set(ReviewSystems::Act));
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why == NOT_SUMMARIZED),
+        "{ended:?}"
+    );
+    let bodies = bodies(&http);
+    let noted = bodies.get(3).is_some_and(|body| asks_summary(body));
+    assert!(bodies.len() == 4 && noted, "{bodies:#?}");
+}
+
 #[test]
 fn near_the_window_notes_keep_a_fact_that_clearing_drops() {
     let store = MemoryStore::default();
@@ -1917,6 +2305,8 @@ fn near_the_window_notes_keep_a_fact_that_clearing_drops() {
     // The notes request is the request before it plus the instruction, so
     // the provider reads it from its cache.
     assert!(extends(before, notes), "{before}\n{notes}");
+    // It states its output limit, as a summary asked in place does.
+    assert!(notes.contains("Keep it under"), "{notes}");
     // The output is cleared, and the reading is in a user message, never in
     // a tool output.
     assert!(
@@ -2074,3 +2464,8 @@ fn clearing_that_frees_little_checkpoints_once_from_a_cached_prefix() {
             .is_some_and(holds_summary)
     );
 }
+
+/// The whole reason a turn fails for when its summary was not used and the
+/// request still does not fit: said once.
+const NOT_SUMMARIZED: &str =
+    "The conversation does not fit the model's context window, and was not summarized";

@@ -773,7 +773,9 @@ turn ended (`None` when a restart brings it back to an idle agent): a Gate
 system keeps it for the agent's next model call by removing `Unsent`, or
 takes it over by deciding it; else `GateSystems::Fallback` hands the
 user's back to the views as one `Recalled` (the terminal view's input) and
-puts the others in the conversation. An exit recalls nothing.
+puts the others in the conversation. An exit recalls nothing. A plugin
+that fails a turn and says why in a notice inserts `FailureTold` on the
+turn, so a headless run does not print the reason again.
 
 **With the user's next message.** What a plugin wants the agent to read
 when the user next writes, such as a background check's failure, it keeps
@@ -1415,7 +1417,10 @@ its place, not an extension of it: rig's
 `corpus/ct/src/keep_last_compaction.rs` drops the oldest turns instead, on
 public API alone. A request that does not fit takes one recovery path, carried
 through retries (`Recovering`): old tool outputs cleared, then compacted, then
-the turn fails; a model reply starts it again. A notes (`Noting`) or summary
+the turn fails; a model reply starts it again. A summary that fails or is cut
+is never used: old tool outputs are cleared instead, and the call goes if it
+then fits (`Recovering::NotSummarized`, as for a cancelled summary or notes
+call); an overflow at that step fails the turn. A notes (`Noting`) or summary
 call is the agent's request cut where its reading ends, plus one instruction,
 so the provider reads it from its cache; a Prepare edit of it costs that from
 the edit on. In `ReviewSystems::Act` `Summarizing.summary` and `Noting.notes`

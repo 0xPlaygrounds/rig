@@ -30,27 +30,18 @@ impl AppendLog for Writer {
 
 fn record(id: u64, key: &str) -> EffectRecord {
     EffectRecord {
-        purpose: None,
-        turn: None,
-        started_ms: None,
-        finished_ms: None,
-        reviewed: None,
-        disposition: Default::default(),
-        decided_by: None,
-        stream_origin: None,
-        published: None,
-        parent: None,
         scope: Some(Arc::from("agent")),
-        id: EffectId::from_raw(id),
-        key: HandlerKey::from(key),
-        kind: EffectKind::Custom {
-            kind: Arc::from("test"),
-            payload: serde_json::json!({ "ask": id }),
-        },
-        outcome: Ok(Answered::Custom {
-            payload: serde_json::json!({ "n": id }),
-        }),
-        events: None,
+        ..EffectRecord::new(
+            EffectId::from_raw(id),
+            HandlerKey::from(key),
+            EffectKind::Custom {
+                kind: Arc::from("test"),
+                payload: serde_json::json!({ "ask": id }),
+            },
+            Ok(Answered::Custom {
+                payload: serde_json::json!({ "n": id }),
+            }),
+        )
     }
 }
 
@@ -186,38 +177,29 @@ fn completion_of(
 ) -> EffectRecord {
     use rig_core::completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage};
     EffectRecord {
-        purpose: None,
-        turn: None,
-        started_ms: None,
-        finished_ms: None,
-        reviewed: None,
-        disposition: Default::default(),
-        decided_by: None,
-        stream_origin: None,
-        published: None,
-        parent: None,
         scope: Some(Arc::from(scope)),
-        id: EffectId::from_raw(id),
-        key: HandlerKey::from("model"),
-        kind: EffectKind::Completion {
-            request: CompletionRequest::from(history).into(),
-            stream: true,
-        },
-        outcome: Ok(Answered::Completion(
-            CompletionResponse::new(
-                vec![AssistantContent::text("ok")],
-                Usage::default(),
-                rig_core::message::Origin::new("test.api", "model", ""),
-                serde_json::json!({
-                    "id": "resp_1",
-                    "instructions": "a long system prompt",
-                    "tools": [{"name": "read"}],
-                    "usage": {"input_tokens": 3, "attribution": {"items": [1, 2, 3]}},
-                }),
-            )
-            .into(),
-        )),
-        events: None,
+        ..EffectRecord::new(
+            EffectId::from_raw(id),
+            HandlerKey::from("model"),
+            EffectKind::Completion {
+                request: CompletionRequest::from(history).into(),
+                stream: true,
+            },
+            Ok(Answered::Completion(
+                CompletionResponse::new(
+                    vec![AssistantContent::text("ok")],
+                    Usage::default(),
+                    rig_core::message::Origin::new("test.api", "model", ""),
+                    serde_json::json!({
+                        "id": "resp_1",
+                        "instructions": "a long system prompt",
+                        "tools": [{"name": "read"}],
+                        "usage": {"input_tokens": 3, "attribution": {"items": [1, 2, 3]}},
+                    }),
+                )
+                .into(),
+            )),
+        )
     }
 }
 

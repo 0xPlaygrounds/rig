@@ -872,6 +872,13 @@ pub struct EffectRecord {
     /// started), or when the recorder keeps no times.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_ms: Option<u64>,
+    /// When a streamed dispatch's first item came, in milliseconds since
+    /// the Unix epoch: the time to the first token beside
+    /// [`Self::started_ms`]. A part's end counts as an item; the stream's
+    /// own end does not. `None` when no item streamed, or when the
+    /// recorder keeps no times.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_item_ms: Option<u64>,
     /// When its outcome was known, in milliseconds since the Unix epoch.
     /// `None` when the recorder keeps no times.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -957,6 +964,7 @@ impl EffectRecord {
             purpose: None,
             turn: None,
             started_ms: None,
+            first_item_ms: None,
             finished_ms: None,
             reviewed: None,
             disposition: Disposition::Ran,

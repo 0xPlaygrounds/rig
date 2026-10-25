@@ -165,41 +165,53 @@ fn discard_drops_patch_replaces_and_tool_output_lands_before_the_outcome() {
     assert_eq!(buffer.remove(dropped), Some(tool_key("b")));
 }
 
-/// A buffer recording a real streamed dispatch keeps its items and who it
-/// was from, and its outcome is the fold; a timed one stamps both ends.
+/// A buffer recording a real streamed dispatch keeps its items, when asked,
+/// and who it was from, and its outcome is the fold; a timed one stamps its
+/// start, first item and end, whether it keeps the items or not.
 #[test]
 fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
-    let buffer = RecordBuffer::new().keeping_stream_events().timed();
-    assert!(buffer.keep_events());
-    let id = EffectId::from_raw(4);
-    let kind = EffectKind::Completion {
-        request: CompletionRequest::new(Message::user("hi")).into(),
-        stream: true,
-    };
-    let handler = ErasedHandler::new(Streamer);
-    let key = handler.descriptor().key;
-    buffer.begin(id, key, kind.clone(), DispatchContext::default());
-    let recorded = Arc::new(buffer.clone());
-    let dispatch = Dispatch::new(id, true).recorded_by(recorded);
-    let outcome = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
-    assert!(
-        matches!(outcome, Ok(Answered::Completion(_))),
-        "{outcome:?}"
-    );
-    assert!(
-        buffer.kept_events(id).is_some_and(|items| items >= 3),
-        "two deltas and the end"
-    );
-    assert_eq!(buffer.kept_events(EffectId::from_raw(5)), None);
+    for keep in [true, false] {
+        let buffer = RecordBuffer::new().timed();
+        let buffer = if keep {
+            buffer.keeping_stream_events()
+        } else {
+            buffer
+        };
+        assert_eq!(buffer.keep_events(), keep);
+        let id = EffectId::from_raw(4);
+        let kind = EffectKind::Completion {
+            request: CompletionRequest::new(Message::user("hi")).into(),
+            stream: true,
+        };
+        let handler = ErasedHandler::new(Streamer);
+        let key = handler.descriptor().key;
+        buffer.begin(id, key, kind.clone(), DispatchContext::default());
+        let recorded = Arc::new(buffer.clone());
+        let dispatch = Dispatch::new(id, true).recorded_by(recorded);
+        let outcome = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
+        assert!(
+            matches!(outcome, Ok(Answered::Completion(_))),
+            "{outcome:?}"
+        );
+        let kept = buffer.kept_events(id);
+        assert_eq!(
+            kept.is_some_and(|items| items >= 3),
+            keep,
+            "two deltas and the end"
+        );
+        assert_eq!(buffer.kept_events(EffectId::from_raw(5)), None);
 
-    let record = buffer.take(id).expect("resolved");
-    assert!(record.events.is_some(), "the items are kept");
-    let from = record.stream_origin.expect("the relay said who it is");
-    assert_eq!(from, crate::message::Origin::new("test", "test", "test"));
-    let (started, finished) = (record.started_ms, record.finished_ms);
-    let (started, finished) = (started.expect("timed"), finished.expect("timed"));
-    assert!(started <= finished);
-    assert!(started > 1_600_000_000_000, "milliseconds since the epoch");
+        let record = buffer.take(id).expect("resolved");
+        let from = record.stream_origin.as_ref();
+        let test = crate::message::Origin::new("test", "test", "test");
+        assert_eq!(from, keep.then_some(&test), "the relay said who it is");
+        let stamps = (record.started_ms, record.first_item_ms, record.finished_ms);
+        let (Some(started), Some(first), Some(finished)) = stamps else {
+            panic!("timed: {stamps:?}");
+        };
+        assert!(started <= first && first <= finished, "{stamps:?}");
+        assert!(started > 1_600_000_000_000, "milliseconds since the epoch");
+    }
 }
 
 /// A unary dispatch keeps no items, even when the buffer keeps them.

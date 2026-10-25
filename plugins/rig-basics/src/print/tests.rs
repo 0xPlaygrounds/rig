@@ -163,24 +163,43 @@ fn a_turn_compacted_while_it_runs_still_prints_its_answer() {
 #[test]
 fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
     let codes = [NoticeLevel::Warn, NoticeLevel::Error].map(|level| {
-        // A reply without text: nothing answers, so only the notice decides.
-        let model = MockCompletionModel::from_stream_turns([vec![
-            MockStreamEvent::final_response_with_default_usage(),
-        ]]);
+        // A stopped turn neither answers nor fails, so only the notice decides.
+        let model = silent();
         let ends = run("hi", Some(&model), |world, primary| {
+            let stop = move |calls: Query<(), (ReadyToStart, With<TurnCall>)>,
+                             mut commands: Commands| {
+                if !calls.is_empty() {
+                    commands.trigger(StopTurn::new(primary));
+                }
+            };
+            let mut schedules = world.resource_mut::<Schedules>();
+            schedules.add_systems(AgentPass, stop.in_set(Stage::Gate));
             world.add_observer(move |_: On<Add<TurnOf>>, mut commands: Commands| {
-                commands.write_message(Notice {
-                    agent: Some(primary),
-                    text: "key 2 refused; using key 3".to_owned(),
-                    level,
-                });
+                for key in [1, 2] {
+                    let text = format!("key {key} refused; using key {}", key + 1);
+                    let agent = Some(primary);
+                    commands.write_message(Notice { agent, text, level });
+                }
             });
         });
         ends.into_iter()
-            .map(|(_, code, _)| code)
+            .map(|(_, code, why)| (code, why))
             .collect::<Vec<_>>()
     });
-    assert_eq!(codes, [vec![0], vec![1]]);
+    // The last error notice is why.
+    let why = "key 2 refused; using key 3".to_owned();
+    assert_eq!(codes, [vec![(0, None)], vec![(1, Some(why))]]);
+}
+
+#[test]
+fn a_failure_before_the_prompt_went_out_does_not_fail_an_answered_run() {
+    // As a turn the restored session left fails within the first frame.
+    let model = answering(&["done"]);
+    let ends = run("go on", Some(&model), |world, _| {
+        let mut run = world.resource_mut::<Run>();
+        run.fail(1, "The restored turn failed".to_owned(), true);
+    });
+    assert_eq!(ends, answered("done"));
 }
 
 #[test]
@@ -189,7 +208,16 @@ fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
         let chosen = ModelChoice("nobody/nothing".to_owned());
         world.entity_mut(primary).insert(chosen);
     });
-    assert_eq!(ends, [(None, 1, None)]);
+    // The notice of the refused choice is why.
+    let why = "Cannot use nobody/nothing: the catalog lists no model `nobody/nothing`.";
+    assert_eq!(ends, [(None, 1, Some(why.to_owned()))]);
+    // Also after an earlier error about something else.
+    let ends = run("hi", None, |world, primary| {
+        world.write_message(Notice::error(None, "A plugin did not start."));
+        let chosen = ModelChoice("nobody/nothing".to_owned());
+        world.entity_mut(primary).insert(chosen);
+    });
+    assert_eq!(ends, [(None, 1, Some(why.to_owned()))]);
 }
 
 #[test]
@@ -502,6 +530,63 @@ fn a_resumed_turn_that_ends_in_the_first_frame_answers_the_run() {
     assert_eq!(model.request_count(), 0);
 }
 
+/// Refuses each model call where it is asked for, as a plugin's gate does.
+fn refuse_in_place(mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>) {
+    for mut decision in &mut calls {
+        decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
+    }
+}
+
+/// The resumed turn fails inside the run's first frame, with no prompt
+/// given: its failure is the run's.
+#[test]
+fn a_resumed_turn_that_fails_in_the_first_frame_fails_the_run() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let model = silent();
+    let in_place = refuse_in_place.in_set(Stage::Gate);
+    let (mut app, wakes) = scripted(&store, (&model, false), None, in_place);
+    run_while_woken(&mut app, &wakes);
+    let ends = &app.world().resource::<Ends>().0;
+    let how: Vec<_> = ends.iter().map(|end| (end.code, end.why.clone())).collect();
+    assert_eq!(how, [(1, Some("not now".to_owned()))]);
+    assert_eq!(model.request_count(), 0);
+}
+
+/// A resumed run whose restored model can no longer be used, and whose
+/// restored turn failed first: the model's refusal, which leaves the run
+/// nothing to send with, is why it fails, and plain `-p` prints it once.
+#[test]
+fn a_refused_model_is_why_a_resumed_run_fails_over_its_restored_turn() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let model = silent();
+    // `rig -r <id> -p` with no prompt.
+    let invoked = Invocation {
+        print: Some(String::new()),
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&store, invoked);
+    let stderr = Lines::default();
+    app.insert_resource(scripted_models([("test/other", &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
+        .add_systems(AgentPass, refuse_in_place.in_set(Stage::Gate))
+        .insert_resource(Printed::to(stderr.clone()));
+    app.finish();
+    run_while_woken(&mut app, &wakes);
+    let ends = &app.world().resource::<Ends>().0;
+    let how: Vec<_> = ends.iter().map(|end| (end.code, end.why.clone())).collect();
+    assert!(
+        matches!(how.as_slice(), [(1, Some(why))] if why.starts_with("Cannot use test/model")),
+        "{how:?}"
+    );
+    let lines = stderr.text();
+    let said = lines
+        .iter()
+        .filter(|line| line.starts_with("rig: Cannot use test/model"));
+    assert_eq!(said.count(), 1, "{lines:?}");
+}
+
 /// A print run with `--answer=answers` when given, after its first frame.
 fn print_run(answers: Option<&str>) -> App {
     let flags = answers.map(|ids| (ANSWER.to_owned(), Some(ids.to_owned())));
@@ -607,6 +692,15 @@ impl Lines {
         String::from_utf8_lossy(&bytes)
             .lines()
             .map(|line| serde_json::from_str(line).unwrap_or(Value::Null))
+            .collect()
+    }
+
+    /// Each line, as text.
+    fn text(&self) -> Vec<String> {
+        let bytes = self.0.lock().map(|lines| lines.clone()).unwrap_or_default();
+        String::from_utf8_lossy(&bytes)
+            .lines()
+            .map(str::to_owned)
             .collect()
     }
 
@@ -735,6 +829,17 @@ fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let end = lines.of("turn_end");
     let answers: Vec<&Value> = end.iter().map(|end| at(end, "answer")).collect();
     assert_eq!(answers, ["Both done."], "one turn: {end:?}");
+    let ms = |kind, key| {
+        lines
+            .of(kind)
+            .first()
+            .and_then(|line| at(line, key).as_u64())
+    };
+    let (started, first) = (ms("turn_start", "ms"), ms("turn_end", "first_token_ms"));
+    assert!(
+        started.zip(first).is_some_and(|(s, f)| s <= f),
+        "{started:?} {first:?}"
+    );
     let second = model
         .requests()
         .get(1)
@@ -802,4 +907,271 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let driver = older.starts_with("false") && older.contains("update the driver");
     assert!(driver, "{older}");
     assert!(unknown.contains("sned"), "{unknown}");
+}
+
+/// A one-shot run of `prompt` on `model`, `--model named` when given,
+/// `--json` when `json`, after `setup`, run to its end; its JSON lines.
+fn one_shot(
+    prompt: &str,
+    named: Option<&str>,
+    model: &MockCompletionModel,
+    json: bool,
+    setup: impl FnOnce(&mut App),
+) -> (App, Lines) {
+    let lines = Lines::default();
+    let invoked = Invocation {
+        print: Some(prompt.to_owned()),
+        model: named.map(str::to_owned),
+        flags: json.then(|| (JSON.to_owned(), None)).into_iter().collect(),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(scripted_models([(MODEL, model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    if named.is_some() {
+        app.add_plugins(crate::models::ModelsPlugin);
+    }
+    setup(&mut app);
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    app.update();
+    (app, lines)
+}
+
+/// A model whose provider refuses the call for good.
+fn out_of_credit() -> MockCompletionModel {
+    let refused = rig_core::ProviderResponseError::without_status("the account is out of credit")
+        .with_transient(Some(false));
+    MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
+        rig_core::test_utils::MockError::ProviderResponse(refused),
+    )]])
+}
+
+#[test]
+fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
+    // A provider refusal fails the turn; a refused `--model` fails before it.
+    for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
+        let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
+        let exit = parsed.last().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
+        assert_eq!(at(&exit, "code"), 1, "{exit}");
+        let error = |line: &&Value| at(line, "type") == "notice" && at(line, "level") == "error";
+        // The error notice, perhaps with advice after it, comes first.
+        let notice = parsed
+            .iter()
+            .find(error)
+            .and_then(|line| at(line, "text").as_str());
+        let why = at(&exit, "error").as_str().unwrap_or("no error");
+        assert!(
+            notice.is_some_and(|text| text.starts_with(why)),
+            "{parsed:?}"
+        );
+        // The prompt that went out was not answered: a notice says it was
+        // taken out of the session.
+        let taken_out = parsed.iter().any(|line| {
+            at(line, "type") == "notice"
+                && at(line, "text")
+                    .as_str()
+                    .is_some_and(|text| text.contains("taken out"))
+        });
+        assert_eq!(taken_out, named.is_none(), "{parsed:?}");
+        if let Some(end) = parsed.iter().find(|line| at(line, "type") == "turn_end") {
+            assert_eq!(at(end, "error"), at(&exit, "error"));
+            assert!(
+                at(end, "first_token_ms").is_null(),
+                "nothing streamed: {end}"
+            );
+        }
+        let ms: Vec<u64> = parsed.iter().filter_map(|l| at(l, "ms").as_u64()).collect();
+        assert_eq!(ms.len(), parsed.len(), "every line is timed");
+        assert!(ms.is_sorted(), "{ms:?}");
+    }
+}
+
+#[test]
+fn a_kernel_failure_reads_the_same_in_exit_turn_end_and_its_notice() {
+    // The kernel's reason for a reply with no message, which no notice
+    // tells.
+    let empty = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let parsed = one_shot("hi", None, &empty, true, |_| {}).1.parsed();
+    let of = |kind: &str| parsed.iter().find(|line| at(line, "type") == kind);
+    let why = "the model ended the turn without a message";
+    assert_eq!(
+        of("exit").map(|line| at(line, "error").clone()),
+        Some(why.into())
+    );
+    assert_eq!(
+        of("turn_end").map(|line| at(line, "error").clone()),
+        Some(why.into())
+    );
+}
+
+/// An error notice the work recovered from, answering after it, is spent
+/// with that settlement: a later one with no answer and no error of its
+/// own does not fail the run with it.
+#[test]
+fn a_recovered_error_does_not_fail_a_later_settlement() {
+    let mut run = Run {
+        notice: Some("Compaction failed: the summary was cut".to_owned()),
+        ..Run::default()
+    };
+    run.turn_ended(&TurnOutcome::Answered(Message::assistant("done")), false);
+    assert_eq!(run.settled().as_deref(), Some("done"));
+    run.turn_ended(&TurnOutcome::Stopped(None), false);
+    assert_eq!(run.settled(), None);
+    assert_eq!(run.failed, None);
+}
+
+#[test]
+fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
+    let (answered, failed, stopped) = (
+        TurnOutcome::Answered(Message::assistant("done")),
+        TurnOutcome::Failed("out of credit".to_owned()),
+        TurnOutcome::Stopped(None),
+    );
+    let failure = Some(Failure {
+        code: 1,
+        why: "out of credit".to_owned(),
+        told: true,
+    });
+    for (turns, answer, fails) in [
+        ([&answered, &failed], None, failure.clone()),
+        ([&failed, &answered], Some("done"), failure),
+        ([&answered, &stopped], Some("done"), None),
+    ] {
+        let mut run = Run::default();
+        turns
+            .into_iter()
+            .for_each(|turn| run.turn_ended(turn, true));
+        assert_eq!(run.settled().as_deref(), answer);
+        assert_eq!(run.failed, fails);
+    }
+}
+
+#[test]
+fn a_failed_plain_run_writes_its_reason_once() {
+    // The third call of a tool nobody has fails the turn with a notice that
+    // wraps the reason.
+    let unknown = MockCompletionModel::from_stream_turns(
+        ["c1", "c2", "c3"].map(|id| calls(id, "bash", json!({}))),
+    );
+    // A reply without a message fails the turn, with no notice, after an
+    // error the turn got over.
+    let empty = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let earlier = "Compaction failed: the summary was cut";
+    for (named, model, recovered) in [
+        (None, out_of_credit(), false),
+        (Some("nobody/nothing"), silent(), false),
+        (None, unknown, false),
+        (None, empty, true),
+    ] {
+        let stderr = Lines::default();
+        let (app, _) = one_shot("hi", named, &model, false, |app| {
+            app.insert_resource(Printed::to(stderr.clone()));
+            if recovered {
+                app.add_observer(
+                    move |turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut commands: Commands| {
+                        let agent = turns.get(turn.entity).ok().map(|of| of.0);
+                        commands.write_message(Notice::error(agent, earlier));
+                    },
+                );
+            }
+        });
+        let ended = app.world().resource::<Ends>().0.last().cloned();
+        let why = ended.and_then(|ended| ended.why).unwrap_or_default();
+        let errors = stderr.text();
+        let lower = why.to_lowercase();
+        let said = errors
+            .iter()
+            .filter(|text| text.to_lowercase().contains(&lower));
+        assert!(!why.is_empty() && said.count() == 1, "{why:?} {errors:?}");
+        let shown = errors.iter().any(|text| *text == format!("rig: {earlier}"));
+        assert_eq!(shown, recovered, "{errors:?}");
+    }
+}
+
+#[test]
+fn nothing_is_written_after_exit() {
+    let lines = Lines::default();
+    let mut world = World::new();
+    world.insert_resource(JsonOut::new(lines.clone()));
+    world.init_resource::<LinesRead>();
+    world.init_resource::<Messages<Notice>>();
+    world.init_resource::<Messages<StreamDelta>>();
+    world.write_message(Notice::error(None, "Before exit."));
+    assert!(world.run_system_cached(flush).is_ok());
+    world.resource_mut::<JsonOut>().closed = true;
+    world.write_message(Notice::error(None, "After exit."));
+    assert!(world.run_system_cached(flush).is_ok());
+    let texts: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|l| at(l, "text").clone())
+        .collect();
+    assert_eq!(texts, ["Before exit."]);
+}
+
+#[test]
+fn a_pending_notice_comes_before_pending_text() {
+    let lines = Lines::default();
+    let mut world = World::new();
+    world.insert_resource(JsonOut::new(lines.clone()));
+    world.init_resource::<LinesRead>();
+    world.init_resource::<Messages<Notice>>();
+    world.init_resource::<Messages<StreamDelta>>();
+    let effect = world.spawn(TurnCall).id();
+    let text = StreamEvent::Text {
+        part: rig_core::streaming::Part::new(0),
+        text: "Hel".to_owned(),
+    };
+    world.write_message(StreamDelta {
+        effect,
+        agent: None,
+        event: text,
+    });
+    world.write_message(Notice::error(None, "The model call failed."));
+    assert!(world.run_system_cached(flush).is_ok());
+    let kinds: Vec<Value> = lines
+        .parsed()
+        .iter()
+        .map(|l| at(l, "type").clone())
+        .collect();
+    assert_eq!(kinds, ["notice", "text"]);
+}
+
+#[test]
+fn a_command_does_not_fail_on_an_unusable_model() {
+    let (app, _) = one_shot("/echo", Some("nobody/nothing"), &silent(), false, |app| {
+        app.add_command("echo", "Echoes", |_: In<CommandArgs>| {});
+    });
+    let ends = &app.world().resource::<Ends>().0;
+    let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
+    assert_eq!(codes, [0], "{ends:?}");
+}
+
+#[test]
+fn an_error_before_the_run_looked_fails_it_only_when_the_agent_never_connects() {
+    // A stopped turn neither answers nor fails, so only the notice decides.
+    let early = |mut notices: MessageWriter<Notice>| {
+        notices.write(Notice::error(None, "a plugin failed to start"));
+    };
+    let stop = |calls: Query<&ForAgent, (ReadyToStart, With<TurnCall>)>, mut commands: Commands| {
+        for &ForAgent(agent) in &calls {
+            commands.trigger(StopTurn::new(agent));
+        }
+    };
+    let (app, _) = one_shot("hi", None, &silent(), false, |app| {
+        app.add_systems(Startup, early);
+        let mut schedules = app.world_mut().resource_mut::<Schedules>();
+        schedules.add_systems(AgentPass, stop.in_set(Stage::Gate));
+    });
+    let ends = &app.world().resource::<Ends>().0;
+    let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
+    assert_eq!(codes, [0], "{ends:?}");
 }
