@@ -318,7 +318,7 @@ impl AssistantContent {
         }
     }
 
-    fn native_slot(&mut self) -> Option<&mut Option<Native>> {
+    pub(crate) fn native_slot(&mut self) -> Option<&mut Option<Native>> {
         match self {
             Self::Text(text) => Some(&mut text.native),
             Self::ToolCall(call) => Some(&mut call.native),
@@ -333,7 +333,11 @@ impl AssistantContent {
     pub fn with_native(mut self, item: serde_json::Value) -> Self {
         let fingerprint = self.fingerprint();
         if let Some(native) = self.native_slot() {
-            *native = Some(Native { item, fingerprint });
+            *native = Some(Native {
+                item,
+                fingerprint,
+                blob: None,
+            });
         }
         self
     }

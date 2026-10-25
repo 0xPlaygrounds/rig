@@ -265,6 +265,14 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         None
     }
 
+    /// Where this wire's items keep a reasoning blob (a signature or an
+    /// encrypted copy of the reasoning), as JSON pointers tried in order.
+    /// The reply fold records the first that holds one on the block's
+    /// [`Native`](crate::message::Native). By default there are none.
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Whether every reply on this wire states why it stopped. A reply that
     /// then names no reason failed; a wire
     /// with no finish vocabulary, such as a local runtime, says `false`.
@@ -1221,18 +1229,16 @@ fn assistant<'a>(
                             // A rename is rig's, not an edit: replay spells
                             // the new id into the item's slot, so the item
                             // stays.
-                            let item = block
-                                .native_item()
-                                .filter(|_| target.call_id_slot().is_some());
+                            let keep =
+                                block.native_item().is_some() && target.call_id_slot().is_some();
                             let id = id.into_owned();
                             let renamed = crate::message::ToolCall { id, ..call.clone() };
-                            let renamed = AssistantContent::ToolCall(renamed);
-                            Cow::Owned(match item {
-                                Some(item) if renamed.native_item().is_none() => {
-                                    renamed.into_canonical().with_native(item.clone())
-                                }
-                                _ => renamed,
-                            })
+                            let mut renamed = AssistantContent::ToolCall(renamed);
+                            let fingerprint = renamed.fingerprint();
+                            if let Some(Some(native)) = renamed.native_slot().filter(|_| keep) {
+                                native.fingerprint = fingerprint;
+                            }
+                            Cow::Owned(renamed)
                         }
                     }
                     // The capability holds for the model's own turns too: an

@@ -55,6 +55,7 @@ fn stale_native_metadata_is_not_revalidated_by_decoding() -> anyhow::Result<()> 
         call.native = Some(Native {
             item: item.clone(),
             fingerprint,
+            blob: None,
         });
         let mut content = AssistantContent::ToolCall(call);
         decode_content(&mut content);
@@ -85,6 +86,7 @@ fn completed_parts_and_final_response_decode_without_changing_arguments_or_ids()
     original.native = Some(Native {
         item: json!({"type":"tool_use","id":"call_1","name":"__private","input":{"text":"_not_a_name"},"caller":{"type":"code_execution_20250825","tool_id":"server_1"},"future_field":{"keep":true}}),
         fingerprint: AssistantContent::ToolCall(original.clone()).fingerprint(),
+        blob: None,
     });
     let content = AssistantContent::ToolCall(original.clone());
     let result = decode(Relayed::Item(Item::Event(StreamEvent::End {

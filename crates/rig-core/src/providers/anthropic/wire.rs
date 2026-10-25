@@ -860,6 +860,10 @@ impl crate::completion::ReplayTarget for Messages {
         Some("/id")
     }
 
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &["/signature", "/data"]
+    }
+
     /// A server tool's use (`server_tool_use`, `mcp_tool_use`) and the
     /// `*_tool_result` that answers it by `tool_use_id`.
     fn hosted_pair(

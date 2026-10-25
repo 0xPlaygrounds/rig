@@ -226,6 +226,10 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         rest::CALL_ID_SLOT
     }
 
+    fn blob_slots(&self) -> &'static [&'static str] {
+        rest::BLOB_SLOTS
+    }
+
     /// Tools in `additional_params` or a cached content count, as on the
     /// REST wire.
     fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {

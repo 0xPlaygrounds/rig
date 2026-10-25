@@ -263,6 +263,43 @@ fn blocks_from_the_first_unfinished_item_on_replay_canonically() {
     assert_eq!(natives, [true, false, false], "{choice:?}");
 }
 
+/// The fold records where each item keeps its blob once the reply ends, so
+/// a blob backfilled after its block closed is found too.
+#[test]
+fn a_reply_records_where_each_item_keeps_its_blob() {
+    use crate::completion::FinishReason;
+    let turn = ReplyFold {
+        blob_slots: &["/sig"],
+        ..ReplyFold::relayed("test")
+    };
+    let decoded = decode_with(turn, "test", |reply| {
+        let mut out = reply.out();
+        let reasoning = Block::Reasoning { redacted: false };
+        out.whole(0, reasoning, json!({"sig": ""}), "plan")?;
+        out.edit(0, |item| {
+            if let Some(sig) = item.get_mut("sig") {
+                *sig = json!("s");
+            }
+        })?;
+        out.whole(1, Block::Text, json!({"sig": ""}), "answer")?;
+        let _ = out.end(stop(FinishReason::Stop));
+        Ok(())
+    });
+    let choice = response(decoded).choice;
+    let blobs: Vec<Option<&str>> = choice
+        .iter()
+        .map(|block| {
+            let native = match block {
+                AssistantContent::Reasoning(reasoning) => reasoning.native.as_ref(),
+                AssistantContent::Text(text) => text.native.as_ref(),
+                _ => None,
+            };
+            native?.reasoning_blob().map(|blob| blob.value)
+        })
+        .collect();
+    assert_eq!(blobs, [Some("s"), None], "{choice:?}");
+}
+
 /// A call still open when the provider ends the reply is reported as
 /// unfinished, with the arguments that came; a finished call beside it is
 /// not, and the report survives a round trip through JSON.

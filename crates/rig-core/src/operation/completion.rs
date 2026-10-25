@@ -86,6 +86,7 @@ impl Operation for Completion {
             facts: call.wire.facts.cloned().unwrap_or_default(),
             wire: replay.is_some_and(|target| target.states_finish_reason()),
             call_id_slot: replay.and_then(|target| target.call_id_slot()),
+            blob_slots: replay.map_or(&[], |target| target.blob_slots()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..ReplyFold::new(origin)
         }
@@ -272,6 +273,10 @@ pub struct ReplyFold {
     ///
     /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
     call_id_slot: Option<&'static str>,
+    /// Where the wire's items keep a reasoning blob ([`ReplayTarget::blob_slots`]).
+    ///
+    /// [`ReplayTarget::blob_slots`]: crate::completion::ReplayTarget::blob_slots
+    blob_slots: &'static [&'static str],
     /// Whether the request accepts an unknown finish reason as a normal stop
     /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
     ///
@@ -502,6 +507,7 @@ impl ReplyFold {
             call_ids: HashSet::new(),
             wire: false,
             call_id_slot: None,
+            blob_slots: &[],
             accept_unknown_finish: false,
             first_incomplete: None,
             unfinished: Vec::new(),
@@ -1082,7 +1088,10 @@ impl ReplyFold {
         let mut parts: Vec<(usize, AssistantContent)> = parts
             .into_iter()
             .filter_map(|(position, part)| {
-                let part = part?;
+                let mut part = part?;
+                if let Some(Some(native)) = part.native_slot() {
+                    native.find_blob(self.blob_slots);
+                }
                 Some(match canonical_from {
                     Some(first) if position >= first => (position, canonical(part)),
                     _ => (position, part),

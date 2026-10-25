@@ -92,52 +92,35 @@ fn a_stored_item_that_cannot_be_read_loads_as_no_item() {
     );
 }
 
-/// Each wire's reasoning blob is found where that wire keeps it, and only
-/// for that wire; removing it leaves the rest of the item.
+/// A native item records the first of its wire's slots that holds a
+/// blob, finds the blob from that record after a round trip through
+/// storage, and records none when every slot is empty.
 #[test]
-fn a_reasoning_blob_is_read_where_its_wire_keeps_it() {
-    use crate::message::{Api, Native};
-    let native = |item| Native {
-        item,
+fn a_reasoning_blob_is_read_where_its_wire_put_it() {
+    use crate::message::{Blob, Native};
+    let slots = ["/signature", "/data"];
+    let mut redacted = Native {
+        item: json!({"type": "redacted_thinking", "data": "r"}),
         fingerprint: Fingerprint::of(&"x"),
+        blob: None,
     };
-    let cases = [
-        (
-            "anthropic.messages",
-            json!({"type": "redacted_thinking", "data": "r"}),
-            "/data",
-        ),
-        (
-            "openai.responses",
-            json!({"type": "reasoning", "id": "rs_1", "encrypted_content": "e"}),
-            "/encrypted_content",
-        ),
-        (
-            "bedrock.converse",
-            json!({"reasoningContent": {"reasoningText": {"text": "t", "signature": "s"}}}),
-            "/reasoningContent/reasoningText/signature",
-        ),
-        (
-            "gemini.generate_content",
-            json!({"functionCall": {"name": "f"}, "thoughtSignature": "g"}),
-            "/thoughtSignature",
-        ),
-    ];
-    for (api, item, key) in cases {
-        let api = Api::from(api);
-        let native = native(item);
-        assert_eq!(native.reasoning_blob(&api).map(|blob| blob.key), Some(key));
-        assert_eq!(
-            native.reasoning_blob(&Api::from("openai.chat")),
-            None,
-            "another wire's keys are not blobs"
-        );
-    }
-    let unsigned = native(json!({"type": "thinking", "thinking": "t", "signature": ""}));
+    redacted.find_blob(&slots);
+    let stored = serde_json::to_value(&redacted).expect("serializes");
+    let stored: Native = serde_json::from_value(stored).expect("loads");
+    let found = stored.reasoning_blob();
+    let mut unsigned = Native {
+        item: json!({"type": "thinking", "thinking": "t", "signature": ""}),
+        ..redacted.clone()
+    };
+    unsigned.find_blob(&slots);
     assert_eq!(
-        unsigned.reasoning_blob(&Api::from("anthropic.messages")),
-        None
+        found,
+        Some(Blob {
+            key: "/data",
+            value: "r"
+        })
     );
+    assert_eq!((&unsigned.blob, unsigned.reasoning_blob()), (&None, None));
 }
 
 /// Stored native items carry these values, so a change to the projection or
