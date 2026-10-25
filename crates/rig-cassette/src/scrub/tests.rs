@@ -1437,39 +1437,95 @@ async fn capture_scrub_case_with_headers(
     response_encoding: Option<&str>,
     response_headers: &[(&str, &str)],
 ) -> CapturedScrubCase {
+    let mut headers = HeaderMap::new();
+    for (name, value) in request_headers {
+        headers.append(
+            name.parse::<rig_reqwest::reqwest::header::HeaderName>()
+                .expect("name"),
+            value.parse().expect("value"),
+        );
+    }
+    capture_scrub_case_with_header_map(
+        query,
+        &headers,
+        request,
+        response,
+        streaming,
+        response_encoding,
+        response_headers,
+    )
+    .await
+}
+
+#[cfg(feature = "http")]
+async fn capture_scrub_case_with_header_map(
+    query: &str,
+    request_headers: &HeaderMap,
+    request: &[u8],
+    response: &[u8],
+    streaming: bool,
+    response_encoding: Option<&str>,
+    response_headers: &[(&str, &str)],
+) -> CapturedScrubCase {
     use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
     use futures::StreamExt;
     use rig_core::http_client::{HttpClientExt, Request};
-    let upstream = httpmock::MockServer::start_async().await;
-    upstream
-        .mock_async(|when, then| {
-            when.method("POST").path("/submit");
-            let mut then = then
-                .status(200)
-                .header(
-                    "content-type",
-                    if streaming {
-                        "text/event-stream"
-                    } else {
-                        "application/json"
-                    },
-                )
-                .body(response);
-            for (name, value) in response_headers {
-                then = then.header(*name, *value);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("listener");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    let mut reply_headers = HeaderMap::new();
+    if !response_headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    {
+        reply_headers.insert(
+            "content-type",
+            if streaming {
+                "text/event-stream"
+            } else {
+                "application/json"
             }
-            if let Some(coding) = response_encoding {
-                then.header("content-encoding", coding);
-            }
-        })
-        .await;
+            .parse()
+            .expect("type"),
+        );
+    }
+    for (name, value) in response_headers {
+        reply_headers.append(
+            name.parse::<rig_reqwest::reqwest::header::HeaderName>()
+                .expect("name"),
+            value.parse().expect("value"),
+        );
+    }
+    if let Some(coding) = response_encoding {
+        reply_headers.insert("content-encoding", coding.parse().expect("coding"));
+    }
+    let response = Bytes::copy_from_slice(response);
+    let app = axum::Router::new().fallback(axum::routing::any(move || {
+        let body = response.clone();
+        let headers = reply_headers.clone();
+        async move {
+            let mut response = axum::response::Response::new(axum::body::Body::from(body));
+            *response.headers_mut() = headers;
+            response
+        }
+    }));
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
+            .expect("server");
+    });
     let directory = assert_fs::TempDir::new().expect("directory");
     let fixture = directory.path().join("fixture.yaml");
     let session = ProviderCassette::try_start_at(
         RecordVia::Proxy,
         "example",
         CassetteSpec::new("scrub-exchange"),
-        &upstream.base_url(),
+        &origin,
         CassetteMode::Record,
         fixture.clone(),
     )
@@ -1484,14 +1540,11 @@ async fn capture_scrub_case_with_headers(
         .expect("client");
     let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw));
     let mut builder = Request::post(format!("{}/submit{query}", session.base_url()));
-    if !request_headers
-        .iter()
-        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-    {
+    if !request_headers.contains_key("content-type") {
         builder = builder.header("content-type", "application/json");
     }
     for (name, value) in request_headers {
-        builder = builder.header(*name, *value);
+        builder = builder.header(name.clone(), value.clone());
     }
     let request = builder
         .body(Bytes::copy_from_slice(request))
@@ -1510,6 +1563,8 @@ async fn capture_scrub_case_with_headers(
     }
     log.flush();
     session.try_finish().await.expect("safe recording");
+    let _ = stop.send(());
+    server.await.expect("server joined");
     CapturedScrubCase {
         traffic: serde_json::from_str(&std::fs::read_to_string(path).expect("traffic"))
             .expect("JSON"),
@@ -2342,4 +2397,219 @@ fn typed_and_wire_binary_parts_share_the_withholding_decision() {
         assert!(prepared.request_withheld().is_some());
         assert!(prepared.response_withheld().is_some());
     }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn sniffed_sse_learns_multiline_response_credentials_before_either_sink_renders() {
+    use rig_core::http_client::framing::Framing;
+    let secret = "opaque-new-credential-97531";
+    let response = format!(
+        "data: {{\"client_secret\":\ndata: {{\"value\":\"{secret}\"}}}}\n\ndata: {{\"echo\":\"{secret}\"}}\n\n"
+    );
+    for content_type in ["text/plain", "text/event-stream"] {
+        let captured = capture_scrub_case_with_headers(
+            "",
+            &[],
+            b"{}",
+            response.as_bytes(),
+            true,
+            None,
+            &[("content-type", content_type)],
+        )
+        .await;
+        assert!(!captured.traffic.to_string().contains(secret));
+        assert!(!captured.fixture.to_string().contains(secret));
+        assert_eq!(
+            captured
+                .traffic
+                .pointer("/response/events/0/data/client_secret/value"),
+            Some(&json!(REDACTED))
+        );
+        assert_eq!(
+            captured.traffic.pointer("/response/events/1/data/echo"),
+            Some(&json!(REDACTED))
+        );
+        let body = captured
+            .fixture
+            .pointer("/then/body")
+            .and_then(Value::as_str)
+            .expect("SSE");
+        let events = Framing::Sse.split(body.as_bytes());
+        let echo: Value =
+            serde_json::from_str(&events.get(1).expect("echo frame").as_str()).expect("JSON");
+        assert_eq!(echo.get("echo"), Some(&json!(REDACTED)));
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn utf8_and_unreadable_secret_headers_cannot_leak_echoes_in_either_file() {
+    let secret = "opaque-credential-é-123456";
+    let reply = json!({"echo":secret}).to_string();
+    for unreadable in [false, true] {
+        for streaming in [false, true] {
+            let value = if unreadable {
+                b"\xffopaque-credential".as_slice()
+            } else {
+                secret.as_bytes()
+            };
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "x-api-key",
+                rig_core::http_client::HeaderValue::from_bytes(value).expect("header"),
+            );
+            let response = if streaming {
+                format!("data: {reply}\n\n")
+            } else {
+                reply.clone()
+            };
+            let captured = capture_scrub_case_with_header_map(
+                "",
+                &headers,
+                b"{}",
+                response.as_bytes(),
+                streaming,
+                None,
+                &[("x-error", secret)],
+            )
+            .await;
+            assert!(!captured.traffic.to_string().contains(secret));
+            assert!(!captured.fixture.to_string().contains(secret));
+            if unreadable {
+                assert_eq!(
+                    captured.traffic.pointer("/response/headers/x-error"),
+                    Some(&json!(REDACTED))
+                );
+                assert!(
+                    captured
+                        .fixture
+                        .pointer("/when/body")
+                        .is_none_or(Value::is_null)
+                );
+                assert!(
+                    captured
+                        .fixture
+                        .pointer("/then/body")
+                        .is_none_or(Value::is_null)
+                );
+                let path = if streaming {
+                    "/response/events/0/data/bytes"
+                } else {
+                    "/response/body/bytes"
+                };
+                assert_eq!(captured.traffic.pointer(path), Some(&json!(response.len())));
+            } else {
+                let path = if streaming {
+                    "/response/events/0/data/echo"
+                } else {
+                    "/response/body/echo"
+                };
+                assert_eq!(captured.traffic.pointer(path), Some(&json!(REDACTED)));
+                assert!(
+                    captured
+                        .fixture
+                        .pointer("/then/body")
+                        .and_then(Value::as_str)
+                        .is_some()
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn duplicate_json_credentials_and_parents_withhold_both_values_in_both_files() {
+    let first = "first-private-credential-12345";
+    let last = "last-private-credential-67890";
+    let direct = format!(r#"{{"client_secret":"{first}","client_secret":"{last}"}}"#);
+    let parent =
+        format!(r#"{{"auth":{{"client_secret":"{first}"}},"auth":{{"client_secret":"{last}"}}}}"#);
+    let response = json!({"echo":[first,last]}).to_string();
+    let error_header = format!("{first} {last}");
+    for (content_type, request) in [
+        ("application/json", direct.clone()),
+        ("application/json", parent),
+        ("application/x-ndjson", format!("{direct}\n")),
+        ("text/event-stream", format!("data: {direct}\n\n")),
+    ] {
+        for streaming in [false, true] {
+            let captured = capture_scrub_case_with_headers(
+                "",
+                &[("content-type", content_type)],
+                request.as_bytes(),
+                response.as_bytes(),
+                streaming,
+                None,
+                &[("x-error", error_header.as_str())],
+            )
+            .await;
+            for output in [&captured.traffic, &captured.fixture] {
+                assert!(!output.to_string().contains(first));
+                assert!(!output.to_string().contains(last));
+            }
+            assert!(
+                captured
+                    .fixture
+                    .pointer("/when/body")
+                    .is_none_or(Value::is_null)
+            );
+            assert!(
+                captured
+                    .fixture
+                    .pointer("/then/body")
+                    .is_none_or(Value::is_null)
+            );
+            assert_eq!(
+                captured.traffic.pointer("/response/headers/x-error"),
+                Some(&json!(REDACTED))
+            );
+        }
+    }
+}
+
+#[test]
+fn frame_boundaries_use_the_same_inspected_format_and_reject_partial_records() {
+    for content_type in [None, Some("text/plain"), Some("text/event-stream")] {
+        assert!(stopped_at_frame_boundary(
+            content_type,
+            b"data: {\"done\":true}\n\n"
+        ));
+        assert!(!stopped_at_frame_boundary(
+            content_type,
+            b"data: {\"done\":true}\n"
+        ));
+    }
+    for content_type in ["application/x-ndjson", "application/jsonl"] {
+        assert!(stopped_at_frame_boundary(
+            Some(content_type),
+            b"{\"done\":true}\n"
+        ));
+        assert!(!stopped_at_frame_boundary(
+            Some(content_type),
+            b"{\"done\":true}"
+        ));
+        assert!(!stopped_at_frame_boundary(
+            Some(content_type),
+            b"{\"done\":true,\"done\":false}\n"
+        ));
+        assert!(!stopped_at_frame_boundary(
+            Some(content_type),
+            b"{\"done\":"
+        ));
+    }
+}
+
+#[test]
+fn unique_json_preserves_scalar_types_and_rejects_nested_duplicates() {
+    let source = r#"{"array":[null,true,-17,18446744073709551615,1.25,1e200,"é"],"ordinary":3}"#;
+    assert_eq!(
+        decode_json(source).expect("unique JSON"),
+        serde_json::from_str::<Value>(source).expect("reference JSON")
+    );
+    for source in [r#"{"key":1,"key":2}"#, r#"[{"parent":{"key":1,"key":2}}]"#] {
+        assert_eq!(decode_json(source), Err(JsonFailure::DuplicateKey));
+    }
+    assert_eq!(decode_json("{not JSON}"), Err(JsonFailure::Invalid));
 }

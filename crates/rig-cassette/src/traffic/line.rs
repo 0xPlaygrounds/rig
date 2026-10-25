@@ -67,7 +67,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     let response_headers = response_headers.map(|headers| {
         let mut scrubbed = headers.clone();
         for (name, value) in &mut scrubbed {
-            if let Ok(text) = value.to_str() {
+            if let Ok(text) = std::str::from_utf8(value.as_bytes()) {
                 let rendered = prepared.scrub_response_header(&mut scrubber, name.as_str(), text);
                 if let Ok(rendered) = rendered.parse() {
                     *value = rendered;
@@ -353,7 +353,7 @@ fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
         let values: Vec<Value> = headers
             .get_all(name)
             .iter()
-            .map(|value| match value.to_str() {
+            .map(|value| match std::str::from_utf8(value.as_bytes()) {
                 Ok(value) => json!(scrubber.scrub_header_value(name.as_str(), value)),
                 Err(_) => OpaqueBody::new(value.len(), None).value(),
             })

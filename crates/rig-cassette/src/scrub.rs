@@ -214,7 +214,10 @@ impl<'a> HeaderText<'a> {
     pub(crate) fn recordable(self, name: &str) -> Option<&'a str> {
         match self {
             Self::Utf8(value) => Some(value),
-            Self::Unreadable if matches!(name, "content-type" | "content-encoding") => {
+            Self::Unreadable
+                if name.eq_ignore_ascii_case("content-type")
+                    || name.eq_ignore_ascii_case("content-encoding") =>
+            {
                 Some("<non-UTF-8>")
             }
             Self::Unreadable => None,
@@ -698,6 +701,7 @@ impl Scrubber {
     }
 
     /// Prepare an exchange whose headers are already text.
+    #[cfg(any(feature = "http", test))]
     pub(crate) fn prepare_exchange<'a, 'b>(
         &mut self,
         uri: &str,
@@ -2408,6 +2412,7 @@ pub(crate) fn ends_between_events(body: &[u8]) -> bool {
     framer.pending() == 0
 }
 
+#[cfg(any(feature = "http", test))]
 pub(crate) fn is_sse(content_type: &str) -> bool {
     media_type(content_type).eq_ignore_ascii_case("text/event-stream")
 }
