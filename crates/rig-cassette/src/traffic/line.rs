@@ -30,7 +30,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     let mut scrubber = Scrubber::new(Purpose::Traffic);
     let response_headers = exchange.response_headers.as_ref();
     let raw_response = exchange.response_bytes();
-    let prepared = scrubber.prepare_exchange(
+    let prepared = scrubber.prepare_exchange_with_headers(
         &exchange.uri,
         crate::scrub::header_pairs(&exchange.request_headers),
         match &exchange.request_body {

@@ -1748,7 +1748,7 @@ fn recording_rejects_conflicting_and_non_utf8_body_headers() {
             name,
             rig_core::http_client::HeaderValue::from_bytes(b"\xff").expect("header"),
         );
-        let prepared = scrubber.prepare_exchange(
+        let prepared = scrubber.prepare_exchange_with_headers(
             "",
             header_pairs(&headers),
             RequestBodyRef::Bytes(b"secret"),

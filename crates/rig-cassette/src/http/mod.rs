@@ -323,12 +323,16 @@ impl DirectRecorder {
             DirectHttpRequest {
                 method: request.method,
                 uri: request.uri,
-                headers: request_headers,
+                headers: request_headers
+                    .iter()
+                    .map(|(name, value)| (name.as_ref(), value.as_ref().as_bytes())),
                 body: request.body,
             },
             DirectHttpResponse {
                 status: response.status,
-                headers: response_headers,
+                headers: response_headers
+                    .iter()
+                    .map(|(name, value)| (name.as_ref(), value.as_ref().as_bytes())),
                 body: response.body,
             },
         );
@@ -339,11 +343,11 @@ impl DirectRecorder {
         &self,
         request: DirectHttpRequest<
             '_,
-            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<[u8]>)>,
         >,
         response: DirectHttpResponse<
             '_,
-            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<str>)>,
+            impl IntoIterator<Item = (impl AsRef<str>, impl AsRef<[u8]>)>,
         >,
     ) {
         let mut scrubber = self
@@ -352,19 +356,43 @@ impl DirectRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let request_headers: Vec<_> = request.headers.into_iter().collect();
         let response_headers: Vec<_> = response.headers.into_iter().collect();
-        let prepared = scrubber.prepare_exchange(
+        let prepared = scrubber.prepare_exchange_with_headers(
             request.uri,
-            request_headers
-                .iter()
-                .map(|(name, value)| (name.as_ref(), value.as_ref())),
+            request_headers.iter().map(|(name, value)| {
+                (
+                    name.as_ref(),
+                    crate::scrub::HeaderText::from(value.as_ref()),
+                )
+            }),
             crate::scrub::RequestBodyRef::Bytes(request.body),
-            response_headers
-                .iter()
-                .map(|(name, value)| (name.as_ref(), value.as_ref())),
+            response_headers.iter().map(|(name, value)| {
+                (
+                    name.as_ref(),
+                    crate::scrub::HeaderText::from(value.as_ref()),
+                )
+            }),
             Some(response.body),
         );
         // A body the scrubber could not read whole is withheld: the cassette
         // keeps its size and content type, never its bytes.
+        let request_headers: Vec<_> = request_headers
+            .iter()
+            .filter_map(|(name, value)| {
+                let name = name.as_ref();
+                crate::scrub::HeaderText::from(value.as_ref())
+                    .recordable(name)
+                    .map(|value| (name, value))
+            })
+            .collect();
+        let response_headers: Vec<_> = response_headers
+            .iter()
+            .filter_map(|(name, value)| {
+                let name = name.as_ref();
+                crate::scrub::HeaderText::from(value.as_ref())
+                    .recordable(name)
+                    .map(|value| (name, value))
+            })
+            .collect();
         let request_withheld = prepared.request_withheld().cloned();
         let response_withheld = prepared.response_withheld().cloned();
         let response_headers: Vec<_> = response_headers
@@ -479,12 +507,19 @@ impl DirectRecorder {
             .response_headers
             .as_ref()
             .into_iter()
-            .flat_map(crate::scrub::header_pairs);
+            .flat_map(|headers| {
+                headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_bytes()))
+            });
         self.keep_exchange(
             DirectHttpRequest {
                 method: &exchange.method,
                 uri: &exchange.uri,
-                headers: crate::scrub::header_pairs(&exchange.request_headers),
+                headers: exchange
+                    .request_headers
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_bytes())),
                 body: request_body,
             },
             DirectHttpResponse {
@@ -533,9 +568,15 @@ impl DirectRecorder {
             .scrubber
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        scrubber.learn_url(&exchange.uri);
-        for (name, value) in crate::scrub::header_pairs(&exchange.request_headers) {
-            scrubber.learn_header(name, value);
+        let inspection = scrubber.learn_request(
+            &exchange.uri,
+            crate::scrub::header_pairs(&exchange.request_headers),
+        );
+        if matches!(
+            inspection,
+            crate::scrub::HeaderInspection::UnknownCredential
+        ) {
+            return format!("[{} bytes]", text.len());
         }
         scrubber.scrub_text(text)
     }
@@ -3003,13 +3044,16 @@ impl Scrubber {
                             .map(|pair| (&pair.name, &pair.value)),
                     )
                     .finish();
-                self.learn_url(&format!("{}?{}", interaction.when.path, query));
-                for header in interaction
-                    .when
-                    .header
-                    .iter()
-                    .chain(&interaction.then.header)
-                {
+                self.learn_request(
+                    &format!("{}?{}", interaction.when.path, query),
+                    interaction.when.header.iter().map(|header| {
+                        (
+                            header.name.as_str(),
+                            crate::scrub::HeaderText::Utf8(header.value.as_str()),
+                        )
+                    }),
+                );
+                for header in &interaction.then.header {
                     self.learn_header(&header.name, &header.value);
                 }
                 let prepare =
@@ -3028,6 +3072,7 @@ impl Scrubber {
                         Some(crate::scrub::PreparedBody::fixture(&bytes, &headers))
                     };
                 let prepared = crate::scrub::PreparedExchange {
+                    header_inspection: crate::scrub::HeaderInspection::Readable,
                     request_body: prepare(
                         interaction.when.body.as_deref(),
                         interaction.when.body_encoding,
@@ -3152,7 +3197,11 @@ mod tests;
 /// Collect UTF-8 HTTP headers as owned name/value pairs.
 pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> {
     crate::scrub::header_pairs(headers)
-        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        .filter_map(|(name, value)| {
+            value
+                .recordable(name)
+                .map(|value| (name.to_owned(), value.to_owned()))
+        })
         .collect()
 }
 
