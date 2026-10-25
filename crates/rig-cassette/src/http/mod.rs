@@ -315,11 +315,9 @@ impl DirectRecorder {
                 method: request.method,
                 uri: request.uri,
                 body: request.body,
-                encoding: header_value(&request_headers, "content-encoding"),
             },
             response.status,
             response.body,
-            header_value(&response_headers, "content-encoding"),
         );
         self.keep_exchange(
             DirectHttpRequest {
@@ -365,31 +363,6 @@ impl DirectRecorder {
                 .map(|(name, value)| (name.as_ref(), value.as_ref())),
             Some(response.body),
         );
-        // A body that does not decode cannot be scrubbed or replayed: the
-        // exchange refuses the recording instead of being kept unread.
-        let failure = [
-            ("request", &prepared.request_body),
-            ("reply", &prepared.response_body),
-        ]
-        .into_iter()
-        .find_map(|(side, body)| {
-            let failure = body.as_ref()?.decode_failure()?;
-            let headers = if side == "request" {
-                header_value(&request_headers, "content-encoding")
-            } else {
-                header_value(&response_headers, "content-encoding")
-            };
-            Some((side, failure, headers.unwrap_or_default().to_owned()))
-        });
-        if let Some((side, failure, encoding)) = failure {
-            drop(scrubber);
-            self.refuse(format!(
-                "the {side} body of {} {} could not be decoded from content-encoding {encoding:?} ({failure})",
-                request.method,
-                uri_path(request.uri),
-            ));
-            return;
-        }
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))
@@ -427,18 +400,15 @@ impl DirectRecorder {
             RequestBody::Bytes(body) => body.as_ref(),
             RequestBody::Multipart(_) => &[],
         };
-        let headers = exchange.response_headers.as_ref();
         ledger::ReplyLedger::start(
             self.ledger.clone(),
             ledger::Sent {
                 method: &exchange.method,
                 uri: &exchange.uri,
                 body: request_body,
-                encoding: traffic::content_encoding(&exchange.request_headers),
             },
             exchange.status?.as_u16(),
             exchange.chunks.is_some() && exchange.is_event_stream(),
-            headers.and_then(traffic::content_encoding),
         )
     }
 
@@ -584,15 +554,8 @@ fn incomplete(exchange: &Exchange) -> Option<&'static str> {
         // kept; any other stream that stopped was cut short.
         (Some(_), End::Stopped) => {
             let body = exchange.response_bytes().unwrap_or_default();
-            let encoding = exchange
-                .response_headers
-                .as_ref()
-                .and_then(traffic::content_encoding);
-            // A body that does not decode, such as a cut compressed stream,
-            // did not stop between events.
-            let between = crate::scrub::decoded(&body, encoding)
-                .is_ok_and(|decoded| ends_between_events(&decoded.bytes));
-            (!(exchange.is_event_stream() && between)).then_some("stopped before it was complete")
+            (!(exchange.is_event_stream() && ends_between_events(&body)))
+                .then_some("stopped before it was complete")
         }
         (Some(_), End::Complete) | (None, End::Complete) => None,
         (None, End::Error) => Some("failed while its body was read"),
@@ -613,17 +576,6 @@ fn ends_between_events(body: &[u8]) -> bool {
 /// The path of `uri`, or `uri` itself when it does not parse.
 pub(crate) fn uri_path(uri: &str) -> String {
     url::Url::parse(uri).map_or_else(|_| uri.to_owned(), |url| url.path().to_owned())
-}
-
-/// The value of the first of `headers` named `name`, in any case.
-fn header_value<'a>(
-    headers: &'a [(impl AsRef<str>, impl AsRef<str>)],
-    name: &str,
-) -> Option<&'a str> {
-    headers
-        .iter()
-        .find(|(header, _)| header.as_ref().eq_ignore_ascii_case(name))
-        .map(|(_, value)| value.as_ref())
 }
 
 /// The scheme, host and port of `uri`; `None` when it is not an absolute URL.

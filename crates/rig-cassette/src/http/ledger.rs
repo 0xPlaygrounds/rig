@@ -26,7 +26,6 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_core::http_client::Bytes;
 use rig_core::http_client::framing::{Framing, SseEvent, SseFramer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -142,26 +141,23 @@ pub(crate) struct LedgerTarget {
     pub(crate) origin: String,
 }
 
-/// A request as the ledger reads it: its method, URI, body as sent, and the
-/// body's `content-encoding`.
+/// A request as the ledger reads it: its method, URI and body.
 pub(crate) struct Sent<'a> {
     pub(crate) method: &'a str,
     pub(crate) uri: &'a str,
     pub(crate) body: &'a [u8],
-    pub(crate) encoding: Option<&'a str>,
 }
 
 /// Append a line to `target` for each resource a whole reply with `status`
-/// and `body`, encoded by `encoding`, to `request` created; nothing for a
-/// reply that is not a success.
+/// and `body` to `request` created; nothing for a reply that is not a
+/// success.
 pub(crate) fn record_created(
     target: &Arc<LedgerTarget>,
     request: Sent<'_>,
     status: u16,
     body: &[u8],
-    encoding: Option<&str>,
 ) {
-    if let Some(ledger) = ReplyLedger::start(target.clone(), request, status, false, encoding) {
+    if let Some(ledger) = ReplyLedger::start(target.clone(), request, status, false) {
         ledger.finish(body);
     }
 }
@@ -170,54 +166,36 @@ pub(crate) fn record_created(
 /// resource. An event stream is read event by event as its chunks arrive
 /// ([`push`](Self::push)), so a resource is on disk before the caller can
 /// read the event that names it, even when the stream later fails; any other
-/// body, and a compressed event stream, is read when it ends
-/// ([`finish`](Self::finish)), decoded from its `content-encoding`. Each
-/// resource is written once.
+/// body is read when it ends ([`finish`](Self::finish)). Each resource is
+/// written once.
 pub(crate) struct ReplyLedger {
     target: Arc<LedgerTarget>,
     kind: ResourceKind,
     path: String,
     /// The event stream's framer; `None` for a body read whole.
     events: Option<SseFramer>,
-    /// The reply's `content-encoding`, which a body read whole is decoded
-    /// from.
-    encoding: Option<String>,
     written: Vec<String>,
 }
 
 impl ReplyLedger {
-    /// The ledger of a reply with `status`, encoded by `encoding`, to
-    /// `request`; `None` when the reply is not a success or the request
-    /// creates nothing.
+    /// The ledger of a reply with `status` to `request`; `None` when the
+    /// reply is not a success or the request creates nothing.
     pub(crate) fn start(
         target: Arc<LedgerTarget>,
         request: Sent<'_>,
         status: u16,
         event_stream: bool,
-        encoding: Option<&str>,
     ) -> Option<Self> {
         if !(200..300).contains(&status) {
             return None;
         }
         let path = super::uri_path(request.uri);
-        // What the request asked for, such as `store: false`, is read decoded;
-        // a body that does not decode is read as it is, so it reads as
-        // storing and its resource is cleaned up.
-        let request_body = crate::scrub::decoded(request.body, request.encoding).map_or_else(
-            |_| Bytes::copy_from_slice(request.body),
-            |decoded| decoded.bytes,
-        );
-        let kind = creates(&target.provider, request.method, &path, &request_body)?;
-        // A compressed event stream cannot be read event by event, so it is
-        // read whole when it ends, decoded.
-        let compressed =
-            encoding.is_some_and(|encoding| !encoding.trim().eq_ignore_ascii_case("identity"));
+        let kind = creates(&target.provider, request.method, &path, request.body)?;
         Some(Self {
             target,
             kind,
             path: request_path(&path).to_owned(),
-            events: (event_stream && !compressed).then(SseFramer::new),
-            encoding: encoding.map(str::to_owned),
+            events: event_stream.then(SseFramer::new),
             written: Vec::new(),
         })
     }
@@ -244,11 +222,7 @@ impl ReplyLedger {
                     .into_iter()
                     .map(|recorded| recorded.event),
             ),
-            // A body that does not decode names nothing the ledger can read;
-            // its recording is refused.
-            None => crate::scrub::decoded(body, self.encoding.as_deref())
-                .map(|decoded| response_documents(&decoded.bytes))
-                .unwrap_or_default(),
+            None => response_documents(body),
         };
         self.write(&documents);
     }

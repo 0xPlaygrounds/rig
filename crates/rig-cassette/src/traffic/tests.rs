@@ -501,3 +501,22 @@ async fn a_request_never_awaited_writes_nothing() {
     log.flush();
     assert_eq!(written.text(), "");
 }
+
+/// The recorder asks for every reply uncompressed, whatever the client asked
+/// for, and the line records the header as sent.
+#[tokio::test]
+async fn a_recorded_request_asks_for_its_reply_uncompressed() {
+    let mut sent = request("{}");
+    sent.headers_mut().insert(
+        "accept-encoding",
+        HeaderValue::from_static("gzip, br, zstd"),
+    );
+    let written = exchange(ok_reply(), sent, false).await;
+    let lines = written.lines();
+    assert_eq!(
+        lines
+            .first()
+            .and_then(|line| line.pointer("/request/headers/accept-encoding")),
+        Some(&json!("identity"))
+    );
+}
