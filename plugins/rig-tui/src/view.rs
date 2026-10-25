@@ -868,17 +868,21 @@ const BACK: &str = "Your message is back in the input: press Enter to send it ag
 
 /// Puts what was typed and not sent back in the input, before what is
 /// typed there now, and says so, or why a refused command was. What comes back
-/// to an agent not shown waits until it is.
+/// to an agent not shown waits until it is, and all of it while a question
+/// is answered in the input.
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
     mut waiting: Local<Vec<Recalled>>,
     agents: Query<(&AgentId, &Conversation)>,
     shown: Res<ShownAgent>,
     (mut view, mut notices): (ResMut<TuiView>, ResMut<Notices>),
-    mut input: Query<&mut Editor, With<MainEditor>>,
+    (mut input, showing): (Query<&mut Editor, With<MainEditor>>, Query<&PickerInput>),
 ) {
     waiting.extend(recalled.read().cloned());
     waiting.retain(|recalled| agents.contains(recalled.agent));
+    if showing.iter().any(|choosing| choosing.draft.is_some()) {
+        return;
+    }
     let (now, later) = waiting
         .drain(..)
         .partition(|recalled| shown.0 == Some(recalled.agent));

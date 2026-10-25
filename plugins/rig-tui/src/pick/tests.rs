@@ -337,6 +337,27 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     );
 }
 
+/// A message that comes back while a question is answered in the input
+/// waits for the question, then goes before the draft.
+#[test]
+fn what_comes_back_during_a_question_in_the_input_waits_for_it() {
+    let (mut app, agent) = view_app();
+    type_text(&mut app, "half a thought");
+    let title = Ask::new("PR title").initial("Fix the parser");
+    app.world_mut().spawn((title, ForAgent(agent)));
+    app.update();
+    app.world_mut().write_message(Recalled {
+        agent,
+        text: "deploy it".to_owned(),
+        why: None,
+    });
+    app.update();
+    assert_eq!(crate::tests::typed(&app), "Fix the parser");
+    press(&mut app, "esc");
+    app.update();
+    assert_eq!(crate::tests::typed(&app), "deploy it\n\nhalf a thought");
+}
+
 #[test]
 fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
     let (mut app, agent) = view_app();
