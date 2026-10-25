@@ -1,6 +1,6 @@
 use super::*;
 use crate::http::ledger::{self, LedgerTarget};
-use crate::http::{BodyEncoding, CassetteInteraction};
+use crate::http::{BodyEncoding, CassetteInteraction, DirectRecorder};
 
 /// A recorder whose ledger lives in `dir`, and the interactions it keeps.
 fn recorder(
@@ -23,6 +23,15 @@ fn recorder(
         in_flight: Arc::default(),
     };
     (recorder, interactions)
+}
+
+/// A proxy forwarding to `origin` through a recorded [`Raw`] transport.
+async fn start(origin: String, recorder: DirectRecorder) -> std::io::Result<Proxy> {
+    let http = traffic::recorded(
+        DynHttpClient::new(Raw::new()?),
+        traffic::Sink::Cassette(recorder),
+    );
+    Proxy::start(origin, http).await
 }
 
 fn client() -> rig_reqwest::reqwest::Client {
@@ -48,7 +57,7 @@ async fn the_proxy_forwards_a_reply_unchanged_and_writes_the_ledger_first() {
         .await;
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(upstream.base_url(), recorder)
+    let proxy = start(upstream.base_url(), recorder)
         .await
         .expect("proxy starts");
 
@@ -93,7 +102,7 @@ async fn a_request_above_axums_default_body_limit_is_forwarded() {
         .await;
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(upstream.base_url(), recorder)
+    let proxy = start(upstream.base_url(), recorder)
         .await
         .expect("proxy starts");
 
@@ -133,7 +142,7 @@ async fn a_streamed_reply_and_an_error_reply_reach_the_client_as_sent() {
         .await;
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(upstream.base_url(), recorder)
+    let proxy = start(upstream.base_url(), recorder)
         .await
         .expect("proxy starts");
 
@@ -204,7 +213,7 @@ async fn a_rejected_websocket_handshake_is_recorded_like_any_reply() {
         .await;
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(upstream.base_url(), recorder)
+    let proxy = start(upstream.base_url(), recorder)
         .await
         .expect("proxy starts");
 
@@ -278,7 +287,7 @@ async fn the_client_cannot_read_the_reply_before_the_ledger_line_is_written() {
         .expect("mkfifo runs");
     assert!(made.success());
     let (recorder, _) = recorder(&dir);
-    let proxy = Proxy::start(origin, recorder).await.expect("proxy starts");
+    let proxy = start(origin, recorder).await.expect("proxy starts");
 
     let started = std::time::Instant::now();
     let (sender, received) = std::sync::mpsc::channel();
@@ -377,7 +386,7 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
         .await;
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(upstream.base_url(), recorder)
+    let proxy = start(upstream.base_url(), recorder)
         .await
         .expect("proxy starts");
 
@@ -451,7 +460,7 @@ async fn a_stream_reports_each_event_as_it_lands_and_nothing_twice() {
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let ledger_path = dir.path().join(ledger::LEDGER_FILE);
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(origin, recorder).await.expect("proxy starts");
+    let proxy = start(origin, recorder).await.expect("proxy starts");
 
     let response = client()
         .post(format!("{}/v1/responses", proxy.base_url))
@@ -510,7 +519,7 @@ async fn an_event_reaches_the_client_while_the_provider_waits_on_it() {
     });
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, _) = recorder(&dir);
-    let proxy = Proxy::start(origin, recorder).await.expect("proxy starts");
+    let proxy = start(origin, recorder).await.expect("proxy starts");
 
     let response = client()
         .post(format!("{}/v1/responses", proxy.base_url))
@@ -553,7 +562,7 @@ async fn a_redirect_is_forwarded_as_sent() {
         .await;
     let dir = assert_fs::TempDir::new().expect("ledger directory");
     let (recorder, interactions) = recorder(&dir);
-    let proxy = Proxy::start(upstream.base_url(), recorder)
+    let proxy = start(upstream.base_url(), recorder)
         .await
         .expect("proxy starts");
 
@@ -582,4 +591,146 @@ async fn a_redirect_is_forwarded_as_sent() {
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].then.status, 302);
     assert_eq!(interactions[0].then.body.as_deref(), Some("moved"));
+}
+
+/// The interactions `recorder` kept once `count` of them are in, as the
+/// proxy hands an exchange on when it has read the reply to its end.
+async fn kept(
+    interactions: &Arc<std::sync::Mutex<Vec<CassetteInteraction>>>,
+    count: usize,
+) -> Vec<CassetteInteraction> {
+    for _ in 0..500 {
+        let kept = interactions.lock().expect("interactions").clone();
+        if kept.len() >= count {
+            return kept;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the proxy kept fewer than {count} interactions");
+}
+
+/// The proxy reads every reply to its end whatever the client does: a reply
+/// with no body (a 204, a `HEAD`), and an error the client stops reading at
+/// 64 KiB as rig-reqwest does, are recorded whole, not refused.
+#[tokio::test]
+async fn replies_the_client_does_not_read_whole_are_recorded_whole() {
+    use futures::StreamExt as _;
+
+    let error_page = "upstream failed ".repeat(4 * 1024 * 1024 / 16);
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("DELETE").path("/v1/files/file_1");
+            then.status(204);
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("HEAD").path("/v1/models");
+            then.status(200).header("x-models", "3");
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/responses");
+            then.status(500)
+                .header("content-type", "text/html")
+                .body(error_page.clone());
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(upstream.base_url(), recorder.clone())
+        .await
+        .expect("proxy starts");
+
+    let deleted = client()
+        .delete(format!("{}/v1/files/file_1", proxy.base_url))
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(deleted.status().as_u16(), 204);
+    let head = client()
+        .head(format!("{}/v1/models", proxy.base_url))
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(head.status().as_u16(), 200);
+    let failed = client()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .body("{}")
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(failed.status().as_u16(), 500);
+    let mut body = failed.bytes_stream();
+    let mut read = 0;
+    while read < 64 * 1024 {
+        read += body.next().await.expect("a chunk").expect("bytes").len();
+    }
+    drop(body);
+
+    let interactions = kept(&interactions, 3).await;
+    let statuses: Vec<_> = interactions
+        .iter()
+        .map(|interaction| interaction.then.status)
+        .collect();
+    assert_eq!(statuses, [204, 200, 500]);
+    assert_eq!(
+        interactions[2].then.body.as_deref(),
+        Some(error_page.as_str())
+    );
+    assert_eq!(recorder.refusals(), Vec::<String>::new());
+}
+
+/// The proxy's transport decodes nothing, so a compressed reply reaches the
+/// client with its bytes and its `content-encoding` as the provider sent
+/// them, whatever reqwest features the build turned on.
+#[tokio::test]
+async fn a_compressed_reply_is_forwarded_as_sent() {
+    use std::io::Write as _;
+
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(br#"{"id":"resp_gzip"}"#)
+        .expect("compressed");
+    let compressed = encoder.finish().expect("compressed");
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("GET").path("/v1/responses/resp_gzip");
+            then.status(200)
+                .header("content-type", "application/json")
+                .header("content-encoding", "gzip")
+                .body(compressed.clone());
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, _) = recorder(&dir);
+    let proxy = start(upstream.base_url(), recorder)
+        .await
+        .expect("proxy starts");
+
+    let client = rig_reqwest::reqwest::Client::builder()
+        .no_proxy()
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .no_zstd()
+        .build()
+        .expect("client");
+    let reply = client
+        .get(format!("{}/v1/responses/resp_gzip", proxy.base_url))
+        .header("accept-encoding", "gzip")
+        .send()
+        .await
+        .expect("forwarded");
+    assert_eq!(
+        reply
+            .headers()
+            .get("content-encoding")
+            .map(|value| value.as_bytes()),
+        Some(&b"gzip"[..])
+    );
+    assert_eq!(reply.bytes().await.expect("body"), compressed.as_slice());
 }

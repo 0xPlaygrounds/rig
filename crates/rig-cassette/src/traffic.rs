@@ -204,7 +204,23 @@ pub(crate) struct Exchange {
     pub(crate) end: End,
 }
 
+/// Whether `headers` name an event stream (`text/event-stream`) as the reply's
+/// content type.
+#[cfg(feature = "http")]
+pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
+    headers
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(crate::scrub::is_sse)
+}
+
 impl Exchange {
+    /// Whether the reply is an event stream ([`is_event_stream`]).
+    #[cfg(feature = "http")]
+    pub(crate) fn is_event_stream(&self) -> bool {
+        self.response_headers.as_ref().is_some_and(is_event_stream)
+    }
+
     /// The reply's body as one buffer: the unary body or the chunks joined.
     pub(crate) fn response_bytes(&self) -> Option<Bytes> {
         match (&self.response_body, &self.chunks) {

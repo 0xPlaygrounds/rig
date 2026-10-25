@@ -1,17 +1,24 @@
-//! The recording proxy: a local server that sends each request it receives
-//! on to the provider through the traffic recorder and streams the reply
-//! back, so a proxied recording keeps its exchanges, its ledger lines and
-//! its refusals exactly as a [`direct_http`](super::ProviderCassette::direct_http)
-//! one does ([`DirectRecorder::record_exchange`]).
+//! The recording proxy, and the transport both recording modes reach the
+//! provider through.
 //!
-//! The proxy reaches the provider through [`Raw`], a client that follows no
-//! redirect and answers every status with its own headers and byte stream,
-//! so a 3xx, or an error reply of any size or encoding, reaches the client
-//! and the cassette unchanged. The recorder writes what a reply created to
-//! the ledger before it hands the chunk on: an event stream's resources as
-//! each event arrives, so an event stream is passed on chunk by chunk; a body
-//! read whole when it ends, so that reply is passed on one chunk behind and
-//! the chunk that completes it goes out only after the ledger line. A websocket
+//! The proxy is a local server that sends each request it receives on to the
+//! provider through the traffic recorder and streams the reply back, so a
+//! proxied recording keeps its exchanges, its ledger lines and its refusals
+//! exactly as a [`direct_http`](super::ProviderCassette::direct_http) one
+//! does ([`DirectRecorder::record_exchange`]). It reads every reply to its end
+//! in a task of its own, whatever the client does: a reply with no body (a
+//! 204, a 304, a `HEAD`) and an error the client stops reading are still
+//! recorded whole. Only an event stream ends when its client goes, as a
+//! provider's reader stops at its final event.
+//!
+//! [`Raw`] follows no redirect and decodes nothing, and answers every status
+//! with its own headers and bytes, so a 3xx, a compressed body, or an error
+//! reply of any size or encoding reaches the client and the cassette as the
+//! provider sent it. The recorder writes what a reply created to the ledger
+//! before the proxy hands a chunk on: an event stream's resources as each
+//! event arrives, so an event stream is passed on chunk by chunk; a body read
+//! whole when it ends, so that reply is passed on one chunk behind and the
+//! chunk that completes it goes out only after the ledger line. A websocket
 //! upgrade reaches the provider as a plain request without its hop-by-hop
 //! `connection` and `upgrade` headers: a rejected handshake is recorded like
 //! any reply, and an accepted one cannot be recorded.
@@ -23,16 +30,17 @@ use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
 use axum::response::Response;
 use axum::{Router, routing::any};
-use futures::{Stream, StreamExt, stream};
+use futures::{StreamExt, stream};
 use rig_core::http_client::{
     self, BoxedStream, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, StreamingResponse,
 };
 use rig_core::wasm_compat::WasmCompatSend;
-use rig_reqwest::{ReqwestClient, reqwest};
+use rig_reqwest::reqwest;
 use tokio::net::TcpListener;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use super::{DirectRecorder, is_hop_by_hop_header};
+use super::is_hop_by_hop_header;
 use crate::traffic;
 
 /// A running proxy: accept on `base_url`, forward to the provider's origin.
@@ -48,15 +56,11 @@ struct Forward {
 }
 
 impl Proxy {
-    /// Listen on a local port and forward every request to `origin`, each
-    /// exchange kept by `recorder`.
-    pub(crate) async fn start(origin: String, recorder: DirectRecorder) -> std::io::Result<Self> {
+    /// Listen on a local port and forward every request to `origin` through
+    /// `http`, the session's recorded [`Raw`] transport.
+    pub(crate) async fn start(origin: String, http: DynHttpClient) -> std::io::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let base_url = format!("http://{}", listener.local_addr()?);
-        let http = traffic::recorded(
-            DynHttpClient::new(Raw::new()?),
-            traffic::Sink::Cassette(recorder),
-        );
         // A request reaches the provider whole, however large (an upload, a
         // long conversation): no limit of the proxy's own.
         let app = Router::new()
@@ -103,20 +107,8 @@ async fn forward(
     match forward.http.send_streaming(request).await {
         Ok(response) => {
             let (parts, body) = response.into_parts();
-            // An event stream goes on chunk by chunk: the recorder wrote what
-            // each event created before handing it over, and a client may
-            // wait on an event before the provider sends the next.
-            let event_stream = parts
-                .headers
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(crate::scrub::is_sse);
-            let body = if event_stream {
-                Body::from_stream(body)
-            } else {
-                Body::from_stream(behind(body))
-            };
-            let mut reply = Response::new(body);
+            let event_stream = traffic::is_event_stream(&parts.headers);
+            let mut reply = Response::new(Body::from_stream(drained(body, event_stream)));
             *reply.status_mut() = parts.status;
             // The body is passed on byte for byte, so its length still holds.
             copy_headers(&parts.headers, reply.headers_mut(), |name| {
@@ -126,6 +118,51 @@ async fn forward(
         }
         Err(error) => failure(format!("the proxy could not reach the provider: {error}")),
     }
+}
+
+/// `body`, read to its end by a task of its own and handed to the client as
+/// it can take it. An event stream is handed on chunk by chunk and ends when
+/// its client goes; any other body is handed on one chunk behind, so its
+/// last chunk goes out after the recorder saw it end, and is read to its end
+/// even when the client went first.
+fn drained(
+    mut body: BoxedStream,
+    event_stream: bool,
+) -> impl futures::Stream<Item = http_client::Result<Bytes>> {
+    let (sender, receiver) = mpsc::channel(16);
+    tokio::spawn(async move {
+        let mut held: Option<Bytes> = None;
+        let mut client_gone = false;
+        while let Some(item) = body.next().await {
+            match item {
+                Ok(chunk) if event_stream => {
+                    if sender.send(Ok(chunk)).await.is_err() {
+                        return;
+                    }
+                }
+                Ok(chunk) => {
+                    if let Some(previous) = held.replace(chunk)
+                        && !client_gone
+                    {
+                        client_gone = sender.send(Ok(previous)).await.is_err();
+                    }
+                }
+                Err(error) => {
+                    if let Some(previous) = held.take() {
+                        let _ = sender.send(Ok(previous)).await;
+                    }
+                    let _ = sender.send(Err(error)).await;
+                    return;
+                }
+            }
+        }
+        if let Some(last) = held {
+            let _ = sender.send(Ok(last)).await;
+        }
+    });
+    stream::unfold(receiver, |mut receiver| async move {
+        receiver.recv().await.map(|item| (item, receiver))
+    })
 }
 
 /// Copy the end-to-end headers of `from`, and the hop-by-hop ones `keep`
@@ -144,31 +181,67 @@ fn failure(message: String) -> Response {
     reply
 }
 
-/// The transport the proxy forwards through: a reqwest client of its own
-/// that follows no redirect, whose streamed request answers every status, a
-/// 3xx included, with its headers and its body as the provider sent it,
-/// where [`ReqwestClient`] turns a non-success reply into an error holding at
-/// most 64 KiB of decoded text. The proxy only streams; a unary or multipart
-/// request is [`ReqwestClient`]'s, over the same client.
+/// A recording session's transport: a reqwest client of its own that follows
+/// no redirect and decodes no body, whose every request, unary, multipart or
+/// streamed, answers every status, a 3xx included, with its headers and its
+/// body as the provider sent it.
 #[derive(Clone)]
-struct Raw {
+pub(crate) struct Raw {
     client: reqwest::Client,
-    unary: ReqwestClient,
 }
 
 impl Raw {
-    /// The transport over a new redirect-free client; fails when reqwest
-    /// cannot build one.
-    fn new() -> std::io::Result<Self> {
+    /// The transport over a new client; fails when reqwest cannot build one.
+    pub(crate) fn new() -> std::io::Result<Self> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .no_gzip()
+            .no_brotli()
+            .no_deflate()
+            .no_zstd()
             .build()
             .map_err(std::io::Error::other)?;
-        Ok(Self {
-            unary: ReqwestClient::from(client.clone()),
-            client,
-        })
+        Ok(Self { client })
     }
+
+    fn request(&self, parts: axum::http::request::Parts) -> reqwest::RequestBuilder {
+        self.client
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+    }
+}
+
+/// `response`'s status, version and headers.
+fn head(response: &mut reqwest::Response) -> axum::http::response::Builder {
+    let mut head = http_client::Response::builder()
+        .status(response.status())
+        .version(response.version());
+    if let Some(headers) = head.headers_mut() {
+        *headers = std::mem::take(response.headers_mut());
+    }
+    head
+}
+
+/// `request`'s reply, its body read whole when awaited.
+async fn unary<U>(
+    request: http_client::Result<reqwest::RequestBuilder>,
+) -> http_client::Result<http_client::Response<LazyBody<U>>>
+where
+    U: From<Bytes> + WasmCompatSend + 'static,
+{
+    let mut response = request?
+        .send()
+        .await
+        .map_err(http_client::Error::instance)?;
+    let head = head(&mut response);
+    let body: LazyBody<U> = Box::pin(async move {
+        response
+            .bytes()
+            .await
+            .map(U::from)
+            .map_err(http_client::Error::instance)
+    });
+    head.body(body).map_err(http_client::Error::Protocol)
 }
 
 impl HttpClientExt for Raw {
@@ -182,7 +255,8 @@ impl HttpClientExt for Raw {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        self.unary.send(req)
+        let (parts, body) = req.into_parts();
+        unary(Ok(self.request(parts).body(body.into())))
     }
 
     fn send_multipart<U>(
@@ -194,7 +268,9 @@ impl HttpClientExt for Raw {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        self.unary.send_multipart(req)
+        let (parts, form) = req.into_parts();
+        let request = self.request(parts);
+        unary(rig_reqwest::multipart_form(form).map(|form| request.multipart(form)))
     }
 
     fn send_streaming<T>(
@@ -205,19 +281,10 @@ impl HttpClientExt for Raw {
         T: Into<Bytes> + WasmCompatSend,
     {
         let (parts, body) = req.into_parts();
-        let request = self
-            .client
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .body(body.into());
+        let request = self.request(parts).body(body.into());
         async move {
             let mut response = request.send().await.map_err(http_client::Error::instance)?;
-            let mut head = http_client::Response::builder()
-                .status(response.status())
-                .version(response.version());
-            if let Some(headers) = head.headers_mut() {
-                *headers = std::mem::take(response.headers_mut());
-            }
+            let head = head(&mut response);
             let body: BoxedStream = Box::pin(
                 response
                     .bytes_stream()
@@ -228,53 +295,84 @@ impl HttpClientExt for Raw {
     }
 }
 
-/// `body`'s chunks one behind: each is passed on when the next arrives, the
-/// last when the stream ends, and a failure after the chunks before it.
-fn behind(body: BoxedStream) -> impl Stream<Item = http_client::Result<Bytes>> {
-    struct Behind {
-        body: BoxedStream,
-        held: Option<Bytes>,
-        failed: Option<http_client::Error>,
-        ended: bool,
+/// `inner` with the error semantics providers expect of rig-reqwest: a
+/// non-success reply is read whole and becomes
+/// [`http_client::Error::non_success_with_details`] with its status, headers
+/// and body as text. The recorder beneath it sees the reply as the provider
+/// sent it, so the cassette keeps its exact bytes.
+pub(crate) struct ProviderErrors(pub(crate) DynHttpClient);
+
+/// The error a provider reads for a non-success reply.
+fn non_success(status: StatusCode, headers: HeaderMap, body: &[u8]) -> http_client::Error {
+    http_client::Error::non_success_with_details(
+        status,
+        headers,
+        String::from_utf8_lossy(body).into_owned(),
+    )
+}
+
+/// `sent`'s reply, or the provider error of a non-success one.
+async fn checked<U>(
+    sent: impl Future<Output = http_client::Result<http_client::Response<LazyBody<Bytes>>>>,
+) -> http_client::Result<http_client::Response<LazyBody<U>>>
+where
+    U: From<Bytes> + WasmCompatSend + 'static,
+{
+    let response = sent.await?;
+    if !response.status().is_success() {
+        let (parts, body) = response.into_parts();
+        return Err(non_success(parts.status, parts.headers, &body.await?));
     }
-    let start = Behind {
-        body,
-        held: None,
-        failed: None,
-        ended: false,
-    };
-    stream::unfold(start, |mut state| async move {
-        if let Some(error) = state.failed.take() {
-            state.ended = true;
-            return Some((Err(error), state));
-        }
-        if state.ended {
-            return None;
-        }
-        loop {
-            match state.body.next().await {
-                Some(Ok(chunk)) => {
-                    if let Some(previous) = state.held.replace(chunk) {
-                        return Some((Ok(previous), state));
-                    }
-                }
-                Some(Err(error)) => match state.held.take() {
-                    Some(previous) => {
-                        state.failed = Some(error);
-                        return Some((Ok(previous), state));
-                    }
-                    None => {
-                        state.ended = true;
-                        return Some((Err(error), state));
-                    }
-                },
-                None => {
-                    state.ended = true;
-                    return state.held.take().map(|chunk| (Ok(chunk), state));
-                }
+    Ok(response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) }))
+}
+
+impl HttpClientExt for ProviderErrors {
+    fn send<T, U>(
+        &self,
+        req: http_client::Request<T>,
+    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody<U>>>>
+    + WasmCompatSend
+    + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        checked(self.0.send::<T, Bytes>(req))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        req: http_client::Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<http_client::Response<LazyBody<U>>>>
+    + WasmCompatSend
+    + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        checked(self.0.send_multipart::<Bytes>(req))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: http_client::Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let sent = self.0.send_streaming(req);
+        async move {
+            let response = sent.await?;
+            if response.status().is_success() {
+                return Ok(response);
             }
+            let (parts, mut body) = response.into_parts();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = body.next().await {
+                bytes.extend_from_slice(&chunk?);
+            }
+            Err(non_success(parts.status, parts.headers, &bytes))
         }
-    })
+    }
 }
 
 #[cfg(test)]

@@ -278,3 +278,33 @@ async fn cleanup_deletes_what_remains_and_treats_404_as_gone() {
     openai_forbidden.assert_calls_async(2).await;
     deleted.assert_calls_async(1).await;
 }
+
+/// A stream the provider closed without its last event's blank line still
+/// names what that event created: the ledger reads the cut event when the
+/// stream ends, as the traffic line keeps it.
+#[test]
+fn a_streams_cut_last_event_still_reaches_the_ledger() {
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let target = std::sync::Arc::new(LedgerTarget {
+        path: dir.path().join(LEDGER_FILE),
+        provider: "openai".into(),
+        scenario: "ledger/cut".into(),
+        origin: "https://api.openai.com".into(),
+    });
+    let mut ledger = ReplyLedger::start(
+        target,
+        "POST",
+        "https://api.openai.com/v1/responses",
+        br#"{"stream":true}"#,
+        200,
+        true,
+    )
+    .expect("a creating request");
+    ledger.push(b"data: {\"type\":\"response.in_progress\"}\n\n");
+    ledger.push(b"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cut\"}}");
+    ledger.finish(&[]);
+
+    let outstanding = outstanding(&dir.path().join(LEDGER_FILE));
+    assert_eq!(outstanding.len(), 1);
+    assert_eq!(outstanding[0].id, "resp_cut");
+}

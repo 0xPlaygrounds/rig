@@ -29,9 +29,9 @@ rig-cassette = { version = "0.42.0", default-features = false }
 | none | `effect_log` | core contracts, futures, serialization and base64 only |
 | `jsonl` | `effect_log`, `effect_log::jsonl` (JSON-lines files, native, or a file of a session's store such as `SESSION_EFFECT_LOG`; a recording for replay that no restore reads) | `rig-memory` (its `Files` trait) |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
-| `traffic` | `effect_log`, `traffic` (every exchange through a transport as a scrubbed JSON line, native) | `tracing`, ordered/round-trip JSON |
+| `traffic` | `effect_log`, `traffic` (every exchange through a transport as a scrubbed JSON line, native) | `tracing`, `url`, `flate2`, ordered/round-trip JSON |
 | `http` | `effect_log`, `http`, `traffic` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
-| `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
+| `bedrock` | `effect_log`, `http`, `traffic` | `http` plus Smithy event-stream decoding |
 
 Effect logs alone acquire neither the agent runtime, HTTP clients/servers,
 Tokio nor AWS dependencies. The agent integration is selectable on its own and
@@ -172,13 +172,20 @@ target directory). `finish` refuses three kinds of recording:
   events of an event stream), a request that got no reply, or an exchange
   still under way five seconds after the test ended.
 
-Both transports record through one `DirectRecorder` and the traffic recorder
-below: the proxy is a local server that forwards each request to the provider
-through them and streams the reply back, and `direct_http` is a client that
-sends through them. Each keeps unary, streamed, binary and error replies
-alike, learns header credentials before the header allowlist drops them, and
-scrubs and keeps every exchange the same way. A transport of its own, such as
-the Bedrock connector, hands its exchanges to
+Both transports record through one `DirectRecorder`, the traffic recorder
+below and one transport, a reqwest client that follows no redirect and
+decodes no body: the proxy is a local server that forwards each request to
+the provider through them and streams the reply back, and `direct_http` is a
+client that sends through them, turning a non-success reply into the error
+providers expect of rig-reqwest on top. So each keeps every reply, unary,
+streamed, binary, compressed, redirected or an error, as the provider sent
+it, learns header credentials before the header allowlist drops them, and
+scrubs and keeps every exchange the same way; when the recording is read,
+the session's scrubber scrubs every kept exchange again with all it learned.
+The proxy reads each reply to its end whatever the client does, so a reply
+with no body and an error the client stops reading are recorded whole; only
+an event stream ends with its client. A transport of its own, such as the
+Bedrock connector, hands its exchanges to
 `DirectRecorder::record_http_interaction`. A `direct_http` multipart request
 is only logged in the ledger. A websocket upgrade reaches the provider as a
 plain request: a rejected handshake is recorded like any reply, and an
@@ -186,11 +193,11 @@ accepted one cannot be recorded.
 
 The recorder appends every created stored response, file, cache,
 interaction, conversation and vector store to the `ledger` module's
-`ledger.jsonl` before the reply completes for the test: the proxy holds back
-the chunk that ends a reply until the recorder saw it end, and `direct_http`
-writes the line before it hands over a unary body. `ledger::clean_up` deletes
-what the ledger still holds. The `cassette_tool` example exposes both checks
-and the cleanup pass.
+`ledger.jsonl` before the test can read the reply that names it: an event
+stream's as each event arrives, its cut last event included, and a body's
+when it ends, which the proxy holds the reply's last chunk back for.
+`ledger::clean_up` deletes what the ledger still holds. The `cassette_tool`
+example exposes both checks and the cleanup pass.
 
 When a fixture omits a non-UTF-8 multipart request body, replay accepts
 multipart input without comparing its missing bytes; provider unit tests must

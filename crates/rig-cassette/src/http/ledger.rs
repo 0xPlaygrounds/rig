@@ -26,7 +26,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_core::http_client::framing::{Framer, Framing};
+use rig_core::http_client::framing::{Framing, SseEvent, SseFramer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -169,7 +169,7 @@ pub(crate) struct ReplyLedger {
     kind: ResourceKind,
     path: String,
     /// The event stream's framer; `None` for a body read whole.
-    events: Option<Framer>,
+    events: Option<SseFramer>,
     written: Vec<String>,
 }
 
@@ -194,7 +194,7 @@ impl ReplyLedger {
             target,
             kind,
             path: request_path(&path).to_owned(),
-            events: event_stream.then(|| Framing::Sse.framer()).flatten(),
+            events: event_stream.then(SseFramer::new),
             written: Vec::new(),
         })
     }
@@ -204,19 +204,26 @@ impl ReplyLedger {
         let Some(framer) = &mut self.events else {
             return;
         };
-        let documents: Vec<Value> = framer
-            .push(chunk)
-            .filter_map(|frame| serde_json::from_slice(frame.as_bytes()).ok())
-            .collect();
+        let documents = event_documents(framer.push(chunk));
         self.write(&documents);
     }
 
-    /// The reply ended with `body`: write what a body read whole created. An
-    /// event stream's resources were written as its events completed.
+    /// The reply ended with `body`: write what a body read whole created, or
+    /// what an event stream's last event created when the stream ended
+    /// before that event's end; its other events were written as they
+    /// completed.
     pub(crate) fn finish(mut self, body: &[u8]) {
-        if self.events.is_none() {
-            self.write(&response_documents(body));
-        }
+        let documents = match &mut self.events {
+            Some(framer) => event_documents(
+                framer
+                    .finish_recording()
+                    .events
+                    .into_iter()
+                    .map(|recorded| recorded.event),
+            ),
+            None => response_documents(body),
+        };
+        self.write(&documents);
     }
 
     fn write(&mut self, documents: &[Value]) {
@@ -239,6 +246,16 @@ impl ReplyLedger {
         .collect();
         append(&target.path, &entries);
     }
+}
+
+/// The JSON documents `events` hold; a heartbeat, with only whitespace for
+/// data, holds none.
+fn event_documents(events: impl IntoIterator<Item = SseEvent>) -> Vec<Value> {
+    events
+        .into_iter()
+        .filter(|event| !event.data.trim().is_empty())
+        .filter_map(|event| serde_json::from_str(&event.data).ok())
+        .collect()
 }
 
 /// The resources a successful reply created. `origin` is the provider's

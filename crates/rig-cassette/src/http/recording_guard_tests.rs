@@ -930,3 +930,125 @@ async fn a_stopped_stream_is_kept_only_between_events() {
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].when.path, "/v1/between");
 }
+
+/// `direct_http` sends through the session's transport, so an error reply
+/// reaches the fixture as the provider sent it, over 64 KiB or binary, while
+/// the provider still gets the error it expects of rig-reqwest.
+#[tokio::test]
+async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
+    use base64::Engine as _;
+    use rig_core::http_client::HttpClientExt;
+
+    let oversized = "not found ".repeat(100 * 1024 / 10);
+    let binary: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/large");
+            then.status(404)
+                .header("content-type", "text/plain")
+                .body(oversized.clone());
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/binary");
+            then.status(422)
+                .header("content-type", "application/octet-stream")
+                .body(binary.clone());
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+    let http = cassette.direct_http();
+
+    let large = http
+        .send::<_, Bytes>(post(&origin, "large"))
+        .await
+        .err()
+        .expect("a provider error");
+    assert_eq!(
+        large.non_success_status().map(|status| status.as_u16()),
+        Some(404)
+    );
+    assert_eq!(large.non_success_body(), Some(oversized.as_str()));
+    let streamed = http.send_streaming(post(&origin, "binary")).await;
+    assert_eq!(
+        streamed
+            .err()
+            .and_then(|error| error.non_success_status())
+            .map(|status| status.as_u16()),
+        Some(422)
+    );
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 2);
+    assert_eq!(
+        interactions[0].then.body.as_deref(),
+        Some(oversized.as_str())
+    );
+    let kept = base64::prelude::BASE64_STANDARD
+        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
+        .expect("a base64 body");
+    assert_eq!(kept, binary);
+}
+
+/// A credential a later exchange teaches leaves the earlier ones too: when the
+/// recording is read, the session's scrubber scrubs every kept exchange again
+/// with all it learned, such as a token an early reply held that a later
+/// request sends as its key.
+#[tokio::test]
+async fn a_credential_learned_later_is_scrubbed_from_earlier_exchanges() {
+    let token = "tid=opaque-copilot-0123456789;exp=1792900000";
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("GET").path("/v1/copilot_internal/v2/token");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"token": token, "expires_at": 1792900000}));
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/chat/completions");
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({"id": "chatcmpl_1"}));
+        })
+        .await;
+    let session = Session::new();
+    let cassette = session
+        .start(CassetteSpec::new("guard/learned_later"), &upstream)
+        .await;
+    let issued = client()
+        .get(format!("{}/copilot_internal/v2/token", cassette.base_url()))
+        .send()
+        .await
+        .expect("proxied");
+    assert_eq!(issued.status().as_u16(), 200);
+    let used = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .header("authorization", format!("Bearer {token}"))
+        .body("{}")
+        .send()
+        .await
+        .expect("proxied");
+    assert_eq!(used.status().as_u16(), 200);
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    assert!(
+        !recorded.contains("opaque-copilot-0123456789"),
+        "{recorded}"
+    );
+}

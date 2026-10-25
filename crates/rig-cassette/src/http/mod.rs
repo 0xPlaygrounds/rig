@@ -372,13 +372,7 @@ impl DirectRecorder {
             RequestBody::Bytes(body) => body.as_ref(),
             RequestBody::Multipart(_) => &[],
         };
-        let event_stream = exchange.chunks.is_some()
-            && exchange
-                .response_headers
-                .as_ref()
-                .and_then(|headers| headers.get(axum::http::header::CONTENT_TYPE))
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(crate::scrub::is_sse);
+        let event_stream = exchange.chunks.is_some() && exchange.is_event_stream();
         ledger::ReplyLedger::start(
             self.ledger.clone(),
             &exchange.method,
@@ -410,7 +404,7 @@ impl DirectRecorder {
             ));
             return;
         };
-        if let Some(why) = incomplete(exchange, status) {
+        if let Some(why) = incomplete(exchange) {
             let kind = if exchange.chunks.is_some() {
                 "streamed reply"
             } else {
@@ -485,13 +479,27 @@ impl DirectRecorder {
             .push(why);
     }
 
-    /// The kept interactions as YAML; `None` when nothing was kept.
+    /// The kept interactions as YAML, scrubbed again with the session's
+    /// scrubber, which by now knows every value the session learned: a
+    /// credential that a later exchange taught, such as a token an early reply
+    /// held and a later request sends as its key, leaves the earlier ones too.
+    /// `None` when nothing was kept.
     fn recorded_yaml(&self) -> Option<String> {
-        let interactions = self
+        let mut interactions = self
             .interactions
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        (!interactions.is_empty()).then(|| serialize_cassette_interactions(&interactions))
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if interactions.is_empty() {
+            return None;
+        }
+        // The interactions' lock is released first: an exchange being kept
+        // holds the scrubber's lock and then takes theirs.
+        self.scrubber
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .scrub_interactions(&mut interactions);
+        Some(serialize_cassette_interactions(&interactions))
     }
 
     fn refusals(&self) -> Vec<String> {
@@ -502,13 +510,13 @@ impl DirectRecorder {
     }
 }
 
-/// Why `exchange`, answered with `status`, did not end with the reply replay
-/// would serve; `None` when it did. A success must arrive whole: a unary body
-/// that failed or was never read, a stream that failed midway or was never
-/// read, and one that stopped anywhere but between two events of an event
-/// stream, would replay as a clean, short reply. A non-success reply the
-/// transport kept is the reply itself.
-fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'static str> {
+/// Why `exchange`, which got a reply, did not end with the reply replay would
+/// serve; `None` when it did. A reply of any status must arrive whole, as the
+/// recording's transport reads every reply as the provider sent it: a unary
+/// body that failed or was never read, a stream that failed midway or was
+/// never read, and one that stopped anywhere but between two events of an
+/// event stream, would replay as a clean, short reply.
+fn incomplete(exchange: &Exchange) -> Option<&'static str> {
     match (&exchange.chunks, exchange.end) {
         (Some(_), End::Error) => Some("failed midway"),
         (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
@@ -516,18 +524,11 @@ fn incomplete(exchange: &Exchange, status: http_client::StatusCode) -> Option<&'
         // the connection, so an event stream that stopped between events is
         // kept; any other stream that stopped was cut short.
         (Some(_), End::Stopped) => {
-            let event_stream = exchange
-                .response_headers
-                .as_ref()
-                .and_then(|headers| headers.get(axum::http::header::CONTENT_TYPE))
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(crate::scrub::is_sse);
             let body = exchange.response_bytes().unwrap_or_default();
-            (!(event_stream && ends_between_events(&body)))
+            (!(exchange.is_event_stream() && ends_between_events(&body)))
                 .then_some("stopped before it was complete")
         }
         (Some(_), End::Complete) | (None, End::Complete) => None,
-        (None, _) if !status.is_success() && exchange.response_body.is_some() => None,
         (None, End::Error) => Some("failed while its body was read"),
         (None, End::Stopped) => Some("was never read"),
     }
@@ -586,6 +587,9 @@ enum CassetteServer {
     Recording {
         recorder: DirectRecorder,
         proxy: Option<proxy::Proxy>,
+        /// The session's [`proxy::Raw`] transport under the recorder, which
+        /// the proxy forwards through and `direct_http` sends through.
+        http: DynHttpClient,
     },
     Replay(ReplayServer),
 }
@@ -822,18 +826,27 @@ impl ProviderCassette {
                 scrubber: Arc::default(),
                 in_flight: Arc::default(),
             };
+            let bind_error = |source| CassetteError::Bind {
+                path: cassette_path.clone(),
+                source,
+            };
+            let http = traffic::recorded(
+                DynHttpClient::new(proxy::Raw::new().map_err(bind_error)?),
+                traffic::Sink::Cassette(recorder.clone()),
+            );
             let proxy = match transport {
                 RecordVia::Direct => None,
                 RecordVia::Proxy => Some(
-                    proxy::Proxy::start(upstream.origin.clone(), recorder.clone())
+                    proxy::Proxy::start(upstream.origin.clone(), http.clone())
                         .await
-                        .map_err(|source| CassetteError::Bind {
-                            path: cassette_path.clone(),
-                            source,
-                        })?,
+                        .map_err(bind_error)?,
                 ),
             };
-            CassetteServer::Recording { recorder, proxy }
+            CassetteServer::Recording {
+                recorder,
+                proxy,
+                http,
+            }
         };
 
         Ok(Self {
@@ -876,19 +889,18 @@ impl ProviderCassette {
                 .is_ok()
     }
 
-    /// A reqwest client for a [`RecordVia::Direct`] session: while recording,
-    /// it keeps every exchange it sends, binary bodies and streamed replies
-    /// included, through the traffic recorder; in replay it is a plain
-    /// client for the replay server. It is rig-reqwest's client, with the
-    /// error semantics providers rely on, so a non-success reply's body is
-    /// the one rig-reqwest kept: its first 64 KiB as text, with a marker where
-    /// it cut. A test that needs an error reply byte for byte records through
-    /// the proxy ([`RecordVia::Proxy`]).
+    /// The client for a [`RecordVia::Direct`] session. While recording, it
+    /// sends through the session's transport, the one the proxy forwards
+    /// through, so the recorder keeps every reply as the provider sent it,
+    /// binary, streamed and error replies included; on top, a non-success
+    /// reply becomes the error providers expect of rig-reqwest. In replay it
+    /// is rig-reqwest's client for the replay server.
     pub fn direct_http(&self) -> DynHttpClient {
-        let http = DynHttpClient::new(rig_reqwest::ReqwestClient::default());
-        match self.direct_recorder() {
-            Some(recorder) => traffic::recorded(http, traffic::Sink::Cassette(recorder)),
-            None => http,
+        match &self.server {
+            CassetteServer::Recording {
+                proxy: None, http, ..
+            } => DynHttpClient::new(proxy::ProviderErrors(http.clone())),
+            _ => DynHttpClient::new(rig_reqwest::ReqwestClient::default()),
         }
     }
 
@@ -898,6 +910,7 @@ impl ProviderCassette {
             CassetteServer::Recording {
                 recorder,
                 proxy: None,
+                ..
             } => Some(recorder.clone()),
             _ => None,
         }
@@ -976,7 +989,9 @@ impl ProviderCassette {
                 consumed?;
                 return clock.finish(&cassette_path).await;
             }
-            CassetteServer::Recording { recorder, proxy } => {
+            CassetteServer::Recording {
+                recorder, proxy, ..
+            } => {
                 // An exchange still under way, such as a proxied stream whose
                 // client went away while the provider kept the socket open,
                 // must reach the recording before it is read.
@@ -1226,13 +1241,13 @@ struct ReplayMiss {
     diagnostic: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct CassetteInteraction {
     when: CassetteRequest,
     then: CassetteResponse,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct CassetteRequest {
     path: String,
     method: String,
@@ -1245,7 +1260,7 @@ struct CassetteRequest {
     body_encoding: BodyEncoding,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct CassetteResponse {
     status: u16,
     #[serde(default)]
