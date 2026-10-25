@@ -298,6 +298,7 @@ fn a_streams_cut_last_event_still_reaches_the_ledger() {
         br#"{"stream":true}"#,
         200,
         true,
+        None,
     )
     .expect("a creating request");
     ledger.push(b"data: {\"type\":\"response.in_progress\"}\n\n");

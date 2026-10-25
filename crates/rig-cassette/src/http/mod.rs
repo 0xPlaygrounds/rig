@@ -368,18 +368,29 @@ impl DirectRecorder {
     /// The ledger of `exchange`'s reply, which the recorder feeds as the
     /// reply arrives; `None` when the reply creates nothing.
     pub(crate) fn reply_ledger(&self, exchange: &Exchange) -> Option<ledger::ReplyLedger> {
-        let request_body = match &exchange.request_body {
-            RequestBody::Bytes(body) => body.as_ref(),
-            RequestBody::Multipart(_) => &[],
+        let encoding = |headers: &http_client::HeaderMap| {
+            headers
+                .get("content-encoding")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned)
         };
+        // What the request asked for, such as `store: false`, is read decoded.
+        let request_body = match &exchange.request_body {
+            RequestBody::Bytes(body) => {
+                crate::scrub::decoded(body, encoding(&exchange.request_headers).as_deref())
+            }
+            RequestBody::Multipart(_) => Bytes::new(),
+        };
+        let reply_encoding = exchange.response_headers.as_ref().and_then(encoding);
         let event_stream = exchange.chunks.is_some() && exchange.is_event_stream();
         ledger::ReplyLedger::start(
             self.ledger.clone(),
             &exchange.method,
             &exchange.uri,
-            request_body,
+            &request_body,
             exchange.status?.as_u16(),
             event_stream,
+            reply_encoding.as_deref(),
         )
     }
 
@@ -493,8 +504,8 @@ impl DirectRecorder {
         if interactions.is_empty() {
             return None;
         }
-        // The interactions' lock is released first: an exchange being kept
-        // holds the scrubber's lock and then takes theirs.
+        // The interactions' lock is released before the scrubber's is taken:
+        // the two locks are never held together.
         self.scrubber
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
