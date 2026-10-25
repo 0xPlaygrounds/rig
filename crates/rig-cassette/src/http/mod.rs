@@ -595,23 +595,13 @@ fn incomplete(exchange: &Exchange) -> Option<&'static str> {
         // kept; any other stream that stopped was cut short.
         (Some(_), End::Stopped) => {
             let body = exchange.response_bytes().unwrap_or_default();
-            (!(exchange.is_event_stream() && ends_between_events(&body)))
+            (!(exchange.is_event_stream() && crate::scrub::ends_between_events(&body)))
                 .then_some("stopped before it was complete")
         }
         (Some(_), End::Complete) | (None, End::Complete) => None,
         (None, End::Error) => Some("failed while its body was read"),
         (None, End::Stopped) => Some("was never read"),
     }
-}
-
-/// Whether an event stream's `body` ends on an event's end, with no part of
-/// a next event after it, as the shared SSE framer reads it.
-fn ends_between_events(body: &[u8]) -> bool {
-    let Some(mut framer) = http_client::framing::Framing::Sse.framer() else {
-        return false;
-    };
-    framer.push(body).for_each(drop);
-    framer.pending() == 0
 }
 
 /// The path of `uri`, or `uri` itself when it does not parse.

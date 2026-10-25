@@ -364,6 +364,7 @@ async fn the_client_cannot_read_the_reply_before_the_ledger_line_is_written() {
 /// size or encoding reaches the client and the cassette byte for byte.
 #[tokio::test]
 async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
+    use base64::Engine as _;
     let oversized: String = "gateway timeout ".repeat(100 * 1024 / 16);
     let binary: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
     let upstream = httpmock::MockServer::start_async().await;
@@ -406,8 +407,9 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
     assert_eq!(speech.status().as_u16(), 500);
     assert_eq!(speech.bytes().await.expect("body"), binary.as_slice());
 
-    // Neither body is one the scrubber reads, so the cassette keeps each by
-    // its size and content type only.
+    // The HTML page is kept by its size and content type, as the scrubber
+    // does not read it; the binary body has no text to scrub and is kept as
+    // sent.
     let interactions = interactions.lock().expect("interactions");
     assert_eq!(interactions.len(), 2);
     assert_eq!(interactions[0].then.status, 502);
@@ -420,14 +422,11 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
         })
     );
     assert_eq!(interactions[1].then.status, 500);
-    assert_eq!(interactions[1].then.body, None);
-    assert_eq!(
-        interactions[1].then.withheld,
-        Some(OpaqueBody {
-            bytes: binary.len(),
-            content_type: Some("application/octet-stream".to_owned()),
-        })
-    );
+    assert_eq!(interactions[1].then.withheld, None);
+    let recorded = base64::prelude::BASE64_STANDARD
+        .decode(interactions[1].then.body.as_deref().unwrap_or_default())
+        .expect("a base64 body");
+    assert_eq!(recorded, binary);
 }
 
 /// A stream names what it created on an early event: the ledger line is on

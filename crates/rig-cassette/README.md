@@ -184,13 +184,18 @@ header allowlist drops them, and scrubs and keeps every exchange the same
 way; when the recording is read, the session's scrubber scrubs every kept
 exchange again with all it learned.
 
-A body the scrubber cannot read whole and scrub is never kept as bytes: one
-that came compressed all the same, binary no scrubber reads, or one that
-does not parse is kept as `withheld: {bytes, content_type}` with no body, and
-so is the reply to a request whose body was withheld, which could echo it.
-Replay refuses such an exchange: the client gets a 502 that names the
-interaction, and `finish` reports it. A reply that did not arrive whole is
-not kept at all; the recording is refused (above).
+A binary body with a binary media type (audio, images, video, PDF,
+`application/octet-stream` and the like) has no text to scrub and is kept as
+sent, so binary cassettes record and replay. A body that claims to be text or
+JSON but cannot be read whole and scrubbed, or one that came compressed all
+the same, is never kept as bytes: it is kept as `withheld: {bytes,
+content_type}` with no body, and so is the reply to a request whose body was
+withheld, which could echo it. Replay refuses such an exchange: the client
+gets a 502 that names the interaction, and `finish` reports it. A multipart
+upload the scrubber cannot read is kept with no body instead, as older
+fixtures keep one, and replay accepts any multipart input in its place. A
+reply that did not arrive whole is not kept at all; the recording is refused
+(above).
 
 A redirect is not followed while recording. Each hop the client follows is an
 exchange of its own, with its status and `location`; a `location` on the
