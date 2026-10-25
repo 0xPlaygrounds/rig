@@ -671,7 +671,11 @@ pub struct UnknownReasoning {
 
 /// Token budgets for the named levels on a model that takes a budget
 /// instead of levels, clamped into its range.
-const NAMED_BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
+const NAMED_BUDGETS: [(Effort, u32); 3] = [
+    (Effort::Low, 2048),
+    (Effort::Medium, 8192),
+    (Effort::High, 16384),
+];
 
 impl ReasoningSupport {
     /// The reasoning settings the model takes: the provider default first,
@@ -706,13 +710,17 @@ impl ReasoningSupport {
         if levels.is_empty()
             && let Some(range) = budget
         {
-            choices.extend(NAMED_BUDGETS.iter().map(|&(name, tokens)| ReasoningChoice {
-                name,
-                // Not `clamp`, which panics on an inverted range.
-                reasoning: Some(Reasoning::Budget {
-                    tokens: tokens.max(*range.start()).min(*range.end()),
-                }),
-            }));
+            choices.extend(
+                NAMED_BUDGETS
+                    .iter()
+                    .map(|&(effort, tokens)| ReasoningChoice {
+                        name: effort.as_str(),
+                        // Not `clamp`, which panics on an inverted range.
+                        reasoning: Some(Reasoning::Budget {
+                            tokens: tokens.max(*range.start()).min(*range.end()),
+                        }),
+                    }),
+            );
         }
         choices
     }

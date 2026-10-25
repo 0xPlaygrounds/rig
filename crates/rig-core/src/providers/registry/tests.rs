@@ -201,14 +201,14 @@ fn every_dual_format_vendor_declares_a_registered_primary() {
     vendors.dedup();
     for vendor in vendors {
         let selections: Vec<ProviderId> = ProviderId::vendor_selections(vendor).collect();
-        let declared = PRIMARY.iter().find(|(name, _)| *name == vendor);
+        let declared = primary(vendor);
         assert_eq!(
             declared.is_some(),
             selections.len() > 1,
             "`{vendor}` declares a primary exactly when it has two families"
         );
-        if let Some((_, format)) = declared {
-            let primary = ProviderId::new(vendor, *format).expect("a registered family");
+        if let Some(format) = declared {
+            let primary = ProviderId::new(vendor, format).expect("a registered family");
             assert_eq!(ProviderId::catalog(vendor), Some(primary));
         }
     }

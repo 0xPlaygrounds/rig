@@ -406,10 +406,7 @@ impl ProviderId {
     /// is reached by its catalog row's, which is the primary unless the row
     /// says otherwise.
     pub fn catalog(vendor: &str) -> Option<Self> {
-        let primary = PRIMARY
-            .iter()
-            .find(|(name, _)| *name == vendor)
-            .and_then(|(_, format)| Self::new(vendor, *format));
+        let primary = primary(vendor).and_then(|format| Self::new(vendor, format));
         primary
             .or_else(|| Self::vendor_selections(vendor).next())
             .or_else(|| {
@@ -634,17 +631,17 @@ impl ProviderId {
     }
 }
 
-/// The primary family of each vendor registered in more than one, as
-/// models.dev lists the vendor's own API. [`ProviderId::catalog`] reads it.
-const PRIMARY: [(&str, Format); 7] = [
-    ("zai", Format::OpenAi),
-    ("minimax", Format::Anthropic),
-    ("moonshot", Format::OpenAi),
-    ("xiaomimimo", Format::OpenAi),
-    ("ollama", Format::OpenAi),
-    ("opencode", Format::OpenAi),
-    ("opencode-go", Format::OpenAi),
-];
+/// The primary family of `vendor` when it is registered in more than one,
+/// as models.dev lists the vendor's own API. [`ProviderId::catalog`] reads it.
+fn primary(vendor: &str) -> Option<Format> {
+    match vendor {
+        "minimax" => Some(Format::Anthropic),
+        "zai" | "moonshot" | "xiaomimimo" | "ollama" | "opencode" | "opencode-go" => {
+            Some(Format::OpenAi)
+        }
+        _ => None,
+    }
+}
 
 /// The qualified spellings registered for `vendor`, in registration order.
 fn alternatives(vendor: &str) -> Vec<String> {
