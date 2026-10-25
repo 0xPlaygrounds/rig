@@ -11,7 +11,10 @@ fn only_allowed_pipelines_pass() {
         "cat file | wc -l",
         "git log --pretty=oneline",
         "cat notes--preview.md",
-        "rg --pre-glob=*.gz pattern",
+        "rg --pre-glob=gz pattern",
+        "ls *.rs",
+        "ls src/*-test.rs",
+        "rg 'fn-.*main' src",
     ] {
         assert!(reads_only(command), "{command}");
     }
@@ -38,6 +41,12 @@ fn only_allowed_pipelines_pass() {
         "rg --p're'=command pattern",
         "git diff --output*",
         "rg --pre{,}=command pattern",
+        "git diff *--output*",
+        "git diff *-output=file",
+        "git diff [-]-output=file",
+        "git diff {--output=file,x}",
+        "rg --pr{e,e}=command pattern",
+        "rg {-,-}-pre=command pattern",
     ] {
         assert!(!reads_only(command), "{command}");
     }
