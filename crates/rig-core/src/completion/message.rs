@@ -336,7 +336,7 @@ impl AssistantContent {
             *native = Some(Native {
                 item,
                 fingerprint,
-                blob: None,
+                blob_slot: None,
             });
         }
         self

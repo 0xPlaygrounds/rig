@@ -74,7 +74,7 @@
                   "type": "thinking"
                 },
                 "fingerprint": "51d9fb1eff991ba2",
-                "blob": "/signature"
+                "blob_slot": "/signature"
               }
             },
             {
@@ -183,7 +183,7 @@
                   "type": "thinking"
                 },
                 "fingerprint": "51d9fb1eff991ba2",
-                "blob": "/signature"
+                "blob_slot": "/signature"
               }
             }
           }

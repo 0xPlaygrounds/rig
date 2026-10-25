@@ -548,7 +548,7 @@ mod unit {
         | AssistantContent::Reasoning(Reasoning { native, .. }) = &mut block
             && let Some(native) = native
         {
-            native.blob = Some("/thoughtSignature".into());
+            native.blob_slot = Some("/thoughtSignature".into());
         }
         block
     }

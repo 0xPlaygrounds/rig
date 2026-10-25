@@ -246,7 +246,7 @@ pub struct Native {
     ///
     /// [`ReplayTarget::blob_slots`]: crate::completion::ReplayTarget::blob_slots
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub blob: Option<Cow<'static, str>>,
+    pub blob_slot: Option<Cow<'static, str>>,
 }
 
 /// The opaque part of a provider's reasoning item ([`Native::reasoning_blob`]).
@@ -269,12 +269,12 @@ impl Native {
     /// let native = Native {
     ///     item: serde_json::json!({"type": "thinking", "thinking": "plan", "signature": "c2ln"}),
     ///     fingerprint: Fingerprint::of(&"plan"),
-    ///     blob: Some("/signature".into()),
+    ///     blob_slot: Some("/signature".into()),
     /// };
     /// assert_eq!(native.reasoning_blob().map(|blob| blob.value), Some("c2ln"));
     /// ```
     pub fn reasoning_blob(&self) -> Option<Blob<'_>> {
-        let key = self.blob.as_deref()?;
+        let key = self.blob_slot.as_deref()?;
         let value = self.item.pointer(key)?.as_str()?;
         (!value.is_empty()).then_some(Blob { key, value })
     }
@@ -288,7 +288,7 @@ impl Native {
                 .and_then(serde_json::Value::as_str)
                 .is_some_and(|value| !value.is_empty())
         };
-        self.blob = slots.iter().copied().find(holds).map(Cow::Borrowed);
+        self.blob_slot = slots.iter().copied().find(holds).map(Cow::Borrowed);
     }
 }
 

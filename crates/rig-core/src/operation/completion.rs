@@ -958,14 +958,17 @@ impl ReplyFold {
         let content = match content {
             AssistantContent::ToolCall(mut call) => {
                 let native = call.native.take();
-                let blob = native.as_ref().and_then(|native| native.blob.clone());
+                let slot = native.as_ref().and_then(|native| native.blob_slot.clone());
                 let item = native.map_or(serde_json::Value::Null, |native| native.item);
                 let (id, item) = self.distinct_call_id(Some(call.id), item);
                 call.id = id;
-                let mut content = self.with_item(AssistantContent::ToolCall(call), item);
-                // A restated call keeps the pointer it was recorded with.
+                let mut content = AssistantContent::ToolCall(call);
+                if !item.is_null() {
+                    content = content.with_native(item);
+                }
+                // A restated call keeps the slot it was recorded with.
                 if let Some(Some(native)) = content.native_slot() {
-                    native.blob = blob;
+                    native.blob_slot = slot;
                 }
                 content
             }

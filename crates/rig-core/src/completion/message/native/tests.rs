@@ -102,7 +102,7 @@ fn a_reasoning_blob_is_read_where_its_wire_put_it() {
     let mut redacted = Native {
         item: json!({"type": "redacted_thinking", "data": "r"}),
         fingerprint: Fingerprint::of(&"x"),
-        blob: None,
+        blob_slot: None,
     };
     redacted.find_blob(&slots);
     let stored = serde_json::to_value(&redacted).expect("serializes");
@@ -120,7 +120,10 @@ fn a_reasoning_blob_is_read_where_its_wire_put_it() {
             value: "r"
         })
     );
-    assert_eq!((&unsigned.blob, unsigned.reasoning_blob()), (&None, None));
+    assert_eq!(
+        (&unsigned.blob_slot, unsigned.reasoning_blob()),
+        (&None, None)
+    );
 }
 
 /// Stored native items carry these values, so a change to the projection or

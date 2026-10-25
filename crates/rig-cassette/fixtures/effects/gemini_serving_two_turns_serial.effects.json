@@ -180,7 +180,7 @@
                   "thoughtSignature": "CiQBaRR9E8cmZWeh5jJ1zB0jI2pe6jd1UJOh0RY39Ao+ZOpV8XkKVgFpFH0TUzJex0nRF1j209rlMVQa0pfXp87VAGTU9F8MHqEiC4PYYDV7GAs/pGMY2yzTUX735J4jGcFt4Fx+XnNmJhdnF12MTz6c0Kk2Ay7t9xFGyYFECswBAWkUfRPPYcOnIf1IRs01fcyT447sPMC7pCHAU+XhAdhJkCpinvLAZkGZQ0UDpF/2MDg1CQekfB9xmYq1k5q+q91I8fYicQu+PjtPPaAVJ/3ew4s5mlV+wr5MkURlGEfQ53hBo28caZiclJGOfgP9nkggFm7DmGhH03oOMAEhOIx3X0n8ba6tAQFGKuY3VQ3zCmjO/uJg7XcV8460w6181kueN/7AEOYHATVqXyuZei2Yxgn/BmE1plScudKwDiN46+0Y9dV+Z55MylhDClYBaRR9E933QCv3dh6QMTYB42q2xZrrFAi0ighfo6axCl6c+V4XHW+EfJTGZZ+lgOdocpXzCGMW7WMFDfGCVlXM46YOmub9H67YzgqbdU7XLpa/5i4gcw=="
                 },
                 "fingerprint": "2dafdabf94fef961",
-                "blob": "/thoughtSignature"
+                "blob_slot": "/thoughtSignature"
               }
             }
           ],
@@ -320,7 +320,7 @@
                       "thoughtSignature": "CiQBaRR9E8cmZWeh5jJ1zB0jI2pe6jd1UJOh0RY39Ao+ZOpV8XkKVgFpFH0TUzJex0nRF1j209rlMVQa0pfXp87VAGTU9F8MHqEiC4PYYDV7GAs/pGMY2yzTUX735J4jGcFt4Fx+XnNmJhdnF12MTz6c0Kk2Ay7t9xFGyYFECswBAWkUfRPPYcOnIf1IRs01fcyT447sPMC7pCHAU+XhAdhJkCpinvLAZkGZQ0UDpF/2MDg1CQekfB9xmYq1k5q+q91I8fYicQu+PjtPPaAVJ/3ew4s5mlV+wr5MkURlGEfQ53hBo28caZiclJGOfgP9nkggFm7DmGhH03oOMAEhOIx3X0n8ba6tAQFGKuY3VQ3zCmjO/uJg7XcV8460w6181kueN/7AEOYHATVqXyuZei2Yxgn/BmE1plScudKwDiN46+0Y9dV+Z55MylhDClYBaRR9E933QCv3dh6QMTYB42q2xZrrFAi0ighfo6axCl6c+V4XHW+EfJTGZZ+lgOdocpXzCGMW7WMFDfGCVlXM46YOmub9H67YzgqbdU7XLpa/5i4gcw=="
                     },
                     "fingerprint": "2dafdabf94fef961",
-                    "blob": "/thoughtSignature"
+                    "blob_slot": "/thoughtSignature"
                   }
                 }
               ],
@@ -433,7 +433,7 @@
                   "thoughtSignature": "CiIBaRR9E7hcqmEgOQRWsLS/qEsjGZjIJYhDmgBj+liwYWkSClkBaRR9E90Ki7RihCMHiSBr/YvS4JjHbU1UiSHUtfO+q5wMur/RsGDmtHuloiagvzU5EdnBRGc2kV1CPFZvxpx5fHS4Hx5esb0fciTu5waNxR+DPRatVAFc+QqIAQFpFH0TnLSovvWkBPyc5V5NjJiAL+tr0HKLi8DaKouiuvyI+b6EKQVG58u7W3MF1QcQ3iQcgn8/Zw0fEhHN5ySxIHhgE8GfsEhxWDFQ8lVTHYzDD1bY3iudIK+ADo86WyiTlDgZQcSXGWtksM1Ar4arywRyN6sw+F0NgsxK5+FUEOsYdoo3py8="
                 },
                 "fingerprint": "bfd6826299bdce26",
-                "blob": "/thoughtSignature"
+                "blob_slot": "/thoughtSignature"
               }
             }
           ],
@@ -573,7 +573,7 @@
                       "thoughtSignature": "CiQBaRR9E8cmZWeh5jJ1zB0jI2pe6jd1UJOh0RY39Ao+ZOpV8XkKVgFpFH0TUzJex0nRF1j209rlMVQa0pfXp87VAGTU9F8MHqEiC4PYYDV7GAs/pGMY2yzTUX735J4jGcFt4Fx+XnNmJhdnF12MTz6c0Kk2Ay7t9xFGyYFECswBAWkUfRPPYcOnIf1IRs01fcyT447sPMC7pCHAU+XhAdhJkCpinvLAZkGZQ0UDpF/2MDg1CQekfB9xmYq1k5q+q91I8fYicQu+PjtPPaAVJ/3ew4s5mlV+wr5MkURlGEfQ53hBo28caZiclJGOfgP9nkggFm7DmGhH03oOMAEhOIx3X0n8ba6tAQFGKuY3VQ3zCmjO/uJg7XcV8460w6181kueN/7AEOYHATVqXyuZei2Yxgn/BmE1plScudKwDiN46+0Y9dV+Z55MylhDClYBaRR9E933QCv3dh6QMTYB42q2xZrrFAi0ighfo6axCl6c+V4XHW+EfJTGZZ+lgOdocpXzCGMW7WMFDfGCVlXM46YOmub9H67YzgqbdU7XLpa/5i4gcw=="
                     },
                     "fingerprint": "2dafdabf94fef961",
-                    "blob": "/thoughtSignature"
+                    "blob_slot": "/thoughtSignature"
                   }
                 }
               ],
@@ -631,7 +631,7 @@
                       "thoughtSignature": "CiIBaRR9E7hcqmEgOQRWsLS/qEsjGZjIJYhDmgBj+liwYWkSClkBaRR9E90Ki7RihCMHiSBr/YvS4JjHbU1UiSHUtfO+q5wMur/RsGDmtHuloiagvzU5EdnBRGc2kV1CPFZvxpx5fHS4Hx5esb0fciTu5waNxR+DPRatVAFc+QqIAQFpFH0TnLSovvWkBPyc5V5NjJiAL+tr0HKLi8DaKouiuvyI+b6EKQVG58u7W3MF1QcQ3iQcgn8/Zw0fEhHN5ySxIHhgE8GfsEhxWDFQ8lVTHYzDD1bY3iudIK+ADo86WyiTlDgZQcSXGWtksM1Ar4arywRyN6sw+F0NgsxK5+FUEOsYdoo3py8="
                     },
                     "fingerprint": "bfd6826299bdce26",
-                    "blob": "/thoughtSignature"
+                    "blob_slot": "/thoughtSignature"
                   }
                 }
               ],
@@ -729,7 +729,7 @@
                   "thoughtSignature": "CloBaRR9E5sjeUZi2gqeYK1njkFg0WakjVr8EeKFLA6qhOaBQeL66HzrcWN36zz3wucFXn8AFQ3XzD08B6sHX5mkAhdvpCfvvGLOmGbOVLhBBARv2goYXLGzuDs="
                 },
                 "fingerprint": "9c7fb8494d06d314",
-                "blob": "/thoughtSignature"
+                "blob_slot": "/thoughtSignature"
               }
             }
           ],
