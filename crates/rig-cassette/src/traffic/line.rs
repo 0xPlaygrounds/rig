@@ -119,7 +119,13 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         }
         (RequestBody::Bytes(_), Some(bytes)) if bytes.is_empty() => {}
         (RequestBody::Bytes(_), Some(bytes)) => {
-            let body = body(bytes);
+            let body = if std::str::from_utf8(bytes).is_err() {
+                request_metadata
+                    .as_ref()
+                    .map_or_else(|| body(bytes), OpaqueBody::value)
+            } else {
+                body(bytes)
+            };
             match (&exchange.serving, body) {
                 (Some(serving), Value::Object(full)) => {
                     let chain = format!("{}\n{}", serving.handler.as_str(), exchange.uri);
@@ -181,7 +187,15 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             } else if request_uninspected || response_uninspected {
                 response.insert("body".into(), response_metadata.value());
             } else {
-                response.insert("body".into(), body(&scrubber.scrub_prepared(prepared)));
+                let bytes = scrubber.scrub_prepared(prepared);
+                response.insert(
+                    "body".into(),
+                    if std::str::from_utf8(&bytes).is_err() {
+                        response_metadata.value()
+                    } else {
+                        body(&bytes)
+                    },
+                );
             }
         }
         line.insert("response".into(), Value::Object(response));

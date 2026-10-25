@@ -1458,8 +1458,13 @@ async fn capture_scrub_case(
         .build()
         .expect("client");
     let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw));
-    let mut builder = Request::post(format!("{}/submit{query}", session.base_url()))
-        .header("content-type", "application/json");
+    let mut builder = Request::post(format!("{}/submit{query}", session.base_url()));
+    if !request_headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+    {
+        builder = builder.header("content-type", "application/json");
+    }
     for (name, value) in request_headers {
         builder = builder.header(*name, *value);
     }
@@ -1836,4 +1841,180 @@ fn json_lines_learn_short_credentials_before_rendering_any_line() {
             Some(&json!({"echo":REDACTED,"longer":"abcd"}))
         );
     }
+}
+
+fn inspected_multipart() -> (Vec<u8>, Vec<u8>) {
+    let mut raw = b"--sample\r\nContent-Disposition: form-data; name = \"api_key\"\r\n\r\nabc\r\n--sample\r\nContent-Disposition: form-data; name=\"payload\"\r\nContent-Type: application/json\r\n\r\n{\"echo\":\"abc\",\"ordinary\":17}\r\n--sample\r\nContent-Disposition: form-data; name=\"file\"; filename=\"image.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n".to_vec();
+    let binary = b"\xff\x00inside--sampleX\x00\xe2\x82".to_vec();
+    raw.extend_from_slice(&binary);
+    raw.extend_from_slice(b"\r\n--sample--\r\n");
+    (raw, binary)
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn strict_multipart_learns_text_parts_and_preserves_binary_parts() {
+    let (raw, binary) = inspected_multipart();
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [("content-type", "multipart/form-data; boundary=sample")],
+            RequestBodyRef::Bytes(&raw),
+            [("content-type", "application/json")],
+            Some(br#"{"echo":"abc","ordinary":17}"#),
+        );
+        let request = prepared.request_body.expect("request");
+        assert!(request.opaque().is_none());
+        let bytes = scrubber.scrub_prepared(request);
+        let parts = parse_multipart_parts(&bytes, "sample").expect("valid scrubbed multipart");
+        assert_eq!(parts.len(), 3);
+        assert_eq!(
+            parts.first().map(|part| part.body.as_slice()),
+            Some(REDACTED.as_bytes())
+        );
+        assert_eq!(
+            parts
+                .get(1)
+                .map(|part| serde_json::from_slice::<Value>(&part.body).expect("JSON")),
+            Some(json!({"echo":REDACTED,"ordinary":17}))
+        );
+        assert_eq!(parts.get(2).map(|part| &part.body), Some(&binary));
+        assert_eq!(
+            serde_json::from_slice::<Value>(
+                &scrubber.scrub_prepared(prepared.response_body.expect("reply"))
+            )
+            .expect("JSON"),
+            json!({"echo":REDACTED,"ordinary":17})
+        );
+    }
+}
+
+#[test]
+fn malformed_multipart_never_passes_capture_validation() {
+    let valid = "--sample\r\nContent-Disposition: form-data; name=\"message\"\r\n\r\nhello\r\n--sample--\r\n";
+    for malformed in [
+        valid.replace(
+            "\r\n\r\nhello",
+            "\r\nAuthorization Bearer private-unparsed-credential\r\n\r\nhello",
+        ),
+        valid.replace("name=\"message\"", "name=\"message\"; name=\"api_key\""),
+        valid.replace("name=\"message\"", "name=\"api\\_key\""),
+        valid.replace("name=\"message\"", "name=\"api_key"),
+        valid.replace("--sample--\r\n", ""),
+        valid.replace("--sample--\r\n", "--sample--trailing\r\n"),
+        valid.replace("\r\n", "\n"),
+        valid.replace(
+            "Content-Disposition: form-data; name=\"message\"",
+            "Content-Disposition: form-data",
+        ),
+        valid.replace(
+            "\r\n\r\nhello",
+            "\r\nContent-Transfer-Encoding: base64\r\n\r\nhello",
+        ),
+        valid.replace("\r\n\r\nhello", "\r\nContent-Encoding: gzip\r\n\r\nhello"),
+        valid.replace(
+            "\r\n\r\nhello",
+            "\r\nContent-Type: application/json\r\n\r\nhello",
+        ),
+        format!("unparsed-secret\r\n{valid}"),
+        format!("{valid}unparsed-secret"),
+    ] {
+        let mut scrubber = Scrubber::default();
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [("content-type", "multipart/form-data; boundary=sample")],
+            RequestBodyRef::Bytes(malformed.as_bytes()),
+            [],
+            None,
+        );
+        let body = prepared.request_body.expect("body");
+        assert!(body.opaque().is_some(), "{malformed}");
+        let metadata = scrubber.scrub_prepared(body);
+        assert!(!String::from_utf8_lossy(&metadata).contains("unparsed-secret"));
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn inspected_multipart_credentials_scrub_reply_echoes_in_both_files() {
+    let (request, binary) = inspected_multipart();
+    let captured = capture_scrub_case(
+        "",
+        &[("content-type", "multipart/form-data; boundary=sample")],
+        &request,
+        br#"{"echo":"abc","ordinary":17}"#,
+        false,
+        None,
+    )
+    .await;
+    assert_eq!(
+        captured.traffic.pointer("/response/body"),
+        Some(&json!({"echo":REDACTED,"ordinary":17}))
+    );
+    assert_eq!(
+        captured.traffic.pointer("/request/body/content_type"),
+        Some(&json!("multipart/form-data; boundary=sample"))
+    );
+    let response: Value = serde_json::from_str(
+        captured
+            .fixture
+            .pointer("/then/body")
+            .and_then(Value::as_str)
+            .expect("reply"),
+    )
+    .expect("JSON");
+    assert_eq!(response, json!({"echo":REDACTED,"ordinary":17}));
+    use base64::Engine;
+    let recorded = base64::prelude::BASE64_STANDARD
+        .decode(
+            captured
+                .fixture
+                .pointer("/when/body")
+                .and_then(Value::as_str)
+                .expect("multipart"),
+        )
+        .expect("base64");
+    let parts = parse_multipart_parts(&recorded, "sample").expect("parts");
+    assert_eq!(parts.get(2).map(|part| &part.body), Some(&binary));
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn strict_multipart_with_an_inline_boundary_in_binary_data_replays() {
+    use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    let (request, _) = inspected_multipart();
+    let captured = capture_scrub_case(
+        "",
+        &[("content-type", "multipart/form-data; boundary=sample")],
+        &request,
+        b"{}",
+        false,
+        None,
+    )
+    .await;
+    let replay = ProviderCassette::try_start_at(
+        RecordVia::Proxy,
+        "example",
+        CassetteSpec::new("scrub-exchange"),
+        "https://example.test",
+        CassetteMode::Replay,
+        captured.path.clone(),
+    )
+    .await
+    .expect("replay");
+    let reply = rig_reqwest::reqwest::Client::new()
+        .post(format!("{}/submit", replay.base_url()))
+        .header("content-type", "multipart/form-data; boundary=sample")
+        .body(request)
+        .send()
+        .await
+        .expect("reply");
+    assert_eq!(
+        reply.status().as_u16(),
+        200,
+        "{}",
+        reply.text().await.expect("body")
+    );
+    replay.try_finish().await.expect("consumed");
 }
