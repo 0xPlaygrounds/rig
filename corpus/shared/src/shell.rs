@@ -6,37 +6,46 @@
 //! assert!(!corpus_shared::shell::reads_only("ls > listing"));
 //! ```
 
-/// Command prefixes allowed by the corpus read-only shell policy.
-const READ_ONLY: &[&str] = &[
-    "ls",
-    "cat",
-    "head",
-    "tail",
-    "wc",
-    "pwd",
-    "rg",
-    "grep",
-    "git status",
-    "git diff",
-    "git log",
-    "git show",
+/// Commands that only read, by their first words.
+const READ_ONLY: &[&[&str]] = &[
+    &["ls"],
+    &["cat"],
+    &["head"],
+    &["tail"],
+    &["wc"],
+    &["pwd"],
+    &["rg"],
+    &["grep"],
+    &["git", "status"],
+    &["git", "diff"],
+    &["git", "log"],
+    &["git", "show"],
 ];
 
+/// Options of those commands that write or run something: `git diff
+/// --output` writes a file, `rg --pre` runs a command.
+const UNSAFE_OPTIONS: &[&str] = &["--output", "--pre"];
+
 /// Whether `command` only reads: no redirection, sequencing or
-/// substitution, and every part of its pipeline an allowed command.
+/// substitution, and every part of its pipeline an allowed command with no
+/// option that writes or runs something.
 pub fn reads_only(command: &str) -> bool {
     let forbidden = ['>', '<', ';', '&', '`', '$', '\n', '('];
     if command.trim().is_empty() || command.contains(forbidden) {
         return false;
     }
     command.split('|').all(|part| {
-        let part = part.trim();
-        let allowed = READ_ONLY.iter().any(|allowed| {
-            part.strip_prefix(allowed)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
-        });
-        // `git diff --output=…` writes a file; `rg --pre` runs a command.
-        allowed && !part.contains("--output") && !part.contains("--pre")
+        let words: Vec<&str> = part.split_whitespace().collect();
+        READ_ONLY.iter().any(|allowed| words.starts_with(allowed))
+            && !words.iter().any(|word| unsafe_option(word))
+    })
+}
+
+/// Whether `word` is one of [`UNSAFE_OPTIONS`], alone or with `=value`.
+fn unsafe_option(word: &str) -> bool {
+    UNSAFE_OPTIONS.iter().any(|option| {
+        word.strip_prefix(option)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('='))
     })
 }
 

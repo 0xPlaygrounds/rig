@@ -495,19 +495,15 @@ fn report(
         .iter()
         .flat_map(|prepared| prepared.authors.iter().map(Option::as_ref))
         .chain(std::iter::repeat(None));
-    let sized: Vec<(MessageKind, u64)> = messages
-        .iter()
-        .zip(authors)
-        .map(|(message, author)| (MessageKind::of(message, author), message_tokens(message)))
-        .collect();
-    let kinds = MessageKind::ALL.map(|kind| {
-        sized
-            .iter()
-            .filter(|(of, _)| *of == kind)
-            .fold(Tally::default(), |tally, (_, tokens)| {
-                Tally(tally.0 + 1, tally.1 + tokens)
-            })
-    });
+    let mut kinds = [Tally::default(); MessageKind::ALL.len()];
+    for (message, author) in messages.iter().zip(authors) {
+        let kind = MessageKind::of(message, author);
+        let at = MessageKind::ALL.iter().position(|each| *each == kind);
+        if let Some(tally) = at.and_then(|at| kinds.get_mut(at)) {
+            tally.0 += 1;
+            tally.1 += message_tokens(message);
+        }
+    }
     let message_total: u64 = kinds.iter().map(|tally| tally.1).sum();
     lines.push(format!(
         "Messages: {} (~{} tokens)",

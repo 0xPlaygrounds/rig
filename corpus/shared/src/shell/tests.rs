@@ -2,7 +2,16 @@ use super::reads_only;
 
 #[test]
 fn only_allowed_pipelines_pass() {
-    for command in ["ls -a", "git status", "git diff | head", "cat file | wc -l"] {
+    for command in [
+        "ls -a",
+        "git status",
+        "git  status",
+        "ls\t-a",
+        "git diff | head",
+        "cat file | wc -l",
+        "git log --pretty=oneline",
+        "cat notes--preview.md",
+    ] {
         assert!(reads_only(command), "{command}");
     }
     for command in [
@@ -19,7 +28,9 @@ fn only_allowed_pipelines_pass() {
         "cat $FILE",
         "ls\n pwd",
         "git diff --output=file",
+        "git diff --output file",
         "rg --pre=command pattern",
+        "rg --pre command pattern",
     ] {
         assert!(!reads_only(command), "{command}");
     }

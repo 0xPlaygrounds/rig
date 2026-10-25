@@ -9,10 +9,10 @@
 //! stepped in the order the model asked for them: a call whose earlier
 //! sibling has not settled waits behind a hold of its own, so nothing runs
 //! beside the call being stepped. Editing asks for the arguments as JSON
-//! to edit in the input (and in `$VISUAL` or `$EDITOR`, if set); they are validated
-//! against the tool's schema and, if they fit, become the call, both the
-//! one that runs and the one the saved conversation says the model made,
-//! with a note in the transcript. Closing the question stops the turn, as
+//! to edit in the input (and in `$VISUAL` or `$EDITOR`, if set); they are
+//! validated against the tool's schema and, if they fit, become the call,
+//! both the one that runs and the one the saved conversation says the
+//! model made, with a note in the transcript. Closing the question stops the turn, as
 //! an interrupt does.
 //!
 //! Step mode is never saved: a resumed or reloaded session starts without
@@ -129,7 +129,7 @@ struct Stepped;
 #[derive(Component)]
 struct RunsFreely(EffectId);
 
-/// `$EDITOR` answering the question `ask` with the file at `path`.
+/// The editor answering the question `ask` with the file at `path`.
 #[derive(Component)]
 struct InEditor {
     ask: Entity,
@@ -248,7 +248,8 @@ impl Replies<'_, '_> {
     }
 }
 
-/// Asks for a call's edited arguments: in the input, and in `$EDITOR`.
+/// Asks for a call's edited arguments: in the input, and in the
+/// [`StepEditor`], if there is one.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Edits<'w, 's> {
     editor: Res<'w, StepEditor>,
@@ -460,7 +461,7 @@ fn answered(
     }
 }
 
-/// Answers the question `$EDITOR` edited the arguments for with what it
+/// Answers the question the editor edited the arguments for with what it
 /// left, once it exited well; otherwise the question waits in the input.
 fn edited(
     done: Query<(Entity, &TerminalExit, &InEditor), Added<TerminalExit>>,

@@ -11,9 +11,9 @@
 //! words with the user's message, and every pinned one, are added to that
 //! message in each request of the turn, after a cache point of the
 //! request, and never to the saved conversation. `/memory` lists them,
-//! `/memory edit` opens files in `$VISUAL` or `$EDITOR` in the terminal view, and
-//! `/memory off` and `/memory on` stop and restart the recall for the
-//! session.
+//! `/memory edit` opens the files in `$VISUAL` or `$EDITOR` in the
+//! terminal view, and `/memory off` and `/memory on` stop and restart the
+//! recall for the session.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -524,11 +524,11 @@ fn memory(
     notices.write(Notice::info(agent, text));
 }
 
-/// On the `$EDITOR` run of `/memory edit`.
+/// On the editor run of `/memory edit`.
 #[derive(Component)]
 struct Editing;
 
-/// Reads the files again once `$EDITOR` closed, at once rather than at
+/// Reads the files again once the editor closed, at once rather than at
 /// the watch's next look.
 fn edited(
     done: Query<(Entity, &TerminalExit), (Added<TerminalExit>, With<Editing>)>,
@@ -541,7 +541,10 @@ fn edited(
     };
     for (run, exit) in &done {
         if let Err(why) = &exit.0 {
-            notices.write(Notice::error(None, format!("$EDITOR did not start: {why}")));
+            notices.write(Notice::error(
+                None,
+                format!("The editor did not start: {why}"),
+            ));
         }
         memories.read();
         commands.entity(run).despawn();

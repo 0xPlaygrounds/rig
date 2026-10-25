@@ -195,11 +195,11 @@ struct Job(Entity);
 enum Answer {
     /// Tell the user this.
     Say(String),
-    /// Open this fragment in `$EDITOR`.
+    /// Open this fragment in the editor.
     Edit(PathBuf),
 }
 
-/// On `$EDITOR` editing a fragment: the agent told if it failed.
+/// On the editor editing a fragment: the agent told if it failed.
 #[derive(Component)]
 struct Editing(Entity);
 
@@ -555,7 +555,7 @@ fn name(path: &Path) -> &str {
 }
 
 /// Tells what a `/changelog` command found, or opens the fragment it
-/// names in `$EDITOR` with the terminal.
+/// names in the editor with the terminal.
 fn answered(
     done: On<Insert<Done<Answer>>>,
     jobs: Query<(&Job, &Done<Answer>)>,
@@ -580,7 +580,7 @@ fn answered(
     commands.entity(done.entity).despawn();
 }
 
-/// Says when `$EDITOR` failed, and lets its run go.
+/// Says when the editor failed, and lets its run go.
 fn edited(
     exit: On<Insert<TerminalExit>>,
     runs: Query<(&Editing, &TerminalExit)>,
