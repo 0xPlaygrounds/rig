@@ -1445,6 +1445,9 @@ async fn capture_scrub_case_with_headers(
             value.parse().expect("value"),
         );
     }
+    if !headers.contains_key("content-type") {
+        headers.insert("content-type", "application/json".parse().expect("type"));
+    }
     capture_scrub_case_with_header_map(
         query,
         &headers,
@@ -1540,9 +1543,6 @@ async fn capture_scrub_case_with_header_map(
         .expect("client");
     let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw));
     let mut builder = Request::post(format!("{}/submit{query}", session.base_url()));
-    if !request_headers.contains_key("content-type") {
-        builder = builder.header("content-type", "application/json");
-    }
     for (name, value) in request_headers {
         builder = builder.header(name.clone(), value.clone());
     }
@@ -2573,29 +2573,29 @@ async fn duplicate_json_credentials_and_parents_withhold_both_values_in_both_fil
 fn frame_boundaries_use_the_same_inspected_format_and_reject_partial_records() {
     for content_type in [None, Some("text/plain"), Some("text/event-stream")] {
         assert!(stopped_at_frame_boundary(
-            content_type,
+            content_type.map(|value| ("content-type", value)),
             b"data: {\"done\":true}\n\n"
         ));
         assert!(!stopped_at_frame_boundary(
-            content_type,
+            content_type.map(|value| ("content-type", value)),
             b"data: {\"done\":true}\n"
         ));
     }
     for content_type in ["application/x-ndjson", "application/jsonl"] {
         assert!(stopped_at_frame_boundary(
-            Some(content_type),
+            [("content-type", content_type)],
             b"{\"done\":true}\n"
         ));
         assert!(!stopped_at_frame_boundary(
-            Some(content_type),
+            [("content-type", content_type)],
             b"{\"done\":true}"
         ));
         assert!(!stopped_at_frame_boundary(
-            Some(content_type),
+            [("content-type", content_type)],
             b"{\"done\":true,\"done\":false}\n"
         ));
         assert!(!stopped_at_frame_boundary(
-            Some(content_type),
+            [("content-type", content_type)],
             b"{\"done\":"
         ));
     }
@@ -2612,4 +2612,118 @@ fn unique_json_preserves_scalar_types_and_rejects_nested_duplicates() {
         assert_eq!(decode_json(source), Err(JsonFailure::DuplicateKey));
     }
     assert_eq!(decode_json("{not JSON}"), Err(JsonFailure::Invalid));
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn untyped_invalid_utf8_requests_withhold_both_sinks_and_keep_no_secret_bytes() {
+    use base64::Engine;
+    let secret = "opaque-material-97531";
+    let mut request = json!({"password":secret}).to_string().into_bytes();
+    request.extend_from_slice(&[0xe2, 0x82]);
+    for streaming in [false, true] {
+        let response = json!({"echo":secret}).to_string();
+        let response = if streaming {
+            format!("data: {response}\n\n")
+        } else {
+            response
+        };
+        let captured = capture_scrub_case_with_header_map(
+            "",
+            &HeaderMap::new(),
+            &request,
+            response.as_bytes(),
+            streaming,
+            None,
+            &[("x-error", secret)],
+        )
+        .await;
+        assert!(!captured.traffic.to_string().contains(secret));
+        assert!(!captured.fixture.to_string().contains(secret));
+        assert_eq!(
+            captured.traffic.pointer("/request/body"),
+            Some(&json!({"bytes":request.len(),"content_type":null}))
+        );
+        let path = if streaming {
+            "/response/events/0/data/bytes"
+        } else {
+            "/response/body/bytes"
+        };
+        assert_eq!(captured.traffic.pointer(path), Some(&json!(response.len())));
+        assert!(
+            captured
+                .fixture
+                .pointer("/when/body")
+                .is_none_or(Value::is_null)
+        );
+        assert!(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .is_none_or(Value::is_null)
+        );
+        for side in ["when", "then"] {
+            let side = captured.fixture.get(side).expect("side");
+            if let Some(body) = side.get("body").and_then(Value::as_str) {
+                let bytes = if side.get("body_encoding").and_then(Value::as_str) == Some("base64") {
+                    base64::prelude::BASE64_STANDARD
+                        .decode(body)
+                        .expect("base64")
+                } else {
+                    body.as_bytes().to_vec()
+                };
+                assert!(
+                    !bytes
+                        .windows(secret.len())
+                        .any(|part| part == secret.as_bytes())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn json_number_decoding_uses_serde_value_semantics() {
+    let source = r#"{"max_tokens":1024,"t":0.5,"long_float":0.12345678901234567890123456789,"big_integer":1844674407370955161600123}"#;
+    let decoded = decode_json(source).expect("JSON");
+    let reference: Value = serde_json::from_str(source).expect("serde JSON");
+    assert_eq!(decoded, reference);
+    assert_eq!(decoded.get("t").and_then(Value::as_f64), Some(0.5));
+    for name in ["t", "long_float", "big_integer"] {
+        assert!(decoded.get(name).is_some_and(Value::is_number));
+    }
+}
+
+#[test]
+fn frame_boundaries_use_all_recordable_reply_headers() {
+    for (content_type, body) in [
+        ("text/event-stream", b"data: {\"done\":true}\n\n".as_slice()),
+        ("application/x-ndjson", b"{\"done\":true}\n".as_slice()),
+    ] {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", content_type.parse().expect("type"));
+        assert!(stopped_at_frame_boundary(
+            recordable_pairs(header_pairs(&headers)),
+            body
+        ));
+        headers.insert("content-encoding", "gzip".parse().expect("encoding"));
+        assert!(!stopped_at_frame_boundary(
+            recordable_pairs(header_pairs(&headers)),
+            body
+        ));
+        headers.remove("content-encoding");
+        headers.append("content-type", content_type.parse().expect("type"));
+        assert!(!stopped_at_frame_boundary(
+            recordable_pairs(header_pairs(&headers)),
+            body
+        ));
+        headers.insert(
+            "content-type",
+            rig_core::http_client::HeaderValue::from_bytes(b"\xff").expect("header"),
+        );
+        assert!(!stopped_at_frame_boundary(
+            recordable_pairs(header_pairs(&headers)),
+            body
+        ));
+    }
 }

@@ -64,17 +64,10 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .as_ref()
             .is_some_and(PreparedBody::is_binary)
         || exchange.incomplete().is_some();
-    let response_headers = response_headers.map(|headers| {
-        let mut scrubbed = headers.clone();
-        for (name, value) in &mut scrubbed {
-            if let Ok(text) = std::str::from_utf8(value.as_bytes()) {
-                let rendered = prepared.scrub_response_header(&mut scrubber, name.as_str(), text);
-                if let Ok(rendered) = rendered.parse() {
-                    *value = rendered;
-                }
-            }
-        }
-        scrubbed
+    let response_headers = response_headers.map(|original| {
+        headers(original, |name, value| {
+            prepared.scrub_response_header(&mut scrubber, name, value)
+        })
     });
     if request_uninspected {
         bases.0.clear();
@@ -106,7 +99,9 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     request.insert("url".into(), json!(scrubber.scrub_url(&exchange.uri)));
     request.insert(
         "headers".into(),
-        headers(&mut scrubber, &exchange.request_headers),
+        headers(&exchange.request_headers, |name, value| {
+            scrubber.scrub_header_value(name, value)
+        }),
     );
     match (&exchange.request_body, &request_body) {
         _ if request_sized => {
@@ -166,8 +161,8 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     if let Some(status) = exchange.status {
         let mut response = Map::new();
         response.insert("status".into(), json!(status.as_u16()));
-        if let Some(headers_map) = &response_headers {
-            response.insert("headers".into(), headers(&mut scrubber, headers_map));
+        if let Some(headers) = response_headers {
+            response.insert("headers".into(), headers);
         }
         if let (Some(prepared), Some(response_metadata)) = (response_body, response_metadata) {
             if let Some(chunks) = &exchange.chunks {
@@ -347,14 +342,14 @@ fn ms(at: Duration) -> u64 {
 
 /// Headers as an object of lowercase names; a repeated header's values as
 /// an array. A credential header's value is [`REDACTED`].
-fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
+fn headers(headers: &HeaderMap, mut render: impl FnMut(&str, &str) -> String) -> Value {
     let mut out = Map::new();
     for name in headers.keys() {
         let values: Vec<Value> = headers
             .get_all(name)
             .iter()
             .map(|value| match std::str::from_utf8(value.as_bytes()) {
-                Ok(value) => json!(scrubber.scrub_header_value(name.as_str(), value)),
+                Ok(value) => json!(render(name.as_str(), value)),
                 Err(_) => OpaqueBody::new(value.len(), None).value(),
             })
             .collect();

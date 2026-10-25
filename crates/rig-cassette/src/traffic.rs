@@ -239,13 +239,16 @@ impl Exchange {
             (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
             (Some(_), End::Stopped) => {
                 let body = self.response_bytes().unwrap_or_default();
-                let content_type = self
+                let headers = self
                     .response_headers
                     .as_ref()
-                    .and_then(|headers| headers.get("content-type"))
-                    .and_then(|value| value.to_str().ok());
-                (!crate::scrub::stopped_at_frame_boundary(content_type, &body))
-                    .then_some("stopped before it was complete")
+                    .into_iter()
+                    .flat_map(crate::scrub::header_pairs);
+                (!crate::scrub::stopped_at_frame_boundary(
+                    crate::scrub::recordable_pairs(headers),
+                    &body,
+                ))
+                .then_some("stopped before it was complete")
             }
             (None, End::Error)
                 if self.response_body.is_some()

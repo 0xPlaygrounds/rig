@@ -375,23 +375,21 @@ impl DirectRecorder {
         );
         // A body the scrubber could not read whole is withheld: the cassette
         // keeps its size and content type, never its bytes.
-        let request_headers: Vec<_> = request_headers
-            .iter()
-            .filter_map(|(name, value)| {
-                let name = name.as_ref();
-                crate::scrub::HeaderText::from(value.as_ref())
-                    .recordable(name)
-                    .map(|value| (name, value))
-            })
+        let request_headers: Vec<_> =
+            crate::scrub::recordable_pairs(request_headers.iter().map(|(name, value)| {
+                (
+                    name.as_ref(),
+                    crate::scrub::HeaderText::from(value.as_ref()),
+                )
+            }))
             .collect();
-        let response_headers: Vec<_> = response_headers
-            .iter()
-            .filter_map(|(name, value)| {
-                let name = name.as_ref();
-                crate::scrub::HeaderText::from(value.as_ref())
-                    .recordable(name)
-                    .map(|value| (name, value))
-            })
+        let response_headers: Vec<_> =
+            crate::scrub::recordable_pairs(response_headers.iter().map(|(name, value)| {
+                (
+                    name.as_ref(),
+                    crate::scrub::HeaderText::from(value.as_ref()),
+                )
+            }))
             .collect();
         let request_withheld = prepared.request_withheld().cloned();
         let response_withheld = prepared.response_withheld().cloned();
@@ -3196,12 +3194,8 @@ mod tests;
 
 /// Collect UTF-8 HTTP headers as owned name/value pairs.
 pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> {
-    crate::scrub::header_pairs(headers)
-        .filter_map(|(name, value)| {
-            value
-                .recordable(name)
-                .map(|value| (name.to_owned(), value.to_owned()))
-        })
+    crate::scrub::recordable_pairs(crate::scrub::header_pairs(headers))
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
         .collect()
 }
 

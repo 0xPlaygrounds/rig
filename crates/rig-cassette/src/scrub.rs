@@ -211,7 +211,7 @@ impl<'a> From<&'a [u8]> for HeaderText<'a> {
 }
 
 impl<'a> HeaderText<'a> {
-    pub(crate) fn recordable(self, name: &str) -> Option<&'a str> {
+    fn recordable(self, name: &str) -> Option<&'a str> {
         match self {
             Self::Utf8(value) => Some(value),
             Self::Unreadable
@@ -452,61 +452,58 @@ enum JsonFailure {
 struct UniqueJson<'a>(&'a mut bool);
 
 impl<'de> serde::de::DeserializeSeed<'de> for UniqueJson<'_> {
-    type Value = Value;
-    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<Value, D::Error> {
+    type Value = ();
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
         deserializer.deserialize_any(self)
     }
 }
 
 impl<'de> serde::de::Visitor<'de> for UniqueJson<'_> {
-    type Value = Value;
+    type Value = ();
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("JSON with unique object keys")
     }
-
-    fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Value, E> {
-        Ok(Value::Bool(value))
+    fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<(), E> {
+        Ok(())
     }
-    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Value, E> {
-        Ok(Value::Number(value.into()))
+    fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<(), E> {
+        Ok(())
     }
-    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Value, E> {
-        Ok(Value::Number(value.into()))
+    fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<(), E> {
+        Ok(())
     }
-    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Value, E> {
-        serde_json::Number::from_f64(value)
-            .map(Value::Number)
-            .ok_or_else(|| E::custom("invalid JSON number"))
+    fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<(), E> {
+        Ok(())
     }
-    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Value, E> {
-        Ok(Value::String(value.to_owned()))
+    fn visit_str<E: serde::de::Error>(self, _: &str) -> Result<(), E> {
+        Ok(())
     }
-    fn visit_string<E: serde::de::Error>(self, value: String) -> Result<Value, E> {
-        Ok(Value::String(value))
+    fn visit_string<E: serde::de::Error>(self, _: String) -> Result<(), E> {
+        Ok(())
     }
-    fn visit_unit<E: serde::de::Error>(self) -> Result<Value, E> {
-        Ok(Value::Null)
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
+        Ok(())
     }
 
-    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Value, A::Error> {
-        let mut values = Vec::new();
-        while let Some(value) = sequence.next_element_seed(UniqueJson(&mut *self.0))? {
-            values.push(value);
-        }
-        Ok(Value::Array(values))
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<(), A::Error> {
+        while sequence
+            .next_element_seed(UniqueJson(&mut *self.0))?
+            .is_some()
+        {}
+        Ok(())
     }
 
-    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut object: A) -> Result<Value, A::Error> {
-        let mut values = Map::new();
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut object: A) -> Result<(), A::Error> {
+        let mut keys = std::collections::BTreeSet::new();
         while let Some(name) = object.next_key::<String>()? {
-            if values.contains_key(&name) {
+            if !keys.insert(name) {
                 *self.0 = true;
                 return Err(serde::de::Error::custom("duplicate JSON object key"));
             }
-            values.insert(name, object.next_value_seed(UniqueJson(&mut *self.0))?);
+            object.next_value_seed(UniqueJson(&mut *self.0))?;
         }
-        Ok(Value::Object(values))
+        Ok(())
     }
 }
 
@@ -514,9 +511,11 @@ fn decode_json(text: &str) -> Result<Value, JsonFailure> {
     use serde::de::DeserializeSeed;
     let mut duplicate = false;
     let mut deserializer = serde_json::Deserializer::from_str(text);
-    let value = UniqueJson(&mut duplicate).deserialize(&mut deserializer);
-    match value {
-        Ok(value) if deserializer.end().is_ok() => Ok(value),
+    let checked = UniqueJson(&mut duplicate).deserialize(&mut deserializer);
+    match checked {
+        Ok(()) if deserializer.end().is_ok() => {
+            serde_json::from_str::<Value>(text).map_err(|_| JsonFailure::Invalid)
+        }
         _ if duplicate => Err(JsonFailure::DuplicateKey),
         _ => Err(JsonFailure::Invalid),
     }
@@ -607,7 +606,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
                 | "application/javascript"
         );
     let Ok(text) = std::str::from_utf8(raw) else {
-        return if text_claim {
+        return if text_claim || media.is_empty() {
             BodyFormat::Opaque
         } else {
             BodyFormat::Binary
@@ -648,7 +647,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
         None
     };
     if let Some(events) = sse {
-        return if ends_between_events(raw)
+        return if ends_at_frame_boundary(rig_core::http_client::framing::Framing::Sse, raw)
             && events.iter().all(|event| {
                 event
                     .data
@@ -744,14 +743,8 @@ impl Scrubber {
         } else {
             HeaderInspection::UnknownCredential
         };
-        let request_headers: Vec<_> = request_headers
-            .into_iter()
-            .filter_map(|(name, value)| value.recordable(name).map(|value| (name, value)))
-            .collect();
-        let response_headers: Vec<_> = response_headers
-            .into_iter()
-            .filter_map(|(name, value)| value.recordable(name).map(|value| (name, value)))
-            .collect();
+        let request_headers: Vec<_> = recordable_pairs(request_headers).collect();
+        let response_headers: Vec<_> = recordable_pairs(response_headers).collect();
         let request_body = match request_body {
             RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
@@ -2389,23 +2382,33 @@ pub(crate) fn header_pairs(headers: &HeaderMap) -> impl Iterator<Item = (&str, H
         .map(|(name, value)| (name.as_str(), HeaderText::from(value.as_bytes())))
 }
 
-/// Whether a stopped framed body ends after complete inspected records.
-pub(crate) fn stopped_at_frame_boundary(content_type: Option<&str>, body: &[u8]) -> bool {
-    let headers: Vec<_> = content_type
-        .map(|value| ("content-type", value))
+/// Header pairs that can be represented in recorded text.
+pub(crate) fn recordable_pairs<'a>(
+    headers: impl IntoIterator<Item = (&'a str, HeaderText<'a>)>,
+) -> impl Iterator<Item = (&'a str, &'a str)> {
+    headers
         .into_iter()
-        .collect();
-    match capture_format(body, &headers) {
-        BodyFormat::Sse => true,
-        BodyFormat::JsonLines => body.ends_with(b"\n"),
-        _ => false,
-    }
+        .filter_map(|(name, value)| value.recordable(name).map(|value| (name, value)))
 }
 
-/// Whether the shared SSE framer has no unfinished bytes after this body.
-pub(crate) fn ends_between_events(body: &[u8]) -> bool {
-    let mut framer = rig_core::http_client::framing::Framing::Sse.framer();
-    let Some(ref mut framer) = framer else {
+/// Whether a stopped body ends after complete inspected frames.
+pub(crate) fn stopped_at_frame_boundary<'a>(
+    headers: impl IntoIterator<Item = (&'a str, &'a str)>,
+    body: &[u8],
+) -> bool {
+    use rig_core::http_client::framing::Framing;
+    let headers: Vec<_> = headers.into_iter().collect();
+    let framing = match capture_format(body, &headers) {
+        BodyFormat::Sse => Framing::Sse,
+        BodyFormat::JsonLines => Framing::Ndjson,
+        _ => return false,
+    };
+    ends_at_frame_boundary(framing, body)
+}
+
+/// Whether the shared framer has no unfinished bytes after this body.
+fn ends_at_frame_boundary(framing: rig_core::http_client::framing::Framing, body: &[u8]) -> bool {
+    let Some(mut framer) = framing.framer() else {
         return false;
     };
     framer.push(body).for_each(drop);
