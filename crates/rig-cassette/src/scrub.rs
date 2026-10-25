@@ -299,14 +299,9 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    let valid_media = media.split_once('/').is_some_and(|(kind, subtype)| {
-        [kind, subtype].iter().all(|part| {
-            !part.is_empty()
-                && part
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
-        })
-    });
+    let valid_media = media
+        .split_once('/')
+        .is_some_and(|(kind, subtype)| http_token(kind) && http_token(subtype));
     if (content_type.is_some() && !valid_media)
         || headers
             .iter()
@@ -319,7 +314,12 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     }
     if media == "multipart/form-data" {
         return content_type
-            .and_then(multipart_boundary)
+            .and_then(mime_parameters)
+            .and_then(|(_, params)| {
+                params
+                    .get("boundary")
+                    .map(|boundary| (*boundary).to_owned())
+            })
             .and_then(|boundary| multipart_slices(raw, &boundary, true))
             .filter(|layout| {
                 layout.parts.iter().all(|slice| {
@@ -454,6 +454,7 @@ fn inspectable_text(text: &str) -> bool {
         .any(|ch| ch.is_control() && !matches!(ch, '\t' | '\r' | '\n'))
         && (!text.starts_with(['{', '['])
             || text == "[DONE]"
+            || is_redacted_placeholder(text)
             || serde_json::from_str::<Value>(text).is_ok())
 }
 
@@ -652,9 +653,7 @@ impl Scrubber {
 
     fn scrub_multipart_body(&mut self, bytes: Bytes, layout: MultipartLayout) -> Bytes {
         let mut out = Vec::new();
-        if !layout.preamble.is_empty() {
-            out.extend_from_slice(b"[REDACTED]\r\n");
-        }
+        out.extend_from_slice(bytes.get(layout.preamble.clone()).unwrap_or_default());
         let mut kept = layout.preamble.end;
         for slice in layout.parts {
             out.extend_from_slice(bytes.get(kept..slice.header.start).unwrap_or_default());
@@ -693,9 +692,7 @@ impl Scrubber {
             kept = slice.body.end;
         }
         out.extend_from_slice(bytes.get(kept..layout.epilogue.start).unwrap_or_default());
-        if !layout.epilogue.is_empty() {
-            out.extend_from_slice(REDACTED.as_bytes());
-        }
+        out.extend_from_slice(bytes.get(layout.epilogue).unwrap_or_default());
         out.into()
     }
 
@@ -1229,15 +1226,14 @@ impl Scrubber {
         }
         if matches!(body.format, BodyFormat::Multipart(_)) {
             let end = body.metadata.bytes;
+            let metadata = body.metadata.value();
             let bytes = self.scrub_prepared(body);
             return vec![ScrubbedEvent {
                 end,
                 event: None,
                 id: None,
-                data: std::str::from_utf8(&bytes).map_or_else(
-                    |_| serde_json::json!({"bytes":bytes.len()}),
-                    |text| Value::String(text.to_owned()),
-                ),
+                data: std::str::from_utf8(&bytes)
+                    .map_or_else(|_| metadata, |text| Value::String(text.to_owned())),
             }];
         }
         let Some((text, tail)) = text_prefix(&body.bytes) else {
@@ -2230,17 +2226,57 @@ pub(crate) struct MultipartPart {
 
 impl MultipartPart {
     fn name(&self) -> Option<&str> {
-        self.headers
+        let value = &self
+            .headers
             .iter()
             .find(|(name, _)| name.eq_ignore_ascii_case("content-disposition"))?
-            .1
-            .split(';')
-            .find_map(|field| {
-                let (name, value) = field.trim().split_once('=')?;
-                name.eq_ignore_ascii_case("name")
-                    .then(|| value.trim_matches('"'))
-            })
+            .1;
+        let (kind, params) = mime_parameters(value)?;
+        if !kind.eq_ignore_ascii_case("form-data") {
+            return None;
+        }
+        params.get("name").copied()
     }
+}
+
+fn http_token(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+}
+
+fn mime_parameters(value: &str) -> Option<(&str, BTreeMap<String, &str>)> {
+    let mut fields = value.split(';');
+    let kind = fields.next()?.trim();
+    let mut params = BTreeMap::new();
+    for field in fields {
+        let (name, value) = field.trim().split_once('=')?;
+        let name = name.trim();
+        if !http_token(name) {
+            return None;
+        }
+        let value = value.trim();
+        let value = if let Some(inner) = value.strip_prefix('"') {
+            let inner = inner.strip_suffix('"')?;
+            if inner
+                .chars()
+                .any(|ch| ch.is_control() || matches!(ch, '"' | '\\'))
+            {
+                return None;
+            }
+            inner
+        } else {
+            if !http_token(value) {
+                return None;
+            }
+            value
+        };
+        if params.insert(name.to_ascii_lowercase(), value).is_some() {
+            return None;
+        }
+    }
+    Some((kind, params))
 }
 
 pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
@@ -2268,10 +2304,12 @@ struct MultipartSlice {
 
 #[cfg(feature = "http")]
 pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
-    multipart_slices(body, boundary, false)
+    multipart_slices(body, boundary, true)
+        .or_else(|| multipart_slices(body, boundary, false))
         .map(|layout| layout.parts.into_iter().map(|slice| slice.part).collect())
 }
 
+#[cfg(feature = "http")]
 pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
     content_type.split(';').find_map(|part| {
         let (name, value) = part.trim().split_once('=')?;
@@ -2342,11 +2380,7 @@ fn multipart_slices(body: &[u8], boundary: &str, strict: bool) -> Option<Multipa
         if strict
             && !raw_headers.split("\r\n").all(|line| {
                 line.split_once(':').is_some_and(|(name, value)| {
-                    !name.is_empty()
-                        && name.bytes().all(|byte| {
-                            byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte)
-                        })
-                        && !value.chars().any(|ch| ch.is_control() && ch != '\t')
+                    http_token(name) && !value.chars().any(|ch| ch.is_control() && ch != '\t')
                 })
             })
         {
