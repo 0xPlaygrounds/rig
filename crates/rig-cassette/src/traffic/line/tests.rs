@@ -149,3 +149,80 @@ fn streamed_multipart_surroundings_use_the_same_prepared_redaction() {
     assert!(body.ends_with("--sample--\r\n[REDACTED]"));
     assert_eq!(output.pointer("/response/events/0/ms"), Some(&json!(7)));
 }
+
+#[test]
+fn changed_multiline_text_sse_replays_the_same_payload_as_traffic() {
+    use crate::scrub::{Purpose, Scrubber};
+    use rig_core::http_client::framing::Framing;
+    let secret = "opaque-credential-12345";
+    for ending in ["\n", "\r\n", "\r"] {
+        let data = format!("data: {secret}");
+        let source = [
+            "id: 7",
+            "event: note",
+            data.as_str(),
+            "data:",
+            "data: public text",
+            "data:",
+            "",
+            "",
+        ]
+        .join(ending);
+        let mut exchange = exchange();
+        exchange.request_headers.insert(
+            "authorization",
+            format!("Bearer {secret}").parse().expect("header"),
+        );
+        exchange
+            .response_headers
+            .as_mut()
+            .expect("headers")
+            .insert("content-type", "text/event-stream".parse().expect("type"));
+        exchange.chunks = Some(vec![(
+            Duration::from_millis(7),
+            Bytes::from(source.clone()),
+        )]);
+        let traffic = line(&exchange, 1, &mut Bases::default());
+        let traffic_data = traffic
+            .pointer("/response/events/0/data")
+            .and_then(Value::as_str)
+            .expect("data");
+        let mut cassette = Scrubber::new(Purpose::Cassette);
+        cassette.learn_header("authorization", &format!("Bearer {secret}"));
+        let body = cassette.scrub_body(&source);
+        let frames = Framing::Sse.split(body.as_bytes());
+        assert_eq!(
+            frames
+                .first()
+                .map(|frame| frame.as_str().into_owned())
+                .as_deref(),
+            Some(traffic_data),
+            "{body}"
+        );
+        assert_eq!(traffic_data, "[REDACTED]\n\npublic text\n");
+        assert_eq!(traffic.pointer("/response/events/0/id"), Some(&json!("7")));
+    }
+}
+
+#[test]
+fn multipart_header_shaped_names_are_authoritative_credentials() {
+    let mut exchange = exchange();
+    exchange.request_body =
+        RequestBody::Multipart(MultipartForm::new().text("x-api-key", "q7Z2p9"));
+    exchange.response_body = Some(Bytes::from_static(
+        br#"{"error":"invalid q7Z2p9","longer":"xq7Z2p9y"}"#,
+    ));
+    let output = line(&exchange, 1, &mut Bases::default());
+    assert_eq!(
+        output.pointer("/request/parts/0/value"),
+        Some(&json!("[REDACTED]"))
+    );
+    assert_eq!(
+        output.pointer("/response/body/error"),
+        Some(&json!("invalid [REDACTED]"))
+    );
+    assert_eq!(
+        output.pointer("/response/body/longer"),
+        Some(&json!("xq7Z2p9y"))
+    );
+}

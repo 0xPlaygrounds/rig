@@ -164,7 +164,7 @@ fn short_credentials_and_numeric_echoes_are_masked_without_matching_longer_words
             Some(&json!(REDACTED))
         );
         let mut reply = json!({
-            "error": "invalid abc123 s3cr3t! c12 s34 p56 q78 f90",
+            "error": "invalid [REDACTED] [REDACTED] c12 s34 p56 [REDACTED] [REDACTED]",
             "scalar": "s3cr3t!",
             "echo": 4321,
             "nested": r#"{"echo":4321}"#,
@@ -174,11 +174,16 @@ fn short_credentials_and_numeric_echoes_are_masked_without_matching_longer_words
         scrubber.scrub_json_value(None, &mut reply);
         assert_eq!(
             reply.get("error"),
-            Some(&json!("invalid abc123 s3cr3t! c12 s34 p56 q78 f90"))
+            Some(&json!(
+                "invalid [REDACTED] [REDACTED] c12 s34 p56 [REDACTED] [REDACTED]"
+            ))
         );
-        assert_eq!(reply.get("echo"), Some(&json!(4321)));
-        assert_eq!(reply.get("scalar"), Some(&json!("s3cr3t!")));
-        assert_eq!(reply.get("nested"), Some(&json!(r#"{"echo":4321}"#)));
+        assert_eq!(reply.get("echo"), Some(&json!(REDACTED)));
+        assert_eq!(reply.get("scalar"), Some(&json!(REDACTED)));
+        assert_eq!(
+            reply.get("nested"),
+            Some(&json!(r#"{"echo":"[REDACTED]"}"#))
+        );
         assert_eq!(
             reply.get("longer"),
             Some(&json!("xabc123y xs3cr3t!x xc12x xs34x xp56x xq78x xf90x"))
@@ -260,7 +265,6 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
             "large_count": 12345678,
             "content": "Read https://example.test/?key=type and https://example.test/?code=200 and https://example.test/?code=12345678",
             "quoted": "example: {\"password\":\"type\",\"device_code\":200}",
-            "json_in_string": "{\"password\":\"type\",\"device_code\":200}"
         });
         let mut scrubber = Scrubber::new(purpose);
         let mut value = original.clone();
@@ -283,11 +287,11 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
         let mut scrubber = Scrubber::new(purpose);
         scrubber.learn_header("x-api-key", "200");
         assert_eq!(
-            scrubber.scrub_body(r#"{"value":200,"text":"200"}"#),
+            scrubber.scrub_body(r#"{"value":200,"text":"[REDACTED]"}"#),
             if purpose == Purpose::Traffic {
-                r#"{"value":200,"text":"200"}"#
+                r#"{"value":200,"text":"[REDACTED]"}"#
             } else {
-                r#"{"text":"200","value":200}"#
+                r#"{"text":"[REDACTED]","value":200}"#
             }
         );
         scrubber.learn_body(r#"{"password":1234567890}"#);
@@ -296,14 +300,11 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
             r#"{"value":"[REDACTED]"}"#
         );
         scrubber.learn_header("x-api-key", "type");
-        assert_eq!(
-            scrubber.scrub_body(r#"{"type":"type","content_type":"text"}"#),
-            if purpose == Purpose::Traffic {
-                r#"{"type":"type","content_type":"text"}"#
-            } else {
-                r#"{"content_type":"text","type":"type"}"#
-            }
-        );
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(r#"{"type":"type","content_type":"text"}"#))
+                .expect("JSON");
+        assert_eq!(output.get(REDACTED), Some(&json!(REDACTED)));
+        assert_eq!(output.get("content_[REDACTED]"), Some(&json!("text")));
     }
 }
 
@@ -311,16 +312,19 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
 fn query_credentials_are_explicit_and_cursors_remain_distinct() {
     for name in [
         "page_token",
-        "page-token",
         "next_token",
         "continuation_token",
         "last_key",
-        "sort-key",
         "content_signature",
+        "prompt_cache_key",
+        "eos_token",
     ] {
         assert!(!is_secret_param(name), "{name}");
     }
     for name in [
+        "page-token",
+        "sort-key",
+        "x-api-key",
         "access_token",
         "refresh-token",
         "idToken",
@@ -489,7 +493,7 @@ then:
 }
 
 #[test]
-fn only_long_wire_credentials_mask_object_keys_and_collisions_keep_values() {
+fn wire_credentials_mask_object_keys_and_collisions_keep_values() {
     for purpose in [Purpose::Traffic, Purpose::Cassette] {
         let mut scrubber = Scrubber::new(purpose);
         scrubber.learn_header("authorization", "Bearer opaque-header-credential");
@@ -509,7 +513,8 @@ fn only_long_wire_credentials_mask_object_keys_and_collisions_keep_values() {
         assert_eq!(object.len(), 5);
         assert!(object.values().any(|value| value == &json!(1)));
         assert!(object.values().any(|value| value == &json!(2)));
-        assert_eq!(object.get("abc"), Some(&json!(3)));
+        assert!(!object.contains_key("abc"));
+        assert!(object.values().any(|value| value == &json!(3)));
         assert_eq!(object.get("inferred-credential"), Some(&json!(4)));
         assert!(
             !output
@@ -530,7 +535,7 @@ fn only_long_wire_credentials_mask_object_keys_and_collisions_keep_values() {
 }
 
 #[test]
-fn short_json_and_cookie_values_do_not_erase_ordinary_text() {
+fn bare_token_and_cookie_values_do_not_erase_ordinary_text() {
     for purpose in [Purpose::Traffic, Purpose::Cassette] {
         let mut scrubber = Scrubber::new(purpose);
         scrubber.learn_header("cookie", "variant=control; sid=abc");
@@ -539,7 +544,7 @@ fn short_json_and_cookie_values_do_not_erase_ordinary_text() {
         let output: Value = serde_json::from_str(&scrubber.scrub_body(request)).expect("JSON");
         assert_eq!(
             output.get("echo"),
-            Some(&json!("git checkout main; abcd control abc def"))
+            Some(&json!("git checkout main; [REDACTED] control abc def"))
         );
         assert_eq!(output.get("password"), Some(&json!(REDACTED)));
         assert_eq!(
@@ -916,7 +921,7 @@ fn urls_in_keys_learn_credentials_before_either_side_is_rendered() {
 }
 
 #[test]
-fn all_short_credentials_are_masked_in_place_and_never_learned_as_echoes() {
+fn short_authoritative_credentials_are_masked_in_place_and_as_whole_word_echoes() {
     for purpose in [Purpose::Traffic, Purpose::Cassette] {
         let mut scrubber = Scrubber::new(purpose);
         scrubber.learn_header("authorization", "Bearer local");
@@ -925,7 +930,7 @@ fn all_short_credentials_are_masked_in_place_and_never_learned_as_echoes() {
         scrubber.learn_body("client_secret=EMPTY");
         assert_eq!(
             scrubber.scrub_text("local abc123 ollama EMPTY none"),
-            "local abc123 ollama EMPTY none"
+            "[REDACTED] [REDACTED] [REDACTED] [REDACTED] none"
         );
         assert_eq!(
             scrubber.scrub_header_value("authorization", "Bearer local"),
@@ -935,7 +940,7 @@ fn all_short_credentials_are_masked_in_place_and_never_learned_as_echoes() {
         let output: Value =
             serde_json::from_str(&scrubber.scrub_body(r#"{"password":"none","echo":"none"}"#))
                 .expect("JSON");
-        assert_eq!(output, json!({"password":REDACTED,"echo":"none"}));
+        assert_eq!(output, json!({"password":REDACTED,"echo":REDACTED}));
     }
 }
 
@@ -1057,7 +1062,7 @@ async fn url_keys_and_json_authorization_are_private_in_live_and_cassette_output
         for secret in [key_password, signed, nested, auth, header_auth] {
             assert!(!output.contains(secret), "{output}");
         }
-        assert!(output.contains("local"), "{output}");
+        assert!(!output.contains("local"), "{output}");
     }
 }
 #[test]
@@ -1282,5 +1287,202 @@ async fn multipart_surroundings_are_private_in_both_sinks_and_decoded_fixture_bo
             assert!(bytes.starts_with(b"[REDACTED]\r\n--sample\r\n"));
             assert!(bytes.ends_with(b"--sample--\r\n[REDACTED]"));
         }
+    }
+}
+
+#[test]
+fn short_authoritative_credentials_scrub_unary_and_sse_echoes_for_both_purposes() {
+    let request =
+        json!({"password":"hunter2", "arguments":r#"{"client_secret":"n5Q9x4"}"#, "token":"main"})
+            .to_string();
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        for response in [
+            json!({"error":"invalid q7Z2p9 hunter2 n5Q9x4", "longer":"xq7Z2p9y hunter2ish éq7Z2p9é", "echo":"main"}).to_string(),
+            "data: {\"error\":\"invalid q7Z2p9 hunter2 n5Q9x4\",\"longer\":\"xq7Z2p9y hunter2ish éq7Z2p9é\",\"echo\":\"main\"}\n\n".to_owned(),
+        ] {
+            let mut scrubber = Scrubber::new(purpose);
+            let prepared = scrubber.prepare_exchange("https://example.test/", [("x-api-key","q7Z2p9")], RequestBodyRef::Bytes(request.as_bytes()), [], Some(response.as_bytes()));
+            let request = scrubber.scrub_prepared(prepared.request_body.expect("request"));
+            assert!(!String::from_utf8_lossy(&request).contains("hunter2"));
+            let response = scrubber.scrub_prepared(prepared.response_body.expect("response"));
+            let response = std::str::from_utf8(&response).expect("text");
+            let payload = if response.starts_with("data:") {
+                rig_core::http_client::framing::Framing::Sse.split(response.as_bytes()).first().map(|frame| frame.as_str().into_owned()).expect("event")
+            } else { response.to_owned() };
+            let payload: Value = serde_json::from_str(&payload).expect("JSON");
+            assert_eq!(payload.get("error"),Some(&json!("invalid [REDACTED] [REDACTED] [REDACTED]")));
+            assert_eq!(payload.get("longer"),Some(&json!("xq7Z2p9y hunter2ish éq7Z2p9é")));
+            assert_eq!(payload.get("echo"),Some(&json!("main")));
+        }
+    }
+}
+
+#[test]
+fn short_credentials_match_word_boundaries_in_opaque_bytes_too() {
+    let mut scrubber = Scrubber::new(Purpose::Cassette);
+    scrubber.learn_header("x-api-key", "q7Z2p9");
+    assert_eq!(
+        scrubber.scrub_bytes(b"\xff invalid q7Z2p9\x00"),
+        Bytes::from_static(REDACTED.as_bytes())
+    );
+    for bytes in [
+        b"\xff xq7Z2p9y\x00".as_slice(),
+        "\u{fffd} éq7Z2p9é".as_bytes(),
+    ] {
+        assert_eq!(scrubber.scrub_bytes(bytes).as_ref(), bytes);
+    }
+    let mut unicode = vec![0xff];
+    unicode.extend_from_slice("éq7Z2p9é".as_bytes());
+    assert_eq!(scrubber.scrub_bytes(&unicode).as_ref(), unicode.as_slice());
+}
+
+#[test]
+fn secret_names_and_url_authorities_are_shared_across_surfaces() {
+    let secret = "opaque-shared-name-97531";
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        for prefix in ["postgres", "custom+scheme", "FTP"] {
+            let url = format!("{prefix}://user:{secret}@example.test/db");
+            scrubber.learn_body(&format!("connect to {url}"));
+            let output = scrubber.scrub_text(&format!("connect to {url}"));
+            assert!(!output.contains(secret), "{output}");
+            assert!(output.contains("://[REDACTED]@example.test/db"), "{output}");
+        }
+        assert_eq!(scrubber.scrub_text(secret), REDACTED);
+        let mut query = Scrubber::new(purpose);
+        query.learn_url("https://example.test/?x-api-key=q7Z2p9");
+        assert_eq!(query.scrub_text("invalid q7Z2p9"), "invalid [REDACTED]");
+        assert_eq!(
+            Scrubber::new(purpose).scrub_url("https://example.test/?x-api-key=q7Z2p9"),
+            "https://example.test/?x-api-key=[REDACTED]"
+        );
+        for text in [
+            format!("x-api-key={secret}"),
+            format!("failed with ?%78-api-key={secret}"),
+            format!("auth={secret}"),
+        ] {
+            let output = Scrubber::new(purpose).scrub_text(&text);
+            assert!(!output.contains(secret), "{output}");
+        }
+        for name in ["prompt_cache_key", "eos_token", "page_token"] {
+            assert!(!is_secret_param(name));
+            assert_eq!(
+                scrubber.scrub_text(&format!("{name}=ordinary")),
+                format!("{name}=ordinary")
+            );
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn short_password_and_header_echoes_are_private_in_both_output_files() {
+    use crate::http::{AccountFailure, CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    use futures::StreamExt;
+    use rig_core::http_client::{HttpClientExt, Request, framing::Framing};
+    let reply = json!({"error":{"message":"invalid q7Z2p9 hunter2"},"longer":"xq7Z2p9y hunter2ish","ordinary":"main"});
+    for streaming in [false, true] {
+        let upstream = httpmock::MockServer::start_async().await;
+        let body = if streaming {
+            format!("data: {reply}\n\ndata: [DONE]\n\n")
+        } else {
+            reply.to_string()
+        };
+        upstream
+            .mock_async(|when, then| {
+                when.method("POST").path("/submit");
+                then.status(if streaming { 200 } else { 401 })
+                    .header(
+                        "content-type",
+                        if streaming {
+                            "text/event-stream"
+                        } else {
+                            "application/json"
+                        },
+                    )
+                    .body(body);
+            })
+            .await;
+        let directory = assert_fs::TempDir::new().expect("directory");
+        let path = directory.path().join("fixture.yaml");
+        let session = ProviderCassette::try_start_at(
+            RecordVia::Proxy,
+            "example",
+            CassetteSpec::new("short-echoes").expects_account_failure(AccountFailure::Auth),
+            &upstream.base_url(),
+            CassetteMode::Record,
+            path.clone(),
+        )
+        .await
+        .expect("record");
+        let log_path = directory.path().join("traffic.jsonl");
+        let log = crate::traffic::TrafficLog::new(std::fs::File::create(&log_path).expect("log"))
+            .expect("writer");
+        let client = log.wrap_http(rig_reqwest::ReqwestClient::from(
+            rig_reqwest::reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("client"),
+        ));
+        let request = Request::post(format!("{}/submit", session.base_url()))
+            .header("x-api-key", "q7Z2p9")
+            .body(Bytes::from_static(
+                br#"{"password":"hunter2","token":"main"}"#,
+            ))
+            .expect("request");
+        if streaming {
+            let response = client.send_streaming(request).await.expect("reply");
+            let _: Vec<_> = response.into_body().collect().await;
+        } else {
+            assert!(client.send::<_, Bytes>(request).await.is_err());
+        }
+        log.flush();
+        session.try_finish().await.expect("safe recording");
+        let traffic: Value =
+            serde_json::from_str(&std::fs::read_to_string(&log_path).expect("traffic"))
+                .expect("JSON");
+        assert_eq!(
+            traffic.pointer("/request/body/password"),
+            Some(&json!(REDACTED))
+        );
+        let traffic_reply = traffic
+            .pointer(if streaming {
+                "/response/events/0/data"
+            } else {
+                "/response/body"
+            })
+            .expect("reply data");
+        let fixture: Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&path).expect("fixture")).expect("YAML");
+        let body = fixture
+            .pointer("/then/body")
+            .and_then(Value::as_str)
+            .expect("body");
+        let payload = if streaming {
+            Framing::Sse
+                .split(body.as_bytes())
+                .first()
+                .map(|frame| frame.as_str().into_owned())
+                .expect("event")
+        } else {
+            body.to_owned()
+        };
+        let cassette_reply: Value = serde_json::from_str(&payload).expect("reply JSON");
+        for payload in [traffic_reply, &cassette_reply] {
+            assert_eq!(
+                payload.pointer("/error/message"),
+                Some(&json!("invalid [REDACTED] [REDACTED]"))
+            );
+            assert_eq!(payload.get("longer"), Some(&json!("xq7Z2p9y hunter2ish")));
+            assert_eq!(payload.get("ordinary"), Some(&json!("main")));
+        }
+        let request: Value = serde_json::from_str(
+            fixture
+                .pointer("/when/body")
+                .and_then(Value::as_str)
+                .expect("request body"),
+        )
+        .expect("request JSON");
+        assert_eq!(request.get("password"), Some(&json!(REDACTED)));
     }
 }

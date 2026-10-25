@@ -33,16 +33,6 @@ pub(crate) const SENSITIVE_HEADER_NAMES: &[&str] = &[
     "key",
 ];
 
-pub(crate) const SENSITIVE_QUERY_PARAMS: &[&str] = &[
-    "key",
-    "api_key",
-    "apikey",
-    "access_token",
-    "x-amz-credential",
-    "x-amz-signature",
-    "x-amz-security-token",
-];
-
 pub(crate) const VOLATILE_JSON_KEYS: &[&str] = &[
     "completed_at",
     "created",
@@ -70,8 +60,18 @@ pub(crate) enum Purpose {
 enum SecretSource {
     Text,
     Field,
+    SoftNumber,
     Wire,
     Number,
+}
+
+impl SecretSource {
+    fn minimum(self) -> usize {
+        match self {
+            Self::Wire | Self::Number => 3,
+            _ => 8,
+        }
+    }
 }
 
 struct LearnedSecret {
@@ -84,6 +84,7 @@ enum JsonContext {
     Value,
     Headers,
     Credential,
+    ApplicationCredential,
     Definitions,
     Definition,
     Schema,
@@ -111,7 +112,7 @@ impl JsonContext {
 impl JsonObjectContext {
     fn field(&self, name: &str, purpose: Purpose) -> JsonContext {
         match self.kind {
-            JsonContext::Credential => return JsonContext::Credential,
+            JsonContext::Credential | JsonContext::ApplicationCredential => return self.kind,
             JsonContext::Properties => return JsonContext::Schema,
             JsonContext::Definition => match name {
                 "function" => return JsonContext::Definition,
@@ -144,12 +145,18 @@ impl JsonObjectContext {
                 | "anyOf" => return JsonContext::Schema,
                 _ => {}
             },
-            JsonContext::Headers if is_secret_header(name) => return JsonContext::Credential,
+            JsonContext::Headers if is_secret_header(name) => {
+                return if is_cookie(name) {
+                    JsonContext::ApplicationCredential
+                } else {
+                    JsonContext::Credential
+                };
+            }
             JsonContext::Headers | JsonContext::Value => {}
         }
         if is_secret_field(name, purpose) && !(name.eq_ignore_ascii_case("token") && self.logprobs)
         {
-            JsonContext::Credential
+            credential_context(name)
         } else if name.eq_ignore_ascii_case("headers") {
             JsonContext::Headers
         } else if matches!(name, "tools" | "functions") {
@@ -395,9 +402,7 @@ impl Scrubber {
         } else if let Some(bytes) = self.scrub_binary_frames(bytes) {
             bytes.into()
         } else if self.learned.iter().any(|secret| {
-            secret.source != SecretSource::Text
-                && secret.value.len() >= 8
-                && find_bytes(bytes, secret.value.as_bytes()).is_some()
+            secret.source != SecretSource::Text && secret_occurs(bytes, &secret.value)
         }) {
             Bytes::from_static(REDACTED.as_bytes())
         } else {
@@ -465,19 +470,18 @@ impl Scrubber {
     /// Remembers credentials in a header, including individual cookies.
     pub(crate) fn learn_header(&mut self, name: &str, value: &str) {
         if is_secret_header(name) {
-            let source =
-                if name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie") {
-                    SecretSource::Field
-                } else {
-                    SecretSource::Wire
-                };
+            let source = if is_cookie(name) {
+                SecretSource::Field
+            } else {
+                SecretSource::Wire
+            };
             self.learn(value, source);
             if name.to_ascii_lowercase().contains("auth")
                 && let Some((_, credential)) = value.split_once(' ')
             {
                 self.learn(credential.trim(), SecretSource::Wire);
             }
-            if name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie") {
+            if is_cookie(name) {
                 for cookie in value.split(';') {
                     if let Some((_, value)) = cookie.split_once('=') {
                         self.learn(value.trim(), SecretSource::Field);
@@ -595,11 +599,18 @@ impl Scrubber {
 
     fn learn_json_in(&mut self, value: &Value, context: JsonContext, source: SecretSource) {
         match value {
-            Value::String(text) if context == JsonContext::Credential => {
+            Value::String(text)
+                if matches!(
+                    context,
+                    JsonContext::Credential | JsonContext::ApplicationCredential
+                ) =>
+            {
                 let source = if source == SecretSource::Text {
                     source
-                } else {
+                } else if context == JsonContext::ApplicationCredential {
                     SecretSource::Field
+                } else {
+                    SecretSource::Wire
                 };
                 self.learn(text, source);
                 if let Some((scheme, credential)) = text.split_once(' ')
@@ -611,9 +622,16 @@ impl Scrubber {
                     self.learn(credential, source);
                 }
             }
-            Value::Number(number) if context == JsonContext::Credential => {
+            Value::Number(number)
+                if matches!(
+                    context,
+                    JsonContext::Credential | JsonContext::ApplicationCredential
+                ) =>
+            {
                 let source = if source == SecretSource::Text {
                     source
+                } else if context == JsonContext::ApplicationCredential {
+                    SecretSource::SoftNumber
                 } else {
                     SecretSource::Number
                 };
@@ -647,7 +665,7 @@ impl Scrubber {
     }
 
     fn learn(&mut self, secret: &str, source: SecretSource) {
-        if secret.len() < 8
+        if secret.len() < source.minimum()
             || secret == REDACTED
             || decode_form_component(secret)
                 .split_whitespace()
@@ -656,7 +674,11 @@ impl Scrubber {
             return;
         }
         if let Some(known) = self.learned.iter_mut().find(|known| known.value == secret) {
-            known.source = known.source.max(source);
+            known.source = match (known.source, source) {
+                (SecretSource::SoftNumber, SecretSource::Wire)
+                | (SecretSource::Wire, SecretSource::SoftNumber) => SecretSource::Number,
+                _ => known.source.max(source),
+            };
             return;
         }
         self.learned.push(LearnedSecret {
@@ -773,8 +795,17 @@ impl Scrubber {
                                     }
                                 })
                                 .unwrap_or_default();
-                            output.push_str("data: ");
-                            output.push_str(&text);
+                            for (index, data) in text.split('\n').enumerate() {
+                                if index > 0 {
+                                    output.push_str(if line.ending.is_empty() {
+                                        "\n"
+                                    } else {
+                                        line.ending
+                                    });
+                                }
+                                output.push_str("data: ");
+                                output.push_str(data);
+                            }
                             wrote_data = true;
                         } else {
                             continue;
@@ -861,8 +892,8 @@ impl Scrubber {
 
     #[cfg(any(feature = "http", test))]
     pub(crate) fn scrub_json_value(&mut self, key: Option<&str>, value: &mut Value) {
-        let context = if key.is_some_and(|key| is_secret_field(key, self.purpose)) {
-            JsonContext::Credential
+        let context = if let Some(key) = key.filter(|key| is_secret_field(key, self.purpose)) {
+            credential_context(key)
         } else {
             JsonContext::Value
         };
@@ -880,7 +911,7 @@ impl Scrubber {
                     self.scrub_json_in(Some(&name), &mut field, context.field(&name, self.purpose));
                     let mut name = self.scrub_shapes_and_paths(&mask_urls(&name));
                     for secret in &self.learned {
-                        if secret.source != SecretSource::Text && secret.value.len() >= 8 {
+                        if secret.source != SecretSource::Text {
                             name = replace_secret(&name, &secret.value);
                         }
                     }
@@ -902,7 +933,10 @@ impl Scrubber {
                 if is_redacted_placeholder(text) {
                     return;
                 }
-                if context == JsonContext::Credential {
+                if matches!(
+                    context,
+                    JsonContext::Credential | JsonContext::ApplicationCredential
+                ) {
                     *text = if cassette
                         && key_lower
                             .as_deref()
@@ -931,11 +965,15 @@ impl Scrubber {
                 }
             }
             Value::Number(number) => {
-                if context == JsonContext::Credential
-                    || self.learned.iter().any(|secret| {
-                        secret.source == SecretSource::Number && secret.value == number.to_string()
-                    })
-                {
+                if matches!(
+                    context,
+                    JsonContext::Credential | JsonContext::ApplicationCredential
+                ) || self.learned.iter().any(|secret| {
+                    matches!(
+                        secret.source,
+                        SecretSource::Number | SecretSource::SoftNumber
+                    ) && secret.value == number.to_string()
+                }) {
                     *value = Value::String(REDACTED.to_owned());
                 } else if cassette
                     && key_lower
@@ -976,9 +1014,7 @@ impl Scrubber {
                 scrubbed = replace_secret(&scrubbed, &secret.value);
             }
         }
-        for key in SENSITIVE_QUERY_PARAMS {
-            scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
-        }
+        scrubbed = scrub_query_params_in_text(&scrubbed);
         let mut kept = 0;
         let mut masked = String::new();
         for range in secret_values(&scrubbed, self.purpose) {
@@ -1106,57 +1142,40 @@ pub(crate) fn is_redacted_placeholder(value: &str) -> bool {
         && counter.chars().all(|ch| ch.is_ascii_digit())
 }
 
-fn scrub_query_param(input: &str, key: &str, replacement: &str) -> String {
-    let mut output = String::with_capacity(input.len());
-    let mut remainder = input;
-    let needle = format!("{key}=");
-
-    while let Some(index) = find_query_param(remainder, &needle) {
-        let (prefix, after_prefix) = remainder.split_at(index);
-        output.push_str(prefix);
-
-        let (name, after_value_start) = after_prefix.split_at(needle.len());
-        output.push_str(name);
-        let value_end = after_value_start
-            .find(['&', '"', '\'', ' ', '\n', '\r', '<'])
-            .unwrap_or(after_value_start.len());
-        output.push_str(replacement);
-        remainder = after_value_start.get(value_end..).unwrap_or_default();
-    }
-
-    output.push_str(remainder);
-    output
-}
-
-fn find_query_param(input: &str, needle: &str) -> Option<usize> {
-    let mut search_start = 0;
-
-    while let Some(relative_index) = find_ascii_case_insensitive(input.get(search_start..)?, needle)
-    {
-        let index = search_start + relative_index;
-        let starts_param = index == 0
-            || input
-                .get(..index)
-                .and_then(|before| before.chars().next_back())
-                .is_some_and(|ch| matches!(ch, '?' | '#' | '&' | '"' | '\'' | ' '));
-
-        if starts_param {
-            return Some(index);
+fn scrub_query_params_in_text(text: &str) -> String {
+    let mut out = String::new();
+    let mut kept = 0;
+    for (equal, _) in text.match_indices('=') {
+        if equal < kept {
+            continue;
         }
-
-        search_start = index + needle.len();
+        let before = text.get(..equal).unwrap_or_default();
+        let start = before
+            .char_indices()
+            .rev()
+            .find(|(_, c)| !c.is_ascii_alphanumeric() && !matches!(c, '-' | '_' | '%'))
+            .map_or(0, |(at, c)| at + c.len_utf8());
+        let boundary = start == 0
+            || text
+                .get(..start)
+                .and_then(|text| text.chars().next_back())
+                .is_some_and(|c| c.is_whitespace() || matches!(c, '?' | '#' | '&' | '\'' | '"'));
+        let name = text.get(start..equal).unwrap_or_default();
+        if !boundary || !is_secret_param(&decode_form_component(name)) {
+            continue;
+        }
+        let value = text.get(equal + 1..).unwrap_or_default();
+        let end = equal
+            + 1
+            + value
+                .find(['&', '#', '"', '\'', ' ', '\n', '\r', '<'])
+                .unwrap_or(value.len());
+        out.push_str(text.get(kept..equal + 1).unwrap_or_default());
+        out.push_str(REDACTED);
+        kept = end;
     }
-
-    None
-}
-
-fn find_ascii_case_insensitive(input: &str, needle: &str) -> Option<usize> {
-    let input = input.as_bytes();
-    let needle = needle.as_bytes();
-
-    input
-        .windows(needle.len())
-        .position(|window| window.eq_ignore_ascii_case(needle))
+    out.push_str(text.get(kept..).unwrap_or_default());
+    out
 }
 
 /// Redact directories of home paths beginning at the input start or after a
@@ -1212,8 +1231,73 @@ pub(crate) fn scrub_local_filesystem_paths(text: &str) -> String {
     output
 }
 
+fn short_secret_spans<'a>(
+    bytes: &'a [u8],
+    secret: &'a str,
+) -> impl Iterator<Item = Range<usize>> + 'a {
+    bytes
+        .windows(secret.len().max(1))
+        .enumerate()
+        .filter_map(move |(at, candidate)| {
+            if candidate != secret.as_bytes() {
+                return None;
+            }
+            let end = at + secret.len();
+            // Decode only the adjacent characters; unrelated opaque bytes do not affect a word boundary.
+            let before = (at.saturating_sub(4)..at).find_map(|start| {
+                std::str::from_utf8(bytes.get(start..at)?)
+                    .ok()?
+                    .chars()
+                    .next_back()
+            });
+            let after = (1..=4).find_map(|len| {
+                std::str::from_utf8(bytes.get(end..end.saturating_add(len).min(bytes.len()))?)
+                    .ok()?
+                    .chars()
+                    .next()
+            });
+            (!before.is_some_and(char::is_alphanumeric)
+                && !after.is_some_and(char::is_alphanumeric))
+            .then_some(at..end)
+        })
+}
+
+fn secret_occurs(bytes: &[u8], secret: &str) -> bool {
+    if secret.len() >= 8 {
+        find_bytes(bytes, secret.as_bytes()).is_some()
+    } else {
+        short_secret_spans(bytes, secret).next().is_some()
+    }
+}
+
 fn replace_secret(text: &str, secret: &str) -> String {
-    text.replace(secret, REDACTED)
+    if secret.len() >= 8 {
+        return text.replace(secret, REDACTED);
+    }
+    let mut out = String::new();
+    let mut kept = 0;
+    for range in short_secret_spans(text.as_bytes(), secret) {
+        if range.start < kept {
+            continue;
+        }
+        out.push_str(text.get(kept..range.start).unwrap_or_default());
+        out.push_str(REDACTED);
+        kept = range.end;
+    }
+    out.push_str(text.get(kept..).unwrap_or_default());
+    out
+}
+
+fn is_cookie(name: &str) -> bool {
+    name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie")
+}
+
+fn credential_context(name: &str) -> JsonContext {
+    if name.eq_ignore_ascii_case("token") || is_cookie(name) {
+        JsonContext::ApplicationCredential
+    } else {
+        JsonContext::Credential
+    }
 }
 
 fn string_end(text: &str, open: usize) -> usize {
@@ -1357,7 +1441,8 @@ fn is_explicit_secret_field(name: &str, purpose: Purpose) -> bool {
         | "usercode"
         | "codeverifier"
         | "authorizationtoken"
-        | "fallbackcredittoken" => true,
+        | "fallbackcredittoken"
+        | "xamzcredential" => true,
         _ => false,
     }
 }
@@ -1365,7 +1450,7 @@ fn is_explicit_secret_field(name: &str, purpose: Purpose) -> bool {
 pub(crate) fn is_secret_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     is_explicit_secret_field(name, Purpose::Traffic)
-        || contains_case_insensitive(SENSITIVE_QUERY_PARAMS, name)
+        || is_secret_header(name)
         || matches!(
             lower.as_str(),
             "key" | "secret" | "signature" | "sig" | "code" | "assertion"
@@ -1446,13 +1531,19 @@ fn url_spans(text: &str) -> Vec<Range<usize>> {
     let mut spans = Vec::new();
     let mut after = 0;
     for (at, _) in text.match_indices("://") {
-        let Some(scheme) = ["https", "http", "wss", "ws"].into_iter().find(|scheme| {
-            text.get(..at)
-                .is_some_and(|before| before.ends_with(scheme))
-        }) else {
+        let before = text.get(..at).unwrap_or_default();
+        let start = before
+            .char_indices()
+            .rev()
+            .find(|(_, c)| !c.is_ascii_alphanumeric() && !matches!(c, '+' | '-' | '.'))
+            .map_or(0, |(at, c)| at + c.len_utf8());
+        if !text
+            .get(start..at)
+            .and_then(|scheme| scheme.chars().next())
+            .is_some_and(|first| first.is_ascii_alphabetic())
+        {
             continue;
-        };
-        let start = at - scheme.len();
+        }
         if start < after {
             continue;
         }
