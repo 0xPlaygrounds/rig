@@ -1337,3 +1337,81 @@ async fn a_refusal_does_not_print_the_key_its_url_carried() {
     assert!(refusals[0].contains("got no reply"), "{refusals:?}");
     assert!(!error.to_string().contains(key), "{error}");
 }
+
+/// A streamed error reply gives rig-reqwest's bounded error text, and is
+/// still read to its end, so the recording keeps it whole.
+#[tokio::test]
+async fn a_streamed_error_reply_past_the_error_limit_is_kept_whole() {
+    use rig_core::http_client::HttpClientExt;
+
+    let oversized = "overloaded ".repeat(100 * 1024 / 11);
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/large");
+            then.status(529)
+                .header("content-type", "text/plain")
+                .body(oversized.clone());
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+
+    let error = cassette
+        .direct_http()
+        .send_streaming(post(&origin, "large"))
+        .await
+        .err()
+        .expect("a provider error");
+    let expected = format!(
+        "{}\n[Response body truncated after 64 KiB]",
+        oversized.get(..64 * 1024).expect("a long body")
+    );
+    assert_eq!(error.non_success_body(), Some(expected.as_str()));
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(
+        interactions
+            .first()
+            .and_then(|interaction| interaction.then.body.as_deref()),
+        Some(oversized.as_str())
+    );
+}
+
+/// An error reply whose body is cut short keeps the bytes that arrived, as
+/// rig-reqwest's own client does.
+#[tokio::test]
+async fn a_streamed_error_reply_cut_short_keeps_what_arrived() {
+    use rig_core::http_client::HttpClientExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a free port");
+    let origin = format!("http://{}", listener.local_addr().expect("address"));
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("a connection");
+        let mut request = [0_u8; 4096];
+        let _ = socket.read(&mut request).await;
+        let reply = b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain\r\ncontent-length: 1000\r\n\r\nthe partial detail";
+        socket.write_all(reply).await.expect("the reply is sent");
+    });
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+
+    let error = cassette
+        .direct_http()
+        .send_streaming(post(&origin, "cut"))
+        .await
+        .err()
+        .expect("a provider error");
+    assert_eq!(error.non_success_body(), Some("the partial detail"));
+    server.await.expect("the server ends");
+    assert!(cassette.try_finish().await.is_err());
+}

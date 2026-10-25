@@ -100,7 +100,9 @@ async fn forward(
         forward.origin,
         uri.path_and_query().map_or("/", |path| path.as_str())
     );
-    let mut request = http_client::Request::builder().method(method).uri(target);
+    let mut request = http_client::Request::builder()
+        .method(method)
+        .uri(target.as_str());
     for (name, value) in &headers {
         if name != header::HOST && !is_hop_by_hop_header(name.as_str()) {
             request = request.header(name, value);
@@ -131,7 +133,11 @@ async fn forward(
             }
             reply
         }
-        Err(error) => failure(format!("the proxy could not reach the provider: {error}")),
+        // A transport error names the URL, which can carry a key.
+        Err(error) => failure(
+            crate::scrub::Scrubber::for_request(&target, &headers)
+                .scrub_text(&format!("the proxy could not reach the provider: {error}")),
+        ),
     }
 }
 
@@ -344,10 +350,10 @@ impl HttpClientExt for Raw {
     }
 }
 
-/// `inner` with rig-reqwest's error semantics: a non-success reply is read
-/// whole and becomes [`rig_reqwest::non_success_error`], the error replay's
-/// rig-reqwest client gives for the same reply. The recorder beneath it sees
-/// the reply as the provider sent it, so the cassette keeps its exact bytes.
+/// `inner` with rig-reqwest's error semantics: a non-success reply becomes
+/// [`rig_reqwest::non_success_body_error`], the error replay's rig-reqwest
+/// client gives for the same reply. The reply is still read to its end, so
+/// the recorder beneath it keeps the exact bytes the provider sent.
 pub(crate) struct ProviderErrors(pub(crate) DynHttpClient);
 
 /// `sent`'s reply, or the provider error of a non-success one.
@@ -360,12 +366,9 @@ where
     let response = sent.await?;
     if !response.status().is_success() {
         let (parts, body) = response.into_parts();
-        let (bytes, failure) = match body.await {
-            Ok(bytes) => (bytes, None),
-            Err(error) => (Bytes::new(), Some(error.to_string())),
-        };
+        let mut body = stream::once(body);
         return Err(
-            rig_reqwest::non_success_error(parts.status, parts.headers, &bytes, failure).await,
+            rig_reqwest::non_success_body_error(parts.status, parts.headers, &mut body).await,
         );
     }
     Ok(response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) }))
@@ -411,18 +414,11 @@ impl HttpClientExt for ProviderErrors {
                 return Ok(response);
             }
             let (parts, mut body) = response.into_parts();
-            let mut bytes = Vec::new();
-            let mut failure = None;
-            while let Some(chunk) = body.next().await {
-                match chunk {
-                    Ok(chunk) => bytes.extend_from_slice(&chunk),
-                    Err(error) => {
-                        failure = Some(error.to_string());
-                        break;
-                    }
-                }
-            }
-            Err(rig_reqwest::non_success_error(parts.status, parts.headers, &bytes, failure).await)
+            let error =
+                rig_reqwest::non_success_body_error(parts.status, parts.headers, &mut body).await;
+            // The recorder keeps a reply only when it was read to its end.
+            while let Some(Ok(_)) = body.next().await {}
+            Err(error)
         }
     }
 }
