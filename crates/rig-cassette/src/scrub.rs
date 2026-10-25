@@ -197,11 +197,16 @@ pub(crate) struct PreparedBody {
     invalid_multipart: bool,
     pub(crate) sse: bool,
     pub(crate) was_decoded: bool,
+    pub(crate) decoding: Result<DecodeStatus, DecodeFailure>,
+    encoded_len: usize,
 }
 
 impl PreparedBody {
     fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
-        let bytes = decoded(raw, header_value(headers, "content-encoding"));
+        let (bytes, decoding) = match decoded(raw, header_value(headers, "content-encoding")) {
+            Ok(body) => (body.bytes, Ok(body.status)),
+            Err(error) => (Bytes::new(), Err(error)),
+        };
         let content_type = header_value(headers, "content-type");
         let is_multipart = content_type.is_some_and(|value| {
             value.split(';').next().is_some_and(|media_type| {
@@ -216,12 +221,17 @@ impl PreparedBody {
             .and_then(|boundary| multipart_slices(&bytes, &boundary))
             .filter(|layout| !layout.parts.is_empty());
         Self {
-            was_decoded: bytes.as_ref() != raw,
+            was_decoded: decoding == Ok(DecodeStatus::Decoded),
+            decoding,
+            encoded_len: raw.len(),
             bytes,
             invalid_multipart: is_multipart && multipart.is_none(),
             multipart,
             sse: content_type.is_some_and(is_sse),
         }
+    }
+    pub(crate) fn decode_failure(&self) -> Option<DecodeFailure> {
+        self.decoding.err()
     }
 }
 
@@ -279,6 +289,9 @@ impl Scrubber {
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
+        if body.decode_failure().is_some() {
+            return;
+        }
         if let Some(layout) = &body.multipart {
             for range in [&layout.preamble, &layout.epilogue] {
                 if let Some((text, _)) = body.bytes.get(range.clone()).and_then(text_prefix) {
@@ -311,6 +324,9 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_prepared(&mut self, body: PreparedBody) -> Bytes {
+        if body.decode_failure().is_some() {
+            return Bytes::from_static(REDACTED.as_bytes());
+        }
         if body.invalid_multipart {
             return Bytes::from_static(REDACTED.as_bytes());
         }
@@ -475,12 +491,7 @@ impl Scrubber {
             } else {
                 SecretSource::Wire
             };
-            self.learn(value, source);
-            if name.to_ascii_lowercase().contains("auth")
-                && let Some((_, credential)) = value.split_once(' ')
-            {
-                self.learn(credential.trim(), SecretSource::Wire);
-            }
+            self.learn_credential(value, source);
             if is_cookie(name) {
                 for cookie in value.split(';') {
                     if let Some((_, value)) = cookie.split_once('=') {
@@ -611,15 +622,7 @@ impl Scrubber {
                 } else {
                     SecretSource::Wire
                 };
-                self.learn(text, source);
-                if let Some((scheme, credential)) = text.split_once(' ')
-                    && matches!(
-                        scheme.to_ascii_lowercase().as_str(),
-                        "bearer" | "basic" | "token"
-                    )
-                {
-                    self.learn(credential, source);
-                }
+                self.learn_credential(text, source);
             }
             Value::Number(number)
                 if matches!(
@@ -660,6 +663,15 @@ impl Scrubber {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn learn_credential(&mut self, value: &str, source: SecretSource) {
+        self.learn(value, source);
+        if let Some((scheme, credential)) = value.split_once(char::is_whitespace)
+            && !scheme.is_empty()
+        {
+            self.learn(credential.trim(), source);
         }
     }
 
@@ -830,6 +842,14 @@ impl Scrubber {
         body: PreparedBody,
         chunk_ends: impl IntoIterator<Item = usize>,
     ) -> Vec<ScrubbedEvent> {
+        if body.decode_failure().is_some() {
+            return vec![ScrubbedEvent {
+                end: body.encoded_len,
+                event: None,
+                id: None,
+                data: serde_json::json!({"bytes":body.encoded_len}),
+            }];
+        }
         if body.invalid_multipart || body.multipart.is_some() {
             let end = body.bytes.len();
             let bytes = self.scrub_prepared(body);
@@ -970,7 +990,7 @@ impl Scrubber {
                 ) || self.learned.iter().any(|secret| {
                     matches!(
                         secret.source,
-                        SecretSource::Number | SecretSource::SoftNumber
+                        SecretSource::Wire | SecretSource::Number | SecretSource::SoftNumber
                     ) && secret.value == number.to_string()
                 }) {
                     *value = Value::String(REDACTED.to_owned());
@@ -1797,36 +1817,93 @@ pub(crate) fn text_prefix(bytes: &[u8]) -> Option<(&str, usize)> {
     }
 }
 
-/// `bytes` unwrapped from a gzip or deflate `content-encoding` in
-/// `headers`; as they are for another encoding, or one that does not
-/// decode within [`DECODED_LIMIT`].
-pub(crate) fn decoded(bytes: &[u8], encoding: Option<&str>) -> Bytes {
-    use std::io::Read;
-    let encoding = encoding.map(|value| value.trim().to_ascii_lowercase());
-    let mut out = Vec::new();
-    let read = match encoding.as_deref() {
-        Some("gzip" | "x-gzip") => flate2::read::MultiGzDecoder::new(bytes)
-            .take(DECODED_LIMIT)
-            .read_to_end(&mut out),
-        Some("deflate") => flate2::read::ZlibDecoder::new(bytes)
-            .take(DECODED_LIMIT)
-            .read_to_end(&mut out)
-            .or_else(|_| {
-                out.clear();
-                flate2::read::DeflateDecoder::new(bytes)
-                    .take(DECODED_LIMIT)
-                    .read_to_end(&mut out)
-            }),
-        _ => return Bytes::copy_from_slice(bytes),
-    };
-    match read {
-        Ok(len) if u64::try_from(len).is_ok_and(|len| len < DECODED_LIMIT) => out.into(),
-        _ => Bytes::copy_from_slice(bytes),
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecodeStatus {
+    NotEncoded,
+    Decoded,
+}
+
+#[derive(Debug)]
+pub(crate) struct DecodedBody {
+    pub(crate) bytes: Bytes,
+    pub(crate) status: DecodeStatus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecodeFailure {
+    UnsupportedCoding,
+    InvalidData,
+    OverLimit,
+}
+
+impl std::fmt::Display for DecodeFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::UnsupportedCoding => "unsupported content coding",
+            Self::InvalidData => "invalid encoded body",
+            Self::OverLimit => "decoded body exceeds the size limit",
+        })
     }
 }
 
-/// The most bytes a compressed body is unwrapped to; a larger one stays
-/// compressed, kept by its size.
+impl std::error::Error for DecodeFailure {}
+
+/// Decode supported content codings in reverse application order.
+/// Unsupported, invalid and oversized bodies have no inspectable result.
+pub(crate) fn decoded(bytes: &[u8], encoding: Option<&str>) -> Result<DecodedBody, DecodeFailure> {
+    decoded_with_limit(bytes, encoding, DECODED_LIMIT)
+}
+
+fn decoded_with_limit(
+    bytes: &[u8],
+    encoding: Option<&str>,
+    limit: u64,
+) -> Result<DecodedBody, DecodeFailure> {
+    use std::io::Read;
+    let coding = encoding.unwrap_or_default().trim();
+    let mut bytes = Bytes::copy_from_slice(bytes);
+    let mut status = DecodeStatus::NotEncoded;
+    if coding.is_empty() {
+        return Ok(DecodedBody { bytes, status });
+    }
+    let codings: Vec<_> = coding
+        .split(',')
+        .map(|value| value.trim().to_ascii_lowercase())
+        .collect();
+    if codings
+        .iter()
+        .any(|coding| !matches!(coding.as_str(), "identity" | "gzip" | "x-gzip" | "deflate"))
+    {
+        return Err(DecodeFailure::UnsupportedCoding);
+    }
+    for coding in codings.iter().rev() {
+        let mut out = Vec::new();
+        let read = match coding.as_str() {
+            "identity" => continue,
+            "gzip" | "x-gzip" => flate2::read::MultiGzDecoder::new(bytes.as_ref())
+                .take(limit.saturating_add(1))
+                .read_to_end(&mut out),
+            "deflate" => flate2::read::ZlibDecoder::new(bytes.as_ref())
+                .take(limit.saturating_add(1))
+                .read_to_end(&mut out)
+                .or_else(|_| {
+                    out.clear();
+                    flate2::read::DeflateDecoder::new(bytes.as_ref())
+                        .take(limit.saturating_add(1))
+                        .read_to_end(&mut out)
+                }),
+            _ => return Err(DecodeFailure::UnsupportedCoding),
+        };
+        let len = read.map_err(|_| DecodeFailure::InvalidData)?;
+        if !u64::try_from(len).is_ok_and(|len| len <= limit) {
+            return Err(DecodeFailure::OverLimit);
+        }
+        bytes = out.into();
+        status = DecodeStatus::Decoded;
+    }
+    Ok(DecodedBody { bytes, status })
+}
+
 const DECODED_LIMIT: u64 = 256 << 20;
 
 fn header_value<'a>(headers: &[(&'a str, &'a str)], name: &str) -> Option<&'a str> {

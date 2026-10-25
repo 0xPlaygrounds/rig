@@ -8,7 +8,7 @@ use rig_core::http_client::{Bytes, HeaderMap, MultipartForm, multipart::PartCont
 use serde_json::{Map, Value, json};
 
 use super::{End, Exchange, RequestBody};
-use crate::scrub::{PreparedBody, Purpose, Scrubber};
+use crate::scrub::{PreparedBody, Purpose, REDACTED, Scrubber};
 
 /// The version of the line format, the `v` of every line. A change that
 /// renames, removes or retypes a field takes the next one.
@@ -42,9 +42,24 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .flat_map(crate::scrub::header_pairs),
         raw_response.as_deref(),
     );
-    let request_body = prepared
+    let uninspected = prepared
         .request_body
-        .map(|body| scrubber.scrub_prepared(body));
+        .as_ref()
+        .is_some_and(|body| body.decode_failure().is_some())
+        || prepared
+            .response_body
+            .as_ref()
+            .is_some_and(|body| body.decode_failure().is_some());
+    if uninspected {
+        bases.0.clear();
+    }
+    let request_body = if uninspected {
+        None
+    } else {
+        prepared
+            .request_body
+            .map(|body| scrubber.scrub_prepared(body))
+    };
     let response_body = prepared.response_body;
 
     let mut line = Map::new();
@@ -62,12 +77,22 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
 
     let mut request = Map::new();
     request.insert("method".into(), json!(exchange.method));
-    request.insert("url".into(), json!(scrubber.scrub_url(&exchange.uri)));
+    request.insert(
+        "url".into(),
+        json!(if uninspected {
+            REDACTED.to_owned()
+        } else {
+            scrubber.scrub_url(&exchange.uri)
+        }),
+    );
     request.insert(
         "headers".into(),
-        headers(&mut scrubber, &exchange.request_headers),
+        headers(&mut scrubber, &exchange.request_headers, !uninspected),
     );
     match (&exchange.request_body, &request_body) {
+        (RequestBody::Bytes(bytes), _) if uninspected => {
+            request.insert("body".into(), json!({"bytes":bytes.len()}));
+        }
         (RequestBody::Bytes(_), Some(bytes)) if bytes.is_empty() => {}
         (RequestBody::Bytes(_), Some(bytes)) => {
             let body = body(bytes);
@@ -105,7 +130,7 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             }
         }
         (RequestBody::Multipart(form), _) => {
-            request.insert("parts".into(), parts(&mut scrubber, form));
+            request.insert("parts".into(), parts(&mut scrubber, form, !uninspected));
         }
         (RequestBody::Bytes(_), None) => {}
     }
@@ -115,9 +140,17 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         let mut response = Map::new();
         response.insert("status".into(), json!(status.as_u16()));
         if let Some(headers_map) = response_headers {
-            response.insert("headers".into(), headers(&mut scrubber, headers_map));
+            response.insert(
+                "headers".into(),
+                headers(&mut scrubber, headers_map, !uninspected),
+            );
         }
-        if let Some(prepared) = response_body {
+        if uninspected {
+            response.insert(
+                "body".into(),
+                json!({"bytes":raw_response.as_ref().map_or(0, Bytes::len)}),
+            );
+        } else if let Some(prepared) = response_body {
             if let Some(chunks) = &exchange.chunks {
                 response.insert("events".into(), events(&mut scrubber, chunks, prepared));
             } else {
@@ -140,7 +173,14 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     }
     line.insert("timings".into(), Value::Object(timings));
     if let Some(error) = &exchange.error {
-        line.insert("error".into(), json!(scrubber.scrub_text(error)));
+        line.insert(
+            "error".into(),
+            json!(if uninspected {
+                REDACTED.to_owned()
+            } else {
+                scrubber.scrub_text(error)
+            }),
+        );
     }
     let end = match exchange.end {
         End::Complete => "complete",
@@ -269,7 +309,10 @@ fn ms(at: Duration) -> u64 {
 
 /// Headers as an object of lowercase names; a repeated header's values as
 /// an array. A credential header's value is [`REDACTED`].
-fn headers(scrubber: &mut Scrubber, headers: &HeaderMap) -> Value {
+fn headers(scrubber: &mut Scrubber, headers: &HeaderMap, inspected: bool) -> Value {
+    if !inspected {
+        return Value::Object(Map::new());
+    }
     let mut out = Map::new();
     for name in headers.keys() {
         let values: Vec<Value> = headers
@@ -297,12 +340,21 @@ fn body(bytes: &[u8]) -> Value {
     }
 }
 
-fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
+fn parts(scrubber: &mut Scrubber, form: &MultipartForm, inspected: bool) -> Value {
     form.parts()
         .iter()
         .map(|part| {
             let mut out = Map::new();
-            for (name, value) in scrubber.scrub_part_metadata(&crate::scrub::part_metadata(part)) {
+            let metadata = crate::scrub::part_metadata(part);
+            let metadata = if inspected {
+                scrubber.scrub_part_metadata(&metadata)
+            } else {
+                metadata
+                    .into_iter()
+                    .map(|(name, _)| (name, REDACTED.to_owned()))
+                    .collect()
+            };
+            for (name, value) in metadata {
                 let name = if name == "content-type" {
                     "content_type".to_owned()
                 } else {
@@ -312,7 +364,11 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
             }
             let value = match part.content() {
                 PartContent::Text(text) => {
-                    body(scrubber.scrub_part_value(part.name(), text).as_bytes())
+                    if inspected {
+                        body(scrubber.scrub_part_value(part.name(), text).as_bytes())
+                    } else {
+                        json!({"bytes":text.len()})
+                    }
                 }
                 PartContent::Binary(bytes) => json!({ "bytes": bytes.len() }),
             };

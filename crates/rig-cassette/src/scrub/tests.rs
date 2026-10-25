@@ -256,7 +256,7 @@ fn described_credentials_keep_their_secret_context_and_schemas_keep_their_defini
 }
 
 #[test]
-fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secrets() {
+fn prose_does_not_promote_values_to_numbers_but_authoritative_credentials_do() {
     for purpose in [Purpose::Cassette, Purpose::Traffic] {
         let original = json!({
             "type": "message",
@@ -286,14 +286,10 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
         );
         let mut scrubber = Scrubber::new(purpose);
         scrubber.learn_header("x-api-key", "200");
-        assert_eq!(
-            scrubber.scrub_body(r#"{"value":200,"text":"[REDACTED]"}"#),
-            if purpose == Purpose::Traffic {
-                r#"{"value":200,"text":"[REDACTED]"}"#
-            } else {
-                r#"{"text":"[REDACTED]","value":200}"#
-            }
-        );
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(r#"{"value":200,"text":"200"}"#))
+                .expect("JSON");
+        assert_eq!(output, json!({"value":REDACTED,"text":REDACTED}));
         scrubber.learn_body(r#"{"password":1234567890}"#);
         assert_eq!(
             scrubber.scrub_body(r#"{"value":1234567890}"#),
@@ -801,8 +797,7 @@ fn linux_and_root_homes_are_covered_too() {
     );
 }
 
-/// The path sits inside a JSON string in practice, so the rule has to stop
-/// at the closing quote rather than swallowing the rest of the body.
+/// A JSON string's closing quote terminates the path.
 #[test]
 fn a_path_inside_json_stops_at_the_quote() {
     let scrubbed =
@@ -825,13 +820,7 @@ fn every_occurrence_is_replaced() {
     );
 }
 
-/// A home directory containing a space is the case that makes whitespace a
-/// forbidden terminator.
-///
-/// macOS creates `/Users/John Smith` from a full account name. Ending the
-/// path at the space kept `John` as the basename and copied `Smith/...`
-/// through untouched — the operator's name in the fixture, in output the
-/// rule then considers already-scrubbed, so the safety scan reports nothing.
+/// Spaces remain part of a home-directory account name.
 #[test]
 fn a_home_directory_containing_a_space_is_fully_replaced() {
     let scrubbed = scrub_local_filesystem_paths(r#"{"model":"/Users/John Smith/models/m.gguf"}"#);
@@ -840,21 +829,14 @@ fn a_home_directory_containing_a_space_is_fully_replaced() {
     assert!(!scrubbed.contains("Smith"), "{scrubbed}");
 }
 
-/// Re-scrubbing scrubbed output must not change it — the cassette safety
-/// check re-scrubs its own output, so a non-idempotent rule fails there.
+/// Scrubbing is idempotent.
 #[test]
 fn the_rule_is_idempotent() {
     let once = scrub_local_filesystem_paths("/Users/a/.cache/m.gguf");
     assert_eq!(scrub_local_filesystem_paths(&once), once);
 }
 
-/// A URL that merely *contains* one of these segments is not a local path
-/// and must survive verbatim.
-///
-/// This is not hypothetical: anthropic's recorded web-search fixtures cite
-/// `https://math.ucr.edu/home/baez/physics/...`, and an unanchored rule
-/// rewrote it — corrupting three committed fixtures and failing the safety
-/// scan with "not in scrubbed cassette form".
+/// Home-directory segments inside public URLs stay unchanged.
 #[test]
 fn a_url_containing_a_home_segment_is_not_a_local_path() {
     let body = r#"{"url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"}"#;
@@ -879,8 +861,7 @@ fn a_local_path_beside_a_url_is_still_scrubbed() {
     );
 }
 
-/// Text carrying no path is untouched, so the rule cannot churn unrelated
-/// fixtures.
+/// Text without a home path stays unchanged.
 #[test]
 fn unrelated_text_is_untouched() {
     let body = r#"{"model":"gpt-4o-mini","choices":[]}"#;
