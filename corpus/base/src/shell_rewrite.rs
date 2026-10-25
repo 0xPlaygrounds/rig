@@ -39,10 +39,9 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
+use rig_harness::rig_tools::Shell;
 use serde::Deserialize;
 
-/// The tool whose calls are rewritten.
-const SHELL: &str = "shell";
 /// The rules' file in `RIG_HOME`.
 pub const FILE: &str = "shell-rewrite.toml";
 
@@ -337,7 +336,7 @@ fn rewrite(
         .or_else(|| std::env::var_os("PATH"));
     for (call, mut request, &ForAgent(agent)) in &mut calls {
         let arguments = &request.call.function.arguments;
-        if request.call.function.name.as_str() != SHELL {
+        if request.call.function.name.as_str() != Shell::NAME {
             continue;
         }
         let Some(command) = arguments.get("command").and_then(|c| c.as_str()) else {

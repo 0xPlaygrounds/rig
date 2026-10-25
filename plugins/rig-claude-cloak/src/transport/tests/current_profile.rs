@@ -9,6 +9,7 @@ async fn primary_request_matches_current_profile_control() -> anyhow::Result<()>
     )))?;
     let transport = OAuthTransport {
         inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
+        home: Default::default(),
         device: "synthetic-device".into(),
         session: "synthetic-session".into(),
         credentials: Some(("synthetic-token".into(), None)),
@@ -64,6 +65,7 @@ async fn primary_request_matches_current_profile_control() -> anyhow::Result<()>
 async fn agent_request_remains_primary_without_thinking_or_tools() -> anyhow::Result<()> {
     let transport = OAuthTransport {
         inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
+        home: Default::default(),
         device: "synthetic-device".into(),
         session: "synthetic-session".into(),
         credentials: Some(("synthetic-token".into(), None)),

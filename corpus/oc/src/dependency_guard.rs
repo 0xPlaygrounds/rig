@@ -25,7 +25,9 @@ use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::workspace::Workspace;
-use rig_harness::rig_tools::{EditArgs, Replacement, ShellArgs, WriteArgs, edit};
+use rig_harness::rig_tools::{
+    Edit, EditArgs, Replacement, Shell, ShellArgs, Write, WriteArgs, edit,
+};
 use serde::Deserialize;
 
 /// Who decides the calls this plugin refuses.
@@ -235,12 +237,12 @@ impl Probe {
         let function = &request.call.function;
         let arguments = &function.arguments;
         match function.name.as_str() {
-            "shell" => {
+            Shell::NAME => {
                 let ShellArgs { command, .. } = ShellArgs::deserialize(arguments).ok()?;
                 let packages = installs(&command);
                 (!packages.is_empty()).then_some(Self::Shell { command, packages })
             }
-            name @ ("edit" | "write") => {
+            name @ (Edit::NAME | Write::NAME) => {
                 let Touches::Writes(Scope::Paths(paths)) = &footprint.0 else {
                     return None;
                 };
@@ -248,7 +250,7 @@ impl Probe {
                     return None;
                 };
                 let kind = Manifest::of(path)?;
-                let change = if name == "edit" {
+                let change = if name == Edit::NAME {
                     Change::Edit(EditArgs::deserialize(arguments).ok()?.edits)
                 } else {
                     Change::Write(WriteArgs::deserialize(arguments).ok()?.content)

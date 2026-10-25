@@ -37,9 +37,6 @@ pub const DEFAULT_ALLOW: &[&str] = &[
     "PATH", "HOME", "USER", "SHELL", "LANG", "LC_*", "TERM", "TMPDIR",
 ];
 
-/// The tool whose command text is checked for denied variables.
-const SHELL: &str = "shell";
-
 /// Who decides the calls this plugin refuses.
 const DECIDER: &str = "env-policy";
 
@@ -434,7 +431,7 @@ fn prepare(
             .ok()
             .and_then(|(title, name)| agent_name(title, name));
         let has_section = name.is_some_and(|name| files.policy.has_agent(name));
-        if request.call.function.name.as_str() != SHELL || !has_section {
+        if request.call.function.name.as_str() != Shell::NAME || !has_section {
             continue;
         }
         let launcher = files.launcher_for(name);
@@ -471,7 +468,7 @@ fn refuse_denied(
 ) {
     let effective = policy.effective(None);
     for (request, mut decision) in &mut calls {
-        if request.call.function.name.as_str() != SHELL {
+        if request.call.function.name.as_str() != Shell::NAME {
             continue;
         }
         let arguments = &request.call.function.arguments;

@@ -179,6 +179,7 @@ async fn roundtrip() -> TestResult<()> {
         Ok::<_, std::io::Error>((first, second))
     });
     let client = DynHttpClient::new(OAuthTransport {
+        home: Default::default(),
         inner: DynHttpClient::new(Loopback {
             inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(
                 reqwest::Client::builder()

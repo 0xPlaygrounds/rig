@@ -94,12 +94,8 @@ fn private_dir(path: &Path) -> Result<(), AuthError> {
     Ok(())
 }
 
-fn directory() -> Result<PathBuf, AuthError> {
-    let home = if let Some(path) = std::env::var_os("RIG_HOME") {
-        PathBuf::from(path)
-    } else {
-        PathBuf::from(std::env::var_os("HOME").ok_or(AuthError::Storage)?).join(".rig")
-    };
+/// This plugin's directory under the agent's home.
+fn directory(home: &Path) -> Result<PathBuf, AuthError> {
     // The parent is the existing agent home; only this plugin's directory is managed here.
     let path = home.join("anthropic-oauth");
     private_dir(&path)?;
@@ -518,8 +514,8 @@ fn browser_command(url: &Url) -> tokio::process::Command {
 }
 
 /// Opens a browser for an explicit PKCE login and stores credentials privately.
-pub async fn login() -> Result<(), AuthError> {
-    let dir = directory()?;
+pub async fn login(home: &Path) -> Result<(), AuthError> {
+    let dir = directory(home)?;
     let _lock = lock(&dir)?;
     let (listener, ipv6) = callback_listeners(54545).await?;
     let redirect = format!(
@@ -560,8 +556,8 @@ async fn exchange_code(
 }
 
 /// Returns a matching token and account UUID under one refresh lock. Never starts login.
-pub async fn credentials_for_request() -> Result<(String, Option<String>), AuthError> {
-    let dir = directory()?;
+pub async fn credentials_for_request(home: &Path) -> Result<(String, Option<String>), AuthError> {
+    let dir = directory(home)?;
     credentials_in(&dir, &OAuthClient::production()?).await
 }
 
@@ -587,8 +583,8 @@ async fn credentials_in(
 }
 
 /// Deletes local credentials. Fails if login or refresh is currently active.
-pub fn logout() -> Result<(), AuthError> {
-    logout_in(&directory()?)
+pub fn logout(home: &Path) -> Result<(), AuthError> {
+    logout_in(&directory(home)?)
 }
 
 fn logout_in(dir: &Path) -> Result<(), AuthError> {

@@ -20,6 +20,7 @@ use std::time::Instant;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_core::tool::{FilesChanged, FilesRead};
 use rig_harness::prelude::*;
+use rig_harness::rig_tools::Shell;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -432,7 +433,7 @@ fn note_work(
         let root = root.clone();
         spawn_scan(&mut commands, &wake, move || scan_paths(&root, changed));
     }
-    if request.call.function.name.as_str() == "shell" {
+    if request.call.function.name.as_str() == Shell::NAME {
         let launcher = processes.launcher();
         let (status, top) = (launcher.command("git"), launcher.command("git"));
         spawn_scan(&mut commands, &wake, move || {

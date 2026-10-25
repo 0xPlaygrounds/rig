@@ -14,11 +14,18 @@ mod highlight;
 mod looks;
 
 use rig_harness::prelude::*;
+use rig_harness::rig_tools::{Edit, Read, Search, Shell, Write};
 use rig_tui::{AppToolRenderersExt, ToolRenderer};
 
 /// The tools this plugin draws: the default plugins' looks of them are
 /// turned off.
-pub const TOOLS: [&str; 5] = ["edit", "write", "shell", "read", "search"];
+pub const TOOLS: [&str; 5] = [
+    Edit::NAME,
+    Write::NAME,
+    Shell::NAME,
+    Read::NAME,
+    Search::NAME,
+];
 
 /// Draws the built-in tools' calls the way they read best.
 #[derive(Default)]

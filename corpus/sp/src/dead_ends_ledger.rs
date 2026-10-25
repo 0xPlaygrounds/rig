@@ -23,15 +23,13 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Section;
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, ToolOutput};
+use rig_harness::rig_tools::Shell;
 use rig_harness::rig_tools::split_status;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// The tool with which the model records a dead end.
 pub const DEAD_END: &str = "dead_end";
-
-/// The tool whose failures are recorded and warned about.
-const SHELL: &str = "shell";
 
 /// The tag around the ledger in the system prompt.
 pub const TAG: &str = "known_dead_ends";
@@ -402,7 +400,7 @@ fn review_shell(
 ) {
     for (call, request, &ForAgent(agent), of, published, mut outcome) in &mut calls {
         commands.entity(call).insert(Checked);
-        if request.call.function.name.as_str() != SHELL {
+        if request.call.function.name.as_str() != Shell::NAME {
             continue;
         }
         let arguments = serde_json::Value::Object(request.call.function.arguments.clone());

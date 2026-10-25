@@ -13,10 +13,8 @@ use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
+use rig_harness::rig_tools::Shell;
 use rig_tools::process::Launcher;
-
-/// The tool the sandbox guards, the default shell.
-pub const SHELL: &str = "shell";
 
 /// What a refused call says when no sandbox program was found.
 pub const UNAVAILABLE: &str = "sandbox unavailable";
@@ -308,7 +306,7 @@ fn refuse_unsandboxed(
         return;
     }
     for (request, mut decision) in &mut calls {
-        if request.call.function.name.as_str() == SHELL {
+        if request.call.function.name.as_str() == Shell::NAME {
             decision.decide(
                 Decider::plugin("shell-sandbox"),
                 Outcome::refused(format!(
@@ -342,7 +340,7 @@ fn hint(
             .ok()
             .flatten()
             .is_some_and(|status| status != ExitStatus::Exited(0));
-        if request.call.function.name.as_str() != SHELL || !failed {
+        if request.call.function.name.as_str() != Shell::NAME || !failed {
             continue;
         }
         let result = outcome.tool_result();

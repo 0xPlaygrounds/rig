@@ -10,7 +10,8 @@
 //!   ([`Review`], named "reviewing", which the agent's status shows) holds
 //!   that end. It diffs the working tree against the snapshot and, when
 //!   the diff is not empty, spawns a reviewer: a helper agent
-//!   ([`SpawnSubagent`], [`Reviewer`]) on [`ReviewSettings::model`] with
+//!   ([`SpawnSubagent`], [`Reviewer`]) on [`ReviewSettings::model`], or
+//!   on the agent's own model when that is unset, with
 //!   its prompt and the read-only tools, briefed with the user's request
 //!   and the diff.
 //! - Findings go to the agent as a queued message headed "Reviewer (model)
@@ -55,8 +56,9 @@ pub const DEFAULT_PROMPT: &str = "You review the changes another coding agent ju
 #[derive(Resource, Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct ReviewSettings {
-    /// The reviewer's catalog model, as `vendor/model`.
-    pub model: String,
+    /// The reviewer's catalog model, as `vendor/model`; unset, the
+    /// reviewed agent's own.
+    pub model: Option<String>,
     /// The reviewer's system prompt.
     pub prompt: String,
     /// The tools the reviewer may use; every read-only tool when not set.
@@ -71,7 +73,7 @@ pub struct ReviewSettings {
 impl Default for ReviewSettings {
     fn default() -> Self {
         Self {
-            model: "openai/gpt-5.1".to_owned(),
+            model: None,
             prompt: DEFAULT_PROMPT.to_owned(),
             tools: None,
             max_reviews: 1,
@@ -85,7 +87,7 @@ impl Default for ReviewSettings {
 #[reflect(Resource, Saved, Clone, Debug)]
 pub struct AutoReview(pub bool);
 
-/// On a reviewer agent: the model it reviews with, as configured.
+/// On a reviewer agent: the model it reviews with.
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Reviewer(pub String);
@@ -194,7 +196,7 @@ fn pool() -> &'static TaskPool {
 }
 
 /// A review of `agent`'s changes since `base`.
-fn review(agent: Entity, base: Option<String>, asked: bool, model: &str) -> impl Bundle {
+fn review(agent: Entity, base: Option<String>, asked: bool, model: Option<&str>) -> impl Bundle {
     let kind = EffectKind::Custom {
         kind: REVIEW.into(),
         payload: json!({ "model": model, "asked": asked }),
@@ -316,7 +318,7 @@ fn review_proposed_end(
             continue;
         }
         reviews.done += 1;
-        let review = review(agent, Some(base.clone()), false, &settings.model);
+        let review = review(agent, Some(base.clone()), false, settings.model.as_deref());
         commands.spawn((review, CallOf(turn), HoldOf(turn)));
     }
 }
@@ -349,7 +351,7 @@ fn take_diff(
 fn diff_taken(
     done: On<Add<Done<Diff>>>,
     reviews: Query<(&Review, &ForAgent, &Done<Diff>)>,
-    agents: Query<(&Reviews, &ToolAccess)>,
+    agents: Query<(&Reviews, &ToolAccess, Option<&ModelChoice>)>,
     tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<ReviewSettings>,
     mut decisions: Decisions,
@@ -361,7 +363,7 @@ fn diff_taken(
     else {
         return;
     };
-    let Ok((reviews, access)) = agents.get(agent) else {
+    let Ok((reviews, access, own)) = agents.get(agent) else {
         return;
     };
     let diff = match diff {
@@ -402,9 +404,10 @@ fn diff_taken(
     let brief = format!(
         "The user asked the agent:\n\n{request}\n\nThe agent's changes:\n\n```diff\n{diff}\n```"
     );
-    let title = format!("review ({})", short_model(&settings.model));
+    let model = settings.model.as_ref().or(own.map(|own| &own.0));
+    let title = format!("review ({})", short_model(model.map_or("", String::as_str)));
     let reviewer = SpawnSubagent {
-        model: Some(settings.model.clone()),
+        model: settings.model.clone(),
         tools: Some(allowed),
         ..SpawnSubagent::helper(title)
             .brief(brief)
@@ -420,7 +423,7 @@ fn reviewer_spawned(
     settled: On<Add<Settled>>,
     requests: Query<(&ChildOf, &Outcome, Option<&SpawnedAgent>), With<SpawnSubagent>>,
     reviews: Query<&ForAgent, With<Review>>,
-    settings: Res<ReviewSettings>,
+    choices: Query<&ModelChoice>,
     mut decisions: Decisions,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -434,9 +437,10 @@ fn reviewer_spawned(
     };
     match (spawned, &outcome.0) {
         (Some(&SpawnedAgent(reviewer)), _) => {
+            let model = choices.get(reviewer).map(|choice| choice.0.clone());
             commands
                 .entity(reviewer)
-                .insert(Reviewer(settings.model.clone()));
+                .insert(Reviewer(model.unwrap_or_default()));
             commands.entity(review).try_insert(ReviewedBy(reviewer));
         }
         (None, result) => {
@@ -589,7 +593,7 @@ fn review_command(
             }
             Ok((mut reviews, false)) => {
                 reviews.done += 1;
-                commands.spawn(review(agent, None, true, &settings.model));
+                commands.spawn(review(agent, None, true, settings.model.as_deref()));
             }
         },
         other => {

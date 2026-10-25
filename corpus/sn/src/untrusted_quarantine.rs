@@ -24,6 +24,7 @@ use regex::{Regex, RegexBuilder};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::{ChangeKind, FilesChanged, FilesRead};
+use rig_harness::rig_tools::Shell;
 use serde::{Deserialize, Serialize};
 
 /// This plugin's name, the author of its asides and edits.
@@ -505,7 +506,7 @@ fn guard(
         let reaches = tools
             .iter()
             .any(|def| def.0.name == name && def.0.annotations.open_world());
-        if !(name == "shell" || writes || reaches) {
+        if !(name == Shell::NAME || writes || reaches) {
             continue;
         }
         if !answerers.can_answer(Some(agent)) {

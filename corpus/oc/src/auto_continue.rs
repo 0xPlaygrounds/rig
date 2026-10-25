@@ -32,6 +32,7 @@ use rig_harness::rig_core::catalog::ReasoningSupport;
 use rig_harness::rig_core::completion::{CompletionResponse, FinishReason, Reasoning};
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::{Message, Text};
+use rig_harness::rig_tools::Write;
 use rig_tui::ratatui::style::Style;
 use rig_tui::{MarkIn, TextMark, TranscriptView};
 use serde::Deserialize;
@@ -302,7 +303,7 @@ fn note(so_far: &Continuing) -> String {
          it again, complete.",
         so_far.cut.join(", ")
     ));
-    if so_far.cut.iter().any(|tool| tool == "write") {
+    if so_far.cut.iter().any(|tool| tool == Write::NAME) {
         note.push_str(
             " The file is too long for one reply: write its first part with `write`, then add \
              the rest in several `edit` calls.",
