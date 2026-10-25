@@ -272,8 +272,8 @@ pub struct MessagesDecoder {
     /// Whether the dialect prices cache writes by their TTL split
     /// ([`Quirks::cache_ttl_pricing`](super::wire::Quirks::cache_ttl_pricing)).
     cache_ttl_pricing: bool,
-    /// The counters `message_start` reported, for a terminal `message_delta`
-    /// that does not repeat them.
+    /// The counters `message_start` and each later `message_delta` before the
+    /// last reported, for a terminal `message_delta` that does not repeat them.
     start: Counts,
     message_id: Option<String>,
     response_model: Option<String>,
@@ -625,8 +625,8 @@ impl MessagesDecoder {
         )
     }
 
-    /// The stream's terminal `message_delta` counters, falling back to
-    /// `message_start`'s for those it omits.
+    /// A `message_delta`'s counters, falling back to the running ones for
+    /// those it omits.
     fn terminal(&self, usage: Option<&Value>) -> Counts {
         let (terminal, start) = (Counts::of(usage), self.start.clone());
         Counts {
@@ -690,8 +690,12 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 let delta = event.fields.get("delta");
                 self.note_container(delta.and_then(|delta| delta.get("container")));
                 // Only a `message_delta` carrying a stop reason is the
-                // provider's end; without one it is a no-op.
+                // provider's end; without one its counters update the
+                // running ones, as they do the reassembled reply.
                 let Some(reason) = delta.and_then(|delta| delta.str("stop_reason")) else {
+                    if let Some(usage) = event.fields.get("usage") {
+                        self.start = self.terminal(Some(usage));
+                    }
                     return Ok(Flow::More);
                 };
                 let usage = self.terminal(event.fields.get("usage"));

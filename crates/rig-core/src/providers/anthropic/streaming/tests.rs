@@ -1553,6 +1553,28 @@ fn a_reply_without_a_requested_model_is_priced_as_the_model_it_names() {
     assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
 }
 
+/// A split in a `message_delta` before the last is priced, as the
+/// reassembled reply holds it.
+#[test]
+fn a_split_from_an_earlier_message_delta_is_priced() {
+    let frames = [
+        json!({"type": "message_start", "message": {"id": "msg", "role": "assistant",
+            "content": [], "model": CLAUDE_OPUS_5_5, "stop_reason": null,
+            "usage": {"input_tokens": 4, "output_tokens": 0, "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 22_002}}}),
+        json!({"type": "message_delta", "delta": {"stop_reason": null},
+            "usage": {"cache_creation":
+                {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 22_002}}}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 8}}),
+    ];
+    let Some(cost) = cost_of(Quirks::anthropic(), CLAUDE_OPUS_5_5, &frames) else {
+        panic!("the catalog prices Opus 5.5");
+    };
+    assert!(cost.is_complete(), "{cost:?}");
+    assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
+}
+
 /// A malformed split in the terminal `message_delta` replaces a valid one
 /// from `message_start`, so the writes stay unpriced.
 #[test]
