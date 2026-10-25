@@ -24,46 +24,51 @@ enum Use {
     WriteText,
 }
 
+/// A clipboard this machine may have.
+#[derive(Clone, Copy)]
+enum Backend {
+    Wayland,
+    X11,
+    Mac,
+}
+
+impl Backend {
+    /// The program and arguments that do `what` with this clipboard.
+    fn command(self, what: Use) -> (&'static str, &'static [&'static str]) {
+        match (self, what) {
+            (Self::Wayland, Use::ReadText) => ("wl-paste", &["--no-newline"]),
+            (Self::Wayland, Use::ReadImage) => {
+                ("wl-paste", &["--no-newline", "--type", "image/png"])
+            }
+            (Self::Wayland, Use::WriteText) => ("wl-copy", &[]),
+            (Self::X11, Use::ReadText) => ("xclip", &["-selection", "clipboard", "-out"]),
+            (Self::X11, Use::ReadImage) => (
+                "xclip",
+                &["-selection", "clipboard", "-target", "image/png", "-out"],
+            ),
+            (Self::X11, Use::WriteText) => ("xclip", &["-selection", "clipboard", "-in"]),
+            (Self::Mac, Use::ReadText) => ("pbpaste", &[]),
+            (Self::Mac, Use::ReadImage) => ("pngpaste", &["-"]),
+            (Self::Mac, Use::WriteText) => ("pbcopy", &[]),
+        }
+    }
+}
+
 /// The programs that do `what` on this machine, in the order tried.
 fn programs(what: Use) -> Vec<(&'static str, &'static [&'static str])> {
-    let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
-    let x11 = std::env::var_os("DISPLAY").is_some();
-    let mac = cfg!(target_os = "macos");
-    let all: [(bool, Use, &'static str, &'static [&'static str]); 9] = [
-        (wayland, Use::ReadText, "wl-paste", &["--no-newline"]),
-        (
-            wayland,
-            Use::ReadImage,
-            "wl-paste",
-            &["--no-newline", "--type", "image/png"],
-        ),
-        (wayland, Use::WriteText, "wl-copy", &[]),
-        (
-            x11,
-            Use::ReadText,
-            "xclip",
-            &["-selection", "clipboard", "-out"],
-        ),
-        (
-            x11,
-            Use::ReadImage,
-            "xclip",
-            &["-selection", "clipboard", "-target", "image/png", "-out"],
-        ),
-        (
-            x11,
-            Use::WriteText,
-            "xclip",
-            &["-selection", "clipboard", "-in"],
-        ),
-        (mac, Use::ReadText, "pbpaste", &[]),
-        (mac, Use::ReadImage, "pngpaste", &["-"]),
-        (mac, Use::WriteText, "pbcopy", &[]),
-    ];
-    all.into_iter()
-        .filter(|(here, kind, _, _)| *here && *kind == what)
-        .map(|(_, _, program, args)| (program, args))
-        .collect()
+    [
+        std::env::var_os("WAYLAND_DISPLAY")
+            .is_some()
+            .then_some(Backend::Wayland),
+        std::env::var_os("DISPLAY")
+            .is_some()
+            .then_some(Backend::X11),
+        cfg!(target_os = "macos").then_some(Backend::Mac),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|backend| backend.command(what))
+    .collect()
 }
 
 /// The error for a clipboard none of `programs` could serve.

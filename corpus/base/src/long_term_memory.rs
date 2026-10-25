@@ -11,7 +11,7 @@
 //! words with the user's message, and every pinned one, are added to that
 //! message in each request of the turn, after a cache point of the
 //! request, and never to the saved conversation. `/memory` lists them,
-//! `/memory edit` opens the files in `$EDITOR` in the terminal view, and
+//! `/memory edit` opens files in `$VISUAL` or `$EDITOR` in the terminal view, and
 //! `/memory off` and `/memory on` stop and restart the recall for the
 //! session.
 
@@ -494,10 +494,10 @@ fn memory(
             "Memories are recalled again.".to_owned()
         }
         "edit" if view.0 => {
-            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
-            let mut words = editor.split_whitespace();
-            let mut command = processes.launcher().command(words.next().unwrap_or("vi"));
-            command.args(words);
+            let line = corpus_shared::editor::line();
+            let (program, args) = corpus_shared::editor::words(line.as_deref());
+            let mut command = processes.launcher().command(program);
+            command.args(args);
             for path in [&memories.project, &memories.user] {
                 if let Some(dir) = path.parent() {
                     fs::create_dir_all(dir).ok();

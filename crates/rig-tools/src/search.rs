@@ -111,11 +111,7 @@ impl SearchArgs {
 
     /// Which files it searches.
     pub fn listing(&self) -> Listing {
-        match self.hidden {
-            true => Listing::Hidden,
-            false => Listing::Visible,
-        }
-        .for_glob(self.glob.as_deref())
+        Listing::from_options(self.hidden, self.glob.as_deref())
     }
 }
 

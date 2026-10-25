@@ -90,11 +90,7 @@ impl ListArgs {
 
     /// Which files it lists.
     pub fn listing(&self) -> Listing {
-        match self.hidden {
-            true => Listing::Hidden,
-            false => Listing::Visible,
-        }
-        .for_glob(self.glob.as_deref())
+        Listing::from_options(self.hidden, self.glob.as_deref())
     }
 }
 

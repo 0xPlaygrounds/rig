@@ -416,7 +416,7 @@ mod editor {
     #[derive(Component, Clone, Debug)]
     pub(super) struct EditorFor(Entity, PathBuf);
 
-    /// Opens the summary of `call` in `$EDITOR`, else asks for it here.
+    /// Opens the summary of `call` in the user's editor, else asks for it here.
     pub(super) fn open(
         commands: &mut Commands,
         call: Entity,
@@ -433,9 +433,10 @@ mod editor {
             ask_edit(commands, call, agent, summary);
             return;
         };
-        let program = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
+        let line = corpus_shared::editor::line();
+        let (program, args) = corpus_shared::editor::words(line.as_deref());
         let mut editor = Command::new(program);
-        editor.arg(&path);
+        editor.args(args).arg(&path);
         commands.spawn((RunInTerminal(editor), EditorFor(call, path), HoldOf(call)));
     }
 

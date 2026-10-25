@@ -10,7 +10,7 @@
 //! no turn's: the next prompt starts at once, and nothing of it reaches the
 //! main agent's model. A failed or timed-out call writes nothing, says so
 //! once and is not tried again. `/changelog` lists the session's
-//! fragments, `/changelog edit <n>` opens one in `$EDITOR` and
+//! fragments, `/changelog edit <n>` opens one in `$VISUAL` or `$EDITOR` and
 //! `/changelog drop <n>` deletes it.
 
 use std::collections::BTreeMap;
@@ -570,9 +570,10 @@ fn answered(
             notices.write(Notice::info(agent, text.clone()));
         }
         Answer::Edit(path) => {
-            let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
-            let mut run = Command::new(editor);
-            run.arg(path);
+            let line = corpus_shared::editor::line();
+            let (program, args) = corpus_shared::editor::words(line.as_deref());
+            let mut run = Command::new(program);
+            run.args(args).arg(path);
             commands.spawn((RunInTerminal(run), Editing(agent)));
         }
     }

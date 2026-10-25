@@ -9,7 +9,7 @@
 //! stepped in the order the model asked for them: a call whose earlier
 //! sibling has not settled waits behind a hold of its own, so nothing runs
 //! beside the call being stepped. Editing asks for the arguments as JSON
-//! to edit in the input (and in `$EDITOR`, if set); they are validated
+//! to edit in the input (and in `$VISUAL` or `$EDITOR`, if set); they are validated
 //! against the tool's schema and, if they fit, become the call, both the
 //! one that runs and the one the saved conversation says the model made,
 //! with a note in the transcript. Closing the question stops the turn, as
@@ -52,8 +52,8 @@ pub struct StepAll(pub bool);
 #[derive(Component, Default, Debug)]
 pub struct Stepping;
 
-/// The program arguments are also edited in, from `$EDITOR`; `None` edits
-/// them in the input only. Inserted from the environment unless the app
+/// The editor from `$VISUAL` or `$EDITOR`; `None` edits arguments
+/// in the input only. Inserted from the environment unless the app
 /// inserted one before adding the plugin.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct StepEditor(pub Option<String>);
@@ -76,8 +76,7 @@ pub struct StepModePlugin;
 impl Plugin for StepModePlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<StepEditor>() {
-            let editor = std::env::var("EDITOR").ok();
-            app.insert_resource(StepEditor(editor.filter(|it| !it.trim().is_empty())));
+            app.insert_resource(StepEditor(corpus_shared::editor::line()));
         }
         app.init_resource::<StepAll>()
             .add_command(
@@ -137,14 +136,47 @@ struct InEditor {
     path: PathBuf,
 }
 
-/// The step question's choices: id and label.
-const CHOICES: [(&str, &str); 5] = [
-    ("run", "Run"),
-    ("skip", "Skip"),
-    ("edit", "Edit arguments"),
-    ("rest", "Run all remaining in this reply"),
-    ("leave", "Leave step mode"),
-];
+/// A choice of the step question.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StepChoice {
+    Run,
+    Skip,
+    Edit,
+    Rest,
+    Leave,
+}
+
+impl StepChoice {
+    /// Every choice, in the order the question offers them.
+    const ALL: [Self; 5] = [Self::Run, Self::Skip, Self::Edit, Self::Rest, Self::Leave];
+
+    /// Its id in the question's answer.
+    fn id(self) -> &'static str {
+        match self {
+            Self::Run => "run",
+            Self::Skip => "skip",
+            Self::Edit => "edit",
+            Self::Rest => "rest",
+            Self::Leave => "leave",
+        }
+    }
+
+    /// Its label in the question.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Run => "Run",
+            Self::Skip => "Skip",
+            Self::Edit => "Edit arguments",
+            Self::Rest => "Run all remaining in this reply",
+            Self::Leave => "Leave step mode",
+        }
+    }
+
+    /// The choice whose id is `id`.
+    fn of(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|choice| choice.id() == id)
+    }
+}
 
 /// Which agents step.
 #[derive(bevy_ecs::system::SystemParam)]
@@ -335,9 +367,9 @@ fn step(
         }
         let function = &request.call.function;
         let title = format!("Step {} of {}: {}", place.nth, place.of, function.name);
-        let ask = CHOICES.iter().fold(
+        let ask = StepChoice::ALL.into_iter().fold(
             Ask::new(title).body(pretty(&function.arguments)),
-            |ask, (id, label)| ask.choice(*id, *label),
+            |ask, choice| ask.choice(choice.id(), choice.label()),
         );
         commands.spawn((ask, ForAgent(agent), hold));
     }
@@ -400,28 +432,28 @@ fn answered(
                 continue;
             }
         };
-        match choice.as_str() {
-            "skip" => {
+        match StepChoice::of(&choice) {
+            Some(StepChoice::Skip) => {
                 decision.decide(
                     Decider::plugin(ORIGIN),
                     Outcome::from(ToolResult::success(SKIPPED.into())),
                 );
             }
-            "edit" => {
+            Some(StepChoice::Edit) => {
                 let text = pretty(&request.call.function.arguments);
                 edits.ask(hold, &tool, &text, "");
             }
-            "rest" => {
+            Some(StepChoice::Rest) => {
                 edits.commands.entity(call).insert(Stepped);
                 if let (Some(&CallOf(turn)), Some(reply)) = (turn, effect.parent) {
                     edits.commands.entity(turn).insert(RunsFreely(reply));
                 }
             }
-            "leave" => {
+            Some(StepChoice::Leave) => {
                 all.0 = false;
                 edits.commands.entity(agent).remove::<Stepping>();
             }
-            _ => {
+            Some(StepChoice::Run) | None => {
                 edits.commands.entity(call).insert(Stepped);
             }
         }

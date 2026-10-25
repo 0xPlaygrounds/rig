@@ -256,12 +256,10 @@ fn edit(
         ));
         return;
     }
-    let editor = std::env::var("VISUAL")
-        .or_else(|_| std::env::var("EDITOR"))
-        .unwrap_or_else(|_| "vi".to_owned());
-    let mut words = editor.split_whitespace();
-    let mut command = Command::new(words.next().unwrap_or("vi"));
-    command.args(words).arg(&path);
+    let line = corpus_shared::editor::line();
+    let (program, args) = corpus_shared::editor::words(line.as_deref());
+    let mut command = Command::new(program);
+    command.args(args).arg(&path);
     commands.spawn((RunInTerminal(command), Draft(path)));
 }
 

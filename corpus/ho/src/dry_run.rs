@@ -37,23 +37,6 @@ pub const NOT_APPLIED: &str = "(dry run: not applied)";
 /// What a call that would change something is answered in dry run.
 pub const NOT_EXECUTED: &str = "(dry run: not executed)";
 
-/// The commands `shell` runs in dry run: each part of a pipeline starts
-/// with one of these.
-const READ_ONLY: &[&str] = &[
-    "ls",
-    "cat",
-    "head",
-    "tail",
-    "wc",
-    "pwd",
-    "rg",
-    "grep",
-    "git status",
-    "git diff",
-    "git log",
-    "git show",
-];
-
 /// After the permission mode; kept long, it says nothing is applied.
 const DRY_RUN_ITEM: StatusItem = StatusItem::new("ho-dry-run", Side::Left, 46, 17);
 
@@ -213,7 +196,7 @@ fn preview(
             "shell" => {
                 let command = parse::<ShellArgs>(arguments).map(|args| args.command);
                 let command = command.unwrap_or_default();
-                if !read_only(&command) {
+                if !corpus_shared::shell::reads_only(&command) {
                     let skipped = ToolResult::skipped(format!("{NOT_EXECUTED} {command}"));
                     decision.decide(Decider::plugin("ho-dry-run"), skipped);
                 }
@@ -297,24 +280,6 @@ fn edited(
         content: applied.text,
     };
     Ok((change, shown))
-}
-
-/// Whether `command` only reads: no redirection, sequencing or
-/// substitution, and every part of its pipeline an allowed command.
-fn read_only(command: &str) -> bool {
-    let forbidden = ['>', '<', ';', '&', '`', '$', '\n', '('];
-    if command.trim().is_empty() || command.contains(forbidden) {
-        return false;
-    }
-    command.split('|').all(|part| {
-        let part = part.trim();
-        let allowed = READ_ONLY.iter().any(|allowed| {
-            part.strip_prefix(allowed)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
-        });
-        // `git diff --output=…` writes a file; `rg --pre` runs a command.
-        allowed && !part.contains("--output") && !part.contains("--pre")
-    })
 }
 
 /// A previewed change goes into the overlay once its call settled with

@@ -190,6 +190,15 @@ pub enum Listing {
 }
 
 impl Listing {
+    /// The listing of a tool call's `hidden` and `glob` arguments.
+    pub(crate) fn from_options(hidden: bool, glob: Option<&str>) -> Self {
+        match hidden {
+            true => Self::Hidden,
+            false => Self::Visible,
+        }
+        .for_glob(glob)
+    }
+
     /// The listing a search or listing for `glob` uses: `Visible` becomes
     /// `Hidden` when the glob names a hidden file or directory, such as
     /// `.github/**` or `**/.env*`, so asking for one finds it.
