@@ -874,3 +874,77 @@ async fn a_compressed_event_stream_that_stops_after_its_final_event_is_kept() {
         .collect();
     assert_eq!(ids, ["resp_gzip_held"]);
 }
+
+/// A body the scrubber cannot decode cannot be scrubbed or replayed, so its
+/// exchange refuses the recording with the coding that stopped it, request
+/// or reply; a coding list it can decode, such as `gzip, gzip`, is kept
+/// decoded and scrubbed.
+#[tokio::test]
+async fn an_undecodable_body_refuses_and_a_decodable_list_is_scrubbed() {
+    let secret = "opaque-compressed-credential-97531";
+    let twice = gzip(&gzip(format!(r#"{{"password":"{secret}"}}"#).as_bytes()));
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/brotli-reply");
+            then.status(401)
+                .header("content-type", "application/json")
+                .header("content-encoding", "br")
+                .body(b"\x8b\x02\x80opaque-brotli\x03");
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/brotli-request");
+            then.status(200).body("{}");
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/twice");
+            then.status(401)
+                .header("content-type", "application/json")
+                .header("content-encoding", "gzip, gzip")
+                .body(twice.clone());
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(upstream.base_url(), recorder.clone())
+        .await
+        .expect("proxy starts");
+
+    for (path, encoding) in [
+        ("brotli-reply", None),
+        ("brotli-request", Some("br")),
+        ("twice", None),
+    ] {
+        let mut request = client()
+            .post(format!("{}/v1/{path}", proxy.base_url))
+            .body("{}");
+        if let Some(encoding) = encoding {
+            request = request.header("content-encoding", encoding);
+        }
+        request
+            .send()
+            .await
+            .expect("forwarded")
+            .bytes()
+            .await
+            .expect("the body as sent");
+    }
+    let kept = kept(&interactions, 1).await;
+    // Every exchange has ended once the third is kept: they ran in order.
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].when.path, "/v1/twice");
+    let body = kept[0].then.body.as_deref().unwrap_or_default();
+    assert!(!body.contains(secret), "{body}");
+    assert!(body.contains("[REDACTED]"), "{body}");
+    assert_eq!(
+        recorder.refusals(),
+        [
+            "the reply body of POST /v1/brotli-reply could not be decoded from content-encoding \"br\" (unsupported content coding)",
+            "the request body of POST /v1/brotli-request could not be decoded from content-encoding \"br\" (unsupported content coding)",
+        ]
+    );
+}

@@ -365,6 +365,31 @@ impl DirectRecorder {
                 .map(|(name, value)| (name.as_ref(), value.as_ref())),
             Some(response.body),
         );
+        // A body that does not decode cannot be scrubbed or replayed: the
+        // exchange refuses the recording instead of being kept unread.
+        let failure = [
+            ("request", &prepared.request_body),
+            ("reply", &prepared.response_body),
+        ]
+        .into_iter()
+        .find_map(|(side, body)| {
+            let failure = body.as_ref()?.decode_failure()?;
+            let headers = if side == "request" {
+                header_value(&request_headers, "content-encoding")
+            } else {
+                header_value(&response_headers, "content-encoding")
+            };
+            Some((side, failure, headers.unwrap_or_default().to_owned()))
+        });
+        if let Some((side, failure, encoding)) = failure {
+            drop(scrubber);
+            self.refuse(format!(
+                "the {side} body of {} {} could not be decoded from content-encoding {encoding:?} ({failure})",
+                request.method,
+                uri_path(request.uri),
+            ));
+            return;
+        }
         let request_body = prepared
             .request_body
             .map(|body| scrubber.scrub_prepared(body))
@@ -563,9 +588,11 @@ fn incomplete(exchange: &Exchange) -> Option<&'static str> {
                 .response_headers
                 .as_ref()
                 .and_then(traffic::content_encoding);
-            let body = crate::scrub::decoded(&body, encoding);
-            (!(exchange.is_event_stream() && ends_between_events(&body)))
-                .then_some("stopped before it was complete")
+            // A body that does not decode, such as a cut compressed stream,
+            // did not stop between events.
+            let between = crate::scrub::decoded(&body, encoding)
+                .is_ok_and(|decoded| ends_between_events(&decoded.bytes));
+            (!(exchange.is_event_stream() && between)).then_some("stopped before it was complete")
         }
         (Some(_), End::Complete) | (None, End::Complete) => None,
         (None, End::Error) => Some("failed while its body was read"),
