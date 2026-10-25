@@ -11,9 +11,10 @@
 //! recorded whole. Only an event stream ends when its client goes, as a
 //! provider's reader stops at its final event.
 //!
-//! [`Raw`] follows no redirect and decodes nothing, and answers every status
-//! with its own headers and bytes, so a 3xx or an error reply of any size
-//! reaches the client and the cassette as the provider sent it. A redirect is
+//! [`Raw`] follows no redirect and decodes nothing, in every build whatever
+//! reqwest features other crates turn on, and answers every status with its
+//! own headers and bytes, so a 3xx or an error reply of any size reaches the
+//! client and the cassette as the provider sent it. A redirect is
 //! not followed while recording: each hop the client follows is an exchange
 //! of its own, with its status and `location`, and one to the provider
 //! itself goes on as its path, so the client follows it through the proxy.
@@ -228,9 +229,9 @@ fn failure(message: String) -> Response {
 }
 
 /// A recording session's transport: a reqwest client of its own that follows
-/// no redirect and decodes no body, whose every request, unary, multipart or
-/// streamed, answers every status, a 3xx included, with its headers and its
-/// body as the provider sent it.
+/// no redirect and decodes no body in any build, whose every request, unary,
+/// multipart or streamed, answers every status, a 3xx included, with its
+/// headers and its body as the provider sent it.
 #[derive(Clone)]
 pub(crate) struct Raw {
     client: reqwest::Client,
@@ -241,6 +242,12 @@ impl Raw {
     pub(crate) fn new() -> std::io::Result<Self> {
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            // The same in every build: a plugin that turns on reqwest's
+            // decompression would otherwise decode a reply compressed anyway.
+            .no_gzip()
+            .no_brotli()
+            .no_deflate()
+            .no_zstd()
             .build()
             .map_err(std::io::Error::other)?;
         Ok(Self { client })

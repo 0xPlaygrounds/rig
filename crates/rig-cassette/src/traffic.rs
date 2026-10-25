@@ -21,9 +21,15 @@
 //! keeps the first 64 KiB as text, with a marker where it cut); `error`; and
 //! `end`: `complete`, `error` or `stopped`, when
 //! the caller dropped the reply first, as a stream reader does after the
-//! provider's final event. A JSON body or event is JSON, other text a string,
-//! and bytes that are not text `{"bytes": n}`; a gzip or deflate body is
-//! unwrapped first. A model call repeats its conversation, so a JSON request
+//! provider's final event. Every request asks for its reply uncompressed
+//! (`accept-encoding: identity`, written as sent), and nothing is
+//! decompressed. A JSON body or event is JSON and other text a string, both
+//! scrubbed. A binary body, and one the scrubber cannot read whole (an
+//! encoding other than identity, text that does not parse, a reply that did
+//! not end whole), is `{"bytes": n, "content_type": …}`; so is the reply to a
+//! request whose body was kept that way, which could echo it: its body or its
+//! one event, with its error text as `"[n bytes]"`. A model call repeats its
+//! conversation, so a JSON request
 //! body is written against the one of the last few of its handler and URL in
 //! this run that it shares the most with, when that is exact: `request.after`
 //! names that exchange, `request.keep` maps each field equal to its own to
@@ -133,7 +139,8 @@ impl TrafficLog {
 
     /// `http`, recording every exchange sent through it, as the request
     /// reaches it: a wrapper inside it that rewrites a request or sends it
-    /// again is not seen.
+    /// again is not seen. Each request asks for its reply uncompressed
+    /// (`accept-encoding: identity`), whatever its client asked for.
     pub fn wrap_http(&self, http: impl HttpClientExt + 'static) -> DynHttpClient {
         recorded(DynHttpClient::new(http), Sink::Log(self.shared.clone()))
     }
@@ -214,6 +221,36 @@ pub(crate) fn is_event_stream(headers: &HeaderMap) -> bool {
 }
 
 impl Exchange {
+    /// Why the reply did not end whole, as a reader would replay or analyse
+    /// it; `None` when it did. A stream that failed midway or was never read,
+    /// one that stopped anywhere but between two events of an event stream
+    /// (a provider's reader stops at its final event), a unary body that
+    /// failed or was never read, and no reply at all are not whole; a
+    /// non-success reply its transport captured with its body is.
+    pub(crate) fn incomplete(&self) -> Option<&'static str> {
+        if self.status.is_none() {
+            return Some("got no reply");
+        }
+        match (&self.chunks, self.end) {
+            (_, End::Complete) => None,
+            (Some(_), End::Error) => Some("failed midway"),
+            (Some(chunks), End::Stopped) if chunks.is_empty() => Some("was never read"),
+            (Some(_), End::Stopped) => {
+                let body = self.response_bytes().unwrap_or_default();
+                (!(self.is_event_stream() && crate::scrub::ends_between_events(&body)))
+                    .then_some("stopped before it was complete")
+            }
+            (None, End::Error)
+                if self.response_body.is_some()
+                    && self.status.is_some_and(|status| !status.is_success()) =>
+            {
+                None
+            }
+            (None, End::Error) => Some("failed while its body was read"),
+            (None, End::Stopped) => Some("was never read"),
+        }
+    }
+
     /// Whether the reply is an event stream ([`is_event_stream`]).
     pub(crate) fn is_event_stream(&self) -> bool {
         self.response_headers.as_ref().is_some_and(is_event_stream)

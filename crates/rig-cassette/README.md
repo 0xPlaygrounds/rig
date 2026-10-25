@@ -29,7 +29,7 @@ rig-cassette = { version = "0.42.0", default-features = false }
 | none | `effect_log` | core contracts, futures, serialization and base64 only |
 | `jsonl` | `effect_log`, `effect_log::jsonl` (JSON-lines files, native, or a file of a session's store such as `SESSION_EFFECT_LOG`; a recording for replay that no restore reads) | `rig-memory` (its `Files` trait) |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
-| `traffic` | `effect_log`, `traffic` (every exchange through a transport as a scrubbed JSON line, native) | `tracing`, `url`, `flate2`, ordered/round-trip JSON |
+| `traffic` | `effect_log`, `traffic` (every exchange through a transport as a scrubbed JSON line, native) | `tracing`, `url`, ordered/round-trip JSON |
 | `http` | `effect_log`, `http`, `traffic` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http`, `traffic` | `http` plus Smithy event-stream decoding |
 
@@ -174,7 +174,8 @@ target directory). `finish` refuses three kinds of recording:
 
 Both transports record through one `DirectRecorder`, the traffic recorder
 below and one transport, a reqwest client that follows no redirect and
-decodes no body: the proxy is a local server that forwards each request to
+decodes no body in any build, whatever reqwest features other crates turn
+on: the proxy is a local server that forwards each request to
 the provider through them and streams the reply back, and `direct_http` is a
 client that sends through them, turning a non-success reply into the error
 providers expect of rig-reqwest on top. The recorder asks for every reply

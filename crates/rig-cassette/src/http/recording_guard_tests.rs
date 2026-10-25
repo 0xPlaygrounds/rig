@@ -1298,3 +1298,42 @@ async fn a_multipart_upload_records_and_replays() {
         replay.try_finish().await.expect("the upload replays");
     }
 }
+
+/// A refusal names the transport error, which names the URL it failed on:
+/// the refusal is scrubbed with what the session learned, so a key in the
+/// query, as Gemini sends it, does not reach the error a test prints.
+#[tokio::test]
+async fn a_refusal_does_not_print_the_key_its_url_carried() {
+    use rig_core::http_client::HttpClientExt;
+
+    let key = "AIzaSyOpaqueRefusalKey0123456789abcdef";
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        format!("http://{}", listener.local_addr().expect("address"))
+    };
+    let session = Session::new();
+    let cassette = session.start_direct(&closed).await;
+    let request = rig_core::http_client::Request::post(format!(
+        "{closed}/v1/models/embedding:embedContent?key={key}"
+    ))
+    .body(Bytes::from_static(b"{}"))
+    .expect("a request");
+    assert!(
+        cassette
+            .direct_http()
+            .send::<_, Bytes>(request)
+            .await
+            .is_err()
+    );
+
+    let error = cassette
+        .try_finish()
+        .await
+        .expect_err("a request without a reply refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert!(refusals[0].contains("got no reply"), "{refusals:?}");
+    assert!(!error.to_string().contains(key), "{error}");
+}
