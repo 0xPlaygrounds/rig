@@ -75,6 +75,7 @@ impl SecretSource {
     }
 }
 
+#[derive(PartialEq, Eq)]
 struct LearnedSecret {
     value: String,
     source: SecretSource,
@@ -473,6 +474,12 @@ impl Scrubber {
             scrubber.learn_header(name, value);
         }
         scrubber
+    }
+
+    /// Whether two request scrubbers learned the same authoritative credentials.
+    #[cfg(any(feature = "http", test))]
+    pub(crate) fn same_credentials(&self, other: &Self) -> bool {
+        self.learned == other.learned
     }
 
     /// Normalize a request body using the caller's request context.

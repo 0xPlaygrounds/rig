@@ -508,6 +508,7 @@ async fn replay_request_records_unexpected_misses() {
         policy: CassettePolicy::default(),
         snapshots: None,
         shapes: None,
+        contextual_shapes: None,
     }));
 
     let response = replay_request(
@@ -1196,4 +1197,57 @@ fn header_and_query_derived_redactions_match_but_unrelated_changes_do_not() {
         Some(legacy),
         BodyEncoding::Utf8
     ));
+}
+
+#[tokio::test]
+async fn replay_shape_cache_tracks_authoritative_credentials() {
+    let view = serde_json::json!({"model": "first-credential"});
+    let state = Arc::new(Mutex::new(ReplayState {
+        cassette_path: PathBuf::from("fixture.yaml"),
+        interactions: Vec::new(),
+        misses: Vec::new(),
+        policy: CassettePolicy::default(),
+        snapshots: None,
+        shapes: Some(ReplayShapes {
+            keys: vec![shape::shape_key(&view)],
+            views: vec![view.clone()],
+        }),
+        contextual_shapes: None,
+    }));
+    let mut cached = None;
+    for (credential, length) in [
+        ("Bearer first-credential", "1"),
+        ("Bearer first-credential", "2"),
+        ("Bearer second-credential", "2"),
+    ] {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", credential.parse().expect("valid header"));
+        headers.insert("content-length", length.parse().expect("valid header"));
+        let _ = replay_request(
+            State(Arc::clone(&state)),
+            Method::POST,
+            "/v1/test".parse().expect("valid URI"),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let state = state.lock().await;
+        let (_, shapes) = state.contextual_shapes.as_ref().expect("cached shapes");
+        if credential == "Bearer first-credential" {
+            assert_eq!(
+                shapes.views.first(),
+                Some(&serde_json::json!({"model": "[REDACTED]"}))
+            );
+            if let Some(previous) = &cached {
+                assert!(Arc::ptr_eq(previous, shapes));
+            }
+            cached = Some(Arc::clone(shapes));
+        } else {
+            assert_eq!(shapes.views.first(), Some(&view));
+            assert!(!Arc::ptr_eq(
+                cached.as_ref().expect("previous cache"),
+                shapes
+            ));
+        }
+    }
 }

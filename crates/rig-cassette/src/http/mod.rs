@@ -1229,6 +1229,7 @@ impl ReplayServer {
             policy,
             snapshots,
             shapes,
+            contextual_shapes: None,
         }));
         let app = Router::new()
             .fallback(any(replay_request))
@@ -1326,6 +1327,8 @@ struct ReplayState {
     snapshots: Option<RequestSnapshots>,
     /// Each interaction's coarse shape key and body, under shape matching.
     shapes: Option<ReplayShapes>,
+    /// Normalized projections reused while authoritative request credentials agree.
+    contextual_shapes: Option<(Scrubber, Arc<ReplayShapes>)>,
 }
 
 /// What shape matching keeps of each recorded interaction.
@@ -1566,22 +1569,39 @@ async fn replay_request(
     } else {
         None
     };
-    let contextual_shapes = state.shapes.as_ref().map(|shapes| {
-        let views: Vec<_> = shapes.views.iter().map(normalize).collect();
-        let keys = views
-            .iter()
-            .zip(&shapes.views)
-            .zip(&shapes.keys)
-            .map(|((view, original), key)| {
-                if view == original {
-                    key.clone()
-                } else {
-                    shape::shape_key(view)
-                }
-            })
-            .collect();
-        ReplayShapes { keys, views }
-    });
+    let context = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let cached = state
+        .contextual_shapes
+        .as_ref()
+        .and_then(|(previous, shapes)| {
+            previous
+                .same_credentials(&context)
+                .then(|| Arc::clone(shapes))
+        });
+    let contextual_shapes = if cached.is_some() {
+        cached
+    } else {
+        let contextual_shapes = state.shapes.as_ref().map(|shapes| {
+            let views: Vec<_> = shapes.views.iter().map(normalize).collect();
+            let keys = views
+                .iter()
+                .zip(&shapes.views)
+                .zip(&shapes.keys)
+                .map(|((view, original), key)| {
+                    if view == original {
+                        key.clone()
+                    } else {
+                        shape::shape_key(view)
+                    }
+                })
+                .collect();
+            Arc::new(ReplayShapes { keys, views })
+        });
+        state.contextual_shapes = contextual_shapes
+            .as_ref()
+            .map(|shapes| (context, Arc::clone(shapes)));
+        contextual_shapes
+    };
     let sent_shape = contextual_shapes
         .as_ref()
         .zip(sent.as_ref())
