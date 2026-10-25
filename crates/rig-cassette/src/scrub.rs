@@ -526,7 +526,15 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
     if encoded(headers) {
         return BodyFormat::Opaque;
     }
-    let content_type = header_value(headers, "content-type");
+    let content_type = header_value(headers, "content-type").or_else(|| {
+        let file_part = header_value(headers, "filename").is_some()
+            || header_value(headers, "content-disposition")
+                .and_then(mime_parameters)
+                .is_some_and(|(kind, params)| {
+                    kind.eq_ignore_ascii_case("form-data") && params.contains_key("filename")
+                });
+        file_part.then_some("application/octet-stream")
+    });
     let media = media_type(content_type.unwrap_or_default()).to_ascii_lowercase();
     let valid_media = media
         .split_once('/')

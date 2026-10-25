@@ -26,11 +26,12 @@
 //! decompressed. A JSON body or event is JSON and other text a string, both
 //! scrubbed. A binary body, and one the scrubber cannot read whole (an
 //! encoding other than identity, text that does not parse, a reply that did
-//! not end whole), is `{"bytes": n, "content_type": …}`; so is the reply to a
-//! request whose body was kept that way, which could echo it: its body or its
-//! one event, with its error text as `"[n bytes]"`. A model call repeats its
-//! conversation, so a JSON request
-//! body is written against the one of the last few of its handler and URL in
+//! not end whole), is `{"bytes": n, "content_type": …}`. An opaque, withheld
+//! request also withholds its reply, which could echo it: its body or its one
+//! event is a size summary, with its error text as `"[n bytes]"`. A binary
+//! request's size summary alone does not withhold its reply. A model call
+//! repeats its conversation, so a JSON request body is written against the
+//! one of the last few of its handler and URL in
 //! this run that it shares the most with, when that is exact: `request.after`
 //! names that exchange, `request.keep` maps each field equal to its own to
 //! `true` and each array that starts with its first `n` items to `n`, and

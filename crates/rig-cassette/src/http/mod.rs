@@ -356,41 +356,33 @@ impl DirectRecorder {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let request_headers: Vec<_> = request.headers.into_iter().collect();
         let response_headers: Vec<_> = response.headers.into_iter().collect();
-        let prepared = scrubber.prepare_exchange_with_headers(
-            request.uri,
+        let request_text = || {
             request_headers.iter().map(|(name, value)| {
                 (
                     name.as_ref(),
                     crate::scrub::HeaderText::from(value.as_ref()),
                 )
-            }),
-            crate::scrub::RequestBodyRef::Bytes(request.body),
+            })
+        };
+        let response_text = || {
             response_headers.iter().map(|(name, value)| {
                 (
                     name.as_ref(),
                     crate::scrub::HeaderText::from(value.as_ref()),
                 )
-            }),
+            })
+        };
+        let prepared = scrubber.prepare_exchange_with_headers(
+            request.uri,
+            request_text(),
+            crate::scrub::RequestBodyRef::Bytes(request.body),
+            response_text(),
             Some(response.body),
         );
         // A body the scrubber could not read whole is withheld: the cassette
         // keeps its size and content type, never its bytes.
-        let request_headers: Vec<_> =
-            crate::scrub::recordable_pairs(request_headers.iter().map(|(name, value)| {
-                (
-                    name.as_ref(),
-                    crate::scrub::HeaderText::from(value.as_ref()),
-                )
-            }))
-            .collect();
-        let response_headers: Vec<_> =
-            crate::scrub::recordable_pairs(response_headers.iter().map(|(name, value)| {
-                (
-                    name.as_ref(),
-                    crate::scrub::HeaderText::from(value.as_ref()),
-                )
-            }))
-            .collect();
+        let request_headers: Vec<_> = crate::scrub::recordable_pairs(request_text()).collect();
+        let response_headers: Vec<_> = crate::scrub::recordable_pairs(response_text()).collect();
         let request_withheld = prepared.request_withheld().cloned();
         let response_withheld = prepared.response_withheld().cloned();
         let response_headers: Vec<_> = response_headers

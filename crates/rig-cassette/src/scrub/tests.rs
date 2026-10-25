@@ -1470,6 +1470,28 @@ async fn capture_scrub_case_with_header_map(
     response_encoding: Option<&str>,
     response_headers: &[(&str, &str)],
 ) -> CapturedScrubCase {
+    capture_scrub_request_with_header_map(
+        query,
+        request_headers,
+        RequestBodyRef::Bytes(request),
+        response,
+        streaming,
+        response_encoding,
+        response_headers,
+    )
+    .await
+}
+
+#[cfg(feature = "http")]
+async fn capture_scrub_request_with_header_map(
+    query: &str,
+    request_headers: &HeaderMap,
+    request: RequestBodyRef<'_>,
+    response: &[u8],
+    streaming: bool,
+    response_encoding: Option<&str>,
+    response_headers: &[(&str, &str)],
+) -> CapturedScrubCase {
     use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
     use futures::StreamExt;
     use rig_core::http_client::{HttpClientExt, Request};
@@ -1546,20 +1568,34 @@ async fn capture_scrub_case_with_header_map(
     for (name, value) in request_headers {
         builder = builder.header(name.clone(), value.clone());
     }
-    let request = builder
-        .body(Bytes::copy_from_slice(request))
-        .expect("request");
-    if streaming {
-        let reply = client.send_streaming(request).await.expect("reply");
-        let _: Vec<_> = reply.into_body().collect().await;
-    } else {
-        client
-            .send::<_, Bytes>(request)
-            .await
-            .expect("reply")
-            .into_body()
-            .await
-            .expect("body");
+    match request {
+        RequestBodyRef::Bytes(bytes) => {
+            let request = builder
+                .body(Bytes::copy_from_slice(bytes))
+                .expect("request");
+            if streaming {
+                let reply = client.send_streaming(request).await.expect("reply");
+                let _: Vec<_> = reply.into_body().collect().await;
+            } else {
+                client
+                    .send::<_, Bytes>(request)
+                    .await
+                    .expect("reply")
+                    .into_body()
+                    .await
+                    .expect("body");
+            }
+        }
+        RequestBodyRef::Multipart(form) => {
+            assert!(!streaming, "typed multipart uses unary replies");
+            client
+                .send_multipart::<Bytes>(builder.body(form.clone()).expect("request"))
+                .await
+                .expect("reply")
+                .into_body()
+                .await
+                .expect("body");
+        }
     }
     log.flush();
     session.try_finish().await.expect("safe recording");
@@ -2725,5 +2761,132 @@ fn frame_boundaries_use_all_recordable_reply_headers() {
             recordable_pairs(header_pairs(&headers)),
             body
         ));
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn untyped_file_parts_keep_audio_and_replies_in_both_sinks() {
+    use base64::Engine;
+    use rig_core::http_client::multipart::Part;
+
+    let audio = b"RIFF\xff\x00audio\xe2\x82";
+    let form = MultipartForm::new()
+        .part(Part::bytes("file", Bytes::from_static(audio)).filename("speech.wav"));
+    let (boundary, raw) = form.encode();
+    assert!(!String::from_utf8_lossy(&raw).contains("Content-Type:"));
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "content-type",
+        format!("multipart/form-data; boundary={boundary}")
+            .parse()
+            .expect("type"),
+    );
+    for request in [
+        RequestBodyRef::Multipart(&form),
+        RequestBodyRef::Bytes(&raw),
+    ] {
+        let typed = matches!(&request, RequestBodyRef::Multipart(_));
+        let request_headers = if typed {
+            HeaderMap::new()
+        } else {
+            headers.clone()
+        };
+        let captured = capture_scrub_request_with_header_map(
+            "",
+            &request_headers,
+            request,
+            br#"{"text":"transcribed speech","usage":{"seconds":1}}"#,
+            false,
+            None,
+            &[],
+        )
+        .await;
+        assert_eq!(
+            captured.traffic.pointer("/response/body/text"),
+            Some(&json!("transcribed speech"))
+        );
+        assert!(captured.fixture.pointer("/when/withheld").is_none());
+        assert!(captured.fixture.pointer("/then/withheld").is_none());
+        let reply: Value = serde_json::from_str(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .and_then(Value::as_str)
+                .expect("reply"),
+        )
+        .expect("JSON");
+        assert_eq!(reply.get("text"), Some(&json!("transcribed speech")));
+        if typed {
+            assert_eq!(
+                captured.traffic.pointer("/request/parts/0/name"),
+                Some(&json!("file"))
+            );
+            assert_eq!(
+                captured.traffic.pointer("/request/parts/0/filename"),
+                Some(&json!("speech.wav"))
+            );
+        }
+        let encoded = captured
+            .fixture
+            .pointer("/when/body")
+            .and_then(Value::as_str)
+            .expect("multipart body");
+        let recorded = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .expect("base64");
+        let content_type = captured
+            .fixture
+            .pointer("/when/header")
+            .and_then(Value::as_array)
+            .expect("headers")
+            .iter()
+            .find(|header| header.get("name").and_then(Value::as_str) == Some("content-type"))
+            .and_then(|header| header.get("value"))
+            .and_then(Value::as_str)
+            .expect("type");
+        let boundary = multipart_boundary(content_type).expect("boundary");
+        let parts = parse_multipart_parts(&recorded, &boundary).expect("parts");
+        assert_eq!(
+            parts.first().map(|part| part.body.as_slice()),
+            Some(audio.as_slice())
+        );
+    }
+}
+
+#[test]
+fn untyped_non_file_parts_still_fail_closed_and_file_secrets_are_withheld() {
+    use rig_core::http_client::multipart::Part;
+    let bytes = b"\xff\x00abc\x00";
+    for filename in [None, Some("speech.wav")] {
+        let mut part = Part::bytes("file", Bytes::from_static(bytes));
+        if let Some(filename) = filename {
+            part = part.filename(filename);
+        }
+        let form = MultipartForm::new().part(part);
+        let (boundary, raw) = form.encode();
+        let media = format!("multipart/form-data; boundary={boundary}");
+        for purpose in [Purpose::Traffic, Purpose::Cassette] {
+            for learned in [false, true] {
+                for request in [
+                    RequestBodyRef::Multipart(&form),
+                    RequestBodyRef::Bytes(&raw),
+                ] {
+                    let mut scrubber = Scrubber::new(purpose);
+                    let prepared = scrubber.prepare_exchange(
+                        "",
+                        [("content-type", media.as_str())]
+                            .into_iter()
+                            .chain(learned.then_some(("x-api-key", "abc"))),
+                        request,
+                        [("content-type", "application/json")],
+                        Some(b"{}"),
+                    );
+                    let withheld = filename.is_none() || learned;
+                    assert_eq!(prepared.request_withheld().is_some(), withheld);
+                    assert_eq!(prepared.response_withheld().is_some(), withheld);
+                }
+            }
+        }
     }
 }
