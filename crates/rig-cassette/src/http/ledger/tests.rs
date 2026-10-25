@@ -293,9 +293,12 @@ fn a_streams_cut_last_event_still_reaches_the_ledger() {
     });
     let mut ledger = ReplyLedger::start(
         target,
-        "POST",
-        "https://api.openai.com/v1/responses",
-        br#"{"stream":true}"#,
+        Sent {
+            method: "POST",
+            uri: "https://api.openai.com/v1/responses",
+            body: br#"{"stream":true}"#,
+            encoding: None,
+        },
         200,
         true,
         None,
@@ -308,4 +311,57 @@ fn a_streams_cut_last_event_still_reaches_the_ledger() {
     let outstanding = outstanding(&dir.path().join(LEDGER_FILE));
     assert_eq!(outstanding.len(), 1);
     assert_eq!(outstanding[0].id, "resp_cut");
+}
+
+/// A whole exchange handed to the ledger, as Bedrock's connector hands it,
+/// is read decoded like a recorded one: a gzip reply writes its line, and a
+/// gzip request that sets `store: false` writes none.
+#[test]
+fn a_whole_exchange_is_read_decoded() {
+    use std::io::Write as _;
+
+    let gzip = |bytes: &[u8]| {
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(bytes).expect("compressed");
+        encoder.finish().expect("compressed")
+    };
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let target = std::sync::Arc::new(LedgerTarget {
+        path: dir.path().join(LEDGER_FILE),
+        provider: "openai".into(),
+        scenario: "ledger/whole".into(),
+        origin: "https://api.openai.com".into(),
+    });
+    let uri = "https://api.openai.com/v1/responses";
+    record_created(
+        &target,
+        Sent {
+            method: "POST",
+            uri,
+            body: br#"{"input":"hi"}"#,
+            encoding: None,
+        },
+        200,
+        &gzip(br#"{"id":"resp_whole","object":"response"}"#),
+        Some("gzip"),
+    );
+    record_created(
+        &target,
+        Sent {
+            method: "POST",
+            uri,
+            body: &gzip(br#"{"input":"hi","store":false}"#),
+            encoding: Some("gzip"),
+        },
+        200,
+        br#"{"id":"resp_unstored","object":"response"}"#,
+        None,
+    );
+
+    let outstanding = outstanding(&dir.path().join(LEDGER_FILE));
+    let ids: Vec<_> = outstanding
+        .iter()
+        .map(|created| created.id.as_str())
+        .collect();
+    assert_eq!(ids, ["resp_whole"]);
 }

@@ -8,7 +8,7 @@ use rig_core::http_client::{Bytes, HeaderMap, MultipartForm, multipart::PartCont
 use serde_json::{Map, Value, json};
 
 use super::{End, Exchange, RequestBody};
-use crate::scrub::{PreparedBody, Purpose, Scrubber};
+use crate::scrub::{PreparedBody, Purpose, ScrubbedEvent, Scrubber};
 
 /// The version of the line format, the `v` of every line. A change that
 /// renames, removes or retypes a field takes the next one.
@@ -42,9 +42,24 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
             .flat_map(crate::scrub::header_pairs),
         raw_response.as_deref(),
     );
-    let request_body = prepared
+    let request_uninspected = prepared
         .request_body
-        .map(|body| scrubber.scrub_prepared(body));
+        .as_ref()
+        .is_some_and(|body| body.decode_failure().is_some());
+    let response_uninspected = prepared
+        .response_body
+        .as_ref()
+        .is_some_and(|body| body.decode_failure().is_some());
+    if request_uninspected {
+        bases.0.clear();
+    }
+    let request_body = if request_uninspected {
+        None
+    } else {
+        prepared
+            .request_body
+            .map(|body| scrubber.scrub_prepared(body))
+    };
     let response_body = prepared.response_body;
 
     let mut line = Map::new();
@@ -68,6 +83,9 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         headers(&mut scrubber, &exchange.request_headers),
     );
     match (&exchange.request_body, &request_body) {
+        (RequestBody::Bytes(bytes), _) if request_uninspected => {
+            request.insert("body".into(), json!({"bytes":bytes.len()}));
+        }
         (RequestBody::Bytes(_), Some(bytes)) if bytes.is_empty() => {}
         (RequestBody::Bytes(_), Some(bytes)) => {
             let body = body(bytes);
@@ -119,7 +137,15 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
         }
         if let Some(prepared) = response_body {
             if let Some(chunks) = &exchange.chunks {
-                response.insert("events".into(), events(&mut scrubber, chunks, prepared));
+                response.insert(
+                    "events".into(),
+                    events(&mut scrubber, chunks, prepared, !request_uninspected),
+                );
+            } else if request_uninspected || response_uninspected {
+                response.insert(
+                    "body".into(),
+                    json!({"bytes":raw_response.as_ref().map_or(0, Bytes::len)}),
+                );
             } else {
                 response.insert("body".into(), body(&scrubber.scrub_prepared(prepared)));
             }
@@ -140,7 +166,14 @@ pub(super) fn line(exchange: &Exchange, pid: u32, bases: &mut Bases) -> Value {
     }
     line.insert("timings".into(), Value::Object(timings));
     if let Some(error) = &exchange.error {
-        line.insert("error".into(), json!(scrubber.scrub_text(error)));
+        line.insert(
+            "error".into(),
+            json!(if request_uninspected {
+                format!("[{} bytes]", error.len())
+            } else {
+                scrubber.scrub_text(error)
+            }),
+        );
     }
     let end = match exchange.end {
         End::Complete => "complete",
@@ -302,7 +335,8 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
         .iter()
         .map(|part| {
             let mut out = Map::new();
-            for (name, value) in scrubber.scrub_part_metadata(&crate::scrub::part_metadata(part)) {
+            let metadata = scrubber.scrub_part_metadata(&crate::scrub::part_metadata(part));
+            for (name, value) in metadata {
                 let name = if name == "content-type" {
                     "content_type".to_owned()
                 } else {
@@ -327,7 +361,12 @@ fn parts(scrubber: &mut Scrubber, form: &MultipartForm) -> Value {
 /// chunks. An incomplete UTF-8 character at EOF follows the valid events
 /// as a byte count. Other binary streams are kept by their size. Events
 /// decoded from a compressed body use the last compressed chunk's time.
-fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], body: PreparedBody) -> Value {
+fn events(
+    scrubber: &mut Scrubber,
+    chunks: &[(Duration, Bytes)],
+    body: PreparedBody,
+    inspected: bool,
+) -> Value {
     let mut ends = Vec::new();
     let mut end = 0;
     for (at, chunk) in chunks {
@@ -348,9 +387,18 @@ fn events(scrubber: &mut Scrubber, chunks: &[(Duration, Bytes)], body: PreparedB
     } else {
         ends.iter().map(|(end, _)| *end).collect()
     };
+    let events = if inspected {
+        scrubber.scrub_stream(body, chunk_ends)
+    } else {
+        vec![ScrubbedEvent {
+            end,
+            event: None,
+            id: None,
+            data: json!({"bytes":end}),
+        }]
+    };
     Value::Array(
-        scrubber
-            .scrub_stream(body, chunk_ends)
+        events
             .into_iter()
             .map(|event| {
                 let mut value = Map::new();

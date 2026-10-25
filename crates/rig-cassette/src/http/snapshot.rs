@@ -206,10 +206,15 @@ impl RequestSnapshots {
 
     /// Note that replay served interaction `index` for a request whose body
     /// reads as `sent`.
-    pub(super) fn observe(&mut self, index: usize, sent: Value) {
+    pub(super) fn observe(
+        &mut self,
+        index: usize,
+        sent: Value,
+        normalize: impl Fn(&Value) -> Value,
+    ) {
         match self.mode {
             SnapshotMode::Check => {
-                if let Some(difference) = self.difference(index, &sent) {
+                if let Some(difference) = self.difference(index, &sent, normalize) {
                     self.differences.push(difference);
                 }
             }
@@ -224,18 +229,28 @@ impl RequestSnapshots {
 
     /// How a request whose body reads as `sent` differs from interaction
     /// `index`'s expected body, as readable lines, or `None` when it does not.
-    pub(super) fn difference(&self, index: usize, sent: &Value) -> Option<String> {
+    pub(super) fn difference(
+        &self,
+        index: usize,
+        sent: &Value,
+        normalize: impl Fn(&Value) -> Value,
+    ) -> Option<String> {
         let expected = self.expected.get(index)?;
-        let lines = describe(expected, sent);
+        let lines = describe(&normalize(expected), sent);
         (!lines.is_empty()).then(|| format!("interaction {index}:\n{}", lines.join("\n")))
     }
 
     /// How many changes turn interaction `index`'s expected body into
     /// `sent`: 0 when they are equal, `usize::MAX` for no such interaction.
-    pub(super) fn distance(&self, index: usize, sent: &Value) -> usize {
-        self.expected
-            .get(index)
-            .map_or(usize::MAX, |expected| diff(expected, sent).len())
+    pub(super) fn distance(
+        &self,
+        index: usize,
+        sent: &Value,
+        normalize: impl Fn(&Value) -> Value,
+    ) -> usize {
+        self.expected.get(index).map_or(usize::MAX, |expected| {
+            diff(&normalize(expected), sent).len()
+        })
     }
 
     /// End the session: in `Check` mode fail when a request differed; in

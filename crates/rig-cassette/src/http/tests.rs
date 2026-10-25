@@ -144,6 +144,7 @@ fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
     let expected =
         r#"{"client_secret":{"value":"[REDACTED]"},"echo":"[REDACTED]","password":"[REDACTED]"}"#;
     assert!(body_matches(
+        "",
         &axum::http::HeaderMap::new(),
         &[],
         br#"{"client_secret":{"value":"abc123"},"echo":43211234,"password":43211234}"#,
@@ -156,8 +157,16 @@ fn body_matching_scrubs_object_credentials_and_numeric_echoes() {
 fn bodyless_cassette_request_only_matches_empty_actual_body() {
     let headers = axum::http::HeaderMap::new();
 
-    assert!(body_matches(&headers, &[], &[], None, BodyEncoding::Utf8));
+    assert!(body_matches(
+        "",
+        &headers,
+        &[],
+        &[],
+        None,
+        BodyEncoding::Utf8
+    ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         br#"{"unexpected":true}"#,
@@ -243,14 +252,14 @@ fn unordered_shape_matching_serves_the_closest_interaction() {
         .map(|interaction| shape::shape_key(&recorded_body_view(&interaction.when)))
         .collect();
     let request = incoming_request("/v1/answer", json!({ "input": "second" }).to_string());
-    let sent = shape::shape_key(&incoming_body_view(&request));
+    let sent = shape::shape_key(&incoming_body_view(&request).expect("body view"));
     let shapes = Some(ShapeKeys {
         recorded: &keys,
         sent: &sent,
     });
     let distance = |index: usize| {
         let recorded = recorded_body_view(&interactions[index].when);
-        snapshot::diff(&recorded, &incoming_body_view(&request)).len()
+        snapshot::diff(&recorded, &incoming_body_view(&request).expect("body view")).len()
     };
 
     assert_eq!(
@@ -499,6 +508,7 @@ async fn replay_request_records_unexpected_misses() {
         policy: CassettePolicy::default(),
         snapshots: None,
         shapes: None,
+        contextual_shapes: None,
     }));
 
     let response = replay_request(
@@ -681,6 +691,7 @@ fn body_matching_compares_base64_bytes() {
     let expected = BASE64_STANDARD.encode([0, 159, 146, 150]);
 
     assert!(body_matches(
+        "",
         &headers,
         &[],
         &[0, 159, 146, 150],
@@ -1092,6 +1103,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
     headers.insert("content-encoding", HeaderValue::from_static("gzip"));
     let expected = r#"{"client_secret":"[REDACTED]","message":"right"}"#;
     assert!(body_matches(
+        "",
         &headers,
         &[],
         &compressed(br#"{"client_secret":"opaque-credential","message":"right"}"#),
@@ -1099,6 +1111,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
         BodyEncoding::Utf8
     ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         &compressed(br#"{"client_secret":"opaque-credential","message":"wrong"}"#),
@@ -1106,6 +1119,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
         BodyEncoding::Utf8
     ));
     assert!(body_matches(
+        "",
         &headers,
         &[],
         &compressed(b"\xff\x00"),
@@ -1113,6 +1127,7 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
         BodyEncoding::Base64
     ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         &compressed(b"\xff\x01"),
@@ -1122,13 +1137,14 @@ fn gzip_requests_match_decoded_recordings_and_reject_different_bodies() {
 }
 
 #[test]
-fn matching_does_not_learn_credentials_from_unrecorded_headers() {
+fn matching_uses_authoritative_request_headers_for_both_views() {
     let mut headers = axum::http::HeaderMap::new();
     headers.insert(
         "x-api-key",
         HeaderValue::from_static("opaque-matching-credential"),
     );
     assert!(body_matches(
+        "",
         &headers,
         &[],
         br#"{"opaque-matching-credential":"right"}"#,
@@ -1136,10 +1152,102 @@ fn matching_does_not_learn_credentials_from_unrecorded_headers() {
         BodyEncoding::Utf8,
     ));
     assert!(!body_matches(
+        "",
         &headers,
         &[],
         br#"{"opaque-matching-credential":"wrong"}"#,
         Some(r#"{"opaque-matching-credential":"right"}"#),
         BodyEncoding::Utf8,
     ));
+}
+
+#[test]
+fn header_and_query_derived_redactions_match_but_unrelated_changes_do_not() {
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert("authorization", HeaderValue::from_static("Bearer local"));
+    let uri = "/submit?api_key=opaque-query-replay-97531";
+    let expected = r#"{"fingerprint":"[REDACTED]","query_echo":"[REDACTED]","message":"right"}"#;
+    for fingerprint in ["local", "[REDACTED]"] {
+        let actual=json!({"fingerprint":fingerprint,"query_echo":"opaque-query-replay-97531","message":"right"}).to_string();
+        assert!(body_matches(
+            uri,
+            &headers,
+            &[],
+            actual.as_bytes(),
+            Some(expected),
+            BodyEncoding::Utf8
+        ));
+        let wrong=json!({"fingerprint":fingerprint,"query_echo":"opaque-query-replay-97531","message":"wrong"}).to_string();
+        assert!(!body_matches(
+            uri,
+            &headers,
+            &[],
+            wrong.as_bytes(),
+            Some(expected),
+            BodyEncoding::Utf8
+        ));
+    }
+    let legacy =
+        r#"{"fingerprint":"local","query_echo":"opaque-query-replay-97531","message":"right"}"#;
+    assert!(body_matches(
+        uri,
+        &headers,
+        &[],
+        legacy.as_bytes(),
+        Some(legacy),
+        BodyEncoding::Utf8
+    ));
+}
+
+#[tokio::test]
+async fn replay_shape_cache_tracks_authoritative_credentials() {
+    let view = serde_json::json!({"model": "first-credential"});
+    let state = Arc::new(Mutex::new(ReplayState {
+        cassette_path: PathBuf::from("fixture.yaml"),
+        interactions: Vec::new(),
+        misses: Vec::new(),
+        policy: CassettePolicy::default(),
+        snapshots: None,
+        shapes: Some(ReplayShapes {
+            keys: vec![shape::shape_key(&view)],
+            views: vec![view.clone()],
+        }),
+        contextual_shapes: None,
+    }));
+    let mut cached = None;
+    for (credential, length) in [
+        ("Bearer first-credential", "1"),
+        ("Bearer first-credential", "2"),
+        ("Bearer second-credential", "2"),
+    ] {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("authorization", credential.parse().expect("valid header"));
+        headers.insert("content-length", length.parse().expect("valid header"));
+        let _ = replay_request(
+            State(Arc::clone(&state)),
+            Method::POST,
+            "/v1/test".parse().expect("valid URI"),
+            headers,
+            Bytes::new(),
+        )
+        .await;
+        let state = state.lock().await;
+        let (_, shapes) = state.contextual_shapes.as_ref().expect("cached shapes");
+        if credential == "Bearer first-credential" {
+            assert_eq!(
+                shapes.views.first(),
+                Some(&serde_json::json!({"model": "[REDACTED]"}))
+            );
+            if let Some(previous) = &cached {
+                assert!(Arc::ptr_eq(previous, shapes));
+            }
+            cached = Some(Arc::clone(shapes));
+        } else {
+            assert_eq!(shapes.views.first(), Some(&view));
+            assert!(!Arc::ptr_eq(
+                cached.as_ref().expect("previous cache"),
+                shapes
+            ));
+        }
+    }
 }

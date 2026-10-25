@@ -193,47 +193,64 @@ pub fn from_reqwest(err: reqwest::Error) -> Error {
     Error::instance(err)
 }
 
+/// The most of a non-success reply's body its error keeps.
+const ERROR_BODY_LIMIT: usize = 64 * 1024;
+
 /// Read at most 64 KiB of a failed response, retaining status and headers.
 /// Partial bodies survive read failures. An observed excess byte adds a
 /// truncation marker; the client's timeout policy still governs body reads.
 async fn non_success_status_error(response: reqwest::Response) -> Error {
     use futures::StreamExt;
 
-    const LIMIT: usize = 64 * 1024;
     let status = response.status();
     let headers = response.headers().clone();
     let mut stream = Box::pin(response.bytes_stream());
     let mut bytes = Vec::new();
-    let mut truncated = false;
     let mut failure = None;
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(chunk) => {
-                let remaining = LIMIT - bytes.len();
+                // One byte past the limit is enough to know the body was cut.
+                let remaining = ERROR_BODY_LIMIT + 1 - bytes.len();
                 bytes.extend(chunk.iter().take(remaining));
-                if chunk.len() > remaining {
-                    truncated = true;
+                if bytes.len() > ERROR_BODY_LIMIT {
                     break;
                 }
             }
             Err(error) => {
-                failure = Some(error);
+                failure = Some(error.to_string());
                 break;
             }
         }
     }
     drop(stream);
-    let mut body = if bytes.is_empty() {
-        failure
-            .map(|error| format!("failed to read error response body: {error}"))
+    non_success_error(status, headers, &bytes, failure).await
+}
+
+/// The error a non-success reply becomes, from the bytes of its body that
+/// were read: its status and headers, and at most the first 64 KiB of the
+/// body decoded as text by its charset, with a truncation marker when there
+/// was more. With no bytes, `read_failure` (why reading the body failed) is
+/// the text. Every transport that gives providers rig-reqwest's errors builds
+/// them here, so the same reply gives the same error whichever reads it.
+pub async fn non_success_error(
+    status: http::StatusCode,
+    headers: http::HeaderMap,
+    body: &[u8],
+    read_failure: Option<String>,
+) -> Error {
+    let kept = body.get(..ERROR_BODY_LIMIT).unwrap_or(body);
+    let mut text = if kept.is_empty() {
+        read_failure
+            .map(|failure| format!("failed to read error response body: {failure}"))
             .unwrap_or_default()
     } else {
-        decode_error_body(bytes, &headers).await
+        decode_error_body(kept.to_vec(), &headers).await
     };
-    if truncated {
-        body.push_str("\n[Response body truncated after 64 KiB]");
+    if body.len() > ERROR_BODY_LIMIT {
+        text.push_str("\n[Response body truncated after 64 KiB]");
     }
-    Error::non_success_with_details(status, headers, body)
+    Error::non_success_with_details(status, headers, text)
 }
 
 /// Keep reqwest's charset decoding for the bounded, in-memory body.

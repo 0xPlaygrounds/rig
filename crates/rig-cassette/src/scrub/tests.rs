@@ -256,7 +256,7 @@ fn described_credentials_keep_their_secret_context_and_schemas_keep_their_defini
 }
 
 #[test]
-fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secrets() {
+fn prose_does_not_promote_values_to_numbers_but_authoritative_credentials_do() {
     for purpose in [Purpose::Cassette, Purpose::Traffic] {
         let original = json!({
             "type": "message",
@@ -286,14 +286,10 @@ fn free_text_does_not_promote_short_values_or_string_credentials_to_numeric_secr
         );
         let mut scrubber = Scrubber::new(purpose);
         scrubber.learn_header("x-api-key", "200");
-        assert_eq!(
-            scrubber.scrub_body(r#"{"value":200,"text":"[REDACTED]"}"#),
-            if purpose == Purpose::Traffic {
-                r#"{"value":200,"text":"[REDACTED]"}"#
-            } else {
-                r#"{"text":"[REDACTED]","value":200}"#
-            }
-        );
+        let output: Value =
+            serde_json::from_str(&scrubber.scrub_body(r#"{"value":200,"text":"200"}"#))
+                .expect("JSON");
+        assert_eq!(output, json!({"value":REDACTED,"text":REDACTED}));
         scrubber.learn_body(r#"{"password":1234567890}"#);
         assert_eq!(
             scrubber.scrub_body(r#"{"value":1234567890}"#),
@@ -801,8 +797,7 @@ fn linux_and_root_homes_are_covered_too() {
     );
 }
 
-/// The path sits inside a JSON string in practice, so the rule has to stop
-/// at the closing quote rather than swallowing the rest of the body.
+/// A JSON string's closing quote terminates the path.
 #[test]
 fn a_path_inside_json_stops_at_the_quote() {
     let scrubbed =
@@ -825,13 +820,7 @@ fn every_occurrence_is_replaced() {
     );
 }
 
-/// A home directory containing a space is the case that makes whitespace a
-/// forbidden terminator.
-///
-/// macOS creates `/Users/John Smith` from a full account name. Ending the
-/// path at the space kept `John` as the basename and copied `Smith/...`
-/// through untouched — the operator's name in the fixture, in output the
-/// rule then considers already-scrubbed, so the safety scan reports nothing.
+/// Spaces remain part of a home-directory account name.
 #[test]
 fn a_home_directory_containing_a_space_is_fully_replaced() {
     let scrubbed = scrub_local_filesystem_paths(r#"{"model":"/Users/John Smith/models/m.gguf"}"#);
@@ -840,21 +829,14 @@ fn a_home_directory_containing_a_space_is_fully_replaced() {
     assert!(!scrubbed.contains("Smith"), "{scrubbed}");
 }
 
-/// Re-scrubbing scrubbed output must not change it — the cassette safety
-/// check re-scrubs its own output, so a non-idempotent rule fails there.
+/// Scrubbing is idempotent.
 #[test]
 fn the_rule_is_idempotent() {
     let once = scrub_local_filesystem_paths("/Users/a/.cache/m.gguf");
     assert_eq!(scrub_local_filesystem_paths(&once), once);
 }
 
-/// A URL that merely *contains* one of these segments is not a local path
-/// and must survive verbatim.
-///
-/// This is not hypothetical: anthropic's recorded web-search fixtures cite
-/// `https://math.ucr.edu/home/baez/physics/...`, and an unanchored rule
-/// rewrote it — corrupting three committed fixtures and failing the safety
-/// scan with "not in scrubbed cassette form".
+/// Home-directory segments inside public URLs stay unchanged.
 #[test]
 fn a_url_containing_a_home_segment_is_not_a_local_path() {
     let body = r#"{"url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"}"#;
@@ -863,7 +845,7 @@ fn a_url_containing_a_home_segment_is_not_a_local_path() {
     assert_eq!(scrub_local_filesystem_paths(body), body);
 }
 
-/// The anchored rule still catches the real case sitting next to a URL.
+/// A local path beside a URL is scrubbed.
 #[test]
 fn a_local_path_beside_a_url_is_still_scrubbed() {
     let scrubbed = scrub_local_filesystem_paths(
@@ -879,8 +861,7 @@ fn a_local_path_beside_a_url_is_still_scrubbed() {
     );
 }
 
-/// Text carrying no path is untouched, so the rule cannot churn unrelated
-/// fixtures.
+/// Text without a home path stays unchanged.
 #[test]
 fn unrelated_text_is_untouched() {
     let body = r#"{"model":"gpt-4o-mini","choices":[]}"#;
@@ -1041,7 +1022,7 @@ async fn url_keys_and_json_authorization_are_private_in_live_and_cassette_output
         .no_proxy()
         .build()
         .expect("client");
-    let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw));
+    let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw.clone()));
     let request = json!({"authorization":auth,"headers":{"Authorization":format!("Bearer {header_auth}")},"echo":format!("{key_password} {signed} {nested}"),"fingerprint":"local"});
     let response = client
         .send::<_, Bytes>(
@@ -1553,4 +1534,333 @@ fn retained_sse_comments_and_unknown_fields_teach_both_renderers_about_echoes() 
         assert!(!serialized.contains(extension), "{serialized}");
         assert_eq!(payload.get("echo"), Some(&json!("[REDACTED] [REDACTED]")));
     }
+}
+
+#[cfg(feature = "http")]
+#[test]
+fn content_coding_lists_are_bounded_and_report_uninspectable_bodies() {
+    use std::io::Write;
+    let plain = br#"{"password":"opaque-coding-credential-97531"}"#;
+    let inner = gzip(plain);
+    let twice = gzip(&inner);
+    assert_eq!(
+        decoded(&twice, Some("gzip, x-gzip, identity"))
+            .expect("decode")
+            .bytes
+            .as_ref(),
+        plain
+    );
+    let mut zlib = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    zlib.write_all(&inner).expect("deflate");
+    let stacked = zlib.finish().expect("bytes");
+    let result = decoded(&stacked, Some(" GZIP , deflate ")).expect("decode mixed stack");
+    assert_eq!(result.status, DecodeStatus::Decoded);
+    assert_eq!(result.bytes.as_ref(), plain);
+    assert_eq!(
+        decoded(plain, Some("identity, identity"))
+            .expect("identity")
+            .status,
+        DecodeStatus::NotEncoded
+    );
+    for coding in ["br", "zstd", "gzip, br"] {
+        assert_eq!(
+            decoded(&twice, Some(coding)).err(),
+            Some(DecodeFailure::UnsupportedCoding)
+        );
+    }
+    assert_eq!(
+        decoded(plain, Some("gzip")).err(),
+        Some(DecodeFailure::InvalidData)
+    );
+    assert_eq!(
+        decoded_with_limit(&gzip(b"12345678"), Some("gzip"), 8)
+            .expect("exact limit")
+            .bytes
+            .as_ref(),
+        b"12345678"
+    );
+    assert_eq!(
+        decoded_with_limit(&gzip(b"123456789"), Some("gzip"), 8).err(),
+        Some(DecodeFailure::OverLimit)
+    );
+}
+
+#[test]
+fn every_auth_scheme_uses_the_same_credential_learning_without_splitting_descriptions() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        for json_source in [false, true] {
+            let mut scrubber = Scrubber::new(purpose);
+            if json_source {
+                scrubber
+                    .learn_body(r#"{"authorization":"Custom-Scheme opaque-custom-scheme-97531"}"#);
+            } else {
+                scrubber.learn_header("authorization", "Custom-Scheme opaque-custom-scheme-97531");
+            }
+            assert_eq!(scrubber.scrub_text("opaque-custom-scheme-97531"), REDACTED);
+            scrubber.learn_body(r#"{"client_secret":{"value":"opaque-explicit-secret-97531","description":"temporary credential"}}"#);
+            assert_eq!(
+                scrubber.scrub_text("A credential object"),
+                "A credential object"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+struct CapturedScrubCase {
+    traffic: Value,
+    fixture: Value,
+    path: std::path::PathBuf,
+    _directory: assert_fs::TempDir,
+}
+
+#[cfg(feature = "http")]
+async fn capture_scrub_case(
+    query: &str,
+    request_headers: &[(&str, &str)],
+    request: &[u8],
+    response: &[u8],
+    streaming: bool,
+    response_encoding: Option<&str>,
+) -> CapturedScrubCase {
+    use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    use futures::StreamExt;
+    use rig_core::http_client::{HttpClientExt, Request};
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/submit");
+            let then = then
+                .status(200)
+                .header(
+                    "content-type",
+                    if streaming {
+                        "text/event-stream"
+                    } else {
+                        "application/json"
+                    },
+                )
+                .body(response);
+            if let Some(coding) = response_encoding {
+                then.header("content-encoding", coding);
+            }
+        })
+        .await;
+    let directory = assert_fs::TempDir::new().expect("directory");
+    let fixture = directory.path().join("fixture.yaml");
+    let session = ProviderCassette::try_start_at(
+        RecordVia::Proxy,
+        "example",
+        CassetteSpec::new("scrub-exchange"),
+        &upstream.base_url(),
+        CassetteMode::Record,
+        fixture.clone(),
+    )
+    .await
+    .expect("record");
+    let path = directory.path().join("traffic.jsonl");
+    let log = crate::traffic::TrafficLog::new(std::fs::File::create(&path).expect("file"))
+        .expect("writer");
+    let raw = rig_reqwest::reqwest::Client::builder()
+        .no_proxy()
+        .no_gzip()
+        .no_deflate()
+        .build()
+        .expect("client");
+    let client = log.wrap_http(rig_reqwest::ReqwestClient::from(raw));
+    let mut builder = Request::post(format!("{}/submit{query}", session.base_url()))
+        .header("content-type", "application/json");
+    for (name, value) in request_headers {
+        builder = builder.header(*name, *value);
+    }
+    let request = builder
+        .body(Bytes::copy_from_slice(request))
+        .expect("request");
+    if streaming {
+        let reply = client.send_streaming(request).await.expect("reply");
+        let _: Vec<_> = reply.into_body().collect().await;
+    } else {
+        client
+            .send::<_, Bytes>(request)
+            .await
+            .expect("reply")
+            .into_body()
+            .await
+            .expect("body");
+    }
+    log.flush();
+    session.try_finish().await.expect("safe recording");
+    CapturedScrubCase {
+        traffic: serde_json::from_str(&std::fs::read_to_string(path).expect("traffic"))
+            .expect("JSON"),
+        fixture: serde_yaml::from_str(&std::fs::read_to_string(&fixture).expect("fixture"))
+            .expect("YAML"),
+        path: fixture,
+        _directory: directory,
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn numeric_header_query_and_string_password_echoes_are_private_in_both_files() {
+    use rig_core::http_client::framing::Framing;
+    let payload = json!({"error":{"header":1234567890u64,"query":2345678901u64,"field":3456789012u64},"ordinary":17});
+    for streaming in [false, true] {
+        let response = if streaming {
+            format!("data: {payload}\n\ndata: [DONE]\n\n")
+        } else {
+            payload.to_string()
+        };
+        let captured = capture_scrub_case(
+            "?api_key=2345678901",
+            &[("x-api-key", "1234567890")],
+            br#"{"password":"3456789012"}"#,
+            response.as_bytes(),
+            streaming,
+            None,
+        )
+        .await;
+        let (traffic, fixture) = (&captured.traffic, &captured.fixture);
+        for output in [&traffic, &fixture] {
+            let text = output.to_string();
+            for secret in ["1234567890", "2345678901", "3456789012"] {
+                assert!(!text.contains(secret), "{text}");
+            }
+        }
+        let traffic_payload = traffic
+            .pointer(if streaming {
+                "/response/events/0/data"
+            } else {
+                "/response/body"
+            })
+            .expect("reply");
+        let body = fixture
+            .pointer("/then/body")
+            .and_then(Value::as_str)
+            .expect("body");
+        let body = if streaming {
+            Framing::Sse
+                .split(body.as_bytes())
+                .first()
+                .map(|frame| frame.as_str().into_owned())
+                .expect("event")
+        } else {
+            body.to_owned()
+        };
+        let cassette_payload: Value = serde_json::from_str(&body).expect("reply JSON");
+        for payload in [traffic_payload, &cassette_payload] {
+            assert_eq!(
+                payload.get("error"),
+                Some(&json!({"header":REDACTED,"query":REDACTED,"field":REDACTED}))
+            );
+            assert_eq!(payload.get("ordinary"), Some(&json!(17)));
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn stacked_codings_teach_plain_echoes_and_leave_no_encoded_credentials_in_cassettes() {
+    let secret = "opaque-stacked-coding-credential-97531";
+    let request = gzip(&gzip(json!({"password":secret}).to_string().as_bytes()));
+    let response = gzip(&gzip(json!({"echo":secret}).to_string().as_bytes()));
+    let captured = capture_scrub_case(
+        "",
+        &[("content-encoding", "gzip, gzip")],
+        &request,
+        &response,
+        false,
+        Some("gzip, gzip"),
+    )
+    .await;
+    let (traffic, fixture) = (&captured.traffic, &captured.fixture);
+    assert_eq!(
+        traffic.pointer("/request/body/password"),
+        Some(&json!(REDACTED))
+    );
+    assert_eq!(
+        traffic.pointer("/response/body/echo"),
+        Some(&json!(REDACTED))
+    );
+    for side in ["when", "then"] {
+        let stored = fixture.get(side).expect("side");
+        let bytes = stored
+            .get("body")
+            .and_then(Value::as_str)
+            .expect("decoded body");
+        let json: Value = serde_json::from_str(bytes).expect("fixture stores inspected JSON");
+        assert!(!json.to_string().contains(secret));
+        assert_ne!(stored.get("body_encoding"), Some(&json!("base64")));
+    }
+    let plain = json!({"echo":secret}).to_string();
+    let captured = capture_scrub_case(
+        "",
+        &[("content-encoding", "gzip, gzip")],
+        &request,
+        plain.as_bytes(),
+        false,
+        None,
+    )
+    .await;
+    let (traffic, fixture) = (&captured.traffic, &captured.fixture);
+    assert_eq!(
+        traffic.pointer("/response/body/echo"),
+        Some(&json!(REDACTED))
+    );
+    assert!(!fixture.to_string().contains(secret));
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn newly_recorded_header_and_query_body_redactions_replay_the_same_request() {
+    use crate::http::{CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    let query = "?api_key=opaque-query-replay-97531";
+    let request =
+        br#"{"fingerprint":"local","query_echo":"opaque-query-replay-97531","message":"right"}"#;
+    let captured = capture_scrub_case(
+        query,
+        &[("authorization", "Bearer local")],
+        request,
+        b"{}",
+        false,
+        None,
+    )
+    .await;
+    let recorded: Value = serde_json::from_str(
+        captured
+            .fixture
+            .pointer("/when/body")
+            .and_then(Value::as_str)
+            .expect("body"),
+    )
+    .expect("JSON");
+    assert_eq!(recorded.get("fingerprint"), Some(&json!(REDACTED)));
+    assert_eq!(recorded.get("query_echo"), Some(&json!(REDACTED)));
+    let replay = ProviderCassette::try_start_at(
+        RecordVia::Proxy,
+        "example",
+        CassetteSpec::new("scrub-exchange"),
+        "https://example.test",
+        CassetteMode::Replay,
+        captured.path.clone(),
+    )
+    .await
+    .expect("replay");
+    let response = rig_reqwest::reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .expect("client")
+        .post(format!("{}/submit{query}", replay.base_url()))
+        .header("authorization", "Bearer local")
+        .header("content-type", "application/json")
+        .body(request.to_vec())
+        .send()
+        .await
+        .expect("reply");
+    assert_eq!(response.status().as_u16(), 200);
+    response.bytes().await.expect("body");
+    replay
+        .try_finish()
+        .await
+        .expect("same request passes matching and snapshots");
 }

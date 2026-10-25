@@ -14,11 +14,13 @@
 //! [`Raw`] follows no redirect and decodes nothing, and answers every status
 //! with its own headers and bytes, so a 3xx, a compressed body, or an error
 //! reply of any size or encoding reaches the client and the cassette as the
-//! provider sent it. The recorder writes what a reply created to the ledger
-//! before the proxy hands a chunk on: an event stream's resources as each
-//! event arrives, so an event stream is passed on chunk by chunk; a body read
-//! whole when it ends, so that reply is passed on one chunk behind and the
-//! chunk that completes it goes out only after the ledger line. A websocket
+//! provider sent it, except that a redirect to the provider itself goes on as
+//! its path, so the client follows it through the proxy. The recorder writes
+//! what a reply created to the ledger before the proxy hands a chunk on: an
+//! event stream's resources as each event arrives, so an event stream is
+//! passed on chunk by chunk; a body read whole, and a compressed event
+//! stream, when it ends, decoded, so that reply is passed on one chunk behind
+//! and the chunk that completes it goes out only after the ledger line. A websocket
 //! upgrade reaches the provider as a plain request without its hop-by-hop
 //! `connection` and `upgrade` headers: a rejected handshake is recorded like
 //! any reply, and an accepted one cannot be recorded.
@@ -107,60 +109,97 @@ async fn forward(
     match forward.http.send_streaming(request).await {
         Ok(response) => {
             let (parts, body) = response.into_parts();
-            let event_stream = traffic::is_event_stream(&parts.headers);
-            let mut reply = Response::new(Body::from_stream(drained(body, event_stream)));
+            let handing = Handing::of(&parts.headers);
+            let mut reply = Response::new(Body::from_stream(drained(body, handing)));
             *reply.status_mut() = parts.status;
             // The body is passed on byte for byte, so its length still holds.
             copy_headers(&parts.headers, reply.headers_mut(), |name| {
                 name == header::CONTENT_LENGTH
             });
+            // A redirect to the provider itself goes on as its path, so the
+            // client follows it through the proxy and it is recorded.
+            if let Some(location) = reply.headers().get(header::LOCATION)
+                && let Ok(location) = location.to_str()
+                && let Some(local) = super::local_location(&forward.origin, location)
+                && let Ok(local) = axum::http::HeaderValue::from_str(&local)
+            {
+                reply.headers_mut().insert(header::LOCATION, local);
+            }
             reply
         }
         Err(error) => failure(format!("the proxy could not reach the provider: {error}")),
     }
 }
 
-/// `body`, read to its end by a task of its own and handed to the client as
-/// it can take it. An event stream is handed on chunk by chunk and ends when
-/// its client goes; any other body is handed on one chunk behind, so its
-/// last chunk goes out after the recorder saw it end, and is read to its end
-/// even when the client went first.
+/// How the proxy hands a reply to its client.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Handing {
+    /// An event stream: each chunk at once, since the recorder wrote what
+    /// each event created first, until the client goes.
+    Events,
+    /// A compressed event stream, whose ledger is read whole when it ends:
+    /// one chunk behind, until the client goes.
+    CompressedEvents,
+    /// Any other body: one chunk behind, read to its end even when the
+    /// client went first.
+    Body,
+}
+
+impl Handing {
+    fn of(headers: &HeaderMap) -> Self {
+        match (
+            traffic::is_event_stream(headers),
+            traffic::content_encoding(headers).is_some(),
+        ) {
+            (true, false) => Self::Events,
+            (true, true) => Self::CompressedEvents,
+            (false, _) => Self::Body,
+        }
+    }
+}
+
+/// `body`, read by a task of its own and handed to the client as it can take
+/// it, as `handing` says. A reply handed one chunk behind sends its last
+/// chunk after the recorder saw it end, so the ledger line for what it
+/// created comes first. An event stream ends when its client goes, even
+/// while the provider sends nothing, such as after its final event on a
+/// connection it keeps open.
 fn drained(
     mut body: BoxedStream,
-    event_stream: bool,
+    handing: Handing,
 ) -> impl futures::Stream<Item = http_client::Result<Bytes>> {
     let (sender, receiver) = mpsc::channel(16);
+    let ends_with_client = handing != Handing::Body;
     tokio::spawn(async move {
-        if event_stream {
-            // The reader can go while the provider sends nothing, such as
-            // after its final event on a connection it keeps open: the stream
-            // ends then, not when the provider next writes.
-            loop {
-                let item = tokio::select! {
-                    () = sender.closed() => return,
-                    item = body.next() => item,
-                };
-                let Some(item) = item else {
-                    return;
-                };
-                let failed = item.is_err();
-                if sender.send(item).await.is_err() || failed {
-                    return;
-                }
-            }
-        }
         let mut held: Option<Bytes> = None;
         let mut client_gone = false;
-        while let Some(item) = body.next().await {
+        loop {
+            let item = if ends_with_client {
+                tokio::select! {
+                    () = sender.closed() => return,
+                    item = body.next() => item,
+                }
+            } else {
+                body.next().await
+            };
             match item {
-                Ok(chunk) => {
+                None => break,
+                Some(Ok(chunk)) if handing == Handing::Events => {
+                    if sender.send(Ok(chunk)).await.is_err() {
+                        return;
+                    }
+                }
+                Some(Ok(chunk)) => {
                     if let Some(previous) = held.replace(chunk)
                         && !client_gone
                     {
                         client_gone = sender.send(Ok(previous)).await.is_err();
+                        if client_gone && ends_with_client {
+                            return;
+                        }
                     }
                 }
-                Err(error) => {
+                Some(Err(error)) => {
                     if let Some(previous) = held.take() {
                         let _ = sender.send(Ok(previous)).await;
                     }
@@ -308,21 +347,11 @@ impl HttpClientExt for Raw {
     }
 }
 
-/// `inner` with the error semantics providers expect of rig-reqwest: a
-/// non-success reply is read whole and becomes
-/// [`http_client::Error::non_success_with_details`] with its status, headers
-/// and body as text. The recorder beneath it sees the reply as the provider
-/// sent it, so the cassette keeps its exact bytes.
+/// `inner` with rig-reqwest's error semantics: a non-success reply is read
+/// whole and becomes [`rig_reqwest::non_success_error`], the error replay's
+/// rig-reqwest client gives for the same reply. The recorder beneath it sees
+/// the reply as the provider sent it, so the cassette keeps its exact bytes.
 pub(crate) struct ProviderErrors(pub(crate) DynHttpClient);
-
-/// The error a provider reads for a non-success reply.
-fn non_success(status: StatusCode, headers: HeaderMap, body: &[u8]) -> http_client::Error {
-    http_client::Error::non_success_with_details(
-        status,
-        headers,
-        String::from_utf8_lossy(body).into_owned(),
-    )
-}
 
 /// `sent`'s reply, or the provider error of a non-success one.
 async fn checked<U>(
@@ -334,7 +363,13 @@ where
     let response = sent.await?;
     if !response.status().is_success() {
         let (parts, body) = response.into_parts();
-        return Err(non_success(parts.status, parts.headers, &body.await?));
+        let (bytes, failure) = match body.await {
+            Ok(bytes) => (bytes, None),
+            Err(error) => (Bytes::new(), Some(error.to_string())),
+        };
+        return Err(
+            rig_reqwest::non_success_error(parts.status, parts.headers, &bytes, failure).await,
+        );
     }
     Ok(response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) }))
 }
@@ -380,10 +415,17 @@ impl HttpClientExt for ProviderErrors {
             }
             let (parts, mut body) = response.into_parts();
             let mut bytes = Vec::new();
+            let mut failure = None;
             while let Some(chunk) = body.next().await {
-                bytes.extend_from_slice(&chunk?);
+                match chunk {
+                    Ok(chunk) => bytes.extend_from_slice(&chunk),
+                    Err(error) => {
+                        failure = Some(error.to_string());
+                        break;
+                    }
+                }
             }
-            Err(non_success(parts.status, parts.headers, &bytes))
+            Err(rig_reqwest::non_success_error(parts.status, parts.headers, &bytes, failure).await)
         }
     }
 }

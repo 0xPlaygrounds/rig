@@ -933,7 +933,8 @@ async fn a_stopped_stream_is_kept_only_between_events() {
 
 /// `direct_http` sends through the session's transport, so an error reply
 /// reaches the fixture as the provider sent it, over 64 KiB or binary, while
-/// the provider still gets the error it expects of rig-reqwest.
+/// the provider gets rig-reqwest's error for it: the same error text replay
+/// gives for the fixture.
 #[tokio::test]
 async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
     use base64::Engine as _;
@@ -972,7 +973,11 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         large.non_success_status().map(|status| status.as_u16()),
         Some(404)
     );
-    assert_eq!(large.non_success_body(), Some(oversized.as_str()));
+    let expected = format!(
+        "{}\n[Response body truncated after 64 KiB]",
+        oversized.get(..64 * 1024).expect("a long body")
+    );
+    assert_eq!(large.non_success_body(), Some(expected.as_str()));
     let streamed = http.send_streaming(post(&origin, "binary")).await;
     assert_eq!(
         streamed
@@ -997,6 +1002,45 @@ async fn direct_error_replies_reach_the_fixture_byte_for_byte() {
         .decode(interactions[1].then.body.as_deref().unwrap_or_default())
         .expect("a base64 body");
     assert_eq!(kept, binary);
+
+    // Replay serves the fixture to rig-reqwest, whose error text is the one
+    // the recording gave.
+    let replay = ProviderCassette::try_start_with_attempts(
+        RecordVia::Direct,
+        "openai",
+        CassetteSpec::new("guard/direct"),
+        &format!("{origin}/v1"),
+        CassetteMode::Replay,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("the replay starts");
+    let replayed = replay
+        .direct_http()
+        .send::<_, Bytes>(
+            rig_core::http_client::Request::post(format!("{}/large", replay.base_url()))
+                .header("authorization", "Bearer replay-key")
+                .body(Bytes::from_static(b"{}"))
+                .expect("a request"),
+        )
+        .await
+        .err()
+        .expect("the replayed error");
+    assert_eq!(replayed.non_success_body(), Some(expected.as_str()));
+    let _ = replay
+        .direct_http()
+        .send_streaming(
+            rig_core::http_client::Request::post(format!("{}/binary", replay.base_url()))
+                .header("authorization", "Bearer replay-key")
+                .body(Bytes::from_static(b"{}"))
+                .expect("a request"),
+        )
+        .await;
+    replay
+        .try_finish()
+        .await
+        .expect("the replay plays everything");
 }
 
 /// A credential a later exchange teaches leaves the earlier ones too: when the
@@ -1100,4 +1144,85 @@ async fn an_event_stream_ends_when_its_reader_goes() {
     );
     let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
     assert!(recorded.contains(r#"data: {"type":"done"}"#), "{recorded}");
+}
+
+/// A redirect keeps its `location` in the cassette, and one to the provider
+/// itself is kept as its path, so replay follows both to the replay server:
+/// a relative redirect and a same-origin absolute one each record two
+/// exchanges, and replay plays all four.
+#[tokio::test]
+async fn redirects_record_and_replay_through_the_cassette() {
+    let upstream = httpmock::MockServer::start_async().await;
+    let absolute = format!("{}/v1/target-b", upstream.base_url());
+    for (from, to, body) in [
+        ("/v1/redirect-relative", "/v1/target-a".to_owned(), "a"),
+        ("/v1/redirect-absolute", absolute.clone(), "b"),
+    ] {
+        upstream
+            .mock_async(|when, then| {
+                when.method("GET").path(from);
+                then.status(302).header("location", to.as_str());
+            })
+            .await;
+        let target = if body == "a" {
+            "/v1/target-a"
+        } else {
+            "/v1/target-b"
+        };
+        upstream
+            .mock_async(|when, then| {
+                when.method("GET").path(target);
+                then.status(200).body(body);
+            })
+            .await;
+    }
+    let session = Session::new();
+    let follow = |base: String| async move {
+        let mut bodies = Vec::new();
+        for path in ["redirect-relative", "redirect-absolute"] {
+            let reply = client()
+                .get(format!("{base}/{path}"))
+                .header("authorization", "Bearer redirect-key")
+                .send()
+                .await
+                .expect("followed");
+            assert_eq!(reply.status().as_u16(), 200);
+            bodies.push(reply.text().await.expect("body"));
+        }
+        bodies
+    };
+
+    let recording = session
+        .start(CassetteSpec::new("guard/redirects"), &upstream)
+        .await;
+    assert_eq!(follow(recording.base_url()).await, ["a", "b"]);
+    recording
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let locations: Vec<String> = parse_cassette_interactions(&session.fixture, &recorded)
+        .iter()
+        .flat_map(|interaction| interaction.then.header.iter())
+        .filter(|header| header.name.eq_ignore_ascii_case("location"))
+        .map(|header| header.value.clone())
+        .collect();
+    assert_eq!(locations, ["/v1/target-a", "/v1/target-b"]);
+
+    let replay = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/redirects"),
+        &format!("{}/v1", upstream.base_url()),
+        CassetteMode::Replay,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("the replay starts");
+    assert_eq!(follow(replay.base_url()).await, ["a", "b"]);
+    replay
+        .try_finish()
+        .await
+        .expect("the replay plays all four exchanges");
 }

@@ -62,18 +62,20 @@ enum SecretSource {
     Field,
     SoftNumber,
     Wire,
+    Authorization,
     Number,
 }
 
 impl SecretSource {
     fn minimum(self) -> usize {
         match self {
-            Self::Wire | Self::Number => 3,
+            Self::Wire | Self::Authorization | Self::Number => 3,
             _ => 8,
         }
     }
 }
 
+#[derive(PartialEq, Eq)]
 struct LearnedSecret {
     value: String,
     source: SecretSource,
@@ -197,11 +199,16 @@ pub(crate) struct PreparedBody {
     invalid_multipart: bool,
     pub(crate) sse: bool,
     pub(crate) was_decoded: bool,
+    pub(crate) decoding: Result<DecodeStatus, DecodeFailure>,
+    encoded_len: usize,
 }
 
 impl PreparedBody {
     fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
-        let bytes = decoded(raw, header_value(headers, "content-encoding"));
+        let (bytes, decoding) = match decoded(raw, header_value(headers, "content-encoding")) {
+            Ok(body) => (body.bytes, Ok(body.status)),
+            Err(error) => (Bytes::new(), Err(error)),
+        };
         let content_type = header_value(headers, "content-type");
         let is_multipart = content_type.is_some_and(|value| {
             value.split(';').next().is_some_and(|media_type| {
@@ -216,12 +223,17 @@ impl PreparedBody {
             .and_then(|boundary| multipart_slices(&bytes, &boundary))
             .filter(|layout| !layout.parts.is_empty());
         Self {
-            was_decoded: bytes.as_ref() != raw,
+            was_decoded: decoding == Ok(DecodeStatus::Decoded),
+            decoding,
+            encoded_len: raw.len(),
             bytes,
             invalid_multipart: is_multipart && multipart.is_none(),
             multipart,
             sse: content_type.is_some_and(is_sse),
         }
+    }
+    pub(crate) fn decode_failure(&self) -> Option<DecodeFailure> {
+        self.decoding.err()
     }
 }
 
@@ -279,6 +291,9 @@ impl Scrubber {
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
+        if body.decode_failure().is_some() {
+            return;
+        }
         if let Some(layout) = &body.multipart {
             for range in [&layout.preamble, &layout.epilogue] {
                 if let Some((text, _)) = body.bytes.get(range.clone()).and_then(text_prefix) {
@@ -311,6 +326,9 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_prepared(&mut self, body: PreparedBody) -> Bytes {
+        if body.decode_failure().is_some() {
+            return Bytes::from_static(REDACTED.as_bytes());
+        }
         if body.invalid_multipart {
             return Bytes::from_static(REDACTED.as_bytes());
         }
@@ -447,24 +465,39 @@ impl Scrubber {
         }
     }
 
-    /// Normalize a request body for replay matching and snapshot comparison.
+    /// A cassette scrubber with the live request's authoritative context.
+    #[cfg(any(feature = "http", test))]
+    pub(crate) fn for_request(uri: &str, headers: &HeaderMap) -> Self {
+        let mut scrubber = Self::default();
+        scrubber.learn_url(uri);
+        for (name, value) in header_pairs(headers) {
+            scrubber.learn_header(name, value);
+        }
+        scrubber
+    }
+
+    /// Whether two request scrubbers learned the same authoritative credentials.
+    #[cfg(any(feature = "http", test))]
+    pub(crate) fn same_credentials(&self, other: &Self) -> bool {
+        self.learned == other.learned
+    }
+
+    /// Normalize a request body using the caller's request context.
     #[cfg(any(feature = "http", test))]
     pub(crate) fn request_body(
+        &mut self,
         content_type: Option<&str>,
         content_encoding: Option<&str>,
         bytes: &[u8],
-    ) -> Bytes {
-        let mut scrubber = Self::default();
+    ) -> Result<Bytes, DecodeFailure> {
         let headers = content_type
             .map(|value| ("content-type", value))
             .into_iter()
             .chain(content_encoding.map(|value| ("content-encoding", value)));
-        let prepared =
-            scrubber.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
-        prepared
-            .request_body
-            .map(|body| scrubber.scrub_prepared(body))
-            .unwrap_or_else(|| Bytes::copy_from_slice(bytes))
+        let prepared = self.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
+        let body = prepared.request_body.ok_or(DecodeFailure::InvalidData)?;
+        body.decoding?;
+        Ok(self.scrub_prepared(body))
     }
 
     /// Remembers credentials in a header, including individual cookies.
@@ -472,15 +505,12 @@ impl Scrubber {
         if is_secret_header(name) {
             let source = if is_cookie(name) {
                 SecretSource::Field
+            } else if is_auth_name(name) {
+                SecretSource::Authorization
             } else {
                 SecretSource::Wire
             };
-            self.learn(value, source);
-            if name.to_ascii_lowercase().contains("auth")
-                && let Some((_, credential)) = value.split_once(' ')
-            {
-                self.learn(credential.trim(), SecretSource::Wire);
-            }
+            self.learn_credential(value, source);
             if is_cookie(name) {
                 for cookie in value.split(';') {
                     if let Some((_, value)) = cookie.split_once('=') {
@@ -608,18 +638,12 @@ impl Scrubber {
                     source
                 } else if context == JsonContext::ApplicationCredential {
                     SecretSource::Field
+                } else if source == SecretSource::Authorization {
+                    source
                 } else {
                     SecretSource::Wire
                 };
-                self.learn(text, source);
-                if let Some((scheme, credential)) = text.split_once(' ')
-                    && matches!(
-                        scheme.to_ascii_lowercase().as_str(),
-                        "bearer" | "basic" | "token"
-                    )
-                {
-                    self.learn(credential, source);
-                }
+                self.learn_credential(text, source);
             }
             Value::Number(number)
                 if matches!(
@@ -656,10 +680,31 @@ impl Scrubber {
                             SecretSource::Wire,
                         );
                     }
-                    self.learn_json_in(field, context.field(name, self.purpose), source);
+                    let field_source = if source != SecretSource::Text
+                        && field.is_string()
+                        && is_auth_name(name)
+                    {
+                        SecretSource::Authorization
+                    } else {
+                        source
+                    };
+                    self.learn_json_in(field, context.field(name, self.purpose), field_source);
                 }
             }
             _ => {}
+        }
+    }
+
+    fn learn_credential(&mut self, value: &str, source: SecretSource) {
+        self.learn(value, source);
+        if source == SecretSource::Authorization
+            && let Some((scheme, credential)) = value.split_once(char::is_whitespace)
+            && !scheme.is_empty()
+            && scheme
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+        {
+            self.learn(credential.trim(), source);
         }
     }
 
@@ -674,8 +719,10 @@ impl Scrubber {
         }
         if let Some(known) = self.learned.iter_mut().find(|known| known.value == secret) {
             known.source = match (known.source, source) {
-                (SecretSource::SoftNumber, SecretSource::Wire)
-                | (SecretSource::Wire, SecretSource::SoftNumber) => SecretSource::Number,
+                (SecretSource::SoftNumber, SecretSource::Wire | SecretSource::Authorization)
+                | (SecretSource::Wire | SecretSource::Authorization, SecretSource::SoftNumber) => {
+                    SecretSource::Number
+                }
                 _ => known.source.max(source),
             };
             return;
@@ -830,6 +877,14 @@ impl Scrubber {
         body: PreparedBody,
         chunk_ends: impl IntoIterator<Item = usize>,
     ) -> Vec<ScrubbedEvent> {
+        if body.decode_failure().is_some() {
+            return vec![ScrubbedEvent {
+                end: body.encoded_len,
+                event: None,
+                id: None,
+                data: serde_json::json!({"bytes":body.encoded_len}),
+            }];
+        }
         if body.invalid_multipart || body.multipart.is_some() {
             let end = body.bytes.len();
             let bytes = self.scrub_prepared(body);
@@ -970,7 +1025,10 @@ impl Scrubber {
                 ) || self.learned.iter().any(|secret| {
                     matches!(
                         secret.source,
-                        SecretSource::Number | SecretSource::SoftNumber
+                        SecretSource::Wire
+                            | SecretSource::Authorization
+                            | SecretSource::Number
+                            | SecretSource::SoftNumber
                     ) && secret.value == number.to_string()
                 }) {
                     *value = Value::String(REDACTED.to_owned());
@@ -1109,12 +1167,16 @@ pub(crate) fn is_secret_header(name: &str) -> bool {
     contains_case_insensitive(SENSITIVE_HEADER_NAMES, name)
         || is_explicit_secret_field(name)
         || lower == "secret"
-        || lower
-            .split(['-', '_'])
-            .any(|component| matches!(component, "auth" | "authorization" | "authentication"))
+        || is_auth_name(name)
         || ["-key", "-token", "-secret", "-signature"]
             .iter()
             .any(|suffix| lower.ends_with(suffix))
+}
+
+fn is_auth_name(name: &str) -> bool {
+    name.to_ascii_lowercase()
+        .split(['-', '_'])
+        .any(|component| matches!(component, "auth" | "authorization" | "authentication"))
 }
 
 pub(crate) fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {
@@ -1797,36 +1859,93 @@ pub(crate) fn text_prefix(bytes: &[u8]) -> Option<(&str, usize)> {
     }
 }
 
-/// `bytes` unwrapped from a gzip or deflate `content-encoding` in
-/// `headers`; as they are for another encoding, or one that does not
-/// decode within [`DECODED_LIMIT`].
-pub(crate) fn decoded(bytes: &[u8], encoding: Option<&str>) -> Bytes {
-    use std::io::Read;
-    let encoding = encoding.map(|value| value.trim().to_ascii_lowercase());
-    let mut out = Vec::new();
-    let read = match encoding.as_deref() {
-        Some("gzip" | "x-gzip") => flate2::read::MultiGzDecoder::new(bytes)
-            .take(DECODED_LIMIT)
-            .read_to_end(&mut out),
-        Some("deflate") => flate2::read::ZlibDecoder::new(bytes)
-            .take(DECODED_LIMIT)
-            .read_to_end(&mut out)
-            .or_else(|_| {
-                out.clear();
-                flate2::read::DeflateDecoder::new(bytes)
-                    .take(DECODED_LIMIT)
-                    .read_to_end(&mut out)
-            }),
-        _ => return Bytes::copy_from_slice(bytes),
-    };
-    match read {
-        Ok(len) if u64::try_from(len).is_ok_and(|len| len < DECODED_LIMIT) => out.into(),
-        _ => Bytes::copy_from_slice(bytes),
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecodeStatus {
+    NotEncoded,
+    Decoded,
+}
+
+#[derive(Debug)]
+pub(crate) struct DecodedBody {
+    pub(crate) bytes: Bytes,
+    pub(crate) status: DecodeStatus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecodeFailure {
+    UnsupportedCoding,
+    InvalidData,
+    OverLimit,
+}
+
+impl std::fmt::Display for DecodeFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::UnsupportedCoding => "unsupported content coding",
+            Self::InvalidData => "invalid encoded body",
+            Self::OverLimit => "decoded body exceeds the size limit",
+        })
     }
 }
 
-/// The most bytes a compressed body is unwrapped to; a larger one stays
-/// compressed, kept by its size.
+impl std::error::Error for DecodeFailure {}
+
+/// Decode supported content codings in reverse application order.
+/// Unsupported, invalid and oversized bodies have no inspectable result.
+pub(crate) fn decoded(bytes: &[u8], encoding: Option<&str>) -> Result<DecodedBody, DecodeFailure> {
+    decoded_with_limit(bytes, encoding, DECODED_LIMIT)
+}
+
+fn decoded_with_limit(
+    bytes: &[u8],
+    encoding: Option<&str>,
+    limit: u64,
+) -> Result<DecodedBody, DecodeFailure> {
+    use std::io::Read;
+    let coding = encoding.unwrap_or_default().trim();
+    let mut bytes = Bytes::copy_from_slice(bytes);
+    let mut status = DecodeStatus::NotEncoded;
+    if coding.is_empty() {
+        return Ok(DecodedBody { bytes, status });
+    }
+    let codings: Vec<_> = coding
+        .split(',')
+        .map(|value| value.trim().to_ascii_lowercase())
+        .collect();
+    if codings
+        .iter()
+        .any(|coding| !matches!(coding.as_str(), "identity" | "gzip" | "x-gzip" | "deflate"))
+    {
+        return Err(DecodeFailure::UnsupportedCoding);
+    }
+    for coding in codings.iter().rev() {
+        let mut out = Vec::new();
+        let read = match coding.as_str() {
+            "identity" => continue,
+            "gzip" | "x-gzip" => flate2::read::MultiGzDecoder::new(bytes.as_ref())
+                .take(limit.saturating_add(1))
+                .read_to_end(&mut out),
+            "deflate" => flate2::read::ZlibDecoder::new(bytes.as_ref())
+                .take(limit.saturating_add(1))
+                .read_to_end(&mut out)
+                .or_else(|_| {
+                    out.clear();
+                    flate2::read::DeflateDecoder::new(bytes.as_ref())
+                        .take(limit.saturating_add(1))
+                        .read_to_end(&mut out)
+                }),
+            _ => return Err(DecodeFailure::UnsupportedCoding),
+        };
+        let len = read.map_err(|_| DecodeFailure::InvalidData)?;
+        if !u64::try_from(len).is_ok_and(|len| len <= limit) {
+            return Err(DecodeFailure::OverLimit);
+        }
+        bytes = out.into();
+        status = DecodeStatus::Decoded;
+    }
+    Ok(DecodedBody { bytes, status })
+}
+
 const DECODED_LIMIT: u64 = 256 << 20;
 
 fn header_value<'a>(headers: &[(&'a str, &'a str)], name: &str) -> Option<&'a str> {
