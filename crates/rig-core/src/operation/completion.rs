@@ -1316,12 +1316,22 @@ impl Fold<Completion> for ReplyFold {
 }
 
 impl<'id> Out<'id, Completion> {
-    /// The requested model's pricing in the wire's facts, for a decoder
-    /// that prices its reply itself: its provider bills other counters than
-    /// the ones it reports as usage, or splits a price the catalog lists once.
-    pub(crate) fn catalog_pricing(&self) -> Option<crate::catalog::Pricing> {
+    /// The pricing in the wire's facts for the requested model, else for
+    /// `reported`, the model the reply names, for a decoder that prices its
+    /// reply itself: its provider bills other counters than the ones it
+    /// reports as usage, or splits a price the catalog lists once.
+    pub(crate) fn catalog_pricing(
+        &self,
+        reported: Option<&str>,
+    ) -> Option<crate::catalog::Pricing> {
         let shared = self.lock();
-        shared.fold.pricing(&shared.fold.origin)
+        let mut origin = shared.fold.origin.clone();
+        if origin.model.is_empty()
+            && let Some(model) = reported
+        {
+            model.clone_into(&mut origin.model);
+        }
+        shared.fold.pricing(&origin)
     }
 
     /// Open the provider item at wire `index` as `block`: it takes the next

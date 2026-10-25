@@ -123,4 +123,3 @@ pub(crate) fn decode_reply<T: serde::de::DeserializeOwned>(
 
 #[cfg(all(test, any(feature = "image", feature = "audio")))]
 mod tests;
-

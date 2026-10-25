@@ -1474,29 +1474,69 @@ fn a_whole_reply_block_without_a_type_fails_the_reply() {
     );
 }
 
-/// The cost of a whole Claude Opus 5.5 message reporting `usage`, decoded
-/// on a dialect with `quirks`.
-fn priced(quirks: Quirks, usage: Value) -> Option<crate::completion::Cost> {
+/// The cost of the reply `frames` stream on a dialect with `quirks`, for
+/// a request naming `requested`.
+fn cost_of(quirks: Quirks, requested: &str, frames: &[Value]) -> Option<crate::completion::Cost> {
     let origin = crate::message::Origin::new(
         crate::providers::anthropic::wire::MESSAGES_API,
         "anthropic",
-        CLAUDE_OPUS_5_5,
+        requested,
     );
-    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
-        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": usage});
     let fold = crate::operation::ReplyFold::new(origin);
     let decoded = crate::driver::decode_with(fold, "anthropic", |reply| {
         reply.feed(
             &mut MessagesDecoder::new(quirks),
             Some(document::Message::default()),
-            [WireFrame::Text(message.to_string())],
+            frames
+                .iter()
+                .map(|frame| WireFrame::Text(frame.to_string())),
         )
     });
-    decoded
-        .outcome
-        .expect("the message ends the reply")
-        .usage
-        .cost
+    let response = match decoded.outcome {
+        Ok(response) => response,
+        Err(error) => panic!("the reply ends: {error}"),
+    };
+    response.usage.cost
+}
+
+/// The cost of a whole Claude Opus 5.5 message reporting `usage`, decoded
+/// on a dialect with `quirks`.
+fn priced(quirks: Quirks, usage: Value) -> Option<crate::completion::Cost> {
+    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
+        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": usage});
+    cost_of(quirks, CLAUDE_OPUS_5_5, &[message])
+}
+
+/// A request that names no model is priced, write lifetimes included, as
+/// the model the reply names.
+#[test]
+fn a_reply_without_a_requested_model_is_priced_as_the_model_it_names() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 22_002});
+    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
+        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": written(22_002, split)});
+    let Some(cost) = cost_of(Quirks::anthropic(), "", &[message]) else {
+        panic!("the catalog prices Opus 5.5");
+    };
+    assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
+}
+
+/// A malformed split in the terminal `message_delta` replaces a valid one
+/// from `message_start`, so the writes stay unpriced.
+#[test]
+fn a_malformed_terminal_split_leaves_the_writes_unpriced() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 100});
+    let frames = [
+        json!({"type": "message_start", "message": {"id": "msg", "role": "assistant",
+            "content": [], "model": CLAUDE_OPUS_5_5, "stop_reason": null,
+            "usage": written(100, split)}}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 8, "cache_creation": "invalid"}}),
+    ];
+    let Some(cost) = cost_of(Quirks::anthropic(), CLAUDE_OPUS_5_5, &frames) else {
+        panic!("the known parts still have prices");
+    };
+    assert_eq!(cost.cache_write, None);
+    assert!(!cost.is_complete(), "{cost:?}");
 }
 
 /// Synthetic Messages usage: 4 uncached input and 8 output tokens, with

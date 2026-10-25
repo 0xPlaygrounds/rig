@@ -88,7 +88,8 @@ struct Counts {
     output: Option<u64>,
     cache_read: Option<u64>,
     cache_creation: Option<u64>,
-    /// The per-TTL breakdown of `cache_creation`, as sent.
+    /// The per-TTL breakdown of `cache_creation`, as sent. A malformed one is
+    /// kept, so it replaces an earlier one and leaves the writes unpriced.
     cache_creation_split: Option<Value>,
     thinking: Option<u64>,
 }
@@ -103,7 +104,7 @@ impl Counts {
             cache_creation: count("/cache_creation_input_tokens"),
             cache_creation_split: usage
                 .and_then(|usage| usage.get("cache_creation"))
-                .filter(|split| split.is_object())
+                .filter(|split| !split.is_null())
                 .cloned(),
             thinking: count("/output_tokens_details/thinking_tokens"),
         }
@@ -558,10 +559,12 @@ impl MessagesDecoder {
         let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
         let mut counted = usage.usage();
         if self.cache_ttl_pricing {
-            counted.cost = out.catalog_pricing().and_then(|pricing| {
-                let write = usage.write_cost(&pricing);
-                pricing.cost_with_cache_write(&counted, write)
-            });
+            counted.cost = out
+                .catalog_pricing(self.response_model.as_deref())
+                .and_then(|pricing| {
+                    let write = usage.write_cost(&pricing);
+                    pricing.cost_with_cache_write(&counted, write)
+                });
         }
         Ok(out.end(Finish {
             usage: counted,
