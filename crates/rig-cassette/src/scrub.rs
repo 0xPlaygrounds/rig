@@ -549,13 +549,7 @@ impl Scrubber {
             }
             #[cfg(feature = "bedrock")]
             BodyFormat::EventStream => {
-                if let Some(messages) = event_stream_messages(&body.bytes) {
-                    for message in messages {
-                        if let Ok(text) = std::str::from_utf8(message.payload()) {
-                            self.learn_body(text);
-                        }
-                    }
-                }
+                self.learn_event_stream(&body.bytes);
                 return;
             }
             _ => {}
@@ -568,11 +562,16 @@ impl Scrubber {
             }
         } else {
             #[cfg(feature = "bedrock")]
-            if let Some(messages) = event_stream_messages(&body.bytes) {
-                for message in messages {
-                    if let Ok(text) = std::str::from_utf8(message.payload()) {
-                        self.learn_body(text);
-                    }
+            self.learn_event_stream(&body.bytes);
+        }
+    }
+
+    #[cfg(feature = "bedrock")]
+    fn learn_event_stream(&mut self, bytes: &[u8]) {
+        if let Some(messages) = event_stream_messages(bytes) {
+            for message in messages {
+                if let Ok(text) = std::str::from_utf8(message.payload()) {
+                    self.learn_body(text);
                 }
             }
         }
