@@ -355,10 +355,9 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
 /// Per-bug wrapper for the audio-generation `additional_params` matrix
 /// (`crates/rig-cassette/fixtures/cassettes/openai/audio_params_matrix/`).
 ///
-/// Records through the direct recorder rather than the httpmock proxy: this
-/// endpoint answers with raw audio, and the proxy exports bodies as strings,
-/// so a recorded speech response would come back as `body: null` and replay as
-/// zero bytes. The direct path stores non-UTF-8 bodies as base64.
+/// Records through `direct_http`. This endpoint answers with raw audio, which
+/// the cassette stores as base64; the proxy would record it the same way, as
+/// both modes share one transport and recorder.
 pub(super) async fn with_openai_audio_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(OpenAiCassette) -> Fut,
