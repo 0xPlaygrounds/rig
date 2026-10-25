@@ -407,19 +407,15 @@ async fn oversized_and_binary_error_bodies_pass_through_byte_for_byte() {
     assert_eq!(speech.status().as_u16(), 500);
     assert_eq!(speech.bytes().await.expect("body"), binary.as_slice());
 
-    // The HTML page is kept by its size and content type, as the scrubber
-    // does not read it; the binary body has no text to scrub and is kept as
-    // sent.
+    // The HTML page is text the scrubber reads and is kept whole; the binary
+    // body has no text to scrub and is kept as sent.
     let interactions = interactions.lock().expect("interactions");
     assert_eq!(interactions.len(), 2);
     assert_eq!(interactions[0].then.status, 502);
-    assert_eq!(interactions[0].then.body, None);
+    assert_eq!(interactions[0].then.withheld, None);
     assert_eq!(
-        interactions[0].then.withheld,
-        Some(OpaqueBody {
-            bytes: oversized.len(),
-            content_type: Some("text/html".to_owned()),
-        })
+        interactions[0].then.body.as_deref(),
+        Some(oversized.as_str())
     );
     assert_eq!(interactions[1].then.status, 500);
     assert_eq!(interactions[1].then.withheld, None);
@@ -683,13 +679,11 @@ async fn replies_the_client_does_not_read_whole_are_recorded_whole() {
         .map(|interaction| interaction.then.status)
         .collect();
     assert_eq!(statuses, [204, 200, 500]);
-    // The page is read to its end: the cassette keeps its whole size.
+    // The page is read to its end, so the cassette keeps it whole.
+    assert_eq!(interactions[2].then.withheld, None);
     assert_eq!(
-        interactions[2].then.withheld,
-        Some(OpaqueBody {
-            bytes: error_page.len(),
-            content_type: Some("text/html".to_owned()),
-        })
+        interactions[2].then.body.as_deref(),
+        Some(error_page.as_str())
     );
     assert_eq!(recorder.refusals(), Vec::<String>::new());
 }
