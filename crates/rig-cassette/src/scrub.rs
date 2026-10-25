@@ -3,7 +3,8 @@
 //! query parameters, and every secret [`rig_core::redact`] finds), AWS account
 //! numbers and home-directory paths, and keeps everything else the provider
 //! sent verbatim. A [`Purpose`] selects the few behaviours a replayable
-//! fixture needs and a log of live traffic must not have.
+//! fixture needs and a log of live traffic must not have. New captures retain
+//! only size and content type when a complete body cannot be inspected.
 
 use rig_core::http_client::framing::{SseField, SseFramer};
 use rig_core::http_client::{
@@ -387,12 +388,20 @@ impl Scrubber {
                     })
                 } else {
                     for part in form.parts() {
-                        self.learn_part_metadata(&part_metadata(part));
+                        let metadata = part_metadata(part);
+                        self.learn_part_metadata(&metadata);
                         let bytes = match part.content() {
                             PartContent::Text(text) => text.as_bytes(),
                             PartContent::Binary(bytes) => bytes.as_ref(),
                         };
-                        self.learn_part(part.name(), bytes);
+                        if let Ok(text) = std::str::from_utf8(bytes) {
+                            self.learn_param(part.name(), text);
+                        }
+                        let headers: Vec<_> = metadata
+                            .iter()
+                            .map(|(name, value)| (name.as_str(), value.as_str()))
+                            .collect();
+                        self.learn_body_parts(&PreparedBody::new(bytes, &headers));
                     }
                     None
                 }
@@ -436,13 +445,6 @@ impl Scrubber {
                     }
                 }
             }
-        }
-    }
-
-    fn learn_part(&mut self, name: &str, bytes: &[u8]) {
-        if let Some((text, _)) = text_prefix(bytes) {
-            self.learn_param(name, text);
-            self.learn_body(text);
         }
     }
 
@@ -490,7 +492,7 @@ impl Scrubber {
         Some(output)
     }
 
-    /// Scrub a decoded body while preserving opaque media unless it echoes a known wire secret.
+    /// Normalize legacy fixture bytes, preserving their opaque representation.
     pub(crate) fn scrub_bytes(&mut self, bytes: &[u8]) -> Bytes {
         if let Some((text, tail)) = text_prefix(bytes) {
             let mut out = self.render_body(text).into_bytes();
@@ -959,7 +961,7 @@ impl Scrubber {
         output
     }
 
-    /// Scrub a decoded stream once; offsets refer to its decoded bytes.
+    /// Scrub inspected stream events; offsets refer to the original bytes.
     pub(crate) fn scrub_stream(
         &mut self,
         body: PreparedBody,
