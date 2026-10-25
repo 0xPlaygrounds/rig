@@ -277,6 +277,45 @@ fn head(response: &mut reqwest::Response) -> axum::http::response::Builder {
     head
 }
 
+/// Why a unary body could not be read whole, with the bytes that arrived
+/// first. It reads as the transport's error; [`ProviderErrors`] gives the
+/// bytes to rig-reqwest's error reader, as rig-reqwest's own client would.
+#[derive(Debug)]
+struct CutShort {
+    read: Bytes,
+    error: reqwest::Error,
+}
+
+impl std::fmt::Display for CutShort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl std::error::Error for CutShort {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+/// `response`'s body read chunk by chunk, or why it stopped and what came
+/// first.
+async fn read_whole(mut response: reqwest::Response) -> http_client::Result<Bytes> {
+    let mut read = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => read.extend_from_slice(&chunk),
+            Ok(None) => return Ok(read.into()),
+            Err(error) => {
+                return Err(http_client::Error::instance(CutShort {
+                    read: read.into(),
+                    error,
+                }));
+            }
+        }
+    }
+}
+
 /// `request`'s reply, its body read whole when awaited.
 async fn unary<U>(
     request: http_client::Result<reqwest::RequestBuilder>,
@@ -289,13 +328,7 @@ where
         .await
         .map_err(http_client::Error::instance)?;
     let head = head(&mut response);
-    let body: LazyBody<U> = Box::pin(async move {
-        response
-            .bytes()
-            .await
-            .map(U::from)
-            .map_err(http_client::Error::instance)
-    });
+    let body: LazyBody<U> = Box::pin(async move { read_whole(response).await.map(U::from) });
     head.body(body).map_err(http_client::Error::Protocol)
 }
 
@@ -366,9 +399,19 @@ where
     let response = sent.await?;
     if !response.status().is_success() {
         let (parts, body) = response.into_parts();
-        let mut body = stream::once(body);
+        // The body as it was read: its bytes, or those that came before the
+        // read failed and then the failure, as reqwest reported it.
+        let (read, failure) = match body.await {
+            Ok(bytes) => (Some(bytes), None),
+            Err(http_client::Error::Instance(error)) => (
+                error.downcast_ref::<CutShort>().map(|cut| cut.read.clone()),
+                Some(error.to_string()),
+            ),
+            Err(error) => (None, Some(error.to_string())),
+        };
+        let mut chunks = stream::iter(read.map(Ok).into_iter().chain(failure.map(Err)));
         return Err(
-            rig_reqwest::non_success_body_error(parts.status, parts.headers, &mut body).await,
+            rig_reqwest::non_success_body_error(parts.status, parts.headers, &mut chunks).await,
         );
     }
     Ok(response.map(|body| -> LazyBody<U> { Box::pin(async move { body.await.map(U::from) }) }))

@@ -1384,36 +1384,102 @@ async fn a_streamed_error_reply_past_the_error_limit_is_kept_whole() {
     );
 }
 
-/// An error reply whose body is cut short keeps the bytes that arrived, as
-/// rig-reqwest's own client does.
+/// An error reply whose body is cut short keeps the bytes that arrived,
+/// unary, multipart or streamed, as rig-reqwest's own client does; the
+/// recording is still refused, since the reply did not end whole.
 #[tokio::test]
-async fn a_streamed_error_reply_cut_short_keeps_what_arrived() {
-    use rig_core::http_client::HttpClientExt;
+async fn an_error_reply_cut_short_keeps_what_arrived() {
+    use rig_core::http_client::{HttpClientExt, MultipartForm};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Reads one request whole, so closing the socket after the reply
+    /// cannot reset the connection before the client reads the reply.
+    async fn read_request(socket: &mut tokio::net::TcpStream) {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let Ok(read) = socket.read(&mut buffer).await else {
+                return;
+            };
+            request.extend_from_slice(buffer.get(..read).unwrap_or_default());
+            let text = String::from_utf8_lossy(&request).to_ascii_lowercase();
+            let Some(head_end) = text.find("\r\n\r\n") else {
+                if read == 0 {
+                    return;
+                }
+                continue;
+            };
+            let length = text
+                .lines()
+                .find_map(|line| line.strip_prefix("content-length:"))
+                .and_then(|length| length.trim().parse::<usize>().ok());
+            let whole = match length {
+                Some(length) => request.len() >= head_end + 4 + length,
+                None if text.contains("transfer-encoding: chunked") => text.ends_with("0\r\n\r\n"),
+                None => true,
+            };
+            if whole || read == 0 {
+                return;
+            }
+        }
+    }
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("a free port");
     let origin = format!("http://{}", listener.local_addr().expect("address"));
     let server = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.expect("a connection");
-        let mut request = [0_u8; 4096];
-        let _ = socket.read(&mut request).await;
-        let reply = b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain\r\ncontent-length: 1000\r\n\r\nthe partial detail";
-        socket.write_all(reply).await.expect("the reply is sent");
+        while let Ok((mut socket, _)) = listener.accept().await {
+            read_request(&mut socket).await;
+            let reply = b"HTTP/1.1 500 Internal Server Error\r\ncontent-type: text/plain\r\ncontent-length: 1000\r\nconnection: close\r\n\r\nthe partial detail";
+            let _ = socket.write_all(reply).await;
+        }
     });
+    let multipart = || {
+        rig_core::http_client::Request::post(format!("{origin}/v1/upload"))
+            .body(MultipartForm::new().text("purpose", "test"))
+            .expect("a request")
+    };
+    async fn bodies(
+        http: &DynHttpClient,
+        origin: &str,
+        multipart: impl Fn() -> rig_core::http_client::Request<MultipartForm>,
+    ) -> Vec<Option<String>> {
+        let text =
+            |error: rig_core::http_client::Error| error.non_success_body().map(str::to_owned);
+        vec![
+            http.send::<_, Bytes>(post(origin, "cut"))
+                .await
+                .err()
+                .and_then(text),
+            http.send_multipart::<Bytes>(multipart())
+                .await
+                .err()
+                .and_then(text),
+            http.send_streaming(post(origin, "cut"))
+                .await
+                .err()
+                .and_then(text),
+        ]
+    }
+
     let session = Session::new();
     let cassette = session.start_direct(&origin).await;
+    let recorded = bodies(&cassette.direct_http(), &origin, multipart).await;
+    let plain = DynHttpClient::new(rig_reqwest::ReqwestClient::from(client()));
+    let expected = bodies(&plain, &origin, multipart).await;
+    assert_eq!(expected, vec![Some("the partial detail".to_owned()); 3]);
+    assert_eq!(recorded, expected);
 
     let error = cassette
-        .direct_http()
-        .send_streaming(post(&origin, "cut"))
+        .try_finish()
         .await
-        .err()
-        .expect("a provider error");
-    assert_eq!(error.non_success_body(), Some("the partial detail"));
-    server.await.expect("the server ends");
-    assert!(cassette.try_finish().await.is_err());
+        .expect_err("a reply cut short refuses the recording");
+    let CassetteError::RecordingRefused { refusals, .. } = &error else {
+        panic!("expected a refusal: {error}");
+    };
+    assert_eq!(refusals.len(), 3, "{refusals:?}");
+    server.abort();
 }
 
 /// A direct recording of an Ollama-style JSON-lines stream whose reader
