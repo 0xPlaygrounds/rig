@@ -1238,11 +1238,10 @@ async fn redirects_record_and_replay_through_the_cassette() {
         .expect("the replay plays all four exchanges");
 }
 
-/// A multipart upload the scrubber cannot read is kept with no body, as older
-/// fixtures keep one, and its reply as usual: replay accepts the upload
-/// without comparing its bytes, so a file upload records and replays.
+/// A multipart upload is read part by part, its binary part kept as sent, so
+/// a file upload records with its body and replays against it.
 #[tokio::test]
-async fn an_unread_multipart_upload_records_and_replays() {
+async fn a_multipart_upload_records_and_replays() {
     let upstream = httpmock::MockServer::start_async().await;
     upstream
         .mock_async(|when, then| {
@@ -1279,11 +1278,10 @@ async fn an_unread_multipart_upload_records_and_replays() {
     let interactions = parse_cassette_interactions(&session.fixture, &recorded);
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].when.withheld, None);
+    assert!(interactions[0].when.body.is_some(), "{recorded}");
     assert!(interactions[0].then.body.is_some(), "{recorded}");
 
-    // As for any multipart body a recording omits, the request snapshot
-    // pins what replay sends (`write`), and a later `check` holds it.
-    for snapshots in [SnapshotMode::Write, SnapshotMode::Check] {
+    for snapshots in [SnapshotMode::Off, SnapshotMode::Check] {
         let replay = ProviderCassette::try_start_session(
             RecordVia::Proxy,
             "openai",
