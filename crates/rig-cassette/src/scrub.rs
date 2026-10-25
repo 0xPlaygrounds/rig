@@ -222,90 +222,182 @@ impl OpaqueBody {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum BodyFormat {
+    Json,
+    JsonLines,
+    Form,
+    Sse,
+    Text,
+    #[cfg(feature = "bedrock")]
+    EventStream,
+    Binary,
+    Opaque,
+}
+
 pub(crate) struct PreparedBody {
     bytes: Bytes,
-    pub(crate) sse: bool,
-    form: bool,
-    opaque: Option<OpaqueBody>,
+    format: BodyFormat,
+    metadata: OpaqueBody,
 }
 
 impl PreparedBody {
     fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
-        let content_type = header_value(headers, "content-type");
-        let media = content_type
-            .unwrap_or_default()
-            .split(';')
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase();
-        let encoded = headers.iter().any(|(name, value)| {
-            name.eq_ignore_ascii_case("content-encoding")
-                && !value.trim().eq_ignore_ascii_case("identity")
-        });
-        let repeated_type = headers
-            .iter()
-            .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-            .count()
-            > 1;
-        let inspectable = !encoded
-            && !repeated_type
-            && !(content_type.is_some() && media.is_empty())
-            && inspectable_body(raw, &media);
+        let format = capture_format(raw, headers);
         Self {
-            bytes: if inspectable {
-                Bytes::copy_from_slice(raw)
-            } else {
+            bytes: if format == BodyFormat::Opaque {
                 Bytes::new()
+            } else {
+                Bytes::copy_from_slice(raw)
             },
-            sse: content_type.is_some_and(is_sse),
-            form: media == "application/x-www-form-urlencoded",
-            opaque: (!inspectable).then(|| OpaqueBody {
+            format,
+            metadata: OpaqueBody {
                 bytes: raw.len(),
-                content_type: content_type.map(str::to_owned),
-            }),
+                content_type: header_value(headers, "content-type").map(str::to_owned),
+            },
         }
     }
 
     pub(crate) fn opaque(&self) -> Option<&OpaqueBody> {
-        self.opaque.as_ref()
+        (self.format == BodyFormat::Opaque).then_some(&self.metadata)
+    }
+
+    pub(crate) fn is_binary(&self) -> bool {
+        self.format == BodyFormat::Binary
+    }
+
+    pub(crate) fn summary(&self) -> &OpaqueBody {
+        &self.metadata
     }
 }
 
-fn inspectable_body(raw: &[u8], media: &str) -> bool {
-    if raw.is_empty() {
-        return true;
+/// Classify new captures once for both sinks; legacy fixture normalization bypasses it.
+fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
+    if headers.iter().any(|(name, value)| {
+        name.eq_ignore_ascii_case("content-encoding")
+            && !value.trim().eq_ignore_ascii_case("identity")
+    }) {
+        return BodyFormat::Opaque;
+    }
+    let content_type = header_value(headers, "content-type");
+    let media = content_type
+        .unwrap_or_default()
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if headers
+        .iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .count()
+        > 1
+        || (content_type.is_some() && media.is_empty())
+        || media == "multipart/form-data"
+    {
+        return BodyFormat::Opaque;
     }
     #[cfg(feature = "bedrock")]
     if media == "application/vnd.amazon.eventstream" {
-        return event_stream_messages(raw).is_some_and(|messages| {
+        return if event_stream_messages(raw).is_some_and(|messages| {
             messages.iter().all(|message| {
                 std::str::from_utf8(message.payload())
                     .is_ok_and(|text| serde_json::from_str::<Value>(text).is_ok())
             })
-        });
+        }) {
+            BodyFormat::EventStream
+        } else {
+            BodyFormat::Opaque
+        };
     }
+    if media.starts_with("audio/")
+        || media.starts_with("image/")
+        || media.starts_with("video/")
+        || media.starts_with("font/")
+        || matches!(
+            media.as_str(),
+            "application/octet-stream"
+                | "application/pdf"
+                | "application/zip"
+                | "application/gzip"
+                | "application/x-protobuf"
+                | "application/protobuf"
+                | "application/cbor"
+        )
+    {
+        return BodyFormat::Binary;
+    }
+    let text_claim = media.starts_with("text/")
+        || media.ends_with("+json")
+        || media.ends_with("+xml")
+        || matches!(
+            media.as_str(),
+            "application/json"
+                | "application/x-ndjson"
+                | "application/ndjson"
+                | "application/jsonl"
+                | "application/x-www-form-urlencoded"
+                | "application/xml"
+                | "application/yaml"
+        );
     let Ok(text) = std::str::from_utf8(raw) else {
-        return false;
+        return if text_claim || media.is_empty() {
+            BodyFormat::Opaque
+        } else {
+            BodyFormat::Binary
+        };
     };
+    if raw.is_empty() {
+        return BodyFormat::Text;
+    }
     if media == "application/json" || media.ends_with("+json") {
-        return serde_json::from_str::<Value>(text).is_ok();
+        return if serde_json::from_str::<Value>(text).is_ok() {
+            BodyFormat::Json
+        } else {
+            BodyFormat::Opaque
+        };
+    }
+    if matches!(
+        media.as_str(),
+        "application/x-ndjson" | "application/ndjson" | "application/jsonl"
+    ) {
+        return if text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .all(|line| serde_json::from_str::<Value>(line).is_ok())
+        {
+            BodyFormat::JsonLines
+        } else {
+            BodyFormat::Opaque
+        };
     }
     if media == "text/event-stream" || (media.is_empty() && parse_sse(text, false).is_some()) {
-        return parse_sse(text, true).is_some_and(|events| {
-            events.iter().all(|event| {
-                event
-                    .lines
-                    .last()
-                    .is_some_and(|line| line.field == SseField::Blank)
-                    && event.data.as_deref().is_none_or(inspectable_text)
-            })
-        });
+        return if ends_between_events(raw)
+            && parse_sse(text, true).is_some_and(|events| {
+                events
+                    .iter()
+                    .all(|event| event.data.as_deref().is_none_or(inspectable_text))
+            }) {
+            BodyFormat::Sse
+        } else {
+            BodyFormat::Opaque
+        };
     }
-    matches!(
-        media,
-        "" | "text/plain" | "application/x-www-form-urlencoded"
-    ) && inspectable_text(text)
+    if media == "application/x-www-form-urlencoded" {
+        return if inspectable_text(text) {
+            BodyFormat::Form
+        } else {
+            BodyFormat::Opaque
+        };
+    }
+    if text_claim && !matches!(media.as_str(), "text/plain") {
+        return BodyFormat::Opaque;
+    }
+    if inspectable_text(text) {
+        BodyFormat::Text
+    } else {
+        BodyFormat::Opaque
+    }
 }
 
 fn inspectable_text(text: &str) -> bool {
@@ -361,10 +453,10 @@ impl Scrubber {
                         .collect();
                     match part.content() {
                         PartContent::Text(text) => PreparedBody::new(text.as_bytes(), &headers)
-                            .opaque
+                            .opaque()
                             .is_some(),
                         PartContent::Binary(bytes) => {
-                            PreparedBody::new(bytes, &headers).opaque.is_some()
+                            PreparedBody::new(bytes, &headers).opaque().is_some()
                         }
                     }
                 });
@@ -379,12 +471,11 @@ impl Scrubber {
                         .sum();
                     Some(PreparedBody {
                         bytes: Bytes::new(),
-                        sse: false,
-                        form: false,
-                        opaque: Some(OpaqueBody {
+                        format: BodyFormat::Opaque,
+                        metadata: OpaqueBody {
                             bytes,
                             content_type: Some("multipart/form-data".into()),
-                        }),
+                        },
                     })
                 } else {
                     for part in form.parts() {
@@ -413,12 +504,11 @@ impl Scrubber {
             self.learn_body_parts(body);
         }
         for body in request_body.iter_mut().chain(&mut response_body) {
-            if let Some(opaque) = &mut body.opaque {
-                opaque.content_type = opaque
-                    .content_type
-                    .as_deref()
-                    .map(|text| self.scrub_text(text));
-            }
+            body.metadata.content_type = body
+                .metadata
+                .content_type
+                .as_deref()
+                .map(|text| self.scrub_text(text));
         }
         PreparedExchange {
             request_body,
@@ -427,11 +517,33 @@ impl Scrubber {
     }
 
     fn learn_body_parts(&mut self, body: &PreparedBody) {
-        if body.opaque().is_some() {
-            return;
+        match body.format {
+            BodyFormat::Opaque | BodyFormat::Binary => return,
+            BodyFormat::JsonLines => {
+                if let Ok(text) = std::str::from_utf8(&body.bytes) {
+                    for line in text.lines() {
+                        if let Ok(json) = serde_json::from_str::<Value>(line) {
+                            self.learn_json(&json);
+                        }
+                    }
+                }
+                return;
+            }
+            #[cfg(feature = "bedrock")]
+            BodyFormat::EventStream => {
+                if let Some(messages) = event_stream_messages(&body.bytes) {
+                    for message in messages {
+                        if let Ok(text) = std::str::from_utf8(message.payload()) {
+                            self.learn_body(text);
+                        }
+                    }
+                }
+                return;
+            }
+            _ => {}
         }
-        if let Some((text, _)) = text_prefix(&body.bytes) {
-            if body.form {
+        if let Ok(text) = std::str::from_utf8(&body.bytes) {
+            if body.format == BodyFormat::Form {
                 self.learn_form(text, SecretSource::Wire);
             } else {
                 self.learn_body(text);
@@ -449,15 +561,30 @@ impl Scrubber {
     }
 
     pub(crate) fn scrub_prepared(&mut self, body: PreparedBody) -> Bytes {
-        if let Some(opaque) = body.opaque() {
-            return Bytes::from(opaque.value().to_string());
-        }
-        if body.form {
-            return Bytes::from(self.scrub_text(&mask_form(
+        match body.format {
+            BodyFormat::Opaque => Bytes::from(body.metadata.value().to_string()),
+            BodyFormat::Binary => body.bytes,
+            BodyFormat::Form => Bytes::from(self.scrub_text(&mask_form(
                 std::str::from_utf8(&body.bytes).unwrap_or_default(),
-            )));
+            ))),
+            BodyFormat::JsonLines => {
+                let mut output = String::new();
+                for line in std::str::from_utf8(&body.bytes)
+                    .unwrap_or_default()
+                    .split_inclusive('\n')
+                {
+                    if let Ok(mut json) = serde_json::from_str::<Value>(line) {
+                        self.scrub_json_in(None, &mut json, JsonContext::Value);
+                        output.push_str(&json.to_string());
+                    }
+                    if line.ends_with('\n') {
+                        output.push('\n');
+                    }
+                }
+                Bytes::from(output)
+            }
+            _ => self.scrub_bytes(&body.bytes),
         }
-        self.scrub_bytes(&body.bytes)
     }
 
     fn learn_part_metadata(&mut self, metadata: &[(String, String)]) {
@@ -561,6 +688,19 @@ impl Scrubber {
     #[cfg(any(feature = "http", test))]
     pub(crate) fn same_credentials(&self, other: &Self) -> bool {
         self.learned == other.learned
+    }
+
+    /// Learn legacy fixture bytes without applying new-capture format restrictions.
+    #[cfg(feature = "http")]
+    pub(crate) fn learn_fixture_body(&mut self, bytes: &[u8]) {
+        self.learn_body_parts(&PreparedBody {
+            bytes: Bytes::copy_from_slice(bytes),
+            format: BodyFormat::Text,
+            metadata: OpaqueBody {
+                bytes: bytes.len(),
+                content_type: None,
+            },
+        });
     }
 
     /// Normalize a request body using the caller's request context.
@@ -967,12 +1107,12 @@ impl Scrubber {
         body: PreparedBody,
         chunk_ends: impl IntoIterator<Item = usize>,
     ) -> Vec<ScrubbedEvent> {
-        if let Some(opaque) = body.opaque() {
+        if body.opaque().is_some() || body.is_binary() {
             return vec![ScrubbedEvent {
-                end: opaque.bytes,
+                end: body.metadata.bytes,
                 event: None,
                 id: None,
-                data: opaque.value(),
+                data: body.metadata.value(),
             }];
         }
         let Some((text, tail)) = text_prefix(&body.bytes) else {
@@ -983,7 +1123,9 @@ impl Scrubber {
                 data: serde_json::json!({"bytes": body.bytes.len()}),
             }];
         };
-        let mut out = if let Some(events) = parse_sse_chunks(text, body.sse, chunk_ends) {
+        let mut out = if let Some(events) =
+            parse_sse_chunks(text, body.format == BodyFormat::Sse, chunk_ends)
+        {
             self.scrub_sse_events(events)
                 .into_iter()
                 .filter_map(|event| {
@@ -1796,6 +1938,16 @@ pub(crate) fn header_pairs(headers: &HeaderMap) -> impl Iterator<Item = (&str, &
             })
             .map(|value| (name.as_str(), value))
     })
+}
+
+/// Whether the shared SSE framer has no unfinished bytes after this body.
+pub(crate) fn ends_between_events(body: &[u8]) -> bool {
+    let mut framer = rig_core::http_client::framing::Framing::Sse.framer();
+    let Some(ref mut framer) = framer else {
+        return false;
+    };
+    framer.push(body).for_each(drop);
+    framer.pending() == 0
 }
 
 pub(crate) fn is_sse(content_type: &str) -> bool {
