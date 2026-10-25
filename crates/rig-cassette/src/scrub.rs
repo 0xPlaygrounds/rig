@@ -346,8 +346,8 @@ pub(crate) struct PreparedBody {
 }
 
 impl PreparedBody {
-    fn new(raw: &[u8], headers: &[(&str, &str)]) -> Self {
-        let format = capture_format(raw, headers);
+    fn new(raw: &[u8], headers: &[(&str, &str)], is_part: bool) -> Self {
+        let format = capture_format(raw, headers, is_part);
         Self {
             bytes: if matches!(format, BodyFormat::Opaque) {
                 Bytes::new()
@@ -371,7 +371,7 @@ impl PreparedBody {
     #[cfg(feature = "http")]
     pub(crate) fn fixture(raw: &[u8], headers: &[(&str, &str)]) -> Self {
         if header_value(headers, "content-type").is_some_and(is_multipart) {
-            return Self::new(raw, headers);
+            return Self::new(raw, headers, false);
         }
         let format = if header_value(headers, "content-type")
             .is_some_and(|value| compressed_media(media_type(value)))
@@ -522,7 +522,7 @@ fn decode_json(text: &str) -> Result<Value, JsonFailure> {
 }
 
 /// Classify new captures once for both sinks; legacy fixture normalization bypasses it.
-fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
+fn capture_format(raw: &[u8], headers: &[(&str, &str)], is_part: bool) -> BodyFormat {
     if encoded(headers) {
         return BodyFormat::Opaque;
     }
@@ -533,7 +533,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
                 .is_some_and(|(kind, params)| {
                     kind.eq_ignore_ascii_case("form-data") && params.contains_key("filename")
                 });
-        file_part.then_some("application/octet-stream")
+        (is_part && file_part).then_some("application/octet-stream")
     });
     let media = media_type(content_type.unwrap_or_default()).to_ascii_lowercase();
     let valid_media = media
@@ -569,7 +569,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)]) -> BodyFormat {
                     });
                     !nested
                         && !matches!(
-                            capture_format(&slice.part.body, &headers),
+                            capture_format(&slice.part.body, &headers, true),
                             BodyFormat::Opaque
                         )
                 })
@@ -754,7 +754,7 @@ impl Scrubber {
         let request_headers: Vec<_> = recordable_pairs(request_headers).collect();
         let response_headers: Vec<_> = recordable_pairs(response_headers).collect();
         let request_body = match request_body {
-            RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
+            RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers, false)),
             RequestBodyRef::Multipart(form) => {
                 let mut parts = Vec::new();
                 let mut bytes = 0;
@@ -773,7 +773,7 @@ impl Scrubber {
                         .iter()
                         .map(|(name, value)| (name.as_str(), value.as_str()))
                         .collect();
-                    parts.push(PreparedBody::new(content, &headers));
+                    parts.push(PreparedBody::new(content, &headers, true));
                 }
                 Some(PreparedBody {
                     bytes: Bytes::new(),
@@ -786,7 +786,8 @@ impl Scrubber {
                 })
             }
         };
-        let response_body = response_body.map(|bytes| PreparedBody::new(bytes, &response_headers));
+        let response_body =
+            response_body.map(|bytes| PreparedBody::new(bytes, &response_headers, false));
         for body in request_body.iter().chain(&response_body) {
             self.learn_body_parts(body);
         }
@@ -839,7 +840,7 @@ impl Scrubber {
                     .map(|(name, value)| (name.as_str(), value.as_str()))
                     .collect();
                 matches!(
-                    capture_format(&slice.part.body, &headers),
+                    capture_format(&slice.part.body, &headers, true),
                     BodyFormat::Binary
                 ) && self.binary_secret(&slice.part.body)
             }),
@@ -873,7 +874,7 @@ impl Scrubber {
                         .iter()
                         .map(|(name, value)| (name.as_str(), value.as_str()))
                         .collect();
-                    self.learn_body_parts(&PreparedBody::new(&slice.part.body, &headers));
+                    self.learn_body_parts(&PreparedBody::new(&slice.part.body, &headers, true));
                 }
                 return;
             }
@@ -1010,9 +1011,11 @@ impl Scrubber {
                     .iter()
                     .map(|(name, value)| (name.as_str(), value.as_str()))
                     .collect();
-                out.extend_from_slice(
-                    &self.scrub_prepared(PreparedBody::new(&slice.part.body, &part_headers)),
-                );
+                out.extend_from_slice(&self.scrub_prepared(PreparedBody::new(
+                    &slice.part.body,
+                    &part_headers,
+                    true,
+                )));
             }
             kept = slice.body.end;
         }
@@ -1155,7 +1158,7 @@ impl Scrubber {
         let prepared = self.prepare_exchange("", headers, RequestBodyRef::Bytes(bytes), [], None);
         let body = prepared
             .request_body
-            .unwrap_or_else(|| PreparedBody::new(bytes, &[]));
+            .unwrap_or_else(|| PreparedBody::new(bytes, &[], false));
         if let Some(opaque) = body.opaque() {
             if is_encoded
                 || content_type
@@ -1418,7 +1421,7 @@ impl Scrubber {
     }
 
     fn render_fragment(&mut self, text: &str) -> String {
-        let bytes = self.scrub_prepared(PreparedBody::new(text.as_bytes(), &[]));
+        let bytes = self.scrub_prepared(PreparedBody::new(text.as_bytes(), &[], false));
         String::from_utf8_lossy(&bytes).into_owned()
     }
 
@@ -2406,7 +2409,7 @@ pub(crate) fn stopped_at_frame_boundary<'a>(
 ) -> bool {
     use rig_core::http_client::framing::Framing;
     let headers: Vec<_> = headers.into_iter().collect();
-    let framing = match capture_format(body, &headers) {
+    let framing = match capture_format(body, &headers, false) {
         BodyFormat::Sse => Framing::Sse,
         BodyFormat::JsonLines => Framing::Ndjson,
         _ => return false,

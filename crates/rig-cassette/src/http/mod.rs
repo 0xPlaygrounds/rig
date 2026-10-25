@@ -1823,7 +1823,7 @@ fn replay_miss_message(
                 .as_str()
                 .eq_ignore_ascii_case(&interaction.when.method);
             let path_matches = request.uri.path() == interaction.when.path;
-            let query_matches = query_matches(request.uri.query(), &interaction.when.query_param);
+            let query_matches = query_matches(request, &interaction.when.query_param);
             let headers_match = headers_match(&request.headers, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
@@ -1891,7 +1891,7 @@ fn request_line_matches(
         .as_str()
         .eq_ignore_ascii_case(&expected.method)
         && request.uri.path() == expected.path
-        && query_matches(request.uri.query(), &expected.query_param)
+        && query_matches(request, &expected.query_param)
         && headers_match(&request.headers, &expected.header)
         && required_headers_present(policy, &request.headers)
 }
@@ -2043,18 +2043,17 @@ fn recorded_body(body: &[u8]) -> RecordedBody {
     }
 }
 
-fn query_matches(query: Option<&str>, expected: &[NameValue]) -> bool {
-    let mut actual: Vec<_> = parsed_query_pairs(query)
+fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
+    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let mut actual: Vec<_> = parsed_query_pairs(request.uri.query())
         .into_iter()
         .map(|(name, value)| NameValue { name, value })
         .collect();
-    scrub_query_params(&mut actual);
+    let mut expected = expected.to_vec();
+    scrub_query_params(&mut scrubber, &mut actual);
+    scrub_query_params(&mut scrubber, &mut expected);
     query_pair_counts(actual.into_iter().map(|pair| (pair.name, pair.value)))
-        == query_pair_counts(
-            expected
-                .iter()
-                .map(|pair| (pair.name.clone(), pair.value.clone())),
-        )
+        == query_pair_counts(expected.into_iter().map(|pair| (pair.name, pair.value)))
 }
 
 fn parsed_query_pairs(query: Option<&str>) -> Vec<(String, String)> {
@@ -2265,7 +2264,7 @@ fn scrub_query_pairs_for_diagnostics(query: Option<&str>) -> Vec<NameValue> {
 }
 
 fn scrub_name_values_for_diagnostics(mut values: Vec<NameValue>) -> Vec<NameValue> {
-    scrub_query_params(&mut values);
+    scrub_query_params(&mut Scrubber::default(), &mut values);
     for value in &mut values {
         value.value = scrub_text_for_diagnostics(&value.value);
     }
@@ -3174,8 +3173,7 @@ fn scrub_headers(scrubber: &mut Scrubber, headers: &mut Vec<NameValue>, mode: He
     }
 }
 
-fn scrub_query_params(query_params: &mut [NameValue]) {
-    let mut scrubber = Scrubber::default();
+fn scrub_query_params(scrubber: &mut Scrubber, query_params: &mut [NameValue]) {
     for pair in query_params {
         pair.value = scrubber.scrub_param_value(&pair.name, &pair.value);
     }

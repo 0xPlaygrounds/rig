@@ -73,11 +73,16 @@ fn incoming_request(path: &str, body: impl Into<Bytes>) -> IncomingRequest {
     }
 }
 
+fn query_matches_query(query: Option<&str>, expected: &[NameValue]) -> bool {
+    let uri = query.map_or_else(|| "/items".to_owned(), |query| format!("/items?{query}"));
+    super::query_matches(&incoming_request(&uri, Bytes::new()), expected)
+}
+
 #[test]
 fn query_matches_exact_pairs_in_any_order() {
     let expected = [query_pair("a", "1"), query_pair("b", "2")];
 
-    assert!(query_matches(Some("b=2&a=1"), &expected));
+    assert!(query_matches_query(Some("b=2&a=1"), &expected));
 }
 
 #[test]
@@ -86,26 +91,29 @@ fn query_matches_scrubs_sensitive_values_and_keeps_pair_multiplicity() {
         query_pair("access_token", REDACTED),
         query_pair("alt", "json"),
     ];
-    assert!(query_matches(
+    assert!(query_matches_query(
         Some("access_token=abc123&alt=json"),
         &expected
     ));
-    assert!(query_matches(
+    assert!(query_matches_query(
         Some("access%5Ftoken=xyz789&alt=json"),
         &expected
     ));
-    assert!(!query_matches(
+    assert!(!query_matches_query(
         Some("access_token=abc123&alt=sse"),
         &expected
     ));
-    assert!(!query_matches(
+    assert!(!query_matches_query(
         Some("access_token=abc123&access_token=xyz789&alt=json"),
         &expected
     ));
     let cursor = [query_pair("page_token", "p2"), query_pair("alt", "json")];
-    assert!(query_matches(Some("page_token=p2&alt=json"), &cursor));
-    assert!(!query_matches(Some("page_token=p1&alt=json"), &cursor));
-    assert!(!query_matches(
+    assert!(query_matches_query(Some("page_token=p2&alt=json"), &cursor));
+    assert!(!query_matches_query(
+        Some("page_token=p1&alt=json"),
+        &cursor
+    ));
+    assert!(!query_matches_query(
         Some("page_token=p2&page_token=p2&alt=json"),
         &cursor
     ));
@@ -115,30 +123,30 @@ fn query_matches_scrubs_sensitive_values_and_keeps_pair_multiplicity() {
 fn query_matches_counts_duplicate_pairs() {
     let expected = [query_pair("a", "1"), query_pair("a", "1")];
 
-    assert!(query_matches(Some("a=1&a=1"), &expected));
-    assert!(!query_matches(Some("a=1"), &expected));
-    assert!(!query_matches(Some("a=1&a=2"), &expected));
+    assert!(query_matches_query(Some("a=1&a=1"), &expected));
+    assert!(!query_matches_query(Some("a=1"), &expected));
+    assert!(!query_matches_query(Some("a=1&a=2"), &expected));
 }
 
 #[test]
 fn query_matches_rejects_extra_actual_params() {
     let expected = [query_pair("a", "1")];
 
-    assert!(!query_matches(Some("a=1&b=2"), &expected));
+    assert!(!query_matches_query(Some("a=1&b=2"), &expected));
 }
 
 #[test]
 fn query_matches_rejects_missing_actual_params() {
     let expected = [query_pair("a", "1"), query_pair("b", "2")];
 
-    assert!(!query_matches(Some("a=1"), &expected));
+    assert!(!query_matches_query(Some("a=1"), &expected));
 }
 
 #[test]
 fn query_matches_empty_expected_only_matches_empty_actual_query() {
-    assert!(query_matches(None, &[]));
-    assert!(query_matches(Some(""), &[]));
-    assert!(!query_matches(Some("a=1"), &[]));
+    assert!(query_matches_query(None, &[]));
+    assert!(query_matches_query(Some(""), &[]));
+    assert!(!query_matches_query(Some("a=1"), &[]));
 }
 
 #[test]
@@ -1290,5 +1298,21 @@ fn replay_and_snapshot_share_strict_case_insensitive_multipart_boundaries() {
             None,
             BodyEncoding::Utf8
         ));
+    }
+}
+
+#[test]
+fn query_matching_normalizes_legacy_echoes_using_incoming_credentials() {
+    let secret = "opaque-query-secret-97531";
+    let mut request =
+        incoming_request(&format!("/items?echo={secret}&page_token=p2"), Bytes::new());
+    request
+        .headers
+        .insert("x-api-key", secret.parse().expect("header"));
+    for echo in [secret, REDACTED] {
+        let expected = [query_pair("echo", echo), query_pair("page_token", "p2")];
+        assert!(super::query_matches(&request, &expected));
+        let wrong = [query_pair("echo", echo), query_pair("page_token", "p1")];
+        assert!(!super::query_matches(&request, &wrong));
     }
 }

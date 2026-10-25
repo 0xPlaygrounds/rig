@@ -2890,3 +2890,128 @@ fn untyped_non_file_parts_still_fail_closed_and_file_secrets_are_withheld() {
         }
     }
 }
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn recorded_query_echoes_replay_with_request_credentials_and_reject_other_changes() {
+    use crate::http::{CassetteError, CassetteMode, CassetteSpec, ProviderCassette, RecordVia};
+    let secret = "opaque-query-secret-97531";
+    for from_header in [false, true] {
+        let query = if from_header {
+            format!("?echo={secret}&page_token=p2&tag=one&tag=one")
+        } else {
+            format!("?echo={secret}&api_key={secret}&page_token=p2&tag=one&tag=one")
+        };
+        let credential = format!("Bearer {secret}");
+        let headers: Vec<_> = from_header
+            .then_some(("authorization", credential.as_str()))
+            .into_iter()
+            .collect();
+        let captured = capture_scrub_case(&query, &headers, b"{}", b"{}", false, None).await;
+        assert!(!captured.fixture.to_string().contains(secret));
+        assert!(!captured.traffic.to_string().contains(secret));
+        let pairs = captured
+            .fixture
+            .pointer("/when/query_param")
+            .and_then(Value::as_array)
+            .expect("query");
+        assert_eq!(
+            pairs
+                .iter()
+                .find(|pair| pair.get("name").and_then(Value::as_str) == Some("echo"))
+                .and_then(|pair| pair.get("value")),
+            Some(&json!(REDACTED))
+        );
+        for shape in [false, true] {
+            for wrong in [false, true] {
+                let spec = CassetteSpec::new("scrub-exchange");
+                let spec = if shape {
+                    spec.shape_matched()
+                } else {
+                    spec.exact_matched()
+                };
+                let replay = ProviderCassette::try_start_at(
+                    RecordVia::Proxy,
+                    "example",
+                    spec,
+                    "https://example.test",
+                    CassetteMode::Replay,
+                    captured.path.clone(),
+                )
+                .await
+                .expect("replay");
+                let query = if wrong {
+                    query.replace("page_token=p2", "page_token=p1")
+                } else {
+                    query.clone()
+                };
+                let mut request = rig_reqwest::reqwest::Client::builder()
+                    .no_proxy()
+                    .build()
+                    .expect("client")
+                    .post(format!("{}/submit{query}", replay.base_url()))
+                    .header("content-type", "application/json")
+                    .body("{}");
+                for (name, value) in &headers {
+                    request = request.header(*name, *value);
+                }
+                let response = request.send().await.expect("reply");
+                assert_eq!(response.status().as_u16(), if wrong { 404 } else { 200 });
+                response.bytes().await.expect("body");
+                if wrong {
+                    assert!(matches!(
+                        replay.try_finish().await,
+                        Err(CassetteError::ReplayMismatch { .. })
+                    ));
+                } else {
+                    replay.try_finish().await.expect("same request replays");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn whole_untyped_bodies_ignore_file_part_metadata_in_both_sinks() {
+    let request = b"\xffuninspectable-whole-body";
+    let reply = br#"{"message":"must be withheld"}"#;
+    for (name, value) in [
+        ("filename", "speech.wav"),
+        ("content-disposition", "form-data; filename=\"speech.wav\""),
+    ] {
+        let mut headers = HeaderMap::new();
+        headers.insert(name, value.parse().expect("header"));
+        let captured =
+            capture_scrub_case_with_header_map("", &headers, request, reply, false, None, &[])
+                .await;
+        assert_eq!(
+            captured.traffic.pointer("/request/body/bytes"),
+            Some(&json!(request.len()))
+        );
+        assert_eq!(
+            captured.traffic.pointer("/response/body/bytes"),
+            Some(&json!(reply.len()))
+        );
+        assert_eq!(
+            captured.fixture.pointer("/when/withheld/bytes"),
+            Some(&json!(request.len()))
+        );
+        assert_eq!(
+            captured.fixture.pointer("/then/withheld/bytes"),
+            Some(&json!(reply.len()))
+        );
+        assert!(
+            captured
+                .fixture
+                .pointer("/when/body")
+                .is_none_or(Value::is_null)
+        );
+        assert!(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .is_none_or(Value::is_null)
+        );
+    }
+}
