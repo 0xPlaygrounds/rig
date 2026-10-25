@@ -1954,8 +1954,8 @@ fn body_matches(
     );
     let actual = actual.as_ref();
     let Some(expected) = expected else {
-        // The proxy omits non-UTF-8 multipart bodies, so absent multipart bytes
-        // cannot be matched; other requests must still be empty.
+        // Older fixtures may omit binary multipart bytes, so those bodies
+        // cannot be compared; every other absent body must be empty.
         return actual.is_empty() || is_multipart_request(actual_headers, expected_headers);
     };
     let expected_bytes = decode_body(expected, expected_encoding)

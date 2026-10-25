@@ -199,7 +199,7 @@ when it ends, which the proxy holds the reply's last chunk back for.
 `ledger::clean_up` deletes what the ledger still holds. The `cassette_tool`
 example exposes both checks and the cleanup pass.
 
-When a fixture omits a non-UTF-8 multipart request body, replay accepts
+When an older fixture omits a non-UTF-8 multipart request body, replay accepts
 multipart input without comparing its missing bytes; provider unit tests must
 cover the multipart shape. Other requests with an absent recorded body must be
 empty. SSE and ordinary binary
@@ -221,6 +221,12 @@ scrubbed separately because credential scans cannot identify operator names or
 cache layouts. Only paths at the beginning of a string value are eligible,
 preserving embedded public URLs and the model basename. Spaces remain part of
 the path to avoid leaking account names.
+
+Echoes of credentials from secret headers, named query/form/multipart
+parameters and explicit JSON credential fields are learned from three bytes.
+Values below eight bytes match only at alphanumeric word boundaries; longer
+values match as substrings. Cookie values, Traffic-only bare `token` fields
+and prose require eight bytes.
 
 ## Live traffic
 
