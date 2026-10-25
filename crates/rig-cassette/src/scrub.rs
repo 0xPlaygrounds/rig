@@ -596,10 +596,7 @@ fn capture_format(raw: &[u8], headers: &[(&str, &str)], is_part: bool) -> BodyFo
     if compressed_media(&media) {
         return BodyFormat::Opaque;
     }
-    let json_lines = matches!(
-        media.rsplit('/').next().unwrap_or_default(),
-        "x-ndjson" | "ndjson" | "jsonl" | "jsonlines" | "x-jsonlines" | "json-lines"
-    );
+    let json_lines = is_json_lines_media(&media);
     let json = media == "application/json" || media == "text/json" || media.ends_with("+json");
     let text_claim = media.starts_with("text/")
         || json
@@ -2430,6 +2427,30 @@ pub(crate) fn stopped_at_frame_boundary<'a>(
         _ => return false,
     };
     ends_at_frame_boundary(framing, body)
+}
+
+/// How a reply is framed, by its content type alone: an event stream or JSON
+/// lines, read frame by frame as it arrives; `None` for a body read whole.
+/// The recorder, the proxy and the ledger all ask this.
+#[cfg(feature = "http")]
+pub(crate) fn reply_framing(content_type: &str) -> Option<rig_core::http_client::framing::Framing> {
+    use rig_core::http_client::framing::Framing;
+    let media = media_type(content_type).to_ascii_lowercase();
+    if media == "text/event-stream" {
+        Some(Framing::Sse)
+    } else if is_json_lines_media(&media) {
+        Some(Framing::Ndjson)
+    } else {
+        None
+    }
+}
+
+/// Whether the lowercase media type `media` names JSON lines.
+fn is_json_lines_media(media: &str) -> bool {
+    matches!(
+        media.rsplit('/').next().unwrap_or_default(),
+        "x-ndjson" | "ndjson" | "jsonl" | "jsonlines" | "x-jsonlines" | "json-lines"
+    )
 }
 
 /// Whether the shared framer has no unfinished bytes after this body.
