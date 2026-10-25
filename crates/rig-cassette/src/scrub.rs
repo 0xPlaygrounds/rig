@@ -951,13 +951,7 @@ impl Scrubber {
                 }
                 Bytes::from(output)
             }
-            BodyFormat::Json(mut json) => {
-                if self.purpose == Purpose::Cassette {
-                    json = rig_core::json_utils::canonical(json);
-                }
-                self.scrub_json_in(None, &mut json, JsonContext::Value);
-                Bytes::from(json.to_string())
-            }
+            BodyFormat::Json(json) => Bytes::from(self.scrub_json_body(json).to_string()),
             BodyFormat::Sse => Bytes::from(
                 self.scrub_sse_body(
                     parse_sse(std::str::from_utf8(&body.bytes).unwrap_or_default(), true)
@@ -1550,6 +1544,14 @@ impl Scrubber {
         output
     }
 
+    fn scrub_json_body(&mut self, mut json: Value) -> Value {
+        if self.purpose == Purpose::Cassette {
+            json = rig_core::json_utils::canonical(json);
+        }
+        self.scrub_json_in(None, &mut json, JsonContext::Value);
+        json
+    }
+
     /// Scrub inspected stream events; offsets refer to the original bytes.
     pub(crate) fn scrub_stream(
         &mut self,
@@ -1562,6 +1564,16 @@ impl Scrubber {
                 event: None,
                 id: None,
                 data: body.metadata.value(),
+            }];
+        }
+        let mut body = body;
+        if let BodyFormat::Json(json) = &mut body.format {
+            let data = self.scrub_json_body(std::mem::take(json));
+            return vec![ScrubbedEvent {
+                end: body.metadata.bytes,
+                event: None,
+                id: None,
+                data,
             }];
         }
         if matches!(body.format, BodyFormat::Multipart(_)) {

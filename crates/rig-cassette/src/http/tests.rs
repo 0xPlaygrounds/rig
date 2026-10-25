@@ -1316,3 +1316,162 @@ fn query_matching_normalizes_legacy_echoes_using_incoming_credentials() {
         assert!(!super::query_matches(&request, &wrong));
     }
 }
+
+#[test]
+fn replay_miss_previews_use_the_incoming_requests_credentials() {
+    let secret = "opaque-miss-credential-97531";
+    let mut request = incoming_request(
+        &format!("/missing?echo={secret}"),
+        json!({"echo":secret}).to_string(),
+    );
+    request
+        .headers
+        .insert("x-api-key", secret.parse().expect("header"));
+    let message = replay_miss_message(CassettePolicy::default(), &request, &[], None, None);
+    assert!(!message.contains(secret), "{message}");
+    let message: Value = serde_json::from_str(&message).expect("JSON");
+    assert_eq!(message.get("actual_query"), Some(&json!("echo=[REDACTED]")));
+    assert_eq!(
+        message.pointer("/actual_query_params/0/value"),
+        Some(&json!(REDACTED))
+    );
+    let preview: Value = serde_json::from_str(
+        message
+            .get("actual_body_preview")
+            .and_then(Value::as_str)
+            .expect("preview"),
+    )
+    .expect("body JSON");
+    assert_eq!(preview.get("echo"), Some(&json!(REDACTED)));
+}
+
+#[tokio::test]
+async fn withheld_replay_refuses_before_inspection_with_exact_shapes_and_snapshots() {
+    for (request, encoding, request_withheld) in [
+        (b"{\"x\":".as_slice(), None, true),
+        (b"encoded bytes".as_slice(), Some("gzip"), true),
+        (b"{}".as_slice(), None, false),
+    ] {
+        let directory = assert_fs::TempDir::new().expect("directory");
+        let path = directory.path().join("withheld.yaml");
+        let mut headers = vec![("content-type", "application/json")];
+        if let Some(encoding) = encoding {
+            headers.push(("content-encoding", encoding));
+        }
+        let mut first = cassette_request("/first");
+        first.body = Some("{}".to_owned());
+        let mut withheld = recorded_request("POST", "/submit?page_token=p2", headers, request);
+        if request_withheld {
+            withheld.body = None;
+            withheld.withheld = Some(crate::scrub::OpaqueBody::new(
+                request.len(),
+                Some("application/json"),
+            ));
+        }
+        let mut reply = cassette_response();
+        reply.withheld = Some(crate::scrub::OpaqueBody::new(5, Some("application/json")));
+        let interactions = [
+            CassetteInteraction {
+                when: first,
+                then: cassette_response(),
+            },
+            CassetteInteraction {
+                when: withheld,
+                then: reply,
+            },
+        ];
+        let fixture = interactions
+            .iter()
+            .map(|interaction| serde_yaml::to_string(interaction).expect("YAML"))
+            .collect::<Vec<_>>()
+            .join("---\n");
+        fs::write(&path, fixture).expect("fixture");
+        for shape in [false, true] {
+            for snapshots in [SnapshotMode::Off, SnapshotMode::Check] {
+                let spec = CassetteSpec::new("withheld");
+                let spec = if shape {
+                    spec.shape_matched()
+                } else {
+                    spec.exact_matched()
+                };
+                let replay = ProviderCassette::try_start_session(
+                    RecordVia::Proxy,
+                    "example",
+                    spec,
+                    "https://example.test",
+                    CassetteMode::Replay,
+                    path.clone(),
+                    directory.path().join("attempts"),
+                    snapshots,
+                )
+                .await
+                .expect("replay");
+                let client = rig_reqwest::reqwest::Client::builder()
+                    .no_proxy()
+                    .build()
+                    .expect("client");
+                let send = |method, path: &str, media: &str| {
+                    let mut builder = client
+                        .request(method, format!("{}{path}", replay.base_url()))
+                        .header("content-type", media)
+                        .body(request.to_vec());
+                    if let Some(encoding) = encoding {
+                        builder = builder.header("content-encoding", encoding);
+                    }
+                    builder.send()
+                };
+                let out_of_order = send(Method::POST, "/submit?page_token=p2", "application/json")
+                    .await
+                    .expect("reply");
+                assert_eq!(out_of_order.status().as_u16(), 404);
+                assert!(
+                    !out_of_order
+                        .text()
+                        .await
+                        .expect("diagnostic")
+                        .contains("record it again")
+                );
+                let first = client
+                    .post(format!("{}/first", replay.base_url()))
+                    .body("{}")
+                    .send()
+                    .await
+                    .expect("first reply");
+                assert_eq!(first.status().as_u16(), 200);
+                first.bytes().await.expect("body");
+                for (method, path, media) in [
+                    (Method::GET, "/submit?page_token=p2", "application/json"),
+                    (Method::POST, "/other?page_token=p2", "application/json"),
+                    (Method::POST, "/submit?page_token=p1", "application/json"),
+                    (Method::POST, "/submit?page_token=p2", "text/plain"),
+                ] {
+                    let mismatch = send(method, path, media).await.expect("reply");
+                    assert_eq!(mismatch.status().as_u16(), 404);
+                    assert!(
+                        !mismatch
+                            .text()
+                            .await
+                            .expect("diagnostic")
+                            .contains("record it again")
+                    );
+                }
+                let refused = send(Method::POST, "/submit?page_token=p2", "application/json")
+                    .await
+                    .expect("reply");
+                assert_eq!(refused.status().as_u16(), 502);
+                let diagnostic = refused.text().await.expect("diagnostic");
+                assert!(
+                    diagnostic.contains("was recorded without its"),
+                    "{diagnostic}"
+                );
+                assert!(diagnostic.contains("record it again"), "{diagnostic}");
+                let error = replay
+                    .try_finish()
+                    .await
+                    .expect_err("withheld replay fails");
+                assert!(matches!(&error, CassetteError::ReplayMismatch { .. }));
+                assert!(error.to_string().contains("record it again"));
+            }
+        }
+    }
+}

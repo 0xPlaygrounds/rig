@@ -154,6 +154,11 @@ Unordered shape matching serves, among the interactions with the request's
 key, the one whose body is closest to the request's. This
 repository sets `shape` for its own cassette tests.
 
+Replay learns credential context from the incoming request's URL and headers
+only. A value learned only from a recording's body that echoes in a
+non-secret query parameter cannot be normalized on replay, so it fails to
+match. This fails closed.
+
 A recording only becomes the fixture when the test passed and the recording is
 clean. A failed test's exchanges, and a recording `finish` refuses, go under
 `attempt_root()` (`RIG_CASSETTE_ATTEMPT_DIR`, default `cassette-attempts` in the

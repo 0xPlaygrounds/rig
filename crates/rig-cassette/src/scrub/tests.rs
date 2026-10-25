@@ -3015,3 +3015,52 @@ async fn whole_untyped_bodies_ignore_file_part_metadata_in_both_sinks() {
         );
     }
 }
+
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn pretty_streamed_json_keeps_secret_field_context_in_both_sinks() {
+    let reply = b"{\n  \"password\":\n  \"xy\"\n}";
+    let mut unary = None;
+    for streaming in [false, true] {
+        let captured = capture_scrub_case_with_headers(
+            "",
+            &[],
+            b"{}",
+            reply,
+            streaming,
+            None,
+            &[("content-type", "application/json")],
+        )
+        .await;
+        let expected = json!({"password":REDACTED});
+        let traffic_body = if streaming {
+            let events = captured
+                .traffic
+                .pointer("/response/events")
+                .and_then(Value::as_array)
+                .expect("events");
+            assert_eq!(events.len(), 1);
+            events
+                .first()
+                .and_then(|event| event.get("data"))
+                .expect("data")
+        } else {
+            captured.traffic.pointer("/response/body").expect("body")
+        };
+        assert_eq!(traffic_body, &expected);
+        let fixture_body: Value = serde_json::from_str(
+            captured
+                .fixture
+                .pointer("/then/body")
+                .and_then(Value::as_str)
+                .expect("body"),
+        )
+        .expect("JSON");
+        assert_eq!(fixture_body, expected);
+        if streaming {
+            assert_eq!(unary.as_ref(), Some(traffic_body));
+        } else {
+            unary = Some(traffic_body.clone());
+        }
+    }
+}

@@ -1549,6 +1549,40 @@ async fn replay_request(
         body,
     };
     let policy = state.policy;
+    if let Some(index) = unplayed_matching_index(
+        policy,
+        &state.interactions,
+        |_, interaction| {
+            (interaction.when.withheld.is_some() || interaction.then.withheld.is_some())
+                && request_line_matches(policy, &request, &interaction.when)
+        },
+        |_| 0,
+    ) {
+        let interaction = &mut state.interactions[index];
+        interaction.consumed = true;
+        let withheld = [
+            ("request", &interaction.when.withheld),
+            ("reply", &interaction.then.withheld),
+        ]
+        .into_iter()
+        .find_map(|(side, body)| Some((side, body.clone()?)));
+        if let Some((side, body)) = withheld {
+            let message = format!(
+                "interaction {index} ({} {}) was recorded without its {side} body, a {body}, so replay \
+                 cannot serve it; record it again with a body the recorder can read and scrub",
+                interaction.when.method, interaction.when.path
+            );
+            state.misses.push(ReplayMiss {
+                diagnostic: message.clone(),
+            });
+            let mut response = Response::new(Body::from(message));
+            *response.status_mut() = StatusCode::BAD_GATEWAY;
+            response
+                .headers_mut()
+                .insert("content-type", HeaderValue::from_static("text/plain"));
+            return response;
+        }
+    }
     let normalize = |view: &Value| normalize_request_view(&request, view);
     let sent = if state.snapshots.is_some() || state.shapes.is_some() {
         match incoming_body_view(&request) {
@@ -1558,10 +1592,9 @@ async fn replay_request(
                 state.misses.push(ReplayMiss {
                     diagnostic: diagnostic.clone(),
                 });
-                return Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(Body::from(diagnostic))
-                    .expect("replay miss response");
+                let mut response = Response::new(Body::from(diagnostic));
+                *response.status_mut() = StatusCode::NOT_FOUND;
+                return response;
             }
         }
     } else {
@@ -1655,11 +1688,12 @@ async fn replay_request(
             None => message.clone(),
         };
         state.misses.push(ReplayMiss { diagnostic });
-        return Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .header("content-type", "application/json")
-            .body(Body::from(message))
-            .expect("replay miss response should build");
+        let mut response = Response::new(Body::from(message));
+        *response.status_mut() = StatusCode::NOT_FOUND;
+        response
+            .headers_mut()
+            .insert("content-type", HeaderValue::from_static("application/json"));
+        return response;
     };
 
     if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
@@ -1668,27 +1702,6 @@ async fn replay_request(
     let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];
     interaction.consumed = true;
-    let withheld = [
-        ("request", &interaction.when.withheld),
-        ("reply", &interaction.then.withheld),
-    ]
-    .into_iter()
-    .find_map(|(side, body)| Some((side, body.clone()?)));
-    if let Some((side, body)) = withheld {
-        let message = format!(
-            "interaction {index} ({} {}) was recorded without its {side} body, a {body}, so replay \
-             cannot serve it; record it again with a body the recorder can read and scrub",
-            interaction.when.method, interaction.when.path
-        );
-        state.misses.push(ReplayMiss {
-            diagnostic: message.clone(),
-        });
-        return Response::builder()
-            .status(StatusCode::BAD_GATEWAY)
-            .header("content-type", "text/plain")
-            .body(Body::from(message))
-            .expect("replay refusal response should build");
-    }
     cassette_response(&interaction.then, &cassette_path)
 }
 
@@ -1785,6 +1798,17 @@ fn matching_interaction_index(
         Some(keys) => shape_request_matches(policy, request, &interaction.when, keys, index),
         None => request_matches(policy, request, &interaction.when),
     };
+    unplayed_matching_index(policy, interactions, matches, |index| {
+        if shapes.is_some() { distance(index) } else { 0 }
+    })
+}
+
+fn unplayed_matching_index(
+    policy: CassettePolicy,
+    interactions: &[ReplayInteraction],
+    matches: impl Fn(usize, &ReplayInteraction) -> bool,
+    distance: impl Fn(usize) -> usize,
+) -> Option<usize> {
     let mut unplayed = interactions
         .iter()
         .enumerate()
@@ -1794,16 +1818,10 @@ fn matching_interaction_index(
             let (index, interaction) = unplayed.next()?;
             matches(index, interaction).then_some(index)
         }
-        ReplayMatching::Unordered => {
-            let candidates: Vec<usize> = unplayed
-                .filter(|(index, interaction)| matches(*index, interaction))
-                .map(|(index, _)| index)
-                .collect();
-            match shapes {
-                Some(_) => candidates.into_iter().min_by_key(|index| distance(*index)),
-                None => candidates.first().copied(),
-            }
-        }
+        ReplayMatching::Unordered => unplayed
+            .filter(|(index, interaction)| matches(*index, interaction))
+            .map(|(index, _)| index)
+            .min_by_key(|index| distance(*index)),
     }
 }
 
@@ -1814,6 +1832,10 @@ fn replay_miss_message(
     shapes: Option<ShapeKeys<'_>>,
     snapshot_diff: Option<&str>,
 ) -> String {
+    let mut scrubber = Scrubber::for_request(&request.uri.to_string(), &request.headers);
+    let actual_query = request.uri.query().map(|query| scrubber.scrub_text(query));
+    let actual_query_params = scrub_query_pairs_for_diagnostics(&mut scrubber, request.uri.query());
+    let actual_body_preview = body_preview_bytes_for_diagnostics(&mut scrubber, &request.body);
     let candidates = interactions
         .iter()
         .enumerate()
@@ -1843,14 +1865,14 @@ fn replay_miss_message(
                 "method_matches": method_matches,
                 "path_matches": path_matches,
                 "query_matches": query_matches,
-                "expected_query_params": scrub_name_values_for_diagnostics(interaction.when.query_param.clone()),
+                "expected_query_params": scrub_name_values_for_diagnostics(&mut scrubber, interaction.when.query_param.clone()),
                 "headers_match": headers_match,
                 "required_headers_match": required_headers_match,
                 "body_matches": body_matches,
                 "shape_matches": shape_matches,
                 "expected_method": interaction.when.method,
                 "expected_path": interaction.when.path,
-                "expected_body_preview": interaction.when.body.as_deref().map(body_preview_for_diagnostics),
+                "expected_body_preview": interaction.when.body.as_deref().map(|body| body_preview_for_diagnostics(&mut scrubber, body)),
             })
         })
         .collect::<Vec<_>>();
@@ -1859,11 +1881,11 @@ fn replay_miss_message(
         "message": "Request did not match any route or mock",
         "actual_method": request.method.as_str(),
         "actual_path": request.uri.path(),
-        "actual_query": request.uri.query().map(scrub_text_for_diagnostics),
-        "actual_query_params": scrub_query_pairs_for_diagnostics(request.uri.query()),
+        "actual_query": actual_query,
+        "actual_query_params": actual_query_params,
         "required_headers": policy.required_request_headers,
         "missing_required_headers": missing_required_headers(policy, &request.headers),
-        "actual_body_preview": body_preview_bytes_for_diagnostics(&request.body),
+        "actual_body_preview": actual_body_preview,
         "candidates": candidates,
     });
     if let (Some(difference), Value::Object(fields)) = (snapshot_diff, &mut message) {
@@ -1929,17 +1951,15 @@ fn request_matches(
     request: &IncomingRequest,
     expected: &CassetteRequest,
 ) -> bool {
-    // A withheld body cannot be compared; replay refuses the interaction.
     request_line_matches(policy, request, expected)
-        && (expected.withheld.is_some()
-            || body_matches(
-                &request.uri.to_string(),
-                &request.headers,
-                &expected.header,
-                &request.body,
-                expected.body.as_deref(),
-                expected.body_encoding,
-            ))
+        && body_matches(
+            &request.uri.to_string(),
+            &request.headers,
+            &expected.header,
+            &request.body,
+            expected.body.as_deref(),
+            expected.body_encoding,
+        )
 }
 
 fn recorded_request<N, V>(
@@ -2241,33 +2261,32 @@ fn body_preview(body: &str) -> String {
     preview
 }
 
-fn body_preview_for_diagnostics(body: &str) -> String {
-    body_preview(&Scrubber::default().scrub_body(body))
+fn body_preview_for_diagnostics(scrubber: &mut Scrubber, body: &str) -> String {
+    body_preview(&scrubber.scrub_body(body))
 }
 
-fn body_preview_bytes_for_diagnostics(body: &[u8]) -> String {
+fn body_preview_bytes_for_diagnostics(scrubber: &mut Scrubber, body: &[u8]) -> String {
     match std::str::from_utf8(body) {
-        Ok(body) => body_preview_for_diagnostics(body),
+        Ok(body) => body_preview_for_diagnostics(scrubber, body),
         Err(_) => format!("<{} bytes of non-UTF-8 body>", body.len()),
     }
 }
 
-fn scrub_text_for_diagnostics(text: &str) -> String {
-    Scrubber::default().scrub_text(text)
-}
-
-fn scrub_query_pairs_for_diagnostics(query: Option<&str>) -> Vec<NameValue> {
+fn scrub_query_pairs_for_diagnostics(
+    scrubber: &mut Scrubber,
+    query: Option<&str>,
+) -> Vec<NameValue> {
     let pairs = parsed_query_pairs(query)
         .into_iter()
         .map(|(name, value)| NameValue { name, value });
-    scrub_name_values_for_diagnostics(pairs.collect())
+    scrub_name_values_for_diagnostics(scrubber, pairs.collect())
 }
 
-fn scrub_name_values_for_diagnostics(mut values: Vec<NameValue>) -> Vec<NameValue> {
-    scrub_query_params(&mut Scrubber::default(), &mut values);
-    for value in &mut values {
-        value.value = scrub_text_for_diagnostics(&value.value);
-    }
+fn scrub_name_values_for_diagnostics(
+    scrubber: &mut Scrubber,
+    mut values: Vec<NameValue>,
+) -> Vec<NameValue> {
+    scrub_query_params(scrubber, &mut values);
     values
 }
 
@@ -3112,9 +3131,7 @@ impl Scrubber {
     fn scrub_request(&mut self, request: &mut CassetteRequest) {
         request.path = self.scrub_text(&request.path);
         scrub_headers(self, &mut request.header, HeaderMode::Request);
-        for pair in &mut request.query_param {
-            pair.value = self.scrub_param_value(&pair.name, &pair.value);
-        }
+        scrub_query_params(self, &mut request.query_param);
     }
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
