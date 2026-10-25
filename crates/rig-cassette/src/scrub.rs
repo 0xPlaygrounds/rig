@@ -20,6 +20,9 @@ use std::collections::BTreeMap;
 
 pub(crate) const REDACTED: &str = redact::REDACTED;
 
+const AUTHORITATIVE_MINIMUM: usize = 3;
+const PROSE_MINIMUM: usize = 8;
+
 pub(crate) const SENSITIVE_HEADER_NAMES: &[&str] = &[
     // A session cookie, and the ChatGPT account a sign-in belongs to.
     "cookie",
@@ -69,8 +72,8 @@ enum SecretSource {
 impl SecretSource {
     fn minimum(self) -> usize {
         match self {
-            Self::Wire | Self::Authorization | Self::Number => 3,
-            _ => 8,
+            Self::Wire | Self::Authorization | Self::Number => AUTHORITATIVE_MINIMUM,
+            _ => PROSE_MINIMUM,
         }
     }
 }
@@ -220,8 +223,8 @@ impl OpaqueBody {
 
 pub(crate) struct PreparedBody {
     bytes: Bytes,
-    multipart: Option<MultipartLayout>,
     pub(crate) sse: bool,
+    form: bool,
     opaque: Option<OpaqueBody>,
 }
 
@@ -235,40 +238,27 @@ impl PreparedBody {
             .unwrap_or_default()
             .trim()
             .to_ascii_lowercase();
-        let encoded = header_value(headers, "content-encoding")
-            .is_some_and(|value| !value.trim().eq_ignore_ascii_case("identity"));
-        let is_multipart = media == "multipart/form-data";
-        let multipart = content_type
-            .filter(|_| is_multipart)
-            .and_then(multipart_boundary)
-            .filter(|boundary| find_bytes(raw, format!("--{boundary}--").as_bytes()).is_some())
-            .and_then(|boundary| multipart_slices(raw, &boundary))
-            .filter(|layout| !layout.parts.is_empty())
-            .filter(|layout| {
-                layout.parts.iter().all(|slice| {
-                    let headers: Vec<_> = slice
-                        .part
-                        .headers
-                        .iter()
-                        .map(|(name, value)| (name.as_str(), value.as_str()))
-                        .collect();
-                    Self::new(&slice.part.body, &headers).opaque.is_none()
-                })
-            });
+        let encoded = headers.iter().any(|(name, value)| {
+            name.eq_ignore_ascii_case("content-encoding")
+                && !value.trim().eq_ignore_ascii_case("identity")
+        });
+        let repeated_type = headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            .count()
+            > 1;
         let inspectable = !encoded
-            && if is_multipart {
-                multipart.is_some()
-            } else {
-                inspectable_body(raw, &media)
-            };
+            && !repeated_type
+            && !(content_type.is_some() && media.is_empty())
+            && inspectable_body(raw, &media);
         Self {
             bytes: if inspectable {
                 Bytes::copy_from_slice(raw)
             } else {
                 Bytes::new()
             },
-            multipart: if inspectable { multipart } else { None },
             sse: content_type.is_some_and(is_sse),
+            form: media == "application/x-www-form-urlencoded",
             opaque: (!inspectable).then(|| OpaqueBody {
                 bytes: raw.len(),
                 content_type: content_type.map(str::to_owned),
@@ -311,12 +301,6 @@ fn inspectable_body(raw: &[u8], media: &str) -> bool {
             })
         });
     }
-    if matches!(media, "application/x-ndjson" | "application/jsonl") {
-        return text
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .all(|line| serde_json::from_str::<Value>(line).is_ok());
-    }
     matches!(
         media,
         "" | "text/plain" | "application/x-www-form-urlencoded"
@@ -325,7 +309,12 @@ fn inspectable_body(raw: &[u8], media: &str) -> bool {
 
 fn inspectable_text(text: &str) -> bool {
     let text = text.trim();
-    !text.starts_with(['{', '[']) || text == "[DONE]" || serde_json::from_str::<Value>(text).is_ok()
+    !text
+        .chars()
+        .any(|ch| ch.is_control() && !matches!(ch, '\t' | '\r' | '\n'))
+        && (!text.starts_with(['{', '['])
+            || text == "[DONE]"
+            || serde_json::from_str::<Value>(text).is_ok())
 }
 
 #[cfg(feature = "bedrock")]
@@ -360,7 +349,10 @@ impl Scrubber {
         let mut request_body = match request_body {
             RequestBodyRef::Bytes(bytes) => Some(PreparedBody::new(bytes, &request_headers)),
             RequestBodyRef::Multipart(form) => {
-                let opaque = form.parts().iter().any(|part| {
+                let opaque = request_headers.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("content-encoding")
+                        && !value.trim().eq_ignore_ascii_case("identity")
+                }) || form.parts().iter().any(|part| {
                     let metadata = part_metadata(part);
                     let headers: Vec<_> = metadata
                         .iter()
@@ -370,7 +362,9 @@ impl Scrubber {
                         PartContent::Text(text) => PreparedBody::new(text.as_bytes(), &headers)
                             .opaque
                             .is_some(),
-                        PartContent::Binary(_) => true,
+                        PartContent::Binary(bytes) => {
+                            PreparedBody::new(bytes, &headers).opaque.is_some()
+                        }
                     }
                 });
                 if opaque {
@@ -384,8 +378,8 @@ impl Scrubber {
                         .sum();
                     Some(PreparedBody {
                         bytes: Bytes::new(),
-                        multipart: None,
                         sse: false,
+                        form: false,
                         opaque: Some(OpaqueBody {
                             bytes,
                             content_type: Some("multipart/form-data".into()),
@@ -427,18 +421,12 @@ impl Scrubber {
         if body.opaque().is_some() {
             return;
         }
-        if let Some(layout) = &body.multipart {
-            for range in [&layout.preamble, &layout.epilogue] {
-                if let Some((text, _)) = body.bytes.get(range.clone()).and_then(text_prefix) {
-                    self.learn_body(text);
-                }
+        if let Some((text, _)) = text_prefix(&body.bytes) {
+            if body.form {
+                self.learn_form(text, SecretSource::Wire);
+            } else {
+                self.learn_body(text);
             }
-            for slice in &layout.parts {
-                self.learn_part_metadata(&slice.part.headers);
-                self.learn_part(slice.part.name().unwrap_or_default(), &slice.part.body);
-            }
-        } else if let Some((text, _)) = text_prefix(&body.bytes) {
-            self.learn_body(text);
         } else {
             #[cfg(feature = "bedrock")]
             if let Some(messages) = event_stream_messages(&body.bytes) {
@@ -462,51 +450,12 @@ impl Scrubber {
         if let Some(opaque) = body.opaque() {
             return Bytes::from(opaque.value().to_string());
         }
-        let Some(layout) = body.multipart else {
-            return self.scrub_bytes(&body.bytes);
-        };
-        let mut out = Vec::new();
-        if !layout.preamble.is_empty() {
-            out.extend_from_slice(b"[REDACTED]\r\n");
+        if body.form {
+            return Bytes::from(self.scrub_text(&mask_form(
+                std::str::from_utf8(&body.bytes).unwrap_or_default(),
+            )));
         }
-        let mut kept = layout.preamble.end;
-        for slice in layout.parts {
-            out.extend_from_slice(body.bytes.get(kept..slice.header.start).unwrap_or_default());
-            let headers = self.scrub_part_metadata(&slice.part.headers);
-            if headers == slice.part.headers {
-                out.extend_from_slice(body.bytes.get(slice.header.clone()).unwrap_or_default());
-            } else {
-                out.extend_from_slice(
-                    headers
-                        .iter()
-                        .map(|(name, value)| format!("{name}: {value}"))
-                        .collect::<Vec<_>>()
-                        .join("\r\n")
-                        .as_bytes(),
-                );
-            }
-            out.extend_from_slice(
-                body.bytes
-                    .get(slice.header.end..slice.body.start)
-                    .unwrap_or_default(),
-            );
-            let name = slice.part.name().unwrap_or_default();
-            if is_secret_param(&decode_form_component(name)) {
-                out.extend_from_slice(REDACTED.as_bytes());
-            } else {
-                out.extend_from_slice(&self.scrub_bytes(&slice.part.body));
-            }
-            kept = slice.body.end;
-        }
-        out.extend_from_slice(
-            body.bytes
-                .get(kept..layout.epilogue.start)
-                .unwrap_or_default(),
-        );
-        if !layout.epilogue.is_empty() {
-            out.extend_from_slice(REDACTED.as_bytes());
-        }
-        out.into()
+        self.scrub_bytes(&body.bytes)
     }
 
     fn learn_part_metadata(&mut self, metadata: &[(String, String)]) {
@@ -1024,20 +973,6 @@ impl Scrubber {
                 data: opaque.value(),
             }];
         }
-        if body.multipart.is_some() {
-            let end = body.bytes.len();
-            let bytes = self.scrub_prepared(body);
-            let data = std::str::from_utf8(&bytes).map_or_else(
-                |_| serde_json::json!({"bytes":bytes.len()}),
-                |text| Value::String(text.to_owned()),
-            );
-            return vec![ScrubbedEvent {
-                end,
-                event: None,
-                id: None,
-                data,
-            }];
-        }
         let Some((text, tail)) = text_prefix(&body.bytes) else {
             return vec![ScrubbedEvent {
                 end: body.bytes.len(),
@@ -1481,7 +1416,7 @@ fn short_secret_spans<'a>(
 }
 
 fn secret_occurs(bytes: &[u8], secret: &str) -> bool {
-    if secret.len() >= 8 {
+    if secret.len() >= PROSE_MINIMUM {
         find_bytes(bytes, secret.as_bytes()).is_some()
     } else {
         short_secret_spans(bytes, secret).next().is_some()
@@ -1489,7 +1424,7 @@ fn secret_occurs(bytes: &[u8], secret: &str) -> bool {
 }
 
 fn replace_secret(text: &str, secret: &str) -> String {
-    if secret.len() >= 8 {
+    if secret.len() >= PROSE_MINIMUM {
         return text.replace(secret, REDACTED);
     }
     let mut out = String::new();
@@ -1670,11 +1605,7 @@ fn is_explicit_secret_field(name: &str) -> bool {
 
 pub(crate) fn is_secret_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    is_secret_header(name)
-        || matches!(
-            lower.as_str(),
-            "key" | "secret" | "signature" | "sig" | "code" | "assertion"
-        )
+    is_secret_header(name) || matches!(lower.as_str(), "signature" | "sig" | "code" | "assertion")
 }
 
 fn is_schema(fields: &Map<String, Value>) -> bool {
@@ -1853,9 +1784,16 @@ fn event_stream_messages(bytes: &[u8]) -> Option<Vec<EventStreamMessage>> {
 
 /// UTF-8 header pairs used to prepare an exchange for either sink.
 pub(crate) fn header_pairs(headers: &HeaderMap) -> impl Iterator<Item = (&str, &str)> {
-    headers
-        .iter()
-        .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value)))
+    headers.iter().filter_map(|(name, value)| {
+        value
+            .to_str()
+            .ok()
+            .or_else(|| {
+                matches!(name.as_str(), "content-type" | "content-encoding")
+                    .then_some("<non-UTF-8>")
+            })
+            .map(|value| (name.as_str(), value))
+    })
 }
 
 pub(crate) fn is_sse(content_type: &str) -> bool {
@@ -2005,25 +1943,11 @@ fn header_value<'a>(headers: &[(&'a str, &'a str)], name: &str) -> Option<&'a st
         .map(|(_, value)| *value)
 }
 
+#[cfg(feature = "http")]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct MultipartPart {
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Vec<u8>,
-}
-
-impl MultipartPart {
-    fn name(&self) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case("content-disposition"))?
-            .1
-            .split(';')
-            .find_map(|field| {
-                let (name, value) = field.trim().split_once('=')?;
-                name.eq_ignore_ascii_case("name")
-                    .then(|| value.trim_matches('"'))
-            })
-    }
 }
 
 pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
@@ -2037,24 +1961,7 @@ pub(crate) fn part_metadata(part: &Part) -> Vec<(String, String)> {
     metadata
 }
 
-struct MultipartLayout {
-    parts: Vec<MultipartSlice>,
-    preamble: Range<usize>,
-    epilogue: Range<usize>,
-}
-
-struct MultipartSlice {
-    part: MultipartPart,
-    header: Range<usize>,
-    body: Range<usize>,
-}
-
 #[cfg(feature = "http")]
-pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
-    multipart_slices(body, boundary)
-        .map(|layout| layout.parts.into_iter().map(|slice| slice.part).collect())
-}
-
 pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
     content_type.split(';').find_map(|part| {
         let (name, value) = part.trim().split_once('=')?;
@@ -2064,22 +1971,18 @@ pub(crate) fn multipart_boundary(content_type: &str) -> Option<String> {
     })
 }
 
-fn multipart_slices(body: &[u8], boundary: &str) -> Option<MultipartLayout> {
+#[cfg(feature = "http")]
+pub(crate) fn parse_multipart_parts(body: &[u8], boundary: &str) -> Option<Vec<MultipartPart>> {
     let marker = format!("--{boundary}").into_bytes();
     let mut parts = Vec::new();
     let slices = split_bytes(body, &marker);
-    let preamble = 0..slices.first().map_or(0, |(_, bytes)| bytes.len());
-    let mut epilogue = body.len()..body.len();
-    for (mut offset, raw_part) in slices.into_iter().skip(1) {
+    for (_, raw_part) in slices.into_iter().skip(1) {
         let raw_part = if let Some(part) = raw_part.strip_prefix(b"\r\n") {
-            offset += 2;
             part
         } else {
             raw_part
         };
-        if let Some(after) = raw_part.strip_prefix(b"--") {
-            let ending = if after.starts_with(b"\r\n") { 2 } else { 0 };
-            epilogue = offset + 2 + ending..body.len();
+        if raw_part.starts_with(b"--") {
             break;
         }
 
@@ -2105,23 +2008,15 @@ fn multipart_slices(body: &[u8], boundary: &str) -> Option<MultipartLayout> {
             .collect::<Vec<_>>();
         headers.sort();
 
-        parts.push(MultipartSlice {
-            part: MultipartPart {
-                headers,
-                body: raw_body.to_vec(),
-            },
-            header: offset..offset + header_end,
-            body: offset + body_start..offset + raw_part.len(),
+        parts.push(MultipartPart {
+            headers,
+            body: raw_body.to_vec(),
         });
     }
-
-    Some(MultipartLayout {
-        parts,
-        preamble,
-        epilogue,
-    })
+    Some(parts)
 }
 
+#[cfg(feature = "http")]
 fn split_bytes<'a>(body: &'a [u8], marker: &[u8]) -> Vec<(usize, &'a [u8])> {
     let mut parts = Vec::new();
     let mut remainder = body;
@@ -2144,6 +2039,7 @@ pub(crate) fn find_bytes(body: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
+#[cfg(feature = "http")]
 fn normalize_multipart_header_value(value: &str) -> String {
     value
         .split(';')

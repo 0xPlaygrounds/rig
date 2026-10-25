@@ -557,7 +557,7 @@ fn bare_token_and_cookie_values_do_not_erase_ordinary_text() {
 
 #[cfg(feature = "http")]
 #[tokio::test]
-async fn a_utf8_cut_keeps_whole_events_and_learns_the_valid_prefix() {
+async fn a_utf8_cut_withholds_the_entire_stream() {
     use futures::StreamExt;
     use rig_core::http_client::{Bytes, HttpClientExt, Request};
     let secret = "opaque-prefix-credential";
@@ -569,7 +569,7 @@ async fn a_utf8_cut_keeps_whole_events_and_learns_the_valid_prefix() {
             when.method("POST").path("/events");
             then.status(200)
                 .header("content-type", "text/event-stream")
-                .body(bytes);
+                .body(bytes.clone());
         })
         .await;
     let directory = assert_fs::TempDir::new().expect("directory");
@@ -596,19 +596,14 @@ async fn a_utf8_cut_keeps_whole_events_and_learns_the_valid_prefix() {
     assert!(!text.contains(secret), "{text}");
     let line: Value = serde_json::from_str(&text).expect("JSON");
     assert_eq!(
-        line.pointer("/response/events/0/data/echo"),
-        Some(&json!(REDACTED))
-    );
-    assert_eq!(line.pointer("/response/events/1/id"), Some(&json!("7")));
-    assert_eq!(
-        line.pointer("/response/events/2/data"),
-        Some(&json!({"bytes":2}))
+        line.pointer("/response/events/0/data"),
+        Some(&json!({"bytes":bytes.len(), "content_type":"text/event-stream"}))
     );
     assert_eq!(
         line.pointer("/response/events")
             .and_then(Value::as_array)
             .map(Vec::len),
-        Some(3)
+        Some(1)
     );
 }
 
@@ -1624,4 +1619,126 @@ async fn newly_recorded_header_and_query_body_redactions_replay_the_same_request
         .try_finish()
         .await
         .expect("same request passes matching and snapshots");
+}
+
+#[test]
+fn uninspectable_captures_retain_only_metadata_for_both_purposes() {
+    let secret = "uninspectable-arbitrary-material";
+    let malformed = format!("{{\"message\":\"{secret}\"");
+    let partial_sse = format!("data: {secret}\n");
+    let multipart = format!(
+        "--sample\r\nContent-Disposition: form-data; name=\"file\"\r\nAuthorization Bearer {secret}\r\n\r\nhello\r\n--sample--\r\n"
+    );
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        for (content_type, encoding, source) in [
+            ("application/json", Some("gzip"), secret.as_bytes()),
+            ("application/json", Some("identity, identity"), b"{}"),
+            ("application/json", Some(""), b"{}"),
+            ("application/json", None, malformed.as_bytes()),
+            ("application/json", None, b"{}\xe2\x82"),
+            ("application/octet-stream", None, secret.as_bytes()),
+            ("text/event-stream", None, partial_sse.as_bytes()),
+            (
+                "application/jsonl",
+                None,
+                b"{\"api_key\":\"abc\"}\n{\"echo\":\"abc\"}\n",
+            ),
+            (
+                "multipart/form-data; boundary=sample",
+                None,
+                multipart.as_bytes(),
+            ),
+        ] {
+            let mut scrubber = Scrubber::new(purpose);
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [],
+                RequestBodyRef::Bytes(b""),
+                [("content-type", content_type)]
+                    .into_iter()
+                    .chain(encoding.map(|value| ("content-encoding", value))),
+                Some(source),
+            );
+            let body = prepared.response_body.expect("body");
+            let expected = json!({"bytes":source.len(), "content_type":content_type});
+            assert_eq!(body.opaque().map(OpaqueBody::value), Some(expected.clone()));
+            assert_eq!(
+                serde_json::from_slice::<Value>(&scrubber.scrub_prepared(body)).expect("metadata"),
+                expected
+            );
+            let prepared = scrubber.prepare_exchange(
+                "",
+                [],
+                RequestBodyRef::Bytes(b""),
+                [("content-type", content_type)]
+                    .into_iter()
+                    .chain(encoding.map(|value| ("content-encoding", value))),
+                Some(source),
+            );
+            let events =
+                scrubber.scrub_stream(prepared.response_body.expect("body"), [source.len()]);
+            assert_eq!(events.len(), 1);
+            assert_eq!(events.first().map(|event| &event.data), Some(&expected));
+            assert!(!expected.to_string().contains(secret));
+        }
+    }
+}
+
+#[test]
+fn declared_forms_keep_authoritative_learning_with_whitespace() {
+    for purpose in [Purpose::Traffic, Purpose::Cassette] {
+        let mut scrubber = Scrubber::new(purpose);
+        let prepared = scrubber.prepare_exchange(
+            "",
+            [("content-type", "application/x-www-form-urlencoded")],
+            RequestBodyRef::Bytes(b"api_key=abc&echo=abc value"),
+            [("content-type", "application/json")],
+            Some(br#"{"echo":"abc","longer":"abcd"}"#),
+        );
+        let request = prepared.request_body.expect("request");
+        assert!(request.opaque().is_none());
+        assert_eq!(
+            scrubber.scrub_prepared(request),
+            Bytes::from_static(b"api_key=[REDACTED]&echo=[REDACTED] value")
+        );
+        let response: Value = serde_json::from_slice(
+            &scrubber.scrub_prepared(prepared.response_body.expect("response")),
+        )
+        .expect("reply");
+        assert_eq!(response, json!({"echo":REDACTED,"longer":"abcd"}));
+    }
+}
+
+#[test]
+fn recording_rejects_conflicting_and_non_utf8_body_headers() {
+    let mut scrubber = Scrubber::default();
+    for headers in [
+        vec![
+            ("content-encoding", "identity"),
+            ("content-encoding", "gzip"),
+        ],
+        vec![
+            ("content-type", "application/json"),
+            ("content-type", "application/octet-stream"),
+        ],
+    ] {
+        let prepared =
+            scrubber.prepare_exchange("", headers, RequestBodyRef::Bytes(b"{}"), [], None);
+        assert!(prepared.request_body.expect("request").opaque().is_some());
+    }
+    for name in ["content-encoding", "content-type"] {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            name,
+            rig_core::http_client::HeaderValue::from_bytes(b"\xff").expect("header"),
+        );
+        let prepared = scrubber.prepare_exchange(
+            "",
+            header_pairs(&headers),
+            RequestBodyRef::Bytes(b"secret"),
+            [],
+            None,
+        );
+        assert!(prepared.request_body.expect("request").opaque().is_some());
+    }
 }
