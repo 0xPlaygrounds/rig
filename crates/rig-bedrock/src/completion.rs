@@ -417,6 +417,13 @@ impl ReplayTarget for Converse {
         Some("/toolUse/toolUseId")
     }
 
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &[
+            "/reasoningContent/reasoningText/signature",
+            "/reasoningContent/redactedContent",
+        ]
+    }
+
     /// A hosted tool's use is a typed `toolUse`; its result is the
     /// `toolResult` in the same turn. Converse rejects one without the other.
     fn hosted_pair(&self, item: &Value) -> Option<(Pairing, String)> {

@@ -261,6 +261,10 @@ impl ReplayTarget for GenerateContent {
         CALL_ID_SLOT
     }
 
+    fn blob_slots(&self) -> &'static [&'static str] {
+        BLOB_SLOTS
+    }
+
     fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
         self.cached_content.is_some() || declares_tools(self, request)
     }
@@ -295,6 +299,10 @@ pub fn declares_tools(
 /// Where a GenerateContent part holds its call's id, on every wire that
 /// speaks it.
 pub const CALL_ID_SLOT: Option<&str> = Some("/functionCall/id");
+
+/// Where a GenerateContent part, a call's included, holds its thought
+/// signature, on every wire that speaks it.
+pub const BLOB_SLOTS: &[&str] = &["/thoughtSignature"];
 
 /// The major version of a Gemini model id, read past a `models/` prefix:
 /// `gemini-<major>…` or `gemini-live-<major>…`, or `None` for an id that is

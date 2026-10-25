@@ -64,6 +64,19 @@ pub(crate) fn hosted() -> [Value; 2] {
     ]
 }
 
+/// The reasoning blob of each reasoning block of `response`.
+fn blobs(response: &CompletionResponse) -> Vec<Option<&str>> {
+    response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.native.as_ref()),
+            _ => None,
+        })
+        .map(|native| native?.reasoning_blob().map(|blob| blob.value))
+        .collect()
+}
+
 /// The response a whole reply holding `content` decodes to on `model`.
 pub(crate) fn whole(model: &str, content: Vec<Value>, stop_reason: &str) -> CompletionResponse {
     let frames = [ConverseFrame::Whole(document(content, stop_reason))];
@@ -97,8 +110,9 @@ pub(crate) fn rich() -> Vec<Value> {
 }
 
 /// Streamed signed thinking keeps its text and signature, and signature-only
-/// thinking keeps its item; empty thinking is no content; unsigned
-/// reasoning keeps no item, since it is rebuilt from its text.
+/// thinking keeps its item, each with its signature as its blob; empty
+/// thinking is no content; unsigned reasoning keeps no item, since it is
+/// rebuilt from its text.
 #[test]
 fn reasoning_keeps_an_item_only_when_signed_or_redacted() {
     let thought = |index, field: &str, text: &str| {
@@ -132,11 +146,12 @@ fn reasoning_keeps_an_item_only_when_signed_or_redacted() {
             None,
         ]
     );
+    assert_eq!(blobs(&response), [Some("sig-1"), Some("only"), None]);
     assert_eq!(response.choice[2], AssistantContent::reasoning("unsigned"));
 }
 
 /// Redacted reasoning arrives in base64 chunks whose bytes join before they
-/// are encoded once.
+/// are encoded once, and the joined content is its blob.
 #[test]
 fn redacted_reasoning_encodes_its_bytes_once() {
     let chunk = |bytes: &[u8]| {
@@ -154,6 +169,8 @@ fn redacted_reasoning_encodes_its_bytes_once() {
             &json!({ "reasoningContent": { "redactedContent": BASE64_STANDARD.encode(b"\x00cipher\xff") } })
         )
     );
+    let joined = BASE64_STANDARD.encode(b"\x00cipher\xff");
+    assert_eq!(blobs(&response), [Some(joined.as_str())]);
 }
 
 /// #2250, #989: streamed client calls are each kept, one with no input at

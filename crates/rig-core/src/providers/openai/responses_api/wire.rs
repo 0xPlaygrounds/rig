@@ -216,6 +216,10 @@ impl crate::completion::ReplayTarget for Responses {
         Some("/call_id")
     }
 
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &["/encrypted_content"]
+    }
+
     /// An edited block keeps its item's `id` and `type`, a message its
     /// `phase`, and reasoning its ciphertext, so the items after it stay
     /// paired.

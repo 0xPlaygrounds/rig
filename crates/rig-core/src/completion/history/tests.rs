@@ -942,8 +942,16 @@ impl ReplayTarget for LeadingSystemOnly {
 
 #[test]
 fn a_call_renamed_for_a_reused_id_keeps_its_item_where_the_item_holds_its_id() {
-    let call_with_item =
-        || call("functions.f:0").with_native(json!({"id": "functions.f:0", "x": 1}));
+    let call_with_item = || {
+        let mut block =
+            call("functions.f:0").with_native(json!({"id": "functions.f:0", "x": 1, "sig": "s"}));
+        if let AssistantContent::ToolCall(call) = &mut block
+            && let Some(native) = call.native.as_mut()
+        {
+            native.blob_slot = Some("/sig".into());
+        }
+        block
+    };
     let history = vec![
         Message::user("q"),
         turn(Some(same()), vec![call_with_item()]),
@@ -961,16 +969,26 @@ fn a_call_renamed_for_a_reused_id_keeps_its_item_where_the_item_holds_its_id() {
             panic!("a call");
         };
         assert_ne!(call.id.wire(), "functions.f:0");
-        AssistantContent::ToolCall(call.clone())
+        let blob = call
+            .native
+            .as_ref()
+            .and_then(crate::message::Native::reasoning_blob);
+        let blob = blob.map(|blob| blob.value.to_owned());
+        let item = AssistantContent::ToolCall(call.clone())
             .native_item()
-            .cloned()
+            .cloned();
+        (item, blob)
     };
     assert_eq!(
         renamed(&Slotted),
-        Some(json!({"id": "functions.f:0", "x": 1}))
+        (
+            Some(json!({"id": "functions.f:0", "x": 1, "sig": "s"})),
+            Some("s".to_owned())
+        ),
+        "the kept item keeps its blob"
     );
     assert_eq!(
-        renamed(&TARGET),
+        renamed(&TARGET).0,
         None,
         "without a slot the item would name the old id"
     );

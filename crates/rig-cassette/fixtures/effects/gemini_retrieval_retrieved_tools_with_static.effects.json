@@ -218,7 +218,8 @@
                   },
                   "thoughtSignature": "CskCAWkUfRPgf3Wdl/vjiFhQiGhJs0Mr/0yJOqNJkeJER96ykGEqnPHytSOcA47Wbu20Lcad4Li3uHLQj80WTOEfTX2w2TZqskwmhfYXNxsChf/XFJT1esMl5QiGM9bGoWePrhecpcBxKaaGouohW8oNJ44/i6qqjuY7KgFXSCFrSHKLFSL3jCaNMaGLIQ74WHAMOd3cP3eVQTGoijGkEw576ksXw0Y6xbNBmNevXsntQa67z0hlA9rxE+DscvjiuVzbsccY3+pEr1rxwm59aXQLIX+HoI+XpKh+ZSa/Rq7QGvXJ8SACKpc/Al5B5zn4LoMY3EfroraYSidIwqJ7GpFvPpfUgE9dYh7cbm2QO4yo4r7Uc6AwJkTe1jthp3tVv0LjtGQZIaug/kuXxx4onBwiR90AsAMJ0MF0pRedGgXwckKk5MrPY103gfE="
                 },
-                "fingerprint": "2dafdabf94fef961"
+                "fingerprint": "2dafdabf94fef961",
+                "blob_slot": "/thoughtSignature"
               }
             }
           ],
@@ -386,7 +387,8 @@
                       },
                       "thoughtSignature": "CskCAWkUfRPgf3Wdl/vjiFhQiGhJs0Mr/0yJOqNJkeJER96ykGEqnPHytSOcA47Wbu20Lcad4Li3uHLQj80WTOEfTX2w2TZqskwmhfYXNxsChf/XFJT1esMl5QiGM9bGoWePrhecpcBxKaaGouohW8oNJ44/i6qqjuY7KgFXSCFrSHKLFSL3jCaNMaGLIQ74WHAMOd3cP3eVQTGoijGkEw576ksXw0Y6xbNBmNevXsntQa67z0hlA9rxE+DscvjiuVzbsccY3+pEr1rxwm59aXQLIX+HoI+XpKh+ZSa/Rq7QGvXJ8SACKpc/Al5B5zn4LoMY3EfroraYSidIwqJ7GpFvPpfUgE9dYh7cbm2QO4yo4r7Uc6AwJkTe1jthp3tVv0LjtGQZIaug/kuXxx4onBwiR90AsAMJ0MF0pRedGgXwckKk5MrPY103gfE="
                     },
-                    "fingerprint": "2dafdabf94fef961"
+                    "fingerprint": "2dafdabf94fef961",
+                    "blob_slot": "/thoughtSignature"
                   }
                 }
               ],
@@ -496,7 +498,8 @@
                   },
                   "thoughtSignature": "CqEBAWkUfRNHIu0XWnd8IqtcJuIO6RQTb2ZTna4raPcHS7vYM6DIA4LBDbnscBIvFFL2EusIPcCjpMJzWt7xpBhvQps6s0Rh6HbbRPWABxLm7H4h9SFZnDZ3+3WC1uttLHhS9IQ9oR3JDIdARs8/gUT8maZ4KPg3zW6YsSBdBbuicFQfKrGa3QZ40e0HUZUNaMLDEGHwbHv+m4u3KdHzfruaEXw="
                 },
-                "fingerprint": "bfd6826299bdce26"
+                "fingerprint": "bfd6826299bdce26",
+                "blob_slot": "/thoughtSignature"
               }
             }
           ],
@@ -664,7 +667,8 @@
                       },
                       "thoughtSignature": "CskCAWkUfRPgf3Wdl/vjiFhQiGhJs0Mr/0yJOqNJkeJER96ykGEqnPHytSOcA47Wbu20Lcad4Li3uHLQj80WTOEfTX2w2TZqskwmhfYXNxsChf/XFJT1esMl5QiGM9bGoWePrhecpcBxKaaGouohW8oNJ44/i6qqjuY7KgFXSCFrSHKLFSL3jCaNMaGLIQ74WHAMOd3cP3eVQTGoijGkEw576ksXw0Y6xbNBmNevXsntQa67z0hlA9rxE+DscvjiuVzbsccY3+pEr1rxwm59aXQLIX+HoI+XpKh+ZSa/Rq7QGvXJ8SACKpc/Al5B5zn4LoMY3EfroraYSidIwqJ7GpFvPpfUgE9dYh7cbm2QO4yo4r7Uc6AwJkTe1jthp3tVv0LjtGQZIaug/kuXxx4onBwiR90AsAMJ0MF0pRedGgXwckKk5MrPY103gfE="
                     },
-                    "fingerprint": "2dafdabf94fef961"
+                    "fingerprint": "2dafdabf94fef961",
+                    "blob_slot": "/thoughtSignature"
                   }
                 }
               ],
@@ -721,7 +725,8 @@
                       },
                       "thoughtSignature": "CqEBAWkUfRNHIu0XWnd8IqtcJuIO6RQTb2ZTna4raPcHS7vYM6DIA4LBDbnscBIvFFL2EusIPcCjpMJzWt7xpBhvQps6s0Rh6HbbRPWABxLm7H4h9SFZnDZ3+3WC1uttLHhS9IQ9oR3JDIdARs8/gUT8maZ4KPg3zW6YsSBdBbuicFQfKrGa3QZ40e0HUZUNaMLDEGHwbHv+m4u3KdHzfruaEXw="
                     },
-                    "fingerprint": "bfd6826299bdce26"
+                    "fingerprint": "bfd6826299bdce26",
+                    "blob_slot": "/thoughtSignature"
                   }
                 }
               ],
@@ -816,7 +821,8 @@
                   "text": "The final number is 21.",
                   "thoughtSignature": "CocBAWkUfRPJdZyfT10R0tKDltke8e/LkXSCv46oLPjXQyUO1ru1wvdr2Txp2n5vNh6+d3IIZa/WOD0l7qfakF0wJKwrgQ++D7LhvvEr72N5ZLPqUY9UhWyBk8F+rlAAVWtaewwKaNO4kGoxv2c4N9oXJJQxADb4yUTVAr5sM3H5TIFrWrzHIQZw"
                 },
-                "fingerprint": "0008a6dbe78ffcb4"
+                "fingerprint": "0008a6dbe78ffcb4",
+                "blob_slot": "/thoughtSignature"
               }
             }
           ],

@@ -87,6 +87,7 @@ impl Operation for Completion {
             wire: replay.is_some_and(|target| target.states_finish_reason()),
             call_id_slot: replay.and_then(|target| target.call_id_slot()),
             catalog_priced: replay.map(|target| target.catalog_priced()),
+            blob_slots: replay.map_or(&[], |target| target.blob_slots()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..ReplyFold::new(origin)
         }
@@ -279,6 +280,10 @@ pub struct ReplyFold {
     ///
     /// [`ReplayTarget::catalog_priced`]: crate::completion::ReplayTarget::catalog_priced
     catalog_priced: Option<bool>,
+    /// Where the wire's items keep a reasoning blob ([`ReplayTarget::blob_slots`]).
+    ///
+    /// [`ReplayTarget::blob_slots`]: crate::completion::ReplayTarget::blob_slots
+    blob_slots: &'static [&'static str],
     /// Whether the request accepts an unknown finish reason as a normal stop
     /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
     ///
@@ -510,6 +515,7 @@ impl ReplyFold {
             wire: false,
             call_id_slot: None,
             catalog_priced: None,
+            blob_slots: &[],
             accept_unknown_finish: false,
             first_incomplete: None,
             unfinished: Vec::new(),
@@ -761,7 +767,7 @@ impl ReplyFold {
                     &self.origin.provider,
                     index,
                 );
-                with_item(AssistantContent::Text(text), item)
+                self.with_item(AssistantContent::Text(text), item)
             }
             Body::Reasoning { text, redacted } => {
                 if text.is_empty() && !redacted && item.is_null() {
@@ -772,9 +778,9 @@ impl ReplyFold {
                     redacted,
                     native: None,
                 };
-                with_item(AssistantContent::Reasoning(reasoning), item)
+                self.with_item(AssistantContent::Reasoning(reasoning), item)
             }
-            Body::Image(image) => with_item(AssistantContent::Image(image), item),
+            Body::Image(image) => self.with_item(AssistantContent::Image(image), item),
             Body::Opaque { replay } => AssistantContent::Opaque(Opaque {
                 item,
                 replay: replay && closing == Closing::Complete,
@@ -800,7 +806,7 @@ impl ReplyFold {
                     emit(items, StreamEvent::Arguments { part, json });
                 }
                 let call = ToolCall::new(id.clone(), function);
-                let content = with_item(AssistantContent::ToolCall(call), item);
+                let content = self.with_item(AssistantContent::ToolCall(call), item);
                 emit(items, StreamEvent::End { part, content });
                 return Ok(Some(id));
             }
@@ -819,6 +825,19 @@ impl ReplyFold {
         Ok(None)
     }
 
+    /// `block` holding `item` as its native, with where it keeps its blob,
+    /// unless there is no item.
+    fn with_item(&self, block: AssistantContent, item: serde_json::Value) -> AssistantContent {
+        if item.is_null() {
+            return block;
+        }
+        let mut block = block.with_native(item);
+        if let Some(Some(native)) = block.native_slot() {
+            native.find_blob(self.blob_slots);
+        }
+        block
+    }
+
     /// Edit the item of the block the wire index `index` last closed, while
     /// its end event waits to be taken or once the fold holds it.
     fn edit_ended(
@@ -828,6 +847,7 @@ impl ReplyFold {
         edit: impl FnOnce(&mut serde_json::Value),
     ) -> Result<(), ProviderError> {
         let position = *self.ended.get(&index).ok_or_else(|| not_open(index))?;
+        let slots = self.blob_slots;
         let queued = items.iter_mut().find_map(|item| match item {
             Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
                 Some(content)
@@ -838,8 +858,13 @@ impl ReplyFold {
             Some(content) => Some(content),
             None => self.choice.get_mut(position).and_then(Option::as_mut),
         };
-        if let Some(item) = content.and_then(item_of) {
-            edit(item);
+        if let Some(content) = content {
+            if let Some(item) = item_of(content) {
+                edit(item);
+            }
+            if let Some(Some(native)) = content.native_slot() {
+                native.find_blob(slots);
+            }
         }
         Ok(())
     }
@@ -956,13 +981,20 @@ impl ReplyFold {
     ) -> Result<(), ProviderError> {
         let content = match content {
             AssistantContent::ToolCall(mut call) => {
-                let item = call
-                    .native
-                    .take()
-                    .map_or(serde_json::Value::Null, |native| native.item);
+                let native = call.native.take();
+                let slot = native.as_ref().and_then(|native| native.blob_slot.clone());
+                let item = native.map_or(serde_json::Value::Null, |native| native.item);
                 let (id, item) = self.distinct_call_id(Some(call.id), item);
                 call.id = id;
-                with_item(AssistantContent::ToolCall(call), item)
+                let mut content = AssistantContent::ToolCall(call);
+                if !item.is_null() {
+                    content = content.with_native(item);
+                }
+                // A restated call keeps the slot it was recorded with.
+                if let Some(Some(native)) = content.native_slot() {
+                    native.blob_slot = slot;
+                }
+                content
             }
             content => content,
         };
@@ -1208,15 +1240,6 @@ fn item_of(content: &mut AssistantContent) -> Option<&mut serde_json::Value> {
         AssistantContent::Opaque(opaque) => return Some(&mut opaque.item),
     };
     native.map(|native| &mut native.item)
-}
-
-/// `block` holding `item` as its native, unless there is no item.
-fn with_item(block: AssistantContent, item: serde_json::Value) -> AssistantContent {
-    if item.is_null() {
-        block
-    } else {
-        block.with_native(item)
-    }
 }
 
 fn kind_of(content: &AssistantContent) -> PartKind {
