@@ -131,15 +131,28 @@ fn drained(
 ) -> impl futures::Stream<Item = http_client::Result<Bytes>> {
     let (sender, receiver) = mpsc::channel(16);
     tokio::spawn(async move {
+        if event_stream {
+            // The reader can go while the provider sends nothing, such as
+            // after its final event on a connection it keeps open: the stream
+            // ends then, not when the provider next writes.
+            loop {
+                let item = tokio::select! {
+                    () = sender.closed() => return,
+                    item = body.next() => item,
+                };
+                let Some(item) = item else {
+                    return;
+                };
+                let failed = item.is_err();
+                if sender.send(item).await.is_err() || failed {
+                    return;
+                }
+            }
+        }
         let mut held: Option<Bytes> = None;
         let mut client_gone = false;
         while let Some(item) = body.next().await {
             match item {
-                Ok(chunk) if event_stream => {
-                    if sender.send(Ok(chunk)).await.is_err() {
-                        return;
-                    }
-                }
                 Ok(chunk) => {
                     if let Some(previous) = held.replace(chunk)
                         && !client_gone

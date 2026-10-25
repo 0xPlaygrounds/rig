@@ -119,9 +119,7 @@ divan = { workspace = true }
 http = { workspace = true }
 httpmock = { workspace = true }
 proptest = "1"
-# `gzip` turns reqwest's automatic decompression on, as a build with a plugin
-# that enables it does, so the proxy's raw transport is tested against it.
-reqwest = { workspace = true, features = ["json", "stream", "gzip"] }
+reqwest = { workspace = true, features = ["json", "stream"] }
 schemars = { workspace = true }
 serde_path_to_error = { workspace = true }
 # The image fixture's hash.

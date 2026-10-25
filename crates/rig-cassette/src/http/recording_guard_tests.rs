@@ -1052,3 +1052,52 @@ async fn a_credential_learned_later_is_scrubbed_from_earlier_exchanges() {
         "{recorded}"
     );
 }
+
+/// A proxied event stream whose provider sent its final event and keeps the
+/// connection open ends when its reader goes, so `finish` does not wait for
+/// the provider: the recording is written at once.
+#[tokio::test]
+async fn an_event_stream_ends_when_its_reader_goes() {
+    use futures::StreamExt as _;
+
+    let origin = raw_upstream(
+        vec![b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\ndata: {\"type\":\"done\"}\n\n".to_vec()],
+        std::time::Duration::from_secs(30),
+    )
+    .await;
+    let session = Session::new();
+    let cassette = ProviderCassette::try_start_with_attempts(
+        RecordVia::Proxy,
+        "openai",
+        CassetteSpec::new("guard/reader_goes"),
+        &format!("{origin}/v1"),
+        CassetteMode::Record,
+        session.fixture.clone(),
+        session.attempts.clone(),
+    )
+    .await
+    .expect("recording session starts");
+    let response = client()
+        .post(format!("{}/chat/completions", cassette.base_url()))
+        .body(r#"{"stream":true}"#)
+        .send()
+        .await
+        .expect("the stream starts");
+    let mut stream = response.bytes_stream();
+    let event = stream.next().await.expect("an event").expect("bytes");
+    assert_eq!(event.as_ref(), b"data: {\"type\":\"done\"}\n\n");
+    drop(stream);
+
+    let started = std::time::Instant::now();
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "finish waited {:?} for the provider",
+        started.elapsed()
+    );
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    assert!(recorded.contains(r#"data: {"type":"done"}"#), "{recorded}");
+}

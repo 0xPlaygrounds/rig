@@ -151,9 +151,15 @@ pub(crate) fn record_created(
     status: u16,
     response_body: &[u8],
 ) {
-    if let Some(ledger) =
-        ReplyLedger::start(target.clone(), method, uri, request_body, status, false)
-    {
+    if let Some(ledger) = ReplyLedger::start(
+        target.clone(),
+        method,
+        uri,
+        request_body,
+        status,
+        false,
+        None,
+    ) {
         ledger.finish(response_body);
     }
 }
@@ -162,14 +168,18 @@ pub(crate) fn record_created(
 /// resource. An event stream is read event by event as its chunks arrive
 /// ([`push`](Self::push)), so a resource is on disk before the caller can
 /// read the event that names it, even when the stream later fails; any other
-/// body is read when it ends ([`finish`](Self::finish)). Each resource is
-/// written once.
+/// body, and a compressed event stream, is read when it ends
+/// ([`finish`](Self::finish)), decoded from its `content-encoding`. Each
+/// resource is written once.
 pub(crate) struct ReplyLedger {
     target: Arc<LedgerTarget>,
     kind: ResourceKind,
     path: String,
     /// The event stream's framer; `None` for a body read whole.
     events: Option<SseFramer>,
+    /// The reply's `content-encoding`, which a body read whole is decoded
+    /// from.
+    encoding: Option<String>,
     written: Vec<String>,
 }
 
@@ -184,17 +194,23 @@ impl ReplyLedger {
         request_body: &[u8],
         status: u16,
         event_stream: bool,
+        encoding: Option<&str>,
     ) -> Option<Self> {
         if !(200..300).contains(&status) {
             return None;
         }
         let path = super::uri_path(uri);
         let kind = creates(&target.provider, method, &path, request_body)?;
+        // A compressed event stream cannot be read event by event, so it is
+        // read whole when it ends, decoded.
+        let compressed =
+            encoding.is_some_and(|encoding| !encoding.trim().eq_ignore_ascii_case("identity"));
         Some(Self {
             target,
             kind,
             path: request_path(&path).to_owned(),
-            events: event_stream.then(SseFramer::new),
+            events: (event_stream && !compressed).then(SseFramer::new),
+            encoding: encoding.map(str::to_owned),
             written: Vec::new(),
         })
     }
@@ -221,7 +237,7 @@ impl ReplyLedger {
                     .into_iter()
                     .map(|recorded| recorded.event),
             ),
-            None => response_documents(body),
+            None => response_documents(&crate::scrub::decoded(body, self.encoding.as_deref())),
         };
         self.write(&documents);
     }

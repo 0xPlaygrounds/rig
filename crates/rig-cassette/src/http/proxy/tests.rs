@@ -734,3 +734,81 @@ async fn a_compressed_reply_is_forwarded_as_sent() {
     );
     assert_eq!(reply.bytes().await.expect("body"), compressed.as_slice());
 }
+
+fn gzip(bytes: &[u8]) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(bytes).expect("compressed");
+    encoder.finish().expect("compressed")
+}
+
+/// The ledger reads a compressed reply decoded, and the request it checks
+/// for `store: false` too: a gzip JSON creation and a gzip event stream each
+/// write their line, and a gzip request that opts out writes none.
+#[tokio::test]
+async fn compressed_replies_reach_the_ledger_decoded() {
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/v1/responses")
+                .body(r#"{"input":"json"}"#);
+            then.status(200)
+                .header("content-type", "application/json")
+                .header("content-encoding", "gzip")
+                .body(gzip(br#"{"id":"resp_gzip_json","object":"response"}"#));
+        })
+        .await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/responses").body(r#"{"input":"sse"}"#);
+            then.status(200)
+                .header("content-type", "text/event-stream")
+                .header("content-encoding", "gzip")
+                .body(gzip(
+                    b"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_gzip_sse\"}}\n\n\
+                      data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_gzip_sse\"}}\n\n",
+                ));
+        })
+        .await;
+    let unstored = gzip(br#"{"input":"unstored","store":false}"#);
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path("/v1/responses")
+                .header("content-encoding", "gzip");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"id":"resp_unstored","object":"response"}"#);
+        })
+        .await;
+    let dir = assert_fs::TempDir::new().expect("ledger directory");
+    let (recorder, interactions) = recorder(&dir);
+    let proxy = start(upstream.base_url(), recorder)
+        .await
+        .expect("proxy starts");
+
+    for (body, encoding) in [
+        (br#"{"input":"json"}"#.to_vec(), None),
+        (br#"{"input":"sse"}"#.to_vec(), None),
+        (unstored.clone(), Some("gzip")),
+    ] {
+        let mut request = client()
+            .post(format!("{}/v1/responses", proxy.base_url))
+            .body(body);
+        if let Some(encoding) = encoding {
+            request = request.header("content-encoding", encoding);
+        }
+        let reply = request.send().await.expect("forwarded");
+        assert_eq!(reply.status().as_u16(), 200);
+        reply.bytes().await.expect("body");
+    }
+    kept(&interactions, 3).await;
+
+    let outstanding = ledger::outstanding(&dir.path().join(ledger::LEDGER_FILE));
+    let ids: Vec<_> = outstanding
+        .iter()
+        .map(|created| created.id.as_str())
+        .collect();
+    assert_eq!(ids, ["resp_gzip_json", "resp_gzip_sse"]);
+}
