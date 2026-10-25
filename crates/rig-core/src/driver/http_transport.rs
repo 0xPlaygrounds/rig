@@ -100,7 +100,7 @@ impl HttpExchange {
 
     fn install<B>(&self, request: &http::Request<B>, declared: &str) {
         if let Some((context, slot)) = &self.observation {
-            slot.install(context.attempt_for(request, declared));
+            slot.install(context.attempt_for(request, declared, self.request_id_header));
         }
     }
 

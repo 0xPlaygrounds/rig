@@ -10,8 +10,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
-use super::mapping::Mapping;
-use super::{CacheRetention, GenerationOptions, OnUnsupported, UnsupportedOption};
+use super::mapping::{Mapping, OptionName};
+use super::{CacheRetention, OnUnsupported, UnsupportedOption};
 use crate::completion::provider_options::SHARED;
 use crate::completion::{CompletionRequest, ReplayTarget};
 use crate::error::EncodeError;
@@ -240,7 +240,7 @@ struct Settled {
     /// The retention honoured by `Send` or `Place`.
     cache: Option<CacheRetention>,
     /// The options skipped under `Ignore`.
-    ignored: Vec<&'static str>,
+    ignored: Vec<OptionName>,
 }
 
 /// The model the request resolves to on `target`.
@@ -286,101 +286,60 @@ fn refuse(
 /// reported under the request's policy.
 fn settle(target: &dyn ReplayTarget, request: &CompletionRequest) -> Result<Settled, EncodeError> {
     let fields = request.options.fields();
-    let set = fields.set();
     let map = target.map_options(request, fields);
     let provider = target.provider();
     let mut settled = Settled::default();
-    for ((option, mapping), set) in map.into_slots().into_iter().zip(set) {
+    for (option, mapping) in map.into_slots() {
+        let set = fields.is_set(option);
+        let name = option.as_str();
         let fail = |what: String| Err(EncodeError::request(format!("{provider} {what}")));
         match (mapping, set) {
             (Mapping::Nothing, false) => {}
             (Mapping::Nothing, true) => {
                 return fail(format!(
-                    "answered `Mapping::Nothing` for the option `{option}`, which the request sets"
+                    "answered `Mapping::Nothing` for the option `{name}`, which the request sets"
                 ));
             }
             (_, false) => {
                 return fail(format!(
-                    "answered the option `{option}`, which the request does not set; \
+                    "answered the option `{name}`, which the request does not set; \
                      an unset option answers `Mapping::Nothing` (see `Mapping::of`)"
                 ));
             }
             (Mapping::Send(value), true) => {
                 if !value.is_object() {
                     return fail(format!(
-                        "sent a value that is not a JSON object for the option `{option}`"
+                        "sent a value that is not a JSON object for the option `{name}`"
                     ));
                 }
                 settled.sends.push(value);
-                if option == "cache" {
+                if option == OptionName::Cache {
                     settled.cache = request.options.cache;
                 }
             }
             (Mapping::Omit(reason), true) => {
                 tracing::debug!(
-                    option,
+                    option = name,
                     provider,
                     reason,
                     "option honoured by sending nothing"
                 );
             }
-            (Mapping::Place, true) if option == "cache" => settled.cache = request.options.cache,
+            (Mapping::Place, true) if option == OptionName::Cache => {
+                settled.cache = request.options.cache
+            }
             (Mapping::Place, true) => {
                 return fail(format!(
-                    "answered `Mapping::Place` for the option `{option}`; only `cache` places markers"
+                    "answered `Mapping::Place` for the option `{name}`; only `cache` places markers"
                 ));
             }
             (Mapping::Unsupported(reason), true) => {
-                refuse(target, request, option, reason)?;
+                refuse(target, request, name, reason)?;
                 settled.ignored.push(option);
             }
         }
     }
     Ok(settled)
-}
-
-/// Clear each option named in `ignored`.
-fn clear(options: &mut GenerationOptions, ignored: &[&str]) {
-    let GenerationOptions {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
-        cache_key,
-        on_unsupported: _,
-    } = options;
-    let off = |name: &str| ignored.contains(&name);
-    if off("reasoning") {
-        *reasoning = None;
-    }
-    if off("cache") {
-        *cache = None;
-    }
-    if off("service_tier") {
-        *service_tier = None;
-    }
-    if off("verbosity") {
-        *verbosity = None;
-    }
-    if off("parallel_tool_calls") {
-        *parallel_tool_calls = None;
-    }
-    if off("top_p") {
-        *top_p = None;
-    }
-    if off("seed") {
-        *seed = None;
-    }
-    if off("stop") {
-        stop.clear();
-    }
-    if off("cache_key") {
-        *cache_key = None;
-    }
 }
 
 /// Report each option `target` cannot honour for `request` under its
@@ -401,7 +360,9 @@ pub fn check(
 ) -> Result<(), EncodeError> {
     unserialized(request)?;
     let settled = settle(target, request)?;
-    clear(&mut request.options, &settled.ignored);
+    for option in settled.ignored {
+        option.clear(request);
+    }
     model_rules(target, request)?;
     let layer = provider_layer(target, request);
     for refusal in &layer.refused {
@@ -438,16 +399,10 @@ fn model_rules(
     let Some(spec) = facts.for_model(target.provider(), model_of(target, request)) else {
         return Ok(());
     };
-    let refusals = spec.request_rules(request);
-    let mut ignored = Vec::new();
-    for CatalogRefusal { field, reason } in refusals {
-        refuse(target, request, field, reason)?;
-        ignored.push(field);
+    for CatalogRefusal { option, reason } in spec.request_rules(request) {
+        refuse(target, request, option.as_str(), reason)?;
+        option.clear(request);
     }
-    if ignored.contains(&"temperature") {
-        request.temperature = None;
-    }
-    clear(&mut request.options, &ignored);
     Ok(())
 }
 
@@ -494,11 +449,17 @@ fn collected(make: impl FnOnce() -> UnsupportedOption) -> bool {
     })
 }
 
+/// An option a model's catalog entry refuses, and why.
+pub(crate) struct CatalogRefusal {
+    pub(crate) option: OptionName,
+    pub(crate) reason: String,
+}
+
 /// A part of a final body that a model's catalog entry says the API
 /// rejects: a top-level body key, or `tools` for the request's tools, and
 /// why. Found on the final body, because `additional_params` can set the
 /// same keys.
-pub(crate) struct CatalogRefusal {
+pub(crate) struct BodyRefusal {
     pub(crate) field: &'static str,
     pub(crate) reason: String,
 }
@@ -519,11 +480,13 @@ pub(crate) struct CatalogRefusal {
 /// # Errors
 ///
 /// Under [`OnUnsupported::Error`], for the first refusal.
+///
+/// [`GenerationOptions`]: super::GenerationOptions
 pub(crate) fn catalog_refusals(
     target: &dyn ReplayTarget,
     request: &CompletionRequest,
     body: FinalBody,
-    refusals: Vec<CatalogRefusal>,
+    refusals: Vec<BodyRefusal>,
 ) -> Result<FinalBody, EncodeError> {
     let provider = target.provider();
     let model = model_of(target, request);
@@ -540,7 +503,7 @@ pub(crate) fn catalog_refusals(
         return Ok(body);
     }
     let FinalBody(mut body) = body;
-    for CatalogRefusal { field, reason } in refusals {
+    for BodyRefusal { field, reason } in refusals {
         let collecting =
             collected(|| UnsupportedOption::new(field, provider, model, reason.clone()));
         if !collecting && request.options.unsupported_policy() == OnUnsupported::Error {

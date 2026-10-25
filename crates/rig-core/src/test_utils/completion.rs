@@ -558,29 +558,20 @@ fn each_set(
     fields: crate::completion::options::OptionFields<'_>,
     answer: impl Fn() -> crate::completion::options::Mapping,
 ) -> crate::completion::options::OptionMap {
-    use crate::completion::options::{Mapping, OptionMap};
-    let [
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
-        _,
-    ] = fields
-        .set()
-        .map(|set| if set { answer() } else { Mapping::Nothing });
+    use crate::completion::options::{Mapping, OptionMap, OptionName};
+    let each = |option| match fields.is_set(option) {
+        true => answer(),
+        false => Mapping::Nothing,
+    };
     OptionMap {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
+        reasoning: each(OptionName::Reasoning),
+        cache: each(OptionName::Cache),
+        service_tier: each(OptionName::ServiceTier),
+        verbosity: each(OptionName::Verbosity),
+        parallel_tool_calls: each(OptionName::ParallelToolCalls),
+        top_p: each(OptionName::TopP),
+        seed: each(OptionName::Seed),
+        stop: each(OptionName::Stop),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }

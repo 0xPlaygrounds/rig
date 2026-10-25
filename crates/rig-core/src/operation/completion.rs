@@ -86,6 +86,7 @@ impl Operation for Completion {
             facts: call.wire.facts.cloned().unwrap_or_default(),
             wire: replay.is_some_and(|target| target.states_finish_reason()),
             call_id_slot: replay.and_then(|target| target.call_id_slot()),
+            catalog_priced: replay.map(|target| target.catalog_priced()),
             blob_slots: replay.map_or(&[], |target| target.blob_slots()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..ReplyFold::new(origin)
@@ -273,6 +274,12 @@ pub struct ReplyFold {
     ///
     /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
     call_id_slot: Option<&'static str>,
+    /// Whether the catalog prices the reply, as its wire's target answers
+    /// ([`ReplayTarget::catalog_priced`]). `None` for a relayed or written
+    /// reply, which the registered dialect of its origin's provider answers.
+    ///
+    /// [`ReplayTarget::catalog_priced`]: crate::completion::ReplayTarget::catalog_priced
+    catalog_priced: Option<bool>,
     /// Where the wire's items keep a reasoning blob ([`ReplayTarget::blob_slots`]).
     ///
     /// [`ReplayTarget::blob_slots`]: crate::completion::ReplayTarget::blob_slots
@@ -507,6 +514,7 @@ impl ReplyFold {
             call_ids: HashSet::new(),
             wire: false,
             call_id_slot: None,
+            catalog_priced: None,
             blob_slots: &[],
             accept_unknown_finish: false,
             first_incomplete: None,
@@ -532,6 +540,22 @@ impl ReplyFold {
     /// Who the reply is from, as the relay or the writer's owner states it.
     pub(crate) fn set_origin(&mut self, origin: Origin) {
         self.origin = origin;
+    }
+
+    /// The pricing `facts` give `origin`'s model (the spec the wire was
+    /// connected to, else its catalog's entry), or `None` when they list
+    /// none or the catalog does not price the wire.
+    fn pricing(&self, origin: &Origin) -> Option<crate::catalog::Pricing> {
+        let priced = self.catalog_priced.unwrap_or_else(|| {
+            crate::providers::registry::ProviderId::catalog(&origin.provider)
+                .is_none_or(|id| id.catalog_priced())
+        });
+        if !priced {
+            return None;
+        }
+        self.facts
+            .for_model(&origin.provider, &origin.model)?
+            .pricing
     }
 
     /// The next position in the choice.
@@ -1151,16 +1175,17 @@ impl ReplyFold {
         } = end;
         use crate::provider_response::reported;
         let mut origin = self.origin.clone();
-        origin.response_model = reported(model);
-        // A request that named no model is from the model the provider
-        // reports.
-        if origin.model.is_empty()
-            && let Some(model) = &origin.response_model
-        {
-            origin.model.clone_from(model);
-        }
+        let response_model = reported(model);
+        named_by_reply(&mut origin, response_model.as_deref());
+        origin.response_model = response_model;
         origin.response_id = reported(response_id);
-        let usage = priced(usage, &origin, &self.facts, &reply.raw);
+        let usage = match usage.cost {
+            Some(_) => usage,
+            None => usage.cost(
+                self.pricing(&origin)
+                    .and_then(|pricing| pricing.cost(&usage)),
+            ),
+        };
         let error = error.or_else(|| {
             if !self.wire {
                 return None;
@@ -1184,82 +1209,14 @@ impl ReplyFold {
     }
 }
 
-/// `usage` with its cost: the one the provider reported, else the counters
-/// priced at the requested model's pricing in `facts`, else none.
-fn priced(
-    usage: Usage,
-    origin: &Origin,
-    facts: &crate::catalog::ModelFacts,
-    raw: &serde_json::Value,
-) -> Usage {
-    if usage.cost.is_some() {
-        return usage;
-    }
-    let cost = catalog_cost(origin, facts, &usage, raw);
-    usage.cost(cost)
-}
-
-/// The providers whose replies the catalog does not price: ChatGPT and
-/// Copilot bill a subscription, not the per-token API rates the catalog
-/// lists, and an Ollama server is usually local, while the catalog's
-/// `ollama` prices are Ollama Cloud's and the reply does not say which
-/// served it.
-const UNPRICED: [&str; 3] = [
-    crate::providers::chatgpt::PROVIDER_NAME,
-    crate::providers::copilot::PROVIDER_NAME,
-    crate::providers::ollama::PROVIDER_NAME,
-];
-
-/// What `usage` costs at the pricing `facts` give `origin`'s model (the
-/// spec the wire was connected to, else its catalog's entry), or `None`
-/// when they have no price for it or the provider is one the catalog does
-/// not price ([`UNPRICED`]).
-fn catalog_cost(
-    origin: &Origin,
-    facts: &crate::catalog::ModelFacts,
-    usage: &Usage,
-    raw: &serde_json::Value,
-) -> Option<crate::completion::Cost> {
-    if UNPRICED.contains(&origin.provider.as_str()) {
-        return None;
-    }
-    let pricing = facts
-        .for_model(&origin.provider, &origin.model)?
-        .pricing
-        .as_ref()?;
-    if origin.provider == crate::providers::anthropic::PROVIDER_NAME
-        && origin.api.as_str() == crate::providers::anthropic::wire::MESSAGES_API
+/// `origin` with the model the reply names, `reported`, when the request
+/// named none.
+fn named_by_reply(origin: &mut Origin, reported: Option<&str>) {
+    if origin.model.is_empty()
+        && let Some(model) = reported
     {
-        return pricing.cost_with_cache_write(usage, anthropic_write_cost(pricing, usage, raw));
+        model.clone_into(&mut origin.model);
     }
-    pricing.cost(usage)
-}
-
-/// Native Anthropic writes use the reported TTL split. One-hour writes
-/// cost twice the input rate; the catalog's write rate is for five minutes.
-/// These are standard API list prices, not subscription charges or a
-/// custom endpoint's invoice.
-fn anthropic_write_cost(
-    pricing: &crate::catalog::Pricing,
-    usage: &Usage,
-    raw: &serde_json::Value,
-) -> Option<f64> {
-    let written = usage.cache_creation_input_tokens.unwrap_or(0);
-    if written == 0 {
-        return Some(0.0);
-    }
-    let split = raw.pointer("/usage/cache_creation")?;
-    let short = split.get("ephemeral_5m_input_tokens")?.as_u64()?;
-    let long = split.get("ephemeral_1h_input_tokens")?.as_u64()?;
-    if short.checked_add(long)? != written {
-        return None;
-    }
-    let short_cost = if short == 0 {
-        0.0
-    } else {
-        short as f64 * pricing.cache_write?
-    };
-    Some((short_cost + long as f64 * pricing.input * 2.0) / 1_000_000.0)
 }
 
 /// `block` with no provider item: an opaque item no longer replays.
@@ -1393,17 +1350,18 @@ impl Fold<Completion> for ReplyFold {
 }
 
 impl<'id> Out<'id, Completion> {
-    /// What `usage` costs at the requested model's pricing in the wire's
-    /// facts, for a decoder whose provider bills other counters than the
-    /// ones it reports as usage.
-    pub(crate) fn catalog_cost(&self, usage: &Usage) -> Option<crate::completion::Cost> {
+    /// The pricing in the wire's facts for the requested model, else for
+    /// `reported`, the model the reply names, for a decoder that prices its
+    /// reply itself: its provider bills other counters than the ones it
+    /// reports as usage, or splits a price the catalog lists once.
+    pub(crate) fn catalog_pricing(
+        &self,
+        reported: Option<&str>,
+    ) -> Option<crate::catalog::Pricing> {
         let shared = self.lock();
-        catalog_cost(
-            &shared.fold.origin,
-            &shared.fold.facts,
-            usage,
-            &serde_json::Value::Null,
-        )
+        let mut origin = shared.fold.origin.clone();
+        named_by_reply(&mut origin, reported);
+        shared.fold.pricing(&origin)
     }
 
     /// Open the provider item at wire `index` as `block`: it takes the next

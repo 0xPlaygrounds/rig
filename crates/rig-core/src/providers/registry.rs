@@ -204,6 +204,20 @@ impl Registered {
         }
     }
 
+    /// Whether this selection's key expires within the hour.
+    fn short_lived_key(&self) -> bool {
+        matches!(self, Self::OpenAi(dialect) if dialect.quirks.short_lived_key)
+    }
+
+    /// Whether the catalog's API prices apply to this selection's replies.
+    fn catalog_priced(&self) -> bool {
+        match self {
+            Self::OpenAi(dialect) => dialect.quirks.catalog_priced,
+            Self::Anthropic(dialect) => dialect.quirks.catalog_priced,
+            Self::Gemini => true,
+        }
+    }
+
     /// Whether this selection needs a credential at all.
     fn requires_credential(&self) -> bool {
         match self {
@@ -401,10 +415,7 @@ impl ProviderId {
     /// is reached by its catalog row's, which is the primary unless the row
     /// says otherwise.
     pub fn catalog(vendor: &str) -> Option<Self> {
-        let primary = PRIMARY
-            .iter()
-            .find(|(name, _)| *name == vendor)
-            .and_then(|(_, format)| Self::new(vendor, *format));
+        let primary = primary(vendor).and_then(|format| Self::new(vendor, format));
         primary
             .or_else(|| Self::vendor_selections(vendor).next())
             .or_else(|| {
@@ -590,6 +601,21 @@ impl ProviderId {
         }
     }
 
+    /// Whether this selection's key is a session token that expires within
+    /// the hour, so a key saved for later runs soon stops working.
+    pub fn short_lived_key(&self) -> bool {
+        matches!(&self.0, Kind::Registered(registered) if registered.short_lived_key())
+    }
+
+    /// Whether the catalog's API prices apply to this provider's replies: a
+    /// subscription backend or a usually local server has none.
+    pub(crate) fn catalog_priced(&self) -> bool {
+        match &self.0 {
+            Kind::Registered(registered) => registered.catalog_priced(),
+            Kind::CatalogOnly(_) | Kind::Declared(_) => true,
+        }
+    }
+
     /// The registered selection, or [`ConnectError::CatalogOnly`].
     fn registered(self) -> Result<Registered, ConnectError> {
         match self.0 {
@@ -623,17 +649,17 @@ impl ProviderId {
     }
 }
 
-/// The primary family of each vendor registered in more than one, as
-/// models.dev lists the vendor's own API. [`ProviderId::catalog`] reads it.
-const PRIMARY: [(&str, Format); 7] = [
-    ("zai", Format::OpenAi),
-    ("minimax", Format::Anthropic),
-    ("moonshot", Format::OpenAi),
-    ("xiaomimimo", Format::OpenAi),
-    ("ollama", Format::OpenAi),
-    ("opencode", Format::OpenAi),
-    ("opencode-go", Format::OpenAi),
-];
+/// The primary family of `vendor` when it is registered in more than one,
+/// as models.dev lists the vendor's own API. [`ProviderId::catalog`] reads it.
+fn primary(vendor: &str) -> Option<Format> {
+    match vendor {
+        "minimax" => Some(Format::Anthropic),
+        "zai" | "moonshot" | "xiaomimimo" | "ollama" | "opencode" | "opencode-go" => {
+            Some(Format::OpenAi)
+        }
+        _ => None,
+    }
+}
 
 /// The qualified spellings registered for `vendor`, in registration order.
 fn alternatives(vendor: &str) -> Vec<String> {

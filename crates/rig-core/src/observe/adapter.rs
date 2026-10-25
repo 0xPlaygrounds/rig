@@ -358,14 +358,18 @@ impl AdapterContext {
 
     /// Begins a send and captures request credentials for diagnostic scrubbing.
     /// `route` must be a credential-free provider template without base-URL
-    /// prefixes or query data. Returns `None` when attempt IDs are exhausted.
+    /// prefixes or query data. `request_id_header` is the reply header the
+    /// wire reads its request id from. Returns `None` when attempt IDs are
+    /// exhausted.
     pub(crate) fn attempt_for<B>(
         &self,
         request: &http::Request<B>,
         route: &str,
+        request_id_header: Option<&'static str>,
     ) -> Option<AdapterAttempt> {
         let mut attempt = self.begin(request.method(), route)?;
         attempt.secrets = scrub::request_secrets(request);
+        attempt.request_id_header = request_id_header;
         Some(attempt)
     }
 
@@ -426,6 +430,7 @@ impl AdapterContext {
             response_seen: false,
             unframed: 0,
             secrets: Vec::new(),
+            request_id_header: None,
             pending_response_id: None,
             error_boundary: None,
         })
@@ -441,6 +446,8 @@ pub(crate) struct AdapterAttempt {
     /// Bytes the transport's framer had not framed when the body ended.
     unframed: usize,
     secrets: Vec<String>,
+    /// The reply header the wire reads its request id from.
+    request_id_header: Option<&'static str>,
     pending_response_id: Option<String>,
     error_boundary: Option<AdapterErrorBoundary>,
 }
@@ -495,7 +502,8 @@ impl AdapterAttempt {
                     status: status.as_u16(),
                 },
                 AdapterAnalysis {
-                    headers: headers.map(|h| scrub::headers(h, &self.secrets)),
+                    headers: headers
+                        .map(|h| scrub::headers(h, &self.secrets, self.request_id_header)),
                     ..AdapterAnalysis::default()
                 },
             );

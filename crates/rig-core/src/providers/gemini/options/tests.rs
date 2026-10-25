@@ -354,3 +354,31 @@ fn a_resumed_interaction_refuses_options_and_raw_params() {
         );
     }
 }
+
+#[test]
+fn uncatalogued_names_keep_specific_prefixes_and_unknown_families() {
+    use super::{Thinking, named_thinking};
+
+    assert!(matches!(
+        named_thinking("gemini-2.5-flash-lite-future"),
+        Thinking::Budget { range, can_disable: true } if range == (512..=24_576)
+    ));
+    assert!(matches!(
+        named_thinking("gemini-2.5-flash-future"),
+        Thinking::Budget { range, can_disable: true } if range == (0..=24_576)
+    ));
+    assert!(matches!(
+        named_thinking("gemini-3-pro-preview-future"),
+        Thinking::Levels {
+            levels: [Effort::Low, Effort::High],
+            can_disable: false
+        }
+    ));
+    for model in ["gemini-3.9-flash", "gemini-2.1-pro", "unknown"] {
+        assert!(matches!(named_thinking(model), Thinking::Unknown));
+    }
+    assert!(matches!(
+        named_thinking("gemini-2.0-flash-future"),
+        Thinking::None
+    ));
+}

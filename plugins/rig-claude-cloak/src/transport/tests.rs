@@ -172,6 +172,7 @@ fn existing_billing_header_is_rejected() -> anyhow::Result<()> {
 async fn prepare_preserves_required_betas_and_removes_oauth_incompatible_headers()
 -> anyhow::Result<()> {
     let transport = OAuthTransport {
+        home: Default::default(),
         inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
         device: "fake-device".into(),
         session: "fake-session".into(),
@@ -355,6 +356,7 @@ async fn generic_provider_explicit_cache_points_fit_final_wire_budget() -> anyho
     for count in 1..=3 {
         let captured = Arc::new(Mutex::new(None));
         let client = DynHttpClient::new(OAuthTransport {
+            home: Default::default(),
             inner: DynHttpClient::new(CacheCapture(captured.clone())),
             device: "offline-device".into(),
             session: "offline-session".into(),
@@ -447,6 +449,7 @@ async fn generic_provider_preserves_explicit_raw_cache_override() -> anyhow::Res
     {
         let captured = Arc::new(Mutex::new(None));
         let client = DynHttpClient::new(OAuthTransport {
+            home: Default::default(),
             inner: DynHttpClient::new(CacheCapture(captured.clone())),
             device: "offline-device".into(),
             session: "offline-session".into(),
@@ -706,6 +709,7 @@ fn javascript_numbers_and_property_order_match_stringify() -> anyhow::Result<()>
 async fn compression_and_session_header_follow_shaped_request() -> anyhow::Result<()> {
     use std::io::Read;
     let transport = OAuthTransport {
+        home: Default::default(),
         inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
         device: "device".into(),
         session: "fallback".into(),

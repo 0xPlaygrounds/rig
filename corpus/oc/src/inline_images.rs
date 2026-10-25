@@ -4,9 +4,9 @@
 //! of the terminal's width and [`ImagesSettings::max_rows`] rows, keeping
 //! its aspect ratio:
 //!
-//! - with a terminal that shows images ([`TerminalGraphics`]: the kitty
-//!   graphics protocol, iTerm2's inline images or sixel, inside tmux only
-//!   with its passthrough on), the transcript keeps blank rows, and after
+//! - with a terminal that shows images ([`ImagesSettings::protocol`]: the
+//!   kitty graphics protocol, iTerm2's inline images or sixel, inside tmux
+//!   only with its passthrough on), the transcript keeps blank rows, and after
 //!   each frame the image is placed over the rows of them on screen, and
 //!   taken off once they scroll away, the screen is resized or a box opens
 //!   over it;
@@ -77,6 +77,8 @@ pub struct ImagesSettings {
     pub max_width_percent: u16,
     /// The tallest an image is drawn, in rows.
     pub max_rows: u16,
+    /// How the terminal draws images itself; unset, it does not.
+    pub protocol: Option<Protocol>,
 }
 
 impl Default for ImagesSettings {
@@ -85,18 +87,21 @@ impl Default for ImagesSettings {
             mode: Mode::Auto,
             max_width_percent: 60,
             max_rows: 20,
+            protocol: None,
         }
     }
 }
 
-/// How a terminal draws an image itself.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How a terminal draws an image itself, read from settings as `kitty`,
+/// `iterm2` or `sixel`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Protocol {
-    /// The kitty graphics protocol (kitty, WezTerm, Ghostty).
+    /// The kitty graphics protocol.
     Kitty,
     /// iTerm2's inline images (OSC 1337).
     Iterm2,
-    /// DEC sixel graphics (foot, mlterm, contour).
+    /// DEC sixel graphics.
     Sixel,
 }
 
@@ -132,28 +137,13 @@ impl Default for TerminalGraphics {
 }
 
 impl TerminalGraphics {
-    /// What this process's terminal says of itself through its environment,
-    /// asking tmux, when inside it, whether it passes images through.
-    /// Terminals are not queried: the view reads every reply as input.
-    pub fn detect(launcher: &Launcher) -> Self {
-        let var = |name: &str| std::env::var(name).unwrap_or_default();
-        let (term, program) = (var("TERM"), var("TERM_PROGRAM"));
-        let kitty = !var("KITTY_WINDOW_ID").is_empty()
-            || term.contains("kitty")
-            || matches!(program.as_str(), "WezTerm" | "ghostty");
-        let iterm = program == "iTerm.app" || var("LC_TERMINAL") == "iTerm2";
-        let sixel = ["foot", "mlterm", "contour"]
-            .iter()
-            .any(|name| term.starts_with(name));
-        let in_tmux = !var("TMUX").is_empty();
-        let passes = in_tmux && tmux_passes_through(launcher);
-        let protocol = match (kitty, iterm, sixel) {
-            _ if in_tmux && !passes => None,
-            (true, _, _) => Some(Protocol::Kitty),
-            (false, true, _) => Some(Protocol::Iterm2),
-            (false, false, true) => Some(Protocol::Sixel),
-            (false, false, false) => None,
-        };
+    /// The terminal drawing with the `protocol` the user set, asking tmux,
+    /// when inside it, whether it passes images through. Terminals are not
+    /// queried: the view reads every reply as input.
+    pub fn detect(launcher: &Launcher, protocol: Option<Protocol>) -> Self {
+        let in_tmux = std::env::var_os("TMUX").is_some_and(|tmux| !tmux.is_empty());
+        let passes = in_tmux && protocol.is_some() && tmux_passes_through(launcher);
+        let protocol = protocol.filter(|_| !in_tmux || passes);
         let size = rig_tui::crossterm::terminal::window_size().ok();
         let cell = size
             .filter(|size| size.width > 0 && size.columns > 0 && size.rows > 0)
@@ -952,7 +942,9 @@ impl Plugin for InlineImagesPlugin {
                 .world()
                 .get_resource::<Processes>()
                 .map(Processes::launcher);
-            let graphics = TerminalGraphics::detect(&launcher.unwrap_or_default());
+            let settings = app.world().get_resource::<ImagesSettings>();
+            let protocol = settings.and_then(|settings| settings.protocol);
+            let graphics = TerminalGraphics::detect(&launcher.unwrap_or_default(), protocol);
             app.insert_resource(graphics);
         }
         let images = Images::default();

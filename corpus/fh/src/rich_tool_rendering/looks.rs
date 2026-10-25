@@ -1,9 +1,11 @@
 //! The looks of the built-in tools' calls, each a function of the call as
 //! the terminal view gives it ([`ToolCallView`]).
 
-use rig_harness::rig_core::tool::{ExitStatus, FileChange, FilesChanged, FilesRead, LinesShown};
+use rig_harness::rig_core::tool::{
+    ExitStatus, FileChange, FilesChanged, FilesRead, LinesShown, Tool,
+};
 use rig_tools::fs::file_change;
-use rig_tools::{SearchHits, split_status};
+use rig_tools::{Edit, Read, Search, SearchHits, Shell, Write, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{OUTPUT_INDENT, ToolCallView, text_rows};
@@ -18,10 +20,10 @@ const REMOVED: Color = Color::Indexed(52);
 /// Draws `view` with the look of its tool.
 pub(crate) fn render(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     match view.name() {
-        "edit" | "write" => change(view),
-        "shell" => shell(view),
-        "read" => read(view),
-        "search" => search(view),
+        Edit::NAME | Write::NAME => change(view),
+        Shell::NAME => shell(view),
+        Read::NAME => read(view),
+        Search::NAME => search(view),
         _ => view.default_lines(),
     }
 }

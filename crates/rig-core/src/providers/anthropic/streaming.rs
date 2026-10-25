@@ -6,7 +6,9 @@
 //! ```
 //! use rig_core::providers::anthropic::streaming::MessagesDecoder;
 //!
-//! let decoder = MessagesDecoder::new(false);
+//! use rig_core::providers::anthropic::wire::Quirks;
+//!
+//! let decoder = MessagesDecoder::new(Quirks::anthropic());
 //! # let _ = decoder;
 //! ```
 
@@ -86,7 +88,8 @@ struct Counts {
     output: Option<u64>,
     cache_read: Option<u64>,
     cache_creation: Option<u64>,
-    /// The per-TTL breakdown of `cache_creation`, as sent.
+    /// The per-TTL breakdown of `cache_creation`, as sent. A malformed one is
+    /// kept, so it replaces an earlier one and leaves the writes unpriced.
     cache_creation_split: Option<Value>,
     thinking: Option<u64>,
 }
@@ -101,7 +104,7 @@ impl Counts {
             cache_creation: count("/cache_creation_input_tokens"),
             cache_creation_split: usage
                 .and_then(|usage| usage.get("cache_creation"))
-                .filter(|split| split.is_object())
+                .filter(|split| !split.is_null())
                 .cloned(),
             thinking: count("/output_tokens_details/thinking_tokens"),
         }
@@ -124,6 +127,30 @@ impl Counts {
             tool_use_prompt_tokens: None,
             cost: None,
         }
+    }
+
+    /// What the cache writes cost at `pricing` by their TTL split:
+    /// five-minute writes at the write rate, one-hour writes at twice the
+    /// input rate. `None` when the split is absent or does not add up to
+    /// the writes. These are standard API list prices, not subscription
+    /// charges or a custom endpoint's invoice.
+    fn write_cost(&self, pricing: &crate::catalog::Pricing) -> Option<f64> {
+        let written = self.cache_creation.unwrap_or(0);
+        if written == 0 {
+            return Some(0.0);
+        }
+        let split = self.cache_creation_split.as_ref()?;
+        let short = split.get("ephemeral_5m_input_tokens")?.as_u64()?;
+        let long = split.get("ephemeral_1h_input_tokens")?.as_u64()?;
+        if short.checked_add(long)? != written {
+            return None;
+        }
+        let short_cost = if short == 0 {
+            0.0
+        } else {
+            short as f64 * pricing.cache_write?
+        };
+        Some((short_cost + long as f64 * pricing.input * 2.0) / 1_000_000.0)
     }
 }
 
@@ -226,7 +253,8 @@ fn replayed_start(
 /// Decodes Messages replies, a whole message or a stream of events.
 /// `content_block_stop` states a block complete; a stop reason states every
 /// block still open complete, but a call whose input is not yet JSON.
-#[derive(Debug, Default)]
+/// [`Default`] decodes Anthropic's own dialect.
+#[derive(Debug)]
 pub struct MessagesDecoder {
     /// Each open block's kind and the input JSON streamed to it.
     open: BTreeMap<usize, (Kind, String)>,
@@ -241,21 +269,39 @@ pub struct MessagesDecoder {
     opened: bool,
     /// Whether the dialect takes thinking back without a signature.
     unsigned_thinking: bool,
-    /// The counters `message_start` reported, for a terminal `message_delta`
-    /// that does not repeat them.
+    /// Whether the dialect prices cache writes by their TTL split
+    /// ([`Quirks::cache_ttl_pricing`](super::wire::Quirks::cache_ttl_pricing)).
+    cache_ttl_pricing: bool,
+    /// The counters `message_start` and each later `message_delta` before the
+    /// last reported, for a terminal `message_delta` that does not repeat them.
     start: Counts,
     message_id: Option<String>,
     response_model: Option<String>,
     container: Option<Value>,
 }
 
+impl Default for MessagesDecoder {
+    fn default() -> Self {
+        Self::new(super::wire::Quirks::anthropic())
+    }
+}
+
 impl MessagesDecoder {
-    /// A fresh decoder for one reply. `unsigned_thinking` is whether the
-    /// dialect takes thinking back without a signature.
-    pub fn new(unsigned_thinking: bool) -> Self {
+    /// A fresh decoder for one reply on a dialect with `quirks`.
+    pub fn new(quirks: super::wire::Quirks) -> Self {
         Self {
-            unsigned_thinking,
-            ..Self::default()
+            open: BTreeMap::new(),
+            started: BTreeMap::new(),
+            reconnecting: false,
+            replayed: BTreeSet::new(),
+            message_started: false,
+            opened: false,
+            unsigned_thinking: quirks.unsigned_thinking,
+            cache_ttl_pricing: quirks.cache_ttl_pricing,
+            start: Counts::default(),
+            message_id: None,
+            response_model: None,
+            container: None,
         }
     }
 
@@ -527,8 +573,17 @@ impl MessagesDecoder {
             out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
         let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
+        let mut counted = usage.usage();
+        if self.cache_ttl_pricing {
+            counted.cost = out
+                .catalog_pricing(self.response_model.as_deref())
+                .and_then(|pricing| {
+                    let write = usage.write_cost(&pricing);
+                    pricing.cost_with_cache_write(&counted, write)
+                });
+        }
         Ok(out.end(Finish {
-            usage: usage.usage(),
+            usage: counted,
             reason,
             response_id: self.message_id.clone(),
             model: self.response_model.clone(),
@@ -570,8 +625,8 @@ impl MessagesDecoder {
         )
     }
 
-    /// The stream's terminal `message_delta` counters, falling back to
-    /// `message_start`'s for those it omits.
+    /// A `message_delta`'s counters, falling back to the running ones for
+    /// those it omits.
     fn terminal(&self, usage: Option<&Value>) -> Counts {
         let (terminal, start) = (Counts::of(usage), self.start.clone());
         Counts {
@@ -635,8 +690,12 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 let delta = event.fields.get("delta");
                 self.note_container(delta.and_then(|delta| delta.get("container")));
                 // Only a `message_delta` carrying a stop reason is the
-                // provider's end; without one it is a no-op.
+                // provider's end; without one its counters update the
+                // running ones, as they do the reassembled reply.
                 let Some(reason) = delta.and_then(|delta| delta.str("stop_reason")) else {
+                    if let Some(usage) = event.fields.get("usage") {
+                        self.start = self.terminal(Some(usage));
+                    }
                     return Ok(Flow::More);
                 };
                 let usage = self.terminal(event.fields.get("usage"));

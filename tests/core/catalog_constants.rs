@@ -93,7 +93,7 @@ fn names_no_model(module: &[String], name: &str) -> bool {
         || name.starts_with("ANTHROPIC_VERSION")
         || matches!(
             name,
-            "PROVIDER_NAME" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
+            "PROVIDER_NAME" | "PLAN_TITLE" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
         )
         || (extension && (name == "PROVIDER" || name.ends_with("_BETA")))
 }

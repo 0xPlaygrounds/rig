@@ -74,12 +74,10 @@ use crate::message::{
 };
 use crate::wasm_compat::WasmCompatSync;
 
-/// What replaces a user image for a model without image input.
-pub const USER_IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
-
-/// What replaces another model's assistant image for a model that reads no
-/// images in assistant turns.
-pub const ASSISTANT_IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
+/// What replaces a user image for a model without image input, and another
+/// model's assistant image for a model that reads no images in assistant
+/// turns.
+pub const IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
 
 /// What replaces a tool-result image for a model without image input.
 pub const TOOL_IMAGE_OMITTED: &str = "(tool image omitted: model does not support images)";
@@ -277,6 +275,13 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     /// then names no reason failed; a wire
     /// with no finish vocabulary, such as a local runtime, says `false`.
     fn states_finish_reason(&self) -> bool {
+        true
+    }
+
+    /// Whether the catalog's per-token API prices apply to this wire's
+    /// replies. A subscription backend, or a server that is usually local,
+    /// says `false`: its replies then carry only a cost they report.
+    fn catalog_priced(&self) -> bool {
         true
     }
 
@@ -1260,7 +1265,7 @@ fn assistant<'a>(
                     }
                     AssistantContent::Opaque(_) => return None,
                     AssistantContent::Image(_) if !accepts.assistant_images => {
-                        AssistantContent::Text(Text::new(ASSISTANT_IMAGE_OMITTED))
+                        AssistantContent::Text(Text::new(IMAGE_OMITTED))
                     }
                     AssistantContent::ToolCall(mut call) => {
                         let normalized = target.normalize_tool_call_id(
@@ -1518,7 +1523,7 @@ fn user<'a>(
                 if form.accepts.user_images {
                     IMAGE_UNSENDABLE
                 } else {
-                    USER_IMAGE_OMITTED
+                    IMAGE_OMITTED
                 }
             }
             UserContent::Audio(audio) => {

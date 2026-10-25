@@ -74,8 +74,16 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
-        calls("c1", SHELL, serde_json::json!({ "command": "rm a.txt" })),
-        calls("c2", SHELL, serde_json::json!({ "command": "rm -rf b" })),
+        calls(
+            "c1",
+            Shell::NAME,
+            serde_json::json!({ "command": "rm a.txt" }),
+        ),
+        calls(
+            "c2",
+            Shell::NAME,
+            serde_json::json!({ "command": "rm -rf b" }),
+        ),
         reply("Deleted."),
     ]);
     let world = app.world_mut();

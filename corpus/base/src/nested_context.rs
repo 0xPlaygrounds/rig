@@ -1,5 +1,5 @@
 //! Nested project context (spec `29-nested-context.md`): the instruction
-//! files (`AGENTS.md`, or `CLAUDE.md`) of the project's subdirectories
+//! files (`AGENTS.md`) of the project's subdirectories
 //! reach an agent when it first works there, not up front.
 //!
 //! When a tool call names a `path` or a `cwd` under the project root, each
@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use rig_basics::agents_md;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
@@ -127,10 +128,10 @@ fn nested_files(root: &Path, place: &Path) -> Vec<(String, String, String)> {
     let mut at = root.clone();
     for part in below {
         at.push(part);
-        let names = ["AGENTS.md", "CLAUDE.md"].map(|name| at.join(name));
-        let Some(file) = names.into_iter().find(|path| path.is_file()) else {
+        let file = at.join(agents_md::FILE_NAME);
+        if !file.is_file() {
             continue;
-        };
+        }
         let Ok(contents) = read_prefix(&file, MAX_FILE_BYTES) else {
             continue;
         };

@@ -30,8 +30,8 @@ use rig_harness::rig_core::completion::{CompletionRequest, ModelRef};
 use rig_harness::rig_core::effect::{self, FamilyDescriptor, HandlerDescriptor, model_key};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::http_client::{Bytes, DynHttpClient, HeaderMap, HttpClientExt, Request};
-use rig_harness::rig_core::providers::anthropic::AnthropicConfig;
 use rig_harness::rig_core::providers::anthropic::wire::Messages;
+use rig_harness::rig_core::providers::anthropic::{self, AnthropicConfig};
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::wire::{Body, Mode, Wire, WireFrame, decode_reply};
@@ -42,7 +42,7 @@ use serde_json::{Value, json};
 pub const VENDOR: &str = "anthropic-batch";
 
 /// The vendor whose models get batch twins.
-const BASE: &str = "anthropic";
+const BASE: &str = anthropic::PROVIDER_NAME;
 
 /// What a batch costs, of the list price.
 pub const DISCOUNT: f64 = 0.5;

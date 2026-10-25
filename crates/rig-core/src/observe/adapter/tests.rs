@@ -25,7 +25,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
         let context = AdapterContext::new(log.clone(), Subject::default(), "call");
         let request = http::Request::new(());
         let slot = AdapterSlot::default();
-        slot.install(context.attempt_for(&request, "/completion"));
+        slot.install(context.attempt_for(&request, "/completion", None));
         slot.fail(&error);
         drop(slot);
         let trace = log.trace();
@@ -688,7 +688,7 @@ fn url_credentials_are_scrubbed_in_messages_and_allowlisted_header_echoes() {
             let mut headers = http::HeaderMap::new();
             headers.insert("request-id", echo.parse().unwrap());
             assert_eq!(
-                super::scrub::headers(&headers, &secrets)["request-id"],
+                super::scrub::headers(&headers, &secrets, Some("request-id"))["request-id"],
                 "[redacted]"
             );
         }
@@ -863,7 +863,7 @@ fn terminal_observes_nothing_without_an_open_attempt() {
     let context = AdapterContext::new(log.clone(), Subject::default(), "call");
     let request = http::Request::new(());
     let slot = AdapterSlot::default();
-    slot.install(context.attempt_for(&request, "/completion"));
+    slot.install(context.attempt_for(&request, "/completion", None));
     slot.fail(&crate::error::ProviderError::Http(
         crate::http_client::Error::StreamEnded.into(),
     ));
@@ -936,4 +936,23 @@ fn observed_errors_are_located_like_the_reported_error() {
     ] {
         assert!(ObservedError::of(&doc).is_none(), "{doc}");
     }
+}
+
+/// A credential header rig does not name is scrubbed when marked sensitive,
+/// and a known key shape is redacted without being a request secret.
+#[test]
+fn sensitive_headers_and_key_shapes_are_scrubbed() {
+    let mut credential = http::HeaderValue::from_static("gateway-credential");
+    credential.set_sensitive(true);
+    let mut request = http::Request::new(());
+    request
+        .headers_mut()
+        .insert("ocp-apim-subscription-key", credential);
+    let secrets = super::scrub::request_secrets(&request);
+    assert_eq!(
+        super::scrub::text("echo gateway-credential", &secrets),
+        "[redacted]"
+    );
+    let token = format!("ghp_{}", "a1".repeat(18));
+    assert_eq!(super::scrub::text(&token, &[]), "[redacted]");
 }

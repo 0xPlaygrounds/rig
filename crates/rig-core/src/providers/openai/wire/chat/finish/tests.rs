@@ -114,3 +114,37 @@ pub(crate) fn sse_bytes_from_json_events(events: &[serde_json::Value]) -> Bytes 
             .collect::<String>(),
     )
 }
+
+#[test]
+fn overrides_win_over_shared_reasons_and_keep_the_first_match() {
+    let quirks = crate::providers::openai::wire::Quirks {
+        finishes: &[
+            ("stop", FinishReason::ContentFilter),
+            ("stop", FinishReason::Length),
+        ],
+        ..crate::providers::openai::wire::Quirks::openai()
+    };
+    assert_eq!(finish_reason("stop", &quirks), FinishReason::ContentFilter);
+}
+
+#[test]
+fn native_reasons_lowercase_without_accepting_all_chat_spellings() {
+    assert_eq!(
+        super::native_finish_reason("TOOL_USE"),
+        FinishReason::ToolCalls
+    );
+    assert_eq!(
+        super::native_finish_reason("SPII"),
+        FinishReason::ContentFilter
+    );
+    for reason in ["end", "eos", "UNRECOGNIZED"] {
+        assert_eq!(
+            super::native_finish_reason(reason),
+            FinishReason::Other(reason.to_ascii_lowercase())
+        );
+    }
+    assert_eq!(
+        finish_reason("completed", &OPENAI.quirks),
+        FinishReason::Other("completed".to_owned())
+    );
+}

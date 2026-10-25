@@ -43,6 +43,7 @@ use rig_harness::rig_core::http_client::{
 };
 use rig_harness::rig_core::operation::Completion;
 use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
+use rig_harness::rig_core::providers::{llamacpp, ollama};
 use rig_harness::rig_core::serve::adapters::ModelAdapter;
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, ErasedHandler, Intercept};
 use rig_harness::rig_ecs::effects::Handler;
@@ -76,8 +77,8 @@ impl Server {
     /// The vendor whose dialect its `/v1` speaks.
     fn dialect(self) -> &'static str {
         match self {
-            Self::Ollama => "ollama",
-            Self::LlamaCpp => "llamacpp",
+            Self::Ollama => ollama::PROVIDER_NAME,
+            Self::LlamaCpp => llamacpp::PROVIDER_NAME,
         }
     }
 

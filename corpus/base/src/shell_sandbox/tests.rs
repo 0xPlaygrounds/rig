@@ -73,7 +73,7 @@ fn output<'a>(outputs: &'a ToolOutputs, id: &str) -> &'a str {
 }
 
 fn shell(id: &str, command: &str) -> Vec<MockStreamEvent> {
-    calls(id, SHELL, json!({ "command": command }))
+    calls(id, Shell::NAME, json!({ "command": command }))
 }
 
 #[test]

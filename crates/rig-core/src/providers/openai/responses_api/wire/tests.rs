@@ -463,7 +463,7 @@ fn an_error_event_projects_only_the_envelope_it_carries() {
         let log = std::sync::Arc::new(ObservationLog::default());
         let context = AdapterContext::new(log.clone(), Subject::default(), "call");
         let mut attempt = context
-            .attempt_for(&http::Request::new(()), "/responses")
+            .attempt_for(&http::Request::new(()), "/responses", None)
             .expect("an attempt starts");
         attempt.project(|sink| project_payload(payload.to_string().as_bytes(), sink));
         drop(attempt);

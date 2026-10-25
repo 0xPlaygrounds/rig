@@ -6,6 +6,7 @@
 use serde_json::Value;
 
 use super::{CacheRetention, Reasoning, ServiceTier, Verbosity};
+use crate::completion::CompletionRequest;
 
 /// Every option but the policy, borrowed, as a wire's
 /// [`map_options`](crate::completion::ReplayTarget::map_options) reads it.
@@ -35,30 +36,72 @@ pub struct OptionFields<'a> {
 }
 
 impl OptionFields<'_> {
-    /// Which options are set, in [`OptionMap`] field order.
-    pub(crate) fn set(&self) -> [bool; 9] {
-        let OptionFields {
-            reasoning,
-            cache,
-            service_tier,
-            verbosity,
-            parallel_tool_calls,
-            top_p,
-            seed,
-            stop,
-            cache_key,
-        } = self;
-        [
-            reasoning.is_some(),
-            cache.is_some(),
-            service_tier.is_some(),
-            verbosity.is_some(),
-            parallel_tool_calls.is_some(),
-            top_p.is_some(),
-            seed.is_some(),
-            !stop.is_empty(),
-            cache_key.is_some(),
-        ]
+    /// Whether `option` is set. The request's `temperature` is not one of
+    /// these fields, so it reads as unset.
+    pub(crate) fn is_set(&self, option: OptionName) -> bool {
+        match option {
+            OptionName::Reasoning => self.reasoning.is_some(),
+            OptionName::Cache => self.cache.is_some(),
+            OptionName::ServiceTier => self.service_tier.is_some(),
+            OptionName::Verbosity => self.verbosity.is_some(),
+            OptionName::ParallelToolCalls => self.parallel_tool_calls.is_some(),
+            OptionName::TopP => self.top_p.is_some(),
+            OptionName::Seed => self.seed.is_some(),
+            OptionName::Stop => !self.stop.is_empty(),
+            OptionName::CacheKey => self.cache_key.is_some(),
+            OptionName::Temperature => false,
+        }
+    }
+}
+
+/// A generation option, or the request's `temperature`, which the catalog
+/// also refuses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum OptionName {
+    Reasoning,
+    Cache,
+    ServiceTier,
+    Verbosity,
+    ParallelToolCalls,
+    TopP,
+    Seed,
+    Stop,
+    CacheKey,
+    Temperature,
+}
+
+impl OptionName {
+    /// The field name errors and logs give the option.
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Reasoning => "reasoning",
+            Self::Cache => "cache",
+            Self::ServiceTier => "service_tier",
+            Self::Verbosity => "verbosity",
+            Self::ParallelToolCalls => "parallel_tool_calls",
+            Self::TopP => "top_p",
+            Self::Seed => "seed",
+            Self::Stop => "stop",
+            Self::CacheKey => "cache_key",
+            Self::Temperature => "temperature",
+        }
+    }
+
+    /// Unset the option on `request`.
+    pub(crate) fn clear(self, request: &mut CompletionRequest) {
+        let options = &mut request.options;
+        match self {
+            Self::Reasoning => options.reasoning = None,
+            Self::Cache => options.cache = None,
+            Self::ServiceTier => options.service_tier = None,
+            Self::Verbosity => options.verbosity = None,
+            Self::ParallelToolCalls => options.parallel_tool_calls = None,
+            Self::TopP => options.top_p = None,
+            Self::Seed => options.seed = None,
+            Self::Stop => options.stop.clear(),
+            Self::CacheKey => options.cache_key = None,
+            Self::Temperature => request.temperature = None,
+        }
     }
 }
 
@@ -142,7 +185,7 @@ pub struct OptionMap {
 
 impl OptionMap {
     /// Every option's name and answer, in field order.
-    pub(super) fn into_slots(self) -> [(&'static str, Mapping); 9] {
+    pub(super) fn into_slots(self) -> [(OptionName, Mapping); 9] {
         let OptionMap {
             reasoning,
             cache,
@@ -155,15 +198,15 @@ impl OptionMap {
             cache_key,
         } = self;
         [
-            ("reasoning", reasoning),
-            ("cache", cache),
-            ("service_tier", service_tier),
-            ("verbosity", verbosity),
-            ("parallel_tool_calls", parallel_tool_calls),
-            ("top_p", top_p),
-            ("seed", seed),
-            ("stop", stop),
-            ("cache_key", cache_key),
+            (OptionName::Reasoning, reasoning),
+            (OptionName::Cache, cache),
+            (OptionName::ServiceTier, service_tier),
+            (OptionName::Verbosity, verbosity),
+            (OptionName::ParallelToolCalls, parallel_tool_calls),
+            (OptionName::TopP, top_p),
+            (OptionName::Seed, seed),
+            (OptionName::Stop, stop),
+            (OptionName::CacheKey, cache_key),
         ]
     }
 }

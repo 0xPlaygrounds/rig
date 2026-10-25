@@ -174,7 +174,7 @@ pub(crate) fn default_cache(
         let Some(connection) = call.connection.as_ref().or_else(|| agents.get(*agent).ok()) else {
             continue;
         };
-        if connection.spec.provider.vendor() != "claude-cloak" {
+        if connection.spec.provider.vendor() != crate::VENDOR {
             continue;
         }
         // Kernel-built calls already contain catalog defaults. Input runs before
@@ -211,7 +211,7 @@ pub(crate) fn identify_requests(
         adapters.0.push(Adapter::new(
             "claude-cloak-identity",
             move |mut connection| {
-                if connection.spec.provider.vendor() == "claude-cloak" {
+                if connection.spec.provider.vendor() == crate::VENDOR {
                     connection.handler.0 = connection.handler.0.layered(identity.clone());
                 }
                 connection

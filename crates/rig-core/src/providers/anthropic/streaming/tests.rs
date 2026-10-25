@@ -7,7 +7,7 @@ use crate::driver::{Decoded, decode_events};
 use crate::message::{
     AssistantContent, DocumentRange, Opaque, Reasoning, Source, SourceLocation, StopReason,
 };
-use crate::providers::anthropic::wire::AnthropicConfig;
+use crate::providers::anthropic::wire::{AnthropicConfig, Quirks};
 use crate::wire::Mode;
 use serde_json::json;
 
@@ -17,12 +17,16 @@ mod held_open;
 
 /// A fresh decoder, for its classifier.
 fn adapter() -> MessagesDecoder {
-    MessagesDecoder::new(false)
+    MessagesDecoder::new(Quirks::anthropic())
 }
 
 /// Decode `events` through one decoder as one reply, then EOF.
 fn decode(events: impl IntoIterator<Item = MessagesEvent>) -> Decoded<Completion> {
-    decode_events!(MessagesDecoder::new(false), "anthropic", events)
+    decode_events!(
+        MessagesDecoder::new(Quirks::anthropic()),
+        "anthropic",
+        events
+    )
 }
 
 /// The event one wire frame classifies to.
@@ -490,7 +494,7 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
         r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#,
     ];
     let decoded = crate::driver::feed_frames!(
-        MessagesDecoder::new(false),
+        MessagesDecoder::new(Quirks::anthropic()),
         document::Message::default(),
         "anthropic",
         frames.map(|frame| WireFrame::Text(frame.to_owned()))
@@ -1467,5 +1471,196 @@ fn a_whole_reply_block_without_a_type_fails_the_reply() {
     assert!(
         matches!(&decoded, Err(ProviderError::Response(message)) if message.contains("block 0 has no string `type`")),
         "{decoded:?}"
+    );
+}
+
+/// The cost of the reply `frames` stream on a dialect with `quirks`, for
+/// a request naming `requested`.
+fn cost_of(quirks: Quirks, requested: &str, frames: &[Value]) -> Option<crate::completion::Cost> {
+    let origin = crate::message::Origin::new(
+        crate::providers::anthropic::wire::MESSAGES_API,
+        "anthropic",
+        requested,
+    );
+    let fold = crate::operation::ReplyFold::new(origin);
+    let decoded = crate::driver::decode_with(fold, "anthropic", |reply| {
+        reply.feed(
+            &mut MessagesDecoder::new(quirks),
+            Some(document::Message::default()),
+            frames
+                .iter()
+                .map(|frame| WireFrame::Text(frame.to_string())),
+        )
+    });
+    let response = match decoded.outcome {
+        Ok(response) => response,
+        Err(error) => panic!("the reply ends: {error}"),
+    };
+    response.usage.cost
+}
+
+/// The cost of a whole Claude Opus 5.5 message reporting `usage`, decoded
+/// on a dialect with `quirks`.
+fn priced(quirks: Quirks, usage: Value) -> Option<crate::completion::Cost> {
+    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
+        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": usage});
+    cost_of(quirks, CLAUDE_OPUS_5_5, &[message])
+}
+
+/// The default decoder is Anthropic's own, which prices each write
+/// lifetime.
+#[test]
+fn the_default_decoder_prices_each_cache_lifetime() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 22_002});
+    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
+        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": written(22_002, split)});
+    let origin = crate::message::Origin::new(
+        crate::providers::anthropic::wire::MESSAGES_API,
+        "anthropic",
+        CLAUDE_OPUS_5_5,
+    );
+    let decoded = crate::driver::decode_with(
+        crate::operation::ReplyFold::new(origin),
+        "anthropic",
+        |reply| {
+            reply.feed(
+                &mut MessagesDecoder::default(),
+                Some(document::Message::default()),
+                [WireFrame::Text(message.to_string())],
+            )
+        },
+    );
+    let cost = match decoded.outcome {
+        Ok(response) => response.usage.cost,
+        Err(error) => panic!("the reply ends: {error}"),
+    };
+    let Some(cost) = cost else {
+        panic!("the catalog prices Opus 5.5");
+    };
+    assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
+}
+
+/// A request that names no model is priced, write lifetimes included, as
+/// the model the reply names.
+#[test]
+fn a_reply_without_a_requested_model_is_priced_as_the_model_it_names() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 22_002});
+    let message = json!({"type": "message", "id": "msg", "role": "assistant", "content": [],
+        "model": CLAUDE_OPUS_5_5, "stop_reason": "end_turn", "usage": written(22_002, split)});
+    let Some(cost) = cost_of(Quirks::anthropic(), "", &[message]) else {
+        panic!("the catalog prices Opus 5.5");
+    };
+    assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
+}
+
+/// A split in a `message_delta` before the last is priced, as the
+/// reassembled reply holds it.
+#[test]
+fn a_split_from_an_earlier_message_delta_is_priced() {
+    let frames = [
+        json!({"type": "message_start", "message": {"id": "msg", "role": "assistant",
+            "content": [], "model": CLAUDE_OPUS_5_5, "stop_reason": null,
+            "usage": {"input_tokens": 4, "output_tokens": 0, "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 22_002}}}),
+        json!({"type": "message_delta", "delta": {"stop_reason": null},
+            "usage": {"cache_creation":
+                {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 22_002}}}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 8}}),
+    ];
+    let Some(cost) = cost_of(Quirks::anthropic(), CLAUDE_OPUS_5_5, &frames) else {
+        panic!("the catalog prices Opus 5.5");
+    };
+    assert!(cost.is_complete(), "{cost:?}");
+    assert!((cost.total - 0.176192).abs() < 1e-9, "{cost:?}");
+}
+
+/// A malformed split in the terminal `message_delta` replaces a valid one
+/// from `message_start`, so the writes stay unpriced.
+#[test]
+fn a_malformed_terminal_split_leaves_the_writes_unpriced() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 100});
+    let frames = [
+        json!({"type": "message_start", "message": {"id": "msg", "role": "assistant",
+            "content": [], "model": CLAUDE_OPUS_5_5, "stop_reason": null,
+            "usage": written(100, split)}}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 8, "cache_creation": "invalid"}}),
+    ];
+    let Some(cost) = cost_of(Quirks::anthropic(), CLAUDE_OPUS_5_5, &frames) else {
+        panic!("the known parts still have prices");
+    };
+    assert_eq!(cost.cache_write, None);
+    assert!(!cost.is_complete(), "{cost:?}");
+}
+
+/// Synthetic Messages usage: 4 uncached input and 8 output tokens, with
+/// `written` cache writes split as `split` states.
+fn written(written: u64, split: Value) -> Value {
+    json!({"input_tokens": 4, "output_tokens": 8, "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": written, "cache_creation": split})
+}
+
+/// Each cache lifetime has its price. The one-hour sample matches the
+/// sanitized acceptance capture.
+#[test]
+fn anthropic_prices_each_cache_lifetime() {
+    for (short, long, expected) in [
+        (22_002, 0, 0.110186),
+        (0, 22_002, 0.176192),
+        (11_001, 11_001, 0.143189),
+        (0, 0, 0.000176),
+    ] {
+        let split = json!({"ephemeral_5m_input_tokens": short, "ephemeral_1h_input_tokens": long});
+        let cost = priced(Quirks::anthropic(), written(short + long, split));
+        let Some(cost) = cost else {
+            panic!("the catalog prices Opus 5.5");
+        };
+        assert!(cost.is_complete(), "{cost:?}");
+        assert!(
+            (cost.total - expected).abs() < 1e-9,
+            "{short}/{long}: {cost:?}"
+        );
+    }
+}
+
+/// A missing or contradictory split leaves the writes unpriced rather than
+/// passing as a complete estimate. The malformed values are synthetic.
+#[test]
+fn anthropic_requires_a_complete_consistent_cache_split() {
+    for split in [
+        Value::Null,
+        json!({}),
+        json!({"ephemeral_5m_input_tokens": 100}),
+        json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": "100"}),
+        json!({"ephemeral_5m_input_tokens": -1, "ephemeral_1h_input_tokens": 101}),
+        json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 99}),
+        json!({"ephemeral_5m_input_tokens": u64::MAX, "ephemeral_1h_input_tokens": 101}),
+    ] {
+        let Some(cost) = priced(Quirks::anthropic(), written(100, split.clone())) else {
+            panic!("the known parts still have prices");
+        };
+        assert_eq!(cost.cache_write, None, "{split}");
+        assert!(!cost.is_complete(), "{split}");
+        assert!((cost.total - 0.000176).abs() < 1e-9, "{split}: {cost:?}");
+    }
+}
+
+/// A gateway's writes keep the catalog's one write price, whatever split
+/// it reports.
+#[test]
+fn cache_lifetime_pricing_does_not_apply_to_gateways() {
+    let split = json!({"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 100});
+    let pricing = crate::catalog::Catalog::builtin()
+        .get_vendor("anthropic", CLAUDE_OPUS_5_5)
+        .and_then(|resolved| resolved.spec.pricing);
+    let usage = crate::completion::Usage::new()
+        .input_tokens(104)
+        .output_tokens(8)
+        .cached_input_tokens(0)
+        .cache_creation_input_tokens(100);
+    assert_eq!(
+        priced(Quirks::gateway(), written(100, split)),
+        pricing.and_then(|pricing| pricing.cost(&usage))
     );
 }

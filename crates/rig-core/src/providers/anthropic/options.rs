@@ -12,6 +12,7 @@ use crate::catalog::ModelSpec;
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
 use crate::message::ToolChoice;
+use crate::providers::minimax::{Family as MiniMaxFamily, family as minimax_family};
 
 use super::wire::{ANTHROPIC, MINIMAX, MOONSHOT, Messages, OLLAMA, XIAOMIMIMO, ZAI};
 
@@ -220,17 +221,17 @@ fn anthropic(
 /// MiniMax's Messages endpoint: block-level cache markers, and reasoning
 /// only on the M3 models.
 fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
-    let model = model.to_ascii_lowercase();
-    let flash = model.starts_with("minimax-m3.1");
-    let m3 = !flash && model.starts_with("minimax-m3");
+    let family = minimax_family(model);
     OptionMap {
         reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
-            Reasoning::Off if m3 => Mapping::Send(json!({"thinking": {"type": "disabled"}})),
+            Reasoning::Off if family == MiniMaxFamily::M3 => {
+                Mapping::Send(json!({"thinking": {"type": "disabled"}}))
+            }
             Reasoning::Off => Mapping::unsupported("thinking cannot be disabled on this model"),
             Reasoning::Effort(Effort::Minimal) => {
                 Mapping::unsupported("MiniMax has no `minimal` effort level")
             }
-            Reasoning::Effort(effort) if flash => {
+            Reasoning::Effort(effort) if family == MiniMaxFamily::M31Flash => {
                 Mapping::Send(json!({"output_config": {"effort": effort.as_str()}}))
             }
             Reasoning::Effort(_) => Mapping::unsupported("this model takes no effort level"),

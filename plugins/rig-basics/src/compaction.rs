@@ -78,6 +78,9 @@ use rig_memory::{
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
 
+/// The purpose of a summary's model call.
+pub const PURPOSE: &str = "compaction";
+
 /// Compacts agents' conversations near their model's input limit, after
 /// an overflow, and on `/compact`, by [`CompactionDefault`].
 #[derive(Default)]
@@ -264,7 +267,7 @@ impl Noting {
             plan,
             notes: None,
         };
-        let effect = Effect::default().with_purpose("compaction");
+        let effect = Effect::default().with_purpose(PURPOSE);
         (Name::new(NOTING), noting, effect)
     }
 }
@@ -668,7 +671,7 @@ impl CompactingItem<'_, '_> {
             Name::new(SUMMARIZING),
             summarizing,
             request,
-            Effect::default().with_purpose("compaction"),
+            Effect::default().with_purpose(PURPOSE),
             ForAgent(agent),
             CallOf(turn),
             HoldOf(call),
@@ -724,7 +727,7 @@ fn on_compact(
         SideCall(agent),
         ForAgent(agent),
         CallOf(turn),
-        Effect::default().with_purpose("compaction"),
+        Effect::default().with_purpose(PURPOSE),
     ));
 }
 
@@ -922,8 +925,7 @@ fn compact_near_the_window(
         if step == Some(&Recovering::NotSummarized) && !fits(spec, used, (answer, least)) {
             let why = "The conversation does not fit the model's context window, and was not \
                        summarized";
-            let why =
-                ErrorReport::new(ErrorKind::Request, why).with_code("context_length_exceeded");
+            let why = ErrorReport::context_overflow(why);
             commands.entity(call).try_insert_if_new(Outcome(Err(why)));
             continue;
         }

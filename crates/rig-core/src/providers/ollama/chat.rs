@@ -391,6 +391,12 @@ impl Wire for Chat {
 }
 
 impl ReplayTarget for Chat {
+    /// An Ollama server is usually local, while the catalog's `ollama`
+    /// prices are Ollama Cloud's, and the reply does not say which served it.
+    fn catalog_priced(&self) -> bool {
+        false
+    }
+
     /// Section 6.5 of the typed-options design, for `/api/chat`.
     fn map_options(
         &self,

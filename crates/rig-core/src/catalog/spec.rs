@@ -5,7 +5,7 @@ use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion::options::CatalogRefusal;
+use crate::completion::options::{CatalogRefusal, OptionName};
 use crate::completion::{
     CacheRetention, CompletionRequest, Cost, Effort, GenerationOptions, Reasoning,
     UnsupportedOption, Usage,
@@ -205,10 +205,8 @@ impl Pricing {
     /// those read from and written to the cache. A cache part with tokens
     /// but no listed price is `None`, and the cost is then not
     /// [complete](Cost::is_complete): its `total` leaves that part out. Every
-    /// cache write here is charged at one price. Native Anthropic response
-    /// pricing additionally uses the raw reply's TTL breakdown: five-minute
-    /// writes use `cache_write`, one-hour writes use twice `input`, and an
-    /// absent or inconsistent breakdown leaves nonzero writes unpriced.
+    /// cache write here is charged at one price; a decoder whose provider
+    /// splits writes by lifetime prices them itself.
     /// These are standard-tier API list-price estimates, not subscription
     /// charges or verified invoices, including for custom endpoints. Service
     /// tiers, long-context tiers and hosted-tool fees are not included.
@@ -538,14 +536,7 @@ impl ModelSpec {
         let mut dropped = Vec::new();
         // Only a set option is refused, and each pass unsets one, so this ends.
         while let Some(refusal) = self.request_rules(request).into_iter().next() {
-            let options = &mut request.options;
-            match refusal.field {
-                "reasoning" => options.reasoning = None,
-                "cache" => options.cache = None,
-                "top_p" => options.top_p = None,
-                "temperature" => request.temperature = None,
-                _ => break,
-            }
+            refusal.option.clear(request);
             dropped.push(self.unsupported(refusal));
         }
         dropped
@@ -569,7 +560,7 @@ impl ModelSpec {
             .and_then(|reasoning| self.reasoning.refusal(reasoning))
         {
             refusals.push(CatalogRefusal {
-                field: "reasoning",
+                option: OptionName::Reasoning,
                 reason,
             });
         }
@@ -579,18 +570,19 @@ impl ModelSpec {
             .and_then(|cache| self.caching.refusal(cache))
         {
             refusals.push(CatalogRefusal {
-                field: "cache",
+                option: OptionName::Cache,
                 reason,
             });
         }
         let reasons = self.reasons_with(options.reasoning.as_ref());
         let sampled = [
-            ("temperature", temperature.is_some()),
-            ("top_p", options.top_p.is_some()),
+            (OptionName::Temperature, temperature.is_some()),
+            (OptionName::TopP, options.top_p.is_some()),
         ];
-        for (field, set) in sampled {
-            if let Some(reason) = set.then(|| self.sampling_refusal(field, reasons)).flatten() {
-                refusals.push(CatalogRefusal { field, reason });
+        for (option, set) in sampled {
+            let refusal = set.then(|| self.sampling_refusal(option.as_str(), reasons));
+            if let Some(reason) = refusal.flatten() {
+                refusals.push(CatalogRefusal { option, reason });
             }
         }
         refusals
@@ -638,7 +630,7 @@ impl ModelSpec {
     /// `refusal` named for this model.
     fn unsupported(&self, refusal: CatalogRefusal) -> UnsupportedOption {
         UnsupportedOption::new(
-            refusal.field,
+            refusal.option.as_str(),
             self.provider.vendor(),
             &self.id,
             refusal.reason,
@@ -679,7 +671,11 @@ pub struct UnknownReasoning {
 
 /// Token budgets for the named levels on a model that takes a budget
 /// instead of levels, clamped into its range.
-const NAMED_BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
+const NAMED_BUDGETS: [(Effort, u32); 3] = [
+    (Effort::Low, 2048),
+    (Effort::Medium, 8192),
+    (Effort::High, 16384),
+];
 
 impl ReasoningSupport {
     /// The reasoning settings the model takes: the provider default first,
@@ -714,13 +710,17 @@ impl ReasoningSupport {
         if levels.is_empty()
             && let Some(range) = budget
         {
-            choices.extend(NAMED_BUDGETS.iter().map(|&(name, tokens)| ReasoningChoice {
-                name,
-                // Not `clamp`, which panics on an inverted range.
-                reasoning: Some(Reasoning::Budget {
-                    tokens: tokens.max(*range.start()).min(*range.end()),
-                }),
-            }));
+            choices.extend(
+                NAMED_BUDGETS
+                    .iter()
+                    .map(|&(effort, tokens)| ReasoningChoice {
+                        name: effort.as_str(),
+                        // Not `clamp`, which panics on an inverted range.
+                        reasoning: Some(Reasoning::Budget {
+                            tokens: tokens.max(*range.start()).min(*range.end()),
+                        }),
+                    }),
+            );
         }
         choices
     }

@@ -22,7 +22,7 @@ use rig_basics::coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::ToolOutput as Output;
 use rig_harness::rig_core::{self, effect};
-use rig_tools::Shell;
+use rig_tools::{Read, Shell};
 use serde::Deserialize;
 
 /// The `[truncate]` settings table: what is cut, how, and where the whole
@@ -57,7 +57,7 @@ impl Default for Truncate {
             head_lines: 150,
             tail_lines: 100,
             only: Vec::new(),
-            except: vec!["read".to_owned()],
+            except: vec![Read::NAME.to_owned()],
             spill_dir: PathBuf::from(".rig/spill"),
             max_age_days: 7,
         }

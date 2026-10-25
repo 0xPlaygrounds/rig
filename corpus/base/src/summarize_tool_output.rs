@@ -21,6 +21,7 @@ use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::tool::ToolOutput;
+use rig_harness::rig_tools::Read;
 use serde::Deserialize;
 
 /// Summarizes big tool outputs with a cheap model.
@@ -150,7 +151,7 @@ fn tokens(text: &str) -> usize {
 /// Whether `call` reads a file under `dir`, such as a saved output.
 fn reads_saved(call: &ToolCall, root: &Path, dir: &Path) -> bool {
     let path = call.function.arguments.get("path");
-    call.function.name.as_str() == "read"
+    call.function.name.as_str() == Read::NAME
         && path
             .and_then(|path| path.as_str())
             .is_some_and(|path| root.join(path).starts_with(dir))

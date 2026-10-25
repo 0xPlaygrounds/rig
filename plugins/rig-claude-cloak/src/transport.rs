@@ -7,12 +7,18 @@ use rig_harness::rig_core::{
         self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
         Response, StreamingResponse, Uri,
     },
+    providers::anthropic::completion::ANTHROPIC_VERSION_2023_06_01,
     wasm_compat::WasmCompatSend,
 };
 use rig_reqwest::reqwest;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{future::Future, io::Write, path::PathBuf, sync::OnceLock};
+use std::{
+    future::Future,
+    io::Write,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use crate::profile::{self, BETAS, VERSION};
 const MARKER: &str = "\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header:";
@@ -44,6 +50,8 @@ pub(crate) enum Error {
 #[derive(Clone)]
 struct OAuthTransport {
     inner: DynHttpClient,
+    /// The agent's home, holding the credentials and the device identity.
+    home: PathBuf,
     device: String,
     session: String,
     #[cfg(test)]
@@ -67,7 +75,7 @@ fn platform() -> (&'static str, &'static str) {
     (os, arch)
 }
 
-pub(crate) fn new() -> Result<DynHttpClient, Error> {
+pub(crate) fn new(home: PathBuf) -> Result<DynHttpClient, Error> {
     static SESSION: OnceLock<String> = OnceLock::new();
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -78,18 +86,15 @@ pub(crate) fn new() -> Result<DynHttpClient, Error> {
         credentials: None,
         #[cfg(test)]
         platform: None,
-        device: device_id()?,
+        device: device_id(&home)?,
+        home,
         session: SESSION
             .get_or_init(|| uuid::Uuid::new_v4().to_string())
             .clone(),
     }))
 }
 
-fn device_id() -> Result<String, Error> {
-    let home = std::env::var_os("RIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".rig")))
-        .ok_or(Error::Identity)?;
+fn device_id(home: &Path) -> Result<String, Error> {
     let dir = home.join("anthropic-oauth");
     #[cfg(unix)]
     {
@@ -886,10 +891,10 @@ impl OAuthTransport {
         #[cfg(test)]
         let credentials = match &self.credentials {
             Some(credentials) => Ok(credentials.clone()),
-            None => crate::auth::credentials_for_request().await,
+            None => crate::auth::credentials_for_request(&self.home).await,
         };
         #[cfg(not(test))]
-        let credentials = crate::auth::credentials_for_request().await;
+        let credentials = crate::auth::credentials_for_request(&self.home).await;
         let (token, account) = credentials.map_err(http_client::Error::instance)?;
         let original: Value =
             serde_json::from_slice(req.body()).map_err(http_client::Error::instance)?;
@@ -988,7 +993,7 @@ impl OAuthTransport {
             ("x-stainless-runtime-version", profile::RUNTIME),
             ("x-stainless-timeout", "600"),
             ("anthropic-dangerous-direct-browser-access", "true"),
-            ("anthropic-version", "2023-06-01"),
+            ("anthropic-version", ANTHROPIC_VERSION_2023_06_01),
             ("x-app", "cli"),
             ("connection", "keep-alive"),
             ("accept-encoding", "gzip, deflate, br, zstd"),

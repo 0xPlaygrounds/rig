@@ -49,11 +49,7 @@ use rig_harness::commands::{AppCommandsExt, CommandArgs};
 const PROVIDER: &str = chatgpt::PROVIDER_NAME;
 
 /// How the user knows [`PROVIDER`].
-const TITLE: &str = "ChatGPT";
-
-/// The model a fresh sign-in switches to: the plan's latest frontier
-/// model, first in Codex's own model list.
-const FRONTIER_MODEL: &str = "chatgpt/gpt-6.1-sol";
+const TITLE: &str = chatgpt::PLAN_TITLE;
 
 mod keys;
 
@@ -284,10 +280,11 @@ fn on_signed_in(
     };
     match result {
         Ok(()) => {
+            let model = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
             notices.write(Notice::info(
                 login.agent,
                 format!(
-                    "Signed in to {TITLE}; switching to {FRONTIER_MODEL}. /model lists its \
+                    "Signed in to {TITLE}; switching to {model}. /model lists its \
                      other models; the credential is in {}.",
                     session.file.display()
                 ),
@@ -303,7 +300,7 @@ fn on_signed_in(
             }
             commands.trigger(SetModel {
                 entity: login.agent,
-                model: FRONTIER_MODEL.to_owned(),
+                model,
             });
         }
         Err(why) => {

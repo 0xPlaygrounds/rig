@@ -523,7 +523,7 @@ pub(super) fn assistant_part(
         }
         // Assistant turns take no images; `adapt` downgrades every one, so
         // only a turn sent without it reaches here.
-        AssistantContent::Image(_) => text(completion::history::ASSISTANT_IMAGE_OMITTED),
+        AssistantContent::Image(_) => text(completion::history::IMAGE_OMITTED),
         AssistantContent::Opaque(_) => return None,
     })
 }

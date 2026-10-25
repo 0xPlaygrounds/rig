@@ -738,17 +738,12 @@ impl<'de> serde::Deserializer<'de> for FieldNames<'_> {
     }
 }
 
-/// The effort level `word` names, as [`Effort`]'s serde names spell it.
+/// The effort level `word` names, by [`Effort`]'s serde names.
 fn effort(word: &str) -> Option<Effort> {
-    Some(match word {
-        "minimal" => Effort::Minimal,
-        "low" => Effort::Low,
-        "medium" => Effort::Medium,
-        "high" => Effort::High,
-        "xhigh" => Effort::XHigh,
-        "max" => Effort::Max,
-        _ => return None,
-    })
+    use serde::de::IntoDeserializer;
+    let word: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
+        word.into_deserializer();
+    Effort::deserialize(word).ok()
 }
 
 /// The modalities `words` names, as models.dev spells them.

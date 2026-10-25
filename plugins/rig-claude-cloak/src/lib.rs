@@ -22,13 +22,19 @@ mod schema;
 mod tests;
 mod transport;
 
+use std::path::{Path, PathBuf};
+
 use rig_harness::prelude::*;
 use rig_harness::rig_core::{
     catalog::{Catalog, ModelSpec, Transport},
     operation::Completion,
+    providers::anthropic,
     providers::registry::{ConnectError, ConnectOptions, ProviderId},
     serve::{ErasedHandler, adapters::ModelAdapter},
 };
+
+/// The vendor of this plugin's models and its command.
+const VENDOR: &str = "claude-cloak";
 
 /// Adds `claude-cloak/*` without replacing the API-key Anthropic provider.
 #[derive(Default)]
@@ -36,22 +42,30 @@ pub struct ClaudeCloakPlugin;
 
 impl Plugin for ClaudeCloakPlugin {
     fn build(&self, app: &mut App) {
-        let Ok(vendor) = ProviderId::declare("claude-cloak") else {
+        let Ok(vendor) = ProviderId::declare(VENDOR) else {
             return;
         };
+        let home = CloakHome(RigHome::of(app.world()).root().to_path_buf());
         let mut models = app.world_mut().get_resource_or_init::<Models>();
         let specs: Vec<_> = models
             .0
             .catalog()
             .iter()
-            .filter(|spec| spec.provider.vendor() == "anthropic")
+            .filter(|spec| spec.provider.vendor() == anthropic::PROVIDER_NAME)
             .cloned()
             .collect();
         for mut spec in specs {
             spec.provider = vendor;
             models.0.catalog_mut().insert(spec);
         }
-        models.0.provide(vendor, connect);
+        let root = home.0.clone();
+        models.0.provide(
+            vendor,
+            move |spec: &ModelSpec, catalog: &Catalog, transport: &Transport| {
+                connect(&root, spec, catalog, transport)
+            },
+        );
+        app.insert_resource(home);
         app.register_required_components::<Agent, policy::OAuthSession>()
             .keeps_saved::<policy::OAuthSession>()
             .register_required_components::<Agent, policy::HumanFingerprint>()
@@ -70,7 +84,7 @@ impl Plugin for ClaudeCloakPlugin {
                 ),
             )
             .add_command(
-                "claude-cloak",
+                VENDOR,
                 "Separate Anthropic subscription: login | logout",
                 command,
             )
@@ -78,12 +92,18 @@ impl Plugin for ClaudeCloakPlugin {
     }
 }
 
+/// The agent's home, holding the credentials.
+#[derive(Resource)]
+struct CloakHome(PathBuf);
+
 fn connect(
+    home: &Path,
     spec: &ModelSpec,
     catalog: &Catalog,
     transport: &Transport,
 ) -> Result<ErasedHandler, ConnectError> {
-    let client = transport::new().map_err(|error| ConnectError::Provider(error.to_string()))?;
+    let client = transport::new(home.to_path_buf())
+        .map_err(|error| ConnectError::Provider(error.to_string()))?;
     connect_with_client(spec, catalog, transport, client)
 }
 
@@ -94,7 +114,7 @@ fn connect_with_client(
     client: rig_harness::rig_core::http_client::DynHttpClient,
 ) -> Result<ErasedHandler, ConnectError> {
     let mut upstream = spec.clone();
-    upstream.provider = ProviderId::catalog("anthropic")
+    upstream.provider = ProviderId::catalog(anthropic::PROVIDER_NAME)
         .ok_or_else(|| ConnectError::Provider("Anthropic provider unavailable".into()))?;
     // The placeholder is removed before I/O; credentials are loaded and refreshed per request.
     let options = ConnectOptions::new()
@@ -133,6 +153,7 @@ enum OperationError {
 fn command(
     In(args): In<CommandArgs>,
     runtime: Res<TokioRuntime>,
+    home: Res<CloakHome>,
     wake: Res<Wake>,
     pending: Query<&Pending>,
     mut commands: Commands,
@@ -153,11 +174,12 @@ fn command(
             return;
         }
     };
+    let home = home.0.clone();
     let task = runtime.0.spawn(async move {
         if login {
-            auth::login().await
+            auth::login(&home).await
         } else {
-            auth::logout()
+            auth::logout(&home)
         }
         .map(|()| {
             if login {

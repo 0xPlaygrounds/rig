@@ -969,7 +969,8 @@ pub enum VideoMediaType {
     WEBM,
 }
 
-/// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
+/// The resolution a wire that takes one reads an image at. Wires without the
+/// setting ignore it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageDetail {
@@ -1351,19 +1352,6 @@ impl_mime_type!(VideoMediaType {
     MOV => "video/mov",
     WEBM => "video/webm",
 });
-
-impl std::str::FromStr for ImageDetail {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "low" => Ok(ImageDetail::Low),
-            "high" => Ok(ImageDetail::High),
-            "auto" => Ok(ImageDetail::Auto),
-            _ => Err(()),
-        }
-    }
-}
 
 /// `From` impls for [`Text`] from string-like types.
 macro_rules! text_from {

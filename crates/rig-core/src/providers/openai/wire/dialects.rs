@@ -504,6 +504,8 @@ pub const OLLAMA: Dialect = Dialect {
         // A local daemon takes no credential; a proxied one takes a token.
         auth: Auth::OptionalBearer,
         rewrite: BodyRewrite::Ollama,
+        // A daemon is usually local; the catalog's prices are Ollama Cloud's.
+        catalog_priced: false,
         ..Quirks::openai()
     },
     ..Dialect::gateway(

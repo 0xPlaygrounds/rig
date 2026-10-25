@@ -32,72 +32,35 @@ pub(crate) fn provider_error_envelope(
     Some(ProviderError::from_provider_body(data))
 }
 
-/// The finish reasons every Chat dialect shares: OpenAI's, the legacy
-/// `function_call`, and the spellings compatible servers use for the same
-/// endings (`end`, `eos`, `end_turn`, `stop_sequence`, `max_tokens`,
-/// Mistral's `model_length`).
-pub(crate) const CHAT_FINISHES: &[(&str, FinishReason)] = &[
-    ("stop", FinishReason::Stop),
-    ("end", FinishReason::Stop),
-    ("eos", FinishReason::Stop),
-    ("end_turn", FinishReason::Stop),
-    ("stop_sequence", FinishReason::Stop),
-    ("length", FinishReason::Length),
-    ("max_tokens", FinishReason::Length),
-    ("model_length", FinishReason::Length),
-    ("tool_calls", FinishReason::ToolCalls),
-    ("function_call", FinishReason::ToolCalls),
-    ("content_filter", FinishReason::ContentFilter),
-];
-
 /// `reason` in the dialect's documented vocabulary
 /// ([`Quirks::finishes`]) and the shared one; anything else is
 /// [`FinishReason::Other`], which fails the turn.
 pub(crate) fn finish_reason(reason: &str, quirks: &Quirks) -> FinishReason {
-    quirks
-        .finishes
-        .iter()
-        .chain(CHAT_FINISHES)
-        .find(|(name, _)| *name == reason)
-        .map_or_else(
-            || FinishReason::Other(reason.to_owned()),
-            |(_, finish)| finish.clone(),
-        )
+    if let Some((_, finish)) = quirks.finishes.iter().find(|(name, _)| *name == reason) {
+        return finish.clone();
+    }
+    match reason {
+        "stop" | "end" | "eos" | "end_turn" | "stop_sequence" => FinishReason::Stop,
+        "length" | "max_tokens" | "model_length" => FinishReason::Length,
+        "tool_calls" | "function_call" => FinishReason::ToolCalls,
+        "content_filter" => FinishReason::ContentFilter,
+        _ => FinishReason::Other(reason.to_owned()),
+    }
 }
-
-/// The upstream providers' own reasons a gateway forwards beside its
-/// normalized one, compared case-insensitively.
-const NATIVE_FINISHES: &[(&str, FinishReason)] = &[
-    ("stop", FinishReason::Stop),
-    ("end_turn", FinishReason::Stop),
-    ("stop_sequence", FinishReason::Stop),
-    ("complete", FinishReason::Stop),
-    ("completed", FinishReason::Stop),
-    ("length", FinishReason::Length),
-    ("max_tokens", FinishReason::Length),
-    ("max_output_tokens", FinishReason::Length),
-    ("model_length", FinishReason::Length),
-    ("tool_calls", FinishReason::ToolCalls),
-    ("function_call", FinishReason::ToolCalls),
-    ("tool_use", FinishReason::ToolCalls),
-    ("content_filter", FinishReason::ContentFilter),
-    ("safety", FinishReason::ContentFilter),
-    ("blocklist", FinishReason::ContentFilter),
-    ("prohibited_content", FinishReason::ContentFilter),
-    ("spii", FinishReason::ContentFilter),
-];
 
 /// A gateway's upstream-native finish reason, lowercased; an unknown one
 /// is [`FinishReason::Other`].
 pub(crate) fn native_finish_reason(reason: &str) -> FinishReason {
     let reason = reason.to_ascii_lowercase();
-    NATIVE_FINISHES
-        .iter()
-        .find(|(name, _)| *name == reason)
-        .map_or_else(
-            || FinishReason::Other(reason.clone()),
-            |(_, finish)| finish.clone(),
-        )
+    match reason.as_str() {
+        "stop" | "end_turn" | "stop_sequence" | "complete" | "completed" => FinishReason::Stop,
+        "length" | "max_tokens" | "max_output_tokens" | "model_length" => FinishReason::Length,
+        "tool_calls" | "function_call" | "tool_use" => FinishReason::ToolCalls,
+        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
+            FinishReason::ContentFilter
+        }
+        _ => FinishReason::Other(reason),
+    }
 }
 
 #[cfg(test)]

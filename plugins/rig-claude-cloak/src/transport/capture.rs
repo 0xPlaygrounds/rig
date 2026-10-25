@@ -404,6 +404,7 @@ async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::
                 uri,
                 capture: capture.clone(),
             }),
+            home: Default::default(),
             device: std::fs::read_to_string(format!("{root}/home/.omp/install-id"))?
                 .trim()
                 .into(),

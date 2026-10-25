@@ -373,6 +373,9 @@ pub struct Quirks {
     pub accepts_bare_string_reply: bool,
     /// Whether document and file inputs may use provider file IDs.
     pub accepts_file_ids: bool,
+    /// Whether the credential is a session token that expires within the
+    /// hour, so a saved copy soon stops working.
+    pub short_lived_key: bool,
     /// The rewrite this dialect applies to the serialized chat body.
     pub rewrite: BodyRewrite,
     /// Paths that strip a trailing `/v1` from the configured base URL.
@@ -409,6 +412,9 @@ pub struct Quirks {
     pub session_header: Option<&'static str>,
     /// What the Responses endpoint accepts.
     pub responses: ResponsesQuirks,
+    /// Whether the catalog's per-token API prices apply to replies. A
+    /// subscription backend or a server that is usually local has none.
+    pub catalog_priced: bool,
 }
 
 impl Quirks {
@@ -444,6 +450,7 @@ impl Quirks {
             reliable_reasoning_count: true,
             accepts_bare_string_reply: false,
             accepts_file_ids: true,
+            short_lived_key: false,
             rewrite: BodyRewrite::None,
             embedding: EmbeddingQuirks::openai(),
             // OpenAI has no reranking endpoint, and neither does any dialect
@@ -461,6 +468,7 @@ impl Quirks {
             identity: None,
             session_header: None,
             responses: ResponsesQuirks::openai(),
+            catalog_priced: true,
         }
     }
 

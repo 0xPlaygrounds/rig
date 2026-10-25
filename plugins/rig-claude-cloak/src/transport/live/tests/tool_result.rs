@@ -572,7 +572,9 @@ async fn replay(
         .map_err(|_| "HTTP client initialization failed")?;
     let transport = OAuthTransport {
         inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(client)),
-        device: device_id().map_err(|_| "stored device identity unavailable")?,
+        home: Home::from_env().root().to_path_buf(),
+        device: device_id(Home::from_env().root())
+            .map_err(|_| "stored device identity unavailable")?,
         session: uuid::Uuid::new_v4().to_string(),
         credentials: None,
         platform: None,

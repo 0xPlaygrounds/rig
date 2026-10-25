@@ -10,14 +10,16 @@
 //!
 //! A subagent's turns change none of it. The terminal's own title is
 //! pushed on its title stack before the first and popped as the app exits.
-//! Inside a shell fux marks, the marks carry its `FUX_MARK_NONCE`, so they
-//! count for the command that started rig.
+//! The `[tui]` setting `mark_nonce_env` names an environment variable
+//! holding the nonce of the shell's marks (such as fux's `FUX_MARK_NONCE`),
+//! so the marks count for the command that started rig.
 
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::{SpawnedBy, TurnOf, TurnOutcome};
 use rig_ecs::stage::{ForAgent, Outcome, Settled};
 use rig_harness::ask::Ask;
 use rig_harness::pick::Picker;
+use serde::Deserialize;
 
 use super::terminal::TerminalWrite;
 
@@ -26,6 +28,15 @@ const PUSH_TITLE: &[u8] = b"\x1b[22;0t";
 
 /// Restores the title saved last (`CSI 23 ; 0 t`).
 const POP_TITLE: &[u8] = b"\x1b[23;0t";
+
+/// `[tui]` in `settings.toml`.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct TuiSettings {
+    /// The environment variable holding the nonce each mark carries, if
+    /// the terminal's shell integration sets one.
+    mark_nonce_env: Option<String>,
+}
 
 /// What the terminal was told last.
 #[derive(Resource)]
@@ -36,14 +47,17 @@ pub(crate) struct Told {
     title: Option<&'static str>,
     /// Whether the last turn that ended failed or was stopped.
     failed: bool,
-    /// The options each mark ends with: `;nonce=…` inside a shell fux
-    /// marks.
+    /// The options each mark ends with: `;nonce=…` when
+    /// [`TuiSettings::mark_nonce_env`] names a set variable.
     options: String,
 }
 
-impl Default for Told {
-    fn default() -> Self {
-        let nonce = std::env::var("FUX_MARK_NONCE").ok();
+impl FromWorld for Told {
+    fn from_world(world: &mut World) -> Self {
+        let nonce = world
+            .get_resource::<TuiSettings>()
+            .and_then(|settings| settings.mark_nonce_env.as_deref())
+            .and_then(|name| std::env::var(name).ok());
         Self {
             running: None,
             title: None,
