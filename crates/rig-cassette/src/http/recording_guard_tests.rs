@@ -1415,3 +1415,59 @@ async fn a_streamed_error_reply_cut_short_keeps_what_arrived() {
     server.await.expect("the server ends");
     assert!(cassette.try_finish().await.is_err());
 }
+
+/// A direct recording of an Ollama-style JSON-lines stream whose reader
+/// stops right after its `done` record keeps the whole reply.
+#[tokio::test]
+async fn a_json_lines_stream_stopped_after_its_last_record_is_recorded() {
+    use futures::StreamExt;
+    use rig_core::http_client::HttpClientExt;
+
+    let body = concat!(
+        "{\"message\":{\"content\":\"Hel\"},\"done\":false}\n",
+        "{\"done\":true,\"done_reason\":\"stop\",\"prompt_eval_count\":12,\"eval_count\":2}\n",
+    );
+    let upstream = httpmock::MockServer::start_async().await;
+    upstream
+        .mock_async(|when, then| {
+            when.method("POST").path("/v1/chat");
+            then.status(200)
+                .header("content-type", "application/x-ndjson")
+                .body(body);
+        })
+        .await;
+    let origin = upstream.base_url();
+    let session = Session::new();
+    let cassette = session.start_direct(&origin).await;
+
+    let response = cassette
+        .direct_http()
+        .send_streaming(post(&origin, "chat"))
+        .await
+        .expect("a streamed reply");
+    let mut stream = response.into_body();
+    let mut read = Vec::new();
+    // The reader stops at the `done` record and drops the body unread to its end.
+    while !read.ends_with(b"\"eval_count\":2}\n") {
+        let Some(Ok(chunk)) = stream.next().await else {
+            break;
+        };
+        read.extend_from_slice(&chunk);
+    }
+    drop(stream);
+    assert_eq!(read, body.as_bytes());
+
+    cassette
+        .try_finish()
+        .await
+        .expect("the recording is written");
+    let recorded = fs::read_to_string(&session.fixture).expect("the fixture");
+    let interactions = parse_cassette_interactions(&session.fixture, &recorded);
+    assert_eq!(interactions.len(), 1);
+    assert_eq!(
+        interactions
+            .first()
+            .and_then(|interaction| interaction.then.body.as_deref()),
+        Some(body)
+    );
+}
