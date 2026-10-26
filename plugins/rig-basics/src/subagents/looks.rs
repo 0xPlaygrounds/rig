@@ -7,8 +7,17 @@ use rig_tui::{RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
 
 use super::{MESSAGE, TASK, WAIT};
 
+/// The system that draws the subagent tools' calls, in
+/// [`RenderSystems::Render`]. A plugin that draws them its own way runs
+/// after it.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SubagentLooks;
+
 pub(super) fn add(app: &mut App) {
-    app.add_systems(TranscriptRender, draw.in_set(RenderSystems::Render));
+    app.add_systems(
+        TranscriptRender,
+        draw.in_set(SubagentLooks).in_set(RenderSystems::Render),
+    );
 }
 
 /// Draws the subagent tools' calls.

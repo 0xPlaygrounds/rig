@@ -117,6 +117,9 @@ fn shown(path: &std::path::Path) -> String {
 }
 
 #[cfg(feature = "tui")]
+pub use tui::WelcomeLooks;
+
+#[cfg(feature = "tui")]
 mod tui {
     use bevy_app::App;
     use rig_harness::prelude::*;
@@ -161,8 +164,17 @@ mod tui {
         spans
     }
 
+    /// The system that draws the welcome aside, in
+    /// [`RenderSystems::Render`]. A plugin that draws it its own way runs
+    /// after it.
+    #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct WelcomeLooks;
+
     pub(super) fn add(app: &mut App) {
-        app.add_systems(TranscriptRender, draw.in_set(RenderSystems::Render));
+        app.add_systems(
+            TranscriptRender,
+            draw.in_set(WelcomeLooks).in_set(RenderSystems::Render),
+        );
     }
 
     /// Draws the welcome asides.

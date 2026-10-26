@@ -33,8 +33,9 @@ use rig_tools::{Edit, OutputLimit, Read, Seen, Shell, Write};
 use rig_tui::{RenderSystems, TranscriptRender};
 
 /// The systems that draw the coding tools' calls in the terminal view, in
-/// `rig_tui::RenderSystems::Render`, with the `tui` feature. A plugin that
-/// draws them its own way runs after it.
+/// `rig_tui::RenderSystems::Render`. A plugin that draws them its own way
+/// runs after it.
+#[cfg(feature = "tui")]
 #[derive(bevy_ecs::schedule::SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CodingToolLooks;
 

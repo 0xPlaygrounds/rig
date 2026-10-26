@@ -507,8 +507,12 @@ export. The typed `tools_mut`, `entries_mut`, `contents_mut`, `asides_mut`,
 `calls_mut`, and `messages_mut` iterators select inputs without depending on
 live effect entities. `requests` exposes every request and output by its typed
 `RenderKey`. Unchanged messages stay cached and do not enter the schedule.
-After changing external renderer state or enabling a different look, increment
-`RenderRevision.0`; this requests a frame and invalidates cached presentation.
+A cached item is drawn again only when its inputs change, so after changing
+anything else a look reads, or adding or removing a look system at runtime,
+increment `RenderRevision.0`; this requests a frame and invalidates cached
+presentation. A look that replaces another is ordered after the other's
+public set: the shipped looks are in `CodingToolLooks`, `SummaryLooks`,
+`SubagentLooks`, `WelcomeLooks` and `BuildFailedLooks`.
 
 
 # Gating and reviewing tool calls
@@ -2145,7 +2149,7 @@ each block an item `TranscriptItem::Content(id, index)` with its rows.
 method to produce `MessageDecoration(message, name)`. `TuiFrame`, written in `TuiSystems::Render`,
 says where the frame drew each panel (`area`) and row (`screen_row`) and
 what an overlay `covered`, for a plugin that writes to the terminal
-itself, such as an image over rows its renderer left blank, and
+itself, such as an image over rows its render system left blank, and
 `RedrawArea(rect)` writes cells it drew over again.
 
 ```rust,no_run
