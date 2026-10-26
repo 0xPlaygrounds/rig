@@ -461,9 +461,7 @@ fn check_build(home: &Home) -> Result<()> {
         )
         .into());
     }
-    println!(
-        "The agent builds with these plugins. Type /reload to restart on them."
-    );
+    println!("The agent builds with these plugins. Type /reload to restart on them.");
     Ok(())
 }
 
