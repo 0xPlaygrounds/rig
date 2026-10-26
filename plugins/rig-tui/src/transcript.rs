@@ -1435,7 +1435,7 @@ fn message_lines(
                             .any(|part| matches!(part, UserContent::ToolResult(_)));
                         match author.filter(other) {
                             Some(author) => lines.extend(on_band(
-                                delivered_lines(author, &text.text, look),
+                                delivered_lines(id, author, &text.text, look),
                                 look.theme.tool,
                             )),
                             None if results => lines.extend(on_band(
@@ -1592,13 +1592,19 @@ fn content_lines(
 /// Text an agent or a plugin sent, without the header the model reads:
 /// drawn by the render system of the plugin that sent it, if it has one,
 /// else as where it came from and its start.
-fn delivered_lines(author: &Author, text: &str, look: &Look<'_>) -> Vec<Line<'static>> {
+fn delivered_lines(
+    id: Option<MessageId>,
+    author: &Author,
+    text: &str,
+    look: &Look<'_>,
+) -> Vec<Line<'static>> {
     let body = author
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
     let label = author.label();
     let view = EntryView {
+        id,
         plugin: plugin_name(author),
         title: &label,
         text: body,

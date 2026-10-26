@@ -22,7 +22,7 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, Message, UnsupportedOption,
 };
 use rig_core::conversation::{
-    Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
+    Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced, pairing,
 };
 use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ pub struct TrackedSet {
 }
 
 /// A rule of [`SummaryState::track`]: the string argument `argument` of
-/// every call of the tool `tool` goes into the set `set`.
+/// every call of the tool `tool` that succeeded goes into the set `set`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrackArgument {
     /// The tool's name.
@@ -119,7 +119,7 @@ impl SummaryState {
         Some(text)
     }
 
-    /// Adds the arguments `rules` name of the tool calls in `messages` to
+    /// Adds the arguments `rules` name of successful tool calls in `messages` to
     /// the tracked sets, creating the rules' sets in rule order first.
     pub fn track(&mut self, messages: &[impl Borrow<Message>], rules: &[TrackArgument]) {
         for rule in rules {
@@ -130,19 +130,41 @@ impl SummaryState {
                 });
             }
         }
-        let calls = messages.iter().flat_map(|message| match message.borrow() {
-            Message::Assistant(reply) => reply.content.as_slice(),
-            _ => &[],
-        });
-        for item in calls {
-            let AssistantContent::ToolCall(call) = item else {
-                continue;
-            };
-            for rule in rules {
-                let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
-                if let (Some(value), Some(set)) = (rule.value(call), set) {
-                    set.values.insert(value.to_owned());
+        let paired = pairing::pair(
+            messages
+                .iter()
+                .map(|message| Some(message.borrow().clone()))
+                .collect(),
+            pairing::Pairing::canonical(),
+        );
+        let mut waiting: Vec<&ToolCall> = Vec::new();
+        for message in &paired.messages {
+            match message {
+                Message::Assistant(reply) => {
+                    waiting = reply.tool_calls().collect();
                 }
+                Message::User { content } => {
+                    for result in content.iter().filter_map(|part| match part {
+                        UserContent::ToolResult(result) => Some(result),
+                        _ => None,
+                    }) {
+                        let Some(at) = waiting.iter().position(|call| call.id == result.call)
+                        else {
+                            continue;
+                        };
+                        let call = waiting.remove(at);
+                        if result.is_error {
+                            continue;
+                        }
+                        for rule in rules {
+                            let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
+                            if let (Some(value), Some(set)) = (rule.value(call), set) {
+                                set.values.insert(value.to_owned());
+                            }
+                        }
+                    }
+                }
+                Message::System { .. } => {}
             }
         }
     }
@@ -729,6 +751,8 @@ impl SummaryPrompts {
              character from the messages, tool outputs, notes on cleared outputs and the earlier \
              summary: names, numbers, identifiers, paths, commands, errors. Never guess a value. Or \
              \"(none)\".]\n\n\
+             Do not copy file contents or long outputs: a file on disk can be read again, so \
+             give its path and what in it matters.\n\n\
              Keep each section short, except Critical context. Keep exact file paths, function \
              names, commands and error messages.",
         ),

@@ -648,7 +648,7 @@ fn a_summary_in_place_has_room_for_the_thinking_budget() {
         let asked = ask_for(
             &mut model,
             Upto::Before(None),
-            (summarizer, Asking::Summary("")),
+            (summarizer, Asking::Summary("", None)),
             measure,
         );
         let max_tokens = asked.filter(|asked| *asked).and(model.request.max_tokens);
@@ -663,7 +663,7 @@ fn a_summary_in_place_has_room_for_the_thinking_budget() {
     let asked = ask_for(
         &mut model,
         Upto::Before(None),
-        (summarizer, Asking::Summary("")),
+        (summarizer, Asking::Summary("", None)),
         measure,
     );
     assert_eq!((asked, model.request.max_tokens), (Some(true), None));
@@ -2515,3 +2515,76 @@ fn clearing_that_frees_little_checkpoints_once_from_a_cached_prefix() {
 /// request still does not fit: said once.
 const NOT_SUMMARIZED: &str =
     "The conversation does not fit the model's context window, and was not summarized";
+
+#[test]
+fn an_asked_summary_is_told_the_reply_it_keeps() {
+    for outcome in ["answered", "stopped text", "stopped tools"] {
+        let answered = outcome == "answered";
+        let store = MemoryStore::default();
+        let (mut app, wakes) = start(&store);
+        let model = MockCompletionModel::from_stream_turns([reply("## Goal\nCheckpoint.")]);
+        let Some(agent) = agent(
+            &mut app,
+            &model,
+            40_000,
+            vec![Message::user("Explain the crate.")],
+        ) else {
+            return;
+        };
+        let mut conversation = app.world_mut().get_mut::<Conversation>(agent);
+        let Some(conversation) = conversation.as_deref_mut() else {
+            return;
+        };
+        conversation.open_turn();
+        if answered {
+            conversation.push(Message::assistant("The crate builds agents."));
+            let answer = conversation.entries().next_back().map(|entry| entry.id);
+            conversation.end_turn(TurnEnd::Answered { answer });
+        } else if outcome == "stopped text" {
+            conversation.push(Message::Assistant(AssistantMessage::aborted(
+                None,
+                vec![AssistantContent::text("The crate builds")],
+                "stopped",
+            )));
+            conversation.end_turn(TurnEnd::Stopped { why: None });
+        } else {
+            for message in read("stopped", "a.rs", "Stopped") {
+                conversation.push(message);
+            }
+            conversation.end_turn(TurnEnd::Stopped { why: None });
+        }
+        let spec = connect(&model).map(|connection| connection.spec);
+        let Some(spec) = spec else {
+            return;
+        };
+        let planned = plan(
+            conversation,
+            &CompactionPolicy::default(),
+            CompactReason::Asked {
+                focus: String::new(),
+            },
+            &spec,
+        );
+        let separate = planned
+            .ok()
+            .flatten()
+            .map(|(_, request)| serde_json::to_string(&request).unwrap_or_default())
+            .unwrap_or_default();
+        let hint = if answered {
+            "so it is answered"
+        } else {
+            "reply to the last request above continues"
+        };
+        assert!(separate.contains(hint), "{separate}");
+        app.world_mut()
+            .trigger(RunCommand::new(agent, "compact".to_owned()));
+        run_until(&mut app, &wakes, |world| {
+            !world.resource::<Ended>().0.is_empty()
+        });
+        let summary = sent(&model).first().cloned().unwrap_or_default();
+        assert!(summary.contains(hint), "{summary}");
+        if !answered {
+            assert!(!summary.contains("so it is answered"), "{summary}");
+        }
+    }
+}

@@ -57,7 +57,7 @@ use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{Command, SystemParam};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{self, CompletionRequest, tokens_label};
-use rig_core::conversation::Entry;
+use rig_core::conversation::{Entry, TurnEnd};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
@@ -357,12 +357,17 @@ pub fn plan(
     let Some(SummaryPlan {
         keep_from,
         state,
-        request,
+        mut request,
         ..
     }) = planned.map_err(|why| why.to_string())?
     else {
         return Ok(None);
     };
+    if let Some(hint) = kept_reply(conversation, keep_from) {
+        request
+            .chat_history
+            .push(completion::Message::user(hint).into());
+    }
     let summarizing = Summarizing {
         reason,
         keep_from,
@@ -370,6 +375,40 @@ pub fn plan(
         summary: None,
     };
     Ok(Some((summarizing, request)))
+}
+
+/// Whether the last summarized request already has its answer in the kept part.
+fn kept_reply(
+    conversation: &rig_core::conversation::Conversation,
+    keep_from: Option<MessageId>,
+) -> Option<&'static str> {
+    let kept = conversation.index_of(keep_from?)?;
+    if conversation.entries().nth(kept)?.is_users_own() {
+        return None;
+    }
+    let request = conversation
+        .entries()
+        .take(kept)
+        .rev()
+        .find(|entry| entry.is_users_own())?;
+    let turn = conversation.turns().rev().find(|(_, turn)| {
+        conversation
+            .asked(turn.start)
+            .any(|asked| asked.id == request.id)
+    });
+    let answered = turn.is_some_and(|(_, turn)| {
+        matches!(turn.end, Some(TurnEnd::Answered { answer: Some(answer) })
+            if conversation.index_of(answer).is_some_and(|at| at >= kept))
+    });
+    if answered {
+        Some(
+            "The messages kept after this checkpoint begin with the model's answer to the last request above, so it is answered: do not list it as pending.",
+        )
+    } else {
+        Some(
+            "The model's reply to the last request above continues in the messages kept after this checkpoint.",
+        )
+    }
 }
 
 /// What the summary for `reason` should keep above all; may be empty.
@@ -419,7 +458,7 @@ fn ask_at(
 #[derive(Clone, Copy)]
 enum Asking<'a> {
     /// A summary, with this focus.
-    Summary(&'a str),
+    Summary(&'a str, Option<&'a str>),
     /// Notes on the tool outputs about to be cleared.
     Notes,
 }
@@ -435,7 +474,14 @@ fn ask_for(
     measure: Measure,
 ) -> Option<bool> {
     let ask = |tokens| match asking {
-        Asking::Summary(focus) => summarizer.instruction(focus, tokens),
+        Asking::Summary(focus, hint) => {
+            let mut instruction = summarizer.instruction(focus, tokens);
+            if let Some(hint) = hint {
+                instruction.push_str("\n\n");
+                instruction.push_str(hint);
+            }
+            instruction
+        }
         Asking::Notes => summarizer.notes_instruction(tokens),
     };
     let most = summarizer.max_tokens(measure.spec);
@@ -511,7 +557,10 @@ fn plan_in_place(
     let mut request = held.clone();
     let ask = (
         &policy.summarizer,
-        Asking::Summary(focus(&summarizing.reason)),
+        Asking::Summary(
+            focus(&summarizing.reason),
+            kept_reply(conversation, summarizing.keep_from),
+        ),
     );
     let upto = Upto::Before(summarizing.keep_from);
     if ask_for(&mut request, upto, ask, measure) != Some(true) {
@@ -1279,7 +1328,10 @@ fn ask_in_place(
         let policy = &default.0;
         let ask = (
             &policy.summarizer,
-            Asking::Summary(focus(&summarizing.reason)),
+            Asking::Summary(
+                focus(&summarizing.reason),
+                kept_reply(conversation, summarizing.keep_from),
+            ),
         );
         let upto = Upto::Before(summarizing.keep_from);
         match ask_for(&mut model, upto, ask, measured) {

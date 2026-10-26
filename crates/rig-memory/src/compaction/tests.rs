@@ -32,8 +32,11 @@ fn a_later_set_overrides_an_earlier_one_in_the_summary() {
     };
     let messages = [
         call("1", "read", "a.rs"),
+        result("1", "ok"),
         call("2", "read", "b.rs"),
+        result("2", "ok"),
         call("3", "edit", "b.rs"),
+        result("3", "ok"),
     ];
     state.track(
         &messages,
@@ -434,4 +437,58 @@ fn a_summary_cut_at_the_output_limit_is_not_used() {
     );
     let whole = Summarizer::summary_text(&reply(FinishReason::Stop));
     assert_eq!(whole.as_deref(), Ok("## Goal\nAnswer."));
+}
+
+#[test]
+fn only_successful_paired_calls_track_files() {
+    let failure = |id: &str| {
+        let mut message = result(id, "failed");
+        if let Message::User { content } = &mut message {
+            for part in content {
+                if let UserContent::ToolResult(result) = part {
+                    result.is_error = true;
+                }
+            }
+        }
+        message
+    };
+    let mut aborted = call("aborted", "write", "aborted.rs");
+    if let Message::Assistant(reply) = &mut aborted {
+        reply.stop = Some(StopReason::Aborted("stopped".to_owned()));
+    }
+    let messages = [
+        call("same", "read", "missing.txt"),
+        failure("same"),
+        call("same", "read", "a.rs"),
+        result("same", "ok"),
+        call("same", "edit", "a.rs"),
+        failure("same"),
+        call("missing", "write", "no-result.rs"),
+        aborted,
+        result("aborted", "orphan success"),
+        Message::assistant("boundary"),
+        result("missing", "late success"),
+    ];
+    let mut state = SummaryState {
+        summary: "Done".to_owned(),
+        ..Default::default()
+    };
+    state.track(
+        &messages,
+        &[
+            TrackArgument::new("read", "path", "read-files"),
+            TrackArgument::new("edit", "path", "modified-files"),
+            TrackArgument::new("write", "path", "modified-files"),
+        ],
+    );
+    assert_eq!(
+        state.tracked.first().map(|set| &set.values),
+        Some(&["a.rs".to_owned()].into())
+    );
+    assert!(
+        state
+            .tracked
+            .get(1)
+            .is_some_and(|set| set.values.is_empty())
+    );
 }

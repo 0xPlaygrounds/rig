@@ -249,6 +249,8 @@ impl<'a> ToolCallView<'a> {
 /// [`Note`](rig_harness::rig_core::conversation::Note), or a text of an entry of the
 /// conversation another author wrote, such as a compaction summary.
 pub struct EntryView<'a> {
+    /// The conversation entry, when this is delivered text.
+    pub id: Option<MessageId>,
     /// The plugin whose look draws it: the name of the plugin that wrote
     /// it, or empty when no plugin did (an agent, rig).
     pub plugin: &'a str,
@@ -623,6 +625,8 @@ impl ToolRender {
 /// Owned note or delivered text.
 #[derive(Clone, PartialEq)]
 pub struct EntryRender {
+    /// The conversation entry, when this is delivered text.
+    pub id: Option<MessageId>,
     /// Author plugin.
     pub plugin: String,
     /// Display title.
@@ -635,6 +639,7 @@ impl EntryRender {
     /// Borrow this input for the formatting helpers.
     pub fn view(&self) -> EntryView<'_> {
         EntryView {
+            id: self.id,
             plugin: &self.plugin,
             title: &self.title,
             text: &self.text,
@@ -1065,6 +1070,7 @@ impl Renderers {
 
     fn entry_at(&self, key: RenderKey, view: &EntryView<'_>) -> Vec<Line<'static>> {
         let input = EntryRender {
+            id: view.id,
             plugin: view.plugin.to_owned(),
             title: view.title.to_owned(),
             text: view.text.to_owned(),
@@ -1104,6 +1110,7 @@ impl Renderers {
             return Some(self.entry_at(
                 key,
                 &EntryView {
+                    id: None,
                     plugin: plugin_name(&view.aside.author),
                     title: &note.title,
                     text: &note.text,
