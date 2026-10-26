@@ -104,7 +104,8 @@ impl Origin {
 /// How an assistant turn ended.
 ///
 /// A turn that ended in [`Self::Error`] or [`Self::Aborted`] is kept in
-/// history but never replayed to a model.
+/// history as no answer. An errored turn is never replayed to a model; an
+/// aborted one is replayed as the text it had sent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -122,7 +123,7 @@ pub enum StopReason {
 }
 
 impl StopReason {
-    /// Whether the turn is incomplete and must not be replayed.
+    /// Whether the turn is incomplete, so it answers nothing.
     pub fn is_failure(&self) -> bool {
         matches!(self, Self::Error(_) | Self::Aborted(_))
     }

@@ -7,6 +7,7 @@ use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
+use rig_core::conversation::TurnEnd;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, Image, ToolCall, ToolFunction, ToolName,
@@ -26,7 +27,7 @@ use rig_harness::rig_core::conversation::Note;
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, ChildCalls, Look, Part, Pass, Renderers, Scroll, ShownEntries,
+    Below, CallFacts, ChildCalls, Look, Part, Pass, Renderers, Scroll, ShownEntries, Stops,
     StreamingCalls, Transcript,
 };
 use crate::render::CallStates;
@@ -117,6 +118,7 @@ fn drawn(
         theme: &theme,
         children: &ChildCalls::default(),
         marks: &[],
+        stops: &Stops::of(conversation),
     };
     // The conversation is the same each time.
     let entries = ShownEntries::new(conversation, None);
@@ -485,29 +487,67 @@ fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
     assert!(order.is_sorted(), "{lines:#?}");
 }
 
-#[test]
-fn the_note_rig_adds_after_a_stop_is_drawn_as_a_stop() {
-    let (mut app, agent) = view_app();
-    say(&mut app, agent, Message::user("first question"));
+/// Ends the turn `agent` runs as a stop does: the request halted, the
+/// record ending at the last entry.
+fn stop(app: &mut App, agent: Entity) {
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.halt(Halt::Stopped);
+        let at = conversation.entries().next_back().map(|entry| entry.id);
+        conversation.end_turn(TurnEnd::Stopped { why: None, at });
     }
-    say(&mut app, agent, Message::user("second question"));
+    app.update();
+}
+
+/// Puts `agent`'s conversation back as a session restore reads it, so
+/// only what is saved draws it; whether it could.
+fn reload(app: &mut App, agent: Entity) -> bool {
+    let saved = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(serde_json::to_value);
+    let restored = saved
+        .and_then(Result::ok)
+        .map(serde_json::from_value::<Conversation>);
+    let Some(Ok(restored)) = restored else {
+        return false;
+    };
+    app.world_mut().entity_mut(agent).insert(restored);
+    app.update();
+    true
+}
+
+/// How many of `lines` contain `text`.
+fn count_of(lines: &[String], text: &str) -> usize {
+    lines.iter().filter(|line| line.contains(text)).count()
+}
+
+#[test]
+fn a_stopped_reply_ends_in_a_stop_at_once_and_after_a_reload() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("write an essay"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    let text = vec![AssistantContent::text("half an essay")];
+    let aborted = AssistantMessage::aborted(None, text, "stopped");
+    say(&mut app, agent, Message::Assistant(aborted));
+    stop(&mut app, agent);
+    let order = ["write an essay", "half an essay", "[stopped]"];
     let lines = on_screen(&mut app, agent, 100);
-    let order = [
-        "first question",
-        "[stopped before it was answered]",
-        "second question",
-    ];
-    let order = order.map(|text| line_of(&lines, text));
-    assert!(order.iter().all(Option::is_some), "{lines:#?}");
-    assert!(order.is_sorted(), "{lines:#?}");
-    assert!(
-        !lines
-            .iter()
-            .any(|line| line.contains("not the user's words")),
-        "{lines:#?}"
-    );
+    let at = order.map(|text| line_of(&lines, text));
+    assert!(at.iter().all(Option::is_some), "{lines:#?}");
+    assert!(at.is_sorted(), "{lines:#?}");
+    // The note the next message brings draws nothing; the stop stays put.
+    say(&mut app, agent, Message::user("go on"));
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        let at = ["half an essay", "[stopped]", "go on"].map(|text| line_of(&lines, text));
+        assert!(at.iter().all(Option::is_some), "{lines:#?}");
+        assert!(at.is_sorted(), "{lines:#?}");
+        assert_eq!(count_of(&lines, "[stopped"), 1, "{lines:#?}");
+        assert_eq!(count_of(&lines, "Do not carry it out"), 0, "{lines:#?}");
+        assert!(reload(&mut app, agent));
+    }
 }
 
 #[test]

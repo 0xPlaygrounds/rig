@@ -48,6 +48,10 @@ pub enum TurnEnd {
         /// Why, when it was not the user.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         why: Option<String>,
+        /// The last entry when a stop cut the turn off; `None` when the turn
+        /// ended as stopped in its own course, such as a compaction ending it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<MessageId>,
     },
 }
 

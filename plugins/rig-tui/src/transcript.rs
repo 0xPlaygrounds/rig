@@ -7,7 +7,7 @@
 //! message, its calls), so the view can scroll to one, select it and say
 //! which is at the top.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Range;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -36,7 +36,7 @@ use super::view::{
     TranscriptItem,
 };
 use super::wrap::wrap;
-use rig_core::conversation::attached_file;
+use rig_core::conversation::{TurnEnd, attached_file};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel, Partial};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
@@ -592,6 +592,38 @@ pub(crate) struct Look<'a> {
     pub(crate) children: &'a ChildCalls,
     /// The labels drawn inside replies' text.
     pub(crate) marks: &'a [TextMark],
+    /// Where stops cut turns off.
+    pub(crate) stops: &'a Stops,
+}
+
+/// Where stops cut the turns of a conversation off, read from its turn
+/// records: the last entry of each stopped turn, which the stop is drawn
+/// under. A turn that ended as stopped in its own course, with no last
+/// entry recorded, has none.
+#[derive(Default, Hash)]
+pub(crate) struct Stops {
+    at: BTreeSet<MessageId>,
+}
+
+impl Stops {
+    /// The stops of `conversation`'s turns.
+    pub(crate) fn of(conversation: &conversation::Conversation) -> Self {
+        let mut stops = Self::default();
+        for (_, record) in conversation.turns() {
+            let Some(TurnEnd::Stopped { at: Some(at), .. }) = record.end else {
+                continue;
+            };
+            if conversation.index_of(at).is_some() {
+                stops.at.insert(at);
+            }
+        }
+        stops
+    }
+
+    /// Whether a stop is drawn under the entry `id`.
+    fn under(&self, id: Option<MessageId>) -> bool {
+        id.is_some_and(|id| self.at.contains(&id))
+    }
 }
 
 /// What is drawn inside a message, before one of its items.
@@ -679,12 +711,14 @@ impl Look<'_> {
     }
 
     /// A hash of what entry `index` looks like besides its message: its
-    /// notices and its calls' states, output so far and running times.
+    /// notices, a stop under it, and its calls' states, output so far and
+    /// running times.
     fn hash_message(&self, index: usize, entry: &ShownEntry<'_>) -> u64 {
         let (id, message) = (entry.id, &**entry.message);
         let hasher = &mut DefaultHasher::new();
         (id, entry.author, entry.archived).hash(hasher);
         self.hash_inside(index, hasher);
+        self.stops.under(id).hash(hasher);
         let marks = self.marks.iter();
         marks
             .filter(|mark| matches!(mark.r#in, MarkIn::Message { id: of, .. } if Some(of) == id))
@@ -716,6 +750,7 @@ impl Look<'_> {
         self.calls.hash(&mut hasher);
         self.outputs.hash(&mut hasher);
         self.marks.hash(&mut hasher);
+        self.stops.hash(&mut hasher);
         self.theme.hash(&mut hasher);
         // The settled calls' facts and children change only with it.
         self.facts.changes.hash(&mut hasher);
@@ -1473,7 +1508,9 @@ fn message_lines(
         block: 0,
     });
     let (message, id, author) = (&**entry.message, entry.id, entry.author);
-    let stopped = entry.stop;
+    // The note a stop leaves for the model; the stop is drawn under the
+    // turn it cut off.
+    let note = entry.stop;
     let inside = look.inside(at);
     let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
@@ -1513,9 +1550,7 @@ fn message_lines(
                             ));
                             continue;
                         }
-                        if stopped {
-                            let stop = Line::from("  [stopped before it was answered]").dim();
-                            lines.extend(on_band([stop], look.theme.user));
+                        if note {
                             continue;
                         }
                         lines.push(Line::default());
@@ -1641,6 +1676,9 @@ fn message_lines(
             }
         }
     }
+    if look.stops.under(id) {
+        lines.extend(stop_lines(message, look.theme));
+    }
     if !matches!(message, Message::System { .. }) {
         let decorated = DecoratedMessage {
             message,
@@ -1664,6 +1702,24 @@ fn message_lines(
         marks.clear();
     }
     (lines, marks)
+}
+
+/// The stop drawn under `message`, the last of a turn a stop cut off:
+/// within a reply when it is one, else under the request or the results
+/// nothing answered.
+fn stop_lines(message: &Message, theme: &Theme) -> Vec<Line<'static>> {
+    match message {
+        Message::Assistant(_) => vec![Line::from("[stopped]").dim()],
+        Message::User { content } => {
+            let results = content
+                .iter()
+                .any(|item| matches!(item, UserContent::ToolResult(_)));
+            let band = if results { theme.tool } else { theme.user };
+            let stop = Line::from("  [stopped before it was answered]").dim();
+            on_band([stop], band).collect()
+        }
+        Message::System { .. } => Vec::new(),
+    }
 }
 
 /// Draws the content block `block`, the `index`-th of the message `id`

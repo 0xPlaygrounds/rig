@@ -354,7 +354,10 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
             }
         }
         TurnOutcome::Failed(why) => TurnEnd::Failed { why: why.clone() },
-        TurnOutcome::Stopped(why) => TurnEnd::Stopped { why: why.clone() },
+        TurnOutcome::Stopped(why) => TurnEnd::Stopped {
+            why: why.clone(),
+            at: None,
+        },
     }
 }
 
@@ -481,17 +484,19 @@ const STOPPED_BY_USER: &str = "the user stopped the turn";
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is
 /// spawned without [`SpawnedBy`](super::agent::SpawnedBy). What a streaming
-/// reply had sent is kept as the model's message, aborted, so no model
-/// reads it again and the user's request is halted as stopped, unless its
-/// call was superseded; every tool call of the last reply gets a result,
-/// real, its [`IfStopped`] or what [`not_finished`](feedback::not_finished)
-/// says, and every call of the turn that has not settled is answered so
-/// and settled, whatever held it gone. Each turn ends
-/// [`TurnOutcome::Stopped`], in its record too, set before its calls
-/// settle, so a call's owner sees it stopped them. The conversations are
-/// saved and written to the log at once, in one flush, so a log that ends
-/// mid-turn means a crash, a restart or a log that stopped (shown once, as
-/// every log failure is); a stop never waits on the log.
+/// reply had sent is kept as the model's message, aborted, so the model
+/// reads its text as no answer, and the user's request is halted as
+/// stopped, unless its call was superseded; every tool call of the last
+/// reply gets a result, real, its [`IfStopped`] or what
+/// [`not_finished`](feedback::not_finished) says, and every call of the
+/// turn that has not settled is answered so and settled, whatever held it
+/// gone. Each turn ends [`TurnOutcome::Stopped`], in its record too, set
+/// before its calls settle, so a call's owner sees it stopped them; the
+/// record names the last entry. The
+/// conversations are saved and written to the log at once, in one flush,
+/// so a log that ends mid-turn means a crash, a restart or a log that
+/// stopped (shown once, as every log failure is); a stop never waits on
+/// the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     spawned: Query<&Spawned>,
@@ -542,8 +547,10 @@ pub(crate) fn on_stop_turn(
             commit_results(&mut conversation, results);
         }
         conversation.halt(Halt::Stopped);
+        let at = conversation.entries().next_back().map(|entry| entry.id);
         conversation.end_turn(TurnEnd::Stopped {
             why: reason.clone(),
+            at,
         });
         let conversation = conversation.bypass_change_detection();
         committed.write_batch(save_conversation(&log, agent, id, conversation));

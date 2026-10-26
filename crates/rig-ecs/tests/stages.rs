@@ -3161,7 +3161,9 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
             .turns()
             .last()
             .and_then(|(_, record)| record.end);
-        assert_eq!(ended, Some(TurnEnd::Stopped { why: None }));
+        // The record ends at the kept text.
+        let at = conversation.entries().next_back().map(|entry| entry.id);
+        assert_eq!(ended, Some(TurnEnd::Stopped { why: None, at }));
         conversation.push(Message::user("never mind"));
         let note = conversation.entries().rev().nth(1);
         assert!(note.is_some_and(|entry| entry.is_stop_marker()));

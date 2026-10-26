@@ -163,8 +163,12 @@ pub enum Block {
     },
     /// A tool call.
     Tool(ToolBlock),
-    /// A request the user stopped before it was answered.
-    Stopped,
+    /// Where a stop cut a turn off, under its last message.
+    Stopped {
+        /// Whether that message is a reply, which the stop cut short;
+        /// otherwise nothing answered the request.
+        replied: bool,
+    },
 }
 
 /// A line for the user.
@@ -215,7 +219,7 @@ impl GuiTranscript {
                     tool.arguments.contains(text)
                         || tool.result.as_ref().is_some_and(|said| said.contains(text))
                 }
-                Block::Stopped => false,
+                Block::Stopped { .. } => false,
             })
     }
 }
@@ -393,20 +397,27 @@ fn stream_reply(
 }
 
 /// The conversation as blocks; a tool call carries the result its next
-/// message holds.
+/// message holds, and a stop follows the last message of the turn it cut
+/// off, as its turn record says.
 fn blocks_of(conversation: &Conversation, opened: &HashSet<BlockKey>) -> Vec<Block> {
     let messages = conversation.messages();
+    let stops: HashSet<MessageId> = conversation
+        .turns()
+        .filter_map(|(_, record)| match record.end {
+            Some(TurnEnd::Stopped { at, .. }) => at,
+            _ => None,
+        })
+        .collect();
     let mut blocks = Vec::new();
     for entry in conversation.entries() {
         let index = entry.index;
         match entry.message {
             Message::System { .. } => {}
+            // The note a stop leaves for the model.
+            Message::User { .. } if entry.is_stop_marker() => {}
             Message::User { content } => {
                 for part in content {
                     match part {
-                        UserContent::Text(_) if entry.is_stop_marker() => {
-                            blocks.push(Block::Stopped);
-                        }
                         UserContent::Text(text) => match conversation.author(index) {
                             Some(author) => blocks.push(Block::Delivered {
                                 from: author.label(),
@@ -453,6 +464,10 @@ fn blocks_of(conversation: &Conversation, opened: &HashSet<BlockKey>) -> Vec<Blo
                     }
                 }
             }
+        }
+        if stops.contains(&entry.id) {
+            let replied = matches!(entry.message, Message::Assistant(_));
+            blocks.push(Block::Stopped { replied });
         }
     }
     blocks

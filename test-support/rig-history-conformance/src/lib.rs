@@ -1214,7 +1214,8 @@ pub fn h06_malformed_arguments<F: HistoryFixture>(fixture: &F) {
 }
 
 /// H7. Every documented finish ends a turn as documented, a reply cut off
-/// before its end is a failed turn, and the adapter skips failed turns.
+/// before its end is a failed turn, and the adapter replays a stopped turn
+/// as its text alone and skips an errored one.
 pub fn h07_failed_turns<F: HistoryFixture>(fixture: &F) {
     let wire = fixture.wire(fixture.model());
     let finishes = fixture.finishes();
@@ -1257,6 +1258,18 @@ pub fn h07_failed_turns<F: HistoryFixture>(fixture: &F) {
             "a reply cut after {cut} frames is a failed turn: {:?}",
             turn.stop
         );
+        // A stopped reply replays the text it had sent, canonical; an
+        // errored one nothing.
+        let text: Vec<AssistantContent> = match turn.stop {
+            Some(StopReason::Aborted(_)) => turn
+                .content
+                .iter()
+                .filter(|block| matches!(block, AssistantContent::Text(_)))
+                .map(AssistantContent::canonical)
+                .filter(|block| !block.is_blank())
+                .collect(),
+            _ => Vec::new(),
+        };
         let history = vec![
             Message::user("q"),
             Message::Assistant(turn),
@@ -1265,11 +1278,21 @@ pub fn h07_failed_turns<F: HistoryFixture>(fixture: &F) {
         let describe = wire.describe();
         let replay = describe.replay.expect("a replay target");
         let adapted = rig_core::completion::history::adapt(&history, replay);
-        assert!(
-            adapted
-                .iter()
-                .all(|message| !matches!(message, Message::Assistant(_))),
-            "a failed turn is never replayed: {adapted:?}"
+        let replayed: Vec<&AssistantMessage> = adapted
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) => Some(turn),
+                _ => None,
+            })
+            .collect();
+        let expected: Vec<AssistantMessage> = (!text.is_empty())
+            .then(|| AssistantMessage::new(text))
+            .into_iter()
+            .collect();
+        assert_eq!(
+            replayed,
+            expected.iter().collect::<Vec<_>>(),
+            "a reply cut after {cut} frames replays its text alone: {adapted:?}"
         );
     }
     if let (Some(error), Some(mut frames)) = (

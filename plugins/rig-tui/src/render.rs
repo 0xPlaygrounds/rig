@@ -37,7 +37,7 @@ use super::terminal::{Tui, TuiTestScreen};
 use super::theme::Theme;
 use super::transcript::{
     CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, Replaced, ShownAside, ShownEntries,
-    StreamingCalls, Transcript, live_call, notice_lines, on_band, plain_lines,
+    Stops, StreamingCalls, Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
     DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
@@ -670,6 +670,7 @@ pub(crate) fn lay_out_transcript(
     // and notices inside one, by where it is among the entries drawn.
     let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
     let mut asides_after: Vec<Vec<&ShownAside<'_>>> = vec![Vec::new(); count + 1];
+    let stops = Stops::of(conversation);
     let mut look = Look {
         renderers: sources.renderers,
         calls: &shown.calls,
@@ -679,6 +680,7 @@ pub(crate) fn lay_out_transcript(
         theme: sources.theme,
         children: &shown.children,
         marks: &view.marks,
+        stops: &stops,
     };
     let notices = shown.id.map(|id| (id, sources.notices));
     let notices = notices

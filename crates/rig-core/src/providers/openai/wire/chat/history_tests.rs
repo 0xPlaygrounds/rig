@@ -764,3 +764,37 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
         }
     }
 }
+
+/// A stopped reply goes back as the text it had sent, without its call or
+/// the result answering the call.
+#[test]
+fn a_stopped_reply_goes_back_as_its_text() {
+    let wire = wire(&OPENAI, "gpt-4o");
+    let frames = vec![whole(
+        json!({"role": "assistant", "content": "half an essay",
+            "tool_calls": [{"id": "call_1", "type": "function",
+                "function": {"name": "add", "arguments": {"x": 1}}}]}),
+        "tool_calls",
+    )];
+    let response = decode(&wire, Mode::Unary, frames).expect("the reply decodes");
+    let stopped = AssistantMessage {
+        stop: Some(StopReason::Aborted("stopped".into())),
+        ..turn_of(&response)
+    };
+    let body = sent(
+        &wire,
+        vec![
+            Message::user("q"),
+            Message::Assistant(stopped),
+            Message::tool_result(CallId::from_wire("call_1"), name("add"), "not finished"),
+        ],
+    );
+    assert_eq!(
+        body["messages"],
+        json!([
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "half an essay"},
+            {"role": "user", "content": "next"},
+        ])
+    );
+}

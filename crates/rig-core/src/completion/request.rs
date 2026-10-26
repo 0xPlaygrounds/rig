@@ -322,7 +322,7 @@ pub struct CompletionResponse {
     pub error: Option<String>,
     /// Why the reply stopped before the provider ended it, when the caller
     /// stopped reading: the turn's message then ends in
-    /// [`StopReason::Aborted`] and is never replayed.
+    /// [`StopReason::Aborted`] and is replayed as its text alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aborted: Option<String>,
     /// Request identifier from HTTP headers or SDK metadata, not the body's

@@ -389,7 +389,8 @@ impl EntryRef<'_> {
 /// The text of the entry that goes between a request the user stopped and
 /// the next entry, so the model does not carry the request out. rig pushes
 /// it as its own entry, by [`Author::rig`].
-pub const STOPPED: &str = "[The request above was stopped by the user before it was answered. \
+pub const STOPPED: &str = "[The user stopped the request above before it was fully answered; \
+                           any reply to it above was cut off there. \
                            Do not carry it out unless asked again.]";
 
 /// Why the user's last message is left without an answer, so a restore
@@ -626,7 +627,7 @@ impl Conversation {
 
     /// Whether the model owes an answer: the last message a model reads is
     /// the user's, and it was not halted. A failed or stopped reply after it
-    /// is never read ([`StopReason::is_failure`]), so the answer is still
+    /// is no answer ([`StopReason::is_failure`]), so the answer is still
     /// owed.
     pub fn awaits_model(&self) -> bool {
         let read = self.messages.iter().rev().map(Arc::as_ref).find(|message| {

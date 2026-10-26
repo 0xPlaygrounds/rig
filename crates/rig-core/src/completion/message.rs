@@ -73,8 +73,8 @@ impl AssistantMessage {
         }
     }
 
-    /// The turn a run failed on before the reply ended: kept in history,
-    /// never replayed.
+    /// The turn a run stopped before the reply ended: kept in history as no
+    /// answer, replayed as its text alone.
     pub fn aborted(
         origin: Option<Origin>,
         content: Vec<AssistantContent>,
