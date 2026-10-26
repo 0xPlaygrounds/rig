@@ -2,8 +2,8 @@
 //!
 //! Open reasoning models behind plain OpenAI-compatible endpoints send their
 //! thinking inline, as `<think>…</think>` in the answer text. This plugin
-//! puts an [`Adapter`] on every model call. Start applies it to the model
-//! the call finally goes to, whatever routed it there; for a listed model,
+//! adapts every model call ([`Adapted`]), on the model the call finally
+//! goes to, whatever routed it there; for a listed model,
 //! or any model while `detect` is on, it rewrites the reply stream so the
 //! thinking streams as reasoning and the rest as text, and the response the
 //! reply ends with is split the same way. The kernel, the fronts and other

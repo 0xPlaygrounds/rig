@@ -1,8 +1,8 @@
 //! CT-03: tool schemas adjusted per model, in the outgoing request only.
 //!
 //! The `[schema_adapter]` table of `settings.toml` maps model patterns to
-//! profiles. Every model call gets a `schema-adapter` [`Adapter`]; at Start,
-//! on the model the call finally goes to, a matching rule wraps the
+//! profiles. In the adapt phase ([`Adapted`]), on the model each call
+//! finally goes to, a matching rule wraps the
 //! model's handler: a layer rewrites the request's tools as the profiles
 //! say (`strict-subset`, `short-descriptions`, `few-tools`), and a stream
 //! rewrite maps each tool call's arguments back to the schema its tool

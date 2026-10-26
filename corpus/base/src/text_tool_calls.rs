@@ -1,7 +1,7 @@
 //! Tool calls for models without native tool calling (spec `59-text-tool-calls.md`).
 //!
-//! Every model call gets a `text-tools` [`Adapter`]. At Start, on the model
-//! the call finally goes to, it acts when that model's catalog entry says it
+//! Every model call is adapted ([`Adapted`]): on the model the call finally
+//! goes to, it acts when that model's catalog entry says it
 //! cannot call tools, or the `[text_tools]` settings name it: the model is
 //! then said to take tools, and its handler is wrapped. The request side
 //! (an [`Intercept`]) describes the offered tools in the system prompt with

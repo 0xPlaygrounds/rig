@@ -9,8 +9,8 @@
 //! Each agent keeps its own chain, [`ServerChain`], saved with the session:
 //! the id of the last reply its model sent and fingerprints of what the
 //! server holds under it (the system prompt, the tools, every message sent
-//! and the reply). A turn's model call gets an [`Adapter`] that wraps the
-//! model's handler, for that call only, with the chain as it stands. The
+//! and the reply). A system wraps the handler of a turn's model call
+//! ([`Adapted`]), for that call only, with the chain as it stands. The
 //! wrapper compares the request it is handed, the logical one every other
 //! plugin, the effect log and the inspectors see, with the chain, and
 //! uploads only the messages after the reply with the reply's id, or the

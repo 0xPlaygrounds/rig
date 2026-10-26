@@ -2,8 +2,8 @@
 //! mid-stream (spec `H30-degenerate-stream-cutter.md`).
 //!
 //! Small local models sometimes repeat a line forever or start writing the
-//! user's next message. This plugin puts an [`Adapter`] on every model
-//! call; for a watched model it rewrites the reply stream ([`map_stream`])
+//! user's next message. This plugin adapts every model call
+//! ([`Adapted`]); for a watched model it rewrites the reply stream ([`map_stream`])
 //! and watches its text. When a line (or a block of up to 400 characters)
 //! comes a fourth time in a row, or a role marker such as `User:` starts a
 //! line, the rewrite ends the reply there: it ends the text part with the
