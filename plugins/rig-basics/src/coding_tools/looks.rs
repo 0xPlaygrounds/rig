@@ -6,12 +6,12 @@
 //! the command, as bash, and its output.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::tool::{FileChange, FilesChanged, FilesRead, LinesShown};
+use rig_harness::rig_core::tool::{FilesChanged, FilesRead, LinesShown};
 use rig_tools::{Edit, Read, Shell, Write};
 use rig_tui::highlight::{Language, code_rows, highlight};
-use rig_tui::ratatui::style::Stylize;
+use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{OUTPUT_INDENT, RenderBatch, ToolCallView};
+use rig_tui::{OUTPUT_INDENT, RenderBatch, ToolCallView, text_rows};
 
 /// Draws the calls of `tool` with `look`.
 fn draw(batch: &mut RenderBatch, tool: &str, look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>) {
@@ -94,24 +94,27 @@ fn span(shown: LinesShown) -> String {
     }
 }
 
-/// The reply without the file's lines it shows, then the change the call
-/// published, as a diff; just the reply when it published none, as after a resume without its effect log.
+/// The reply without the file's lines it shows, then the hunks of each
+/// change the call published, as a diff under the header that names the
+/// file; just the reply when it published none, as after a resume without
+/// its effect log.
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
     let changed = view
         .facts
         .and_then(|facts| facts.get::<FilesChanged>().ok().flatten());
-    let drawn = match (view.result_text(), changed) {
+    match (view.result_text(), changed) {
         (Some(reply), Some(FilesChanged(changes))) if !view.failed() => {
             // The file's lines the reply shows the model are in the diff.
             let said = reply.split("\n[lines ").next().unwrap_or_default();
-            let diff: String = changes.iter().map(FileChange::unified).collect();
-            rig_tui::diff::unified_lines(&format!("{said}\n{diff}"), &view.theme)
+            lines.extend(text_rows(said, Style::new().dim()));
+            for change in &changes {
+                lines.extend(rig_tui::diff::change_lines(change, &view.theme));
+            }
         }
-        _ => None,
-    };
-    lines.extend(drawn.unwrap_or_else(|| view.result_lines()));
+        _ => lines.extend(view.result_lines()),
+    }
     lines
 }
 

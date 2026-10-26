@@ -150,6 +150,9 @@ fn an_edit_is_drawn_as_the_diff_it_published() {
         assert!(drew.contains(text), "{text}: {drew}");
     }
     assert!(!drew.contains("[lines 1-2]"), "{drew}");
+    // The header names the file; the diff does not name it again.
+    assert!(!drew.contains("/p/a.rs"), "{drew}");
+    assert!(!drew.contains("+++"), "{drew}");
     let without = drawn(edit, "edit", args, "Edited a.rs: line 2.");
     assert!(!without.contains("new_call"), "{without}");
     assert!(without.contains("Edited a.rs: line 2."), "{without}");

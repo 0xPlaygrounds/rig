@@ -9,6 +9,7 @@ use std::ops::Range;
 
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
+use rig_core::tool::FileChange;
 use similar::{ChangeTag, TextDiff};
 
 use crate::Theme;
@@ -37,7 +38,23 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
     if !text.lines().any(|line| header(line).is_some()) {
         return None;
     }
-    let lines: Vec<(Kind, String)> = classify(text);
+    let lines = classify(text);
+    let files = lines.iter().filter(|(kind, _)| *kind == Kind::File);
+    let mut paths = files.filter_map(|(_, line)| line.get(4..)).map(str::trim);
+    let path = paths.rfind(|path| *path != "/dev/null");
+    Some(draw(&lines, path, theme))
+}
+
+/// `change`'s hunks drawn as [`unified_lines`] draws them, in the colors
+/// of its path's language, without the `---`/`+++` lines naming its file.
+pub fn change_lines(change: &FileChange, theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines = classify(&change.unified());
+    lines.retain(|(kind, _)| *kind != Kind::File);
+    draw(&lines, Some(change.path.as_str()), theme)
+}
+
+/// The classified `lines` of a diff of the file at `path`, each drawn.
+fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line<'static>> {
     let width = lines
         .iter()
         .map(|(kind, _)| match kind {
@@ -49,8 +66,10 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
         .unwrap_or_default()
         .to_string()
         .len();
-    let mut words = changed_words(&lines);
-    let mut code = highlighted(&lines);
+    let mut words = changed_words(lines);
+    let mut code = path
+        .map(|path| highlighted(lines, path))
+        .unwrap_or_default();
     let drawn = lines.iter().enumerate().map(|(at, (kind, text))| {
         let number = |at: Option<usize>| at.map_or(" ".repeat(width), |at| format!("{at:>width$}"));
         let gutter =
@@ -79,7 +98,7 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
             }
         }
     });
-    Some(drawn.collect())
+    drawn.collect()
 }
 
 /// Each line of the diff `text` with what it is, tabs made spaces and
@@ -142,17 +161,12 @@ fn header(line: &str) -> Option<((usize, usize), (usize, usize))> {
     Some((range(old)?, range(new)?))
 }
 
-/// Each code line's spans in the colors of the file's language, by the
+/// Each code line's spans in the colors of `path`'s language, by the
 /// line's index: the hunk's old side (same and removed lines) and its new
-/// side (same and added) highlighted apart. None when the diff names no
-/// file, or one whose language has no grammar.
-fn highlighted(lines: &[(Kind, String)]) -> HashMap<usize, Vec<Span<'static>>> {
+/// side (same and added) highlighted apart. Empty when the language has no
+/// grammar.
+fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, Vec<Span<'static>>> {
     let mut spans = HashMap::new();
-    let files = lines.iter().filter(|(kind, _)| *kind == Kind::File);
-    let mut paths = files.filter_map(|(_, line)| line.get(4..)).map(str::trim);
-    let Some(path) = paths.rfind(|path| *path != "/dev/null") else {
-        return spans;
-    };
     let hunks = lines
         .iter()
         .enumerate()
