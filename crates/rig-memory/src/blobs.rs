@@ -153,13 +153,17 @@ pub(crate) fn messages_mut(
             .iter_mut()
             .try_for_each(|entry| f(Arc::make_mut(&mut entry.message))),
         Change::Reset { state } => {
-            let mut done = Ok(());
+            let (mut done, halted) = (Ok(()), state.halted());
             state.edit_each(Author::rig(), |entry| {
                 done.as_ref().ok()?;
                 let mut message = entry.message.clone();
                 done = f(&mut message);
                 (done.is_ok() && message != *entry.message).then_some(message)
             });
+            // A splice that reaches the end clears the halt the value keeps.
+            if let Some(halt) = halted {
+                state.halt(halt);
+            }
             // The edits are of the value itself, not changes of it to save.
             **state = state.view();
             done

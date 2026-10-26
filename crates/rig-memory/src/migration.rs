@@ -25,7 +25,8 @@ use std::io;
 
 use serde_json::Value;
 
-use crate::format::{Body, Header, LogLines, Meta, parse};
+use crate::format::{Body, Header, LogLines, SESSION, parse};
+use crate::session::note_meta;
 use crate::{FORMAT, META, MemoryStore, Repair, Session, SessionError, SessionMeta, Store};
 
 /// Where a migration keeps the session as it was, through the session's
@@ -131,9 +132,11 @@ impl Chain {
     /// a session already in [`FORMAT`], or with no complete log line, is
     /// left alone.
     /// The migrated session is checked whole before anything is written:
-    /// every record reads and its change applies, every saved value
-    /// `verify` knows the type of decodes (the listed ones of [`META`]
-    /// too), and every image blob a message names loads. Then the
+    /// every record reads and its change applies, every image blob a
+    /// message names loads, and each saved value a step changed (the newest
+    /// of its key, as a read gives it, and the listed ones of [`META`])
+    /// decodes when `verify` knows its type. A value no step changed is
+    /// left to the restore, which skips one that no longer decodes. Then the
     /// session as it was is copied under [`KEPT`] and read back, and only
     /// then is each changed file and log replaced. Logs, values and files
     /// a step does not know are kept byte for byte.
@@ -163,7 +166,8 @@ impl Chain {
                 io::ErrorKind::AlreadyExists,
                 format!(
                     "a migration from {from} did not finish; the session as it was is \
-                     under `{kept}`: put it back, or remove it, to migrate again"
+                     under `{kept}`: put it back and remove it, or remove it, to migrate \
+                     again"
                 ),
             )
             .into());
@@ -215,29 +219,52 @@ fn check(
     {
         return Err(invalid(format!("the migrated session does not read whole: {lost}")).into());
     }
-    if let Some(bytes) = migrated.files.get(META) {
-        let meta: SessionMeta = serde_json::from_slice(bytes).map_err(invalid_json)?;
-        for (key, value) in &meta.listed {
-            verify(key, value)?;
-        }
-    }
-    for (log, bytes) in &migrated.logs {
-        for (line, _, record) in LogLines::parse(bytes.clone()).iter() {
-            let refuse = |why| SessionError::Record {
-                log: log.clone(),
-                line,
-                why,
-            };
-            if let Body::Meta(Meta::State {
-                key,
-                value: Some(value),
-            }) = parse(record).map_err(refuse)?.1
-            {
-                verify(&key, &value)?;
-            }
-        }
+    let listed = |files: &BTreeMap<String, Vec<u8>>| {
+        let meta = files.get(META).map(|bytes| serde_json::from_slice(bytes));
+        meta.transpose()
+            .map(|meta: Option<SessionMeta>| meta.unwrap_or_default().listed)
+    };
+    let listed_before = listed(&original.files).unwrap_or_default();
+    let listed_after = listed(&migrated.files).map_err(invalid_json)?;
+    let before = saved(original);
+    let logs = session
+        .agents
+        .iter()
+        .map(|agent| (agent.id.as_str(), &agent.saved));
+    let logs = logs.chain([(SESSION, &session.saved)]);
+    let values = logs.flat_map(|(log, values)| changed(before.get(log), values));
+    let listed = changed(Some(&listed_before), &listed_after);
+    for (key, value) in values.chain(listed) {
+        verify(key, value)?;
     }
     Ok(())
+}
+
+/// The values of `after` that are not in `before` as they are.
+fn changed<'a>(
+    before: Option<&'a BTreeMap<String, Value>>,
+    after: &'a BTreeMap<String, Value>,
+) -> impl Iterator<Item = (&'a String, &'a Value)> {
+    let kept =
+        move |key: &String, value: &Value| before.and_then(|before| before.get(key)) == Some(value);
+    after.iter().filter(move |&(key, value)| !kept(key, value))
+}
+
+/// The newest saved value of each key of each log of `original`, from the
+/// records that read in [`FORMAT`]: what a step may have changed.
+fn saved(original: &Snapshot) -> BTreeMap<&str, BTreeMap<String, Value>> {
+    let fold = |bytes: &Vec<u8>| {
+        let (mut state, mut retired) = (BTreeMap::new(), false);
+        for (_, _, record) in LogLines::parse(bytes.clone()).iter().skip(1) {
+            if let Ok((_, Body::Meta(meta))) = parse(record) {
+                note_meta(meta, &mut state, &mut retired);
+            }
+        }
+        state
+    };
+    let logs = original.logs.iter();
+    logs.map(|(log, bytes)| (log.as_str(), fold(bytes)))
+        .collect()
 }
 
 fn invalid_json(error: serde_json::Error) -> io::Error {

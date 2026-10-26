@@ -15,7 +15,8 @@ workspace = true
 default = []
 # `DirStore`: a session kept as files in a directory (std::fs).
 fs = []
-# `conformance`: the contract suite a store's own tests run against it.
+# `conformance`: the contract suite a store's own tests run against it;
+# `migration::testing`: a synthetic earlier format and the chain from it.
 test-utils = []
 
 [dependencies]

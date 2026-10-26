@@ -332,7 +332,8 @@ fn insert_plugin_data(world: &mut World) {
 /// run's front or [`StoreOpener`] opens for [`SessionPaths`], and reads
 /// the session it holds ([`open_session`]), before anything is written to
 /// it. A session whose format is refused is migrated through that store,
-/// its saved values checked against the registered types, and read again;
+/// the saved values its steps changed checked against the registered
+/// types, and read again;
 /// the launcher's lock on the session holds it meanwhile. A sessionless
 /// run never marks its session saved, so a crash leaves no session for
 /// `/resume` to list.

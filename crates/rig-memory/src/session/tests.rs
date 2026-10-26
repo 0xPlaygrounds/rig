@@ -123,6 +123,45 @@ fn a_writer_saves_a_replaced_conversation_as_one_reset() {
     assert_eq!(session.agent("main").expect("agent").conversation, replaced);
 }
 
+/// A reset whose last entry names a blob reads with the image put back
+/// and keeps its halt.
+#[test]
+fn a_halted_reset_naming_a_blob_reads_halted() {
+    let store = Arc::new(MemoryStore::default());
+    let image = Message::User {
+        content: vec![UserContent::image_base64(
+            "cG5n",
+            Some(ImageMediaType::PNG),
+            None,
+        )],
+    };
+    let stored = crate::store_images(&image, &*store)
+        .expect("stored")
+        .into_owned();
+    assert_ne!(stored, image);
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let mut first = Conversation::from_messages([Message::user("before")]);
+    writer.save("main", &mut first);
+    let mut replaced = Conversation::from_messages([stored]);
+    assert!(replaced.halt(Halt::Stopped));
+    let saved = writer.save("main", &mut replaced);
+    assert!(matches!(saved.as_slice(), [only] if matches!(only.change, Change::Reset { .. })));
+    writer.flush().expect("flushed");
+    let session = Session::read(&*store).expect("read");
+    assert_eq!(session.repairs, Vec::new());
+    let conversation = &session.agent("main").expect("agent").conversation;
+    assert_eq!(conversation.halted(), Some(Halt::Stopped));
+    assert_eq!(
+        conversation
+            .messages()
+            .iter()
+            .map(|m| &**m)
+            .collect::<Vec<_>>(),
+        [&image]
+    );
+}
+
 /// Only the conversation a log holds continues it, even when another has
 /// made as many changes: one saved to another log, one read back from its
 /// serde form. Saving

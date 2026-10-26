@@ -287,7 +287,7 @@ pub(crate) fn fold_lines(
 
 /// A saved value set or removed, or the log retired, noted into `state`
 /// and `retired`.
-fn note_meta(meta: Meta, state: &mut BTreeMap<String, Value>, retired: &mut bool) {
+pub(crate) fn note_meta(meta: Meta, state: &mut BTreeMap<String, Value>, retired: &mut bool) {
     match meta {
         Meta::State { key, value } => {
             match value.filter(|value| !value.is_null()) {

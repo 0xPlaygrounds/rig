@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::io;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
 use rig_core::conversation::Conversation;
 use rig_core::message::{ImageMediaType, Message, UserContent};
@@ -14,6 +14,15 @@ use crate::{BLOBS, Files, LogWriteError, load_images};
 /// A check that knows no saved type.
 fn any(_: &str, _: &Value) -> io::Result<()> {
     Ok(())
+}
+
+/// A check whose type of [`UNINSTALLED`] no value of it fits, as after its
+/// plugin changed the type.
+fn stale(key: &str, _: &Value) -> io::Result<()> {
+    match key == UNINSTALLED {
+        true => Err(io::Error::other("not a value of its type")),
+        false => Ok(()),
+    }
 }
 
 /// An error saying why, when `holds` does not.
@@ -82,7 +91,9 @@ fn the_shipped_chain_reaches_the_format_and_each_step_has_a_fixture() -> Result<
 /// A migration takes the whole session to the format, each log's header
 /// and its blobs; it keeps byte for byte what it does not know (a value,
 /// an aside and a file of a plugin that is not installed), and keeps a
-/// copy of the session as it was.
+/// copy of the session as it was. A saved value the step left is not
+/// checked, so one that no longer fits its type, which a restore skips,
+/// does not refuse it.
 #[test]
 fn a_synthetic_session_migrates_whole_and_keeps_what_it_was() -> Result<(), SessionError> {
     let store = fixture()?;
@@ -92,16 +103,7 @@ fn a_synthetic_session_migrates_whole_and_keeps_what_it_was() -> Result<(), Sess
         matches!(refused, Err(SessionError::Format { .. })),
         &refused,
     )?;
-    let checked = Mutex::new(Vec::new());
-    let check = |key: &str, _: &Value| {
-        if let Ok(mut checked) = checked.lock() {
-            checked.push(key.to_owned());
-        }
-        Ok(())
-    };
-    CHAIN.migrate(&store, &check)?;
-    let checked = checked.into_inner().unwrap_or_default();
-    ensure(checked.iter().any(|key| key == UNINSTALLED), &checked)?;
+    CHAIN.migrate(&store, &stale)?;
 
     let session = Session::read(&store)?;
     let lost = |repair: &Repair| matches!(repair, Repair::LostImage { .. });
@@ -160,8 +162,8 @@ fn a_session_in_the_format_is_left_alone() -> Result<(), SessionError> {
 /// Each refusal comes before any write: no step from the format, a step
 /// that cannot do its work (such as one that needs a schema it lacks), a
 /// step that loses a blob, one that saves a whole value naming a blob
-/// that is not there, a saved value that does not decode, and logs in
-/// different formats.
+/// that is not there, one that rewrites a saved value to one that does
+/// not decode, and logs in different formats.
 #[test]
 fn a_refused_migration_writes_nothing() -> Result<(), SessionError> {
     fn refusing(_: &mut Snapshot) -> Result<(), SessionError> {
@@ -194,6 +196,17 @@ fn a_refused_migration_writes_nothing() -> Result<(), SessionError> {
         *session = Snapshot::read(&*store)?;
         Ok(())
     }
+    fn rewriting(session: &mut Snapshot) -> Result<(), SessionError> {
+        migrated(session)?;
+        let store = MemoryStore::default();
+        session.write_to(&store)?;
+        let mut read = Session::read(&store)?;
+        read.saved
+            .insert(UNINSTALLED.to_owned(), "rewritten".into());
+        read.save(&store)?;
+        *session = Snapshot::read(&store)?;
+        Ok(())
+    }
     const fn step(apply: fn(&mut Snapshot) -> Result<(), SessionError>) -> Step {
         Step {
             from: SYNTHETIC,
@@ -205,16 +218,13 @@ fn a_refused_migration_writes_nothing() -> Result<(), SessionError> {
     const REFUSED: &[Step] = &[step(refusing)];
     const LOST: &[Step] = &[step(losing)];
     const RESET: &[Step] = &[step(resetting)];
-    let decode = |key: &str, _: &Value| match key == UNINSTALLED {
-        true => Err(io::Error::other("not a value of its type")),
-        false => Ok(()),
-    };
+    const REWRITTEN: &[Step] = &[step(rewriting)];
     let tries: [(&str, Chain, &Verify<'_>); 5] = [
         ("no step", SHIPPED, &any),
         ("refusing step", Chain { steps: REFUSED }, &any),
         ("lost blob", Chain { steps: LOST }, &any),
         ("reset to a lost blob", Chain { steps: RESET }, &any),
-        ("undecodable value", CHAIN, &decode),
+        ("undecodable value", Chain { steps: REWRITTEN }, &stale),
     ];
     for (test, chain, verify) in tries {
         let store = fixture()?;
@@ -225,6 +235,8 @@ fn a_refused_migration_writes_nothing() -> Result<(), SessionError> {
         ensure(Snapshot::read(&store)? == before, (test, "a write"))?;
         ensure(store.files()?.len() == files, (test, "a file"))?;
     }
+    // The rewritten value refused it, not the rewrite.
+    Chain { steps: REWRITTEN }.migrate(&fixture()?, &any)?;
 
     let store = fixture()?;
     let mut conversation = crate::load(&store, "other")?;
