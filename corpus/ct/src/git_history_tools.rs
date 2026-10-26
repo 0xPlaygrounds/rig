@@ -67,24 +67,25 @@ impl Plugin for GitHistoryToolsPlugin {
             processes,
         };
         let options = ToolOptions::default;
-        let per = repo.clone();
-        app.add_tool_per_call(GitLog(repo.clone()), options(), move |place| {
-            GitLog(per.at(place))
-        });
-        let per = repo.clone();
-        app.add_tool_per_call(GitShow(repo.clone()), options(), move |place| {
-            GitShow(per.at(place))
-        });
-        let per = repo.clone();
-        app.add_tool_per_call(GitBlame(repo.clone()), options(), move |place| {
-            GitBlame(per.at(place))
-        });
-        let per = repo.clone();
-        app.add_tool_per_call(GitDiff(repo), options(), move |place| {
-            GitDiff(per.at(place))
-        });
+        app.add_tool_per_call(GitLog(repo.clone()), options())
+            .add_tool_per_call(GitShow(repo.clone()), options())
+            .add_tool_per_call(GitBlame(repo.clone()), options())
+            .add_tool_per_call(GitDiff(repo), options());
     }
 }
+
+/// Each git tool reads its repo as seen from the call's place.
+macro_rules! git_tools_per_call {
+    ($($tool:ident),*) => {$(
+        impl PerCallTool for $tool {
+            fn at(&self, place: CallPlace) -> Self {
+                Self(self.0.at(place))
+            }
+        }
+    )*};
+}
+
+git_tools_per_call!(GitLog, GitShow, GitBlame, GitDiff);
 
 /// Where a call reads: the workspace, the directory it starts from, and how
 /// it starts `git`.
@@ -255,6 +256,7 @@ async fn run(
 }
 
 /// `git_log`.
+#[derive(Clone)]
 struct GitLog(Repo);
 
 /// The arguments of `git_log`.
@@ -329,6 +331,7 @@ impl Tool for GitLog {
 }
 
 /// `git_show`.
+#[derive(Clone)]
 struct GitShow(Repo);
 
 /// The arguments of `git_show`.
@@ -380,6 +383,7 @@ impl Tool for GitShow {
 }
 
 /// `git_diff`.
+#[derive(Clone)]
 struct GitDiff(Repo);
 
 /// The arguments of `git_diff`.
@@ -442,6 +446,7 @@ impl Tool for GitDiff {
 }
 
 /// `git_blame`.
+#[derive(Clone)]
 struct GitBlame(Repo);
 
 /// The arguments of `git_blame`.

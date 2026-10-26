@@ -38,12 +38,7 @@ fn a_previewed_write_lists_the_file_it_would_create_and_leaves_the_disk_alone() 
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, PreviewPlugin))
         .insert_resource(ProjectRoot(dir.clone()))
-        .add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-            seen: Default::default(),
-        })
+        .add_tool_per_call(Write::default(), ToolOptions::default())
         .add_systems(AgentPass, preview_then_refuse.in_set(Stage::Gate));
     app.finish();
     app.update();

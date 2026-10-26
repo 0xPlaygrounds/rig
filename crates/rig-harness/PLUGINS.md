@@ -296,7 +296,7 @@ orders a system by what it does, not by which plugin does what:
 | Phase | What goes there | The default plugins' systems there |
 |---|---|---|
 | `PrepareSystems::Input` | what came in, rewritten before anything is read from it: a message's text, a tool call's arguments | |
-| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_basics::coding_tools::AttachSystems`), the default system prompt, each coding tool call's handler for its place in the workspace |
+| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_basics::coding_tools::AttachSystems`), the default system prompt, each coding tool call's place and handler (`PerCallSystems`) |
 | `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to (`connection`), a call's `CallHandler` | |
 | `PrepareSystems::Adapt` | the model a call goes to (`Adapted`), changed in place: its handler wrapped, its spec saying what the wrapped model takes | |
 | `PrepareSystems::AdaptOutermost` | the same, after every other adapter: a change that sees what they made of the model, such as a replay that replaces it | |
@@ -384,14 +384,19 @@ comments describe them, and a call whose arguments do not fit is refused with
 where and why (rig-core's `tool::validate`); a schema that declares no
 `properties` takes any arguments.
 
-A tool registered with `app.add_tool_per_call(tool, options, make)`
-is built for each call's `CallPlace`: the app's workspace (an overlay of it
-for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
-`WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
-for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools are. A plugin that builds such a call somewhere
-else uses `PerCallTools` (`place(agent, workspace)`, then `build(name,
-place)`), as preview builds it on an overlay.
+A tool registered with `app.add_tool_per_call(tool, options)`, a
+`PerCallTool`, is built for each call's `CallPlace` by its `at(place)`: the
+app's workspace (an overlay of it for a
+[preview](#gating-and-reviewing-tool-calls)), the calling agent's `WorkDir`
+else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and for a tool
+registered with `add_live_tool_per_call` the `Live` its output goes to, as
+the coding tools are. Each such call gets its `CallPlace` component in
+`PerCallSystems::Place` and its `CallHandler` in `PerCallSystems::Build`,
+both in `PrepareSystems::Compose`: a system between them changes where the
+call works, one after replaces or wraps the handler. The tool's entity has
+its `PerCall`. A plugin that builds such a call somewhere else uses
+`PerCallTools` (`place(agent, workspace)`, then `build(name, place)`), as
+preview builds it on an overlay.
 
 ```rust,no_run
 use std::{path::PathBuf, sync::Arc};
@@ -406,12 +411,17 @@ fn build(app: &mut App) {
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let here = WordCount { workspace: Arc::new(Local), base: None, confine: false };
-    app.add_tool_per_call(here, options, |at| {
+    app.add_tool_per_call(here, options);
+}
+
+impl PerCallTool for WordCount {
+    fn at(&self, at: CallPlace) -> Self {
         WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
-    });
+    }
 }
 
 /// Reads in `workspace`, a relative path from `base`.
+#[derive(Clone)]
 struct WordCount {
     workspace: Arc<dyn Workspace>,
     base: Option<PathBuf>,

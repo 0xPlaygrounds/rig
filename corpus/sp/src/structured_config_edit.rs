@@ -29,7 +29,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_harness::prelude::{App, AppPerCallExt, CallPlace, Plugin, Tool, ToolOptions, blocking};
+use rig_harness::prelude::{
+    App, AppPerCallExt, CallPlace, PerCallTool, Plugin, Tool, ToolOptions, blocking,
+};
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{
     FileChange, FilesChanged, Scope, ToolContext, ToolExecutionError, Touches, args_schema,
@@ -532,14 +534,26 @@ pub struct StructuredConfigEditPlugin;
 
 impl Plugin for StructuredConfigEditPlugin {
     fn build(&self, app: &mut App) {
-        app.add_tool_per_call(ConfigGet::default(), ToolOptions::default(), |place| {
-            ConfigGet(place.into())
-        })
-        .add_tool_per_call(ConfigSet::default(), ToolOptions::default(), |place| {
-            ConfigSet(place.into())
-        })
-        .add_tool_per_call(ConfigDelete::default(), ToolOptions::default(), |place| {
-            ConfigDelete(place.into())
-        });
+        app.add_tool_per_call(ConfigGet::default(), ToolOptions::default())
+            .add_tool_per_call(ConfigSet::default(), ToolOptions::default())
+            .add_tool_per_call(ConfigDelete::default(), ToolOptions::default());
+    }
+}
+
+impl PerCallTool for ConfigGet {
+    fn at(&self, place: CallPlace) -> Self {
+        Self(place.into())
+    }
+}
+
+impl PerCallTool for ConfigSet {
+    fn at(&self, place: CallPlace) -> Self {
+        Self(place.into())
+    }
+}
+
+impl PerCallTool for ConfigDelete {
+    fn at(&self, place: CallPlace) -> Self {
+        Self(place.into())
     }
 }

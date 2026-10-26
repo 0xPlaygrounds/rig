@@ -5,7 +5,6 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_core::tool::{ChangeKind, FileChange, FilesChanged};
 use rig_harness_test_support::{MemoryStore, app_on, calls, connect, reply, run_until};
 use rig_tools::checkpoint::{Taking, snapshot};
-use rig_tools::process::Launcher;
 use rig_tools::workspace::Local;
 use rig_tools::{Shell, Write};
 
@@ -99,18 +98,8 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, CheckpointPlugin))
-        .add_tool_per_call(Shell::default(), ToolOptions::default(), |place| Shell {
-            launcher: Launcher::default().in_dir(&place.base),
-            workspace: place.workspace,
-            confine: place.confine,
-            ..Shell::default()
-        })
-        .add_tool_per_call(Write::default(), ToolOptions::default(), |place| Write {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-            seen: Default::default(),
-        })
+        .add_tool_per_call(Shell::default(), ToolOptions::default())
+        .add_tool_per_call(Write::default(), ToolOptions::default())
         .init_resource::<Changed>()
         .insert_resource(UserSaves(dir.clone()))
         .add_observer(note_changes)

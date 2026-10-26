@@ -179,15 +179,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
         WriteTool,
         ApplyPatchPlugin,
     ))
-    .add_tool_per_call(
-        rig_tools::Delete::default(),
-        ToolOptions::default(),
-        |place| rig_tools::Delete {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-        },
-    )
+    .add_tool_per_call(rig_tools::Delete::default(), ToolOptions::default())
     .add_systems(
         AgentPass,
         (no_secrets, ask_for_slow).chain().in_set(Stage::Gate),

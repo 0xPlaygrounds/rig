@@ -53,11 +53,6 @@ impl Session {
             .add_tool_per_call(
                 rig_harness::rig_tools::Search::default(),
                 ToolOptions::default(),
-                |place| rig_harness::rig_tools::Search {
-                    workspace: place.workspace,
-                    base: Some(place.base),
-                    confine: place.confine,
-                },
             )
             .add_observer(log_tool_outputs);
         collect::<Notice>(&mut app);

@@ -19,10 +19,11 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, AuthorKind, Commands, Component,
-    Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessagePart, MessageWriter,
-    Name, Notice, On, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Res,
-    Resource, Running, Started, SystemSet, Tool, ToolOptions, Wake, Without, WorkDir, blocking,
+    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, AuthorKind, CallPlace, Commands,
+    Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessagePart,
+    MessageWriter, Name, Notice, On, PerCallTool, Plugin, PrepareSystems, Processes, ProjectRoot,
+    ProjectWorkspace, Query, Res, Resource, Running, Started, SystemSet, Tool, ToolOptions, Wake,
+    Without, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
@@ -58,12 +59,13 @@ impl Plugin for ReadTool {
             .get_resource_or_init::<SeenFiles>()
             .0
             .clone();
-        app.add_tool_per_call(Read::default(), ToolOptions::default(), move |place| Read {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-            seen: seen.clone(),
-        });
+        app.add_tool_per_call(
+            Read {
+                seen,
+                ..Read::default()
+            },
+            ToolOptions::default(),
+        );
         #[cfg(feature = "tui")]
         app.add_systems(
             TranscriptRender,
@@ -85,12 +87,13 @@ impl Plugin for EditTool {
             .get_resource_or_init::<SeenFiles>()
             .0
             .clone();
-        app.add_tool_per_call(Edit::default(), ToolOptions::default(), move |place| Edit {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-            seen: seen.clone(),
-        });
+        app.add_tool_per_call(
+            Edit {
+                seen,
+                ..Edit::default()
+            },
+            ToolOptions::default(),
+        );
         #[cfg(feature = "tui")]
         app.add_systems(
             TranscriptRender,
@@ -112,14 +115,13 @@ impl Plugin for WriteTool {
             .get_resource_or_init::<SeenFiles>()
             .0
             .clone();
-        app.add_tool_per_call(Write::default(), ToolOptions::default(), move |place| {
+        app.add_tool_per_call(
             Write {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-                seen: seen.clone(),
-            }
-        });
+                seen,
+                ..Write::default()
+            },
+            ToolOptions::default(),
+        );
         #[cfg(feature = "tui")]
         app.add_systems(
             TranscriptRender,
@@ -155,18 +157,7 @@ impl Plugin for ShellTool {
             output,
             dir: None,
         };
-        let per = shell.clone();
-        app.add_live_tool_per_call(shell, ToolOptions::default(), move |place| SharedShell {
-            shell: Shell {
-                workspace: place.workspace,
-                live: place.live,
-                confine: place.confine,
-                spill: place.spill,
-                ..per.shell.clone()
-            },
-            dir: Some(place.base),
-            ..per.clone()
-        });
+        app.add_live_tool_per_call(shell, ToolOptions::default());
         #[cfg(feature = "tui")]
         app.add_systems(
             TranscriptRender,
@@ -213,6 +204,22 @@ struct SharedShell {
     processes: Processes,
     output: ShellOutput,
     dir: Option<PathBuf>,
+}
+
+impl PerCallTool for SharedShell {
+    fn at(&self, place: CallPlace) -> Self {
+        Self {
+            shell: Shell {
+                workspace: place.workspace,
+                live: place.live,
+                confine: place.confine,
+                spill: place.spill,
+                ..self.shell.clone()
+            },
+            dir: Some(place.base),
+            ..self.clone()
+        }
+    }
 }
 
 impl Tool for SharedShell {

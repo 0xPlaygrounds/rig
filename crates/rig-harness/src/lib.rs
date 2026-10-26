@@ -123,7 +123,9 @@ pub mod prelude {
         SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
-    pub use crate::per_call::{AppPerCallExt, CallPlace, PerCallTools};
+    pub use crate::per_call::{
+        AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,
+    };
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
     pub use crate::progress::{CallOutput, ToolProgress};
