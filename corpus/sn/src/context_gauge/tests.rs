@@ -129,6 +129,13 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         gauge(app.world(), agent)
     );
 
+    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.update();
+    assert!(shows(app.world(), agent, "ctx ?", Tone::Dim));
+    app.world_mut().entity_mut(agent).remove::<ContextStale>();
+    app.update();
+    assert!(shows(app.world(), agent, at_75, Tone::Yellow));
+
     // A bigger window, at once, with the same tokens; then no known window.
     set_model(&mut app, "scripted/w1m");
     assert!(

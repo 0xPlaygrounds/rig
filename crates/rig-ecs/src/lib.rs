@@ -51,9 +51,9 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, Conversation, EffectParent, LastUsage,
-        Notice, NoticeLevel, Partial, Spawned, SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn,
-        TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextStale, Conversation,
+        EffectParent, LastUsage, Notice, NoticeLevel, Partial, Spawned, SpawnedBy, StopTurn,
+        SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::fork::{AgentForked, ForkAgent};
     pub use crate::inbox::{

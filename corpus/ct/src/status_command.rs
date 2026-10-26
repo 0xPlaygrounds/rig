@@ -285,6 +285,7 @@ type Observed<'a> = (
     Option<&'a ModelChoice>,
     Option<&'a Connection>,
     Has<ActiveTurn>,
+    Has<ContextStale>,
 );
 
 /// Brings the [`StatusInput`] up to date, and wants a run when it changed.
@@ -304,10 +305,11 @@ fn observe(
     let total = spending
         .map(|spending| spending.0.total)
         .unwrap_or_default();
-    let busy = agent.is_some_and(|(.., busy)| busy);
-    let context_tokens = agent.and_then(|(_, _, last, ..)| last.context());
+    let busy = agent.is_some_and(|(.., busy, _)| busy);
+    let context_tokens =
+        agent.and_then(|(_, _, last, .., stale)| (!stale).then(|| last.context()).flatten());
     let limit = agent
-        .and_then(|(.., connection, _)| connection)
+        .and_then(|(.., connection, _, _)| connection)
         .and_then(|connection| connection.spec.input_limit());
     let now = StatusInput {
         session_id: paths.and_then(|paths| paths.id()).map(|id| id.to_string()),
@@ -319,7 +321,7 @@ fn observe(
         }),
         project_dir: root.0.clone(),
         agent: agent.map(|(name, ..)| name.to_string()),
-        model: agent.and_then(|(_, _, _, choice, connection, _)| {
+        model: agent.and_then(|(_, _, _, choice, connection, _, _)| {
             choice
                 .map(|choice| choice.0.clone())
                 .or_else(|| connection.map(|connection| connection.spec.reference()))

@@ -182,11 +182,19 @@ impl LastUsage {
     }
 
     /// The tokens the last reply read and wrote, which the next request
-    /// sends again, when it reported them.
+    /// sends again, when it reported them. Check [`ContextStale`] before
+    /// displaying this figure as the current context.
     pub fn context(&self) -> Option<u64> {
         self.usage()?.context_tokens()
     }
 }
+
+/// The agent's [`LastUsage`] no longer counts its conversation after a
+/// compaction summarized, cleared or restored part of it. The kernel removes
+/// this marker when a reply reports a new context figure. Saved with the session.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+pub struct ContextStale {}
 
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the app's

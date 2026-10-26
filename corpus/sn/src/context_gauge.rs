@@ -116,20 +116,23 @@ pub fn label(context: Option<ContextUse>) -> String {
 /// when the item differs, so its own write does not make it run again.
 fn show(
     mut agents: Query<
-        (&LastUsage, Option<&Connection>, &mut StatusItems),
         (
-            With<Agent>,
-            Or<(
-                Changed<StatusItems>,
-                Changed<LastUsage>,
-                Changed<Connection>,
-            )>,
+            &LastUsage,
+            Option<&Connection>,
+            Has<ContextStale>,
+            &mut StatusItems,
         ),
+        With<Agent>,
     >,
 ) {
-    for (last, connection, mut items) in &mut agents {
-        let context = context_of(last, connection);
-        let item = GAUGE.says(label(context), Fill::of(context).tone());
+    for (last, connection, stale, mut items) in &mut agents {
+        let context = (!stale).then(|| context_of(last, connection)).flatten();
+        let text = if stale {
+            "ctx ?".to_owned()
+        } else {
+            label(context)
+        };
+        let item = GAUGE.says(text, Fill::of(context).tone());
         if !items.iter().any(|shown| *shown == item) {
             items.show(item);
         }
@@ -145,14 +148,15 @@ fn warn_once(
             &LastUsage,
             Option<&Connection>,
             &mut NearlyFullWarned,
+            Has<ContextStale>,
         ),
         (With<Agent>, Or<(Changed<LastUsage>, Changed<Connection>)>),
     >,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (agent, last, connection, mut warned) in &mut agents {
+    for (agent, last, connection, mut warned, stale) in &mut agents {
         let context = context_of(last, connection);
-        if warned.0 || Fill::of(context) != Fill::Alert {
+        if stale || warned.0 || Fill::of(context) != Fill::Alert {
             continue;
         }
         warned.0 = true;

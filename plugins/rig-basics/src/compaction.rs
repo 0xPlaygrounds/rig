@@ -62,6 +62,7 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_ecs::turn::RETRY_POLICY;
+use rig_harness::AppKeepsExt;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::rig_tools::workspace::Stat;
 use rig_harness::services::{ProjectRoot, WorkDir};
@@ -90,7 +91,8 @@ pub struct CompactionPlugin;
 
 impl Plugin for CompactionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_setting::<CompactionDefault>("compaction")
+        app.keeps_saved::<ContextStale>()
+            .add_setting::<CompactionDefault>("compaction")
             .init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_command(
@@ -1054,7 +1056,11 @@ fn compact_near_the_window(
                     None => {}
                 }
             }
+            let before = compacting.conversation.revision();
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
+            if compacting.conversation.revision() != before {
+                commands.entity(agent).try_insert(ContextStale {});
+            }
             // The request's copy too, as cleared by compaction.
             match &mut model.history {
                 Some(history) => {
@@ -1163,7 +1169,11 @@ fn recover_from_overflow(
             continue;
         }
         if clears {
+            let before = compacting.conversation.revision();
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
+            if compacting.conversation.revision() != before {
+                commands.entity(agent).try_insert(ContextStale {});
+            }
             let then = " and sending it again";
             notices.write(cleared_notice(
                 agent,
@@ -1460,6 +1470,7 @@ fn take_summary(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
+    let before = conversation.revision();
     let end = match summarizing.keep_from {
         None => Some(conversation.messages().len()),
         Some(kept) => conversation.index_of(kept),
@@ -1510,6 +1521,9 @@ fn take_summary(
             (Recovering::NotSummarized, plan.is_some())
         }
     };
+    if conversation.revision() != before {
+        commands.entity(agent).try_insert(ContextStale {});
+    }
     match hold {
         // Built again unchanged, the refused call would be refused again:
         // it fails as it is.
@@ -1550,6 +1564,7 @@ fn take_notes(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
+    let before = conversation.revision();
     let (by, plan) = (summary_author(), &noting.plan);
     let notes = match ended.contains(turn) {
         true => Err(NotTaken::Cancelled),
@@ -1573,6 +1588,9 @@ fn take_notes(
             Recovering::Cleared
         }
     };
+    if conversation.revision() != before {
+        commands.entity(agent).try_insert(ContextStale {});
+    }
     if let Some(&HoldOf(call)) = hold {
         let parent = held.get(call).ok().and_then(|effect| effect.parent);
         supersede(&mut commands, (turn, agent, call), parent, step);
@@ -1592,6 +1610,7 @@ fn on_uncompact(
     uncompact: On<Uncompact>,
     mut agents: Query<(&AgentId, &mut Conversation, Has<ActiveTurn>)>,
     store: Option<Res<SessionStore>>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = uncompact.entity;
@@ -1609,6 +1628,7 @@ fn on_uncompact(
     };
     match undo_summary(&mut conversation, &*store.0, &id.0, summary_author()) {
         Ok(undone) => {
+            commands.entity(agent).try_insert(ContextStale {});
             let left = estimate_tokens(conversation.messages());
             let count = undone.restored.len();
             let text = format!(

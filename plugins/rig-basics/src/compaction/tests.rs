@@ -348,6 +348,7 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     let cleared = serde_json::to_string(&live).unwrap_or_default();
     assert!(cleared.contains(placeholder));
     assert_eq!(ids(&live).get(..before.len()), Some(before.as_slice()));
+    assert!(app.world().get::<ContextStale>(agent).is_some());
     drop(app);
 
     let (mut restarted, _wakes) = start(&store);
@@ -355,6 +356,7 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
         return;
     };
     assert_eq!(entries(restarted.world(), agent), live);
+    assert!(restarted.world().get::<ContextStale>(agent).is_some());
 }
 
 /// A conversation of `messages`, and a model that answers the request
@@ -1714,6 +1716,7 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     decide(&mut app, &wakes, None);
     run_until(&mut app, &wakes, ended(1));
     assert_eq!(entries(app.world(), agent), original);
+    assert!(app.world().get::<ContextStale>(agent).is_none());
 
     // Edited: the reviewer's text is the summary.
     compact(&mut app);
@@ -1729,6 +1732,8 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
             .map(|c| summary_state(c))
     };
     assert!(state(&app).is_some_and(|it| it.summary.contains("reviewed")));
+    assert!(app.world().get::<ContextStale>(agent).is_some());
+    app.world_mut().entity_mut(agent).remove::<ContextStale>();
 
     // Undone: the messages are back with their ids, and the state before.
     app.update();
@@ -1736,6 +1741,7 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     app.update();
     assert_eq!(entries(app.world(), agent), original);
     assert_eq!(state(&app), Some(SummaryState::default()));
+    assert!(app.world().get::<ContextStale>(agent).is_some());
 }
 
 /// A summary near the window that a reviewer cancels lets the request go

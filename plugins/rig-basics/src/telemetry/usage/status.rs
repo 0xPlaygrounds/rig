@@ -29,24 +29,21 @@ const CONTEXT: StatusItem = StatusItem::new("context", Side::Right, 40, 5);
 /// past 70% and red past 90%. `/usage` details the cache writes and
 /// reasoning.
 fn show_meter(
-    mut agents: Query<
-        (
-            (&AgentUsage, &LastUsage),
-            (Option<&Connection>, Option<&InputLimit>),
-            &mut StatusItems,
-        ),
-        Or<(
-            Changed<AgentUsage>,
-            Changed<LastUsage>,
-            Changed<Connection>,
-            Changed<InputLimit>,
-        )>,
-    >,
+    mut agents: Query<(
+        (&AgentUsage, &LastUsage, Has<ContextStale>),
+        (Option<&Connection>, Option<&InputLimit>),
+        &mut StatusItems,
+    )>,
 ) {
-    for ((AgentUsage { total: spent, .. }, last), (connection, limit), mut items) in &mut agents {
+    for ((AgentUsage { total: spent, .. }, last, stale), (connection, limit), mut items) in
+        &mut agents
+    {
         let shown = spent.calls > 0;
         let limit = InputLimit::of(limit, connection);
-        let context = last.context().map(|tokens| ContextUse { tokens, limit });
+        let context = (!stale)
+            .then(|| last.context())
+            .flatten()
+            .map(|tokens| ContextUse { tokens, limit });
         let tokens = format!(
             "↑{} ↓{}",
             tokens_label(spent.uncached_input()),
@@ -60,12 +57,23 @@ fn show_meter(
             Some(70..) => Tone::Yellow,
             _ => Tone::Dim,
         };
-        let context = context.map(|context| format!("ctx {context}"));
+        let context = if stale {
+            Some(format!(
+                "ctx ?{}",
+                limit
+                    .map(|limit| format!("/{}", tokens_label(u64::from(limit))))
+                    .unwrap_or_default()
+            ))
+        } else {
+            context.map(|context| format!("ctx {context}"))
+        };
         let text = |text: Option<String>| text.filter(|_| shown).unwrap_or_default();
-        items.show(TOKENS.says(text(Some(tokens)), Tone::Dim));
-        items.show(CACHE.says(text(cache), Tone::Dim));
-        items.show(COST.says(text(spent.cost_label()), Tone::Dim));
-        items.show(CONTEXT.says(text(context), tone));
+        let mut next = items.clone();
+        next.show(TOKENS.says(text(Some(tokens)), Tone::Dim));
+        next.show(CACHE.says(text(cache), Tone::Dim));
+        next.show(COST.says(text(spent.cost_label()), Tone::Dim));
+        next.show(CONTEXT.says(text(context), tone));
+        items.set_if_neq(next);
     }
 }
 

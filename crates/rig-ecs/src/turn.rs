@@ -51,8 +51,9 @@ use rig_memory::Anchor;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, Conversation, EffectParent, LastUsage,
-    Notice, Partial, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextStale, Conversation, EffectParent,
+    LastUsage, Notice, Partial, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
+    TurnOutcome,
 };
 use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver};
 use super::model::{Connection, ReasoningSetting};
@@ -1298,6 +1299,7 @@ fn commit_reply(
         if let Some(through) = through.filter(|_| response.usage.context_tokens().is_some()) {
             let usage = response.usage;
             *answered.last = LastUsage(Some(Anchor { usage, through }));
+            commands.entity(agent).remove::<ContextStale>();
         }
     }
     if !tool_calls.is_empty() {

@@ -290,6 +290,7 @@ type AgentGauge<'a> = (
     Has<SpawnedBy>,
     &'a LastUsage,
     Option<&'a Connection>,
+    Has<ContextStale>,
 );
 
 /// Sets every gauge from the world as the frame left it, the session label,
@@ -332,9 +333,12 @@ fn gauges(
         ((registry::APPROVALS_WAITING, Labels::new()), waiting as f64),
     ];
     let mut present = BTreeSet::new();
-    for (id, _, _, last, connection) in &agents {
+    for (id, _, _, last, connection, stale) in &agents {
         let label = registry.label("agent", &id.0);
         present.insert(label.1.clone());
+        if stale {
+            continue;
+        }
         let limit = connection.and_then(|connection| connection.spec.input_limit());
         if let (Some(tokens), Some(limit)) = (last.context(), limit.filter(|limit| *limit > 0)) {
             gauges.push((

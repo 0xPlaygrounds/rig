@@ -205,3 +205,200 @@ fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
         .map(|TurnUsage(spent)| input(spent));
     assert_eq!(turn, Some(Some(100)));
 }
+
+#[test]
+fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
+    let reported = |tokens| {
+        vec![
+            MockStreamEvent::text("hi"),
+            MockStreamEvent::final_response_with_total_tokens(tokens),
+        ]
+    };
+    let model =
+        MockCompletionModel::from_stream_turns([reported(500), reply("no usage"), reported(700)]);
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    let agent = app.world_mut().spawn((Agent, connection)).id();
+    app.world_mut()
+        .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    assert_eq!(
+        app.world()
+            .get::<LastUsage>(agent)
+            .and_then(LastUsage::context),
+        Some(500)
+    );
+    rig_harness_test_support::commit_message(
+        app.world_mut(),
+        agent,
+        Message::user("ordinary message"),
+    )
+    .ok();
+    assert!(app.world().get::<ContextStale>(agent).is_none());
+    assert!(
+        rig_harness_test_support::commit_message(
+            app.world_mut(),
+            agent,
+            Message::assistant("ordinary response")
+        )
+        .is_ok()
+    );
+    let child = app
+        .world_mut()
+        .spawn((Agent, SpawnedBy(agent), ContextStale {}))
+        .id();
+    for message in [Message::user("child task"), Message::assistant("done")] {
+        assert!(rig_harness_test_support::commit_message(app.world_mut(), child, message).is_ok());
+    }
+    app.world_mut().entity_mut(agent).insert(ContextStale {});
+    app.update();
+    let ids = [agent, child].map(|agent| app.world().get::<AgentId>(agent).cloned());
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "usage".to_owned()));
+    app.world_mut().flush();
+    assert!(
+        notices(app.world_mut())
+            .join("\n")
+            .contains("unknown until the next reply")
+    );
+    drop(app);
+
+    let (mut app, wakes) = start(&store);
+    let restored: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &AgentId)>()
+                .iter(world)
+                .find(|(_, found)| Some(*found) == id.as_ref())
+                .map(|(entity, _)| entity)
+        })
+        .collect();
+    assert!(
+        restored.iter().all(|entity| {
+            entity.is_some_and(|entity| app.world().get::<ContextStale>(entity).is_some())
+        }),
+        "agents: {ids:?}, restored: {restored:?}"
+    );
+    let Some(agent) = restored.first().copied().flatten() else {
+        return;
+    };
+    let Some(child) = restored.get(1).copied().flatten() else {
+        return;
+    };
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    app.world_mut().entity_mut(agent).insert(connection);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "unreported", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    assert!(app.world().get::<ContextStale>(agent).is_some());
+    app.world_mut()
+        .trigger(Deliver::new(agent, "reported", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 2
+    });
+    assert!(app.world().get::<ContextStale>(agent).is_none());
+    assert!(app.world().get::<ContextStale>(child).is_some());
+    assert_eq!(
+        app.world()
+            .get::<LastUsage>(agent)
+            .and_then(LastUsage::context),
+        Some(700)
+    );
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "usage".to_owned()));
+    app.world_mut().flush();
+    let shown = notices(app.world_mut()).join("\n");
+    assert!(shown.contains("Context: 700/"), "{shown}");
+}
+
+#[test]
+fn a_context_change_after_a_reply_in_the_same_pass_stays_stale() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hi"),
+        MockStreamEvent::final_response_with_total_tokens(500),
+    ]]);
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    let agent = app
+        .world_mut()
+        .spawn((Agent, connection, ContextStale {}))
+        .id();
+    app.add_systems(
+        AgentPass,
+        (|agents: Query<Entity, Changed<LastUsage>>, mut commands: Commands| {
+            for agent in &agents {
+                commands.entity(agent).insert(ContextStale {});
+            }
+        })
+        .after(Stage::Commit)
+        .before(Stage::Admit),
+    );
+    app.world_mut()
+        .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    assert_eq!(
+        app.world()
+            .get::<LastUsage>(agent)
+            .and_then(LastUsage::context),
+        Some(500)
+    );
+    assert!(app.world().get::<ContextStale>(agent).is_some());
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let Some(mut connection) = connect(&model) else {
+        return;
+    };
+    connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
+    let usage = rig_core::completion::Usage::new()
+        .input_tokens(400)
+        .output_tokens(100);
+    let mut spent = AgentUsage::default();
+    spent.total.calls = 1;
+    let agent = app
+        .world_mut()
+        .spawn((
+            Agent,
+            connection,
+            spent,
+            LastUsage(Some(rig_memory::Anchor {
+                usage,
+                through: MessageId::default(),
+            })),
+            rig_tui::StatusItems::default(),
+            ContextStale {},
+        ))
+        .id();
+    let context = |world: &World| {
+        world
+            .get::<rig_tui::StatusItems>(agent)
+            .and_then(|items| items.iter().find(|item| item.name == "context"))
+            .map(|item| item.text.clone())
+    };
+    app.update();
+    assert_eq!(context(app.world()).as_deref(), Some("ctx ?/2.0k"));
+    app.world_mut().entity_mut(agent).remove::<ContextStale>();
+    app.update();
+    assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
+}
