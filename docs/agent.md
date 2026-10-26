@@ -336,8 +336,8 @@ between them; a debug build of the agent warns of those at start.
 
 A plugin crate depends on `rig-harness`, and on another plugin crate whose
 types it uses (such as `rig-tui` for a terminal panel), and registers tools,
-slash commands, tool renderers, terminal panels or a window the way the
-built-in ones do, never by editing rig's crates.
+slash commands, transcript render systems, terminal panels or a window the way
+the built-in ones do, never by editing rig's crates.
 [`crates/rig-harness/PLUGINS.md`](../crates/rig-harness/PLUGINS.md) is the
 plugin guide, with a copy-ready example of each kind, its names from
 `rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig

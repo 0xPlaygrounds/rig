@@ -73,11 +73,11 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
 | `rig-claude-cloak` | `ClaudeCloakPlugin` | `claude-cloak/*` models signed in with a Claude subscription (OAuth), and `/claude-cloak login` and `logout` |
 
-An entry names its crate, `crate = "rig-tui"`, and no source: the agent
-builds rig's own crates from crates.io at the launcher's version, or from
-the rig checkout it is built from (`RIG_SOURCE`). A plugin crate that adds to the terminal view (status
-line items, pickers, tool renderers) does so behind a default `tui` cargo
-feature, so it also builds without `rig-tui`.
+An entry names its crate, `crate = "rig-tui"`, and no source: the agent builds
+rig's own crates from crates.io at the launcher's version, or from the rig
+checkout it is built from (`RIG_SOURCE`). A plugin crate that adds to the
+terminal view (status line items, pickers, transcript render systems) does so
+behind a default `tui` cargo feature, so it also builds without `rig-tui`.
 
 The optional [`rig-inspect`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-inspect) plugin adds the
 `inspect` tool, with which the agent reads its own Bevy world, read-only.
