@@ -498,7 +498,7 @@ pub struct MessageView<'a> {
 
 impl MessageView<'_> {
     /// The default look: the user's text after `›`, a reply's as markdown
-    /// with its marks, reasoning dimmed.
+    /// with its marks, reasoning as dimmed markdown.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         match self.role {
             Role::User => {
@@ -514,10 +514,12 @@ impl MessageView<'_> {
                 markdown::render_marked(self.text, self.marks, &self.theme, Some(self.width))
             }
             Role::Reasoning => {
-                let lines = self.text.lines();
+                let lines = markdown::render(self.text, &self.theme, Some(self.width));
                 let style = Style::new().dim().italic();
-                let rows = lines.map(|line| Line::styled(line.replace('\t', "    "), style));
-                rows.collect()
+                lines
+                    .into_iter()
+                    .map(|line| line.patch_style(style))
+                    .collect()
             }
         }
     }

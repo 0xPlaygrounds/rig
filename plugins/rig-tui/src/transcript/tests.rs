@@ -10,7 +10,7 @@ use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage
 use rig_core::conversation::TurnEnd;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, Image, ToolCall, ToolFunction, ToolName,
+    AssistantContent, AssistantMessage, CallId, Image, Reasoning, ToolCall, ToolFunction, ToolName,
     ToolResult as ToolResultMessage, ToolResultContent,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
@@ -106,8 +106,19 @@ fn following_again_drops_the_held_row() {
 fn drawn(
     transcript: &mut Transcript,
     conversation: &Conversation,
+    states: (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    renderers: &Renderers,
+) -> String {
+    drawn_at(transcript, conversation, states, renderers, WIDTH)
+}
+
+/// [`drawn`] at `width`.
+fn drawn_at(
+    transcript: &mut Transcript,
+    conversation: &Conversation,
     (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
     renderers: &Renderers,
+    width: u16,
 ) -> String {
     let (facts, theme) = (CallFacts::default(), crate::Theme::default());
     // The conversation is the same each time.
@@ -123,9 +134,9 @@ fn drawn(
         marks: &[],
         stops: &Stops::of(conversation, &entries),
     };
-    transcript.update(Entity::PLACEHOLDER, &entries, false, &look, WIDTH);
+    transcript.update(Entity::PLACEHOLDER, &entries, false, &look, width);
     let parts = [Part::Message(0)];
-    let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default(), &[]);
+    let visible = transcript.visible(&parts, (width, 10), &mut Scroll::default(), &[]);
     let rows: Vec<String> = visible.rows.iter().map(ToString::to_string).collect();
     rows.join("\n")
 }
@@ -187,6 +198,33 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let states = states(&mut world);
     let shown = drawn(&mut transcript, &conversation, (&states, &none.0), &none.1);
     assert!(shown.contains("   13 of 40 files"), "{shown}");
+}
+
+/// A table in a reply's reasoning is fit to a new width, as one in its text
+/// is, not wrapped as it was laid out for the old width.
+#[test]
+fn a_table_in_reasoning_is_laid_out_again_when_the_width_changes() {
+    let table = "| Tool | What it did |\n| --- | --- |\n| read | Read the first five lines of the \
+                 workspace manifest, which name the package and its edition |\n";
+    let reasoning = AssistantContent::Reasoning(Reasoning::new(table));
+    let reply = Message::Assistant(AssistantMessage::new(vec![reasoning]));
+    let conversation = Conversation(rig_core::conversation::Conversation::from_messages([reply]));
+    let none = (BTreeMap::new(), BTreeMap::new(), Renderers::default());
+    let mut drawn = |transcript: &mut Transcript, width| {
+        drawn_at(
+            transcript,
+            &conversation,
+            (&none.0, &none.1),
+            &none.2,
+            width,
+        )
+    };
+    let mut resized = Transcript::default();
+    drawn(&mut resized, 100);
+    assert_eq!(
+        drawn(&mut resized, 50),
+        drawn(&mut Transcript::default(), 50)
+    );
 }
 
 #[test]

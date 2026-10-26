@@ -1,3 +1,4 @@
+use ratatui::style::Modifier;
 use rig_core::message::{ToolFunction, ToolName};
 use rig_core::tool::{KeptEnd, OutputCut, ToolContext};
 use serde_json::{Value, json};
@@ -57,6 +58,35 @@ fn a_result_is_drawn_whole_with_its_cut_marker_on_its_side() {
     assert_eq!(shell.get(1), Some(&format!("   {marker}")), "{shell:?}");
     assert_eq!(shell.len(), 2002);
     assert_eq!(shell.last().map(String::as_str), Some("   300000"));
+}
+
+/// A reasoning summary's markdown is drawn, not shown raw, and every span
+/// of it stays dim and italic.
+#[test]
+fn reasoning_is_dimmed_markdown() {
+    let view = MessageView {
+        role: Role::Reasoning,
+        message: None,
+        block: 0,
+        text: "**Planning the search**\n\nCheck the `cache` first.",
+        marks: &[],
+        width: 80,
+        theme: Theme::default(),
+    };
+    let lines = view.default_lines();
+    let text: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        text,
+        ["Planning the search", "", "Check the cache first."],
+        "{lines:?}"
+    );
+    let dim_italic = Modifier::DIM | Modifier::ITALIC;
+    assert!(
+        lines
+            .iter()
+            .all(|line| line.style.add_modifier.contains(dim_italic)),
+        "{lines:?}"
+    );
 }
 
 #[test]

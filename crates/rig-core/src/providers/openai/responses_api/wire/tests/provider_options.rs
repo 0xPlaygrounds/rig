@@ -443,6 +443,40 @@ fn chatgpt_access_programs_reaches_the_body() {
     );
 }
 
+/// A mapped effort asks ChatGPT for an `auto` summary, which a raw
+/// `reasoning.summary` overrides; reasoning off or unset asks for none, and
+/// plain OpenAI keeps its opt-in.
+#[test]
+fn chatgpt_effort_asks_for_a_reasoning_summary() {
+    let reasoning = |wire: &Responses, request: CompletionRequest| {
+        prepared_body_of(wire, request).get("reasoning").cloned()
+    };
+    let high = || prompt().options(GenerationOptions::default().reasoning(Effort::High));
+
+    assert_eq!(
+        reasoning(&chatgpt(), high()),
+        Some(json!({"effort": "high", "summary": "auto"}))
+    );
+    assert_eq!(
+        reasoning(
+            &chatgpt(),
+            high().additional_params(json!({"reasoning": {"summary": "detailed"}}))
+        ),
+        Some(json!({"effort": "high", "summary": "detailed"}))
+    );
+    assert_eq!(
+        reasoning(
+            &chatgpt(),
+            prompt().options(
+                GenerationOptions::default().reasoning(crate::completion::options::Reasoning::Off)
+            )
+        ),
+        Some(json!({"effort": "none"}))
+    );
+    assert_eq!(reasoning(&chatgpt(), prompt()), None);
+    assert_eq!(reasoning(&gpt_6(), high()), Some(json!({"effort": "high"})));
+}
+
 // ── ported from the pull requests these options supersede ──────────────
 
 /// The typed `prompt_cache_options` field and the mapped retention build

@@ -1538,13 +1538,18 @@ fn doubleword_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_
 }
 
 /// The ChatGPT (Codex) backend: no public reference; the cells follow the
-/// Codex CLI's requests and the recorded echoes.
+/// Codex CLI's requests and the recorded echoes. An effort also asks for an
+/// `auto` reasoning summary, since without one the backend streams no
+/// reasoning text.
 fn codex(fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "the ChatGPT backend does not take it";
     OptionMap {
         reasoning: Mapping::of(fields.reasoning, |reasoning| match reasoning {
             Reasoning::Off => reasoning_object("none"),
-            Reasoning::Effort(effort) => reasoning_object(effort.as_str()),
+            Reasoning::Effort(effort) => send(
+                "reasoning",
+                json!({"effort": effort.as_str(), "summary": "auto"}),
+            ),
             Reasoning::Budget { .. } => {
                 Mapping::unsupported("the ChatGPT backend takes an effort level, not a budget")
             }

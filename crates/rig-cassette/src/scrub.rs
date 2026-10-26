@@ -1794,10 +1794,40 @@ impl Scrubber {
         match self.purpose {
             Purpose::Cassette => {
                 let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+                let scrubbed = self.scrub_openai_user_ids(&scrubbed);
                 scrub_local_filesystem_paths(&scrubbed)
             }
             Purpose::Traffic => scrubbed.into_owned(),
         }
+    }
+
+    /// Replace OpenAI account user ids (`user-` and 24 letters or digits),
+    /// which the ChatGPT backend echoes as `safety_identifier`.
+    fn scrub_openai_user_ids(&mut self, text: &str) -> String {
+        const PREFIX: &str = "user-";
+        const ID_LEN: usize = 24;
+
+        let mut output = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(start) = rest.find(PREFIX) {
+            let (before, found) = rest.split_at(start);
+            output.push_str(before);
+            let id_len = found
+                .get(PREFIX.len()..)
+                .unwrap_or_default()
+                .find(|ch: char| !ch.is_ascii_alphanumeric())
+                .unwrap_or(found.len() - PREFIX.len());
+            let alone = !before.ends_with(|ch: char| ch.is_ascii_alphanumeric());
+            let (id, tail) = found.split_at(PREFIX.len() + id_len);
+            if alone && id_len == ID_LEN {
+                output.push_str(&self.placeholder(id, "user-"));
+            } else {
+                output.push_str(id);
+            }
+            rest = tail;
+        }
+        output.push_str(rest);
+        output
     }
 
     /// Replace 12-digit account-ID segments in ARNs, preserving partition,

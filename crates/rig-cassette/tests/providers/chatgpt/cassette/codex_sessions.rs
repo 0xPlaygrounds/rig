@@ -120,18 +120,21 @@ async fn reasoning_session_two_tool_calls_streaming() {
         "codex_sessions/reasoning_session_two_tool_calls_streaming",
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(6000)
-                .tool(WeatherTool::new(call_count.clone()))
-                .reasoning(rig::completion::Effort::Low)
-                .build();
+            // The backend no longer serves `gpt-5.4` to ChatGPT accounts.
+            let agent =
+                rig::AgentBuilder::new(client.completion(rig::providers::openai::GPT_6_ASTRA))
+                    .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+                    .max_tokens(6000)
+                    .tool(WeatherTool::new(call_count.clone()))
+                    .reasoning(rig::completion::Effort::High)
+                    .build();
 
             let stream = agent
                 .prompt(
                     "I need the current weather in Tokyo and in Paris. Use the get_weather \
                      tool once per city, then compare the two cities in one short paragraph \
-                     that mentions both city names.",
+                     that mentions both city names. End it with the number of ways to tile a \
+                     3x8 board with 2x1 dominoes, which you must work out yourself.",
                 )
                 .history(Vec::<Message>::new())
                 .max_turns(5)
