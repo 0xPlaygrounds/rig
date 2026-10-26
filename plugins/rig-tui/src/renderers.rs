@@ -544,8 +544,10 @@ pub enum RenderSystems {
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RenderRevision(pub u64);
 
-/// Lines of an item and named contributions after them. An empty `lines`
-/// hides the item. Contributions are ordered and names identify row ranges.
+/// Lines of an item and named contributions after them. Contributions are
+/// ordered and names identify row ranges. An item with no lines and no
+/// contributions is hidden; contributions are drawn even when `lines` is
+/// empty.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderOutput {
     /// The item's unwrapped lines.

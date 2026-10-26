@@ -192,3 +192,31 @@ fn the_last_declared_project_table_wins_across_a_disabled_declaration() {
         "{places:?}"
     );
 }
+
+/// A type read from a turned-off declaration and a later one is applied by
+/// one system: a malformed table is one problem, not one per declaration.
+#[test]
+fn a_disabled_declaration_adds_no_second_apply_system() {
+    use bevy_ecs::entity_disabling::Disabled;
+    let root = std::env::temp_dir().join(format!("rig-settings-once-{}", std::process::id()));
+    std::fs::create_dir_all(root.join(".rig")).ok();
+    std::fs::write(root.join(".rig/settings.toml"), "[b]\nn = \"x\"\n").ok();
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml(""))
+        .insert_resource(ProjectRoot(root.clone()))
+        .add_project_setting::<Counts>("a");
+    let world = app.world_mut();
+    let first = world
+        .query::<(Entity, &ProjectSetting)>()
+        .iter(world)
+        .find_map(|(entity, setting)| (setting.0 == "a").then_some(entity));
+    if let Some(first) = first {
+        world.entity_mut(first).insert(Disabled);
+    }
+    app.add_project_setting::<Counts>("b");
+    app.update();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(first.is_some(), "the first declaration was found");
+    let problems = app.world().resource::<Settings>().problems();
+    assert_eq!(problems.len(), 1, "{problems:?}");
+}

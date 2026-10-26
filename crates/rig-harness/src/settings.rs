@@ -33,7 +33,9 @@ use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::Allow;
 use bevy_log::warn;
 use serde::de::DeserializeOwned;
 
@@ -193,8 +195,9 @@ impl AppSettingsExt for App {
             self.add_plugins(ProjectSettingsPlugin);
         }
         let world = self.world_mut();
+        // A declaration turned off still means its type's system was added.
         let read = world
-            .query_filtered::<(), With<ReadAs<T>>>()
+            .query_filtered::<(), (With<ReadAs<T>>, Allow<Disabled>)>()
             .iter(world)
             .next()
             .is_some();
