@@ -407,7 +407,7 @@ fn spawn_requested(
     let brief = request.brief.trim();
     if !brief.is_empty() {
         let brief = Deliver::new(child.id(), brief, DeliveryMode::Queue);
-        child.insert(Brief(brief.with_author(author.titled(title.clone()))));
+        child.insert(Brief(brief.with_author(author)));
     }
     match request.role {
         Role::Task => {

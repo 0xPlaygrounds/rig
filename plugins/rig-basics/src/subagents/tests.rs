@@ -17,7 +17,7 @@ use rig_harness_test_support::{
 /// Each message delivered: the agent it went to, the request it names, its
 /// mode, its text and who wrote it.
 #[derive(Resource, Default)]
-struct Delivered(Vec<(Entity, String, DeliveryMode, String, AuthorKind)>);
+struct Delivered(Vec<(Entity, String, DeliveryMode, String, Author)>);
 
 /// The arguments of `look`, a read-only tool every agent may call.
 #[derive(Deserialize, JsonSchema)]
@@ -66,7 +66,7 @@ impl Session {
                     };
                     let request = message.author.request.clone().map(|request| request.0);
                     let text = message.text().to_owned();
-                    let author = message.author.kind.clone();
+                    let author = message.author.clone();
                     let entry = (to, request.unwrap_or_default(), message.mode, text, author);
                     delivered.0.push(entry);
                 },
@@ -148,7 +148,7 @@ impl Session {
     }
 
     /// Who wrote each message delivered to `to`.
-    fn authors(&self, to: Entity) -> Vec<&AuthorKind> {
+    fn authors(&self, to: Entity) -> Vec<&Author> {
         let delivered = self.app.world().resource::<Delivered>().0.iter();
         let delivered = delivered.filter(|(entity, ..)| *entity == to);
         delivered.map(|(.., author)| author).collect()
@@ -202,6 +202,9 @@ fn peers_agree_and_each_reports_as_it_is_done() {
     assert!(asked.contains("One-word names."), "{asked}");
     // Its role is a section of its own, not its saved system prompt.
     assert!(asked.contains("<peer_role>"), "{asked}");
+    // Its brief is headed by the parent alone, not by its own task's title.
+    let from = format!("Output of agent {}, not", session.short(session.parent));
+    assert!(asked.contains(&from), "{asked}");
     let prompts = |agent| {
         session
             .app
@@ -226,12 +229,26 @@ fn peers_agree_and_each_reports_as_it_is_done() {
         let told =
             |(_, mode, text): (_, _, &str)| mode == DeliveryMode::Inform && text.contains(&judge);
         assert!(note.is_some_and(told), "{note:?}");
-        assert_eq!(session.authors(peer).last(), Some(&&plugin));
+        let author = session.authors(peer).last().map(|author| &author.kind);
+        assert_eq!(author, Some(&plugin));
     }
     let brief = session.to(c).first().map(|(.., text)| text.to_string());
     let brief = brief.unwrap_or_default();
     let names = brief.contains(&session.short(a)) && brief.contains(&session.short(b));
     assert!(names, "{brief}");
+    // The brief is headed by the parent alone; the task's title is the
+    // subagent's own.
+    let author = session.authors(c).first().map(|author| author.label());
+    assert_eq!(
+        author,
+        Some(format!("agent {}", session.short(session.parent)))
+    );
+    let title = session
+        .app
+        .world()
+        .get::<AgentTitle>(c)
+        .map(|title| title.0.as_str());
+    assert_eq!(title, Some("Judge"));
 }
 
 /// The open calls of `slow`, a tool that answers only when a test does.
@@ -439,7 +456,12 @@ fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing()
         [("ta", DeliveryMode::Inform), ("tb", DeliveryMode::Inform)]
     );
     let plugin = AuthorKind::Plugin(ORIGIN.to_owned());
-    assert_eq!(session.authors(parent), [&plugin, &plugin]);
+    let authors: Vec<_> = session
+        .authors(parent)
+        .into_iter()
+        .map(|a| &a.kind)
+        .collect();
+    assert_eq!(authors, [&plugin, &plugin]);
     assert!(
         world.get::<ActiveTurn>(parent).is_none(),
         "no report started it"
