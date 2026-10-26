@@ -357,6 +357,7 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
         TurnOutcome::Stopped(why) => TurnEnd::Stopped {
             why: why.clone(),
             at: None,
+            calls: Vec::new(),
         },
     }
 }
@@ -492,7 +493,7 @@ const STOPPED_BY_USER: &str = "the user stopped the turn";
 /// turn that has not settled is answered so and settled, whatever held it
 /// gone. Each turn ends [`TurnOutcome::Stopped`], in its record too, set
 /// before its calls settle, so a call's owner sees it stopped them; the
-/// record names the last entry. The
+/// record names the last entry and the calls the stop answered. The
 /// conversations are saved and written to the log at once, in one flush,
 /// so a log that ends mid-turn means a crash, a restart or a log that
 /// stopped (shown once, as every log failure is); a stop never waits on
@@ -540,10 +541,16 @@ pub(crate) fn on_stop_turn(
         }
         let reply = reply
             .zip(calls)
-            .map(|(reply, calls)| reply_calls(reply, calls, &replies));
+            .map(|(reply, calls)| reply_calls(reply, calls, &replies))
+            .unwrap_or_default();
+        let answered = reply
+            .iter()
+            .filter(|call| call.outcome.is_none())
+            .map(|call| call.request.call.id.clone())
+            .collect();
         let stopped_call =
             |call: &ReplyCallItem| Some(not_finished(&why, call.started, call.footprint));
-        if let Some(results) = reply_results(reply.unwrap_or_default(), stopped_call) {
+        if let Some(results) = reply_results(reply, stopped_call) {
             commit_results(&mut conversation, results);
         }
         conversation.halt(Halt::Stopped);
@@ -551,6 +558,7 @@ pub(crate) fn on_stop_turn(
         conversation.end_turn(TurnEnd::Stopped {
             why: reason.clone(),
             at,
+            calls: answered,
         });
         let conversation = conversation.bypass_change_detection();
         committed.write_batch(save_conversation(&log, agent, id, conversation));

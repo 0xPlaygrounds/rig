@@ -121,7 +121,12 @@ fn a_question_is_a_dialog_its_buttons_answer() {
 fn stop_turn(conversation: &mut Conversation) {
     conversation.halt(Halt::Stopped);
     let at = conversation.entries().next_back().map(|entry| entry.id);
-    conversation.end_turn(TurnEnd::Stopped { why: None, at });
+    let calls = Vec::new();
+    conversation.end_turn(TurnEnd::Stopped {
+        why: None,
+        at,
+        calls,
+    });
 }
 
 /// A stop follows the last message of the turn it cut off: the cut reply,

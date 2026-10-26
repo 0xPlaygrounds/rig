@@ -77,7 +77,8 @@ pub struct ChildCall {
 }
 
 /// Where a tool call stands. A call of an earlier turn, or one whose
-/// effect is gone, is `Done` when it has a result and `Running` when not.
+/// effect is gone, is `Stopped` when a stop answered it, else `Done` when
+/// it has a result and `Running` when not.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CallState {
     /// The model is still streaming its arguments.
@@ -94,6 +95,8 @@ pub enum CallState {
     Running(Option<String>),
     /// Answered.
     Done,
+    /// Answered by a stop that cut its turn off.
+    Stopped,
 }
 
 /// What a hold without a [`Name`] is called.
@@ -131,10 +134,12 @@ impl<'a> ToolCallView<'a> {
     }
 
     /// Whether the call failed: the tool answered with an error, or the
-    /// process it ran did not exit with 0 ([`ExitStatus`]).
+    /// process it ran did not exit with 0 ([`ExitStatus`]). A stopped call
+    /// did not fail.
     pub fn failed(&self) -> bool {
-        self.result.is_some_and(|result| result.is_error)
-            || self.exit().is_some_and(|exit| !exit.success())
+        self.state != CallState::Stopped
+            && (self.result.is_some_and(|result| result.is_error)
+                || self.exit().is_some_and(|exit| !exit.success()))
     }
 
     /// How the process the call ran ended, if the tool said.
@@ -144,8 +149,8 @@ impl<'a> ToolCallView<'a> {
 
     /// The header line: `title` in bold and `detail` dimmed on a band
     /// tinted by where the call stands ([`Theme`]'s `call_*` colors), with
-    /// the state in words too when it is running, held or failed (how its
-    /// process ended, when it ran one).
+    /// the state in words too when it is running, held, stopped or failed
+    /// (how its process ended, when it ran one).
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
         let detail = detail.into();
         let detail = (!detail.is_empty()).then(|| Span::from(detail).dim());
@@ -167,6 +172,7 @@ impl<'a> ToolCallView<'a> {
             _ => "failed".to_owned(),
         };
         let (band, state) = match (self.result, &self.state) {
+            (_, CallState::Stopped) => (self.theme.call_waiting, "stopped".to_owned()),
             (Some(_), _) if self.failed() => (self.theme.call_failed, failure()),
             (_, CallState::Held(holds)) => (
                 self.theme.call_waiting,

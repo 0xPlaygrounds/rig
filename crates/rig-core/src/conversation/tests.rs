@@ -558,6 +558,7 @@ fn turn_records_open_numbered_and_end_once() {
     let stopped = TurnEnd::Stopped {
         why: None,
         at: conversation.entries().next_back().map(|entry| entry.id),
+        calls: vec![crate::message::CallId::from_wire("c1")],
     };
     assert!(conversation.end_turn(stopped.clone()));
 

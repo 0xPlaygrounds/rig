@@ -598,11 +598,13 @@ pub(crate) struct Look<'a> {
 
 /// Where stops cut the turns of a conversation off, read from its turn
 /// records: the last entry of each stopped turn, which the stop is drawn
-/// under. A turn that ended as stopped in its own course, with no last
-/// entry recorded, has none.
+/// under, and the calls each stop answered, with the reply asking for them,
+/// as call ids may repeat across turns. A turn that ended as stopped in its
+/// own course, with no last entry recorded, has none.
 #[derive(Default, Hash)]
 pub(crate) struct Stops {
     at: BTreeSet<MessageId>,
+    calls: BTreeSet<(MessageId, CallId)>,
 }
 
 impl Stops {
@@ -610,11 +612,35 @@ impl Stops {
     pub(crate) fn of(conversation: &conversation::Conversation) -> Self {
         let mut stops = Self::default();
         for (_, record) in conversation.turns() {
-            let Some(TurnEnd::Stopped { at: Some(at), .. }) = record.end else {
+            let Some(TurnEnd::Stopped {
+                at: Some(at),
+                calls,
+                ..
+            }) = record.end
+            else {
                 continue;
             };
-            if conversation.index_of(at).is_some() {
-                stops.at.insert(at);
+            let Some(end) = conversation.index_of(at) else {
+                continue;
+            };
+            stops.at.insert(at);
+            // The calls are the last reply's: the last one of the turn
+            // asking for any of them.
+            let start = conversation.start_of(record.start);
+            let turn = conversation.entries().take(end + 1).skip(start);
+            let asked = |entry: &conversation::EntryRef<'_>| match entry.message {
+                Message::Assistant(reply) => {
+                    reply.tool_calls().any(|call| calls.contains(&call.id))
+                }
+                _ => false,
+            };
+            let Some(reply) = turn.rev().find(asked) else {
+                continue;
+            };
+            if let Message::Assistant(message) = reply.message {
+                let answered = message.tool_calls().filter(|call| calls.contains(&call.id));
+                let answered = answered.map(|call| (reply.id, call.id.clone()));
+                stops.calls.extend(answered);
             }
         }
         stops
@@ -623,6 +649,11 @@ impl Stops {
     /// Whether a stop is drawn under the entry `id`.
     fn under(&self, id: Option<MessageId>) -> bool {
         id.is_some_and(|id| self.at.contains(&id))
+    }
+
+    /// Whether a stop answered the call `call` of the reply `id`.
+    fn answered(&self, id: Option<MessageId>, call: &CallId) -> bool {
+        id.is_some_and(|id| self.calls.contains(&(id, call.clone())))
     }
 }
 
@@ -700,9 +731,18 @@ impl Look<'_> {
         }
     }
 
-    /// Where the call `call` stands: as its effect says while it has one,
-    /// else done once it has `result`.
-    fn state(&self, call: &CallId, result: Option<&ToolResult>) -> CallState {
+    /// Where the call `call` of the reply `id` stands: stopped when a stop
+    /// answered it, else as its effect says while it has one, else done
+    /// once it has `result`.
+    fn state(
+        &self,
+        id: Option<MessageId>,
+        call: &CallId,
+        result: Option<&ToolResult>,
+    ) -> CallState {
+        if self.stops.answered(id, call) {
+            return CallState::Stopped;
+        }
         match self.calls.get(call) {
             Some(state) => state.clone(),
             None if result.is_some() => CallState::Done,
@@ -726,6 +766,7 @@ impl Look<'_> {
         if let Message::Assistant(assistant) = message {
             for item in assistant.content.iter() {
                 if let AssistantContent::ToolCall(call) = item {
+                    self.stops.answered(id, &call.id).hash(hasher);
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
                     // Its facts come with its running time.
@@ -1649,7 +1690,7 @@ fn message_lines(
                         let view = ToolCallView {
                             call,
                             result,
-                            state: look.state(&call.id, result),
+                            state: look.state(id, &call.id, result),
                             theme: *look.theme,
                             facts,
                             took,

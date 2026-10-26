@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{Aside, AsideId, Author, Conversation, MessageId};
+use crate::message::CallId;
 
 /// The kind of an aside holding a [`TurnRecord`].
 pub const TURN: &str = "rig.turn";
@@ -52,6 +53,10 @@ pub enum TurnEnd {
         /// ended as stopped in its own course, such as a compaction ending it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<MessageId>,
+        /// The tool calls the stop answered: those that had no result of
+        /// their own.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        calls: Vec<CallId>,
     },
 }
 

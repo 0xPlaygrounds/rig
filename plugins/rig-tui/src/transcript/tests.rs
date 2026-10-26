@@ -11,6 +11,7 @@ use rig_core::conversation::TurnEnd;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, Image, ToolCall, ToolFunction, ToolName,
+    ToolResult as ToolResultMessage, ToolResultContent,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
@@ -488,12 +489,14 @@ fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
 }
 
 /// Ends the turn `agent` runs as a stop does: the request halted, the
-/// record ending at the last entry.
-fn stop(app: &mut App, agent: Entity) {
+/// record ending at the last entry with the calls the stop answered.
+fn stop(app: &mut App, agent: Entity, calls: &[&str]) {
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.halt(Halt::Stopped);
         let at = conversation.entries().next_back().map(|entry| entry.id);
-        conversation.end_turn(TurnEnd::Stopped { why: None, at });
+        let calls = calls.iter().map(|id| CallId::from_wire(*id)).collect();
+        let why = None;
+        conversation.end_turn(TurnEnd::Stopped { why, at, calls });
     }
     app.update();
 }
@@ -531,7 +534,7 @@ fn a_stopped_reply_ends_in_a_stop_at_once_and_after_a_reload() {
     let text = vec![AssistantContent::text("half an essay")];
     let aborted = AssistantMessage::aborted(None, text, "stopped");
     say(&mut app, agent, Message::Assistant(aborted));
-    stop(&mut app, agent);
+    stop(&mut app, agent, &[]);
     let order = ["write an essay", "half an essay", "[stopped]"];
     let lines = on_screen(&mut app, agent, 100);
     let at = order.map(|text| line_of(&lines, text));
@@ -548,6 +551,113 @@ fn a_stopped_reply_ends_in_a_stop_at_once_and_after_a_reload() {
         assert_eq!(count_of(&lines, "Do not carry it out"), 0, "{lines:#?}");
         assert!(reload(&mut app, agent));
     }
+}
+
+#[test]
+fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
+    let (mut app, agent) = view_app();
+    let (Ok(look), Ok(shell), Ok(read)) = (
+        ToolName::new("look"),
+        ToolName::new("shell"),
+        ToolName::new("read"),
+    ) else {
+        return;
+    };
+    let call = |id: &str, name: &ToolName| {
+        ToolCall::from_wire(id, ToolFunction::new(name.clone(), json!({})))
+    };
+    let reply = |calls: Vec<ToolCall>| {
+        let calls = calls.into_iter().map(AssistantContent::ToolCall).collect();
+        Message::Assistant(AssistantMessage::new(calls))
+    };
+    // An earlier turn's call shares an id with a call the stop answered.
+    say(&mut app, agent, Message::user("first"));
+    let earlier = call("a", &look);
+    say(&mut app, agent, reply(vec![earlier.clone()]));
+    let looked = earlier.result(vec![ToolResultContent::text("seen")]);
+    say(&mut app, agent, Message::tool_results(vec![looked]));
+    say(&mut app, agent, Message::assistant("done"));
+    say(&mut app, agent, Message::user("second"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    let (running, held, failed) = (call("a", &shell), call("b", &shell), call("c", &read));
+    say(
+        &mut app,
+        agent,
+        reply(vec![running.clone(), held.clone(), failed.clone()]),
+    );
+    let results = [
+        (running, "partial output", true),
+        (held, "Not run: the user stopped the turn.", true),
+        (failed, "no such file", true),
+    ];
+    let results = results.map(|(call, text, error)| ToolResultMessage {
+        is_error: error,
+        ..call.result(vec![ToolResultContent::text(text)])
+    });
+    say(&mut app, agent, Message::tool_results(results.to_vec()));
+    stop(&mut app, agent, &["a", "b"]);
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        let headers: Vec<&str> = lines
+            .iter()
+            .filter(|line| {
+                [" look", " shell", " read"]
+                    .iter()
+                    .any(|name| line.starts_with(name))
+            })
+            .map(String::as_str)
+            .collect();
+        let states: Vec<bool> = headers
+            .iter()
+            .map(|header| header.contains("· stopped"))
+            .collect();
+        assert_eq!(states, [false, true, true, false], "{lines:#?}");
+        assert!(
+            headers
+                .last()
+                .is_some_and(|header| header.contains("· failed")),
+            "{lines:#?}"
+        );
+        let order = ["no such file", "[stopped before it was answered]"];
+        let at = order.map(|text| line_of(&lines, text));
+        assert!(at.iter().all(Option::is_some), "{lines:#?}");
+        assert!(at.is_sorted(), "{lines:#?}");
+        assert!(reload(&mut app, agent));
+    }
+}
+
+/// A call a stop answered is drawn stopped whatever live state it still
+/// has.
+#[test]
+fn a_stopped_call_wins_over_its_live_state() {
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "command": "make" })));
+    let mut conversation = Conversation::default();
+    conversation.open_turn();
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    let at = conversation.push(Message::Assistant(reply));
+    let calls = vec![call.id.clone()];
+    conversation.end_turn(TurnEnd::Stopped {
+        why: None,
+        at: Some(at),
+        calls,
+    });
+    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
+    let outputs = BTreeMap::from([(call.id.clone(), "cc a.c".to_owned())]);
+    let mut transcript = Transcript::default();
+    let renderers = Renderers::default();
+    let shown = drawn(
+        &mut transcript,
+        &conversation,
+        (&calls, &outputs),
+        &renderers,
+    );
+    assert!(shown.contains("· stopped"), "{shown}");
+    assert!(!shown.contains("running"), "{shown}");
 }
 
 #[test]
