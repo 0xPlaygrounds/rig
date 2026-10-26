@@ -216,6 +216,38 @@ fn streamed_calls_are_all_kept_with_their_items() {
     assert_eq!(response.stop(), StopReason::ToolUse);
 }
 
+/// Converse types a client call `tool_use`, streamed and whole. Such a call
+/// is kept like an untyped one, with its `toolUse` as its item.
+#[test]
+fn a_call_typed_tool_use_is_a_client_call() {
+    let typed = json!({ "toolUse": {
+        "toolUseId": "t1", "name": "add", "type": "tool_use", "input": { "x": 1 },
+    } });
+    let mut events = vec![
+        start(
+            0,
+            json!({ "toolUse": { "toolUseId": "t1", "name": "add", "type": "tool_use" } }),
+        ),
+        delta(0, json!({ "toolUse": { "input": "{\"x\":" } })),
+        delta(0, json!({ "toolUse": { "input": "1}" } })),
+        stop(0),
+    ];
+    events.extend(ended("tool_use"));
+    let replies = [
+        streamed(CLAUDE, events).expect("decodes"),
+        whole(CLAUDE, vec![typed.clone()], "tool_use"),
+    ];
+    for response in replies {
+        let calls: Vec<_> = response
+            .tool_calls()
+            .map(|call| (call.id.wire().into_owned(), call.function.arguments_value()))
+            .collect();
+        assert_eq!(calls, [("t1".to_owned(), json!({ "x": 1 }))]);
+        assert_eq!(response.choice[0].native_item(), Some(&typed));
+        assert_eq!(response.stop(), StopReason::ToolUse);
+    }
+}
+
 /// An image arrives with its start and its bytes and is written whole at
 /// its stop; one Converse sent no bytes for does not replay.
 #[test]

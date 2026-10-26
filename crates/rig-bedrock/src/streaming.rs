@@ -7,9 +7,9 @@
 //! call with object input, and every block Rig has no canonical form for
 //! keep that JSON as the provider item, set only when the block is
 //! complete: at its `contentBlockStop`, or in a whole reply, where the item
-//! is the block as Bedrock sent it. A hosted tool's typed `toolUse` and its
-//! `toolResult` are opaque items that replay to the same model together,
-//! never a call Rig runs.
+//! is the block as Bedrock sent it. A hosted tool's `toolUse`, typed other
+//! than `tool_use`, and its `toolResult` are opaque items that replay to the
+//! same model together, never a call Rig runs.
 
 use std::collections::BTreeMap;
 
@@ -97,9 +97,10 @@ impl StreamState {
             return Ok(());
         };
         let open = match kind {
-            // A call that never names its tool is dropped at its end, since
-            // nothing can answer it.
-            "toolUse" if body.str("type").is_none() => {
+            // Converse types a client call `tool_use` or leaves it untyped;
+            // any other type is a hosted tool's use. A call that never names
+            // its tool is dropped at its end, since nothing can answer it.
+            "toolUse" if body.str("type").is_none_or(|kind| kind == "tool_use") => {
                 let fragment = CallFragment {
                     id: body.str("toolUseId"),
                     name: body.str("name"),
