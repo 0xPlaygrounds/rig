@@ -36,7 +36,7 @@ use rig_harness::main_agent::ShownAgent;
 
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
-use super::render::{ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript};
+use super::render::{LayoutSources, ShownConversation, Sources, decorate, lay_out_transcript};
 use super::theme::Theme;
 use super::transcript::{Below, Part, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptView};
@@ -127,6 +127,12 @@ pub struct PaneKeys;
 pub(crate) struct PaneState {
     /// Its messages' rows, kept between frames.
     pub(crate) transcript: Transcript,
+    pub(crate) revision: u64,
+    pub(crate) width: u16,
+    pub(crate) theme: Option<Theme>,
+    pub(crate) source: Option<Entity>,
+    pub(crate) rendered:
+        std::collections::HashMap<super::renderers::RenderKey, super::renderers::RenderRequest>,
     /// Where it is scrolled.
     pub(crate) scroll: Scroll,
     /// The parts laid out last, whose items, top to bottom, the selection
@@ -197,92 +203,145 @@ fn bind_pane_keys(mut world: DeferredWorld, context: HookContext) {
 /// are laid out, and again with them after
 /// [`TuiSystems::Fit`](crate::TuiSystems::Fit) when a panel changed there.
 pub(crate) fn lay_out_panes(
-    from: TranscriptLayout,
-    shown: Res<ShownAgent>,
-    changed: Query<(), Changed<AgentConversation>>,
-    mut panes: Query<(
-        Entity,
-        Ref<TranscriptPane>,
-        &mut TranscriptView,
-        &mut PaneState,
-        &PanelCanvas,
-        Option<&mut DrawnTranscript>,
+    world: &mut World,
+    changes: &mut bevy_ecs::system::SystemState<(
+        Query<Entity, Changed<AgentConversation>>,
+        Query<Entity, Changed<TranscriptPane>>,
     )>,
 ) {
-    let looks_changed = from.looks.changed();
-    for (entity, pane, view, mut state, canvas, drawn) in &mut panes {
+    let Ok((agents, panes)) = changes.get(world) else {
+        return;
+    };
+    let changed_agents: std::collections::HashSet<Entity> = agents.iter().collect();
+    let changed_panes: std::collections::HashSet<Entity> = panes.iter().collect();
+    let entities: Vec<Entity> = world
+        .query_filtered::<Entity, With<TranscriptPane>>()
+        .iter(world)
+        .collect();
+    let revision = world
+        .get_resource::<crate::RenderRevision>()
+        .copied()
+        .unwrap_or_default()
+        .0;
+    let shown_agent = world.resource::<ShownAgent>().0;
+    let theme = *world.resource::<Theme>();
+    let mut sources = bevy_ecs::system::SystemState::<LayoutSources>::new(world);
+    for entity in entities {
+        let Some(pane) = world.get::<TranscriptPane>(entity).cloned() else {
+            continue;
+        };
+        let Some(canvas) = world.get::<PanelCanvas>(entity) else {
+            continue;
+        };
         let area = inner(&pane, canvas.area());
         if area.is_empty() {
             continue;
         }
-        let state = state.bypass_change_detection();
-        if looks_changed {
+        let Some(mut view) = world.get::<TranscriptView>(entity).cloned() else {
+            continue;
+        };
+        let Some(mut stored) = world.get_mut::<PaneState>(entity) else {
+            continue;
+        };
+        let mut state = std::mem::take(stored.bypass_change_detection());
+        if state.revision != revision
+            || state.width != area.width
+            || state.theme != Some(theme)
+            || changed_panes.contains(&entity)
+        {
             state.transcript.clear();
+            state.revision = revision;
+            state.width = area.width;
+            state.theme = Some(theme);
+            state.rendered.clear();
         }
         let agent = match &pane.source {
-            TranscriptSource::Shown => shown.0,
+            TranscriptSource::Shown => shown_agent,
             TranscriptSource::Agent(agent) => Some(*agent),
             TranscriptSource::Value(_) => None,
         };
-        let value = match &pane.source {
-            TranscriptSource::Value(conversation) => {
-                let mut value = ShownConversation::value(conversation, entity);
-                value.changed = pane.is_changed();
-                Some(value)
-            }
-            _ => None,
+        if state.source != agent {
+            state.source = agent;
+            state.transcript.clear();
+            state.rendered.clear();
+        }
+        let mut renderers = super::renderers::Renderers {
+            collecting: true,
+            ..Default::default()
         };
-        let live = agent.and_then(|agent| from.agent(agent, changed.contains(agent)));
-        let shown = value.or(live);
-        lay_out_pane(&from, entity, (view, state, drawn), shown.as_ref(), area);
-    }
-}
-
-/// Lays out the pane `entity` at `area` with `shown`, as
-/// [`lay_out_panes`] does.
-pub(crate) fn lay_out_pane(
-    from: &TranscriptLayout,
-    entity: Entity,
-    (mut view, state, drawn): (
-        Mut<TranscriptView>,
-        &mut PaneState,
-        Option<Mut<DrawnTranscript>>,
-    ),
-    shown: Option<&ShownConversation<'_>>,
-    area: Rect,
-) {
-    let renderers = from.looks.by_kind(Some(entity));
-    let sources = Sources {
-        view: &view,
-        notices: from.notices(),
-        renderers: &renderers,
-        facts: from.facts(),
-        theme: from.theme(),
-    };
-    let parts = lay_out_transcript(&mut state.transcript, &sources, shown, area.width);
-    let height = usize::from(area.height);
-    let highlights = &view.highlights;
-    let visible =
-        (state.transcript).visible(&parts, (area.width, height), &mut state.scroll, highlights);
-    if let Some(mut drawn) = drawn {
-        let agent = shown.and_then(|shown| shown.id.map(|_| shown.entity));
+        *renderers.cached.get_mut() = std::mem::take(&mut state.rendered);
+        {
+            let batch = renderers.batch.get_mut();
+            batch.pane = Some(entity);
+            batch.agent = agent;
+            batch.width = area.width;
+        }
+        let mut parts = Vec::new();
+        for collect in [true, false] {
+            if !collect {
+                super::render::run_renderers(world, &mut renderers);
+            }
+            let Ok(from) = sources.get(world) else {
+                continue;
+            };
+            let value = match &pane.source {
+                TranscriptSource::Value(conversation) => {
+                    Some(ShownConversation::value(conversation, entity))
+                }
+                _ => None,
+            };
+            let live = agent.and_then(|agent| from.agent(agent, changed_agents.contains(&agent)));
+            let shown = value.or(live);
+            let inputs = Sources {
+                view: &view,
+                notices: from.notices(),
+                renderers: &renderers,
+                facts: from.facts(),
+                theme: from.theme(),
+            };
+            parts = lay_out_transcript(&mut state.transcript, &inputs, shown.as_ref(), area.width);
+        }
+        state.rendered = renderers.cached.into_inner();
+        let visible = state.transcript.visible(
+            &parts,
+            (area.width, usize::from(area.height)),
+            &mut state.scroll,
+            &view.highlights,
+        );
         let on_screen = visible.first..visible.first + visible.rows.len();
-        let laid_out = state
+        let drawn = state
             .transcript
-            .laid_out(agent, &parts, highlights, on_screen);
-        drawn.set_if_neq(laid_out.at(area));
-    }
-    let selected = view.selected.as_ref();
-    let selected = selected.and_then(|item| state.transcript.rows_of(&parts, item));
-    state.rows = decorate(visible.rows, visible.first, selected, from.theme());
-    state.below = visible.below;
-    state.parts = parts;
-    state.area = area;
-    if view.top() != visible.top.as_ref() {
+            .laid_out(agent, &parts, &view.highlights, on_screen)
+            .at(area);
+        let selected = view
+            .selected
+            .as_ref()
+            .and_then(|item| state.transcript.rows_of(&parts, item));
+        state.rows = decorate(
+            visible.rows,
+            visible.first,
+            selected,
+            world.resource::<Theme>(),
+        );
+        state.below = visible.below;
+        state.parts = parts;
+        state.area = area;
         view.set_top(visible.top);
-    }
-    if view.width() != Some(area.width) {
         view.set_width(area.width);
+        if let Some(mut stored) = world.get_mut::<PaneState>(entity) {
+            *stored.bypass_change_detection() = state;
+        }
+        if let Some(mut old) = world.get_mut::<TranscriptView>(entity) {
+            if old.top() != view.top() {
+                old.set_top(view.top().cloned());
+            }
+            if old.width() != Some(area.width) {
+                old.set_width(area.width);
+            }
+        }
+        if let Some(mut old) = world.get_mut::<DrawnTranscript>(entity) {
+            old.set_if_neq(drawn);
+        }
     }
 }
 

@@ -575,7 +575,7 @@ pub(crate) fn forget_streams(gone: On<Remove<Partial>>, mut streams: Query<&mut 
 /// What the messages' look depends on besides the messages.
 pub(crate) struct Look<'a> {
     /// The looks plugins added.
-    pub(crate) renderers: &'a Renderers<'a>,
+    pub(crate) renderers: &'a Renderers,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
     /// The output so far of each of its running calls that reports it.
@@ -628,7 +628,7 @@ impl ShownAside<'_> {
     }
 
     /// Its lines in `theme`'s colors; none for a kind nothing draws.
-    pub(crate) fn lines(&self, renderers: &Renderers<'_>, theme: &Theme) -> Vec<Line<'static>> {
+    pub(crate) fn lines(&self, renderers: &Renderers, theme: &Theme) -> Vec<Line<'static>> {
         renderers.aside(&self.view(*theme)).unwrap_or_default()
     }
 }
@@ -839,7 +839,12 @@ impl Transcript {
         let messages = conversation.messages();
         let digest = look.digest();
         let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
-        if !changed && !refit && looks_alike && self.messages.len() == messages.len() {
+        if !changed
+            && !refit
+            && looks_alike
+            && self.messages.len() == messages.len()
+            && (look.renderers.collecting || look.renderers.messages.borrow().is_empty())
+        {
             return;
         }
         // A message's look depends on it and its neighbours, so each is
@@ -859,11 +864,12 @@ impl Transcript {
                 messages.get(index + 1).map(|m| &**m),
             );
             let look_hash = look.hash_message((index, conversation.id(index)), message);
-            if self
-                .messages
-                .get(index)
-                .is_some_and(|cached| cached.look == look_hash && !(resized && cached.fitted))
-                && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
+            if self.messages.get(index).is_some_and(|cached| {
+                cached.look == look_hash
+                    && !(resized && cached.fitted)
+                    && (look.renderers.collecting
+                        || !look.renderers.messages.borrow().contains(&index))
+            }) && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
             {
                 continue;
             }
@@ -1318,6 +1324,7 @@ fn message_lines(
 ) -> (Vec<Line<'static>>, Marks) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
+    look.renderers.at(at, 0);
     let id = conversation.id(at);
     let author = conversation.author(at);
     let stopped = conversation
@@ -1330,12 +1337,13 @@ fn message_lines(
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
                 Inside::Aside(shown) => {
+                    let drawn = shown.lines(look.renderers, look.theme);
+                    if drawn.is_empty() {
+                        continue;
+                    }
                     let start = lines.len();
                     lines.push(Line::default());
-                    lines.extend(on_band(
-                        shown.lines(look.renderers, look.theme),
-                        look.theme.tool,
-                    ));
+                    lines.extend(on_band(drawn, look.theme.tool));
                     marks.push((shown.item(), start..lines.len()));
                 }
             }
@@ -1345,6 +1353,7 @@ fn message_lines(
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
+                look.renderers.at(at, item_at);
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     UserContent::Text(text) => {
@@ -1415,6 +1424,7 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
+                look.renderers.at(at, item_at);
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     AssistantContent::Text(text) => {

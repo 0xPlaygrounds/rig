@@ -1,13 +1,13 @@
 //! Looks: how the transcript draws calls, notes, content, asides and text.
 
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::SystemParam;
-use bevy_log::warn;
+use bevy_ecs::schedule::ScheduleLabel;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
@@ -271,7 +271,7 @@ impl EntryView<'_> {
     }
 }
 
-/// A kind of content block a [`ContentRenderer`] draws.
+/// A kind of non-text content block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ContentKind {
     /// An image, the user's or one the model made.
@@ -426,148 +426,8 @@ fn result_rows<'t>(
     .collect()
 }
 
-/// Draws a tool call as transcript lines, not yet wrapped.
-pub type RenderToolCall = dyn Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync;
-
-/// The look of the tool named `tool`, on an entity of its own.
-#[derive(Component, Clone)]
-pub struct ToolRenderer {
-    /// The tool's name.
-    pub tool: String,
-    /// Draws one of its calls.
-    pub render: Arc<RenderToolCall>,
-}
-
-impl ToolRenderer {
-    /// The look `render` of the tool `tool`.
-    pub fn new(
-        tool: &str,
-        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let (tool, render) = (tool.to_owned(), Arc::new(render));
-        Self { tool, render }
-    }
-}
-
-/// Draws a note or a delivered text as transcript lines, not yet wrapped.
-pub type RenderEntry = dyn Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync;
-
-/// The look of the notes and delivered texts of the plugin `plugin`, on an
-/// entity of its own.
-#[derive(Component, Clone)]
-pub struct EntryRenderer {
-    /// The plugin's name, as its [`Author::plugin`](rig_core::conversation::Author::plugin)
-    /// says, such as `btw` or `compaction`.
-    pub plugin: String,
-    /// Draws one of its notes or texts.
-    pub render: Arc<RenderEntry>,
-}
-
-impl EntryRenderer {
-    /// The look `render` of the plugin `plugin`'s notes and texts.
-    pub fn new(
-        plugin: &str,
-        render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let (plugin, render) = (plugin.to_owned(), Arc::new(render));
-        Self { plugin, render }
-    }
-}
-
-/// Draws a content block as transcript lines, not yet wrapped.
-pub type RenderContent = dyn Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync;
-
-/// The look of the content blocks of a kind, on an entity of its own.
-#[derive(Component, Clone)]
-pub struct ContentRenderer {
-    /// The kind it draws.
-    pub kind: ContentKind,
-    /// Draws one block.
-    pub render: Arc<RenderContent>,
-}
-
-impl ContentRenderer {
-    /// The look `render` of the blocks of `kind`.
-    pub fn new(
-        kind: ContentKind,
-        render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let render = Arc::new(render);
-        Self { kind, render }
-    }
-}
-
-/// Draws an aside as transcript lines, not yet wrapped.
-pub type RenderAside = dyn Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync;
-
-/// The look of the asides of a kind, on an entity of its own.
-#[derive(Component, Clone)]
-pub struct AsideRenderer {
-    /// The kind it draws, such as `note`.
-    pub kind: String,
-    /// Draws one aside.
-    pub render: Arc<RenderAside>,
-}
-
-impl AsideRenderer {
-    /// The look `render` of the asides of `kind`.
-    pub fn new(
-        kind: &str,
-        render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let (kind, render) = (kind.to_owned(), Arc::new(render));
-        Self { kind, render }
-    }
-}
-
-/// The decorators that drew lines under a call or a message, each by name
-/// with the lines it drew among its own.
+/// Named line ranges within a rendered item.
 pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
-
-/// Lines drawn under every tool call, after its look, on an entity of
-/// its own.
-#[derive(Component, Clone)]
-pub struct CallDecorator {
-    /// What it is called, such as the plugin's name.
-    pub name: String,
-    /// Draws its lines under a call; none leaves the call as it is.
-    pub render: Arc<RenderToolCall>,
-}
-
-impl CallDecorator {
-    /// The decorator `name` drawing `render`'s lines.
-    pub fn new(
-        name: &str,
-        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let (name, render) = (name.to_owned(), Arc::new(render));
-        Self { name, render }
-    }
-}
-
-/// Draws lines under a message.
-pub type DecorateMessage = dyn Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync;
-
-/// Lines drawn under every message the user or the model wrote, after its
-/// own, on an entity of its own.
-#[derive(Component, Clone)]
-pub struct MessageDecorator {
-    /// What it is called, such as the plugin's name.
-    pub name: String,
-    /// Draws its lines under a message; none leaves it as it is.
-    pub render: Arc<DecorateMessage>,
-}
-
-impl MessageDecorator {
-    /// The decorator `name` drawing `render`'s lines.
-    pub fn new(
-        name: &str,
-        render: impl Fn(&DecoratedMessage<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> Self {
-        let (name, render) = (name.to_owned(), Arc::new(render));
-        Self { name, render }
-    }
-}
 
 /// An aside of a conversation, as an aside renderer sees it.
 pub struct AsideView<'a> {
@@ -658,344 +518,505 @@ pub struct DecoratedMessage<'a> {
     pub author: Option<&'a Author>,
 }
 
-/// Registers transcript looks: how tool calls, notes, content blocks,
-/// asides and message text are drawn, and lines under every call or
-/// message.
-///
-/// Each look is a component on an entity of its own, named by what it
-/// draws: `renderer:<tool>`, `entry:<plugin>`, `content:<kind>`,
-/// `aside:<kind>`, `message:<role>`, `decorator:<name>`,
-/// `message-decorator:<name>`. The first look of a name stays (a later one
-/// is refused with a warning); `Disabled` on it, in `Plugin::finish`, frees
-/// it. A look spawned as a child of a [`TranscriptPane`](crate::TranscriptPane)
-/// applies in that pane only, before the global one. A change to a look
-/// draws the transcript again. Without a look, a call draws as
-/// [`ToolCallView::default_lines`], also while its arguments stream
-/// ([`CallState::Streaming`]). A renderer sees the calls its call started,
-/// through any effect in between, as [`ToolCallView::children`]:
-///
-/// ```no_run
-/// use rig_harness::prelude::*;
-/// use rig_tui::AppToolRenderersExt;
-/// use rig_tui::ratatui::text::Line;
-///
-/// fn build(app: &mut App) {
-///     app.add_tool_renderer("consult", |view| {
-///         let mut lines = view.default_lines();
-///         for child in view.children {
-///             let indent = "  ".repeat(child.depth + 2);
-///             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
-///         }
-///         lines
-///     });
-/// }
-/// ```
-pub trait AppToolRenderersExt {
-    /// Draw the calls of `tool` with `render`.
-    fn add_tool_renderer(
-        &mut self,
-        tool: &str,
-        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
+/// Runs presentation systems for the changed items of one pane or export.
+/// Systems may read agent data but write only presentation data. Request a
+/// redraw and advance [`RenderRevision`] when external renderer state changes.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TranscriptRender;
 
-    /// Draw the notes and the entries the plugin `plugin` wrote, such as a
-    /// compaction's summary, with `render`; without one they draw as
-    /// [`EntryView::default_lines`].
-    fn add_entry_renderer(
-        &mut self,
-        plugin: &str,
-        render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
-
-    /// Draw the content blocks of `kind` (an image, audio, a video or a
-    /// document) with `render`; without one they draw as
-    /// [`ContentView::default_lines`].
-    fn add_content_renderer(
-        &mut self,
-        kind: ContentKind,
-        render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
-
-    /// Draw the asides of `kind` with `render` after the entry they
-    /// follow, as the transcript item
-    /// [`TranscriptItem::Aside`](crate::TranscriptItem::Aside). An aside of a
-    /// kind with no renderer is not drawn; a note (`note`) is drawn by its
-    /// plugin's entry renderer.
-    fn add_aside_renderer(
-        &mut self,
-        kind: &str,
-        render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
-
-    /// Draw `render`'s lines under every tool call, after the call's own
-    /// look, whichever draws it. Decorators add up, in the order of their
-    /// entities. Its rows under a call are the transcript item
-    /// [`TranscriptItem::Decoration`](crate::TranscriptItem::Decoration), by
-    /// the call's id and `name`.
-    fn add_call_decorator(
-        &mut self,
-        name: &str,
-        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self;
+/// Ordered phases of [`TranscriptRender`]. Order competing systems within a
+/// phase using their own public sets.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RenderSystems {
+    /// Replace an item's default lines.
+    Render,
+    /// Add named decorations after its lines.
+    Decorate,
+    /// Edit the completed presentation.
+    Edit,
 }
 
-/// Spawns the global look `look` named `name`, unless a global one of the
-/// same key (`same`) is there: a disabled one, which a query skips, frees
-/// its key.
-fn add_look<T: Component>(app: &mut App, name: String, look: T, same: impl Fn(&T) -> bool) {
-    let world = app.world_mut();
-    let mut looks = world.query_filtered::<&T, Without<ChildOf>>();
-    if looks.iter(world).any(same) {
-        warn!("look not added: `{name}` has one; insert `Disabled` on it to replace it");
-        return;
-    }
-    world.spawn((Name::new(name), look));
+/// Increment to invalidate cached presentation after renderer state changes.
+/// Also send [`crate::RequestRedraw`] to schedule a terminal frame.
+#[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RenderRevision(pub u64);
+
+/// Lines of an item and named contributions after them. An empty `lines`
+/// hides the item. Contributions are ordered and names identify row ranges.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RenderOutput {
+    /// The item's unwrapped lines.
+    pub lines: Vec<Line<'static>>,
+    /// Named lines appended after the item's lines.
+    pub decorations: Vec<(String, Vec<Line<'static>>)>,
 }
 
-impl AppToolRenderersExt for App {
-    fn add_tool_renderer(
-        &mut self,
-        tool: &str,
-        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = ToolRenderer::new(tool, render);
-        add_look(self, format!("renderer:{tool}"), look, |other| {
-            other.tool == tool
-        });
-        self
+impl RenderOutput {
+    /// Append a named contribution. Systems may edit or remove contributions
+    /// directly before the layout consumes them.
+    pub fn decorate(&mut self, name: impl Into<String>, lines: Vec<Line<'static>>) {
+        self.decorations.push((name.into(), lines));
     }
 
-    fn add_entry_renderer(
-        &mut self,
-        plugin: &str,
-        render: impl Fn(&EntryView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = EntryRenderer::new(plugin, render);
-        add_look(self, format!("entry:{plugin}"), look, |other| {
-            other.plugin == plugin
-        });
-        self
-    }
-
-    fn add_content_renderer(
-        &mut self,
-        kind: ContentKind,
-        render: impl Fn(&ContentView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = ContentRenderer::new(kind, render);
-        let name = format!("content:{}", kind.name());
-        add_look(self, name, look, |other| other.kind == kind);
-        self
-    }
-
-    fn add_aside_renderer(
-        &mut self,
-        kind: &str,
-        render: impl Fn(&AsideView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = AsideRenderer::new(kind, render);
-        add_look(self, format!("aside:{kind}"), look, |other| {
-            other.kind == kind
-        });
-        self
-    }
-
-    fn add_call_decorator(
-        &mut self,
-        name: &str,
-        render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
-    ) -> &mut Self {
-        let look = CallDecorator::new(name, render);
-        add_look(self, format!("decorator:{name}"), look, |other| {
-            other.name == name
-        });
-        self
+    fn drawn(&self) -> (Vec<Line<'static>>, Decorated) {
+        let mut lines = self.lines.clone();
+        let mut ranges = Vec::new();
+        for (name, more) in &self.decorations {
+            let start = lines.len();
+            lines.extend(more.iter().cloned());
+            if start != lines.len() {
+                ranges.push((name.clone(), start..lines.len()));
+            }
+        }
+        (lines, ranges)
     }
 }
 
-/// A look as [`Looks`] reads it: changed since the last frame or not, and
-/// the pane it applies in, if only one.
-type Scoped<T> = (Entity, Ref<'static, T>, Option<&'static ChildOf>);
-
-/// The looks plugins added, as a frame draws with them.
-#[derive(SystemParam)]
-pub(crate) struct Looks<'w, 's> {
-    tools: Query<'w, 's, Scoped<ToolRenderer>>,
-    entries: Query<'w, 's, Scoped<EntryRenderer>>,
-    contents: Query<'w, 's, Scoped<ContentRenderer>>,
-    asides: Query<'w, 's, Scoped<AsideRenderer>>,
-    decorators: Query<'w, 's, Scoped<CallDecorator>>,
-    message_decorators: Query<'w, 's, Scoped<MessageDecorator>>,
+/// Owned tool input, including synthetic streaming calls and saved calls.
+#[derive(Clone, PartialEq)]
+pub struct ToolRender {
+    /// The tool call.
+    pub call: ToolCall,
+    /// Its result, when available.
+    pub result: Option<ToolResult>,
+    /// Current execution state.
+    pub state: CallState,
+    /// Presentation colors.
+    pub theme: Theme,
+    /// Published tool facts.
+    pub facts: Option<ToolResultContext>,
+    /// Execution duration.
+    pub took: Option<Duration>,
+    /// Live output.
+    pub output: Option<String>,
+    /// Descendant calls.
+    pub children: Vec<ChildCall>,
 }
 
-/// The looks of `looks` that apply in `pane` (`None`: in no pane of its
-/// own, such as a layout for an export), by key: those of the pane first,
-/// then the global ones, each in entity order.
-fn scoped<'a, T: Component, K, V>(
-    looks: impl Iterator<Item = (Entity, Ref<'a, T>, Option<&'a ChildOf>)>,
-    pane: Option<Entity>,
-    key: impl Fn(&'a T) -> (K, V),
-) -> Vec<(K, V)> {
-    let mut found: Vec<(bool, Entity, &'a T)> = looks
-        .filter_map(|(entity, look, parent)| match parent.map(ChildOf::parent) {
-            None => Some((true, entity, look.into_inner())),
-            Some(of) if Some(of) == pane => Some((false, entity, look.into_inner())),
-            Some(_) => None,
+impl ToolRender {
+    /// Borrow this input for the formatting helpers.
+    pub fn view(&self) -> ToolCallView<'_> {
+        ToolCallView {
+            call: &self.call,
+            result: self.result.as_ref(),
+            state: self.state.clone(),
+            theme: self.theme,
+            facts: self.facts.as_ref(),
+            took: self.took,
+            output: self.output.as_deref(),
+            children: &self.children,
+        }
+    }
+}
+
+/// Owned note or delivered text.
+#[derive(Clone, PartialEq)]
+pub struct EntryRender {
+    /// Author plugin.
+    pub plugin: String,
+    /// Display title.
+    pub title: String,
+    /// Body text.
+    pub text: String,
+}
+
+impl EntryRender {
+    /// Borrow this input for the formatting helpers.
+    pub fn view(&self) -> EntryView<'_> {
+        EntryView {
+            plugin: &self.plugin,
+            title: &self.title,
+            text: &self.text,
+        }
+    }
+}
+
+/// An owned non-text content block.
+#[derive(Clone, PartialEq)]
+pub enum RenderContent {
+    /// An image.
+    Image(Image),
+    /// Audio.
+    Audio(Audio),
+    /// Video.
+    Video(Video),
+    /// A document.
+    Document(Document),
+}
+
+impl RenderContent {
+    /// Borrow the content block.
+    pub fn block(&self) -> ContentBlock<'_> {
+        match self {
+            Self::Image(v) => ContentBlock::Image(v),
+            Self::Audio(v) => ContentBlock::Audio(v),
+            Self::Video(v) => ContentBlock::Video(v),
+            Self::Document(v) => ContentBlock::Document(v),
+        }
+    }
+}
+
+/// Owned content input.
+#[derive(Clone, PartialEq)]
+pub struct ContentRender {
+    /// Message identity, when available.
+    pub message: Option<MessageId>,
+    /// Block index.
+    pub index: usize,
+    /// Content to draw.
+    pub content: RenderContent,
+    /// Whether the model wrote the message.
+    pub assistant: bool,
+}
+
+impl ContentRender {
+    /// Borrow this input for the formatting helpers.
+    pub fn view(&self) -> ContentView<'_> {
+        ContentView {
+            message: self.message,
+            index: self.index,
+            block: self.content.block(),
+            assistant: self.assistant,
+        }
+    }
+}
+
+/// Owned aside input.
+#[derive(Clone, PartialEq)]
+pub struct AsideRender {
+    /// Aside identity.
+    pub id: AsideId,
+    /// Aside value and author.
+    pub aside: Aside,
+    /// Presentation colors.
+    pub theme: Theme,
+}
+
+impl AsideRender {
+    /// Borrow this input for the formatting helpers.
+    pub fn view(&self) -> AsideView<'_> {
+        AsideView {
+            id: self.id,
+            aside: &self.aside,
+            theme: self.theme,
+        }
+    }
+}
+
+/// Owned message input for message decorations.
+#[derive(Clone, PartialEq)]
+pub struct MessageRender {
+    /// Message value.
+    pub message: Message,
+    /// Message identity, when available.
+    pub id: Option<MessageId>,
+    /// Message author.
+    pub author: Option<Author>,
+}
+
+impl MessageRender {
+    /// Borrow this input for the formatting helpers.
+    pub fn view(&self) -> DecoratedMessage<'_> {
+        DecoratedMessage {
+            message: &self.message,
+            id: self.id,
+            author: self.author.as_ref(),
+        }
+    }
+}
+
+/// The input of one render request.
+#[derive(Clone, PartialEq)]
+pub enum RenderInput {
+    /// Tool call and its execution data.
+    Tool(ToolRender),
+    /// Note or delivered text.
+    Entry(EntryRender),
+    /// Non-text content.
+    Content(ContentRender),
+    /// Non-note aside.
+    Aside(AsideRender),
+    /// Message decorations.
+    Message(MessageRender),
+}
+
+/// An item's identity within one batch. Message ordinals distinguish values
+/// without persisted ids. These are presentation keys, not effect entities.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum RenderKey {
+    /// A tool's call id, including a synthetic streaming id.
+    Tool(rig_core::message::CallId),
+    /// An aside id, including notes.
+    Aside(AsideId),
+    /// Message ordinal and block index.
+    Content(usize, usize),
+    /// Message ordinal and delivered text block index.
+    Entry(usize, usize),
+    /// Message ordinal.
+    Message(usize),
+}
+
+/// Public input and output of an item that needs rendering.
+#[derive(Clone, PartialEq)]
+pub struct RenderRequest {
+    /// Owned input, independent of live effect entities.
+    pub input: RenderInput,
+    /// Mutable presentation.
+    pub output: RenderOutput,
+}
+
+/// Changed items of one layout. Present during [`TranscriptRender`], including
+/// pane-less exports. Typed iterators select requests without matching enums.
+/// Cached messages are absent until their inputs or [`RenderRevision`] change.
+#[derive(Resource, Default)]
+pub struct RenderBatch {
+    /// Pane being drawn; `None` for an export.
+    pub pane: Option<Entity>,
+    /// Live source agent; `None` for a saved conversation.
+    pub agent: Option<Entity>,
+    /// Available columns, specific to this pane or export.
+    pub width: u16,
+    /// Requests keyed within this source.
+    pub requests: HashMap<RenderKey, RenderRequest>,
+}
+
+impl RenderBatch {
+    /// Tool calls with the exact tool name.
+    pub fn tools_mut<'a>(
+        &'a mut self,
+        name: &'a str,
+    ) -> impl Iterator<Item = (&'a ToolRender, &'a mut RenderOutput)> {
+        self.requests
+            .values_mut()
+            .filter_map(move |r| match &r.input {
+                RenderInput::Tool(v) if v.call.function.name.as_str() == name => {
+                    Some((v, &mut r.output))
+                }
+                _ => None,
+            })
+    }
+    /// All tool calls, for decorations applying to every tool.
+    pub fn calls_mut(&mut self) -> impl Iterator<Item = (&ToolRender, &mut RenderOutput)> {
+        self.requests.values_mut().filter_map(|r| match &r.input {
+            RenderInput::Tool(v) => Some((v, &mut r.output)),
+            _ => None,
         })
-        .collect();
-    found.sort_by_key(|(global, entity, _)| (*global, *entity));
-    found.into_iter().map(|(.., look)| key(look)).collect()
-}
-
-/// `looks` by key, the first of each key kept.
-fn first_of<K: Eq + std::hash::Hash, V>(looks: Vec<(K, V)>) -> HashMap<K, V> {
-    let mut map = HashMap::new();
-    for (key, look) in looks {
-        map.entry(key).or_insert(look);
     }
-    map
+    /// Notes and delivered text by author plugin.
+    pub fn entries_mut<'a>(
+        &'a mut self,
+        plugin: &'a str,
+    ) -> impl Iterator<Item = (&'a EntryRender, &'a mut RenderOutput)> {
+        self.requests
+            .values_mut()
+            .filter_map(move |r| match &r.input {
+                RenderInput::Entry(v) if v.plugin == plugin => Some((v, &mut r.output)),
+                _ => None,
+            })
+    }
+    /// Content blocks of a kind.
+    pub fn contents_mut(
+        &mut self,
+        kind: ContentKind,
+    ) -> impl Iterator<Item = (&ContentRender, &mut RenderOutput)> {
+        self.requests
+            .values_mut()
+            .filter_map(move |r| match &r.input {
+                RenderInput::Content(v) if v.content.block().kind() == kind => {
+                    Some((v, &mut r.output))
+                }
+                _ => None,
+            })
+    }
+    /// Asides of a kind.
+    pub fn asides_mut<'a>(
+        &'a mut self,
+        kind: &'a str,
+    ) -> impl Iterator<Item = (&'a AsideRender, &'a mut RenderOutput)> {
+        self.requests
+            .values_mut()
+            .filter_map(move |r| match &r.input {
+                RenderInput::Aside(v) if v.aside.kind == kind => Some((v, &mut r.output)),
+                _ => None,
+            })
+    }
+    /// Messages that can receive decorations.
+    pub fn messages_mut(&mut self) -> impl Iterator<Item = (&MessageRender, &mut RenderOutput)> {
+        self.requests.values_mut().filter_map(|r| match &r.input {
+            RenderInput::Message(v) => Some((v, &mut r.output)),
+            _ => None,
+        })
+    }
 }
 
-impl Looks<'_, '_> {
-    /// Each look that applies in `pane` by what it draws: a pane's own
-    /// before the global one of the same key, and its decorators before the
-    /// global ones.
-    pub(crate) fn by_kind(&self, pane: Option<Entity>) -> Renderers<'_> {
-        let tools = scoped(self.tools.iter(), pane, |look| {
-            (look.tool.as_str(), &look.render)
-        });
-        let entries = scoped(self.entries.iter(), pane, |look| {
-            (look.plugin.as_str(), &look.render)
-        });
-        let contents = scoped(self.contents.iter(), pane, |look| (look.kind, &look.render));
-        let asides = scoped(self.asides.iter(), pane, |look| {
-            (look.kind.as_str(), &look.render)
-        });
-        let decorators = scoped(self.decorators.iter(), pane, |look| {
-            (look.name.as_str(), &look.render)
-        });
-        let message_decorators = scoped(self.message_decorators.iter(), pane, |look| {
-            (look.name.as_str(), &look.render)
-        });
-        Renderers {
-            tools: first_of(tools),
-            entries: first_of(entries),
-            contents: first_of(contents),
-            asides: first_of(asides),
-            decorators,
-            message_decorators,
+pub(crate) fn add(app: &mut App) {
+    app.init_resource::<RenderRevision>().configure_sets(
+        TranscriptRender,
+        (
+            RenderSystems::Render,
+            RenderSystems::Decorate,
+            RenderSystems::Edit,
+        )
+            .chain(),
+    );
+}
+
+/// Traversal bridge. The public batch owns every input and output; this only
+/// records which cached messages must be finished after systems render them.
+#[derive(Default)]
+pub(crate) struct Renderers {
+    pub(crate) batch: RefCell<RenderBatch>,
+    pub(crate) collecting: bool,
+    pub(crate) messages: RefCell<HashSet<usize>>,
+    pub(crate) cached: RefCell<HashMap<RenderKey, RenderRequest>>,
+    pub(crate) external: RefCell<HashSet<RenderKey>>,
+    pub(crate) message: Cell<usize>,
+    pub(crate) block: Cell<usize>,
+}
+
+impl Renderers {
+    pub(crate) fn at(&self, message: usize, block: usize) {
+        self.message.set(message);
+        self.block.set(block);
+    }
+
+    fn output(
+        &self,
+        key: RenderKey,
+        input: RenderInput,
+        lines: Vec<Line<'static>>,
+    ) -> (Vec<Line<'static>>, Decorated) {
+        if self.collecting {
+            let external = self.message.get() == usize::MAX;
+            if external {
+                self.external.borrow_mut().insert(key.clone());
+                if let Some(previous) = self
+                    .cached
+                    .borrow()
+                    .get(&key)
+                    .filter(|previous| previous.input == input)
+                {
+                    return previous.output.drawn();
+                }
+            } else {
+                self.messages.borrow_mut().insert(self.message.get());
+            }
+            self.batch.borrow_mut().requests.insert(
+                key,
+                RenderRequest {
+                    input,
+                    output: RenderOutput {
+                        lines: lines.clone(),
+                        decorations: Vec::new(),
+                    },
+                },
+            );
+            (lines, Vec::new())
+        } else {
+            self.batch
+                .borrow()
+                .requests
+                .get(&key)
+                .map(|r| r.output.drawn())
+                .or_else(|| self.cached.borrow().get(&key).map(|r| r.output.drawn()))
+                .unwrap_or((lines, Vec::new()))
         }
     }
 
-    /// Whether a look changed or was added since the last frame.
-    pub(crate) fn changed(&self) -> bool {
-        self.tools.iter().any(|(_, look, _)| look.is_changed())
-            || self.entries.iter().any(|(_, look, _)| look.is_changed())
-            || self.contents.iter().any(|(_, look, _)| look.is_changed())
-            || self.asides.iter().any(|(_, look, _)| look.is_changed())
-            || self.decorators.iter().any(|(_, look, _)| look.is_changed())
-            || (self.message_decorators.iter()).any(|(_, look, _)| look.is_changed())
-    }
-}
-
-/// The looks plugins added, by what each draws.
-#[derive(Default)]
-pub(crate) struct Renderers<'a> {
-    /// The tool renderers by tool name.
-    pub(crate) tools: HashMap<&'a str, &'a Arc<RenderToolCall>>,
-    /// The entry renderers by plugin name.
-    pub(crate) entries: HashMap<&'a str, &'a Arc<RenderEntry>>,
-    /// The content renderers by kind.
-    pub(crate) contents: HashMap<ContentKind, &'a Arc<RenderContent>>,
-    /// The aside renderers by kind.
-    pub(crate) asides: HashMap<&'a str, &'a Arc<RenderAside>>,
-    /// The call decorators, by name, in order.
-    pub(crate) decorators: Vec<(&'a str, &'a Arc<RenderToolCall>)>,
-    /// The message decorators, by name, in order.
-    pub(crate) message_decorators: Vec<(&'a str, &'a Arc<DecorateMessage>)>,
-}
-
-impl Renderers<'_> {
-    /// A tool call's lines, by its tool's renderer or the default look,
-    /// then every decorator's.
     pub(crate) fn call(&self, view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         self.call_decorated(view).0
     }
 
-    /// A tool call's lines, as [`call`](Self::call) draws them, and each
-    /// decorator that drew any with the lines it drew.
     pub(crate) fn call_decorated(
         &self,
         view: &ToolCallView<'_>,
     ) -> (Vec<Line<'static>>, Decorated) {
-        let mut lines = match self.tools.get(view.name()) {
-            Some(render) => render(view),
-            None => view.default_lines(),
+        let input = ToolRender {
+            call: view.call.clone(),
+            result: view.result.cloned(),
+            state: view.state.clone(),
+            theme: view.theme,
+            facts: view.facts.cloned(),
+            took: view.took,
+            output: view.output.map(str::to_owned),
+            children: view.children.to_vec(),
         };
-        let mut decorated = Vec::new();
-        for (name, decorate) in &self.decorators {
-            let start = lines.len();
-            lines.extend(decorate(view));
-            if lines.len() > start {
-                decorated.push(((*name).to_owned(), start..lines.len()));
-            }
-        }
-        (lines, decorated)
+        self.output(
+            RenderKey::Tool(view.call.id.clone()),
+            RenderInput::Tool(input),
+            view.default_lines(),
+        )
     }
 
-    /// A note's or a delivered text's lines, by its plugin's renderer or
-    /// the default look.
     pub(crate) fn entry(&self, view: &EntryView<'_>) -> Vec<Line<'static>> {
-        match self.entries.get(view.plugin) {
-            Some(render) => render(view),
-            None => view.default_lines(),
-        }
+        self.entry_at(RenderKey::Entry(self.message.get(), self.block.get()), view)
     }
 
-    /// A content block's lines, by its kind's renderer or the default
-    /// look.
+    fn entry_at(&self, key: RenderKey, view: &EntryView<'_>) -> Vec<Line<'static>> {
+        let input = EntryRender {
+            plugin: view.plugin.to_owned(),
+            title: view.title.to_owned(),
+            text: view.text.to_owned(),
+        };
+        self.output(key, RenderInput::Entry(input), view.default_lines())
+            .0
+    }
+
     pub(crate) fn content(&self, view: &ContentView<'_>) -> Vec<Line<'static>> {
-        match self.contents.get(&view.block.kind()) {
-            Some(render) => render(view),
-            None => view.default_lines(),
-        }
+        let content = match view.block {
+            ContentBlock::Image(v) => RenderContent::Image(v.clone()),
+            ContentBlock::Audio(v) => RenderContent::Audio(v.clone()),
+            ContentBlock::Video(v) => RenderContent::Video(v.clone()),
+            ContentBlock::Document(v) => RenderContent::Document(v.clone()),
+        };
+        let input = ContentRender {
+            message: view.message,
+            index: view.index,
+            content,
+            assistant: view.assistant,
+        };
+        self.output(
+            RenderKey::Content(self.message.get(), view.index),
+            RenderInput::Content(input),
+            view.default_lines(),
+        )
+        .0
     }
 
-    /// An aside's lines: a note's by its plugin's entry renderer, any
-    /// other's by its kind's renderer; `None` for a kind nothing draws.
     pub(crate) fn aside(&self, view: &AsideView<'_>) -> Option<Vec<Line<'static>>> {
+        let key = RenderKey::Aside(view.id);
         if let Some(note) = Note::of(view.aside) {
-            let entry = EntryView {
-                plugin: plugin_name(&view.aside.author),
-                title: &note.title,
-                text: &note.text,
-            };
-            return Some(self.entry(&entry));
+            return Some(self.entry_at(
+                key,
+                &EntryView {
+                    plugin: plugin_name(&view.aside.author),
+                    title: &note.title,
+                    text: &note.text,
+                },
+            ));
         }
-        let render = self.asides.get(view.aside.kind.as_str())?;
-        Some(render(view))
+        let input = AsideRender {
+            id: view.id,
+            aside: view.aside.clone(),
+            theme: view.theme,
+        };
+        Some(self.output(key, RenderInput::Aside(input), Vec::new()).0)
     }
 
-    /// Whether an aside of `aside`'s kind is drawn.
-    pub(crate) fn draws(&self, aside: &Aside) -> bool {
-        aside.kind == Note::KIND || self.asides.contains_key(aside.kind.as_str())
-    }
-
-    /// Every message decorator's lines under `message`, and each that drew
-    /// any with the lines it drew.
     pub(crate) fn message_decorations(
         &self,
-        message: &DecoratedMessage<'_>,
+        view: &DecoratedMessage<'_>,
     ) -> (Vec<Line<'static>>, Decorated) {
-        let (mut lines, mut decorated) = (Vec::new(), Vec::new());
-        for (name, decorate) in &self.message_decorators {
-            let start = lines.len();
-            lines.extend(decorate(message));
-            if lines.len() > start {
-                decorated.push(((*name).to_owned(), start..lines.len()));
-            }
-        }
-        (lines, decorated)
+        let input = MessageRender {
+            message: view.message.clone(),
+            id: view.id,
+            author: view.author.cloned(),
+        };
+        self.output(
+            RenderKey::Message(self.message.get()),
+            RenderInput::Message(input),
+            Vec::new(),
+        )
     }
 }
 
