@@ -1,6 +1,6 @@
 //! Reading a session back ([`Session`]), saving to it without a running
 //! [`Writer`](crate::Writer) ([`load`], [`save`]), and one log's history
-//! ([`history`], [`as_of`]).
+//! ([`history`], [`as_of`], [`replay`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -238,6 +238,17 @@ pub(crate) fn fold_lines(
     how: Fold,
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
 ) -> Result<Option<Folded>, SessionError> {
+    fold_lines_with(name, lines, (how, blob), &mut |_, _| {})
+}
+
+/// [`fold_lines`], giving `each` every change with the conversation the
+/// changes before it left.
+fn fold_lines_with(
+    name: &str,
+    lines: &LogLines,
+    (how, blob): (Fold, &dyn Fn(&str) -> io::Result<Vec<u8>>),
+    each: &mut dyn FnMut(&Conversation, &ChangeRecord),
+) -> Result<Option<Folded>, SessionError> {
     let mut conversation = Conversation::new();
     let mut state = BTreeMap::new();
     let mut retired = false;
@@ -257,6 +268,7 @@ pub(crate) fn fold_lines(
                         Ok(())
                     });
                 }
+                each(&conversation, &recorded);
                 conversation
                     .apply(&recorded)
                     .map_err(|error| error.to_string())?;
@@ -783,6 +795,25 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
         Ok(ControlFlow::Continue(()))
     })?;
     Ok(records)
+}
+
+/// Reads the log `log` of `store` once, as [`load`] does, giving `each`
+/// every change with the conversation the changes before it left. Nothing
+/// when there is no log.
+///
+/// # Errors
+///
+/// As [`load`].
+pub fn replay(
+    store: &dyn Store,
+    log: &str,
+    mut each: impl FnMut(&Conversation, &ChangeRecord),
+) -> Result<(), SessionError> {
+    if let Some(lines) = log_lines(store, log)? {
+        let blob = |blob: &str| read_blob(store, blob);
+        fold_lines_with(log, &lines, (Fold::WHOLE, &blob), &mut each)?;
+    }
+    Ok(())
 }
 
 /// The conversation of the log `log` of `store` as the records made before

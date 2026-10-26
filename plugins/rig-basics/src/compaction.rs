@@ -1441,7 +1441,8 @@ fn taken(outcome: &Outcome, read: Option<&String>) -> Result<String, NotTaken> {
 }
 
 /// Takes a settled summary: it replaces the summarized messages in the
-/// conversation as an entry of its own, a splice its log records. A failed
+/// conversation as an entry of its own, a splice its log records, and the
+/// terminal view keeps drawing them above it. A failed
 /// summary, one a reviewer cancelled, one whose turn was stopped or failed
 /// first, even once answered, or one whose kept message is gone, replaces
 /// nothing, and is never asked again; a failed one that held a call clears
@@ -1492,7 +1493,15 @@ fn take_summary(
             summary,
             ..summarizing.state.clone()
         };
+        #[cfg(feature = "tui")]
+        let taken: Vec<Entry> = (0..end).filter_map(|at| conversation.entry(at)).collect();
         match apply_summary(&mut conversation, summarizing.keep_from, &state) {
+            #[cfg(feature = "tui")]
+            Some(spliced) => {
+                tui::keep_replaced(&mut commands, agent, &spliced, taken);
+                Ok((older, kept))
+            }
+            #[cfg(not(feature = "tui"))]
             Some(_) => Ok((older, kept)),
             None => Err(failed("the summary was empty")),
         }

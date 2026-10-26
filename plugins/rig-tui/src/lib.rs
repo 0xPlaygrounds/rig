@@ -15,7 +15,8 @@
 //! - **Transcripts:** [`TranscriptPane`] over the [`ShownAgent`], another
 //!   agent or a conversation, with its [`TranscriptView`], [`ScrollTo`],
 //!   [`DrawnTranscript`] and [`TranscriptLayout`] ([`pane`]); [`ShowAgent`]
-//!   shows another agent.
+//!   shows another agent; [`Replaced`] keeps entries taken out of an
+//!   agent's conversation on screen.
 //! - **Looks:** [`TranscriptRender`] for tool calls, notes, content
 //!   blocks, asides, message text and decorations; [`BuildFailedLooks`].
 //! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]).
@@ -98,7 +99,7 @@ pub use terminal::{
     CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
 };
 pub use theme::Theme;
-pub use transcript::PastEffects;
+pub use transcript::{PastEffects, Replaced};
 pub use view::{
     DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices, RowWrap,
     ScrollTo, ShowAgent, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,

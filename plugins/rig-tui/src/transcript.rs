@@ -678,18 +678,12 @@ impl Look<'_> {
         }
     }
 
-    /// A hash of what message `index` (with `id`) looks like besides its
-    /// messages: its notices and its calls' states, output so far and
-    /// running times.
-    fn hash_message(
-        &self,
-        (index, id): (usize, Option<MessageId>),
-        message: &Message,
-        author: Option<&Author>,
-    ) -> u64 {
+    /// A hash of what entry `index` looks like besides its message: its
+    /// notices and its calls' states, output so far and running times.
+    fn hash_message(&self, index: usize, entry: &ShownEntry<'_>) -> u64 {
+        let (id, message) = (entry.id, &**entry.message);
         let hasher = &mut DefaultHasher::new();
-        id.hash(hasher);
-        author.hash(hasher);
+        (id, entry.author, entry.archived).hash(hasher);
         self.hash_inside(index, hasher);
         let marks = self.marks.iter();
         marks
@@ -751,6 +745,126 @@ fn level_code(level: NoticeLevel) -> u8 {
     }
 }
 
+/// Entries a plugin took out of an agent's conversation that its
+/// transcript still draws, by the entry that replaced them (a compaction's
+/// summary), each set just above that entry. Drawing starts from the
+/// entries in the conversation and follows what each replaced, so a set
+/// whose entry is gone, as after a rewind or an undo, draws nothing.
+/// Display only: requests never read it.
+#[derive(Component, Clone, Debug, Default)]
+pub struct Replaced(pub BTreeMap<MessageId, Vec<conversation::Entry>>);
+
+/// An entry the transcript draws: one of the conversation's, or an
+/// archived one, which an entry of it replaced ([`Replaced`]).
+#[derive(Clone, Copy)]
+pub(crate) struct ShownEntry<'a> {
+    pub(crate) message: &'a Arc<Message>,
+    pub(crate) id: Option<MessageId>,
+    pub(crate) author: Option<&'a Author>,
+    /// Whether it is the note rig puts after a request the user stopped.
+    pub(crate) stop: bool,
+    /// Whether it is archived: drawn, but no item to select, rewind to or
+    /// fork from.
+    pub(crate) archived: bool,
+    /// How many archived entries it stands for, drawn above it; an
+    /// archived entry that stands for others counts as those.
+    pub(crate) stands_for: usize,
+}
+
+/// The entries the transcript draws, in order: each entry of the
+/// conversation after the archived entries it stands for, each of those
+/// after the ones it stands for in turn.
+#[derive(Default)]
+pub(crate) struct ShownEntries<'a> {
+    entries: Vec<ShownEntry<'a>>,
+    /// Where each entry of the conversation is among them.
+    live: Vec<usize>,
+}
+
+impl<'a> ShownEntries<'a> {
+    /// The entries of `conversation`, with what `replaced` says they stand
+    /// for.
+    pub(crate) fn new(
+        conversation: &'a conversation::Conversation,
+        replaced: Option<&'a Replaced>,
+    ) -> Self {
+        let mut shown = Self::default();
+        let mut expanded = HashSet::new();
+        for (message, entry) in conversation.messages().iter().zip(conversation.entries()) {
+            let stands_for = shown.archive(replaced, entry.id, &mut expanded);
+            shown.live.push(shown.entries.len());
+            shown.entries.push(ShownEntry {
+                message,
+                id: Some(entry.id),
+                author: entry.author,
+                stop: entry.is_stop_marker(),
+                archived: false,
+                stands_for,
+            });
+        }
+        shown
+    }
+
+    /// Adds the archived entries `id` stands for, each after those it
+    /// stands for in turn; how many. Each id is followed once, so a cycle
+    /// ends.
+    fn archive(
+        &mut self,
+        replaced: Option<&'a Replaced>,
+        id: MessageId,
+        expanded: &mut HashSet<MessageId>,
+    ) -> usize {
+        let taken = replaced.and_then(|replaced| replaced.0.get(&id));
+        let Some(taken) = taken.filter(|_| expanded.insert(id)) else {
+            return 0;
+        };
+        let mut count = 0;
+        for entry in taken {
+            let below = entry
+                .id
+                .map_or(0, |id| self.archive(replaced, id, expanded));
+            count += below.max(1);
+            let stop = entry.id.is_some_and(|id| {
+                let made = entry.made.unwrap_or_default();
+                let (message, author) = (&*entry.message, entry.author.as_ref());
+                let index = 0;
+                conversation::EntryRef {
+                    index,
+                    id,
+                    message,
+                    author,
+                    made,
+                }
+                .is_stop_marker()
+            });
+            self.entries.push(ShownEntry {
+                message: &entry.message,
+                id: entry.id,
+                author: entry.author.as_ref(),
+                stop,
+                archived: true,
+                stands_for: below,
+            });
+        }
+        count
+    }
+
+    /// How many entries it draws.
+    pub(crate) fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Entry `at` of them.
+    pub(crate) fn get(&self, at: usize) -> Option<&ShownEntry<'a>> {
+        self.entries.get(at)
+    }
+
+    /// Where entry `index` of the conversation is among them.
+    pub(crate) fn of_live(&self, index: usize) -> Option<usize> {
+        self.live.get(index).copied()
+    }
+}
+
 /// One message's look: its lines and where its items are in them, and
 /// those lines wrapped to the width.
 struct Cached {
@@ -767,24 +881,19 @@ struct Cached {
 }
 
 impl Cached {
-    /// Message `index` of `conversation` laid out in `look` at `usable`
-    /// columns; `None` past its end.
+    /// Entry `index` of `entries` laid out in `look` at `usable` columns;
+    /// `None` past their end.
     fn new(
-        conversation: &conversation::Conversation,
+        entries: &ShownEntries<'_>,
         index: usize,
         look_hash: u64,
         (look, usable): (&Look<'_>, usize),
     ) -> Option<Self> {
-        let messages = conversation.messages();
-        let message = messages.get(index)?;
-        let previous = index.checked_sub(1).and_then(|before| messages.get(before));
-        let next = messages.get(index + 1);
-        let (lines, line_marks) = message_lines(
-            message,
-            (conversation, index),
-            (previous.map(|m| &**m), next.map(|m| &**m)),
-            (look, usable),
-        );
+        let entry = entries.get(index)?;
+        let message = entry.message;
+        let neighbour = |at: Option<usize>| Some(&**entries.get(at?)?.message);
+        let (previous, next) = (neighbour(index.checked_sub(1)), neighbour(Some(index + 1)));
+        let (lines, line_marks) = message_lines((entry, index), (previous, next), (look, usable));
         let wrapped = wrap_marked(&lines, &line_marks, usable);
         Some(Self {
             message: message.clone(),
@@ -850,22 +959,22 @@ pub(crate) struct Visible {
 }
 
 impl Transcript {
-    /// Brings the rows up to date with the conversation of `agent` and
-    /// `look` at `width`.
-    /// `changed` says whether the messages may have changed since the last
+    /// Brings the rows up to date with `entries`, those `agent`'s
+    /// transcript draws, and `look` at `width`.
+    /// `changed` says whether the entries may have changed since the last
     /// call; when neither they nor the look did, only a new agent or width
     /// costs anything.
     pub(crate) fn update(
         &mut self,
         agent: Entity,
-        conversation: &conversation::Conversation,
+        entries: &ShownEntries<'_>,
         changed: bool,
         look: &Look<'_>,
         width: u16,
     ) {
         let usable = usize::from(width.max(1));
         if look.renderers.pass == Pass::Finish {
-            self.finish(conversation, look, usable);
+            self.finish(entries, look, usable);
             return;
         }
         if self.agent != Some(agent) {
@@ -880,28 +989,23 @@ impl Transcript {
             }
         }
         let refit = resized && self.messages.iter().any(|cached| cached.fitted);
-        let messages = conversation.messages();
         let digest = look.digest();
         let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
-        if !changed && !refit && looks_alike && self.messages.len() == messages.len() {
+        if !changed && !refit && looks_alike && self.messages.len() == entries.len() {
             return;
         }
         // A message's look depends on it and its neighbours, so each is
         // compared once with the one laid out last time, before any is
         // replaced; a message past either end matches only another.
-        let same: Vec<bool> = (0..=messages.len())
-            .map(|at| match (self.messages.get(at), messages.get(at)) {
-                (Some(cached), Some(message)) => Arc::ptr_eq(&cached.message, message),
-                (cached, message) => cached.is_none() && message.is_none(),
+        let same: Vec<bool> = (0..=entries.len())
+            .map(|at| match (self.messages.get(at), entries.get(at)) {
+                (Some(cached), Some(entry)) => Arc::ptr_eq(&cached.message, entry.message),
+                (cached, entry) => cached.is_none() && entry.is_none(),
             })
             .collect();
-        self.messages.truncate(messages.len());
-        for (index, message) in messages.iter().enumerate() {
-            let look_hash = look.hash_message(
-                (index, conversation.id(index)),
-                message,
-                conversation.author(index),
-            );
+        self.messages.truncate(entries.len());
+        for (index, entry) in entries.entries.iter().enumerate() {
+            let look_hash = look.hash_message(index, entry);
             if self
                 .messages
                 .get(index)
@@ -910,7 +1014,7 @@ impl Transcript {
             {
                 continue;
             }
-            let Some(cached) = Cached::new(conversation, index, look_hash, (look, usable)) else {
+            let Some(cached) = Cached::new(entries, index, look_hash, (look, usable)) else {
                 continue;
             };
             match self.messages.get_mut(index) {
@@ -923,18 +1027,13 @@ impl Transcript {
     /// Lays out again the messages whose presentation the render systems
     /// changed, from their outputs; the rest stand as the collecting pass
     /// left them.
-    fn finish(
-        &mut self,
-        conversation: &conversation::Conversation,
-        look: &Look<'_>,
-        usable: usize,
-    ) {
+    fn finish(&mut self, entries: &ShownEntries<'_>, look: &Look<'_>, usable: usize) {
         for &index in look.renderers.messages.borrow().iter() {
             let Some(slot) = self.messages.get_mut(index) else {
                 continue;
             };
             let look_hash = slot.look;
-            if let Some(cached) = Cached::new(conversation, index, look_hash, (look, usable)) {
+            if let Some(cached) = Cached::new(entries, index, look_hash, (look, usable)) {
                 *slot = cached;
             }
         }
@@ -1356,14 +1455,14 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
     }
 }
 
-/// Draws `message`, the `at`-th of `conversation`, with the notices and
-/// notes inside it before their items, and says which lines are the
-/// message and which each of its calls and notes. A tool call's result, which comes
-/// in the `next` message, is drawn with the call, so the results of a
-/// reply's calls are not drawn after all of its calls.
+/// Draws `entry`, the `at`-th of those shown, with the notices and notes
+/// inside it before their items, and says which lines are the message and
+/// which each of its calls and notes; an archived entry has no items. A
+/// tool call's result, which comes in the `next` message, is drawn with the
+/// call, so the results of a reply's calls are not drawn after all of its
+/// calls.
 fn message_lines(
-    message: &Message,
-    (conversation, at): (&conversation::Conversation, usize),
+    (entry, at): (&ShownEntry<'_>, usize),
     (previous, next): (Option<&Message>, Option<&Message>),
     (look, width): (&Look<'_>, usize),
 ) -> (Vec<Line<'static>>, Marks) {
@@ -1373,12 +1472,8 @@ fn message_lines(
         index: at,
         block: 0,
     });
-    let id = conversation.id(at);
-    let author = conversation.author(at);
-    let stopped = conversation
-        .entries()
-        .nth(at)
-        .is_some_and(|entry| entry.is_stop_marker());
+    let (message, id, author) = (&**entry.message, entry.id, entry.author);
+    let stopped = entry.stop;
     let inside = look.inside(at);
     let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
@@ -1564,6 +1659,9 @@ fn message_lines(
     }
     if let Some(id) = id {
         marks.insert(0, (TranscriptItem::Message(id), 0..lines.len()));
+    }
+    if entry.archived {
+        marks.clear();
     }
     (lines, marks)
 }

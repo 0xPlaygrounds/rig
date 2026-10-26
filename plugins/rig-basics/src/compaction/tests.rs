@@ -2594,3 +2594,149 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
         }
     }
 }
+
+/// What `agent`'s summaries replaced, by summary, as the terminal view
+/// draws it: each entry's id and message.
+#[cfg(feature = "tui")]
+fn replaced(world: &World, agent: Entity) -> Vec<(MessageId, Vec<(Option<MessageId>, Message)>)> {
+    let Some(replaced) = world.get::<rig_tui::Replaced>(agent) else {
+        return Vec::new();
+    };
+    let entry = |entry: &Entry| (entry.id, (*entry.message).clone());
+    let sets = replaced.0.iter();
+    sets.map(|(summary, entries)| (*summary, entries.iter().map(entry).collect()))
+        .collect()
+}
+
+/// The agent of `app` whose id is `id`.
+#[cfg(feature = "tui")]
+fn agent_of(app: &mut App, id: &AgentId) -> Option<Entity> {
+    let world = app.world_mut();
+    let mut agents = world.query::<(Entity, &AgentId)>();
+    id.find_in(agents.iter(world))
+}
+
+/// The terminal view keeps drawing what each compaction replaced: filled
+/// as a summary goes in, nothing for a cancelled one, read back from the
+/// log after a restart for every agent, and taken over by a fork. The
+/// model still reads only the summary.
+#[cfg(feature = "tui")]
+#[test]
+fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nCancelled."),
+        reply("## Goal\nThe first summary."),
+        reply("## Goal\nThe second summary."),
+    ]);
+    let mut messages = vec![Message::user("What does the crate do?")];
+    messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
+    messages.extend(long_conversation(3).into_iter().skip(1));
+    let Some(agent) = agent(&mut app, &model, 1_000_000, messages) else {
+        return;
+    };
+    app.update();
+    let original = entries(app.world(), agent);
+    let compact = |app: &mut App, review: Option<&str>, count: usize| {
+        let focus = String::new();
+        app.world_mut().trigger(Compact {
+            entity: agent,
+            focus,
+        });
+        decide(app, &wakes, review);
+        run_until(app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == count
+        });
+    };
+    compact(&mut app, None, 1);
+    assert!(replaced(app.world(), agent).is_empty());
+
+    compact(&mut app, Some("## Goal\nThe first summary."), 2);
+    let live = entries(app.world(), agent);
+    let first = live.first().and_then(|entry| entry.id);
+    let sets = replaced(app.world(), agent);
+    assert_eq!(sets.len(), 1, "one summary's set: {sets:?}");
+    let Some((summary, taken)) = sets.first() else {
+        return;
+    };
+    assert_eq!(Some(*summary), first);
+    let gone = original.iter().filter(|entry| !live.contains(entry));
+    let gone: Vec<_> = gone
+        .map(|entry| (entry.id, (*entry.message).clone()))
+        .collect();
+    assert_eq!(taken, &gone);
+    let asks = |message: &Message| format!("{message:?}").contains("What does the crate do?");
+    let calls_read = |message: &Message| format!("{message:?}").contains("src/lib.rs");
+    assert!(taken.iter().any(|(_, message)| asks(message)), "{taken:?}");
+    assert!(
+        taken.iter().any(|(_, message)| calls_read(message)),
+        "{taken:?}"
+    );
+    // The model's view is the summary alone.
+    assert!(live.first().is_some_and(holds_summary));
+    assert!(!live.iter().any(|entry| asks(&entry.message)));
+
+    // A second compaction replaces the first summary, kept in its own set.
+    let world = app.world_mut();
+    for message in [Message::user("question 9"), Message::assistant("answer 9")] {
+        assert!(commit_message(world, agent, message).is_ok());
+    }
+    compact(&mut app, Some("## Goal\nThe second summary."), 3);
+    let sets = replaced(app.world(), agent);
+    assert_eq!(sets.len(), 2, "{sets:?}");
+    let nested = sets.iter().find(|(summary, _)| Some(*summary) != first);
+    let nested = nested.is_some_and(|(_, taken)| taken.iter().any(|(id, _)| *id == first));
+    assert!(nested, "{sets:?}");
+
+    // A subagent compacted too.
+    let world = app.world_mut();
+    let child = world.spawn((Agent, SpawnedBy(agent))).id();
+    for text in ["one", "two", "three"] {
+        assert!(commit_message(world, child, Message::user(text)).is_ok());
+    }
+    let state = SummaryState {
+        summary: "The subagent's summary.".to_owned(),
+        ..SummaryState::default()
+    };
+    if let Some(mut conversation) = world.get_mut::<Conversation>(child) {
+        let upto = conversation.id(2);
+        assert!(apply_summary(&mut conversation, upto, &state).is_some());
+    }
+    app.update();
+    let ids = |app: &App, entity| app.world().get::<AgentId>(entity).cloned();
+    let (Some(main_id), Some(child_id)) = (ids(&app, agent), ids(&app, child)) else {
+        return;
+    };
+    drop(app);
+
+    let (mut restarted, _wakes) = start(&store);
+    let restored = (
+        agent_of(&mut restarted, &main_id),
+        agent_of(&mut restarted, &child_id),
+    );
+    assert!(
+        matches!(restored, (Some(_), Some(_))),
+        "both agents were restored"
+    );
+    let (Some(agent), Some(child)) = restored else {
+        return;
+    };
+    assert_eq!(replaced(restarted.world(), agent), sets);
+    let child_sets = replaced(restarted.world(), child);
+    let child_taken = child_sets.first().map(|(_, taken)| taken.len());
+    assert_eq!(child_taken, Some(2), "{child_sets:?}");
+
+    restarted.world_mut().trigger(ForkAgent {
+        agent,
+        through: None,
+    });
+    restarted.update();
+    let world = restarted.world_mut();
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let fork = agents.iter(world).find(|it| ![agent, child].contains(it));
+    assert!(fork.is_some(), "the fork was made");
+    let Some(fork) = fork else { return };
+    assert_eq!(replaced(restarted.world(), fork), sets);
+}

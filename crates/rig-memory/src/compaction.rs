@@ -27,7 +27,7 @@ use rig_core::conversation::{
 use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use crate::session::{LogRecord, as_of, history};
+use crate::session::replay;
 use crate::{HeuristicTokenCounter, SessionError, Store, TokenCounter};
 
 /// A summary of a conversation's older messages and the values tracked
@@ -656,23 +656,9 @@ pub fn undo_summary(
     let at = conversation
         .index_of(compacted.summary)
         .ok_or(UndoError::SummaryGone)?;
-    // The splice that made the summary, the first naming it: later ones
-    // put it back.
-    let made = history(store, log)?
-        .into_iter()
-        .find_map(|(stamp, record)| match record {
-            LogRecord::Change(recorded)
-                if summary_in(&recorded.change) == Some(compacted.summary) =>
-            {
-                Some(stamp.n)
-            }
-            _ => None,
-        });
-    let before = as_of(store, log, made.ok_or(UndoError::NotInLog)?)?;
-    let originals: Option<Vec<Entry>> = (compacted.replaced.iter())
-        .map(|id| before.entry(before.index_of(*id)?))
-        .collect();
-    let originals = originals.ok_or(UndoError::NotInLog)?;
+    let originals = summarized_in_log(store, log)?
+        .remove(&compacted.summary)
+        .ok_or(UndoError::NotInLog)?;
     let restored = conversation.restore(at..=at, originals, by).restored;
     conversation.remove_aside(aside);
     let state = Compacted::of(conversation).last().map(|(_, it)| it.state);
@@ -680,6 +666,40 @@ pub fn undo_summary(
         restored,
         state: state.unwrap_or_default(),
     })
+}
+
+/// What each compaction in the log `log` of `store` replaced, by its
+/// summary's id: the entries its splice ([`summary_in`]) took out, as they
+/// were just before it, read in one pass over the log. A summary named
+/// again, as by an undo that put it back, keeps what it first replaced. A
+/// summary whose entries the log does not hold is left out.
+///
+/// # Errors
+///
+/// As [`load`](crate::load).
+pub fn summarized_in_log(
+    store: &dyn Store,
+    log: &str,
+) -> Result<BTreeMap<MessageId, Vec<Entry>>, SessionError> {
+    let mut first: BTreeMap<MessageId, Option<Vec<Entry>>> = BTreeMap::new();
+    replay(store, log, |before, recorded| {
+        let change = &recorded.change;
+        let (Some(summary), Change::Splice { removed, with, .. }) = (summary_in(change), change)
+        else {
+            return;
+        };
+        first.entry(summary).or_insert_with(|| {
+            let kept = |id: &&MessageId| with.iter().any(|entry| entry.id == Some(**id));
+            let taken = removed.iter().filter(|id| !kept(id));
+            taken
+                .map(|id| before.entry(before.index_of(*id)?))
+                .collect()
+        });
+    })?;
+    let found = first.into_iter();
+    Ok(found
+        .filter_map(|(summary, taken)| Some((summary, taken?)))
+        .collect())
 }
 
 /// What a [`Summarizer`] asks the model. Each prompt missing from its serde

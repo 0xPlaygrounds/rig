@@ -492,3 +492,53 @@ fn only_successful_paired_calls_track_files() {
             .is_some_and(|set| set.values.is_empty())
     );
 }
+
+/// One pass over the log reads what each compaction replaced, and a
+/// summary an undo put back keeps what it first replaced.
+#[test]
+fn the_log_holds_what_each_summary_first_replaced() {
+    use crate::{MemoryStore, load, save};
+
+    let store = MemoryStore::default();
+    let mut conversation = load(&store, "agent").expect("loaded");
+    for text in ["one", "two", "three", "four"] {
+        conversation.push(Message::user(text));
+    }
+    let ids = |conversation: &Conversation| -> Vec<MessageId> {
+        conversation.entries().map(|entry| entry.id).collect()
+    };
+    let before = ids(&conversation);
+    let state = SummaryState {
+        summary: "summary".to_owned(),
+        tracked: Vec::new(),
+    };
+    let compact = |conversation: &mut Conversation| {
+        let upto = conversation.id(2);
+        let spliced = apply_summary(conversation, upto, &state).expect("applied");
+        save(&store, "agent", conversation).expect("saved");
+        spliced.changed.first().copied().expect("a summary")
+    };
+    let first = compact(&mut conversation);
+    let after_first = ids(&conversation);
+    let second = compact(&mut conversation);
+    let by = Author::plugin("undo");
+    undo_summary(&mut conversation, &store, "agent", by).expect("undone");
+    save(&store, "agent", &mut conversation).expect("saved");
+    let third = compact(&mut conversation);
+
+    let found = summarized_in_log(&store, "agent").expect("read");
+    let replaced = |summary| -> Option<Vec<MessageId>> {
+        let entries = found.get(&summary)?;
+        entries.iter().map(|entry| entry.id).collect()
+    };
+    assert_eq!(found.len(), 3);
+    assert_eq!(replaced(first).as_deref(), before.get(..2));
+    assert_eq!(replaced(second).as_deref(), after_first.get(..2));
+    assert_eq!(replaced(third).as_deref(), after_first.get(..2));
+    let texts = found.get(&first).into_iter().flatten();
+    let texts: Vec<_> = texts.map(|entry| entry.message.clone()).collect();
+    assert_eq!(
+        texts,
+        [Message::user("one"), Message::user("two")].map(Arc::new)
+    );
+}

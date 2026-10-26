@@ -1,11 +1,19 @@
-//! Compaction checkpoints in the terminal view, drawn from their saved
-//! summary state when available.
+//! The summary in the terminal view: a block that says it stands for the
+//! earlier messages, then the summary drawn from its saved state when
+//! available, below the messages it replaced ([`Replaced`]). A plugin that
+//! draws summaries its own way draws [`summary_author`]'s entries in a
+//! system after [`SummaryLooks`].
 
+use rig_core::conversation::{Entry, Spliced};
+use rig_ecs::fork::AgentForked;
 use rig_ecs::prelude::*;
-use rig_memory::{Compacted, SummaryState};
+use rig_ecs::session_log::SessionStore;
+use rig_memory::{Compacted, SummaryState, summarized_in_log};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{EntryView, RenderBatch, RenderSystems, Theme, TranscriptRender, text_rows};
+use rig_tui::{
+    EntryView, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender, text_rows,
+};
 
 use crate::compaction::summary_author;
 
@@ -14,12 +22,70 @@ use crate::compaction::summary_author;
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SummaryLooks;
 
-/// Draws the summary's look in the terminal view.
+/// Draws the summary's look in the terminal view, and keeps what each
+/// summary replaced on screen.
 pub(crate) fn add(app: &mut App) {
     app.add_systems(
         TranscriptRender,
         draw.in_set(SummaryLooks).in_set(RenderSystems::Render),
-    );
+    )
+    .add_systems(PostStartup, replaced_from_logs)
+    .add_observer(replaced_in_fork);
+}
+
+/// Keeps the entries `spliced`, a summary just put in `agent`'s
+/// conversation, took out of it, from `taken`, the entries before it.
+pub(crate) fn keep_replaced(
+    commands: &mut Commands,
+    agent: Entity,
+    spliced: &Spliced,
+    taken: Vec<Entry>,
+) {
+    let Some(&summary) = spliced.changed.first() else {
+        return;
+    };
+    let out = |entry: &Entry| entry.id.is_some_and(|id| spliced.removed.contains(&id));
+    let taken: Vec<Entry> = taken.into_iter().filter(out).collect();
+    commands
+        .entity(agent)
+        .entry::<Replaced>()
+        .or_default()
+        .and_modify(move |mut replaced| {
+            replaced.0.entry(summary).or_insert(taken);
+        });
+}
+
+/// What each restored agent's summaries replaced, read from its log.
+fn replaced_from_logs(
+    store: Option<Res<SessionStore>>,
+    agents: Query<(Entity, &AgentId), With<Conversation>>,
+    mut commands: Commands,
+) {
+    let Some(store) = store else {
+        return;
+    };
+    for (agent, id) in &agents {
+        match summarized_in_log(&*store.0, &id.0) {
+            Ok(replaced) if replaced.is_empty() => {}
+            Ok(replaced) => {
+                commands.entity(agent).try_insert(Replaced(replaced));
+            }
+            Err(error) => {
+                bevy_log::warn!(
+                    "what the compactions of {} replaced is not shown: {error}",
+                    id.0
+                );
+            }
+        }
+    }
+}
+
+/// A fork draws what its source's summaries replaced: its log is a copy
+/// of the source's.
+fn replaced_in_fork(forked: On<AgentForked>, replaced: Query<&Replaced>, mut commands: Commands) {
+    if let Ok(replaced) = replaced.get(forked.from) {
+        commands.entity(forked.fork).try_insert(replaced.clone());
+    }
 }
 
 fn draw(mut batch: ResMut<RenderBatch>, agents: Query<&Conversation>, theme: Res<Theme>) {

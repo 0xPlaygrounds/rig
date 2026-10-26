@@ -40,7 +40,7 @@ use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::render::{Showing, decorate, lay_out_rendered};
 use super::renderers::{RenderKey, RenderRequest, Renderers};
 use super::theme::Theme;
-use super::transcript::{Below, Part, Scroll, Transcript};
+use super::transcript::{Below, Part, Replaced, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptView};
 
 /// A transcript in a panel: `source`'s conversation, drawn as the default
@@ -207,7 +207,7 @@ fn bind_pane_keys(mut world: DeferredWorld, context: HookContext) {
 pub(crate) fn lay_out_panes(
     world: &mut World,
     changes: &mut bevy_ecs::system::SystemState<(
-        Query<Entity, Changed<AgentConversation>>,
+        Query<Entity, Or<(Changed<AgentConversation>, Changed<Replaced>)>>,
         Query<Entity, Changed<TranscriptPane>>,
     )>,
 ) {
