@@ -60,17 +60,22 @@ const CRATES_IO_CAP: u64 = 10 * 1024 * 1024;
 /// Raising it is fine, as a reviewed diff, which is the point.
 const SIZE_CEILING: u64 = 8 * 1024 * 1024;
 
-/// Dependencies whose library is named other than the package: sources
-/// name the library.
-const LIBRARY_NAMES: &[(&str, &str)] = &[("steel-core", "steel")];
+/// The library name of the dependency `package`, when it differs from the
+/// package name: sources name the library.
+fn library_name(package: &str) -> Option<&'static str> {
+    match package {
+        "steel-core" => Some("steel"),
+        _ => None,
+    }
+}
 
-/// Crates a derive expands to without the source naming them: Bevy's derives
-/// write paths into `bevy_ecs` and `bevy_reflect`, which the crate deriving
-/// must therefore depend on directly.
-const DERIVED_DEPENDENCIES: &[(&str, &[&str])] = &[
-    (
-        "bevy_ecs",
-        &[
+/// The derive macros that expand to the crate `identifier` without the
+/// source naming it: Bevy's derives write paths into `bevy_ecs` and
+/// `bevy_reflect`, which the crate deriving must therefore depend on
+/// directly.
+fn derived_macros(identifier: &str) -> Option<&'static [&'static str]> {
+    match identifier {
+        "bevy_ecs" => Some(&[
             "Bundle",
             "Component",
             "EntityEvent",
@@ -82,10 +87,11 @@ const DERIVED_DEPENDENCIES: &[(&str, &[&str])] = &[
             "ScheduleLabel",
             "SystemParam",
             "SystemSet",
-        ],
-    ),
-    ("bevy_reflect", &["Reflect"]),
-];
+        ]),
+        "bevy_reflect" => Some(&["Reflect"]),
+        _ => None,
+    }
+}
 
 /// Dependencies a crate really needs but never names in a checked-in file,
 /// with the reason. Code a build script writes into `OUT_DIR` is not on disk
@@ -401,10 +407,7 @@ fn names(source: &str, identifier: &str) -> bool {
 
 /// Whether `source` derives a macro that expands to the crate `identifier`.
 fn derives_into(source: &str, identifier: &str) -> bool {
-    let Some((_, macros)) = DERIVED_DEPENDENCIES
-        .iter()
-        .find(|(dependency, _)| *dependency == identifier)
-    else {
+    let Some(macros) = derived_macros(identifier) else {
         return false;
     };
     source.split("derive(").skip(1).any(|rest| {
@@ -458,10 +461,7 @@ struct Dependency {
 
 impl Dependency {
     fn identifier(&self) -> String {
-        let library = LIBRARY_NAMES
-            .iter()
-            .find(|(package, _)| *package == self.name)
-            .map(|(_, library)| (*library).to_owned());
+        let library = library_name(&self.name).map(str::to_owned);
         self.rename
             .clone()
             .or(library)

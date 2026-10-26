@@ -28,22 +28,6 @@ pub const STOPPED: &str = "The user stopped edits: uncommitted changes in the tr
 /// What a held call shows while it waits.
 const WAITING: &str = "waiting for the dirty-tree guard";
 
-/// Commands that only read, by their first words.
-const READ_ONLY: &[&[&str]] = &[
-    &["ls"],
-    &["cat"],
-    &["head"],
-    &["tail"],
-    &["wc"],
-    &["pwd"],
-    &["rg"],
-    &["grep"],
-    &["git", "status"],
-    &["git", "diff"],
-    &["git", "log"],
-    &["git", "show"],
-];
-
 /// What a run nobody can answer does with a dirty tree.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -151,24 +135,11 @@ fn changes(call: &ToolCall) -> bool {
         "shell" => serde_json::from_value::<ShellArgs>(serde_json::Value::Object(
             call.function.arguments.clone(),
         ))
-        .map_or(true, |args| !reads_only(&args.command)),
+        .map_or(true, |args| {
+            !corpus_shared::shell::reads_only(&args.command)
+        }),
         _ => false,
     }
-}
-
-/// Whether every command of a pipeline is on the read-only list, and
-/// nothing redirects, chains or substitutes.
-fn reads_only(line: &str) -> bool {
-    if [";", "&", ">", "`", "$(", "\n"]
-        .iter()
-        .any(|bad| line.contains(bad))
-    {
-        return false;
-    }
-    line.split('|').all(|command| {
-        let words: Vec<&str> = command.split_whitespace().collect();
-        READ_ONLY.iter().any(|safe| words.starts_with(safe))
-    })
 }
 
 fn pool() -> &'static TaskPool {

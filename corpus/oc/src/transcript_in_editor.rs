@@ -3,7 +3,7 @@
 //!
 //! `/edit-history` writes the focused agent's conversation to a Markdown
 //! file, one section per message part (`## [n] user`, `## [n] assistant`,
-//! `## [n] tool-result <tool> <call id>`), and opens `$EDITOR` on it with
+//! `## [n] tool-result <tool> <call id>`), and opens the editor on it with
 //! the terminal (rig-tui's `RunInTerminal`). Tool calls are fenced
 //! ```` ```call <tool> <id> ```` blocks of JSON arguments; reasoning, images
 //! and other parts are placeholder lines that keep the original part.
@@ -84,7 +84,7 @@ impl Plugin for TranscriptInEditorPlugin {
         app.add_setting::<EditHistorySettings>("edit-history")
             .add_command(
                 "edit-history",
-                "Edit the conversation in $EDITOR: /edit-history, /edit-history undo",
+                "Edit the conversation in the editor: /edit-history, /edit-history undo",
                 edit_history,
             )
             .add_systems(
@@ -165,7 +165,7 @@ struct Built {
     orphans: BTreeSet<String>,
 }
 
-/// On a `RunInTerminal` of `$EDITOR`: whose conversation it edits, the
+/// On a `RunInTerminal` of the editor: whose conversation it edits, the
 /// file, what the file held when it opened, and the conversation then.
 #[derive(Component, Clone, Debug)]
 struct Editing {
@@ -794,16 +794,10 @@ fn undone(
 // The command and the editor.
 
 fn editor_command(settings: &EditHistorySettings, path: &Path) -> Command {
-    let editor = settings
-        .editor
-        .clone()
-        .or_else(|| std::env::var("VISUAL").ok())
-        .or_else(|| std::env::var("EDITOR").ok())
-        .filter(|editor| !editor.trim().is_empty())
-        .unwrap_or_else(|| "vi".to_owned());
-    let mut words = editor.split_whitespace();
-    let mut command = Command::new(words.next().unwrap_or("vi"));
-    command.args(words).arg(path);
+    let line = settings.editor.clone().or_else(corpus_shared::editor::line);
+    let (program, args) = corpus_shared::editor::words(line.as_deref());
+    let mut command = Command::new(program);
+    command.args(args).arg(path);
     command
 }
 

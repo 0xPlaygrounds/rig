@@ -244,7 +244,7 @@ impl Shell {
         let status = match end {
             Ended::Exited(status) => match status.code() {
                 Some(code) => {
-                    output.push_str(&format!("[exit code {code}]"));
+                    output.push_str(&format!("{EXIT_PREFIX}{code}]"));
                     ExitStatus::Exited(code)
                 }
                 None => {
@@ -255,7 +255,7 @@ impl Shell {
             Ended::TimedOut => {
                 let secs = timeout.unwrap_or_default().as_secs();
                 output.push_str(&format!(
-                    "[timed out after {secs}s and stopped{}",
+                    "{TIMEOUT_PREFIX}{secs}s and stopped{}",
                     there(&process)
                 ));
                 if silent {
@@ -266,7 +266,7 @@ impl Shell {
             }
             Ended::Stopped => {
                 output.push_str(&format!(
-                    "[stopped after printing more than {} MB{}]",
+                    "{LIMIT_PREFIX}{} MB{}]",
                     OUTPUT_LIMIT / 1024 / 1024,
                     there(&process)
                 ));
@@ -292,14 +292,18 @@ fn there(process: &Process) -> String {
     }
 }
 
+/// How the status line of a command that exited begins.
+const EXIT_PREFIX: &str = "[exit code ";
+/// How the status line of a command killed by a signal begins.
+const KILLED_PREFIX: &str = "[killed by ";
+/// How the status line of a command stopped at its timeout begins.
+const TIMEOUT_PREFIX: &str = "[timed out after ";
+/// How the status line of a command stopped at the output limit begins.
+const LIMIT_PREFIX: &str = "[stopped after printing more than ";
+
 /// How each line [`Shell`] ends a command's output with begins, one per
-/// way the command can end, as `Shell::finish` writes them.
-const STATUS_STARTS: [&str; 4] = [
-    "[exit code ",
-    "[killed by ",
-    "[timed out after ",
-    "[stopped after printing more than ",
-];
+/// way the command can end.
+const STATUS_STARTS: [&str; 4] = [EXIT_PREFIX, KILLED_PREFIX, TIMEOUT_PREFIX, LIMIT_PREFIX];
 
 /// The status line of a command that ended by a signal this tool did not
 /// send (its timeout and output limit say so themselves): which signal,
@@ -311,12 +315,12 @@ fn killed(status: std::process::ExitStatus, remote: Option<&str>) -> String {
         let (name, why) = sent(signal);
         if let Some(host) = remote {
             return format!(
-                "[killed by {name} (signal {signal}), which this tool did not send: {why}. It \
+                "{KILLED_PREFIX}{name} (signal {signal}), which this tool did not send: {why}. It \
                  was the connection to {host}, and the command there was stopped with it]"
             );
         }
         return format!(
-            "[killed by {name} (signal {signal}), which this tool did not send: {why}. It was \
+            "{KILLED_PREFIX}{name} (signal {signal}), which this tool did not send: {why}. It was \
              the process this call started here, `sh` or the last program it ran; when that \
              program was a client of another machine, such as a remote shell, the command \
              there may still be running or may have finished, so check there before running \
@@ -325,7 +329,7 @@ fn killed(status: std::process::ExitStatus, remote: Option<&str>) -> String {
     }
     #[cfg(not(unix))]
     let _ = (status, remote);
-    "[killed by a signal]".to_owned()
+    format!("{KILLED_PREFIX}a signal]")
 }
 
 /// The name of `signal` and what likely sent it.

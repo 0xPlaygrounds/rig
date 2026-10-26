@@ -13,6 +13,7 @@ default = ["tui"]
 tui = []
 
 [dependencies]
+corpus-shared = { path = "../shared" }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
@@ -30,7 +31,6 @@ toml = { version = "1" }
 toml_edit = { version = "0.25" }
 
 [dev-dependencies]
-corpus-shared = { path = "../shared" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

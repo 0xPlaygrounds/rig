@@ -805,14 +805,13 @@ const RATE_KEYS: &[&str] = &[
 /// The fields rig-core reads in a provider override.
 const PROVIDER_KEYS: &[&str] = &["npm", "api", "shape", "body", "headers"];
 
-/// The keys rig-core reads in each object below a row, by its path, `*`
-/// standing for an array index or a mode name. An object not listed, such
-/// as a provider body, is read whole.
-const NESTED_KEYS: &[(&str, &[&str])] = &[
-    ("limit", &["context", "input", "output"]),
-    (
-        "cost",
-        &[
+/// The keys rig-core reads in the object below a row at path `at`, `*`
+/// standing for an array index or a mode name. `None` for an object read
+/// whole, such as a provider body.
+fn nested_keys(at: &str) -> Option<&'static [&'static str]> {
+    match at {
+        "limit" => Some(&["context", "input", "output"]),
+        "cost" => Some(&[
             "input",
             "output",
             "cache_read",
@@ -822,12 +821,9 @@ const NESTED_KEYS: &[(&str, &[&str])] = &[
             "output_audio",
             "tiers",
             "context_over_200k",
-        ],
-    ),
-    ("cost.context_over_200k", RATE_KEYS),
-    (
-        "cost.tiers.*",
-        &[
+        ]),
+        "cost.context_over_200k" | "experimental.modes.*.cost" => Some(RATE_KEYS),
+        "cost.tiers.*" => Some(&[
             "input",
             "output",
             "cache_read",
@@ -836,18 +832,17 @@ const NESTED_KEYS: &[(&str, &[&str])] = &[
             "input_audio",
             "output_audio",
             "tier",
-        ],
-    ),
-    ("cost.tiers.*.tier", &["type", "size"]),
-    ("modalities", &["input", "output"]),
-    ("reasoning_options.*", &["type", "values", "min", "max"]),
-    ("interleaved", &["field"]),
-    ("provider", PROVIDER_KEYS),
-    ("experimental", &["modes"]),
-    ("experimental.modes.*", &["cost", "provider"]),
-    ("experimental.modes.*.cost", RATE_KEYS),
-    ("experimental.modes.*.provider", PROVIDER_KEYS),
-];
+        ]),
+        "cost.tiers.*.tier" => Some(&["type", "size"]),
+        "modalities" => Some(&["input", "output"]),
+        "reasoning_options.*" => Some(&["type", "values", "min", "max"]),
+        "interleaved" => Some(&["field"]),
+        "provider" | "experimental.modes.*.provider" => Some(PROVIDER_KEYS),
+        "experimental" => Some(&["modes"]),
+        "experimental.modes.*" => Some(&["cost", "provider"]),
+        _ => None,
+    }
+}
 
 /// The keys of the rows `rows` holds that rig-core does not read, nested
 /// ones by their path.
@@ -869,10 +864,7 @@ fn unread_keys(rows: &Rows) -> Vec<String> {
 /// Adds to `unread` the keys of `value`, found at `at`, and of the objects
 /// below it, that rig-core does not read.
 fn unread_below(value: &Value, at: &str, unread: &mut Vec<String>) {
-    let known = NESTED_KEYS
-        .iter()
-        .find(|(path, _)| *path == at)
-        .map(|(_, keys)| *keys);
+    let known = nested_keys(at);
     match value {
         Value::Object(fields) => {
             for (key, inner) in fields {

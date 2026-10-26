@@ -12,8 +12,7 @@ use rig_core::message::{ImageMediaType, UserContent};
 use crate::workspace::{Stat, Workspace};
 use crate::{MAX_LINES, show_lines};
 
-/// The largest image attached: providers refuse bigger ones (Anthropic
-/// takes 5 MB per image).
+/// The largest image attached: providers refuse bigger ones.
 const MOST_BYTES: u64 = 5 * 1024 * 1024;
 
 /// The most bytes of a text file attached; the model reads on with `read`.

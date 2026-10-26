@@ -4550,6 +4550,7 @@ dependencies = [
  "bevy_tasks",
  "bevy_time",
  "chrono",
+ "corpus-shared",
  "flate2",
  "futures",
  "glob",

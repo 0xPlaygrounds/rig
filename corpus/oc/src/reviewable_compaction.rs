@@ -2,9 +2,9 @@
 //! summarizes everything before the newest turns (two by default,
 //! `[reviewable-compaction] keep_turns`), steered by the focus, and this
 //! plugin holds the summary for review before it replaces anything:
-//! Accept, Edit (the summary as an editable answer, or in `$EDITOR` with
-//! the `tui` feature), Regenerate or Cancel. A run nobody answers, and an
-//! automatic compaction, are not held.
+//! Accept, Edit (the summary as an editable answer, or in `$VISUAL` or
+//! `$EDITOR` with the `tui` feature), Regenerate or Cancel. A run nobody
+//! answers, and an automatic compaction, are not held.
 //!
 //! Every compaction keeps what it replaced in the session (rig-memory's
 //! [`Compacted`]), so `/uncompact` lists them and `/uncompact N` puts back
@@ -200,7 +200,7 @@ fn present(
         .choice("accept", "Accept")
         .choice("edit", "Edit");
     #[cfg(feature = "tui")]
-    let ask = ask.choice("editor", "Edit in $EDITOR");
+    let ask = ask.choice("editor", "Edit in the editor");
     let ask = ask
         .choice("regenerate", "Regenerate")
         .choice("cancel", "Cancel");
@@ -400,7 +400,7 @@ fn list(store: Option<&dyn Store>, log: &str, compactions: &[Compacted]) -> Vec<
 
 #[cfg(feature = "tui")]
 mod editor {
-    //! The review's "Edit in $EDITOR": the summary in a file of the
+    //! The review's "Edit in the editor": the summary in a file of the
     //! session's scratch directory, edited with the terminal.
 
     use std::path::PathBuf;
@@ -416,7 +416,7 @@ mod editor {
     #[derive(Component, Clone, Debug)]
     pub(super) struct EditorFor(Entity, PathBuf);
 
-    /// Opens the summary of `call` in `$EDITOR`, else asks for it here.
+    /// Opens the summary of `call` in the user's editor, else asks for it here.
     pub(super) fn open(
         commands: &mut Commands,
         call: Entity,
@@ -433,9 +433,10 @@ mod editor {
             ask_edit(commands, call, agent, summary);
             return;
         };
-        let program = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
+        let line = corpus_shared::editor::line();
+        let (program, args) = corpus_shared::editor::words(line.as_deref());
         let mut editor = Command::new(program);
-        editor.arg(&path);
+        editor.args(args).arg(&path);
         commands.spawn((RunInTerminal(editor), EditorFor(call, path), HoldOf(call)));
     }
 
