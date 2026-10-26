@@ -457,28 +457,46 @@ command; despawning the entity removes it. Its annotations are hints: a
 call that only reads, and so runs again after a restart, is one that
 `options.footprint` declares so.
 
-`rig-tui` draws a tool's calls with the first renderer its plugin adds
-(`add_tool_renderer`), given a `ToolCallView`: the call, its state, result,
-output and the calls it started (`children`). A crate that should also build
+`rig-tui` runs ordinary presentation systems in `TranscriptRender`. Its
+`RenderBatch` holds owned inputs and mutable lines for items needing rendering,
+including saved calls and calls with synthetic streaming ids. The
+`RenderSystems::Render`, `Decorate`, and `Edit` sets run in that order. Order
+competing systems within a phase using your plugin's public sets. These systems
+may read agent data but write only presentation data. A crate that also builds
 without `rig-tui` puts it behind a default `tui = ["dep:rig-tui"]` feature.
 
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::AppToolRenderersExt;
+use rig_tui::{RenderBatch, RenderSystems, TranscriptRender};
 
 fn build(app: &mut App) {
-    app.add_tool_renderer("word_count", |call| {
+    app.add_systems(TranscriptRender, draw_count.in_set(RenderSystems::Render));
+}
+
+fn draw_count(mut batch: ResMut<RenderBatch>) {
+    for (input, output) in batch.tools_mut("word_count") {
+        let call = input.view();
         let mut lines = vec![call.header("Count", call.argument("path").unwrap_or_default())];
         lines.extend(call.result_lines());
         for child in call.children {
             let indent = "  ".repeat(child.depth + 1);
             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
         }
-        lines
-    });
+        output.lines = lines;
+    }
 }
 ```
+
+The batch's `pane`, `agent`, and `width` describe this layout. A system can
+select a pane by its entity or query a marker on it; `pane = None` means an
+export. The typed `tools_mut`, `entries_mut`, `contents_mut`, `asides_mut`,
+`calls_mut`, and `messages_mut` iterators select inputs without depending on
+live effect entities. `requests` exposes every request and output by its typed
+`RenderKey`. Unchanged messages stay cached and do not enter the schedule.
+After changing external renderer state or enabling a different look, increment
+`RenderRevision.0`; this requests a frame and invalidates cached presentation.
+
 
 # Gating and reviewing tool calls
 
@@ -1882,7 +1900,7 @@ fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut P
 
 A whole plugin is replaced in `plugins.toml`: disable its entry and list
 yours, as for [compaction](#changing-history). Tools, slash commands,
-renderers, key bindings, options, fronts and prompt sections are entities.
+key bindings, options, fronts and prompt sections are entities. Transcript renderers are ordinary systems in `TranscriptRender`.
 `Disabled` on one turns it off and frees its name for a replacement (a second
 one of a taken name is refused), in `Plugin::finish`, which runs once every
 `build` did. What a plugin spawns in `build`, `finish` and `cleanup` is marked
@@ -1911,7 +1929,7 @@ impl Plugin for NoShellPlugin {
             world.entity_mut(shell).insert(Disabled);
         }
         // `app.add_tool(MyShell)` would replace it. A command is found by its
-        // `Name` ("/help"), a renderer by its ("renderer:shell").
+        // `Name` ("/help").
     }
 }
 ```
@@ -2073,9 +2091,8 @@ with its title and its text. Every front draws it, it is kept as any aside
 is, and `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a plugin
-(such as `rig_basics::compaction`'s summary), with the look
-`add_entry_renderer(plugin, ..)` gives that plugin's author; other asides with
-`add_aside_renderer(kind, ..)`. The transcript puts each item on the band of
+(such as `rig_basics::compaction`'s summary), with systems selecting `RenderBatch::entries_mut(plugin)`; other asides use
+`asides_mut(kind)`. The transcript puts each item on the band of
 what it is, from the `Theme` resource (mixed from the terminal's background):
 a user message on `user`, a tool call and what a plugin added on `tool`, a
 reply on none; a look's line with a background of its own keeps it, as a
@@ -2095,14 +2112,17 @@ drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a
 `TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at a
 row of it or its `n`th lit match; `item: None` follows the newest output. A
 `DrawnTranscript` added to a pane holds the rows it drew by item;
-`TranscriptLayout::lay_out` lays any agent's out so, undrawn.
+`TranscriptLayout::lay_out(world, view, agent, width)` lays any agent's out
+so, undrawn. It takes `&mut World` and runs the same render schedule, so call it
+from an exclusive system or an exclusive command.
 
 A message's images, audio, videos and documents, the user's or the
-model's, are drawn by `add_content_renderer(ContentKind::Image, ..)`,
-given a `ContentView` (`default_lines()` is `[image]`), each block an item
-`TranscriptItem::Content(id, index)` with its rows; `add_call_decorator`
-draws lines under every tool call, after its look, an item
-`Decoration(call, name)`. `TuiFrame`, written in `TuiSystems::Render`,
+model's, are drawn by systems selecting `contents_mut(ContentKind::Image)`.
+The input's `view()` gives a `ContentView` (`default_lines()` is `[image]`),
+each block an item `TranscriptItem::Content(id, index)` with its rows.
+`RenderOutput::decorate(name, lines)` appends named lines after a call, an item
+`Decoration(call, name)`. For messages, use `messages_mut()` and the same
+method to produce `MessageDecoration(message, name)`. `TuiFrame`, written in `TuiSystems::Render`,
 says where the frame drew each panel (`area`) and row (`screen_row`) and
 what an overlay `covered`, for a plugin that writes to the terminal
 itself, such as an image over rows its renderer left blank, and
@@ -2114,23 +2134,34 @@ use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppToolRenderersExt, ContentKind, DrawnTranscript, Highlight, ItemRow, MainPane, MainTranscript,
+    RenderBatch, RenderSystems, TranscriptRender, ContentKind, DrawnTranscript, Highlight, ItemRow, MainPane, MainTranscript,
     ScrollTo, TerminalWrite, TranscriptItem, TuiFrame, TuiSystems,
 };
 
 fn build(app: &mut App) {
     app.add_command("mark", "Mark the newest message: /mark why", mark)
         .add_command("find", "Light a text and show the last message with it", find)
-        .add_entry_renderer("mark", |entry| {
-            let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
-            lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
-            lines
-        })
-        // An image keeps four rows, which `place_images` draws it over.
-        .add_content_renderer(ContentKind::Image, |image| [image.default_lines(), vec![Line::default(); 3]].concat())
-        .add_call_decorator("took", |call| call.took.map(|it| Line::from(format!("  {it:?}"))).into_iter().collect())
+        .add_systems(TranscriptRender, draw_marks.in_set(RenderSystems::Render))
+        .add_systems(TranscriptRender, show_duration.in_set(RenderSystems::Decorate))
         .add_systems(PostUpdate, place_images.after(TuiSystems::Render))
         .register_required_components::<MainPane, DrawnTranscript>();
+}
+
+fn draw_marks(mut batch: ResMut<RenderBatch>) {
+    for (entry, output) in batch.entries_mut("mark") {
+        let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
+        lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
+        output.lines = lines;
+    }
+    for (image, output) in batch.contents_mut(ContentKind::Image) {
+        output.lines = [image.view().default_lines(), vec![Line::default(); 3]].concat();
+    }
+}
+
+fn show_duration(mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.calls_mut() {
+        output.decorate("took", call.took.map(|it| Line::from(format!("  {it:?}"))).into_iter().collect());
+    }
 }
 
 /// Puts the cursor on each image's first row, unless an overlay covers its

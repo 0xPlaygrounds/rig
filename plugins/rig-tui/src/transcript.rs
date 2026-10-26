@@ -680,8 +680,15 @@ impl Look<'_> {
     /// A hash of what message `index` (with `id`) looks like besides its
     /// messages: its notices and its calls' states, output so far and
     /// running times.
-    fn hash_message(&self, (index, id): (usize, Option<MessageId>), message: &Message) -> u64 {
+    fn hash_message(
+        &self,
+        (index, id): (usize, Option<MessageId>),
+        message: &Message,
+        author: Option<&Author>,
+    ) -> u64 {
         let hasher = &mut DefaultHasher::new();
+        id.hash(hasher);
+        serde_json::to_vec(&author).unwrap_or_default().hash(hasher);
         self.hash_inside(index, hasher);
         let marks = self.marks.iter();
         marks
@@ -692,7 +699,9 @@ impl Look<'_> {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
-                    self.facts.of(&call.id).1.hash(hasher);
+                    let (facts, took) = self.facts.of(&call.id);
+                    took.hash(hasher);
+                    serde_json::to_vec(&facts).unwrap_or_default().hash(hasher);
                     hash_children(self.children.get(&call.id), hasher);
                 }
             }
@@ -729,7 +738,9 @@ fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) 
     for child in children.into_iter().flatten() {
         (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
         (child.failed, &child.answer).hash(hasher);
-        child.call.as_ref().map(|call| &call.id).hash(hasher);
+        serde_json::to_vec(&child.call)
+            .unwrap_or_default()
+            .hash(hasher);
     }
 }
 
@@ -863,7 +874,11 @@ impl Transcript {
                 previous.map(|m| &**m),
                 messages.get(index + 1).map(|m| &**m),
             );
-            let look_hash = look.hash_message((index, conversation.id(index)), message);
+            let look_hash = look.hash_message(
+                (index, conversation.id(index)),
+                message,
+                conversation.author(index),
+            );
             if self.messages.get(index).is_some_and(|cached| {
                 cached.look == look_hash
                     && !(resized && cached.fitted)

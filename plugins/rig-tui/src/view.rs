@@ -81,7 +81,7 @@ pub enum TranscriptItem {
     Call(CallId),
     /// An aside a look draws, such as a plugin's
     /// [`Note`](rig_harness::rig_core::conversation::Note), by its id
-    /// ([`add_aside_renderer`](crate::AppToolRenderersExt::add_aside_renderer)).
+    /// ([`RenderBatch::asides_mut`](crate::RenderBatch::asides_mut)).
     Aside(AsideId),
     /// A notice, by its number in the [`Notices`].
     Notice(usize),
@@ -91,12 +91,12 @@ pub enum TranscriptItem {
     Content(MessageId, usize),
     /// The rows a call decorator drew under a call, by the call's id and
     /// the decorator's name
-    /// ([`add_call_decorator`](crate::AppToolRenderersExt::add_call_decorator)),
+    /// ([`RenderOutput::decorate`](crate::RenderOutput::decorate)),
     /// inside the call's rows. Selecting moves past it.
     Decoration(CallId, String),
     /// The rows a message decorator drew under a message, by the
     /// message's id and the decorator's name
-    /// ([`MessageDecorator`](crate::MessageDecorator)),
+    /// ([`RenderBatch::messages_mut`](crate::RenderBatch::messages_mut)),
     /// inside the message's rows. Selecting moves past it.
     MessageDecoration(MessageId, String),
 }

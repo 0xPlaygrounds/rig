@@ -31,10 +31,11 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow,
-    LineSpan, MarkIn, PastEffects, RenderToolCall, ScrollTo, TextMark, ToolCallView,
-    TranscriptItem, TranscriptLayout, TranscriptView,
+    CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn,
+    PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout, TranscriptView,
 };
+
+use crate::{RenderBatch, RenderSystems, TranscriptRender};
 
 const WIDTH: u16 = 80;
 
@@ -103,7 +104,7 @@ fn drawn(
     transcript: &mut Transcript,
     conversation: &Conversation,
     (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
-    renderers: &Renderers<'_>,
+    renderers: &Renderers,
 ) -> String {
     let (facts, theme) = (CallFacts::default(), crate::Theme::default());
     let look = Look {
@@ -194,13 +195,26 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
     let Some(conversation) = conversation else {
         return;
     };
-    let look: Arc<RenderToolCall> = Arc::new(|call: &ToolCallView<'_>| {
-        let output = call.output.unwrap_or("no output").lines();
-        output.map(|line| Line::from(format!("> {line}"))).collect()
-    });
-    let renderers = Renderers {
-        tools: HashMap::from([("shell", &look)]),
-        ..Renderers::default()
+    let mut app = App::new();
+    crate::renderers::add(&mut app);
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("shell") {
+                output.lines = input
+                    .output
+                    .as_deref()
+                    .unwrap_or("no output")
+                    .lines()
+                    .map(|line| Line::from(format!("> {line}")))
+                    .collect();
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
+    let mut renderers = Renderers {
+        collecting: true,
+        ..Default::default()
     };
     let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
     let mut transcript = Transcript::default();
@@ -208,6 +222,14 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
     for line in ["cc a.c", "cc b.c", "ld app"] {
         let text = outputs.entry(call.id.clone()).or_insert_with(String::new);
         text.push_str(&format!("{line}\n"));
+        renderers.collecting = true;
+        drawn(
+            &mut transcript,
+            &conversation,
+            (&calls, &outputs),
+            &renderers,
+        );
+        crate::render::run_renderers(app.world_mut(), &mut renderers);
         let shown = drawn(
             &mut transcript,
             &conversation,
@@ -252,18 +274,34 @@ fn line_of(lines: &[String], text: &str) -> Option<usize> {
 
 #[test]
 fn an_aside_and_a_message_are_drawn_by_their_looks() {
-    use crate::MessageDecorator;
-
     let (mut app, agent) = view_app();
-    app.add_aside_renderer("test.mark", |view| {
-        let text = view.aside.value.as_str().unwrap_or_default();
-        vec![Line::from(format!("↳ {text}"))]
-    });
-    let ratings = MessageDecorator::new("ratings", |message| {
-        let rated = message.id.is_some() && matches!(message.message, Message::Assistant(_));
-        rated.then(|| Line::from("★ rate it")).into_iter().collect()
-    });
-    app.world_mut().spawn(ratings);
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.asides_mut("test.mark") {
+                let view = input.view();
+                output.lines = {
+                    let text = view.aside.value.as_str().unwrap_or_default();
+                    vec![Line::from(format!("↳ {text}"))]
+                };
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (message, output) in batch.messages_mut() {
+                let rated =
+                    message.id.is_some() && matches!(message.message, Message::Assistant(_));
+                output.decorate(
+                    "ratings",
+                    rated.then(|| Line::from("★ rate it")).into_iter().collect(),
+                );
+            }
+        })
+        .in_set(RenderSystems::Decorate),
+    );
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
@@ -302,12 +340,21 @@ fn an_aside_and_a_message_are_drawn_by_their_looks() {
 #[test]
 fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
     let (mut app, agent) = view_app();
-    app.add_entry_renderer("btw", |entry| {
-        vec![
-            Line::from(format!("btw: {}", entry.title)),
-            Line::from(format!("btw: {}", entry.text)),
-        ]
-    });
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.entries_mut("btw") {
+                let entry = input.view();
+                output.lines = {
+                    vec![
+                        Line::from(format!("btw: {}", entry.title)),
+                        Line::from(format!("btw: {}", entry.text)),
+                    ]
+                };
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
     say(&mut app, agent, Message::user("second question"));
@@ -343,17 +390,44 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
     crate::tests::keep_drawn(&mut app);
     // An image look that reserves a row under its label, as a plugin
     // placing images does.
-    app.add_content_renderer(ContentKind::Image, |view| {
-        let by = if view.assistant { "model" } else { "user" };
-        vec![
-            Line::from(format!("img {} by {by}", view.index)),
-            Line::default(),
-        ]
-    })
-    .add_tool_renderer("shell", |call| vec![call.header("shell", "")])
-    .add_call_decorator("names", |call| {
-        vec![Line::from(format!("  ~ {}", call.name()))]
-    });
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.contents_mut(ContentKind::Image) {
+                let view = input.view();
+                output.lines = {
+                    let by = if view.assistant { "model" } else { "user" };
+                    vec![
+                        Line::from(format!("img {} by {by}", view.index)),
+                        Line::default(),
+                    ]
+                };
+            }
+        })
+        .in_set(RenderSystems::Render),
+    )
+    .add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("shell") {
+                let call = input.view();
+                output.lines = vec![call.header("shell", "")];
+            }
+        })
+        .in_set(RenderSystems::Render),
+    )
+    .add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.calls_mut() {
+                let call = input.view();
+                output.decorate("names", {
+                    vec![Line::from(format!("  ~ {}", call.name()))]
+                });
+            }
+        })
+        .in_set(RenderSystems::Decorate),
+    );
     let image = UserContent::Image(Image::default());
     let asked = Message::User {
         content: vec![UserContent::text("look"), image],
@@ -663,11 +737,14 @@ fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
 /// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
 /// columns.
 fn laid_out(app: &mut App, agent: Entity) -> Option<DrawnTranscript> {
-    let lay_out = move |layout: TranscriptLayout, views: Query<&TranscriptView>| {
-        let view = views.iter().next().cloned().unwrap_or_default();
-        layout.lay_out(&view, agent, WIDTH)
-    };
-    app.world_mut().run_system_once(lay_out).ok().flatten()
+    let world = app.world_mut();
+    let view = world
+        .query::<&TranscriptView>()
+        .iter(world)
+        .next()
+        .cloned()
+        .unwrap_or_default();
+    TranscriptLayout::lay_out(world, &view, agent, WIDTH)
 }
 
 #[test]
@@ -708,9 +785,17 @@ fn a_layout_is_the_drawn_transcript_on_no_screen() {
 #[test]
 fn a_highlight_lights_a_renderers_text_and_draws_again() {
     let (mut app, agent) = view_app();
-    app.add_tool_renderer("shell", |call| {
-        vec![call.header("shell", call.argument("command").unwrap_or_default())]
-    });
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("shell") {
+                let call = input.view();
+                output.lines =
+                    vec![call.header("shell", call.argument("command").unwrap_or_default())];
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
     let Ok(name) = ToolName::new("shell") else {
         return;
     };
@@ -750,14 +835,27 @@ fn a_highlight_lights_a_renderers_text_and_draws_again() {
 #[test]
 fn a_tool_call_is_drawn_while_its_arguments_stream() {
     let (mut app, agent) = view_app();
-    app.add_tool_renderer("write", |call| {
-        let path = call.argument("path").unwrap_or("…");
-        vec![Line::from(format!("{:?} write {path}", call.state))]
-    });
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("write") {
+                let call = input.view();
+                output.lines = {
+                    let path = call.argument("path").unwrap_or("…");
+                    vec![Line::from(format!("{:?} write {path}", call.state))]
+                };
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
     let Ok(name) = ToolName::new("write") else {
         return;
     };
-    let effect = app.world_mut().spawn(Partial::default()).id();
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
+    let effect = app
+        .world_mut()
+        .spawn((CallOf(turn), Partial::default()))
+        .id();
     let part = rig_core::streaming::Part::new(1);
     let stream = |app: &mut App, event: StreamEvent| {
         app.world_mut().write_message(StreamDelta {
@@ -766,9 +864,7 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
             event,
         });
         app.update();
-        let calls = app.world().get::<StreamingCalls>(effect);
-        let calls = calls.into_iter().flat_map(StreamingCalls::calls);
-        drawn_rows(app, agent, 100, calls.collect())
+        drawn_rows(app, agent, 100, Vec::new())
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
@@ -911,15 +1007,24 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     };
     app.init_resource::<Records>().add_systems(Last, keep);
     let looks = |app: &mut App| {
-        app.add_tool_renderer("consult", |view| {
-            let children = view.children.iter().map(|child| {
-                let agent = child.agent.as_deref().unwrap_or("-");
-                let line = child.answer.as_deref().unwrap_or("-");
-                let (depth, name, state) = (child.depth, &child.name, &child.state);
-                Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
-            });
-            children.collect()
-        });
+        app.add_systems(
+            TranscriptRender,
+            (|mut batch: ResMut<RenderBatch>| {
+                for (input, output) in batch.tools_mut("consult") {
+                    let view = input.view();
+                    output.lines = {
+                        let children = view.children.iter().map(|child| {
+                            let agent = child.agent.as_deref().unwrap_or("-");
+                            let line = child.answer.as_deref().unwrap_or("-");
+                            let (depth, name, state) = (child.depth, &child.name, &child.state);
+                            Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+                        });
+                        children.collect()
+                    };
+                }
+            })
+            .in_set(RenderSystems::Render),
+        );
     };
     looks(&mut app);
     let (Ok(consult), Ok(read)) = (ToolName::new("consult"), ToolName::new("read")) else {
@@ -1047,17 +1152,43 @@ fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
 
 /// Each decorator's rows under a call are an item of their own, inside the
 /// call's, holding only its lines whatever order the decorators came in;
-/// a second decorator with a name taken is not added.
+/// systems own the names of their contributions.
 #[test]
 fn each_decorators_rows_are_an_item_inside_its_call() {
     let (mut app, agent) = view_app();
     crate::tests::keep_drawn(&mut app);
-    app.add_tool_renderer("shell", |call| vec![call.header("shell", "")])
-        .add_call_decorator("late", |_| {
-            vec![Line::from("  late one"), Line::from("  late two")]
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("shell") {
+                let call = input.view();
+                output.lines = vec![call.header("shell", "")];
+            }
         })
-        .add_call_decorator("early", |_| vec![Line::from("  early")])
-        .add_call_decorator("early", |_| vec![Line::from("  never")]);
+        .in_set(RenderSystems::Render),
+    )
+    .add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.calls_mut() {
+                let _ = input.view();
+                output.decorate("late", {
+                    vec![Line::from("  late one"), Line::from("  late two")]
+                });
+            }
+        })
+        .in_set(RenderSystems::Decorate),
+    )
+    .add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.calls_mut() {
+                let _ = input.view();
+                output.decorate("early", vec![Line::from("  early")]);
+            }
+        })
+        .in_set(RenderSystems::Decorate),
+    );
     let Ok(shell) = ToolName::new("shell") else {
         return;
     };

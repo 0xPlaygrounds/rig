@@ -7,8 +7,9 @@ use rig_harness::prelude::*;
 
 use crate::tests::{main_pane, main_view, view_app};
 use crate::{
-    ItemRow, MessageDecorator, PaneKeys, Placement, ScrollTo, TranscriptItem, TranscriptPane,
-    TranscriptSource, TranscriptView, TuiFrame, TuiPanel, TuiSystems, TuiTestScreen,
+    ItemRow, PaneKeys, Placement, RenderBatch, RenderSystems, ScrollTo, TranscriptItem,
+    TranscriptPane, TranscriptRender, TranscriptSource, TranscriptView, TuiFrame, TuiPanel,
+    TuiSystems, TuiTestScreen,
 };
 
 /// The rows of the screen's last frame within the panel `entity`'s area,
@@ -78,8 +79,18 @@ fn a_look_spawned_under_a_pane_applies_in_that_pane_only() {
     let value = TranscriptPane::new(TranscriptSource::Value(saved)).titled("saved");
     let placement = TuiPanel::new(Placement::Left(Constraint::Length(45)));
     let pane = app.world_mut().spawn((value, placement)).id();
-    let look = MessageDecorator::new("asked", |_| vec![Line::from("asked here")]);
-    app.world_mut().spawn((look, ChildOf(pane)));
+    app.add_systems(
+        TranscriptRender,
+        (move |mut batch: ResMut<RenderBatch>| {
+            if batch.pane != Some(pane) {
+                return;
+            }
+            for (_, output) in batch.messages_mut() {
+                output.decorate("asked", vec![Line::from("asked here")]);
+            }
+        })
+        .in_set(RenderSystems::Decorate),
+    );
     app.update();
     let main = rows_in(&app, main_pane(app.world()));
     let side = rows_in(&app, pane);

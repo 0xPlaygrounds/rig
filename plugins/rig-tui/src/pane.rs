@@ -4,8 +4,9 @@
 //! as a value (a saved session). Each pane has its own
 //! [`TranscriptView`] (what is selected and lit, where it is
 //! scrolled), its own scroll and, once a plugin adds one, its own
-//! [`DrawnTranscript`]. A look spawned as a child of a pane applies in it
-//! only. The default screen's transcript is one, marked [`MainPane`].
+//! [`DrawnTranscript`]. Render systems select a pane through
+//! [`crate::RenderBatch::pane`]. The default screen's transcript is one,
+//! marked [`MainPane`].
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -286,7 +287,9 @@ pub(crate) fn lay_out_panes(
             };
             let value = match &pane.source {
                 TranscriptSource::Value(conversation) => {
-                    Some(ShownConversation::value(conversation, entity))
+                    let mut value = ShownConversation::value(conversation, entity);
+                    value.changed = changed_panes.contains(&entity);
+                    Some(value)
                 }
                 _ => None,
             };

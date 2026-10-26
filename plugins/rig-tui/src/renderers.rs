@@ -520,7 +520,7 @@ pub struct DecoratedMessage<'a> {
 
 /// Runs presentation systems for the changed items of one pane or export.
 /// Systems may read agent data but write only presentation data. Request a
-/// redraw and advance [`RenderRevision`] when external renderer state changes.
+/// advance [`RenderRevision`] when external renderer state changes.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TranscriptRender;
 
@@ -537,7 +537,7 @@ pub enum RenderSystems {
 }
 
 /// Increment to invalidate cached presentation after renderer state changes.
-/// Also send [`crate::RequestRedraw`] to schedule a terminal frame.
+/// Advancing it also requests a terminal frame.
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RenderRevision(pub u64);
 
@@ -553,9 +553,15 @@ pub struct RenderOutput {
 
 impl RenderOutput {
     /// Append a named contribution. Systems may edit or remove contributions
-    /// directly before the layout consumes them.
+    /// directly before the layout consumes them. Reusing a name replaces its
+    /// lines in place.
     pub fn decorate(&mut self, name: impl Into<String>, lines: Vec<Line<'static>>) {
-        self.decorations.push((name.into(), lines));
+        let name = name.into();
+        if let Some((_, current)) = self.decorations.iter_mut().find(|(key, _)| *key == name) {
+            *current = lines;
+        } else {
+            self.decorations.push((name, lines));
+        }
     }
 
     fn drawn(&self) -> (Vec<Line<'static>>, Decorated) {
@@ -921,10 +927,6 @@ impl Renderers {
                 .or_else(|| self.cached.borrow().get(&key).map(|r| r.output.drawn()))
                 .unwrap_or((lines, Vec::new()))
         }
-    }
-
-    pub(crate) fn call(&self, view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-        self.call_decorated(view).0
     }
 
     pub(crate) fn call_decorated(

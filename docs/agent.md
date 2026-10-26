@@ -112,8 +112,9 @@ and every note, nothing cut or folded. A call's row is tinted by where it
 stands (waiting, running, done, failed). Code is highlighted in the terminal's
 own palette, so it follows the terminal's theme. PageUp, PageDown and
 Shift+Up/Down scroll the transcript. With `NO_COLOR` set, nothing is drawn in
-color. A plugin can draw its own tools' calls with `app.add_tool_renderer`
-(`rig_tui::AppToolRenderersExt`).
+color. A plugin draws its tools' calls with ordinary systems in
+`rig_tui::TranscriptRender`, selecting inputs through
+`rig_tui::RenderBatch::tools_mut` and writing their output lines.
 
 ## Sessions
 
