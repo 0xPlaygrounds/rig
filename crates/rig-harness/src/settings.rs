@@ -292,7 +292,7 @@ fn read_project_settings(
 /// one wins; a table that does not read as `T` keeps the user's value and
 /// is one of [`Settings::problems`].
 fn apply_project_setting<T: Resource + DeserializeOwned>(
-    declared: Query<(&Declared, &ProjectSetting), With<ReadAs<T>>>,
+    declared: Query<(&Declared, Entity, &ProjectSetting), With<ReadAs<T>>>,
     project: Option<Res<ProjectSettings>>,
     mut settings: Option<ResMut<Settings>>,
     mut commands: Commands,
@@ -301,8 +301,8 @@ fn apply_project_setting<T: Resource + DeserializeOwned>(
         return;
     };
     let mut declared: Vec<_> = declared.iter().collect();
-    declared.sort_unstable_by_key(|&(&order, _)| order);
-    for (_, ProjectSetting(section)) in declared {
+    declared.sort_unstable_by_key(|&(&order, entity, _)| (order, entity));
+    for (_, _, ProjectSetting(section)) in declared {
         let Some(over) = project.tables.get(section) else {
             continue;
         };

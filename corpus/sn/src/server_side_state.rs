@@ -191,8 +191,9 @@ struct ChainHint {
 }
 
 /// Notes what each splice did to a chained conversation, then gives each
-/// turn's model call its agent's chain, applied to the model it finally
-/// goes to if that model keeps state.
+/// turn's model call its agent's chain, applied to the model the call is
+/// adapted for if that model keeps state. An adapter that changes the
+/// call's provider orders itself before [`ServerStateSystems`].
 fn chain_calls(
     mut committed: MessageReader<ConversationChanged>,
     mut calls: Query<(&ForAgent, &mut Adapted), (Added<Admitted>, With<TurnCall>, ModelCalls)>,

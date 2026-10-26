@@ -1325,8 +1325,8 @@ session stopped. rig-core's `redact` finds keys and tokens by their shapes
 (`json`, `text`).
 
 **Replaying.** A replayer answers effects from a recorded log before
-they start: a model call by an adapter in `PrepareSystems::AdaptOutermost`, the others in
-`GateSystems::FromRecord` (rig-cassette's `RecordedAnswers` pairs agents).
+they start: a model call by an adapter in
+`PrepareSystems::AdaptOutermost`, the others in `GateSystems::FromRecord` (rig-cassette's `RecordedAnswers` pairs agents).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1930,7 +1930,7 @@ fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut P
 
 A whole plugin is replaced in `plugins.toml`: disable its entry and list
 yours, as for [compaction](#changing-history). Tools, slash commands,
-key bindings, options, fronts and prompt sections are entities. Transcript renderers are ordinary systems in `TranscriptRender`.
+key bindings, options, fronts and prompt sections are entities.
 `Disabled` on one turns it off and frees its name for a replacement (a second
 one of a taken name is refused), in `Plugin::finish`, which runs once every
 `build` did. What a plugin spawns in `build`, `finish` and `cleanup` is marked
@@ -1941,6 +1941,9 @@ system changes its results, and a default tool may have a switch, such as
 `rig_basics::coding_tools::ShellOutput`. A plugin's stage systems in a public
 set are turned off with a run condition
 (`configure_sets(AgentPass, AttachSystems.run_if(|| false))` in `finish`).
+A shipped transcript look is replaced by a render system ordered after its
+public set (`CodingToolLooks`, `SummaryLooks`, `SubagentLooks`,
+`WelcomeLooks`, `BuildFailedLooks`) that writes the same output.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -2121,8 +2124,8 @@ with its title and its text. Every front draws it, it is kept as any aside
 is, and `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a plugin
-(such as `rig_basics::compaction`'s summary), with systems selecting `RenderBatch::entries_mut(plugin)`; other asides use
-`asides_mut(kind)`. The transcript puts each item on the band of
+(such as `rig_basics::compaction`'s summary), with systems selecting
+`RenderBatch::entries_mut(plugin)`; other asides use `asides_mut(kind)`. The transcript puts each item on the band of
 what it is, from the `Theme` resource (mixed from the terminal's background):
 a user message on `user`, a tool call and what a plugin added on `tool`, a
 reply on none; a look's line with a background of its own keeps it, as a
