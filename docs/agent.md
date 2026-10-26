@@ -119,7 +119,9 @@ color. A plugin draws its tools' calls with ordinary systems in
 ## Sessions
 
 Each `rig` starts a new session. `/quit` ends it, `/new` starts a new one and
-`/name` names it. `/resume` lists the earlier sessions (name or first
+`/name` names it. A session is kept once a conversation has a message; one
+that only changed settings is removed when it ends, and `/resume` never
+lists it. `/resume` lists the earlier sessions (name or first
 message, cost, directory, age) and resumes the one picked, in its own
 directory; `rig --resume <id or name>` (or `/resume <id or name>`) resumes a
 given one, such as after a crash.

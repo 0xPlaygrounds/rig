@@ -74,9 +74,10 @@ impl Deref for SessionPaths {
 /// this, and reads it before writing; a run whose session does not open or
 /// read is refused, unchanged. The harness marks the running session saved
 /// once its log wrote and an agent's conversation has a user or assistant
-/// message, so `/resume` lists it (not a sessionless run's); a program that saves a new session through this marks it
-/// itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing
-/// of a session no rig runs current.
+/// message, so `/resume` lists it (not a sessionless run's); a program
+/// that saves a new session through this marks it itself
+/// ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing of a
+/// session no rig runs current.
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
     /// How a store is opened.
@@ -206,8 +207,8 @@ struct Unmarked;
 
 /// Until the session's log wrote and an agent's conversation has a user or
 /// assistant message, in a run that keeps its session: the session is
-/// marked saved then ([`SessionDir::mark_saved`]), so
-/// `/resume` lists it. A sessionless run never has it.
+/// marked saved then ([`SessionDir::mark_saved`]), so `/resume` lists it.
+/// A sessionless run never has it.
 #[derive(Resource)]
 struct Unsaved;
 

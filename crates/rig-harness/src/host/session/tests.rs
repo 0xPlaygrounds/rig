@@ -721,6 +721,11 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved(
         conversation.splice(0.., [], Author::plugin("undo"));
     }
     app.update();
+    let left = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    assert_eq!(
+        left.map(|conversation| conversation.messages().len()),
+        Some(0)
+    );
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
