@@ -262,7 +262,8 @@ fn a_long_detail_leaves_the_label_half_the_row() {
         checked: false,
         more: None,
     };
-    let row = item.line(60).to_string();
+    let column = detail_column(std::slice::from_ref(&item), 60);
+    let row = item.line(60, column).to_string();
     assert_eq!(row.width(), 60, "{row}");
     assert!(
         row.starts_with("rig_basics::subagents::SubagentsPlugin  "),
@@ -282,7 +283,8 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         checked: false,
         more: None,
     };
-    let row = item.line(40).to_string();
+    let column = detail_column(std::slice::from_ref(&item), 40);
+    let row = item.line(40, column).to_string();
     assert_eq!(row.width(), 40, "{row}");
     assert!(row.ends_with(" $0.42 · 3h ago"), "{row}");
     assert!(row.starts_with("fix the flaky picker te…  "), "{row}");
@@ -293,7 +295,151 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
         checked: false,
         more: None,
     };
-    assert_eq!(short.line(40).to_string(), "main");
+    assert_eq!(short.line(40, 0).to_string(), "main");
+}
+
+#[test]
+fn details_start_at_one_column() {
+    use unicode_width::UnicodeWidthStr;
+
+    let item = |label, detail| Item {
+        id: "",
+        label,
+        detail: Some(detail),
+        checked: false,
+        more: None,
+    };
+    let items = [
+        item("main", "the default branch"),
+        item("日本語のラベル", "a wide label"),
+        item("rig_basics::Plugin", "(rig-basics) The basics."),
+    ];
+    let starts = |width: usize| -> Vec<usize> {
+        let column = detail_column(&items, width);
+        let rows = items.iter().map(|item| item.line(width, column));
+        let start = |row: Line<'static>| {
+            let spans = row.spans.iter().rev().skip(1);
+            spans.map(|span| span.content.width()).sum()
+        };
+        rows.map(start).collect()
+    };
+    // Two after the widest label.
+    assert_eq!(starts(60), [20, 20, 20]);
+    // A narrow row keeps a third for the details and cuts the labels.
+    assert_eq!(starts(24), [16, 16, 16]);
+    // A short detail, such as a session's folder and age, stays whole in
+    // a narrow row; the label is cut.
+    let session = [item(
+        "Write a 40-line poem about rust",
+        "…/pr7/work · 15m ago",
+    )];
+    let column = detail_column(&session, 28);
+    let row: String = session
+        .iter()
+        .map(|item| item.line(28, column).to_string())
+        .collect();
+    assert!(row.ends_with("…/pr7/work · 15m ago"), "{row}");
+    assert!(row.starts_with("Write…  …"), "{row}");
+    // One session's long detail leaves the others theirs.
+    let sessions = [
+        item("Write a 40-line poem about rust", "…/pr7/work · 15m ago"),
+        item("Say hi in two words", "…/a-very-long-folder/name · 3h ago"),
+    ];
+    let column = detail_column(&sessions, 28);
+    let row = sessions
+        .first()
+        .map(|item| item.line(28, column).to_string());
+    assert!(
+        row.as_ref()
+            .is_some_and(|row| row.ends_with("…/pr7/work · 15m ago")),
+        "{row:?}"
+    );
+}
+
+#[test]
+fn the_whole_detail_shows_after_right() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let words: Vec<String> = (0..12).map(|n| format!("detail{n:02}")).collect();
+    let detail = words.join(" ");
+    assert_eq!(detail.len(), 107);
+    let mut picker = Picker::new("Plugins").item("rig_basics::subagents::SubagentsPlugin", "");
+    if let Some(item) = picker.items.last_mut() {
+        item.detail = Some(detail);
+    }
+    app.world_mut().spawn(picker);
+    app.update();
+    let screen = |app: &App| app.world().resource::<TuiTestScreen>().rows().join("\n");
+    assert!(!screen(&app).contains("detail11"), "{}", screen(&app));
+    assert!(screen(&app).contains("→ shows more"), "{}", screen(&app));
+    press(&mut app, "right");
+    let shown = screen(&app);
+    assert!(words.iter().all(|word| shown.contains(word)), "{shown}");
+}
+
+#[test]
+fn typing_lists_the_items_it_names_before_those_it_describes() {
+    for (keys, selected) in [("enter", 1), ("down enter", 0)] {
+        let (mut app, _) = view_app();
+        app.init_resource::<Reported>().add_observer(report);
+        let mut picker = Picker::new("Plugins")
+            .item("rig_inspect::InspectPlugin", "")
+            .item("rig_basics::reload::ReloadPlugin", "");
+        if let Some(item) = picker.items.first_mut() {
+            item.detail = Some("[runs until the next reload] The inspect tool.".to_owned());
+        }
+        app.world_mut().spawn(picker);
+        app.update();
+        type_text(&mut app, "reload");
+        press(&mut app, keys);
+        assert_eq!(
+            app.world().resource::<Reported>().0,
+            [Some(Chosen::item(selected))]
+        );
+    }
+}
+
+#[test]
+fn typing_finds_an_item_by_its_detail_or_full_text() {
+    for filter in ["just now", "ancestor"] {
+        let (mut app, _) = view_app();
+        app.init_resource::<Reported>().add_observer(report);
+        let mut picker = Picker::new("Sessions")
+            .item("another session", "")
+            .item("fix the parser", "");
+        if let Some(item) = picker.items.last_mut() {
+            item.detail = Some("…/repo/work · just now".to_owned());
+            item.more = Some("/ancestor/full/repo/work".to_owned());
+        }
+        app.world_mut().spawn(picker);
+        app.update();
+        type_text(&mut app, filter);
+        press(&mut app, "enter");
+        assert_eq!(
+            app.world().resource::<Reported>().0,
+            [Some(Chosen::item(1))],
+            "{filter}"
+        );
+    }
+}
+
+#[test]
+fn a_whole_detail_offers_nothing_more() {
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(80, 24));
+    let mut picker = Picker::new("Models").item("openai/gpt-5", "");
+    if let Some(item) = picker.items.last_mut() {
+        item.detail = Some("no key".to_owned());
+    }
+    app.world_mut().spawn(picker);
+    app.update();
+    let screen = app.world().resource::<TuiTestScreen>().rows().join("\n");
+    assert!(screen.contains("no key"), "{screen}");
+    assert!(!screen.contains("→ shows more"), "{screen}");
 }
 
 #[test]
@@ -451,9 +597,9 @@ fn a_questions_own_keys_tick_and_enter_answers_exactly_the_ticked() {
     press(&mut app, "n enter");
     app.world_mut().spawn((ask(), keys, ForAgent(agent)));
     app.update();
-    // On the typed-answer row, `d` types; the ticks go with the note.
+    // On the typed-answer row, `a` types; the ticks go with the note.
     press(&mut app, "down down");
-    type_text(&mut app, "d");
+    type_text(&mut app, "a");
     // Typing selects the first row the filter leaves; go back to the note.
     press(&mut app, "down enter");
     let answered = |answer: Answer| ("Approve these calls?".to_owned(), Some(answer));
@@ -463,7 +609,7 @@ fn a_questions_own_keys_tick_and_enter_answers_exactly_the_ticked() {
         [
             answered(Answer::choice("1")),
             answered(Answer::choices(none)),
-            answered(Answer::choices(["0", "1"]).with_text("d")),
+            answered(Answer::choices(["0", "1"]).with_text("a")),
         ]
     );
 }

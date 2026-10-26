@@ -29,7 +29,7 @@ use super::pane::{PaneState, TranscriptPane};
 use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
-use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
+use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
 use super::renderers::{
     CallState, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
 };
@@ -1379,9 +1379,18 @@ fn draw_choice(
     if shown.ticks {
         keys.push("Tab ticks");
     }
+    let width = usize::from(inner.width);
+    let ticks = if shown.ticks { "[ ] ".len() } else { 0 };
+    let column = detail_column(&shown.items, width.saturating_sub(ticks));
+    // A detail standing in for more says more only where its row cuts it.
+    let room = width.saturating_sub(ticks + column);
+    let says_more = |item: &Item<'_>| {
+        item.more
+            .is_some_and(|more| Some(more) != item.detail || more.width() > room)
+    };
     if more.is_some() {
         keys.push("← hides more");
-    } else if shown.items.iter().any(|item| item.more.is_some()) {
+    } else if shown.items.iter().any(says_more) {
         keys.push("→ shows more");
     }
     let title = theme.raised(shown.title);
@@ -1409,7 +1418,6 @@ fn draw_choice(
     frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
     let typed_text = shown.typed(&choosing.filter);
     frame.render_widget(Line::from(format!("› {typed_text}▏")), typed);
-    let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
         .map(|row| match row {
@@ -1418,7 +1426,7 @@ fn draw_choice(
                     return Line::default();
                 };
                 if !shown.ticks {
-                    return item.line(width);
+                    return item.line(width, column);
                 }
                 let tick = match (shown.multiple, choosing.ticked.contains(index)) {
                     (true, true) => "[x] ",
@@ -1426,7 +1434,7 @@ fn draw_choice(
                     (false, true) => "(x) ",
                     (false, false) => "( ) ",
                 };
-                let mut line = item.line(width.saturating_sub(tick.len()));
+                let mut line = item.line(width.saturating_sub(tick.len()), column);
                 line.spans.insert(0, Span::from(tick));
                 line
             }

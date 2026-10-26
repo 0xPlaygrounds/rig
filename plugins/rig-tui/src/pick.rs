@@ -53,7 +53,8 @@ pub enum ChoiceAction {
     TickNone,
     /// Shows or hides what the selected choice says beyond its label
     /// ([`Choice::more`](rig_harness::ask::Choice::more), or a [`Picker`]
-    /// item's [`more`](rig_harness::pick::PickItem::more)).
+    /// item's [`more`](rig_harness::pick::PickItem::more), else its
+    /// detail).
     More,
     /// What Enter does.
     Answer,
@@ -144,6 +145,10 @@ pub(crate) struct Listing<'a> {
     pub(crate) edit: Option<&'a str>,
     /// Its own keys ([`ChoiceKeys`]).
     pub(crate) keys: &'a [(KeyCode, ChoiceAction)],
+    /// Whether typing finds items by their more too: a picker's, such as a
+    /// session's whole folder, but not a question's, where it may be a
+    /// call's arguments and typing writes an answer.
+    pub(crate) finds_more: bool,
 }
 
 /// An item or choice of a [`Listing`].
@@ -160,28 +165,48 @@ pub(crate) struct Item<'a> {
 }
 
 impl Item<'_> {
-    /// Its row, `width` wide: the label and, dimmed at the right edge, the
-    /// detail, each shortened with `…` to fit, so the label that names the
-    /// item still shows beside a long detail.
-    pub(crate) fn line(&self, width: usize) -> Line<'static> {
+    /// Its row, `width` wide: the label, shortened with `…` to end before
+    /// `column`, then from `column` the detail dimmed, shortened to fit.
+    pub(crate) fn line(&self, width: usize, column: usize) -> Line<'static> {
         let Some(detail) = self.detail else {
             return Line::from(shorten(self.label, width));
         };
-        // A detail that fits in half the row, such as a session's age,
-        // stays whole; a longer one, such as a description, gets a third.
-        let reserve = match detail.width() {
-            short if short <= width / 2 => short,
-            _ => width / 3,
-        };
-        let label = shorten(self.label, width.saturating_sub(reserve + 2));
-        let detail = shorten(detail, width.saturating_sub(label.width() + 2));
-        let gap = width.saturating_sub(label.width() + detail.width());
+        let label = shorten(self.label, column.saturating_sub(2));
+        let gap = column.saturating_sub(label.width());
+        let detail = shorten(detail, width.saturating_sub(label.width() + gap));
         Line::from(vec![
             Span::from(label),
             Span::from(" ".repeat(gap)),
             Span::from(detail).dim(),
         ])
     }
+}
+
+/// The column the details of `items` start at in rows `width` wide: the
+/// one that shows the most labels whole, each counted twice, and details
+/// whole, the rightmost of those. It keeps a quarter of the row for the
+/// labels and a third for the details, and is never past two after the
+/// widest label.
+pub(crate) fn detail_column(items: &[Item<'_>], width: usize) -> usize {
+    let sizes: Vec<(usize, usize)> = (items.iter())
+        .filter_map(|item| Some((item.label.width(), item.detail?.width())))
+        .collect();
+    let widest = sizes
+        .iter()
+        .map(|(label, _)| label + 2)
+        .max()
+        .unwrap_or_default();
+    let last = widest.min(width.saturating_sub(width / 3));
+    let whole = |column: usize| -> usize {
+        let shown = |(label, detail): &(usize, usize)| {
+            2 * usize::from(label + 2 <= column)
+                + usize::from(*detail <= width.saturating_sub(column))
+        };
+        sizes.iter().map(shown).sum()
+    };
+    (widest.min(width / 4)..=last)
+        .max_by_key(|column| whole(*column))
+        .unwrap_or(last)
 }
 
 impl Listing<'_> {
@@ -203,18 +228,24 @@ impl Listing<'_> {
         }
     }
 
-    /// The rows that `filter` leaves: the items whose label, detail or more
-    /// holds every word of it, ignoring case, then, for free text, the
+    /// The rows that `filter` leaves: the items whose label, detail or, as
+    /// [`finds_more`](Self::finds_more) says, more holds every word of it,
+    /// ignoring case, those whose label does first; then, for free text, the
     /// typed answer.
     pub(crate) fn rows(&self, filter: &str) -> Vec<Row> {
         let lower = filter.to_lowercase();
-        let mut rows: Vec<Row> = (self.items.iter().enumerate())
-            .filter(|(_, item)| {
-                let said = [Some(item.label), item.detail, item.more];
-                let said = said.into_iter().flatten().collect::<Vec<_>>();
-                let said = said.join("\n").to_lowercase();
-                lower.split_whitespace().all(|word| said.contains(word))
-            })
+        let holds = |said: &[Option<&str>]| {
+            let said = said.iter().flatten().copied().collect::<Vec<_>>();
+            let said = said.join("\n").to_lowercase();
+            lower.split_whitespace().all(|word| said.contains(word))
+        };
+        let found = (self.items.iter().enumerate()).filter(|(_, item)| {
+            let more = item.more.filter(|_| self.finds_more);
+            holds(&[Some(item.label), item.detail, more])
+        });
+        let (named, beside): (Vec<_>, Vec<_>) =
+            found.partition(|(_, item)| holds(&[Some(item.label)]));
+        let mut rows: Vec<Row> = (named.into_iter().chain(beside))
             .map(|(index, _)| Row::Item(index))
             .collect();
         if self.free_text {
@@ -257,7 +288,7 @@ impl Choices<'_, '_> {
                         label: &item.label,
                         detail: item.detail.as_deref(),
                         checked: item.checked,
-                        more: item.more.as_deref(),
+                        more: item.more.as_deref().or(item.detail.as_deref()),
                     })
                     .collect(),
                 free_text: picker.free_text,
@@ -267,6 +298,7 @@ impl Choices<'_, '_> {
                 selected: picker.selected,
                 edit: None,
                 keys,
+                finds_more: true,
             });
         }
         Some(listing(self.asks.get(entity).ok()?, keys))
@@ -302,6 +334,7 @@ fn listing<'a>(ask: &'a Ask, keys: &'a [(KeyCode, ChoiceAction)]) -> Listing<'a>
             .as_deref()
             .or((ask.multiline || ask.inline).then_some("")),
         keys,
+        finds_more: false,
     }
 }
 

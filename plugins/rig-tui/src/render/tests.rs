@@ -50,6 +50,7 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         selected: 0,
         edit: None,
         keys: &[],
+        finds_more: false,
     };
     let mut choosing = PickerInput {
         filter: "allow".to_owned(),
@@ -112,6 +113,7 @@ fn a_secret_is_drawn_hidden() {
         selected: 0,
         edit: None,
         keys: &[],
+        finds_more: false,
     };
     let mut choosing = PickerInput {
         filter: "sk-secret".to_owned(),

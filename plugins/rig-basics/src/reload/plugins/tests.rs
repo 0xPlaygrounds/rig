@@ -46,10 +46,10 @@ fn listed_plugins_show_their_crate_description_and_what_the_build_runs() {
     assert_eq!(
         details,
         [
-            "(rig-tui) The terminal view. [warning: disabling it takes away the terminal \
-             view, leaving only -p and piped prompts]",
-            "(rig-inspect) The inspect tool. [disabled, runs until the next reload]",
-            "(viz) [enabled, takes effect at the next reload]",
+            "[warning: disabling it takes away the terminal view, leaving only -p and piped \
+             prompts] (rig-tui) The terminal view.",
+            "[disabled, runs until the next reload] (rig-inspect) The inspect tool.",
+            "[enabled, takes effect at the next reload] (viz)",
         ]
     );
 }
