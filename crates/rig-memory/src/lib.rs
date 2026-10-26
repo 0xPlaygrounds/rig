@@ -69,10 +69,10 @@ mod writer;
 pub use blobs::{BLOBS, load_images, store_images};
 pub use compaction::{
     AFTER_OVERFLOW, COMPACTED, ClearPlan, ClearToolOutputs, Cleared, CompactReason, Compacted,
-    CompactionPolicy, NearWindow, Summarizer, SummaryCut, SummaryError, SummaryLimits, SummaryPlan,
-    SummaryPrompts, SummaryState, TrackArgument, TrackedSet, Uncompacted, UndoError, apply_summary,
-    estimate_tokens, known_limits, summarized_in_log, summarized_prefix, summary_author,
-    summary_in, summary_state, undo_summary,
+    CompactionPolicy, NearWindow, Summarized, Summarizer, SummaryCut, SummaryError, SummaryLimits,
+    SummaryPlan, SummaryPrompts, SummaryState, TrackArgument, TrackedSet, Uncompacted, UndoError,
+    apply_summary, estimate_tokens, known_limits, summarized_in_log, summarized_prefix,
+    summary_author, summary_in, summary_state, undo_summary,
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};

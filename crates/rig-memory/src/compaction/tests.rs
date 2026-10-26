@@ -526,7 +526,10 @@ fn the_log_holds_what_each_summary_first_replaced() {
     save(&store, "agent", &mut conversation).expect("saved");
     let third = compact(&mut conversation);
 
-    let found = summarized_in_log(&store, "agent").expect("read");
+    let Summarized {
+        replaced: found,
+        records,
+    } = summarized_in_log(&store, "agent").expect("read");
     let replaced = |summary| -> Option<Vec<MessageId>> {
         let entries = found.get(&summary)?;
         entries.iter().map(|entry| entry.id).collect()
@@ -540,5 +543,9 @@ fn the_log_holds_what_each_summary_first_replaced() {
     assert_eq!(
         texts,
         [Message::user("one"), Message::user("two")].map(Arc::new)
+    );
+    assert_eq!(
+        records.get(&first).map(|record| &record.state),
+        Some(&state)
     );
 }

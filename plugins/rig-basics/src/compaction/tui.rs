@@ -4,11 +4,13 @@
 //! draws summaries its own way draws [`summary_author`]'s entries in a
 //! system after [`SummaryLooks`].
 
-use rig_core::conversation::{Entry, Spliced};
+use std::collections::BTreeMap;
+
+use rig_core::conversation::{Entry, MessageId, Spliced};
 use rig_ecs::fork::AgentForked;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
-use rig_memory::{Compacted, SummaryState, summarized_in_log};
+use rig_memory::{Compacted, Summarized, SummaryState, summarized_in_log};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
@@ -33,26 +35,54 @@ pub(crate) fn add(app: &mut App) {
     .add_observer(replaced_in_fork);
 }
 
-/// Keeps the entries `spliced`, a summary just put in `agent`'s
-/// conversation, took out of it, from `taken`, the entries before it.
-pub(crate) fn keep_replaced(
-    commands: &mut Commands,
-    agent: Entity,
-    spliced: &Spliced,
-    taken: Vec<Entry>,
-) {
-    let Some(&summary) = spliced.changed.first() else {
-        return;
-    };
-    let out = |entry: &Entry| entry.id.is_some_and(|id| spliced.removed.contains(&id));
-    let taken: Vec<Entry> = taken.into_iter().filter(out).collect();
-    commands
-        .entity(agent)
-        .entry::<Replaced>()
-        .or_default()
-        .and_modify(move |mut replaced| {
-            replaced.0.entry(summary).or_insert(taken);
-        });
+/// The records of the summaries a later compaction took out of the
+/// agent's conversation, by summary id, so the summaries drawn above it
+/// ([`Replaced`]) are drawn from their state too. Display only.
+#[derive(Component, Clone, Debug, Default)]
+struct ReplacedRecords(BTreeMap<MessageId, Compacted>);
+
+/// The entries before a summary's place, and their compaction records,
+/// read just before the summary goes in.
+pub(crate) struct Before(Vec<Entry>, Vec<Compacted>);
+
+impl Before {
+    /// The first `end` entries of `conversation` and its records.
+    pub(crate) fn of(conversation: &rig_core::conversation::Conversation, end: usize) -> Self {
+        let entries = (0..end).filter_map(|at| conversation.entry(at)).collect();
+        let records = Compacted::of(conversation).map(|(_, record)| record);
+        Self(entries, records.collect())
+    }
+
+    /// Keeps the entries and records `spliced`, a summary just put in
+    /// `agent`'s conversation, took out of it.
+    pub(crate) fn keep(self, commands: &mut Commands, agent: Entity, spliced: &Spliced) {
+        let Some(&summary) = spliced.changed.first() else {
+            return;
+        };
+        let Self(entries, records) = self;
+        let out = |id: &MessageId| spliced.removed.contains(id);
+        let taken: Vec<Entry> = entries
+            .into_iter()
+            .filter(|entry| entry.id.as_ref().is_some_and(out))
+            .collect();
+        let records = records.into_iter().filter(|record| out(&record.summary));
+        let records: Vec<_> = records.map(|record| (record.summary, record)).collect();
+        let mut agent = commands.entity(agent);
+        agent
+            .entry::<Replaced>()
+            .or_default()
+            .and_modify(move |mut replaced| {
+                replaced.0.entry(summary).or_insert(taken);
+            });
+        agent
+            .entry::<ReplacedRecords>()
+            .or_default()
+            .and_modify(move |mut kept| {
+                for (summary, record) in records {
+                    kept.0.entry(summary).or_insert(record);
+                }
+            });
+    }
 }
 
 /// What each restored agent's summaries replaced, read from its log.
@@ -66,9 +96,10 @@ fn replaced_from_logs(
     };
     for (agent, id) in &agents {
         match summarized_in_log(&*store.0, &id.0) {
-            Ok(replaced) if replaced.is_empty() => {}
-            Ok(replaced) => {
-                commands.entity(agent).try_insert(Replaced(replaced));
+            Ok(Summarized { replaced, .. }) if replaced.is_empty() => {}
+            Ok(Summarized { replaced, records }) => {
+                let kept = (Replaced(replaced), ReplacedRecords(records));
+                commands.entity(agent).try_insert(kept);
             }
             Err(error) => {
                 bevy_log::warn!(
@@ -82,21 +113,36 @@ fn replaced_from_logs(
 
 /// A fork draws what its source's summaries replaced: its log is a copy
 /// of the source's.
-fn replaced_in_fork(forked: On<AgentForked>, replaced: Query<&Replaced>, mut commands: Commands) {
-    if let Ok(replaced) = replaced.get(forked.from) {
-        commands.entity(forked.fork).try_insert(replaced.clone());
+fn replaced_in_fork(
+    forked: On<AgentForked>,
+    replaced: Query<(&Replaced, Option<&ReplacedRecords>)>,
+    mut commands: Commands,
+) {
+    if let Ok((replaced, records)) = replaced.get(forked.from) {
+        let records = records.cloned().unwrap_or_default();
+        commands
+            .entity(forked.fork)
+            .try_insert((replaced.clone(), records));
     }
 }
 
-fn draw(mut batch: ResMut<RenderBatch>, agents: Query<&Conversation>, theme: Res<Theme>) {
+/// Draws the summaries, each from its record: the conversation's, or the
+/// one kept when a later compaction took it out.
+fn draw(
+    mut batch: ResMut<RenderBatch>,
+    agents: Query<(&Conversation, Option<&ReplacedRecords>)>,
+    theme: Res<Theme>,
+) {
     let AuthorKind::Plugin(plugin) = summary_author().kind else {
         return;
     };
-    let conversation = batch.agent.and_then(|agent| agents.get(agent).ok());
-    let states: Vec<_> = conversation
-        .into_iter()
-        .flat_map(|conversation| Compacted::of(conversation))
-        .map(|(_, compacted)| compacted)
+    let agent = batch.agent.and_then(|agent| agents.get(agent).ok());
+    let (conversation, kept) = agent.unzip();
+    let live = conversation.into_iter().flat_map(|it| Compacted::of(it));
+    let kept = kept.flatten().into_iter().flat_map(|kept| kept.0.values());
+    let states: Vec<Compacted> = live
+        .map(|(_, record)| record)
+        .chain(kept.cloned())
         .collect();
     let width = usize::from(batch.width);
     for (summary, output) in batch.entries_mut(&plugin) {

@@ -1494,11 +1494,11 @@ fn take_summary(
             ..summarizing.state.clone()
         };
         #[cfg(feature = "tui")]
-        let taken: Vec<Entry> = (0..end).filter_map(|at| conversation.entry(at)).collect();
+        let before = tui::Before::of(&conversation, end);
         match apply_summary(&mut conversation, summarizing.keep_from, &state) {
             #[cfg(feature = "tui")]
             Some(spliced) => {
-                tui::keep_replaced(&mut commands, agent, &spliced, taken);
+                before.keep(&mut commands, agent, &spliced);
                 Ok((older, kept))
             }
             #[cfg(not(feature = "tui"))]

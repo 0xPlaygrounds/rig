@@ -657,6 +657,7 @@ pub fn undo_summary(
         .index_of(compacted.summary)
         .ok_or(UndoError::SummaryGone)?;
     let originals = summarized_in_log(store, log)?
+        .replaced
         .remove(&compacted.summary)
         .ok_or(UndoError::NotInLog)?;
     let restored = conversation.restore(at..=at, originals, by).restored;
@@ -668,38 +669,53 @@ pub fn undo_summary(
     })
 }
 
-/// What each compaction in the log `log` of `store` replaced, by its
-/// summary's id: the entries its splice ([`summary_in`]) took out, as they
-/// were just before it, read in one pass over the log. A summary named
-/// again, as by an undo that put it back, keeps what it first replaced. A
-/// summary whose entries the log does not hold is left out.
+/// What the compactions in a session's log replaced ([`summarized_in_log`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Summarized {
+    /// The entries each summary's splice ([`summary_in`]) took out, by the
+    /// summary's id, as they were just before it.
+    pub replaced: BTreeMap<MessageId, Vec<Entry>>,
+    /// The record of each summary a later compaction took out, by the
+    /// summary's id: the conversation lost it with its summary.
+    pub records: BTreeMap<MessageId, Compacted>,
+}
+
+/// What the compactions in the log `log` of `store` replaced, read in one
+/// pass over the log. A summary named again, as by an undo that put it
+/// back, keeps what it first replaced. A summary whose entries the log
+/// does not hold is left out.
 ///
 /// # Errors
 ///
 /// As [`load`](crate::load).
-pub fn summarized_in_log(
-    store: &dyn Store,
-    log: &str,
-) -> Result<BTreeMap<MessageId, Vec<Entry>>, SessionError> {
+pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, SessionError> {
     let mut first: BTreeMap<MessageId, Option<Vec<Entry>>> = BTreeMap::new();
+    let mut records = BTreeMap::new();
     replay(store, log, |before, recorded| {
         let change = &recorded.change;
         let (Some(summary), Change::Splice { removed, with, .. }) = (summary_in(change), change)
         else {
             return;
         };
+        let kept = |id: &&MessageId| with.iter().any(|entry| entry.id == Some(**id));
+        let taken: Vec<&MessageId> = removed.iter().filter(|id| !kept(id)).collect();
+        for (_, record) in Compacted::of(before) {
+            if taken.contains(&&record.summary) {
+                records.entry(record.summary).or_insert(record);
+            }
+        }
         first.entry(summary).or_insert_with(|| {
-            let kept = |id: &&MessageId| with.iter().any(|entry| entry.id == Some(**id));
-            let taken = removed.iter().filter(|id| !kept(id));
             taken
-                .map(|id| before.entry(before.index_of(*id)?))
+                .iter()
+                .map(|id| before.entry(before.index_of(**id)?))
                 .collect()
         });
     })?;
     let found = first.into_iter();
-    Ok(found
+    let replaced = found
         .filter_map(|(summary, taken)| Some((summary, taken?)))
-        .collect())
+        .collect();
+    Ok(Summarized { replaced, records })
 }
 
 /// What a [`Summarizer`] asks the model. Each prompt missing from its serde
