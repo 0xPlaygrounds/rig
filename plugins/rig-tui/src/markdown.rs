@@ -2,8 +2,8 @@
 //! emphasis, inline code, fenced code, lists, quotes and alerts, links,
 //! rules and tables. Parsing is pulldown-cmark's, with strikethrough,
 //! tables, task lists and GitHub's alerts on. Code sits on the theme's code
-//! tint, with a fenced block's language over it, and an alert (`> [!NOTE]`)
-//! on the tint of what it is, under its name in bold.
+//! tint, with a fenced block's language over it when it has a grammar, and
+//! an alert (`> [!NOTE]`) on the tint of what it is, under its name in bold.
 
 use pulldown_cmark::{
     BlockQuoteKind, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
@@ -222,9 +222,10 @@ impl Writer {
         self.push(Span::styled(text.to_owned(), self.style()));
     }
 
-    /// Writes a code block's `code`, in the colors of its fence's
-    /// `language` when it has a grammar, each line kept, empty ones too.
-    /// A code block on the code tint, under its language when it names one.
+    /// Writes a code block's `code` on the code tint, each line kept, empty
+    /// ones too. When its fence's `language` has a grammar, the code is in
+    /// that language's colors under the language's name; otherwise it is
+    /// plain and unlabelled.
     fn code_block(&mut self, language: &str, code: &str) {
         let code = code.strip_suffix('\n').unwrap_or(code);
         let plain = || {
@@ -233,12 +234,14 @@ impl Writer {
                 .map(|line| vec![Span::from(line.replace('\t', "    "))])
                 .collect()
         };
-        let lines = match language {
-            "" => plain(),
-            language => highlight(code, Language::Named(language)).unwrap_or_else(plain),
+        let highlighted = match language {
+            "" => None,
+            language => highlight(code, Language::Named(language)),
         };
+        let named = highlighted.is_some();
+        let lines = highlighted.unwrap_or_else(plain);
         let tint = self.theme.code;
-        if !language.is_empty() {
+        if named {
             let mut spans = self.prefix();
             spans.push(Span::from(format!("  {language}")).dim().italic());
             self.lines.push(Line::from(spans).bg(tint));
