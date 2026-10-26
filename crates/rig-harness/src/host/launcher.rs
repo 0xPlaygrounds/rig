@@ -237,21 +237,15 @@ fn exit_refused(mut commands: Commands) {
 struct StartBuildFailure(String);
 
 /// The message on a failed build of `what`, for the model: `summary` (the
-/// reason and the first errors), where the whole output is, and the files
-/// the agent is built from.
+/// reason and the first errors) and where the whole output is. It does not
+/// point at the plugin list or the generated project, which only the user
+/// changes.
 pub fn build_failure_message(what: &str, summary: &str) -> String {
-    let home = Home::from_env();
-    let project = home.project();
     let mut message = format!(
         "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
-         Whole build output: {}\n\
-         Plugin list: {}\n\
-         Generated project: {} and {}",
+         Whole build output: {}",
         summary.trim(),
-        home.build_log().display(),
-        home.plugins_toml().display(),
-        project.join("Cargo.toml").display(),
-        project.join("src/main.rs").display(),
+        Home::from_env().build_log().display(),
     );
     if let Some(source) = std::env::var_os(env::SOURCE).filter(|source| !source.is_empty()) {
         let _ = write!(
