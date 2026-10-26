@@ -150,14 +150,14 @@ fn bind_keys(app: &mut App) {
     }
 }
 
-/// The marker's look: the verdict and reason, then the model.
-/// Draws the ratings' notes.
+/// Draws the ratings' notes as markers.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(AUTHOR) {
         output.lines = marker(&entry.view());
     }
 }
 
+/// The marker's look: the verdict and reason, then the model.
 fn marker(entry: &EntryView<'_>) -> Vec<Line<'static>> {
     let style = if entry.title.starts_with("good") {
         Style::new().green()
