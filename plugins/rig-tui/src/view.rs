@@ -601,6 +601,13 @@ impl ShownNotice {
         written.or(self.agent.as_ref())
     }
 
+    /// The message it was written after in the transcript of the agent
+    /// `id`, when it was written there.
+    pub(crate) fn message_in(&self, id: &AgentId) -> Option<MessageId> {
+        let at = self.at.as_ref().filter(|at| &at.agent == id)?;
+        Some(at.message)
+    }
+
     /// Where it is drawn in the transcript of the agent `id` with
     /// `conversation`, or `None` when it is no part of it: it is about
     /// another agent, or about every agent and was written in another's.

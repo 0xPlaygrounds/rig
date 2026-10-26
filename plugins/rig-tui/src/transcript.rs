@@ -608,8 +608,12 @@ pub(crate) struct Stops {
 }
 
 impl Stops {
-    /// The stops of `conversation`'s turns.
-    pub(crate) fn of(conversation: &conversation::Conversation) -> Self {
+    /// The stops of `conversation`'s turns, among the `entries` drawn, so
+    /// a turn a compaction took out keeps its stop.
+    pub(crate) fn of(
+        conversation: &conversation::Conversation,
+        entries: &ShownEntries<'_>,
+    ) -> Self {
         let mut stops = Self::default();
         for (_, record) in conversation.turns() {
             let Some(TurnEnd::Stopped {
@@ -620,27 +624,31 @@ impl Stops {
             else {
                 continue;
             };
-            let Some(end) = conversation.index_of(at) else {
+            let Some(end) = entries.of_id(at) else {
                 continue;
             };
             stops.at.insert(at);
             // The calls are the last reply's: the last one of the turn
             // asking for any of them.
-            let start = conversation.start_of(record.start);
-            let turn = conversation.entries().take(end + 1).skip(start);
-            let asked = |entry: &conversation::EntryRef<'_>| match entry.message {
+            let start = entries.of_id(record.start).or_else(|| {
+                let start = conversation.start_of(record.start);
+                entries.of_live(start)
+            });
+            let turn = entries.entries.get(start.unwrap_or(end)..=end);
+            let asked = |entry: &&ShownEntry<'_>| match &**entry.message {
                 Message::Assistant(reply) => {
                     reply.tool_calls().any(|call| calls.contains(&call.id))
                 }
                 _ => false,
             };
-            let Some(reply) = turn.rev().find(asked) else {
+            let Some(reply) = turn.into_iter().flatten().rev().find(asked) else {
                 continue;
             };
-            if let Message::Assistant(message) = reply.message {
+            if let (Message::Assistant(message), Some(id)) = (&**reply.message, reply.id) {
                 let answered = message.tool_calls().filter(|call| calls.contains(&call.id));
-                let answered = answered.map(|call| (reply.id, call.id.clone()));
-                stops.calls.extend(answered);
+                stops
+                    .calls
+                    .extend(answered.map(|call| (id, call.id.clone())));
             }
         }
         stops
@@ -855,6 +863,8 @@ pub(crate) struct ShownEntries<'a> {
     entries: Vec<ShownEntry<'a>>,
     /// Where each entry of the conversation is among them.
     live: Vec<usize>,
+    /// Where each entry with an id is among them.
+    ids: HashMap<MessageId, usize>,
 }
 
 impl<'a> ShownEntries<'a> {
@@ -869,6 +879,7 @@ impl<'a> ShownEntries<'a> {
         for (message, entry) in conversation.messages().iter().zip(conversation.entries()) {
             let stands_for = shown.archive(replaced, entry.id, &mut expanded);
             shown.live.push(shown.entries.len());
+            shown.ids.insert(entry.id, shown.entries.len());
             shown.entries.push(ShownEntry {
                 message,
                 id: Some(entry.id),
@@ -913,6 +924,9 @@ impl<'a> ShownEntries<'a> {
                 }
                 .is_stop_marker()
             });
+            if let Some(id) = entry.id {
+                self.ids.insert(id, self.entries.len());
+            }
             self.entries.push(ShownEntry {
                 message: &entry.message,
                 id: entry.id,
@@ -938,6 +952,17 @@ impl<'a> ShownEntries<'a> {
     /// Where entry `index` of the conversation is among them.
     pub(crate) fn of_live(&self, index: usize) -> Option<usize> {
         self.live.get(index).copied()
+    }
+
+    /// Where the entry `id` is among them, live or archived.
+    pub(crate) fn of_id(&self, id: MessageId) -> Option<usize> {
+        self.ids.get(&id).copied()
+    }
+
+    /// Where the archived entry `id` is among them.
+    pub(crate) fn of_archived(&self, id: MessageId) -> Option<usize> {
+        let at = self.of_id(id)?;
+        self.entries.get(at)?.archived.then_some(at)
     }
 }
 

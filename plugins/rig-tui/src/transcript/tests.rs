@@ -110,6 +110,8 @@ fn drawn(
     renderers: &Renderers,
 ) -> String {
     let (facts, theme) = (CallFacts::default(), crate::Theme::default());
+    // The conversation is the same each time.
+    let entries = ShownEntries::new(conversation, None);
     let look = Look {
         renderers,
         calls,
@@ -119,10 +121,8 @@ fn drawn(
         theme: &theme,
         children: &ChildCalls::default(),
         marks: &[],
-        stops: &Stops::of(conversation),
+        stops: &Stops::of(conversation, &entries),
     };
-    // The conversation is the same each time.
-    let entries = ShownEntries::new(conversation, None);
     transcript.update(Entity::PLACEHOLDER, &entries, false, &look, WIDTH);
     let parts = [Part::Message(0)];
     let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default(), &[]);
@@ -598,8 +598,7 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
     });
     say(&mut app, agent, Message::tool_results(results.to_vec()));
     stop(&mut app, agent, &["a", "b"]);
-    for _ in 0..2 {
-        let lines = on_screen(&mut app, agent, 100);
+    let drawn_stopped = |lines: &[String]| {
         let headers: Vec<&str> = lines
             .iter()
             .filter(|line| {
@@ -613,19 +612,31 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
             .iter()
             .map(|header| header.contains("· stopped"))
             .collect();
-        assert_eq!(states, [false, true, true, false], "{lines:#?}");
-        assert!(
-            headers
-                .last()
-                .is_some_and(|header| header.contains("· failed")),
-            "{lines:#?}"
-        );
+        let failed = headers
+            .last()
+            .is_some_and(|header| header.contains("· failed"));
         let order = ["no such file", "[stopped before it was answered]"];
-        let at = order.map(|text| line_of(&lines, text));
-        assert!(at.iter().all(Option::is_some), "{lines:#?}");
-        assert!(at.is_sorted(), "{lines:#?}");
+        let at = order.map(|text| line_of(lines, text));
+        states == [false, true, true, false]
+            && failed
+            && at.iter().all(Option::is_some)
+            && at.is_sorted()
+    };
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        assert!(drawn_stopped(&lines), "{lines:#?}");
         assert!(reload(&mut app, agent));
     }
+    // A compaction that takes the stopped turn out keeps it drawn so.
+    say(&mut app, agent, Message::user("third"));
+    let count = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|it| it.messages().len());
+    compact(&mut app, agent, count.unwrap_or(1) - 1, "the summary");
+    let lines = on_screen(&mut app, agent, 100);
+    assert!(drawn_stopped(&lines), "{lines:#?}");
+    assert!(line_of(&lines, "the summary").is_some(), "{lines:#?}");
 }
 
 /// A call a stop answered is drawn stopped whatever live state it still

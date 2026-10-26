@@ -670,7 +670,7 @@ pub(crate) fn lay_out_transcript(
     // and notices inside one, by where it is among the entries drawn.
     let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
     let mut asides_after: Vec<Vec<&ShownAside<'_>>> = vec![Vec::new(); count + 1];
-    let stops = Stops::of(conversation);
+    let stops = Stops::of(conversation, &entries);
     let mut look = Look {
         renderers: sources.renderers,
         calls: &shown.calls,
@@ -687,8 +687,11 @@ pub(crate) fn lay_out_transcript(
         .into_iter()
         .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
     for (id, at, notice) in notices {
-        let before = match notice.slot(id, conversation) {
+        let slot = notice.slot(id, conversation);
+        let archived = notice.message_in(id).and_then(|at| entries.of_archived(at));
+        let before = match slot {
             None => continue,
+            Some(_) if archived.is_some() => archived.map(|at| at + 1),
             Some(TranscriptSlot::Top) => Some(0),
             Some(TranscriptSlot::After(index)) => entries.of_live(index).map(|at| at + 1),
             Some(TranscriptSlot::Inside(index, item)) => {
@@ -705,7 +708,12 @@ pub(crate) fn lay_out_transcript(
     }
     let drawn = shown.asides.iter();
     for aside in drawn {
+        let archived = aside
+            .aside
+            .after
+            .and_then(|after| entries.of_archived(after));
         let before = match TranscriptSlot::of_aside(aside.aside, conversation) {
+            _ if archived.is_some() => archived.map(|at| at + 1),
             TranscriptSlot::Top => Some(0),
             TranscriptSlot::After(index) => entries.of_live(index).map(|at| at + 1),
             TranscriptSlot::Inside(index, item) => {
