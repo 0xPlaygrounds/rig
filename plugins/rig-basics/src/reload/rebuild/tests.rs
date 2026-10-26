@@ -56,62 +56,60 @@ fn failing_launcher(name: &str, error: &str) -> std::path::PathBuf {
     launcher
 }
 
-/// A failed build the model asked for brings it the build's errors in one
-/// message that starts a turn; a later failed `/reload` the user asked for
-/// leaves only a note.
+/// The notes from the build plugin carrying the test's error.
+#[derive(Resource, Default)]
+struct Notes(usize);
+
+/// A failed build leaves its errors in the conversation of the agent that
+/// asked as a note, which starts no turn.
 #[test]
-fn a_failed_build_the_model_asked_for_carries_it_on_with_the_errors_once() {
-    use crate::reload::report::tests::{agent_on_model, reports, session};
-    use crate::reload::{ReloadAsked, ReloadStatus};
-    use rig_core::test_utils::MockCompletionModel;
-    use rig_harness_test_support::{MemoryStore, reply, run_until};
+fn a_failed_build_leaves_its_errors_as_a_note() {
+    use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+    use rig_harness_test_support::{MemoryStore, app_on, first_agent, run_until, scripted_models};
+
+    use crate::reload::ReloadPlugin;
 
     let error = "error[E0425]: cannot find value `words` in this scope";
     let launcher = failing_launcher("failed", error);
-    let model = MockCompletionModel::from_stream_turns([reply("I will fix it.")]);
-    let (mut app, wakes) = session(&MemoryStore::default(), StartReason::New, &model);
-    let agent = agent_on_model(&mut app);
-    let asked = ReloadAsked {
-        then: String::new(),
-        attempts: 1,
-        owed: true,
-    };
-    app.world_mut().entity_mut(agent).insert(asked);
-    let fail = |app: &mut App| {
-        let wake = app.world().resource::<Wake>().clone();
-        if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), agent, wake) {
-            app.insert_resource(build);
-            *app.world_mut().resource_mut::<ReloadStatus>() =
-                ReloadStatus::Building { latest: None };
-        }
-        let failed = |world: &World| *world.resource::<ReloadStatus>() == ReloadStatus::Failed;
-        run_until(app, &wakes, failed);
-    };
-    fail(&mut app);
-    run_until(&mut app, &wakes, |_| model.request_count() == 1);
-    let sent = reports(&app);
-    let once = matches!(sent.as_slice(), [report] if report.contains(error));
-    assert!(once, "{sent:?}");
-    let read = format!("{:?}", model.requests());
-    assert!(read.contains("E0425"), "{read}");
-
-    fail(&mut app);
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(scripted_models([("test/model", &model)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, ReloadPlugin))
+        .init_resource::<Notes>()
+        .add_observer(
+            |sent: On<Add<Incoming>>, messages: Query<&Incoming>, mut notes: ResMut<Notes>| {
+                let note = messages.get(sent.entity).is_ok_and(|message| {
+                    message.author.kind == AuthorKind::Plugin(launcher::BUILD_ORIGIN.to_owned())
+                        && message.mode == DeliveryMode::Inform
+                        && message.text().contains("E0425")
+                });
+                notes.0 += usize::from(note);
+            },
+        );
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let model_name = "test/model".to_owned();
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: model_name,
+    });
+    let wake = app.world().resource::<Wake>().clone();
+    if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), agent, wake) {
+        app.insert_resource(build);
+        *app.world_mut().resource_mut::<ReloadStatus>() = ReloadStatus::Building { latest: None };
+    }
+    let failed = |world: &World| *world.resource::<ReloadStatus>() == ReloadStatus::Failed;
+    run_until(&mut app, &wakes, failed);
     for _ in 0..3 {
         app.update();
     }
-    assert_eq!(reports(&app).len(), 1, "no second report");
-    let noted = app
-        .world()
-        .resource::<crate::reload::report::tests::Sent>()
-        .0
-        .iter()
-        .any(|(author, mode, text)| {
-            *author == AuthorKind::Plugin(launcher::BUILD_ORIGIN.to_owned())
-                && *mode == DeliveryMode::Inform
-                && text.contains("E0425")
-        });
-    assert!(noted, "the user's failed build is a note");
-    assert_eq!(model.request_count(), 1);
+    assert_eq!(
+        app.world().resource::<Notes>().0,
+        1,
+        "the failed build is a note"
+    );
+    assert_eq!(model.request_count(), 0);
     if let Some(dir) = launcher.parent() {
         std::fs::remove_dir_all(dir).ok();
     }

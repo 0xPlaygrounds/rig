@@ -269,22 +269,17 @@ cargo's latest line, keeps the current build running if the new one does not
 compile (its error notice names the build log), and rolls back to it if the
 new one crashes during startup.
 
-The agent can ask for a reload itself with its `reload` tool, which waits the
-same way and shows a notice. A reload the model asked for reports back: one
-message that starts a turn says the new build started, carries the build's
-errors, or says the new build was rolled back, so the model carries on without
-a second prompt. It may ask for at most 3 reloads per message of yours, and
-Esc or `/reload cancel` drops the report. A `-p` run whose model asks for a
-reload waits for it and carries on on the new build too.
+A `-p` run in which a plugin asks for a reload waits for it and carries on on
+the new build.
 
 Every build, the one before each start and `/reload`'s, writes its whole
 output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
 message names its reason and first compiler error. The agent sees build
 failures too: the reason, the first errors and the paths of `build.log`,
 `plugins.toml` and the generated project go into its conversation as a message
-from the `build` plugin, which starts no turn when the agent is idle (unless
-the model asked for that reload) and is saved with the session. Ask it why the
-build failed and it can read the log, fix the cause, and reload.
+from the `build` plugin, which starts no turn when the agent is idle and is
+saved with the session. Ask it why the build failed and it can read the log
+and fix the cause; `/reload` then tries again.
 
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
