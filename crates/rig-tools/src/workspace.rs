@@ -18,7 +18,7 @@ use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 use crate::fs::{Previous, io_error, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
 pub use crate::watch::Watch;
-use crate::{MAX_BYTES, MAX_FILE_BYTES};
+use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
 
 /// The disk and the commands the tools act on: this machine's ([`Local`]),
 /// or another, such as one reached over SSH. Paths are the workspace's own:
@@ -389,6 +389,12 @@ pub(crate) fn text_error(shown: &str, error: io::Error) -> ToolExecutionError {
             ToolExecutionError::invalid_args(format!("{shown} is not a regular file"))
         }
         ErrorKind::FileTooLarge => ToolExecutionError::invalid_args(format!("{shown} is {error}")),
+        ErrorKind::InvalidData => ToolExecutionError::invalid_args(match shell_path(shown) {
+            Some(path) => format!(
+                "{shown} is not a text file (not UTF-8); `file {path}` in `shell` shows what it is"
+            ),
+            None => format!("{shown} is not a text file (not UTF-8)"),
+        }),
         _ => io_error(shown, error),
     }
 }

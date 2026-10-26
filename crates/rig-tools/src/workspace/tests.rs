@@ -4,7 +4,9 @@ use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_core::tool::{ChangeKind, ContentHash, FilesChanged, Tool, ToolContext, content_hash};
+use rig_core::tool::{
+    ChangeKind, ContentHash, FilesChanged, Tool, ToolContext, ToolOutput, content_hash,
+};
 
 use super::{Contents, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
@@ -198,7 +200,10 @@ fn every_file_tool_goes_through_its_workspace() {
     assert!(edited.is_ok(), "{edited:?}");
     assert_eq!(befores(&context), [Some(content_hash(b"fn one() {}\n"))]);
     let (shown, _) = call(&read, ReadArgs::new("src/../src/a.rs"));
-    assert_eq!(shown.ok().as_deref(), Some("fn two() {}\n"));
+    assert_eq!(
+        shown.ok().as_ref().and_then(ToolOutput::as_text),
+        Some("fn two() {}\n")
+    );
     let (found, _) = call(&search, SearchArgs::new("two").glob("*.rs"));
     assert_eq!(found.ok().as_deref(), Some("src/a.rs:1: fn two() {}"));
 

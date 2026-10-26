@@ -83,6 +83,11 @@ pub const MAX_LINES: usize = 2000;
 pub const MAX_BYTES: usize = 50 * 1024;
 /// The largest file `read` and `edit` load whole, and `search` scans.
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+/// Characters of one line `read` and `shell` show; the rest of a longer
+/// line is cut.
+const MAX_LINE_CHARS: usize = 2000;
+/// What marks a line that was cut.
+const CUT_MARK: &str = " […]";
 
 /// How much of a long output a tool keeps: at most `lines` lines and
 /// `bytes` bytes, of whole lines. [`tail`](Self::tail) keeps the last ones;
@@ -143,6 +148,20 @@ pub fn clip(line: &str, limit: usize) -> &str {
         Some((end, _)) => line.get(..end).unwrap_or(line),
         None => line,
     }
+}
+
+/// `text` quoted for `sh`.
+pub(crate) fn quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+/// `path`, a path a file tool resolved, quoted for a command in `shell`:
+/// `None` when it is not absolute, such as a remote `~/` path or a
+/// `HOST:PATH`, which `shell` would not find as written.
+pub(crate) fn shell_path(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .is_absolute()
+        .then(|| quote(path))
 }
 
 /// `text` cut to fit in `width` terminal columns, ending in `…` when cut:

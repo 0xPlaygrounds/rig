@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rig_core::tool::{FilesChanged, FilesRead, Scope, Tool, ToolContext, Touches};
+use rig_core::tool::{FilesChanged, FilesRead, Scope, Tool, ToolContext, ToolOutput, Touches};
 
 use super::{Hosts, Remote};
 use crate::process::Launcher;
@@ -65,12 +65,18 @@ fn tools_reach_a_host_path_through_its_transport() {
         seen: crate::Seen::default(),
     };
     let (shown, context) = call(&read, ReadArgs::new("bench:~/strata/src/../src/lib.rs"));
-    assert_eq!(shown.ok().as_deref(), Some("fn old() {}\n"));
+    assert_eq!(
+        shown.ok().as_ref().and_then(ToolOutput::as_text),
+        Some("fn old() {}\n")
+    );
     let facts: FilesRead = context.result().ok().flatten().unwrap_or_default();
     let read_paths: Vec<&str> = facts.0.iter().map(|it| it.path.as_str()).collect();
     assert_eq!(read_paths, [file]);
     let (local, _) = call(&read, ReadArgs::new("notes.txt"));
-    assert_eq!(local.ok().as_deref(), Some("here\n"));
+    assert_eq!(
+        local.ok().as_ref().and_then(ToolOutput::as_text),
+        Some("here\n")
+    );
     let (missing, _) = call(&read, ReadArgs::new("bench:~/strata/gone.rs"));
     let missing = missing
         .err()
@@ -343,7 +349,7 @@ fn a_read_of_some_lines_is_sent_only_those() {
     let (short, _) = call(&read, ReadArgs::new("bench:~/strata/short.txt").lines(2, 5));
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
-        shown.ok().as_deref(),
+        shown.ok().as_ref().and_then(ToolOutput::as_text),
         Some("line 10000\nline 10001\n[9999 more lines; read on with offset 10002]\n")
     );
     let facts: FilesRead = context.result().ok().flatten().unwrap_or_default();
@@ -354,7 +360,10 @@ fn a_read_of_some_lines_is_sent_only_those() {
         matches!(sent.as_slice(), [bytes] if *bytes < 200),
         "{sent:?}"
     );
-    assert_eq!(short.ok().as_deref(), Some("two\n"));
+    assert_eq!(
+        short.ok().as_ref().and_then(ToolOutput::as_text),
+        Some("two\n")
+    );
 }
 
 /// A `read` of some lines of a file of at most [`crate::MAX_BYTES`] gets
@@ -393,7 +402,7 @@ fn an_edit_after_a_read_of_some_lines_of_a_small_file_is_one_call() {
     let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs")).unwrap_or_default();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
-        shown.ok().as_deref(),
+        shown.ok().as_ref().and_then(ToolOutput::as_text),
         Some("let x200 = 200;\nlet x201 = 201;\n[199 more lines; read on with offset 202]\n")
     );
     assert!(edited.is_ok(), "{edited:?}");
@@ -439,6 +448,7 @@ fn a_host_runs_a_few_file_operations_at_once() {
                     call(read, ReadArgs::new(format!("bench:~/strata/src/{n}.rs")))
                         .0
                         .ok()
+                        .and_then(|shown| shown.as_text().map(str::to_owned))
                 })
             })
             .collect();
@@ -498,7 +508,7 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
             seen: crate::Seen::default(),
         };
         let (read, _) = call(&read, ReadArgs::new("bench:~/strata/src/lib.rs"));
-        shown.push(read.ok());
+        shown.push(read.ok().and_then(|read| read.as_text().map(str::to_owned)));
     }
     let read_calls = calls(&log);
     let down = vec![
