@@ -10,7 +10,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use rig_core::completion::Message;
-use rig_core::conversation::{Author, Change};
+use rig_core::conversation::{Author, Change, ChangeRecord};
 use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
 use sha2::{Digest, Sha256};
@@ -161,12 +161,15 @@ pub(crate) fn messages_mut(
                 (done.is_ok() && message != *entry.message).then_some(message)
             });
             // A splice that reaches the end clears the halt the value keeps.
-            if let Some(halt) = halted {
-                state.halt(halt);
-            }
+            let halt = ChangeRecord {
+                change: Change::Halt { halt: halted },
+                by: None,
+                at: None,
+            };
+            let put_back = state.apply(&halt).map_err(io::Error::other);
             // The edits are of the value itself, not changes of it to save.
             **state = state.view();
-            done
+            done.and(put_back)
         }
         _ => Ok(()),
     }

@@ -25,7 +25,7 @@ use std::io;
 
 use serde_json::Value;
 
-use crate::format::{Body, Header, LogLines, SESSION, parse};
+use crate::format::{Header, LogLines, Meta, SESSION};
 use crate::session::note_meta;
 use crate::{FORMAT, META, MemoryStore, Repair, Session, SessionError, SessionMeta, Store};
 
@@ -250,14 +250,23 @@ fn changed<'a>(
     after.iter().filter(move |&(key, value)| !kept(key, value))
 }
 
-/// The newest saved value of each key of each log of `original`, from the
-/// records that read in [`FORMAT`]: what a step may have changed.
+/// The newest saved value of each key of each log of `original`: what a
+/// step may have changed. Its `state` records are read as plain JSON (a
+/// `type` of `state`, a `key` and a `value`), so a step that changes the
+/// rest of a record's shape still finds the values it left as they were.
 fn saved(original: &Snapshot) -> BTreeMap<&str, BTreeMap<String, Value>> {
     let fold = |bytes: &Vec<u8>| {
         let (mut state, mut retired) = (BTreeMap::new(), false);
         for (_, _, record) in LogLines::parse(bytes.clone()).iter().skip(1) {
-            if let Ok((_, Body::Meta(meta))) = parse(record) {
-                note_meta(meta, &mut state, &mut retired);
+            let Ok(record) = serde_json::from_slice::<Value>(record) else {
+                continue;
+            };
+            let field = |name| record.get(name);
+            if field("type").and_then(Value::as_str) == Some("state")
+                && let Some(key) = field("key").and_then(Value::as_str)
+            {
+                let (key, value) = (key.to_owned(), field("value").cloned());
+                note_meta(Meta::State { key, value }, &mut state, &mut retired);
             }
         }
         state

@@ -126,7 +126,7 @@ fn a_writer_saves_a_replaced_conversation_as_one_reset() {
 /// A reset whose last entry names a blob reads with the image put back
 /// and keeps its halt.
 #[test]
-fn a_halted_reset_naming_a_blob_reads_halted() {
+fn a_halted_reset_naming_a_blob_reads_halted() -> Result<(), Box<dyn std::error::Error>> {
     let store = Arc::new(MemoryStore::default());
     let image = Message::User {
         content: vec![UserContent::image_base64(
@@ -135,31 +135,34 @@ fn a_halted_reset_naming_a_blob_reads_halted() {
             None,
         )],
     };
-    let stored = crate::store_images(&image, &*store)
-        .expect("stored")
-        .into_owned();
-    assert_ne!(stored, image);
-    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    let stored = crate::store_images(&image, &*store)?.into_owned();
+    if stored == image {
+        return Err("the image was not stored as a blob".into());
+    }
+    let (writer, _) = Writer::open(store.clone())?;
     writer.start();
     let mut first = Conversation::from_messages([Message::user("before")]);
     writer.save("main", &mut first);
     let mut replaced = Conversation::from_messages([stored]);
-    assert!(replaced.halt(Halt::Stopped));
+    if !replaced.halt(Halt::Stopped) {
+        return Err("the conversation did not halt".into());
+    }
     let saved = writer.save("main", &mut replaced);
-    assert!(matches!(saved.as_slice(), [only] if matches!(only.change, Change::Reset { .. })));
-    writer.flush().expect("flushed");
-    let session = Session::read(&*store).expect("read");
-    assert_eq!(session.repairs, Vec::new());
-    let conversation = &session.agent("main").expect("agent").conversation;
-    assert_eq!(conversation.halted(), Some(Halt::Stopped));
-    assert_eq!(
-        conversation
-            .messages()
-            .iter()
-            .map(|m| &**m)
-            .collect::<Vec<_>>(),
-        [&image]
-    );
+    if !matches!(saved.as_slice(), [only] if matches!(only.change, Change::Reset { .. })) {
+        return Err(format!("saved {saved:?}, not one reset").into());
+    }
+    writer.flush()?;
+    let session = Session::read(&*store)?;
+    if !session.repairs.is_empty() {
+        return Err(format!("repaired: {:?}", session.repairs).into());
+    }
+    let agent = session.agent("main").ok_or("no agent `main`")?;
+    let conversation = &agent.conversation;
+    let messages: Vec<&Message> = conversation.messages().iter().map(|m| &**m).collect();
+    if conversation.halted() != Some(Halt::Stopped) || messages != [&image] {
+        return Err(format!("read {messages:?}, halted {:?}", conversation.halted()).into());
+    }
+    Ok(())
 }
 
 /// Only the conversation a log holds continues it, even when another has
