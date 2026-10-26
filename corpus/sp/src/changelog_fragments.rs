@@ -15,7 +15,6 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::{MatchOptions, Pattern};
@@ -571,9 +570,7 @@ fn answered(
         }
         Answer::Edit(path) => {
             let line = corpus_shared::editor::line();
-            let (program, args) = corpus_shared::editor::words(line.as_deref());
-            let mut run = Command::new(program);
-            run.args(args).arg(path);
+            let run = corpus_shared::editor::command(line.as_deref(), &[path]);
             commands.spawn((RunInTerminal(run), Editing(agent)));
         }
     }
@@ -590,11 +587,7 @@ fn edited(
     let Ok((&Editing(agent), terminal_exit)) = runs.get(exit.entity) else {
         return;
     };
-    if !terminal_exit.success() {
-        let why = match &terminal_exit.0 {
-            Ok(status) => status.to_string(),
-            Err(why) => why.clone(),
-        };
+    if let Some(why) = terminal_exit.failure() {
         notices.write(Notice::warn(
             agent,
             format!("changelog: the editor failed: {why}"),

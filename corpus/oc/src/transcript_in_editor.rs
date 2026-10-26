@@ -795,10 +795,7 @@ fn undone(
 
 fn editor_command(settings: &EditHistorySettings, path: &Path) -> Command {
     let line = settings.editor.clone().or_else(corpus_shared::editor::line);
-    let (program, args) = corpus_shared::editor::words(line.as_deref());
-    let mut command = Command::new(program);
-    command.args(args).arg(path);
-    command
+    corpus_shared::editor::command(line.as_deref(), &[path])
 }
 
 /// Writes `text` to the editing's file and opens the editor on it.
@@ -996,12 +993,9 @@ fn editor_closed(
     for (run, exit, editing) in &done {
         commands.entity(run).despawn();
         let agent = editing.agent;
-        let read = match exit.success() {
-            true => std::fs::read_to_string(&editing.path).map_err(|why| why.to_string()),
-            false => Err(match &exit.0 {
-                Ok(status) => format!("the editor exited with {status}"),
-                Err(why) => why.clone(),
-            }),
+        let read = match exit.failure() {
+            None => std::fs::read_to_string(&editing.path).map_err(|why| why.to_string()),
+            Some(why) => Err(format!("the editor failed ({why})")),
         };
         let text = match read {
             Ok(text) if text != editing.written => text,

@@ -1,14 +1,16 @@
 //! The user's editor: the command line in `VISUAL`, then `EDITOR`, and
-//! `vi` when neither is set.
+//! `vi` when neither is set. The line is shell syntax, as git reads it, so
+//! it can quote a path with spaces or be a whole shell command; the files
+//! follow it as arguments.
 //!
 //! ```
 //! let line = corpus_shared::editor::line();
-//! let (program, args) = corpus_shared::editor::words(line.as_deref());
-//! let mut command = std::process::Command::new(program);
-//! command.args(args).arg("notes.md");
+//! let notes = std::path::Path::new("notes.md");
+//! let command = corpus_shared::editor::command(line.as_deref(), &[notes]);
 //! ```
 
-use std::str::SplitWhitespace;
+use std::path::Path;
+use std::process::Command;
 
 /// The editor command line from `VISUAL`, then `EDITOR`: the first that is
 /// set and not blank.
@@ -20,11 +22,38 @@ pub fn line() -> Option<String> {
     })
 }
 
-/// The program and arguments of the editor command line `line`; `vi` with
-/// no arguments when `line` is `None` or blank.
-pub fn words(line: Option<&str>) -> (&str, SplitWhitespace<'_>) {
-    let mut words = line.unwrap_or_default().split_whitespace();
-    (words.next().unwrap_or("vi"), words)
+/// The command that opens `files` in the editor command line `line`, or in
+/// `vi` when `line` is `None` or blank. On unix it runs
+/// `sh -c '<line> "$@"' '<line>' <files>`.
+#[cfg(not(windows))]
+pub fn command(line: Option<&str>, files: &[&Path]) -> Command {
+    let line = chosen(line);
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg(format!("{line} \"$@\""))
+        .arg(line)
+        .args(files);
+    command
+}
+
+/// The command that opens `files` in the editor command line `line`, or in
+/// `vi` when `line` is `None` or blank. On Windows it runs
+/// `cmd.exe /d /v:off /s /c "<line> "<file>" ..."`, passed as it is. A
+/// Windows path cannot hold a `"`, but `cmd.exe` expands a `%NAME%` in it.
+#[cfg(windows)]
+pub fn command(line: Option<&str>, files: &[&Path]) -> Command {
+    use std::os::windows::process::CommandExt;
+    let files = files.iter().map(|file| format!(" \"{}\"", file.display()));
+    let run = format!("\"{}{}\"", chosen(line), files.collect::<String>());
+    let mut command = Command::new("cmd.exe");
+    command.args(["/d", "/v:off", "/s", "/c"]).raw_arg(run);
+    command
+}
+
+/// `line`, or `vi` when it is `None` or blank.
+fn chosen(line: Option<&str>) -> &str {
+    line.filter(|line| !line.trim().is_empty()).unwrap_or("vi")
 }
 
 #[cfg(test)]

@@ -465,7 +465,6 @@ fn memory(
     In(args): In<CommandArgs>,
     memories: Res<Memories>,
     view: Res<TerminalView>,
-    processes: Res<Processes>,
     mut off: ResMut<MemoryOff>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -494,17 +493,13 @@ fn memory(
             "Memories are recalled again.".to_owned()
         }
         "edit" if view.0 => {
-            let line = corpus_shared::editor::line();
-            let (program, args) = corpus_shared::editor::words(line.as_deref());
-            let mut command = processes.launcher().command(program);
-            command.args(args);
-            for path in [&memories.project, &memories.user] {
-                if let Some(dir) = path.parent() {
-                    fs::create_dir_all(dir).ok();
-                }
-                command.arg(path);
+            let files = [memories.project.as_path(), memories.user.as_path()];
+            for dir in files.iter().filter_map(|path| path.parent()) {
+                fs::create_dir_all(dir).ok();
             }
-            commands.spawn((RunInTerminal(command), Editing));
+            let line = corpus_shared::editor::line();
+            let command = corpus_shared::editor::command(line.as_deref(), &files);
+            commands.spawn((RunInTerminal(command), Editing(agent)));
             return;
         }
         "edit" => format!(
@@ -524,14 +519,14 @@ fn memory(
     notices.write(Notice::info(agent, text));
 }
 
-/// On the editor run of `/memory edit`.
+/// On the editor run of `/memory edit`, for this agent.
 #[derive(Component)]
-struct Editing;
+struct Editing(Entity);
 
 /// Reads the files again once the editor closed, at once rather than at
 /// the watch's next look.
 fn edited(
-    done: Query<(Entity, &TerminalExit), (Added<TerminalExit>, With<Editing>)>,
+    done: Query<(Entity, &TerminalExit, &Editing), Added<TerminalExit>>,
     memories: Option<ResMut<Memories>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -539,12 +534,10 @@ fn edited(
     let Some(mut memories) = memories else {
         return;
     };
-    for (run, exit) in &done {
-        if let Err(why) = &exit.0 {
-            notices.write(Notice::error(
-                None,
-                format!("The editor did not start: {why}"),
-            ));
+    for (run, exit, &Editing(agent)) in &done {
+        if let Some(why) = exit.failure() {
+            let text = format!("/memory edit: the editor failed ({why}).");
+            notices.write(Notice::error(agent, text));
         }
         memories.read();
         commands.entity(run).despawn();

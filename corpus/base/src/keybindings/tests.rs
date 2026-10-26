@@ -109,3 +109,39 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
         "{listed}"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_failed_editor_leaves_the_draft_and_says_why() {
+    let home = scratch_home("corpus-keybindings-draft");
+    assert!(std::fs::create_dir_all(home.root()).is_ok());
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(Settings::default())
+        .add_plugins((AgentPlugin, KeyBindingsPlugin));
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.cleanup();
+    app.update();
+
+    // The editor wrote the draft, then exited with 3.
+    use std::os::unix::process::ExitStatusExt;
+    let draft = home.root().join("draft.md");
+    assert!(std::fs::write(&draft, "edited").is_ok());
+    let failed = TerminalExit(Ok(std::process::ExitStatus::from_raw(3 << 8)));
+    let agent = first_agent(app.world_mut());
+    app.world_mut().spawn((Draft(draft, agent), failed));
+    app.update();
+    std::fs::remove_dir_all(home.root()).ok();
+
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&Editor, With<MainEditor>>();
+    let typed = main.single(world).ok().map(|input| input.text().to_owned());
+    assert_eq!(typed.as_deref(), Some(""));
+    let seen = notices(&app);
+    assert!(
+        seen.iter()
+            .any(|text| text == "The editor failed (exit status 3); the draft is unchanged."),
+        "{seen:?}"
+    );
+}

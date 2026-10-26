@@ -6,7 +6,7 @@
 //! ([`CopyToClipboard`]), written after each frame, the last one included.
 
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
@@ -39,9 +39,10 @@ use rig_harness::prelude::{Exit, ExitReason, Scratch};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
-/// the terminal, its output included, until it exits; then it takes the
-/// terminal back, draws again, and inserts [`TerminalExit`] on the entity,
-/// which the plugin despawns once it read it. The agent's loop waits
+/// the terminal, its output included, until it exits. When it fails, what
+/// it printed stays up until the user presses Enter. Then the view takes
+/// the terminal back, draws again, and inserts [`TerminalExit`] on the
+/// entity, which the plugin despawns once it read it. The agent's loop waits
 /// while the program runs. Only the terminal view runs it, in the frame
 /// it is spawned.
 ///
@@ -60,6 +61,25 @@ impl TerminalExit {
     /// Whether the program ran and exited with success.
     pub fn success(&self) -> bool {
         self.0.as_ref().is_ok_and(ExitStatus::success)
+    }
+
+    /// Why the program failed, such as `exit status 2`, or why it did not
+    /// start; `None` when it exited with success.
+    pub fn failure(&self) -> Option<String> {
+        match &self.0 {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(described(*status)),
+            Err(why) => Some(why.clone()),
+        }
+    }
+}
+
+/// `status` as `exit status 2`, or as the platform says it without a code,
+/// such as a signal on unix.
+fn described(status: ExitStatus) -> String {
+    match status.code() {
+        Some(code) => format!("exit status {code}"),
+        None => status.to_string(),
     }
 }
 
@@ -125,7 +145,7 @@ impl Tui {
     /// at `log`, so output from plugins, dependencies or panics lands there
     /// instead of on the screen.
     fn open(log: Option<&Path>) -> io::Result<Self> {
-        let screen = screen()?;
+        let screen = copy_of(io::stdout())?;
         if let Some(log) = log {
             redirect_output(log)?;
         }
@@ -404,11 +424,18 @@ pub(crate) fn run_in_terminal(world: &mut World) {
             Err(failure) => error!("could not hand the terminal over: {failure}"),
         }
     }
+    let mode = screen.as_ref().and_then(|_| TerminalMode::now());
     for entity in runs {
         let Some(mut run) = world.get_mut::<RunInTerminal>(entity) else {
             continue;
         };
         let exit = run_with(&mut run.0, screen.as_ref());
+        if let Some(mode) = &mode {
+            mode.restore();
+        }
+        if let Some(screen) = &screen {
+            hold_on_terminal(&exit, screen);
+        }
         world.entity_mut(entity).insert(TerminalExit(exit));
     }
     let size = world.get_resource_mut::<Tui>().and_then(|mut tui| {
@@ -456,16 +483,98 @@ fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, 
         .map_err(|failure| format!("could not run {program}: {failure}"))
 }
 
+/// The code a program exited with, when it is a failure. A program ended
+/// by a signal has none: whoever stopped it knows why.
+fn failed_code(exit: &Result<ExitStatus, String>) -> Option<i32> {
+    let code = exit.as_ref().ok().and_then(ExitStatus::code);
+    code.filter(|&code| code != 0)
+}
+
+/// [`hold_failure`] on the terminal, its keys read raw and one at a time,
+/// so Ctrl+C is a key rather than a signal and nothing typed after Enter
+/// is taken from the view.
+fn hold_on_terminal(exit: &Result<ExitStatus, String>, screen: &File) {
+    if failed_code(exit).is_none() || !io::stdin().is_terminal() {
+        return;
+    }
+    let raw = enable_raw_mode();
+    match copy_of(io::stdin()) {
+        Ok(keys) => hold_failure(exit, keys, screen),
+        Err(failure) => error!("could not read the terminal: {failure}"),
+    }
+    if raw.is_ok() {
+        disable_raw_mode().ok();
+    }
+}
+
+/// When a program exited with a failure code, says so on `screen` and
+/// reads `keys` up to Enter (`\r` or `\n`), Ctrl+C, Ctrl+D, their end or
+/// an error, so what the program printed stays up until then.
+fn hold_failure(exit: &Result<ExitStatus, String>, mut keys: impl Read, mut screen: impl Write) {
+    let Some(code) = failed_code(exit) else {
+        return;
+    };
+    let said = write!(
+        screen,
+        "\r\n[the program exited with exit status {code}; press Enter to go back]"
+    );
+    if said.and_then(|()| screen.flush()).is_err() {
+        return;
+    }
+    let mut key = [0];
+    while let Ok(1) = keys.read(&mut key) {
+        if matches!(key, [b'\r' | b'\n' | 0x03 | 0x04]) {
+            break;
+        }
+    }
+}
+
+/// The terminal's mode before a program ran, put back after it, so one
+/// that left raw mode on does not become the mode restored when rig exits.
 #[cfg(unix)]
-fn screen() -> io::Result<File> {
-    use std::os::fd::AsFd;
-    Ok(File::from(io::stdout().as_fd().try_clone_to_owned()?))
+struct TerminalMode(libc::termios);
+
+#[cfg(unix)]
+impl TerminalMode {
+    /// The mode now, when stdin is a terminal.
+    fn now() -> Option<Self> {
+        let mut mode = std::mem::MaybeUninit::uninit();
+        // SAFETY: `tcgetattr` fills `mode` when it returns 0, and only then
+        // is `mode` read.
+        unsafe {
+            (libc::tcgetattr(libc::STDIN_FILENO, mode.as_mut_ptr()) == 0)
+                .then(|| Self(mode.assume_init()))
+        }
+    }
+
+    fn restore(&self) {
+        // SAFETY: `self.0` is a mode `tcgetattr` filled.
+        unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &self.0) };
+    }
+}
+
+/// Other platforms keep whatever mode a program left.
+#[cfg(not(unix))]
+struct TerminalMode;
+
+#[cfg(not(unix))]
+impl TerminalMode {
+    fn now() -> Option<Self> {
+        None
+    }
+
+    fn restore(&self) {}
+}
+
+/// A file of its own for `stream`, such as the screen behind stdout.
+#[cfg(unix)]
+fn copy_of(stream: impl std::os::fd::AsFd) -> io::Result<File> {
+    Ok(File::from(stream.as_fd().try_clone_to_owned()?))
 }
 
 #[cfg(windows)]
-fn screen() -> io::Result<File> {
-    use std::os::windows::io::AsHandle;
-    Ok(File::from(io::stdout().as_handle().try_clone_to_owned()?))
+fn copy_of(stream: impl std::os::windows::io::AsHandle) -> io::Result<File> {
+    Ok(File::from(stream.as_handle().try_clone_to_owned()?))
 }
 
 #[cfg(unix)]

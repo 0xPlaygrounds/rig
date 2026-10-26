@@ -36,6 +36,36 @@ fn a_program_runs_with_the_terminal_and_its_exit_comes_back() {
     assert!(!draft.exists());
 }
 
+/// A failed program's screen stays up: the view says how it ended and
+/// waits for Enter, reading no further, or for the input's end.
+#[cfg(unix)]
+#[test]
+fn a_failed_program_waits_for_enter() {
+    use std::os::unix::process::ExitStatusExt;
+    let failed = Ok(ExitStatus::from_raw(2 << 8));
+    let mut input: &[u8] = b"typed\nlater";
+    let mut screen = Vec::new();
+    hold_failure(&failed, &mut input, &mut screen);
+    assert_eq!(input, b"later");
+    let said = String::from_utf8_lossy(&screen);
+    assert!(said.contains("[the program exited with exit status 2; press Enter to go back]"));
+    let mut ended: &[u8] = b"";
+    hold_failure(&failed, &mut ended, io::sink());
+    for done in [
+        Ok(ExitStatus::from_raw(0)),
+        Err("could not run vi".to_owned()),
+    ] {
+        let mut input: &[u8] = b"typed\n";
+        let mut screen = Vec::new();
+        hold_failure(&done, &mut input, &mut screen);
+        assert_eq!((input, screen.len()), (&b"typed\n"[..], 0), "{done:?}");
+    }
+    assert_eq!(
+        TerminalExit(failed).failure().as_deref(),
+        Some("exit status 2")
+    );
+}
+
 /// The terminal view drawing to the file at `path`, as the terminal
 /// stands in for it; it never asks the file for its size.
 fn tui_on(path: &PathBuf) -> Option<Tui> {
