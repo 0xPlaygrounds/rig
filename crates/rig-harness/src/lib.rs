@@ -131,7 +131,9 @@ pub mod prelude {
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
-    pub use crate::settings::{AppSettingsExt, Settings};
+    pub use crate::settings::{
+        AppSettingsExt, ProjectSetting, ProjectSettings, ProjectSettingsSystems, Settings,
+    };
     pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};

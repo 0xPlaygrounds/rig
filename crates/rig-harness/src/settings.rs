@@ -29,6 +29,7 @@
 //! ```
 
 use std::io::ErrorKind;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
@@ -187,47 +188,83 @@ impl AppSettingsExt for App {
         section: &str,
     ) -> &mut Self {
         self.add_setting::<T>(section);
-        if !self.world().contains_resource::<ProjectSettings>() {
-            self.init_resource::<ProjectSettings>()
-                .add_systems(PreStartup, read_project_settings);
+        if !self.is_plugin_added::<ProjectSettingsPlugin>() {
+            self.add_plugins(ProjectSettingsPlugin);
         }
-        self.world_mut()
-            .resource_mut::<ProjectSettings>()
-            .0
-            .push((section.to_owned(), insert_merged::<T>));
+        let world = self.world_mut();
+        let read = world
+            .query_filtered::<(), With<ReadAs<T>>>()
+            .iter(world)
+            .next()
+            .is_some();
+        world.spawn((
+            ProjectSetting(section.to_owned()),
+            ReadAs::<T>(PhantomData),
+            Name::new(format!("project setting [{section}]")),
+        ));
+        if !read {
+            self.add_systems(
+                PreStartup,
+                apply_project_setting::<T>.in_set(ProjectSettingsSystems::Apply),
+            );
+        }
         self
     }
 }
 
-/// The tables a project may override, each with how it inserts its value.
-#[derive(Resource, Default)]
-struct ProjectSettings(Vec<(String, Insert)>);
+/// A table of `settings.toml` that a project's `.rig/settings.toml` may
+/// override, on an entity of its own for each
+/// [`add_project_setting`](AppSettingsExt::add_project_setting): its
+/// section's name.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct ProjectSetting(pub String);
 
-/// Inserts a setting from its merged table, or says why it cannot.
-type Insert = fn(&mut World, toml::Value) -> Result<(), String>;
+/// Beside a [`ProjectSetting`]: the type its merged table is read into.
+#[derive(Component)]
+struct ReadAs<T>(PhantomData<fn() -> T>);
 
-/// Inserts `T` read from `table`.
-fn insert_merged<T: Resource + DeserializeOwned + Default>(
-    world: &mut World,
-    table: toml::Value,
-) -> Result<(), String> {
-    let value = table
-        .try_into::<T>()
-        .map_err(|failure| failure.to_string())?;
-    world.insert_resource(value);
-    Ok(())
+/// The project's `.rig/settings.toml`, as read when the app starts, once a
+/// plugin declared a [`ProjectSetting`]; absent without that file.
+#[derive(Resource, Clone, Debug)]
+pub struct ProjectSettings(pub Settings);
+
+/// The phases, in [`PreStartup`], in which the project's settings are read
+/// and the tables declared for it are inserted.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ProjectSettingsSystems {
+    /// The project's file becomes [`ProjectSettings`].
+    Read,
+    /// Each [`ProjectSetting`] the project's file has is merged over the
+    /// user's table and inserted as its type.
+    Apply,
 }
 
-/// Reads the project's `.rig/settings.toml` and inserts each table a
-/// plugin let it override, merged over the user's.
-fn read_project_settings(world: &mut World) {
-    let root = world
-        .get_resource::<ProjectRoot>()
-        .map_or_else(|| ProjectRoot::default().0, |root| root.0.clone());
-    let workspace = world
-        .get_resource::<ProjectWorkspace>()
-        .cloned()
-        .unwrap_or_default();
+/// Reads the project's settings once a table is declared for it.
+struct ProjectSettingsPlugin;
+
+impl Plugin for ProjectSettingsPlugin {
+    fn build(&self, app: &mut App) {
+        app.configure_sets(
+            PreStartup,
+            (ProjectSettingsSystems::Read, ProjectSettingsSystems::Apply).chain(),
+        )
+        .add_systems(
+            PreStartup,
+            read_project_settings.in_set(ProjectSettingsSystems::Read),
+        );
+    }
+}
+
+/// Reads the project's `.rig/settings.toml` into [`ProjectSettings`],
+/// saying what was wrong with it.
+fn read_project_settings(
+    root: Option<Res<ProjectRoot>>,
+    workspace: Option<Res<ProjectWorkspace>>,
+    settings: Option<ResMut<Settings>>,
+    mut commands: Commands,
+) {
+    let root = root.map_or_else(|| ProjectRoot::default().0, |root| root.0.clone());
+    let workspace = workspace.map(|it| it.clone()).unwrap_or_default();
     let path: PathBuf = root.join(".rig").join("settings.toml");
     let file = path.display().to_string();
     let project = match workspace.0.read(&path, rig_tools::MAX_FILE_BYTES) {
@@ -238,31 +275,48 @@ fn read_project_settings(world: &mut World) {
             ..Settings::empty(file)
         },
     };
-    let declared = world
-        .get_resource::<ProjectSettings>()
-        .map(|it| it.0.clone())
-        .unwrap_or_default();
-    let mut problems = project.problems.clone();
-    for (section, insert) in declared {
-        let Some(over) = project.tables.get(&section) else {
+    for problem in &project.problems {
+        warn!("{problem}");
+    }
+    if let Some(mut settings) = settings {
+        settings.problems.extend(project.problems.iter().cloned());
+    }
+    commands.insert_resource(ProjectSettings(project));
+}
+
+/// Inserts `T` from each table declared as read into it that the project
+/// overrides, merged over the user's; a table that does not read as `T`
+/// keeps the user's value and is one of [`Settings::problems`].
+fn apply_project_setting<T: Resource + DeserializeOwned>(
+    declared: Query<&ProjectSetting, With<ReadAs<T>>>,
+    project: Option<Res<ProjectSettings>>,
+    mut settings: Option<ResMut<Settings>>,
+    mut commands: Commands,
+) {
+    let Some(ProjectSettings(project)) = project.as_deref() else {
+        return;
+    };
+    for ProjectSetting(section) in &declared {
+        let Some(over) = project.tables.get(section) else {
             continue;
         };
-        let user = world
-            .get_resource::<Settings>()
-            .and_then(|settings| settings.tables.get(&section).cloned());
+        let user = settings
+            .as_ref()
+            .and_then(|settings| settings.tables.get(section).cloned());
         let merged = match user {
             Some(user) => merge(user, over.clone()),
             None => over.clone(),
         };
-        if let Err(failure) = insert(world, merged) {
-            problems.push(format!("{} [{section}]: {failure}", project.file));
+        match merged.try_into::<T>() {
+            Ok(value) => commands.insert_resource(value),
+            Err(failure) => {
+                let problem = format!("{} [{section}]: {failure}", project.file);
+                warn!("{problem}");
+                if let Some(settings) = settings.as_mut() {
+                    settings.problems.push(problem);
+                }
+            }
         }
-    }
-    for problem in &problems {
-        warn!("{problem}");
-    }
-    if let Some(mut settings) = world.get_resource_mut::<Settings>() {
-        settings.problems.extend(problems);
     }
 }
 

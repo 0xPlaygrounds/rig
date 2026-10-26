@@ -3,7 +3,7 @@ use bevy_ecs::prelude::*;
 use rig_harness_protocol::Home;
 use serde::Deserialize;
 
-use super::{AppSettingsExt, Settings};
+use super::{AppSettingsExt, ProjectSetting, Settings};
 use crate::services::{ProjectRoot, RigHome};
 
 #[derive(Resource, Deserialize, Default, Debug, PartialEq)]
@@ -135,4 +135,12 @@ fn a_project_overrides_only_the_tables_declared_for_it() {
     assert_eq!(app.world().resource::<Counts>(), &Counts { n: 2, m: 5 });
     assert_eq!(app.world().resource::<Others>(), &Others { n: 1 });
     assert!(app.world().resource::<Settings>().problems().is_empty());
+    // What a project may override is data a system can list.
+    let world = app.world_mut();
+    let declared: Vec<String> = world
+        .query::<&ProjectSetting>()
+        .iter(world)
+        .map(|it| it.0.clone())
+        .collect();
+    assert_eq!(declared, ["a"]);
 }
