@@ -89,3 +89,47 @@ fn an_inline_question_leaves_a_running_turn_its_status() {
     app.world_mut().spawn(TurnOf(agent));
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
 }
+
+#[test]
+fn a_turn_is_writing_once_its_answer_streams() {
+    let mut app = App::new();
+    app.add_plugins(ActivityPlugin);
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let call = world.spawn((Partial::default(), CallOf(turn))).id();
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
+
+    let reasoning = Partial {
+        text: " \n".to_owned(),
+        reasoning: "Weighing it.".to_owned(),
+    };
+    app.world_mut().entity_mut(call).insert(reasoning);
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
+    let answer = Partial {
+        text: "Hello".to_owned(),
+        reasoning: String::new(),
+    };
+    app.world_mut().entity_mut(call).insert(answer);
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Writing));
+
+    // The next model call has written nothing yet.
+    let world = app.world_mut();
+    world.entity_mut(call).insert(Settled);
+    let next = world.spawn((Partial::default(), CallOf(turn))).id();
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
+
+    // A tool running outranks an answer streaming beside it.
+    let streaming = Partial {
+        text: "Reading it.".to_owned(),
+        reasoning: String::new(),
+    };
+    app.world_mut().entity_mut(next).insert(streaming);
+    let Ok(name) = ToolName::new("read") else {
+        return;
+    };
+    let request = ToolCall::from_wire("c1", ToolFunction::new(name, serde_json::json!({})));
+    app.world_mut()
+        .spawn((ToolRequest { call: request }, CallOf(turn)));
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::RunningTools));
+}

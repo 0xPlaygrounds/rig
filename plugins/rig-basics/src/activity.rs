@@ -72,6 +72,8 @@ pub enum ActivityStatus {
     Idle,
     /// Waiting for its model.
     Thinking,
+    /// Its model's answer streams.
+    Writing,
     /// Its tools run.
     RunningTools,
     /// A plugin's effect for the agent runs, in its turn or after it, such
@@ -95,6 +97,7 @@ impl fmt::Display for ActivityStatus {
         match self {
             Self::Idle => f.write_str("idle"),
             Self::Thinking => f.write_str("thinking"),
+            Self::Writing => f.write_str("writing"),
             Self::RunningTools => f.write_str("running tools"),
             Self::Busy(what) => f.write_str(what),
             Self::Asking(title) => write!(f, "asking: {title}"),
@@ -210,6 +213,7 @@ fn update_activity(
     waits: Query<&Backoff>,
     others: Query<&Name, Named>,
     asks: Query<&Ask, (Without<Outcome>, Without<Settled>)>,
+    partials: Query<&Partial, (Without<Settled>, Without<SupersededBy>)>,
 ) {
     for (mut activity, turn, work) in &mut agents {
         let work: Vec<Entity> = work.map(|work| work.iter().collect()).unwrap_or_default();
@@ -251,6 +255,12 @@ fn update_activity(
             ActivityStatus::Busy(name.as_str().to_owned())
         } else if calls.iter().any(|call| tools.contains(*call)) {
             ActivityStatus::RunningTools
+        } else if calls
+            .iter()
+            .filter_map(|call| partials.get(*call).ok())
+            .any(|partial| !partial.text.trim().is_empty())
+        {
+            ActivityStatus::Writing
         } else {
             ActivityStatus::Thinking
         };
