@@ -10,7 +10,7 @@ use std::sync::Arc;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use rig_core::completion::Message;
-use rig_core::conversation::Change;
+use rig_core::conversation::{Author, Change};
 use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
 use sha2::{Digest, Sha256};
@@ -141,22 +141,9 @@ pub(crate) fn named_blobs(bytes: &[u8], named: &mut std::collections::BTreeSet<S
     }
 }
 
-/// Adds the blob of every image a message of `change` names to `named`.
-pub(crate) fn image_blobs(change: &Change, named: &mut std::collections::BTreeSet<String>) {
-    let (Change::Push { entries } | Change::Splice { with: entries, .. }) = change else {
-        return;
-    };
-    for image in entries.iter().flat_map(|entry| entry.message.images()) {
-        if let Url(url) = &image.data
-            && let Some(name) = url.strip_prefix(BLOB)
-        {
-            named.insert(name.to_owned());
-        }
-    }
-}
-
 /// Calls `f` on each message `change` saves: the entries of a push or a
-/// splice.
+/// splice, and those of a reset's whole value. It stops at `f`'s first
+/// error.
 pub(crate) fn messages_mut(
     change: &mut Change,
     f: &mut dyn FnMut(&mut Message) -> io::Result<()>,
@@ -165,6 +152,18 @@ pub(crate) fn messages_mut(
         Change::Push { entries } | Change::Splice { with: entries, .. } => entries
             .iter_mut()
             .try_for_each(|entry| f(Arc::make_mut(&mut entry.message))),
+        Change::Reset { state } => {
+            let mut done = Ok(());
+            state.edit_each(Author::rig(), |entry| {
+                done.as_ref().ok()?;
+                let mut message = entry.message.clone();
+                done = f(&mut message);
+                (done.is_ok() && message != *entry.message).then_some(message)
+            });
+            // The edits are of the value itself, not changes of it to save.
+            **state = state.view();
+            done
+        }
         _ => Ok(()),
     }
 }

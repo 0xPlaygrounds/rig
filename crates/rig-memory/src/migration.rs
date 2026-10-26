@@ -20,14 +20,13 @@
 //! # Ok::<(), rig_memory::SessionError>(())
 //! ```
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io;
 
 use serde_json::Value;
 
-use crate::blobs::{BLOBS, image_blobs};
 use crate::format::{Body, Header, LogLines, Meta, parse};
-use crate::{FORMAT, META, MemoryStore, Session, SessionError, SessionMeta, Store};
+use crate::{FORMAT, META, MemoryStore, Repair, Session, SessionError, SessionMeta, Store};
 
 /// Where a migration keeps the session as it was, through the session's
 /// own store: `rig/kept/<format>/logs/<log>.jsonl` and
@@ -129,11 +128,12 @@ impl Snapshot {
 impl Chain {
     /// Brings the session in `store` to [`FORMAT`] through this chain's
     /// steps, when it is in an earlier format one of them starts from;
-    /// a session already in [`FORMAT`], or with no log, is left alone.
+    /// a session already in [`FORMAT`], or with no complete log line, is
+    /// left alone.
     /// The migrated session is checked whole before anything is written:
     /// every record reads and its change applies, every saved value
     /// `verify` knows the type of decodes (the listed ones of [`META`]
-    /// too), and every image blob a message names is there. Then the
+    /// too), and every image blob a message names loads. Then the
     /// session as it was is copied under [`KEPT`] and read back, and only
     /// then is each changed file and log replaced. Logs, values and files
     /// a step does not know are kept byte for byte.
@@ -141,18 +141,33 @@ impl Chain {
     /// # Errors
     ///
     /// [`SessionError::Format`] when no step starts from the session's
-    /// format, or its logs name different formats; a step's or a check's
-    /// error; or the store failing. Each but the last is returned before
-    /// anything is written. [`SessionError::Changed`] when a log changed
-    /// while it was migrated.
+    /// format, its logs name different formats, or a log names none;
+    /// [`io::ErrorKind::AlreadyExists`] when the store holds a kept copy
+    /// from this format already, of a migration that did not finish; a
+    /// step's or a check's error; or the store failing. Each but the last
+    /// is returned before anything is written. [`SessionError::Changed`]
+    /// when a log changed while it was migrated.
     pub fn migrate(&self, store: &dyn Store, verify: &Verify<'_>) -> Result<(), SessionError> {
         let original = Snapshot::read(store)?;
         let Some((log, found)) = original.format()? else {
             return Ok(());
         };
-        let Some(from) = found.as_deref().filter(|found| *found != FORMAT) else {
-            return Ok(());
+        let from = match found.as_deref() {
+            Some(FORMAT) => return Ok(()),
+            Some(from) => from,
+            None => return Err(SessionError::Format { log, found }),
         };
+        let kept = format!("{KEPT}{from}/");
+        if store.files()?.iter().any(|name| name.starts_with(&kept)) {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!(
+                    "a migration from {from} did not finish; the session as it was is \
+                     under `{kept}`: put it back, or remove it, to migrate again"
+                ),
+            )
+            .into());
+        }
         let mut migrated = original.clone();
         let mut at = from;
         while at != FORMAT {
@@ -163,7 +178,7 @@ impl Chain {
             at = step.to;
         }
         check(&original, &migrated, verify)?;
-        keep(store, &original, &format!("{KEPT}{from}/"))?;
+        keep(store, &original, &kept)?;
         replace(store, &original, &migrated)?;
         if Snapshot::read(store)? != migrated {
             return Err(invalid("the migrated session reads back otherwise").into());
@@ -192,14 +207,20 @@ fn check(
     }
     let store = MemoryStore::default();
     migrated.write_to(&store)?;
-    Session::read(&store)?;
+    let session = Session::read(&store)?;
+    if let Some(lost) = session
+        .repairs
+        .iter()
+        .find(|repair| matches!(repair, Repair::LostImage { .. }))
+    {
+        return Err(invalid(format!("the migrated session does not read whole: {lost}")).into());
+    }
     if let Some(bytes) = migrated.files.get(META) {
         let meta: SessionMeta = serde_json::from_slice(bytes).map_err(invalid_json)?;
         for (key, value) in &meta.listed {
             verify(key, value)?;
         }
     }
-    let mut images = BTreeSet::new();
     for (log, bytes) in &migrated.logs {
         for (line, _, record) in LogLines::parse(bytes.clone()).iter() {
             let refuse = |why| SessionError::Record {
@@ -207,21 +228,14 @@ fn check(
                 line,
                 why,
             };
-            match parse(record).map_err(refuse)?.1 {
-                Body::Meta(Meta::State {
-                    key,
-                    value: Some(value),
-                }) => verify(&key, &value)?,
-                Body::Change(record) => image_blobs(&record.change, &mut images),
-                Body::Meta(_) => {}
+            if let Body::Meta(Meta::State {
+                key,
+                value: Some(value),
+            }) = parse(record).map_err(refuse)?.1
+            {
+                verify(&key, &value)?;
             }
         }
-    }
-    if let Some(name) = images
-        .iter()
-        .find(|name| !migrated.files.contains_key(&format!("{BLOBS}{name}")))
-    {
-        return Err(invalid(format!("the migrated session lost the image blob {name}")).into());
     }
     Ok(())
 }

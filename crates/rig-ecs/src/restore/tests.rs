@@ -1086,6 +1086,48 @@ fn a_saved_value_that_no_longer_reads_is_skipped_and_replaced_at_the_next_save()
     assert_eq!(now, serde_json::to_value(&changed).ok());
 }
 
+/// A plugin's type that is registered but not saved.
+#[derive(Reflect, Default)]
+struct Unsaved(u32);
+
+/// A saved value is checked as a restore reads it: under its key's type,
+/// when a plugin saves that type; a value of a type no plugin saves, or
+/// of no registered type, passes.
+#[test]
+fn a_saved_value_is_checked_against_the_type_a_plugin_saves() {
+    let mut world = World::new();
+    let registry = AppTypeRegistry::default();
+    {
+        let mut registry = registry.write();
+        registry.register::<Labelled>();
+        registry.register::<Goal>();
+        registry.register::<Unsaved>();
+    }
+    world.insert_resource(registry);
+    let mut keys = crate::restore::SavedKeys::default();
+    assert!(keys.add(Goal::type_path(), "goals.goal").is_ok());
+    world.insert_resource(keys);
+    let labelled = serde_json::json!({"id": 1, "label": "kept"});
+    let checks = [
+        (Labelled::type_path(), labelled, true),
+        (Labelled::type_path(), serde_json::json!("seven"), false),
+        ("goals.goal", serde_json::json!("ship it"), true),
+        ("goals.goal", serde_json::json!(7), false),
+        (Unsaved::type_path(), serde_json::json!("seven"), true),
+        ("uninstalled.state", serde_json::json!("seven"), true),
+    ];
+    for (key, value, fits) in checks {
+        let checked = crate::restore::check_saved(&world, key, &value);
+        let refused = checked
+            .as_ref()
+            .is_err_and(|error| error.kind() == io::ErrorKind::InvalidData);
+        assert!(
+            checked.is_ok() == fits && refused != fits,
+            "{key} {value}: {checked:?}"
+        );
+    }
+}
+
 /// The goal of a plugin, saved under its stable key.
 #[derive(Resource, Reflect, Clone, Debug, Default, PartialEq)]
 #[reflect(Resource, Saved, Default)]

@@ -306,10 +306,7 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
 #[test]
 fn resuming_a_session_in_an_earlier_format_migrates_and_restores_it() {
     let home = scratch_home("rig-session-migrated");
-    let Ok(id) = "1700000000-25".parse::<SessionId>() else {
-        return;
-    };
-    let session = home.session(&id);
+    let session = home.session(&SessionId::generate());
     let written = dir_store(&session).map(|store| testing::write_fixture(&store));
     assert!(matches!(written, Some(Ok(()))), "{written:?}");
     session.mark_saved().ok();

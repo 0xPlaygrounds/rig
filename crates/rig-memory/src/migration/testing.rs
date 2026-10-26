@@ -1,6 +1,6 @@
 //! A synthetic format before [`FORMAT`] and the chain from it, for tests
 //! of migrations through a store's own reads and writes. Rig never wrote
-//! this format, and [`SHIPPED`](super::SHIPPED) has no step from it.
+//! this format, and [`SHIPPED`] has no step from it.
 //!
 //! ```
 //! use rig_memory::migration::testing;
@@ -19,7 +19,7 @@ use rig_core::message::{ImageMediaType, Message, UserContent};
 use serde_json::json;
 
 use super::*;
-use crate::Files;
+use crate::{BLOBS, Files};
 
 /// The synthetic format: as [`FORMAT`], with its blobs under
 /// [`SYNTHETIC_BLOBS`] in place of [`BLOBS`].

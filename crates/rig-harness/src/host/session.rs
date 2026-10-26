@@ -16,22 +16,19 @@ use std::sync::{Arc, Mutex, PoisonError};
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_log::tracing::field::{Field, Visit};
 use bevy_log::tracing::{Event, Level};
 use bevy_log::tracing_subscriber::layer::{Context, Layer};
 use bevy_log::tracing_subscriber::{Registry, fmt};
 use bevy_log::{BoxedFmtLayer, BoxedLayer, error, warn};
-use bevy_reflect::serde::TypedReflectDeserializer;
-use bevy_reflect::{Reflect, ReflectFromReflect};
+use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
 use rig_harness_protocol::{Home, SessionDir, SessionId, StartReason};
-use serde::de::DeserializeSeed;
 
 use rig_core::conversation::Author;
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Notice, NoticeLevel};
-use rig_ecs::restore::SavedKeys;
+use rig_ecs::restore::{SavedKeys, check_saved};
 use rig_ecs::session_log::{SessionLog, SessionStore, open_session};
 use rig_memory::{
     DirFiles, DirStore, Files, Rewrite, Rewritten, Session, SessionError, SessionMeta, Store,
@@ -374,32 +371,6 @@ fn open_store(world: &mut World) -> Result<(), SessionError> {
 const CHAIN: rig_memory::migration::Chain = rig_memory::migration::SHIPPED;
 #[cfg(test)]
 const CHAIN: rig_memory::migration::Chain = rig_memory::migration::testing::CHAIN;
-
-/// Checks the saved value `value` of `key` for a migration: an error when
-/// a registered type is saved by `key` and `value` does not read as it.
-/// The value of a key no installed plugin saves passes as it is.
-fn check_saved(world: &World, key: &str, value: &serde_json::Value) -> io::Result<()> {
-    let Some(registry) = world.get_resource::<AppTypeRegistry>() else {
-        return Ok(());
-    };
-    let registry = registry.read();
-    let keys = world.get_resource::<SavedKeys>();
-    let path = keys.and_then(|keys| keys.path(key)).unwrap_or(key);
-    let Some(registration) = registry.get_with_type_path(path) else {
-        return Ok(());
-    };
-    let invalid = |why: String| io::Error::new(io::ErrorKind::InvalidData, why);
-    let read = TypedReflectDeserializer::new(registration, &registry)
-        .deserialize(value)
-        .map_err(|why| invalid(format!("the saved value `{key}` does not read: {why}")))?;
-    match registration
-        .data::<ReflectFromReflect>()
-        .and_then(|from| from.from_reflect(&*read))
-    {
-        Some(_) => Ok(()),
-        None => Err(invalid(format!("the saved value `{key}` does not read"))),
-    }
-}
 
 /// Keeps a refused run out of its session's directory: what it logged
 /// goes to the launcher's run directory, where the launcher points, or
