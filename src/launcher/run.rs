@@ -436,6 +436,7 @@ fn stopped(
 /// session by its name, single-quoted for the shell, when [`Home::find`]
 /// finds this session by it; by its id when the name is not unique, could
 /// be read as an id or an option, or holds a control or format character.
+/// The quoting is POSIX shell's, as the launcher runs on Linux and macOS.
 fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<String> {
     let directory = home.session(session);
     if refused || !directory.is_saved() {
@@ -453,21 +454,24 @@ fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<Str
     })
 }
 
-/// Whether `c` is an invisible Unicode format character, such as a bidi
-/// override, which shows a name otherwise than it is typed.
+/// Whether `c` is an invisible Unicode format character, line or paragraph
+/// separator, or variation selector, such as a bidi override, which shows a
+/// name otherwise than it is typed.
 fn is_format(c: char) -> bool {
     matches!(
         c,
         '\u{ad}'
             | '\u{61c}'
-            | '\u{180e}'
+            | '\u{180b}'..='\u{180f}'
             | '\u{200b}'..='\u{200f}'
-            | '\u{202a}'..='\u{202e}'
+            | '\u{2028}'..='\u{202e}'
             | '\u{2060}'..='\u{206f}'
+            | '\u{fe00}'..='\u{fe0f}'
             | '\u{feff}'
             | '\u{fff9}'..='\u{fffb}'
             | '\u{e0001}'
             | '\u{e0020}'..='\u{e007f}'
+            | '\u{e0100}'..='\u{e01ef}'
     )
 }
 

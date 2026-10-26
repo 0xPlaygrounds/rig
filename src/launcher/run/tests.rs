@@ -63,6 +63,8 @@ fn a_resume_command_names_the_session_quoted_or_by_its_id() {
         ("newline", "a\nb", "other"),
         ("bidi", "a\u{202e}b", "other"),
         ("tag", "a\u{e0041}b", "other"),
+        ("line-separator", "a\u{2028}b", "other"),
+        ("variation-selector", "a\u{fe0f}b", "other"),
         ("id-shaped", "2026-10-25", "other"),
     ];
     for (test, name, other) in by_id {
