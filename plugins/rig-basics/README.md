@@ -36,7 +36,7 @@ so each can be turned off alone.
 - `preview`: what a tool call would change on disk, before it runs
   (`PreviewPlugin`);
 - `checkpoint`: what each tool call changed on disk (`CheckpointPlugin`);
-- `reload`: `/reload` and the `reload` tool (`ReloadPlugin`), and
+- `reload`: `/reload` (`ReloadPlugin`), and
   `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print` and `--json`, the fronts of a run with `-p`, piped
   stdin or JSON lines (`PrintPlugin`), and the loop of any run nobody sits

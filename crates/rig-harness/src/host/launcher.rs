@@ -15,9 +15,8 @@
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
 //! ([`inform_build_failure`]): the model reads why, and where the whole
-//! output and the files the build is made from are.
+//! build output is.
 
-use std::fmt::Write as _;
 use std::io::{ErrorKind, IsTerminal};
 use std::path::Path;
 use std::sync::Arc;
@@ -237,30 +236,16 @@ fn exit_refused(mut commands: Commands) {
 struct StartBuildFailure(String);
 
 /// The message on a failed build of `what`, for the model: `summary` (the
-/// reason and the first errors), where the whole output is, and the files
-/// the agent is built from.
+/// reason and the first errors) and where the whole output is. It does not
+/// point at the plugin list, the generated project or rig's source, which
+/// only the user changes.
 pub fn build_failure_message(what: &str, summary: &str) -> String {
-    let home = Home::from_env();
-    let project = home.project();
-    let mut message = format!(
+    format!(
         "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
-         Whole build output: {}\n\
-         Plugin list: {}\n\
-         Generated project: {} and {}",
+         Whole build output: {}",
         summary.trim(),
-        home.build_log().display(),
-        home.plugins_toml().display(),
-        project.join("Cargo.toml").display(),
-        project.join("src/main.rs").display(),
-    );
-    if let Some(source) = std::env::var_os(env::SOURCE).filter(|source| !source.is_empty()) {
-        let _ = write!(
-            message,
-            "\nrig-harness source (RIG_SOURCE): {}",
-            std::path::Path::new(&source).display()
-        );
-    }
-    message
+        Home::from_env().build_log().display(),
+    )
 }
 
 /// Puts `text`, on a failed build, in `agent`'s conversation from the

@@ -28,7 +28,7 @@ use rig_harness_protocol::{Home, SessionDir, SessionId, StartReason};
 use rig_core::conversation::Author;
 use rig_ecs::WriteLogs;
 use rig_ecs::agent::{Notice, NoticeLevel};
-use rig_ecs::restore::SavedKeys;
+use rig_ecs::restore::{SavedKeys, check_saved};
 use rig_ecs::session_log::{SessionLog, SessionStore, open_session};
 use rig_memory::{
     DirFiles, DirStore, Files, Rewrite, Rewritten, Session, SessionError, SessionMeta, Store,
@@ -331,8 +331,12 @@ fn insert_plugin_data(world: &mut World) {
 /// Opens the session's store, the one in the world or else the one the
 /// run's front or [`StoreOpener`] opens for [`SessionPaths`], and reads
 /// the session it holds ([`open_session`]), before anything is written to
-/// it. A sessionless run never marks its session saved, so a crash leaves
-/// no session for `/resume` to list.
+/// it. A session whose format is refused is migrated through that store,
+/// the saved values its steps changed checked against the registered
+/// types, and read again;
+/// the launcher's lock on the session holds it meanwhile. A sessionless
+/// run never marks its session saved, so a crash leaves no session for
+/// `/resume` to list.
 fn open_store(world: &mut World) -> Result<(), SessionError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
@@ -353,8 +357,21 @@ fn open_store(world: &mut World) -> Result<(), SessionError> {
             store
         }
     };
-    open_session(world, store)
+    match open_session(world, store.clone()) {
+        Err(SessionError::Format { .. }) => {
+            CHAIN.migrate(&*store, &|key, value| check_saved(world, key, value))?;
+            open_session(world, store)
+        }
+        opened => opened,
+    }
 }
+
+/// The steps a session in an earlier format is migrated by; in this
+/// crate's tests, those from the synthetic format too.
+#[cfg(not(test))]
+const CHAIN: rig_memory::migration::Chain = rig_memory::migration::SHIPPED;
+#[cfg(test)]
+const CHAIN: rig_memory::migration::Chain = rig_memory::migration::testing::CHAIN;
 
 /// Keeps a refused run out of its session's directory: what it logged
 /// goes to the launcher's run directory, where the launcher points, or

@@ -123,6 +123,48 @@ fn a_writer_saves_a_replaced_conversation_as_one_reset() {
     assert_eq!(session.agent("main").expect("agent").conversation, replaced);
 }
 
+/// A reset whose last entry names a blob reads with the image put back
+/// and keeps its halt.
+#[test]
+fn a_halted_reset_naming_a_blob_reads_halted() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Arc::new(MemoryStore::default());
+    let image = Message::User {
+        content: vec![UserContent::image_base64(
+            "cG5n",
+            Some(ImageMediaType::PNG),
+            None,
+        )],
+    };
+    let stored = crate::store_images(&image, &*store)?.into_owned();
+    if stored == image {
+        return Err("the image was not stored as a blob".into());
+    }
+    let (writer, _) = Writer::open(store.clone())?;
+    writer.start();
+    let mut first = Conversation::from_messages([Message::user("before")]);
+    writer.save("main", &mut first);
+    let mut replaced = Conversation::from_messages([stored]);
+    if !replaced.halt(Halt::Stopped) {
+        return Err("the conversation did not halt".into());
+    }
+    let saved = writer.save("main", &mut replaced);
+    if !matches!(saved.as_slice(), [only] if matches!(only.change, Change::Reset { .. })) {
+        return Err(format!("saved {saved:?}, not one reset").into());
+    }
+    writer.flush()?;
+    let session = Session::read(&*store)?;
+    if !session.repairs.is_empty() {
+        return Err(format!("repaired: {:?}", session.repairs).into());
+    }
+    let agent = session.agent("main").ok_or("no agent `main`")?;
+    let conversation = &agent.conversation;
+    let messages: Vec<&Message> = conversation.messages().iter().map(|m| &**m).collect();
+    if conversation.halted() != Some(Halt::Stopped) || messages != [&image] {
+        return Err(format!("read {messages:?}, halted {:?}", conversation.halted()).into());
+    }
+    Ok(())
+}
+
 /// Only the conversation a log holds continues it, even when another has
 /// made as many changes: one saved to another log, one read back from its
 /// serde form. Saving

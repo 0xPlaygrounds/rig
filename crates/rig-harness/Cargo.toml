@@ -47,6 +47,8 @@ serde_json = { workspace = true }
 toml = "1"
 
 [dev-dependencies]
+# The synthetic session format and its migration, for the session tests.
+rig-memory = { path = "../rig-memory", features = ["test-utils"] }
 # The terminal panel, lists, stage sets, compaction, subagents and effect
 # log of the plugin guide's examples.
 rig-basics = { path = "../../plugins/rig-basics" }

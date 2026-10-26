@@ -346,3 +346,23 @@ fn resume_runs_the_session_a_name_names() {
     assert_eq!(kept.as_deref(), Some("Parser"));
     assert_eq!(exits, [ExitReason::Switch(named)]);
 }
+
+#[test]
+fn an_unopened_or_refused_store_keeps_the_session_name_untouched()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = home("refused-name");
+    let id = SessionId::generate();
+    let dir = home.session(&id);
+    fs::create_dir_all(dir.path())?;
+    dir.set_name(Some("preserve this name"))?;
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(dir.clone()))
+        .add_plugins((AgentPlugin, SessionsPlugin));
+    app.update();
+    if dir.name().as_deref() != Some("preserve this name") {
+        return Err(std::io::Error::other("unopened store changed session name").into());
+    }
+    fs::remove_dir_all(home.root())?;
+    Ok(())
+}

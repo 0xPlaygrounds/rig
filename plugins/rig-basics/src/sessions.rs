@@ -88,6 +88,7 @@ impl Plugin for SessionsPlugin {
                 Last,
                 write_name
                     .after(update_meta)
+                    .run_if(resource_exists::<SessionStore>)
                     .run_if(resource_changed::<SessionTitle>),
             );
         #[cfg(feature = "tui")]

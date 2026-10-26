@@ -38,6 +38,8 @@ similar = { workspace = true }
 toml = { version = "1" }
 
 [dev-dependencies]
+# The synthetic session format and its migration.
+rig-memory = { path = "../../crates/rig-memory", features = ["test-utils"] }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }

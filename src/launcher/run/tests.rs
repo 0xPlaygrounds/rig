@@ -5,21 +5,169 @@ use super::*;
 fn only_a_session_with_a_conversation_is_offered_to_resume() {
     use std::os::unix::process::ExitStatusExt;
 
-    let (status, session) = (ExitStatus::from_raw(2 << 8), SessionId::generate());
+    let status = ExitStatus::from_raw(2 << 8);
     let log = Some(Path::new("/home/.rig/sessions/s/agent.log"));
-    let saved = stopped(status, &session, true, None, log);
-    assert!(
-        saved.contains(&format!("`rig --resume {session}`")),
-        "{saved}"
-    );
-    let empty = stopped(status, &session, false, None, log);
+    let saved = stopped(status, Some("rig --resume 1-2"), None, log);
+    assert!(saved.contains("`rig --resume 1-2` resumes"), "{saved}");
+    let empty = stopped(status, None, None, log);
     let expected = "The agent stopped (exit status: 2). Log: /home/.rig/sessions/s/agent.log";
     assert_eq!(empty, expected);
     // A refusal said where a restarted view kept the screen comes again.
-    let refused = stopped(status, &session, false, Some("rig: plain.\n"), log);
+    let refused = stopped(status, None, Some("rig: plain.\n"), log);
     assert_eq!(refused, format!("rig: plain.\n{expected}"));
-    let no_log = stopped(status, &session, false, None, None);
+    let no_log = stopped(status, None, None, None);
     assert_eq!(no_log, "The agent stopped (exit status: 2).");
+}
+
+/// The resume command for a session named `name`, beside a second saved
+/// session named `other`, in a home of the test's own named `test`; and
+/// the session's id.
+fn resume_named(test: &str, name: &str, other: &str) -> Option<(Option<String>, SessionId)> {
+    let root = std::env::temp_dir().join(format!("rig-resume-{test}-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let named = |name: &str| -> Result<SessionId> {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        // Written raw, as a name file from anywhere may hold it.
+        fs::write(session.path().join("name"), name)?;
+        Ok(id)
+    };
+    let made = named(name).and_then(|id| named(other).map(|_| id));
+    let resumed = made.ok().map(|id| (resume_command(&home, &id, false), id));
+    fs::remove_dir_all(&root).ok();
+    resumed
+}
+
+#[test]
+fn a_resume_command_names_the_session_quoted_or_by_its_id() {
+    let quoted = [
+        ("plain", "fix tests", "'fix tests'"),
+        ("apostrophe", "it's done", r"'it'\''s done'"),
+        (
+            "metacharacters",
+            "a $(b) `c` | d; e & *",
+            "'a $(b) `c` | d; e & *'",
+        ),
+        ("trimmed", "  padded\n", "'padded'"),
+    ];
+    for (test, name, shown) in quoted {
+        let resumed = resume_named(test, name, "other");
+        let command = resumed.and_then(|(command, _)| command);
+        assert_eq!(command, Some(format!("rig --resume {shown}")), "{name:?}");
+    }
+    let by_id = [
+        ("duplicate", "same", "same"),
+        ("dash", "-p", "other"),
+        ("control", "a\tb", "other"),
+        ("newline", "a\nb", "other"),
+        ("bidi", "a\u{202e}b", "other"),
+        ("tag", "a\u{e0041}b", "other"),
+        ("line-separator", "a\u{2028}b", "other"),
+        ("variation-selector", "a\u{fe0f}b", "other"),
+        ("id-shaped", "2026-10-25", "other"),
+    ];
+    for (test, name, other) in by_id {
+        let resumed = resume_named(test, name, other);
+        let id = resumed.map(|(command, id)| (command, format!("rig --resume {id}")));
+        assert!(
+            id.as_ref()
+                .is_some_and(|(command, id)| command.as_ref() == Some(id)),
+            "{name:?}: {id:?}"
+        );
+    }
+}
+
+/// How an interactive run of a new session ends whose agent runs `agent`
+/// and exits; and the session the run ended in.
+#[cfg(unix)]
+fn interactive(test: &str, agent: &str, headless: bool) -> Option<(Ended, SessionId)> {
+    let home = builds(&format!("interactive-{test}"), "", "");
+    let ended = locks::hold_run(&home).and_then(|run| {
+        // The good build only: a trial that never says it started is rolled back.
+        fs::remove_file(home.staged())?;
+        fs::write(home.good(), format!("#!/bin/sh\n{agent}\n"))?;
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        let ended = launch(
+            &home,
+            run.dir(),
+            &Invocation::default(),
+            headless,
+            claimed,
+            None,
+            None,
+        )?;
+        let last = fs::read_to_string(home.root().join("last"))?;
+        Ok((ended, last.trim().parse()?))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    ended.ok()
+}
+
+/// A clean exit of a saved session, after `/new` switched to it, says how
+/// to resume the session it ended in; an unsaved session, a headless run
+/// and an agent that never said it started say nothing.
+#[cfg(unix)]
+#[test]
+fn a_clean_exit_says_how_to_resume_the_session_it_ended_in() {
+    let saved = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
+touch \"$RIG_RUN/ready\"
+if [ ! -e \"$RIG_HOME/switched\" ]; then
+  touch \"$RIG_HOME/switched\"
+  touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"
+  : > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
+  exit 75
+fi
+touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
+    let ended = interactive("clean", saved, false);
+    let said =
+        ended.map(|(ended, id)| (ended, format!("To resume this session: rig --resume {id}")));
+    assert!(
+        said.as_ref()
+            .is_some_and(|(ended, said)| ended.code == ExitCode::SUCCESS
+                && ended.said.as_ref() == Some(said)),
+        "{said:?}"
+    );
+
+    let quiet = |test: &str, agent: &str, headless: bool| {
+        let ended = interactive(test, agent, headless).map(|(ended, _)| ended);
+        assert_eq!(ended, Some(Ended::quiet(ExitCode::SUCCESS)), "{test}");
+    };
+    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"";
+    quiet(
+        "unsaved",
+        &format!("{mark}\ntouch \"$RIG_RUN/ready\""),
+        false,
+    );
+    let saved_once =
+        format!("{mark}\ntouch \"$RIG_RUN/ready\" \"$RIG_HOME/sessions/$RIG_SESSION/saved\"");
+    quiet("headless", &saved_once, true);
+    let never_started = format!("{mark}\ntouch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"");
+    quiet("never-started", &never_started, false);
+}
+
+/// A failed exit of a saved session says how to resume it only when its
+/// agent said it started.
+#[cfg(unix)]
+#[test]
+fn a_failed_exit_offers_the_resume_only_after_the_agent_started() {
+    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
+touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
+    let offers = |test: &str, agent: &str| {
+        let ended = interactive(test, &format!("{mark}\n{agent}\nexit 3"), false);
+        ended.map(|(ended, id)| {
+            let offered = ended
+                .said
+                .is_some_and(|said| said.contains(&format!("`rig --resume {id}`")));
+            (ended.code, offered)
+        })
+    };
+    let failed = ExitCode::from(3);
+    assert_eq!(
+        offers("failed-started", "touch \"$RIG_RUN/ready\""),
+        Some((failed, true))
+    );
+    assert_eq!(offers("failed-never-started", ":"), Some((failed, false)));
 }
 
 /// A home whose staged build is `trial` and whose good build is `good`:
@@ -55,6 +203,7 @@ fn one_shot(home: &Home) -> (Option<ExitCode>, String, String) {
             let (claimed, _) = claim(home, Start::New, None)?;
             launch(home, run.dir(), &print, true, claimed, None, None)
         })
+        .map(|ended| ended.code)
         .ok();
     let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
     let good = fs::read_to_string(home.good()).unwrap_or_default();
@@ -123,7 +272,7 @@ exit 2";
     let left = locks::hold_run(&home).and_then(|run| {
         let (claimed, _) = claim(&home, Start::New, None)?;
         let session = home.session(&claimed.id);
-        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?;
+        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?.code;
         let log = fs::read_to_string(run.dir().log()).ok();
         Ok((code, session.path().exists(), log))
     });
@@ -190,7 +339,8 @@ exit 75"
             claimed,
             None,
             None,
-        )?;
+        )?
+        .code;
         let started = fs::read_to_string(home.root().join("started"))?;
         Ok((code, started, left, refused))
     });
@@ -238,7 +388,8 @@ touch \"$RIG_RUN/ready\"",
             claimed,
             None,
             None,
-        )?;
+        )?
+        .code;
         Ok((code, fs::read_to_string(home.root().join("starts"))?))
     });
     fs::remove_dir_all(home.root()).ok();
@@ -278,7 +429,7 @@ touch \"$RIG_RUN/ready\"",
             ..Invocation::default()
         };
         let (claimed, _) = claim(&home, Start::New, None)?;
-        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?;
+        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?.code;
         Ok((code, fs::read_to_string(home.root().join("starts"))?))
     });
     fs::remove_dir_all(home.root()).ok();

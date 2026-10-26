@@ -143,10 +143,8 @@ uses rig-basics' services and contract types (`NeedsApproval`, `Preview`,
 ratatui. The agent builds from
 a rig checkout (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
 
-`/reload` (or the `reload` tool) rebuilds and restarts in the session once
-no turn runs; a failed build keeps the running one, a crash rolls back. A
-reload the model asked for reports the outcome to that agent in one message
-that starts a turn (`rig_basics::reload`'s `ReloadAsked`).
+`/reload` rebuilds and restarts in the session once no turn runs; a failed
+build keeps the running one, a crash rolls back.
 
 # How a plugin steps in: effects and stages
 

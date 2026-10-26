@@ -120,8 +120,7 @@ plugin = "rig_basics::coding_tools::remote::RemoteHostsPlugin"
 # crate = "rig-basics"
 # plugin = "rig_basics::checkpoint::CheckpointPlugin"
 
-# /reload and the reload tool, with which the agent rebuilds itself, and the
-# system prompt's fixed section on how the agent writes plugins.
+# /reload, which rebuilds the agent with this list and restarts it.
 # Without it the agent runs the build it started with.
 [[plugin]]
 crate = "rig-basics"

@@ -132,7 +132,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         .and_then(|command| report.command(command));
     let headless =
         invocation.is_headless() || !terminal || command.is_some_and(|command| !command.terminal);
-    launch(
+    let ended = launch(
         home,
         run.dir(),
         &invocation,
@@ -140,7 +140,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         claimed,
         notice,
         build_failure,
-    )
+    )?;
+    if let Some(said) = ended.said {
+        eprintln!("{said}");
+    }
+    Ok(ended.code)
 }
 
 /// The session `--resume` names, by id or name ([`Home::find`]), or a new
@@ -187,7 +191,7 @@ fn next_build(home: &Home, session: &SessionId) -> Option<PathBuf> {
 }
 
 /// Starts the agent of `claimed` with the build [`pick`] finds, again on
-/// the reload code, and returns its exit code. `notice` and
+/// the reload code, and returns how it ended. `notice` and
 /// `build_failure` go to the first start.
 fn launch(
     home: &Home,
@@ -197,7 +201,7 @@ fn launch(
     mut claimed: Claimed,
     mut notice: Option<String>,
     mut build_failure: Option<String>,
-) -> Result<ExitCode> {
+) -> Result<Ended> {
     let launcher = std::env::current_exe()?;
     // The secrets asked for, for every restart: asked whenever someone is
     // at the terminal, whatever the front, so a command typed there can be
@@ -234,7 +238,7 @@ fn launch(
                 }
                 let Some(answer) = ask_secret(&secret)? else {
                     claimed.discard_if_unsaved(home);
-                    return Ok(ExitCode::from(INTERRUPTED));
+                    return Ok(Ended::quiet(ExitCode::from(INTERRUPTED)));
                 };
                 answers.insert(variable, answer);
             }
@@ -335,65 +339,139 @@ fn launch(
         } else {
             directory.log()
         };
-        if !rejected && (status.success() || headless) {
-            return Ok(exit_code(status));
+        let refusal = fs::read_to_string(run.refusal()).ok();
+        if !rejected && headless {
+            return Ok(Ended::quiet(exit_code(status)));
+        }
+        let resume = started
+            .then(|| resume_command(home, &session, refusal.is_some()))
+            .flatten();
+        if !rejected && status.success() {
+            let said = resume.map(|resume| format!("To resume this session: {resume}"));
+            // The agent left the terminal as it found it; the line needs
+            // it out of the full screen in case it did not.
+            if said.is_some() {
+                restore_terminal();
+            }
+            return Ok(Ended::new(status, said));
         }
         if !headless {
             restore_terminal();
         }
         if !rejected {
-            let refusal = fs::read_to_string(run.refusal()).ok();
-            // A refused session would be refused again.
-            let resumable = directory.is_saved() && refusal.is_none();
             let lost = refusal.filter(|_| kept_screen);
             let log = Some(log.as_path()).filter(|log| log.exists());
-            let said = stopped(status, &session, resumable, lost.as_deref(), log);
-            eprintln!("{said}");
-            return Ok(exit_code(status));
+            let said = stopped(status, resume.as_deref(), lost.as_deref(), log);
+            return Ok(Ended::new(status, Some(said)));
         }
         if !home.good().exists() {
-            eprintln!(
+            let said = format!(
                 "The new build stopped during startup ({status}) and there is no previous \
                  build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
             );
-            return Ok(exit_code(status));
+            return Ok(Ended::new(status, Some(said)));
         }
         let message = format!(
             "The new build stopped during startup ({status}); rolled back to the previous \
              build. `rig build` tries it again. Log: {}",
             log.display()
         );
-        eprintln!("{message}");
         // A one-shot run is not run twice, its output already out, unless
         // its agent reloaded: the restart tells the agent of the rollback.
         if !again {
-            return Ok(exit_code(status));
+            return Ok(Ended::new(status, Some(message)));
         }
+        eprintln!("{message}");
         kept_screen = false;
         notice = Some(message);
         reason = StartReason::Restarted;
     }
 }
 
-/// What the launcher says when the agent of `session` stopped with a
-/// failure: the `refusal` the agent said where it is no longer seen, where
-/// its log is when it kept one and, when the session can be resumed, how.
+/// How the launcher's runs of a session ended: the exit code, and what the
+/// launcher says last, once the terminal is restored.
+#[derive(Debug, PartialEq)]
+struct Ended {
+    code: ExitCode,
+    said: Option<String>,
+}
+
+impl Ended {
+    /// The end of an agent that exited with `status`, followed by `said`.
+    fn new(status: ExitStatus, said: Option<String>) -> Self {
+        Self {
+            code: exit_code(status),
+            said,
+        }
+    }
+
+    /// An end with `code` and nothing said.
+    fn quiet(code: ExitCode) -> Self {
+        Self { code, said: None }
+    }
+}
+
+/// What the launcher says when the agent stopped with a failure: the
+/// `refusal` the agent said where it is no longer seen, where its log is
+/// when it kept one and, when the session can be resumed, the `resume`
+/// command.
 fn stopped(
     status: ExitStatus,
-    session: &SessionId,
-    resumable: bool,
+    resume: Option<&str>,
     refusal: Option<&str>,
     log: Option<&Path>,
 ) -> String {
     let refusal = refusal.unwrap_or_default();
-    let resume = if resumable {
-        format!(" `rig --resume {session}` resumes the session where it stopped.")
-    } else {
-        String::new()
-    };
+    let resume = resume.map_or_else(String::new, |resume| {
+        format!(" `{resume}` resumes the session where it stopped.")
+    });
     let log = log.map_or_else(String::new, |log| format!(" Log: {}", log.display()));
     format!("{refusal}The agent stopped ({status}).{resume}{log}")
+}
+
+/// The command that resumes `session`, when it is saved and was not
+/// `refused` (a refused session would be refused again). It names the
+/// session by its name, single-quoted for the shell, when [`Home::find`]
+/// finds this session by it; by its id when the name is not unique, could
+/// be read as an id or an option, or holds a control or format character.
+/// The quoting is POSIX shell's, as the launcher runs on Linux and macOS.
+fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<String> {
+    let directory = home.session(session);
+    if refused || !directory.is_saved() {
+        return None;
+    }
+    let name = directory.name().filter(|name| {
+        !name.starts_with('-')
+            && !name.chars().any(|c| c.is_control() || is_format(c))
+            && name.parse::<SessionId>().is_err()
+            && home.find(name).as_ref() == Ok(session)
+    });
+    Some(match name {
+        Some(name) => format!("rig --resume '{}'", name.replace('\'', r"'\''")),
+        None => format!("rig --resume {session}"),
+    })
+}
+
+/// Whether `c` is an invisible Unicode format character, line or paragraph
+/// separator, or variation selector, such as a bidi override, which shows a
+/// name otherwise than it is typed.
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}'
+            | '\u{61c}'
+            | '\u{180b}'..='\u{180f}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{fe00}'..='\u{fe0f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+            | '\u{e0100}'..='\u{e01ef}'
+    )
 }
 
 /// The session the agent asked to run next in `directory`'s switch file,
