@@ -559,7 +559,7 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
     let (control, meta) = (KeyModifiers::CONTROL, KeyModifiers::ALT);
     vec![
         (ctrl('c'), "Clear the input", Do::Clear),
-        (ctrl('d'), "Quit: twice on an empty input", Do::Exit),
+        (ctrl('d'), "Quit, on an empty input", Do::Exit),
         (ctrl('j'), "New line", Do::NewLine),
         (with(KeyModifiers::SHIFT, K::Enter), "New line", Do::NewLine),
         (with(meta, K::Enter), "New line", Do::NewLine),

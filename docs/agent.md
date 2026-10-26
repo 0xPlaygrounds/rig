@@ -80,7 +80,7 @@ The input takes several lines. Enter sends; Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line; Up and Down move between lines and through the
 prompts sent before (kept in `RIG_HOME/data/tui/history.jsonl`); the usual
 emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and
-Ctrl+D pressed twice on an empty input quits. A
+Ctrl+D on an empty input quits. A
 leading `/` completes command names and `@` completes the project's paths
 (skipping what `.gitignore` leaves out); Tab or Enter takes the selected one.
 A command that is unknown or refused comes back in the input with the reason,

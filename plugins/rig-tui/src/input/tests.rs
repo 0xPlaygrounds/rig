@@ -310,8 +310,8 @@ fn keys_type_into_the_editor_of_the_panel_that_has_them() {
 struct Quits(usize);
 
 #[test]
-fn ctrl_d_twice_on_an_empty_input_quits_unless_the_moment_passed() {
-    use crate::tests::{press, type_text, view_app};
+fn ctrl_d_on_an_empty_input_quits_and_on_a_draft_does_nothing() {
+    use crate::tests::{press, type_text, typed, view_app};
     use rig_harness::prelude::Exit;
 
     let (mut app, _) = view_app();
@@ -319,14 +319,8 @@ fn ctrl_d_twice_on_an_empty_input_quits_unless_the_moment_passed() {
         .add_observer(|_: On<Exit>, mut quits: ResMut<Quits>| quits.0 += 1);
     let quits = |app: &App| app.world().resource::<Quits>().0;
     type_text(&mut app, "draft");
-    press(&mut app, "ctrl+d ctrl+d");
-    assert_eq!(quits(&app), 0, "a typed input is kept");
+    press(&mut app, "ctrl+d");
+    assert_eq!((quits(&app), typed(&app).as_str()), (0, "draft"));
     press(&mut app, "ctrl+c ctrl+d");
-    assert_eq!(quits(&app), 0, "the first press only arms");
-    let long_ago = std::time::Instant::now().checked_sub(super::EXIT_WINDOW * 2);
-    app.world_mut().resource_mut::<TuiView>().exit_armed = long_ago;
-    press(&mut app, "ctrl+d");
-    assert_eq!(quits(&app), 0, "once the moment passed, a press arms again");
-    press(&mut app, "ctrl+d");
     assert_eq!(quits(&app), 1);
 }

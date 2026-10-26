@@ -456,10 +456,10 @@ fn hint(turn_running: bool, panel_keys: bool) -> &'static str {
     match (panel_keys, turn_running) {
         (true, _) => " A panel has the keys · Esc gives them back ",
         (false, true) => {
-            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D twice quits "
+            " Enter steers · Tab sends after the turn · Esc stops · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D quits "
         }
         (false, false) => {
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D twice quits "
+            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files · Ctrl+D quits "
         }
     }
 }
