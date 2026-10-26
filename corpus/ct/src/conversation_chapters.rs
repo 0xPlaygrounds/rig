@@ -587,6 +587,7 @@ fn chapters_command(
                 line.turn_range(),
                 line.tokens
             )),
+            more: None,
             checked: false,
         });
     }

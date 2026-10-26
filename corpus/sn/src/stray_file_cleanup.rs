@@ -332,6 +332,7 @@ fn measured(
                 label: file.path.clone(),
                 command: String::new(),
                 detail: Some(size(file.size)),
+                more: None,
                 checked: looks_scratch(&settings.scratch, &file.path),
             });
         }
@@ -501,6 +502,7 @@ fn batches_listed(
             label: batch.files.join(", "),
             command: format!("{RESTORE} {}", batch.id),
             detail: Some(format!("batch {}", batch.id)),
+            more: None,
             checked: false,
         });
     }

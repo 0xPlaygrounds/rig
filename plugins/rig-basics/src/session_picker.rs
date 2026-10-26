@@ -22,7 +22,7 @@
 //! ```
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{self, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -87,8 +87,7 @@ impl SessionEntry {
         }
     }
 
-    /// One line: its name or title, its labels, its listed values and its
-    /// directory.
+    /// One line: its name or title, its labels and its listed values.
     pub fn label(&self) -> String {
         let meta = &self.meta;
         let mut label = match (&self.name, meta.title.as_str()) {
@@ -104,15 +103,51 @@ impl SessionEntry {
         for text in shown.filter(|text| !text.is_empty()) {
             label.push_str(&format!("  · {text}"));
         }
-        if let Some(directory) = &self.directory {
-            label.push_str(&format!("  · {}", tilde(directory)));
-        }
         label
     }
 
-    /// What is shown whole beside the label: how long ago it changed.
+    /// What is shown beside the label: the last two parts of its
+    /// directory, as `…/rig-drive/work` (the whole directory when that is
+    /// no longer), and how long ago it changed.
     pub fn detail(&self) -> String {
-        ago(self.updated.elapsed().unwrap_or_default())
+        let ago = ago(self.updated.elapsed().unwrap_or_default());
+        match &self.directory {
+            Some(directory) => format!("{} · {ago}", compact(directory)),
+            None => ago,
+        }
+    }
+
+    /// What is shown when the user asks for more: its whole
+    /// [`label`](Self::label), then its whole directory.
+    pub fn more(&self) -> String {
+        match &self.directory {
+            Some(directory) => format!("{}\n{}", self.label(), tilde(directory)),
+            None => self.label(),
+        }
+    }
+}
+
+/// `path` as [`tilde`] shows it, cut to its last two parts after `…/` when
+/// that is shorter.
+fn compact(path: &Path) -> String {
+    let shown = tilde(path);
+    let parts = Path::new(&shown)
+        .components()
+        .filter_map(|part| match part {
+            path::Component::Normal(part) => Some(part.to_string_lossy()),
+            _ => None,
+        });
+    let compact = match parts.collect::<Vec<_>>().as_slice() {
+        [.., parent, last] => {
+            let separator = path::MAIN_SEPARATOR;
+            format!("…{separator}{parent}{separator}{last}")
+        }
+        _ => return shown,
+    };
+    // `~/rig/work` says more than `…/rig/work`, in as many columns.
+    match compact.chars().count() < shown.chars().count() {
+        true => compact,
+        false => shown,
     }
 }
 
@@ -120,7 +155,7 @@ impl SessionEntry {
 fn tilde(path: &Path) -> String {
     match std::env::home_dir().and_then(|home| path.strip_prefix(home).ok().map(Path::to_owned)) {
         Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Some(rest) => format!("~/{}", rest.display()),
+        Some(rest) => format!("~{}{}", path::MAIN_SEPARATOR, rest.display()),
         None => path.display().to_string(),
     }
 }
@@ -133,9 +168,9 @@ fn tilde(path: &Path) -> String {
 /// read `Picked` (the item's position is in `Chosen`) and [`SessionPicked`]
 /// on the same entity. A session's label holds its labels and listed values
 /// (rig-harness' `SavedAs::listed`). The items are the `Picker`'s, filled in
-/// [`SessionPickerSystems`]: a system after it may change their labels and
-/// details, but not add, remove or reorder them, as a pick names the
-/// session at the item's position. A [`SessionFilter`] matches the labels
+/// [`SessionPickerSystems`]: a system after it may change their labels,
+/// details and more, but not add, remove or reorder them, as a pick names the
+/// session at the item's position. A [`SessionFilter`] matches the text
 /// the fill wrote, not a later system's.
 #[derive(Component, Clone, Debug)]
 #[require(Picker, SessionPicked, SessionView)]
@@ -186,7 +221,7 @@ pub struct SessionFilter {
     pub running: bool,
     /// Only the sessions that ran in this directory.
     pub project: Option<PathBuf>,
-    /// Only the sessions whose label holds this text.
+    /// Only the sessions whose label, detail or more holds this text.
     pub text: String,
 }
 
@@ -204,12 +239,16 @@ pub struct SessionPicked {
 
 impl SessionFilter {
     /// Whether `session`, shown as `shown`, passes.
-    fn passes(&self, session: &SessionEntry, shown: &(String, Option<String>)) -> bool {
+    fn passes(&self, session: &SessionEntry, shown: &Shown) -> bool {
         let text = self.text.to_lowercase();
         let holds = |part: &str| part.to_lowercase().contains(&text);
+        let (label, detail, more) = shown;
         (self.running || !session.running)
             && (self.project.is_none() || session.directory == self.project)
-            && (text.is_empty() || holds(&shown.0) || shown.1.as_deref().is_some_and(holds))
+            && (text.is_empty()
+                || holds(label)
+                || detail.as_deref().is_some_and(holds)
+                || more.as_deref().is_some_and(holds))
     }
 }
 
@@ -469,6 +508,9 @@ fn read_done(
     }
 }
 
+/// An item's label, detail and more.
+type Shown = (String, Option<String>, Option<String>);
+
 /// Fills each session picker whose view or filter changed in place with
 /// what its view read that it lists, and keeps in the view what each item
 /// names.
@@ -500,13 +542,14 @@ fn fill_one(
         _ => view.home.session(&session.id),
     };
     let mut made: Vec<(PickItem, SessionPicked, SessionDir)> = Vec::new();
-    let mut push = |(label, detail), picked: SessionPicked, at: SessionDir| {
+    let mut push = |(label, detail, more): Shown, picked: SessionPicked, at: SessionDir| {
         let command = placeholders(&picker.command, &picked, paths);
         made.push((
             PickItem {
                 label,
                 command,
                 detail,
+                more,
                 checked: false,
             },
             picked,
@@ -522,7 +565,7 @@ fn fill_one(
                     agent: Some(view.agent.clone()),
                     entry: Some(entry.id),
                 };
-                let shown = (excerpt(&entry), Some(entry.id.to_string()));
+                let shown = (excerpt(&entry), Some(entry.id.to_string()), None);
                 push(shown, picked, dir(session));
             }
         }
@@ -530,7 +573,11 @@ fn fill_one(
             for session in &view.sessions {
                 let mut session = session.clone();
                 session.running |= this(&session);
-                let shown = (session.label(), Some(session.detail()));
+                let shown = (
+                    session.label(),
+                    Some(session.detail()),
+                    Some(session.more()),
+                );
                 if !picker.filter.passes(&session, &shown) {
                     continue;
                 }

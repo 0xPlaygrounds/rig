@@ -52,8 +52,8 @@ pub enum ChoiceAction {
     /// Unticks every item.
     TickNone,
     /// Shows or hides what the selected choice says beyond its label
-    /// ([`Choice::more`](rig_harness::ask::Choice::more)); a [`Picker`]'s
-    /// items say nothing more.
+    /// ([`Choice::more`](rig_harness::ask::Choice::more), or a [`Picker`]
+    /// item's [`more`](rig_harness::pick::PickItem::more)).
     More,
     /// What Enter does.
     Answer,
@@ -75,7 +75,7 @@ pub enum ChoiceAction {
 /// - **Tab** ticks the selected row in one that takes several (or the
 ///   choice a typed note goes with). Once anything is ticked, Enter
 ///   answers exactly the ticked rows.
-/// - **Right** and **Left** show and hide a choice's
+/// - **Right** and **Left** show and hide a choice's or an item's
 ///   [`more`](rig_harness::ask::Choice::more).
 /// - **Shift+Up** and **Shift+Down** scroll a long body; **PageUp** and
 ///   **PageDown** page the list. A picker adds keys with [`ChoiceKeys`].
@@ -203,14 +203,17 @@ impl Listing<'_> {
         }
     }
 
-    /// The rows that `filter` leaves: the items whose label holds every
-    /// word of it, ignoring case, then, for free text, the typed answer.
+    /// The rows that `filter` leaves: the items whose label, detail or more
+    /// holds every word of it, ignoring case, then, for free text, the
+    /// typed answer.
     pub(crate) fn rows(&self, filter: &str) -> Vec<Row> {
         let lower = filter.to_lowercase();
         let mut rows: Vec<Row> = (self.items.iter().enumerate())
             .filter(|(_, item)| {
-                let label = item.label.to_lowercase();
-                lower.split_whitespace().all(|word| label.contains(word))
+                let said = [Some(item.label), item.detail, item.more];
+                let said = said.into_iter().flatten().collect::<Vec<_>>();
+                let said = said.join("\n").to_lowercase();
+                lower.split_whitespace().all(|word| said.contains(word))
             })
             .map(|(index, _)| Row::Item(index))
             .collect();
@@ -254,7 +257,7 @@ impl Choices<'_, '_> {
                         label: &item.label,
                         detail: item.detail.as_deref(),
                         checked: item.checked,
-                        more: None,
+                        more: item.more.as_deref(),
                     })
                     .collect(),
                 free_text: picker.free_text,
@@ -644,9 +647,9 @@ fn answer(choosing: &PickerInput, shown: &Listing<'_>, rows: &[Row]) -> Option<O
 pub(crate) struct PreviewPane;
 
 /// Keeps a transcript pane over the conversation a picker shown previews
-/// ([`PickPreview::Conversation`]) in the right of the picker's box,
-/// scrolled to its entry, and none once the picker is closed or previews
-/// something else.
+/// ([`PickPreview::Conversation`]) in the right half of the picker, above
+/// its keys, scrolled to its entry, and none once the picker is closed or
+/// previews something else.
 pub(crate) fn follow_previews(
     showing: Query<(Entity, &PickerInput, Ref<PickPreview>)>,
     panes: Query<(Entity, &ChildOf), With<PreviewPane>>,

@@ -451,9 +451,9 @@ fn a_questions_own_keys_tick_and_enter_answers_exactly_the_ticked() {
     press(&mut app, "n enter");
     app.world_mut().spawn((ask(), keys, ForAgent(agent)));
     app.update();
-    // On the typed-answer row, `a` types; the ticks go with the note.
+    // On the typed-answer row, `d` types; the ticks go with the note.
     press(&mut app, "down down");
-    type_text(&mut app, "a");
+    type_text(&mut app, "d");
     // Typing selects the first row the filter leaves; go back to the note.
     press(&mut app, "down enter");
     let answered = |answer: Answer| ("Approve these calls?".to_owned(), Some(answer));
@@ -463,7 +463,7 @@ fn a_questions_own_keys_tick_and_enter_answers_exactly_the_ticked() {
         [
             answered(Answer::choice("1")),
             answered(Answer::choices(none)),
-            answered(Answer::choices(["0", "1"]).with_text("a")),
+            answered(Answer::choices(["0", "1"]).with_text("d")),
         ]
     );
 }
@@ -552,4 +552,83 @@ fn a_pickers_preview_is_drawn_beside_its_list() {
     let drawn = screen(&app);
     assert!(drawn.contains("a saved session"), "{drawn}");
     assert!(!drawn.contains("why does the parser"), "{drawn}");
+}
+
+#[test]
+fn a_previewing_picker_takes_the_screen_over_its_keys_row() {
+    use rig_core::completion::Message;
+    use rig_harness::pick::PickPreview;
+
+    use crate::{TuiFrame, TuiTestScreen};
+
+    let conversation = PickPreview::Conversation {
+        conversation: rig_core::conversation::Conversation::from_messages([Message::user(
+            "why does the parser drop tabs?",
+        )]),
+        at: None,
+    };
+    let text = PickPreview::Text("why does the parser drop tabs?".into());
+    for (width, height) in [(60, 30), (140, 50)] {
+        for preview in [conversation.clone(), text.clone()] {
+            let (mut app, agent) = view_app();
+            app.insert_resource(TuiTestScreen::new(width, height));
+            if let Some(mut behind) = app.world_mut().get_mut::<Conversation>(agent) {
+                behind.push(Message::user("text from the transcript behind"));
+            }
+            let picker = Picker::new("Sessions").item("fix the parser", "resume a");
+            app.world_mut().spawn((picker, preview));
+            app.update();
+            app.update();
+            let rows = app.world().resource::<TuiTestScreen>().rows();
+            assert!(
+                rows.iter().all(|row| !row.contains("from the transcript")),
+                "{rows:#?}"
+            );
+            let keys = rows.last().map(String::as_str).unwrap_or_default();
+            assert_eq!(
+                keys.trim(),
+                "type to filter, Enter picks, Esc closes",
+                "{rows:#?}"
+            );
+            assert!(
+                rows.iter().any(|row| row.contains("why does the parser")),
+                "{rows:#?}"
+            );
+            let world = app.world_mut();
+            let pane = world
+                .query_filtered::<Entity, With<PreviewPane>>()
+                .iter(world)
+                .next();
+            let area = pane.and_then(|pane| world.resource::<TuiFrame>().area(pane));
+            assert!(
+                area.is_none_or(|area| area.bottom() < height),
+                "{area:?} {rows:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_narrow_keys_row_leaves_out_its_first_keys() {
+    use rig_harness::pick::PickPreview;
+
+    use crate::TuiTestScreen;
+
+    let (mut app, _) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 30));
+    let mut picker = Picker::new("Plugins").item("rig_basics::subagents::SubagentsPlugin", "");
+    if let Some(item) = picker.items.last_mut() {
+        item.more = Some("(rig-basics) Subagents: ".repeat(60));
+    }
+    app.world_mut()
+        .spawn((picker, PickPreview::Text("a plugin".into())));
+    app.update();
+    press(&mut app, "right");
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    let keys = rows.last().map(String::as_str).unwrap_or_default();
+    assert_eq!(
+        keys.trim(),
+        "Shift+↑↓ scrolls, ← hides more, Enter picks, Esc closes",
+        "{rows:#?}"
+    );
 }
