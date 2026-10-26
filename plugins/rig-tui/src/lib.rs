@@ -226,6 +226,7 @@ pub fn add_view(app: &mut App) {
         .add_observer(clipboard::type_pasted)
         .add_observer(render::redraw_on_remove)
         .add_systems(Startup, (view::load_notices, view::load_draft))
+        .add_systems(TuiKeys, history::seed_shown.before(InputSystems::Filter))
         .add_systems(
             PreUpdate,
             (

@@ -78,7 +78,8 @@ instead when set.
 
 The input takes several lines. Enter sends; Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line; Up and Down move between lines and through the
-prompts sent before (kept in `RIG_HOME/data/tui/history.jsonl`); the usual
+prompts sent before in this project, each once, the shown conversation's
+first (kept in `RIG_HOME/projects/<name>-<key>/tui/history.jsonl`); the usual
 emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and
 Ctrl+D pressed twice on an empty input quits. A
 leading `/` completes command names and `@` completes the project's paths
@@ -383,8 +384,8 @@ processes can share one:
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |
 | `defaults.json` | The last chosen model and reasoning, which a new session starts with. |
-| `data/` | Plugins' data across sessions, such as the prompt history `data/tui/history.jsonl`. |
-| `projects/` | Plugins' data per project. |
+| `data/` | Plugins' data across sessions and projects. |
+| `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
 | `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
 | `spill/` | The whole output of a `shell` call that was cut. |
 | `agent.log` | The agent's log. |
