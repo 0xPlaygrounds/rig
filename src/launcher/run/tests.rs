@@ -146,6 +146,30 @@ touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
     quiet("never-started", &never_started, false);
 }
 
+/// A failed exit of a saved session says how to resume it only when its
+/// agent said it started.
+#[cfg(unix)]
+#[test]
+fn a_failed_exit_offers_the_resume_only_after_the_agent_started() {
+    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
+touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
+    let offers = |test: &str, agent: &str| {
+        let ended = interactive(test, &format!("{mark}\n{agent}\nexit 3"), false);
+        ended.map(|(ended, id)| {
+            let offered = ended
+                .said
+                .is_some_and(|said| said.contains(&format!("`rig --resume {id}`")));
+            (ended.code, offered)
+        })
+    };
+    let failed = ExitCode::from(3);
+    assert_eq!(
+        offers("failed-started", "touch \"$RIG_RUN/ready\""),
+        Some((failed, true))
+    );
+    assert_eq!(offers("failed-never-started", ":"), Some((failed, false)));
+}
+
 /// A home whose staged build is `trial` and whose good build is `good`:
 /// shell scripts that add their name to the home's `ran` file and then run
 /// their body, which may use the launcher's environment.

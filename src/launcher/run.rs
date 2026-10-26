@@ -343,10 +343,10 @@ fn launch(
         if !rejected && headless {
             return Ok(Ended::quiet(exit_code(status)));
         }
+        let resume = started
+            .then(|| resume_command(home, &session, refusal.is_some()))
+            .flatten();
         if !rejected && status.success() {
-            let resume = started
-                .then(|| resume_command(home, &session, refusal.is_some()))
-                .flatten();
             let said = resume.map(|resume| format!("To resume this session: {resume}"));
             // The agent left the terminal as it found it; the line needs
             // it out of the full screen in case it did not.
@@ -359,7 +359,6 @@ fn launch(
             restore_terminal();
         }
         if !rejected {
-            let resume = resume_command(home, &session, refusal.is_some());
             let lost = refusal.filter(|_| kept_screen);
             let log = Some(log.as_path()).filter(|log| log.exists());
             let said = stopped(status, resume.as_deref(), lost.as_deref(), log);
