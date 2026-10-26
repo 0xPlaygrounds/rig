@@ -37,7 +37,8 @@ use rig_harness::main_agent::ShownAgent;
 
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
-use super::render::{LayoutSources, ShownConversation, Sources, decorate, lay_out_transcript};
+use super::render::{Showing, decorate, lay_out_rendered};
+use super::renderers::{RenderKey, RenderRequest, Renderers};
 use super::theme::Theme;
 use super::transcript::{Below, Part, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptView};
@@ -132,8 +133,8 @@ pub(crate) struct PaneState {
     pub(crate) width: u16,
     pub(crate) theme: Option<Theme>,
     pub(crate) source: Option<Entity>,
-    pub(crate) rendered:
-        std::collections::HashMap<super::renderers::RenderKey, super::renderers::RenderRequest>,
+    /// The outputs of its items outside any message.
+    pub(crate) rendered: std::collections::HashMap<RenderKey, RenderRequest>,
     /// Where it is scrolled.
     pub(crate) scroll: Scroll,
     /// The parts laid out last, whose items, top to bottom, the selection
@@ -224,9 +225,10 @@ pub(crate) fn lay_out_panes(
         .copied()
         .unwrap_or_default()
         .0;
-    let shown_agent = world.resource::<ShownAgent>().0;
-    let theme = *world.resource::<Theme>();
-    let mut sources = bevy_ecs::system::SystemState::<LayoutSources>::new(world);
+    let shown_agent = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
+    let Some(theme) = world.get_resource::<Theme>().copied() else {
+        return;
+    };
     for entity in entities {
         let Some(pane) = world.get::<TranscriptPane>(entity).cloned() else {
             continue;
@@ -245,65 +247,39 @@ pub(crate) fn lay_out_panes(
             continue;
         };
         let mut state = std::mem::take(stored.bypass_change_detection());
+        let agent = match &pane.source {
+            TranscriptSource::Shown => shown_agent,
+            TranscriptSource::Agent(agent) => Some(*agent),
+            TranscriptSource::Value(_) => None,
+        };
         if state.revision != revision
             || state.width != area.width
             || state.theme != Some(theme)
+            || state.source != agent
             || changed_panes.contains(&entity)
         {
             state.transcript.clear();
             state.revision = revision;
             state.width = area.width;
             state.theme = Some(theme);
-            state.rendered.clear();
-        }
-        let agent = match &pane.source {
-            TranscriptSource::Shown => shown_agent,
-            TranscriptSource::Agent(agent) => Some(*agent),
-            TranscriptSource::Value(_) => None,
-        };
-        if state.source != agent {
             state.source = agent;
-            state.transcript.clear();
             state.rendered.clear();
         }
-        let mut renderers = super::renderers::Renderers {
-            collecting: true,
-            ..Default::default()
-        };
-        *renderers.cached.get_mut() = std::mem::take(&mut state.rendered);
-        {
-            let batch = renderers.batch.get_mut();
-            batch.pane = Some(entity);
-            batch.agent = agent;
-            batch.width = area.width;
-        }
-        let mut parts = Vec::new();
-        for collect in [true, false] {
-            if !collect {
-                super::render::run_renderers(world, &mut renderers);
+        let showing = match (&pane.source, agent) {
+            (TranscriptSource::Value(conversation), _) => {
+                Showing::Value(conversation, entity, changed_panes.contains(&entity))
             }
-            let Ok(from) = sources.get(world) else {
-                continue;
-            };
-            let value = match &pane.source {
-                TranscriptSource::Value(conversation) => {
-                    let mut value = ShownConversation::value(conversation, entity);
-                    value.changed = changed_panes.contains(&entity);
-                    Some(value)
-                }
-                _ => None,
-            };
-            let live = agent.and_then(|agent| from.agent(agent, changed_agents.contains(&agent)));
-            let shown = value.or(live);
-            let inputs = Sources {
-                view: &view,
-                notices: from.notices(),
-                renderers: &renderers,
-                facts: from.facts(),
-                theme: from.theme(),
-            };
-            parts = lay_out_transcript(&mut state.transcript, &inputs, shown.as_ref(), area.width);
-        }
+            (_, Some(agent)) => Showing::Agent(agent, changed_agents.contains(&agent)),
+            (_, None) => Showing::Nothing,
+        };
+        let cached = std::mem::take(&mut state.rendered);
+        let mut renderers = Renderers::new((Some(entity), agent, area.width), cached);
+        let parts = lay_out_rendered(
+            world,
+            (&mut state.transcript, &mut renderers),
+            (&view, &showing, area.width),
+        )
+        .unwrap_or_default();
         state.rendered = renderers.cached.into_inner();
         let visible = state.transcript.visible(
             &parts,
@@ -311,21 +287,20 @@ pub(crate) fn lay_out_panes(
             &mut state.scroll,
             &view.highlights,
         );
-        let on_screen = visible.first..visible.first + visible.rows.len();
-        let drawn = state
-            .transcript
-            .laid_out(agent, &parts, &view.highlights, on_screen)
-            .at(area);
+        // Copying every row as text costs the whole transcript, so only a
+        // pane whose rows a plugin reads gets them.
+        let drawn = world.get::<DrawnTranscript>(entity).is_some().then(|| {
+            let on_screen = visible.first..visible.first + visible.rows.len();
+            state
+                .transcript
+                .laid_out(agent, &parts, &view.highlights, on_screen)
+                .at(area)
+        });
         let selected = view
             .selected
             .as_ref()
             .and_then(|item| state.transcript.rows_of(&parts, item));
-        state.rows = decorate(
-            visible.rows,
-            visible.first,
-            selected,
-            world.resource::<Theme>(),
-        );
+        state.rows = decorate(visible.rows, visible.first, selected, &theme);
         state.below = visible.below;
         state.parts = parts;
         state.area = area;
@@ -342,7 +317,7 @@ pub(crate) fn lay_out_panes(
                 old.set_width(area.width);
             }
         }
-        if let Some(mut old) = world.get_mut::<DrawnTranscript>(entity) {
+        if let Some((mut old, drawn)) = world.get_mut::<DrawnTranscript>(entity).zip(drawn) {
             old.set_if_neq(drawn);
         }
     }

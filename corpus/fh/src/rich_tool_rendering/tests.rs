@@ -53,7 +53,7 @@ fn drawn(world: &mut World, view: &ToolCallView<'_>) -> Vec<String> {
         output: view.output.map(str::to_owned),
         children: view.children.to_vec(),
     };
-    let key = RenderKey::Tool(view.call.id.clone());
+    let key = RenderKey::Tool(0, 0);
     let request = RenderRequest {
         input: RenderInput::Tool(input),
         output: RenderOutput {

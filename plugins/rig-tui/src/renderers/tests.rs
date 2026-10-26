@@ -209,13 +209,13 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
         let keys: Vec<&RenderKey> = seen.iter().flat_map(|(_, _, keys)| keys).collect();
         assert_eq!(
             keys.iter()
-                .filter(|key| matches!(key, RenderKey::Tool(_)))
+                .filter(|key| matches!(key, RenderKey::Streaming(_)))
                 .count(),
             1
         );
         assert!(
             keys.iter()
-                .all(|key| matches!(key, RenderKey::Tool(_) | RenderKey::Aside(_))),
+                .all(|key| matches!(key, RenderKey::Streaming(_) | RenderKey::Aside(_))),
             "unchanged messages entered the batch: {keys:?}"
         );
     }
@@ -380,4 +380,47 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
     assert!(rows.is_some_and(|rows| drawn.rows().get(rows).is_some_and(
         |rows| rows.len() == 1 && rows.first().is_some_and(|row| row.text == "edited note")
     )));
+}
+
+fn label_by_argument(mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.tools_mut("probe") {
+        let n = call.call.function.arguments.get("n").cloned();
+        output.lines = vec![Line::from(format!("probe {}", n.unwrap_or_default()))];
+    }
+}
+
+#[test]
+fn calls_sharing_a_provider_id_each_get_their_own_look() {
+    use crate::{TranscriptLayout, TranscriptView};
+    use rig_core::completion::{AssistantContent, AssistantMessage, Message};
+    use rig_ecs::agent::Conversation;
+
+    let (mut app, agent) = crate::tests::view_app();
+    let Ok(name) = ToolName::new("probe") else {
+        return;
+    };
+    app.add_systems(
+        TranscriptRender,
+        label_by_argument.in_set(RenderSystems::Render),
+    );
+    for n in [1, 2] {
+        let call = ToolCall::from_wire("same", ToolFunction::new(name.clone(), json!({ "n": n })));
+        let message = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call,
+        )]));
+        if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+            conversation.push(message);
+        }
+    }
+    let export = TranscriptLayout::lay_out(app.world_mut(), &TranscriptView::default(), agent, 60);
+    let rows: Vec<String> = export
+        .iter()
+        .flat_map(|drawn| drawn.rows().iter().map(|row| row.text.trim().to_owned()))
+        .collect();
+    let probes: Vec<&str> = rows
+        .iter()
+        .map(String::as_str)
+        .filter(|row| row.starts_with("probe"))
+        .collect();
+    assert_eq!(probes, ["probe 1", "probe 2"], "{rows:#?}");
 }

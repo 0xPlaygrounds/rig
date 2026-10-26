@@ -26,7 +26,7 @@ use rig_harness::rig_core::conversation::Note;
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, ChildCalls, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
+    Below, CallFacts, ChildCalls, Look, Part, Pass, Renderers, Scroll, StreamingCalls, Transcript,
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
@@ -212,24 +212,21 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
         })
         .in_set(RenderSystems::Render),
     );
-    let mut renderers = Renderers {
-        collecting: true,
-        ..Default::default()
-    };
+    let mut renderers = Renderers::default();
     let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
     let mut transcript = Transcript::default();
     let mut outputs = BTreeMap::new();
     for line in ["cc a.c", "cc b.c", "ld app"] {
         let text = outputs.entry(call.id.clone()).or_insert_with(String::new);
         text.push_str(&format!("{line}\n"));
-        renderers.collecting = true;
+        renderers.pass = Pass::Collect;
         drawn(
             &mut transcript,
             &conversation,
             (&calls, &outputs),
             &renderers,
         );
-        crate::render::run_renderers(app.world_mut(), &mut renderers);
+        renderers.run(app.world_mut());
         let shown = drawn(
             &mut transcript,
             &conversation,

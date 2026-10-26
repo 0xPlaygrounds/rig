@@ -27,7 +27,8 @@ use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
     AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
-    MessageView, Renderers, Role, ToolCallView, plugin_name, result_style, result_text, text_rows,
+    MessageView, Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style,
+    result_text, text_rows,
 };
 use super::theme::Theme;
 use super::view::{
@@ -688,7 +689,7 @@ impl Look<'_> {
     ) -> u64 {
         let hasher = &mut DefaultHasher::new();
         id.hash(hasher);
-        serde_json::to_vec(&author).unwrap_or_default().hash(hasher);
+        author.hash(hasher);
         self.hash_inside(index, hasher);
         let marks = self.marks.iter();
         marks
@@ -699,9 +700,8 @@ impl Look<'_> {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
-                    let (facts, took) = self.facts.of(&call.id);
-                    took.hash(hasher);
-                    serde_json::to_vec(&facts).unwrap_or_default().hash(hasher);
+                    // Its facts come with its running time.
+                    self.facts.of(&call.id).1.hash(hasher);
                     hash_children(self.children.get(&call.id), hasher);
                 }
             }
@@ -738,9 +738,7 @@ fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) 
     for child in children.into_iter().flatten() {
         (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
         (child.failed, &child.answer).hash(hasher);
-        serde_json::to_vec(&child.call)
-            .unwrap_or_default()
-            .hash(hasher);
+        child.call.as_ref().map(|call| &call.id).hash(hasher);
     }
 }
 
@@ -766,6 +764,37 @@ struct Cached {
     /// Whether its lines depend on the width, as a reply's table does, so
     /// a new width renders it again rather than only wrapping it.
     fitted: bool,
+}
+
+impl Cached {
+    /// Message `index` of `conversation` laid out in `look` at `usable`
+    /// columns; `None` past its end.
+    fn new(
+        conversation: &conversation::Conversation,
+        index: usize,
+        look_hash: u64,
+        (look, usable): (&Look<'_>, usize),
+    ) -> Option<Self> {
+        let messages = conversation.messages();
+        let message = messages.get(index)?;
+        let previous = index.checked_sub(1).and_then(|before| messages.get(before));
+        let next = messages.get(index + 1);
+        let (lines, line_marks) = message_lines(
+            message,
+            (conversation, index),
+            (previous.map(|m| &**m), next.map(|m| &**m)),
+            (look, usable),
+        );
+        let wrapped = wrap_marked(&lines, &line_marks, usable);
+        Some(Self {
+            message: message.clone(),
+            look: look_hash,
+            lines,
+            line_marks,
+            wrapped,
+            fitted: fitted(message),
+        })
+    }
 }
 
 /// Lines wrapped to a width: the rows, whether each continues the row
@@ -834,11 +863,15 @@ impl Transcript {
         look: &Look<'_>,
         width: u16,
     ) {
+        let usable = usize::from(width.max(1));
+        if look.renderers.pass == Pass::Finish {
+            self.finish(conversation, look, usable);
+            return;
+        }
         if self.agent != Some(agent) {
             self.agent = Some(agent);
             self.messages.clear();
         }
-        let usable = usize::from(width.max(1));
         let resized = self.width != width;
         if resized {
             self.width = width;
@@ -850,12 +883,7 @@ impl Transcript {
         let messages = conversation.messages();
         let digest = look.digest();
         let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
-        if !changed
-            && !refit
-            && looks_alike
-            && self.messages.len() == messages.len()
-            && (look.renderers.collecting || look.renderers.messages.borrow().is_empty())
-        {
+        if !changed && !refit && looks_alike && self.messages.len() == messages.len() {
             return;
         }
         // A message's look depends on it and its neighbours, so each is
@@ -869,43 +897,45 @@ impl Transcript {
             .collect();
         self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
-            let previous = index.checked_sub(1).and_then(|before| messages.get(before));
-            let (previous, next) = (
-                previous.map(|m| &**m),
-                messages.get(index + 1).map(|m| &**m),
-            );
             let look_hash = look.hash_message(
                 (index, conversation.id(index)),
                 message,
                 conversation.author(index),
             );
-            if self.messages.get(index).is_some_and(|cached| {
-                cached.look == look_hash
-                    && !(resized && cached.fitted)
-                    && (look.renderers.collecting
-                        || !look.renderers.messages.borrow().contains(&index))
-            }) && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
+            if self
+                .messages
+                .get(index)
+                .is_some_and(|cached| cached.look == look_hash && !(resized && cached.fitted))
+                && (index.saturating_sub(1)..=index + 1).all(|at| same.get(at) == Some(&true))
             {
                 continue;
             }
-            let (lines, line_marks) = message_lines(
-                message,
-                (conversation, index),
-                (previous, next),
-                (look, usable),
-            );
-            let wrapped = wrap_marked(&lines, &line_marks, usable);
-            let cached = Cached {
-                message: message.clone(),
-                look: look_hash,
-                lines,
-                line_marks,
-                wrapped,
-                fitted: fitted(message),
+            let Some(cached) = Cached::new(conversation, index, look_hash, (look, usable)) else {
+                continue;
             };
             match self.messages.get_mut(index) {
                 Some(slot) => *slot = cached,
                 None => self.messages.push(cached),
+            }
+        }
+    }
+
+    /// Lays out again the messages whose presentation the render systems
+    /// changed, from their outputs; the rest stand as the collecting pass
+    /// left them.
+    fn finish(
+        &mut self,
+        conversation: &conversation::Conversation,
+        look: &Look<'_>,
+        usable: usize,
+    ) {
+        for &index in look.renderers.messages.borrow().iter() {
+            let Some(slot) = self.messages.get_mut(index) else {
+                continue;
+            };
+            let look_hash = slot.look;
+            if let Some(cached) = Cached::new(conversation, index, look_hash, (look, usable)) {
+                *slot = cached;
             }
         }
     }
@@ -1339,7 +1369,10 @@ fn message_lines(
 ) -> (Vec<Line<'static>>, Marks) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
-    look.renderers.at(at, 0);
+    look.renderers.at(Place::Message {
+        index: at,
+        block: 0,
+    });
     let id = conversation.id(at);
     let author = conversation.author(at);
     let stopped = conversation
@@ -1368,7 +1401,10 @@ fn message_lines(
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
-                look.renderers.at(at, item_at);
+                look.renderers.at(Place::Message {
+                    index: at,
+                    block: item_at,
+                });
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     UserContent::Text(text) => {
@@ -1439,7 +1475,10 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
-                look.renderers.at(at, item_at);
+                look.renderers.at(Place::Message {
+                    index: at,
+                    block: item_at,
+                });
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     AssistantContent::Text(text) => {

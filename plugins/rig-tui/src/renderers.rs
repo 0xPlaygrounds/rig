@@ -19,7 +19,8 @@ use rig_harness::rig_core::conversation::Note;
 use super::{diff, markdown};
 use crate::Theme;
 
-/// A tool call and its result, if it has one yet, as a renderer sees them.
+/// A tool call and its result, if it has one yet, as a render system sees
+/// them through [`ToolRender::view`].
 pub struct ToolCallView<'a> {
     /// The call. While it streams, its arguments are what has come of them,
     /// and its id is not the final one.
@@ -53,7 +54,7 @@ pub struct ToolCallView<'a> {
 }
 
 /// A tool or model call that a tool call started, or one of those
-/// started, as a renderer sees it ([`ToolCallView::children`]).
+/// started, as a render system sees it ([`ToolCallView::children`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChildCall {
     /// How far below the call it is: 0 for one the call started itself.
@@ -234,7 +235,7 @@ impl<'a> ToolCallView<'a> {
         result_rows(progress.lines(), None, Style::new().yellow())
     }
 
-    /// The look of a tool with no renderer: the name, the arguments and
+    /// The look of a tool no render system draws: the name, the arguments and
     /// the result.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let arguments = serde_json::Value::Object(self.call.function.arguments.clone()).to_string();
@@ -244,7 +245,7 @@ impl<'a> ToolCallView<'a> {
     }
 }
 
-/// A note or a delivered text, as an entry renderer sees it: a plugin's
+/// A note or a delivered text, as a render system sees it: a plugin's
 /// [`Note`](rig_harness::rig_core::conversation::Note), or a text of an entry of the
 /// conversation another author wrote, such as a compaction summary.
 pub struct EntryView<'a> {
@@ -259,7 +260,7 @@ pub struct EntryView<'a> {
 }
 
 impl EntryView<'_> {
-    /// The look of a plugin with no renderer: `⤶` and the title, then
+    /// The look of a plugin's entry no render system draws: `⤶` and the title, then
     /// the text.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let mut lines = vec![Line::styled(
@@ -341,11 +342,11 @@ impl<'a> ContentBlock<'a> {
     }
 }
 
-/// A content block of a message, as a content renderer sees it: an
+/// A content block of a message, as a render system sees it: an
 /// image, audio, a video or a document, the user's or the model's. Its
 /// rows are the transcript item [`TranscriptItem::Content`], which a
 /// plugin finds in the [`DrawnTranscript`], such as to draw an image over
-/// the rows its renderer left blank.
+/// the rows its render system left blank.
 ///
 /// [`TranscriptItem::Content`]: crate::TranscriptItem::Content
 /// [`DrawnTranscript`]: crate::DrawnTranscript
@@ -361,7 +362,7 @@ pub struct ContentView<'a> {
 }
 
 impl ContentView<'_> {
-    /// The look of a kind with no renderer: its name in brackets, such as
+    /// The look of a kind no render system draws: its name in brackets, such as
     /// `[image]`.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let name = self.block.kind().name();
@@ -429,7 +430,7 @@ fn result_rows<'t>(
 /// Named line ranges within a rendered item.
 pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
 
-/// An aside of a conversation, as an aside renderer sees it.
+/// An aside of a conversation, as a render system sees it.
 pub struct AsideView<'a> {
     /// Its id.
     pub id: AsideId,
@@ -461,7 +462,7 @@ impl Role {
     }
 }
 
-/// A text of a message, as a message renderer sees it.
+/// A text of a message, as the transcript draws it.
 pub struct MessageView<'a> {
     /// Whose text it is.
     pub role: Role,
@@ -508,7 +509,8 @@ impl MessageView<'_> {
     }
 }
 
-/// A message the user or the model wrote, as a message decorator sees it.
+/// A message the user or the model wrote, as a render system decorating it
+/// sees it.
 pub struct DecoratedMessage<'a> {
     /// The message.
     pub message: &'a Message,
@@ -519,8 +521,8 @@ pub struct DecoratedMessage<'a> {
 }
 
 /// Runs presentation systems for the changed items of one pane or export.
-/// Systems may read agent data but write only presentation data. Request a
-/// advance [`RenderRevision`] when external renderer state changes.
+/// Systems may read agent data but write only presentation data. Advance
+/// [`RenderRevision`] when anything else a render system reads changes.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TranscriptRender;
 
@@ -536,8 +538,9 @@ pub enum RenderSystems {
     Edit,
 }
 
-/// Increment to invalidate cached presentation after renderer state changes.
-/// Advancing it also requests a terminal frame.
+/// Increment to invalidate cached presentation after state a render system
+/// reads outside its [`RenderBatch`] inputs changes, or after render systems
+/// were added or removed. Advancing it also requests a terminal frame.
 #[derive(Resource, Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RenderRevision(pub u64);
 
@@ -750,8 +753,11 @@ pub enum RenderInput {
 /// without persisted ids. These are presentation keys, not effect entities.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RenderKey {
-    /// A tool's call id, including a synthetic streaming id.
-    Tool(rig_core::message::CallId),
+    /// Message ordinal and block index of a tool call.
+    Tool(usize, usize),
+    /// A call streaming in, by its call id, which may be synthetic until the
+    /// provider sends the final one.
+    Streaming(rig_core::message::CallId),
     /// An aside id, including notes.
     Aside(AsideId),
     /// Message ordinal and block index.
@@ -867,23 +873,118 @@ pub(crate) fn add(app: &mut App) {
     );
 }
 
-/// Traversal bridge. The public batch owns every input and output; this only
-/// records which cached messages must be finished after systems render them.
+/// Traversal bridge between the transcript layout and [`TranscriptRender`].
+/// The public batch owns every input and output; this records where each
+/// request was made, so only the messages whose presentation a system
+/// changed are laid out again.
 #[derive(Default)]
 pub(crate) struct Renderers {
     pub(crate) batch: RefCell<RenderBatch>,
-    pub(crate) collecting: bool,
+    pub(crate) pass: Pass,
+    /// The messages to lay out again in [`Pass::Finish`].
     pub(crate) messages: RefCell<HashSet<usize>>,
+    /// Outputs of items outside any message, kept between frames.
     pub(crate) cached: RefCell<HashMap<RenderKey, RenderRequest>>,
-    pub(crate) external: RefCell<HashSet<RenderKey>>,
-    pub(crate) message: Cell<usize>,
-    pub(crate) block: Cell<usize>,
+    /// Where each request of this batch was made.
+    made: RefCell<HashMap<RenderKey, Place>>,
+    place: Cell<Place>,
+}
+
+/// Which traversal of a layout runs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Pass {
+    /// Draw default lines and collect the requests of the items not cached.
+    #[default]
+    Collect,
+    /// Lay out again the messages whose requests a system changed, drawing
+    /// the batch's outputs.
+    Finish,
+}
+
+/// Where the traversal is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Place {
+    /// Block `block` of message `index`, whose rows the transcript caches.
+    Message { index: usize, block: usize },
+    /// Outside any message: asides, the reply streaming in and its calls.
+    #[default]
+    Outside,
 }
 
 impl Renderers {
-    pub(crate) fn at(&self, message: usize, block: usize) {
-        self.message.set(message);
-        self.block.set(block);
+    /// Renderers for one layout of `pane`, or of an export, for `agent`'s
+    /// transcript at `width`, reusing the outputs `cached` outside messages.
+    pub(crate) fn new(
+        (pane, agent, width): (Option<Entity>, Option<Entity>, u16),
+        cached: HashMap<RenderKey, RenderRequest>,
+    ) -> Self {
+        let batch = RenderBatch {
+            pane,
+            agent,
+            width,
+            requests: HashMap::new(),
+        };
+        Self {
+            batch: RefCell::new(batch),
+            cached: RefCell::new(cached),
+            ..Default::default()
+        }
+    }
+
+    pub(crate) fn at(&self, place: Place) {
+        self.place.set(place);
+    }
+
+    /// The message and block of the item drawn now, inside a message.
+    fn in_message(&self) -> Option<(usize, usize)> {
+        match self.place.get() {
+            Place::Message { index, block } => Some((index, block)),
+            Place::Outside => None,
+        }
+    }
+
+    /// Runs [`TranscriptRender`] over the collected requests and switches to
+    /// [`Pass::Finish`]. Returns whether a system changed any output, so the
+    /// layout must run again; otherwise the collected layout stands.
+    pub(crate) fn run(&mut self, world: &mut World) -> bool {
+        let made = self.made.get_mut();
+        let (cached, messages) = (self.cached.get_mut(), self.messages.get_mut());
+        cached.retain(|key, _| made.get(key) == Some(&Place::Outside));
+        messages.clear();
+        self.pass = Pass::Finish;
+        let batch = std::mem::take(self.batch.get_mut());
+        if batch.requests.is_empty() {
+            return false;
+        }
+        let defaults: HashMap<RenderKey, RenderOutput> = batch
+            .requests
+            .iter()
+            .map(|(key, request)| (key.clone(), request.output.clone()))
+            .collect();
+        let previous = world.remove_resource::<RenderBatch>();
+        world.insert_resource(batch);
+        world.try_run_schedule(TranscriptRender).ok();
+        let batch = world.remove_resource::<RenderBatch>().unwrap_or_default();
+        if let Some(previous) = previous {
+            world.insert_resource(previous);
+        }
+        let made = self.made.get_mut();
+        let (cached, messages) = (self.cached.get_mut(), self.messages.get_mut());
+        let mut changed = false;
+        for (key, request) in &batch.requests {
+            let place = made.get(key).copied().unwrap_or_default();
+            if place == Place::Outside {
+                cached.insert(key.clone(), request.clone());
+            }
+            if defaults.get(key) != Some(&request.output) {
+                changed = true;
+                if let Place::Message { index, .. } = place {
+                    messages.insert(index);
+                }
+            }
+        }
+        *self.batch.get_mut() = batch;
+        changed
     }
 
     fn output(
@@ -892,40 +993,34 @@ impl Renderers {
         input: RenderInput,
         lines: Vec<Line<'static>>,
     ) -> (Vec<Line<'static>>, Decorated) {
-        if self.collecting {
-            let external = self.message.get() == usize::MAX;
-            if external {
-                self.external.borrow_mut().insert(key.clone());
-                if let Some(previous) = self
-                    .cached
-                    .borrow()
-                    .get(&key)
-                    .filter(|previous| previous.input == input)
+        match self.pass {
+            Pass::Collect => {
+                let place = self.place.get();
+                if place == Place::Outside
+                    && let Some(previous) = self
+                        .cached
+                        .borrow()
+                        .get(&key)
+                        .filter(|previous| previous.input == input)
                 {
+                    self.made.borrow_mut().insert(key, place);
                     return previous.output.drawn();
                 }
-            } else {
-                self.messages.borrow_mut().insert(self.message.get());
+                self.made.borrow_mut().insert(key.clone(), place);
+                let output = RenderOutput {
+                    lines: lines.clone(),
+                    decorations: Vec::new(),
+                };
+                let request = RenderRequest { input, output };
+                self.batch.borrow_mut().requests.insert(key, request);
+                (lines, Vec::new())
             }
-            self.batch.borrow_mut().requests.insert(
-                key,
-                RenderRequest {
-                    input,
-                    output: RenderOutput {
-                        lines: lines.clone(),
-                        decorations: Vec::new(),
-                    },
-                },
-            );
-            (lines, Vec::new())
-        } else {
-            self.batch
-                .borrow()
-                .requests
-                .get(&key)
-                .map(|r| r.output.drawn())
-                .or_else(|| self.cached.borrow().get(&key).map(|r| r.output.drawn()))
-                .unwrap_or((lines, Vec::new()))
+            Pass::Finish => {
+                let batch = self.batch.borrow();
+                let cached = self.cached.borrow();
+                let request = batch.requests.get(&key).or_else(|| cached.get(&key));
+                request.map_or((lines, Vec::new()), |request| request.output.drawn())
+            }
         }
     }
 
@@ -943,15 +1038,19 @@ impl Renderers {
             output: view.output.map(str::to_owned),
             children: view.children.to_vec(),
         };
-        self.output(
-            RenderKey::Tool(view.call.id.clone()),
-            RenderInput::Tool(input),
-            view.default_lines(),
-        )
+        let key = match self.place.get() {
+            Place::Message { index, block } => RenderKey::Tool(index, block),
+            Place::Outside => RenderKey::Streaming(view.call.id.clone()),
+        };
+        self.output(key, RenderInput::Tool(input), view.default_lines())
     }
 
+    /// A delivered text's lines; only messages hold one.
     pub(crate) fn entry(&self, view: &EntryView<'_>) -> Vec<Line<'static>> {
-        self.entry_at(RenderKey::Entry(self.message.get(), self.block.get()), view)
+        match self.in_message() {
+            Some((index, block)) => self.entry_at(RenderKey::Entry(index, block), view),
+            None => view.default_lines(),
+        }
     }
 
     fn entry_at(&self, key: RenderKey, view: &EntryView<'_>) -> Vec<Line<'static>> {
@@ -964,7 +1063,11 @@ impl Renderers {
             .0
     }
 
+    /// A content block's lines; only messages hold one.
     pub(crate) fn content(&self, view: &ContentView<'_>) -> Vec<Line<'static>> {
+        let Some((index, _)) = self.in_message() else {
+            return view.default_lines();
+        };
         let content = match view.block {
             ContentBlock::Image(v) => RenderContent::Image(v.clone()),
             ContentBlock::Audio(v) => RenderContent::Audio(v.clone()),
@@ -978,7 +1081,7 @@ impl Renderers {
             assistant: view.assistant,
         };
         self.output(
-            RenderKey::Content(self.message.get(), view.index),
+            RenderKey::Content(index, view.index),
             RenderInput::Content(input),
             view.default_lines(),
         )
@@ -1005,17 +1108,21 @@ impl Renderers {
         Some(self.output(key, RenderInput::Aside(input), Vec::new()).0)
     }
 
+    /// A message's decorations; none outside a message.
     pub(crate) fn message_decorations(
         &self,
         view: &DecoratedMessage<'_>,
     ) -> (Vec<Line<'static>>, Decorated) {
+        let Some((index, _)) = self.in_message() else {
+            return (Vec::new(), Vec::new());
+        };
         let input = MessageRender {
             message: view.message.clone(),
             id: view.id,
             author: view.author.cloned(),
         };
         self.output(
-            RenderKey::Message(self.message.get()),
+            RenderKey::Message(index),
             RenderInput::Message(input),
             Vec::new(),
         )

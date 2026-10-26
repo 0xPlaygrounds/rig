@@ -7,7 +7,7 @@
 //! What is typed searches as it is typed, ignoring case unless the query
 //! has a capital letter; `re:` makes the rest a regular expression. It
 //! searches the transcript as the view lays it out ([`TranscriptLayout`]),
-//! at the width it draws at: each line as its renderer draws it, its
+//! at the width it draws at: each line as its render systems draw it, its
 //! wrapped rows rejoined, the notices where they are drawn and the reply
 //! streaming in.
 //!
@@ -454,7 +454,7 @@ fn search_now(world: &mut World, bar: Entity) {
     }) else {
         return;
     };
-    let shown = world.resource::<ShownAgent>().0;
+    let shown = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
     let mut panes = world.query_filtered::<&TranscriptView, With<MainPane>>();
     let Ok(view) = panes.single(world).cloned() else {
         return;
@@ -513,7 +513,10 @@ fn type_in_bar(world: &mut World) {
     };
     // The bar takes the keys it does, as the panel with the keys; those
     // after an Esc are the input's again.
-    let events = std::mem::take(&mut world.resource_mut::<PendingInput>().0);
+    let Some(mut pending) = world.get_resource_mut::<PendingInput>() else {
+        return;
+    };
+    let events = std::mem::take(&mut pending.0);
     let mut kept = Vec::with_capacity(events.len());
     let (mut closing, mut typed) = (false, false);
     for item in events {
@@ -537,7 +540,9 @@ fn type_in_bar(world: &mut World) {
             }
         }
     }
-    world.resource_mut::<PendingInput>().0 = kept;
+    if let Some(mut pending) = world.get_resource_mut::<PendingInput>() {
+        pending.0 = kept;
+    }
     if closing {
         world.run_system_cached(close_bar).ok();
     } else if typed {

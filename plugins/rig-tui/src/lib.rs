@@ -17,7 +17,7 @@
 //!   [`DrawnTranscript`] and [`TranscriptLayout`] ([`pane`]); [`ShowAgent`]
 //!   shows another agent.
 //! - **Looks:** [`TranscriptRender`] for tool calls, notes, content
-//!   blocks, asides, message text and decorators.
+//!   blocks, asides, message text and decorations; [`BuildFailedLooks`].
 //! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]).
 //! - **Keys:** [`KeyBinding`], [`KeyFocus`] ([`keys`]); [`PendingInput`]
 //!   in [`InputSystems::Filter`] for keys before any binding, with the
@@ -136,7 +136,9 @@ impl Plugin for TuiViewPlugin {
         renderers::add(app);
         app.add_systems(
             TranscriptRender,
-            render_build_failed.in_set(RenderSystems::Render),
+            render_build_failed
+                .in_set(BuildFailedLooks)
+                .in_set(RenderSystems::Render),
         );
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
@@ -346,6 +348,12 @@ pub fn add_view(app: &mut App) {
         .add_observer(turns::turn_ended);
 }
 
+/// The system that draws a failed build's note, in
+/// [`RenderSystems::Render`]. A plugin that draws it its own way runs after
+/// it.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BuildFailedLooks;
+
 /// The look of a failed build's note, which the model reads too.
 fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::Style;
@@ -357,11 +365,12 @@ fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
     lines
 }
 
-#[cfg(test)]
-mod tests;
-
+/// Draws the notes of failed builds.
 fn render_build_failed(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(BUILD_ORIGIN) {
         output.lines = build_failed(&entry.view());
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -29,7 +29,9 @@ use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
 use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
-use super::renderers::{CallState, MessageView, Renderers, Role, ToolCallView, UNNAMED_HOLD};
+use super::renderers::{
+    CallState, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
+};
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
 use super::theme::Theme;
@@ -437,63 +439,83 @@ impl TranscriptLayout {
         agent: Entity,
         width: u16,
     ) -> Option<DrawnTranscript> {
-        let mut state = bevy_ecs::system::SystemState::<LayoutSources>::new(world);
+        world.get::<AgentId>(agent)?;
+        world.get::<Conversation>(agent)?;
         let mut transcript = Transcript::default();
-        let mut renderers = Renderers {
-            collecting: true,
-            ..Default::default()
-        };
-        renderers.batch.get_mut().agent = Some(agent);
-        renderers.batch.get_mut().width = width;
-        {
-            let from = state.get(world).ok()?;
-            let shown = from.agent(agent, true)?;
-            let sources = Sources {
-                view,
-                notices: from.notices(),
-                renderers: &renderers,
-                facts: from.facts(),
-                theme: from.theme(),
-            };
-            lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
-        }
-        run_renderers(world, &mut renderers);
-        let from = state.get(world).ok()?;
-        let shown = from.agent(agent, false)?;
-        let sources = Sources {
-            view,
-            notices: from.notices(),
-            renderers: &renderers,
-            facts: from.facts(),
-            theme: from.theme(),
-        };
-        let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
+        let mut renderers = Renderers::new((None, Some(agent), width), HashMap::new());
+        let showing = Showing::Agent(agent, true);
+        let parts = lay_out_rendered(
+            world,
+            (&mut transcript, &mut renderers),
+            (view, &showing, width),
+        )?;
         Some(transcript.laid_out(Some(agent), &parts, &view.highlights, 0..0))
     }
 }
 
-pub(crate) fn run_renderers(world: &mut World, renderers: &mut Renderers) {
-    let batch = std::mem::take(renderers.batch.get_mut());
-    let previous = world.remove_resource::<crate::RenderBatch>();
-    world.insert_resource(batch);
-    if !world.resource::<crate::RenderBatch>().requests.is_empty() {
-        world.try_run_schedule(crate::TranscriptRender).ok();
+/// What a layout draws.
+pub(crate) enum Showing<'v> {
+    /// This agent, live; its conversation changed since the last frame or
+    /// not.
+    Agent(Entity, bool),
+    /// A conversation no agent holds, in this pane; changed or not.
+    Value(&'v conversation::Conversation, Entity, bool),
+    /// No agent: the notices about every agent.
+    Nothing,
+}
+
+/// The [`LayoutSources`] state, kept between layouts.
+#[derive(Resource)]
+struct SourcesState(bevy_ecs::system::SystemState<LayoutSources<'static, 'static>>);
+
+/// Brings `transcript` up to date with `showing` through
+/// [`crate::TranscriptRender`] and returns its parts: one pass draws the
+/// default lines and collects the requests of what is not cached, the
+/// render systems run, and a second pass lays out only what they changed.
+/// `None` when the sources cannot be read.
+pub(crate) fn lay_out_rendered(
+    world: &mut World,
+    (transcript, renderers): (&mut Transcript, &mut Renderers),
+    (view, showing, width): (&TranscriptView, &Showing<'_>, u16),
+) -> Option<Vec<Part>> {
+    let mut state = match world.remove_resource::<SourcesState>() {
+        Some(state) => state,
+        None => SourcesState(bevy_ecs::system::SystemState::new(world)),
+    };
+    let pass = |world: &World,
+                state: &mut SourcesState,
+                transcript: &mut Transcript,
+                renderers: &Renderers| {
+        let from = state.0.get(world).ok()?;
+        let shown = match *showing {
+            Showing::Agent(agent, changed) => from.agent(agent, changed),
+            Showing::Value(conversation, pane, changed) => {
+                let mut value = ShownConversation::value(conversation, pane);
+                value.changed = changed;
+                Some(value)
+            }
+            Showing::Nothing => None,
+        };
+        let sources = Sources {
+            view,
+            notices: from.notices(),
+            renderers,
+            facts: from.facts(),
+            theme: from.theme(),
+        };
+        Some(lay_out_transcript(
+            transcript,
+            &sources,
+            shown.as_ref(),
+            width,
+        ))
+    };
+    let mut parts = pass(world, &mut state, transcript, renderers);
+    if parts.is_some() && renderers.run(world) {
+        parts = pass(world, &mut state, transcript, renderers);
     }
-    *renderers.batch.get_mut() = world
-        .remove_resource::<crate::RenderBatch>()
-        .unwrap_or_default();
-    if let Some(previous) = previous {
-        world.insert_resource(previous);
-    }
-    let external = renderers.external.get_mut();
-    let cached = renderers.cached.get_mut();
-    cached.retain(|key, _| external.contains(key));
-    for (key, request) in &renderers.batch.get_mut().requests {
-        if external.contains(key) {
-            cached.insert(key.clone(), request.clone());
-        }
-    }
-    renderers.collecting = false;
+    world.insert_resource(state);
+    parts
 }
 
 #[derive(SystemParam)]
@@ -613,7 +635,7 @@ pub(crate) fn lay_out_transcript(
     shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
-    sources.renderers.at(usize::MAX, 0);
+    sources.renderers.at(Place::Outside);
     let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
     let view = sources.view;
@@ -676,7 +698,7 @@ pub(crate) fn lay_out_transcript(
         }
     }
     transcript.update(shown.entity, conversation, shown.changed, &look, width);
-    sources.renderers.at(usize::MAX, 0);
+    sources.renderers.at(Place::Outside);
     let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
         let (notices, asides) = after.next().unwrap_or_default();
