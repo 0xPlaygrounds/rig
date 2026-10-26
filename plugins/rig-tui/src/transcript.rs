@@ -605,7 +605,7 @@ pub(crate) enum Inside<'a> {
 }
 
 /// An aside a look draws in the conversation of the shown agent: a
-/// plugin's note, or one of a kind with an aside renderer.
+/// plugin's note, or one of a kind a render system draws.
 pub(crate) struct ShownAside<'a> {
     /// Its id.
     pub(crate) id: AsideId,
@@ -619,7 +619,7 @@ impl ShownAside<'_> {
         TranscriptItem::Aside(self.id)
     }
 
-    /// The aside as its renderer sees it, in `theme`'s colors.
+    /// The aside as a render system sees it, in `theme`'s colors.
     pub(crate) fn view(&self, theme: Theme) -> AsideView<'_> {
         AsideView {
             id: self.id,
@@ -709,7 +709,7 @@ impl Look<'_> {
         hasher.finish()
     }
 
-    /// A hash of all of it but the renderers, whose changes
+    /// A hash of all of it but the render systems, whose changes
     /// [`Transcript::clear`] handles.
     fn digest(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -733,7 +733,7 @@ impl Look<'_> {
     }
 }
 
-/// Hashes what a call's renderer draws of `children`.
+/// Hashes what a call's look draws of `children`.
 fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) {
     for child in children.into_iter().flatten() {
         (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
@@ -1590,8 +1590,8 @@ fn content_lines(
 }
 
 /// Text an agent or a plugin sent, without the header the model reads:
-/// drawn by the renderer of the plugin that sent it, if it has one, else
-/// as where it came from and its start.
+/// drawn by the render system of the plugin that sent it, if it has one,
+/// else as where it came from and its start.
 fn delivered_lines(author: &Author, text: &str, look: &Look<'_>) -> Vec<Line<'static>> {
     let body = author
         .header()

@@ -1116,7 +1116,7 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
         .collect()
 }
 
-/// Whether a selection moves through `item`: all but a decorator's rows,
+/// Whether a selection moves through `item`: all but a decoration's rows,
 /// which belong to their call.
 pub(crate) fn selectable(item: &TranscriptItem) -> bool {
     !matches!(
@@ -1127,7 +1127,7 @@ pub(crate) fn selectable(item: &TranscriptItem) -> bool {
 
 /// Where the last frame drew each part of the screen: for a plugin that
 /// writes to the terminal itself after the frame ([`TerminalWrite`]),
-/// such as an image over the rows its content renderer left blank,
+/// such as an image over the rows its render system left blank,
 /// which finds those rows in a pane's [`DrawnTranscript`] (see
 /// [`TuiFrame::screen_row`]) and leaves out what an overlay covers. The
 /// view writes it after each frame it draws, in

@@ -89,13 +89,13 @@ pub enum TranscriptItem {
     /// document, by the message's id and the block's place in it
     /// ([`ContentView`](crate::ContentView)).
     Content(MessageId, usize),
-    /// The rows a call decorator drew under a call, by the call's id and
-    /// the decorator's name
+    /// The rows a named decoration drew under a call, by the call's id and
+    /// the decoration's name
     /// ([`RenderOutput::decorate`](crate::RenderOutput::decorate)),
     /// inside the call's rows. Selecting moves past it.
     Decoration(CallId, String),
-    /// The rows a message decorator drew under a message, by the
-    /// message's id and the decorator's name
+    /// The rows a named decoration drew under a message, by the
+    /// message's id and the decoration's name
     /// ([`RenderBatch::messages_mut`](crate::RenderBatch::messages_mut)),
     /// inside the message's rows. Selecting moves past it.
     MessageDecoration(MessageId, String),
@@ -266,7 +266,7 @@ pub enum ItemRow {
 }
 
 /// The transcript as the view drew it at its last frame: every row laid
-/// out, on screen or not, as drawn (wrapped, as its renderer drew it),
+/// out, on screen or not, as drawn (wrapped, as its render systems drew it),
 /// with the items they belong to and the matches the view lit in each. A
 /// plugin counts and scrolls over this, not over the source text.
 /// [`TranscriptLayout`](crate::TranscriptLayout) lays one out without
@@ -448,7 +448,7 @@ impl DrawnTranscript {
     }
 
     /// The innermost item `row` belongs to, such as a call rather than
-    /// its message, or a decorator's rows rather than their call.
+    /// its message, or a decoration's rows rather than their call.
     pub fn item_at(&self, row: usize) -> Option<&TranscriptItem> {
         let holding = self.items.iter().filter(|(_, rows)| rows.contains(&row));
         holding
