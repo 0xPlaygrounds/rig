@@ -6,11 +6,12 @@ use std::sync::Arc;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::completion::Message;
+use rig_core::completion::{Message, Reasoning};
 use rig_core::conversation::{self, Author};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::{Conversation, Notice};
-use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
+use rig_ecs::model::ReasoningSetting;
+use rig_ecs::session_log::{SessionLog, SessionLogPlugin, SessionStore};
 use rig_harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 use rig_memory::migration::KEPT;
@@ -650,15 +651,10 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
     std::fs::remove_dir_all(session.path()).ok();
 }
 
-/// The running session's store comes from the app's stores; the session
-/// is marked saved once its log first writes, and stays saved after a
-/// clean exit.
-#[test]
-fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
-    let home = scratch_home("rig-session-saved");
-    let Ok(id) = "1700000000-5".parse::<SessionId>() else {
-        return;
-    };
+/// A new session of `home` with id `id`, opened by the app's stores, after
+/// its first frame.
+fn new_session(home: &Home, id: &str) -> Option<(App, SessionDir)> {
+    let id: SessionId = id.parse().ok()?;
     let session = home.session(&id);
     std::fs::create_dir_all(session.path()).ok();
     let mut app = App::new();
@@ -669,11 +665,61 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     drop(std::panic::take_hook());
     app.finish();
     app.update();
+    Some((app, session))
+}
+
+/// Changes the first agent's saved reasoning setting, as `/effort` does,
+/// and logs it: whether the log has written then.
+fn change_a_setting(app: &mut App) -> bool {
+    let agent = first_agent(app.world_mut());
+    if let Some(mut agent) = agent.and_then(|agent| app.world_mut().get_entity_mut(agent).ok()) {
+        agent.insert(ReasoningSetting(Some(Reasoning::Off)));
+    }
+    app.update();
+    app.world()
+        .get_resource::<SessionLog>()
+        .is_some_and(SessionLog::has_written)
+}
+
+/// A session that only changed a setting is logged but not saved, and is
+/// gone after its exit.
+#[test]
+fn a_session_that_only_changed_a_setting_is_removed_on_exit() {
+    let home = scratch_home("rig-session-settings-only");
+    let Some((mut app, session)) = new_session(&home, "1700000000-20") else {
+        return;
+    };
+    assert!(change_a_setting(&mut app), "the setting was logged");
+    assert!(!session.is_saved());
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    assert!(!session.path().exists());
+    std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// The running session's store comes from the app's stores; the session
+/// is marked saved once its log wrote and a conversation has a message,
+/// and stays saved after the conversation is emptied and a clean exit.
+#[test]
+fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved() {
+    let home = scratch_home("rig-session-saved");
+    let Some((mut app, session)) = new_session(&home, "1700000000-5") else {
+        return;
+    };
     assert!(app.world().contains_resource::<SessionStore>());
     assert!(!session.is_saved(), "nothing was logged yet");
+    assert!(change_a_setting(&mut app));
+    assert!(!session.is_saved(), "no message yet");
     let agent = first_agent(app.world_mut());
     let said = agent.map(|agent| commit_message(app.world_mut(), agent, Message::user("hi")));
     assert_eq!(said, Some(Ok(())));
+    app.update();
+    assert!(session.is_saved());
+    let mut conversation = agent.and_then(|agent| app.world_mut().get_mut::<Conversation>(agent));
+    if let Some(conversation) = conversation.as_mut() {
+        conversation.splice(0.., [], Author::plugin("undo"));
+    }
     app.update();
     app.world_mut().write_message(AppExit::Success);
     app.update();
