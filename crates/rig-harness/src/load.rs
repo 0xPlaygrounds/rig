@@ -95,6 +95,13 @@ impl PluginSystems {
         self.0.get(&key).copied().flatten()
     }
 
+    /// Each system recorded, as its name and its schedule's label, with
+    /// the plugin that added it, if one plugin did.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str, Option<Entity>)> {
+        (self.0.iter())
+            .map(|((system, schedule), plugin)| (system.as_str(), schedule.as_str(), *plugin))
+    }
+
     /// Records each system added since `before` as `plugin`'s.
     fn record(
         world: &mut World,
