@@ -236,11 +236,21 @@ impl Cli {
     }
 }
 
-/// On the entity of each declaration of an option, front or secret: its
-/// place in the order they were declared, which is the order fronts are
-/// offered in and options described.
+/// On the entity of each declaration of an option, front, secret or
+/// [project setting](crate::settings::ProjectSetting): its place in the
+/// order they were declared, which is the order fronts are offered in,
+/// options described and project settings applied.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Declared(pub usize);
+
+impl Declared {
+    /// The place after every declaration made in `world`, those turned off
+    /// included, as they still hold their places.
+    pub(crate) fn next(world: &mut World) -> Self {
+        let mut made = world.query_filtered::<&Declared, Allow<Disabled>>();
+        Self(made.iter(world).map(|it| it.0 + 1).max().unwrap_or(0))
+    }
+}
 
 /// Every declaration of a `T` not turned off, in the order made, with its
 /// entity.
@@ -250,7 +260,8 @@ pub(crate) fn declared<T: Component + Clone>(world: &mut World) -> Vec<(Entity, 
         .iter(world)
         .map(|(&order, entity, it)| (order, entity, it.clone()))
         .collect();
-    declared.sort_unstable_by_key(|(order, ..)| *order);
+    // Spawned ahead, the entity orders declarations of the same place.
+    declared.sort_unstable_by_key(|&(order, entity, _)| (order, entity));
     declared
         .into_iter()
         .map(|(_, entity, it)| (entity, it))
@@ -405,10 +416,8 @@ pub trait AppCliExt {
 /// declaration before it.
 fn declare(app: &mut App, name: String, what: impl Bundle) {
     let world = app.world_mut();
-    // A declaration turned off still holds its place.
-    let mut made = world.query_filtered::<&Declared, Allow<Disabled>>();
-    let order = made.iter(world).map(|it| it.0 + 1).max().unwrap_or(0);
-    world.spawn((Name::new(name), Declared(order), what));
+    let order = Declared::next(world);
+    world.spawn((Name::new(name), order, what));
 }
 
 impl AppCliExt for App {

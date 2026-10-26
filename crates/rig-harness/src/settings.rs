@@ -37,6 +37,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use serde::de::DeserializeOwned;
 
+use crate::host::cli::Declared;
 use crate::services::{ProjectRoot, RigHome};
 use crate::workspace::ProjectWorkspace;
 
@@ -197,8 +198,10 @@ impl AppSettingsExt for App {
             .iter(world)
             .next()
             .is_some();
+        let order = Declared::next(world);
         world.spawn((
             ProjectSetting(section.to_owned()),
+            order,
             ReadAs::<T>(PhantomData),
             Name::new(format!("project setting [{section}]")),
         ));
@@ -285,10 +288,11 @@ fn read_project_settings(
 }
 
 /// Inserts `T` from each table declared as read into it that the project
-/// overrides, merged over the user's; a table that does not read as `T`
-/// keeps the user's value and is one of [`Settings::problems`].
+/// overrides, merged over the user's, in the order declared, so the last
+/// one wins; a table that does not read as `T` keeps the user's value and
+/// is one of [`Settings::problems`].
 fn apply_project_setting<T: Resource + DeserializeOwned>(
-    declared: Query<&ProjectSetting, With<ReadAs<T>>>,
+    declared: Query<(&Declared, &ProjectSetting), With<ReadAs<T>>>,
     project: Option<Res<ProjectSettings>>,
     mut settings: Option<ResMut<Settings>>,
     mut commands: Commands,
@@ -296,7 +300,9 @@ fn apply_project_setting<T: Resource + DeserializeOwned>(
     let Some(ProjectSettings(project)) = project.as_deref() else {
         return;
     };
-    for ProjectSetting(section) in &declared {
+    let mut declared: Vec<_> = declared.iter().collect();
+    declared.sort_unstable_by_key(|&(&order, _)| order);
+    for (_, ProjectSetting(section)) in declared {
         let Some(over) = project.tables.get(section) else {
             continue;
         };

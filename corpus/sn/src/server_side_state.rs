@@ -11,8 +11,8 @@
 //! server holds under it (the system prompt, the tools, every message sent
 //! and the reply). A system wraps the handler of a turn's model call
 //! ([`Adapted`]), for that call only, with the chain as it stands. The
-//! wrapper compares the request it is handed, the logical one every other
-//! plugin, the effect log and the inspectors see, with the chain, and
+//! wrapper runs inside the outermost adapters, such as secret redaction,
+//! so it compares the request as they changed it with the chain, and
 //! uploads only the messages after the reply with the reply's id, or the
 //! whole request with the reason. A server that no longer knows the id
 //! (`previous_response_not_found`) gets the whole request at once, in the
@@ -58,9 +58,11 @@ pub const PREVIOUS: &str = "previous_response_id";
 #[derive(Default)]
 pub struct ServerSideStatePlugin;
 
-/// The plugin's stage system, after compaction fitted each request: it
-/// sees the splices compaction made, and wraps only the handler of the
-/// [`Adapted`] connection, so what Fit measured holds.
+/// The plugin's stage system, an ordinary adapter: it wraps only the
+/// handler of the [`Adapted`] connection, inside the outermost adapters
+/// such as a replay's, which then see the whole request. It sees every
+/// splice compaction made before the request, as conversation changes are
+/// announced only between stages.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServerStateSystems;
 
@@ -70,9 +72,7 @@ impl Plugin for ServerSideStatePlugin {
             .register_required_components::<Agent, ServerChain>()
             .configure_sets(
                 AgentPass,
-                ServerStateSystems
-                    .in_set(Stage::Prepare)
-                    .after(PrepareSystems::Fit),
+                ServerStateSystems.in_set(PrepareSystems::Adapt),
             )
             .add_systems(AgentPass, chain_calls.in_set(ServerStateSystems))
             .add_observer(move_chain)

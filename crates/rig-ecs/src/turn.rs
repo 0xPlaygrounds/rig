@@ -139,7 +139,9 @@ pub struct ModelRequest {
     /// [`Self::request_mut`].
     pub request: Arc<CompletionRequest>,
     /// The model it goes to, when not its agent's, such as a fallback
-    /// model; `Models::connect` makes one.
+    /// model; `Models::connect` makes one. Read once, after
+    /// [`PrepareSystems::Edit`](super::stage::PrepareSystems::Edit), into
+    /// the call's [`Adapted`]; a later change goes there.
     pub connection: Option<Connection>,
     /// The system prompt of a request the kernel built, in parts, until
     /// Start puts it in front of the request's messages; `None`
@@ -217,8 +219,9 @@ pub struct DroppedOptions(pub Vec<UnsupportedOption>);
 /// what the wrapped model takes, such as tools it reads as text. Fit
 /// measures the request against it ([`Adapted::sent`]) and Start sends the
 /// request to it, then moves it into [`SentTo`]. A call admitted without a
-/// model gets none, and Start answers it with an error. A successor is
-/// admitted, routed and adapted anew.
+/// model gets none, and Start answers it with an error, even if its agent
+/// was connected meanwhile: a connection put on it later would skip the
+/// adapters and Fit. A successor is admitted, routed and adapted anew.
 #[derive(Component, Clone)]
 pub struct Adapted(pub Connection);
 
@@ -854,7 +857,9 @@ pub(crate) fn route_calls(
     for (call, model, agent) in &calls {
         let own = agent.and_then(|&ForAgent(agent)| agents.get(agent).ok());
         if let Some(connection) = model.connection.as_ref().or(own) {
-            commands.entity(call).insert(Adapted(connection.clone()));
+            commands
+                .entity(call)
+                .try_insert(Adapted(connection.clone()));
         }
     }
 }

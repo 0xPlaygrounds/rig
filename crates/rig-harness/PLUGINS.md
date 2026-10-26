@@ -905,15 +905,19 @@ Start puts the prompt and `history` into the request's messages and fits it
 to the model it goes to: an unset option takes that model's default (its
 caching), one it cannot take is left out.
 
-- **Routing** a call to another model is a Prepare edit of its
-  `connection`; it then asks for that model's caching.
+- **Routing** a call to another model is an edit of its `connection` in
+  `PrepareSystems::Edit` or before; it then asks for that model's caching.
+  The kernel reads `connection` once, after Edit, so a later change is a
+  change of the call's `Adapted` instead.
 - **Adapting** the model, whichever it is, such as so it reads tools as
   text, is a system in `PrepareSystems::Adapt` (or `AdaptOutermost`, after
   the others) that changes the call's `Adapted(connection)` in place,
   `Query<&mut Adapted, Added<Admitted>>`. After Edit, the kernel puts on
   each model call the connection it goes to, its own or else its agent's
   model at that moment, so a router and an adapter never undo each other,
-  and a call keeps that model while it is held or waits. An adapter wraps
+  and a call keeps that model while it is held or waits. A call admitted
+  while it has neither gets none, and Start fails it with "No model is
+  connected", even if its agent was connected meanwhile. An adapter wraps
   `connection.handler` with rig-core's `ErasedHandler::layered` or
   `map_stream` (each streamed item rewritten, and recorded so), and says
   what the wrapped model takes on `connection.spec`. A successor is
@@ -1797,10 +1801,12 @@ A `SessionPicker` on a `Picker` (`rig_basics::session_picker`, with its
 `SessionFilter` (running ones, a project, a text), the highlighted item
 previewed (`PickPreview`, which any picker sets as its `Highlighted` moves).
 Picking runs its `command` with `{session}`, `{agent}` and `{entry}` filled
-in, or, with none, puts `SessionPicked` on the entity before `Picked`; `show`
-labels items. `/resume` and `/fork at` are this view; a program reads the same
-with `Home::saved_sessions()`, `SessionMeta::read(&store)` and
-`read_conversation`.
+in, or, with none, puts `SessionPicked` on the entity before `Picked`. The
+items are filled in `SessionPickerSystems`; a system after it may relabel
+them, but not add, remove or reorder them, as a pick names the session at
+the item's position. `/resume` and `/fork at` are this view; a program
+reads the same with `Home::saved_sessions()`, `SessionMeta::read(&store)`
+and `read_conversation`.
 
 ```rust,no_run
 use rig_basics::session_picker::{SessionPicked, SessionPicker, SessionSource};

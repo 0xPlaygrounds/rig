@@ -396,7 +396,9 @@ fn calls_sharing_a_provider_id_each_get_their_own_look() {
     use rig_ecs::agent::Conversation;
 
     let (mut app, agent) = crate::tests::view_app();
-    let Ok(name) = ToolName::new("probe") else {
+    let name = ToolName::new("probe");
+    assert!(name.is_ok(), "`probe` is a tool name");
+    let Ok(name) = name else {
         return;
     };
     app.add_systems(

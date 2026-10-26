@@ -132,8 +132,10 @@ fn tilde(path: &Path) -> String {
 /// replaced; with an empty `command`, read `Picked` (the item's
 /// position is in `Chosen`) and [`SessionPicked`] on the same entity. A
 /// session's label holds its labels and listed values (rig-harness'
-/// `SavedAs::listed`); the items are the `Picker`'s, which a system may
-/// edit.
+/// `SavedAs::listed`). The items are the `Picker`'s, filled in
+/// [`SessionPickerSystems`]: a system after it may change their labels and
+/// details, but not add, remove or reorder them, as a pick names the
+/// session at the item's position.
 #[derive(Component, Clone, Debug)]
 #[require(Picker, SessionPicked, SessionView)]
 pub struct SessionPicker {
@@ -378,19 +380,16 @@ impl Sessions<'_> {
     }
 }
 
-/// Starts reading for each session picker added, or whose source changed,
-/// and fills the picker again when its filter or labels did.
+/// Starts reading for each session picker added, or whose source changed;
+/// one whose filter changed is filled again.
 fn start(
-    mut pickers: Query<
-        (Entity, &SessionPicker, &mut SessionView, &mut Picker),
-        Changed<SessionPicker>,
-    >,
+    mut pickers: Query<(Entity, &SessionPicker, &mut SessionView), Changed<SessionPicker>>,
     sessions: Sessions,
     mut commands: Commands,
 ) {
-    for (entity, picker, mut view, mut items) in &mut pickers {
+    for (entity, picker, mut view) in &mut pickers {
         if view.source.as_ref() == Some(&picker.source) {
-            fill(picker, &mut view, &mut items, sessions.paths.as_deref());
+            view.set_changed();
             continue;
         }
         commands.entity(entity).despawn_related::<Reading>();
@@ -438,12 +437,11 @@ fn start(
     }
 }
 
-/// Takes what a task read into its picker's view and fills the picker.
+/// Takes what a task read into its picker's view, to be filled in.
 fn read_done(
     done: On<Insert<ReadDone>>,
     mut tasks: Query<(&ReadFor, &mut ReadDone)>,
-    mut pickers: Query<(&SessionPicker, &mut SessionView, &mut Picker)>,
-    paths: Option<Res<SessionPaths>>,
+    mut views: Query<&mut SessionView>,
     mut commands: Commands,
 ) {
     let Ok((ReadFor(picker), mut read)) = tasks.get_mut(done.entity) else {
@@ -451,7 +449,7 @@ fn read_done(
     };
     let read = read.0.take();
     commands.entity(done.entity).despawn();
-    let Ok((picker, mut view, mut items)) = pickers.get_mut(*picker) else {
+    let Ok(mut view) = views.get_mut(*picker) else {
         return;
     };
     match read {
@@ -466,14 +464,28 @@ fn read_done(
             view.conversation = Some(conversation);
         }
         Some(Err(why)) => view.failed = Some(why),
-        None => return,
+        None => {}
     }
-    fill(picker, &mut view, &mut items, paths.as_deref());
+}
+
+/// Fills each session picker whose view or filter changed in place with
+/// what its view read that it lists, and keeps in the view what each item
+/// names.
+fn fill(
+    mut pickers: Query<
+        (&SessionPicker, &mut SessionView, &mut Picker),
+        Or<(Changed<SessionView>, Changed<SessionPicker>)>,
+    >,
+    paths: Option<Res<SessionPaths>>,
+) {
+    for (picker, mut view, mut items) in &mut pickers {
+        fill_one(picker, &mut view, &mut items, paths.as_deref());
+    }
 }
 
 /// Fills `items` in place with what `view` read that `picker` lists,
 /// labelled as it says, and keeps in `view` what each item names.
-fn fill(
+fn fill_one(
     picker: &SessionPicker,
     view: &mut SessionView,
     items: &mut Mut<Picker>,
@@ -692,9 +704,15 @@ fn picked(pick: On<Pick>, mut pickers: Query<(&SessionView, &mut SessionPicked)>
 #[derive(Default)]
 pub struct SessionPickerPlugin;
 
+/// Where [`SessionPickerPlugin`] fills session pickers' items, in
+/// `Update`: order a system after it to change their labels.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SessionPickerSystems;
+
 impl Plugin for SessionPickerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (start, preview).chain().after(PollTasks))
+        let fill = fill.in_set(SessionPickerSystems);
+        app.add_systems(Update, (start, fill, preview).chain().after(PollTasks))
             .add_observer(read_done)
             .add_observer(preview_done)
             .add_observer(picked);
