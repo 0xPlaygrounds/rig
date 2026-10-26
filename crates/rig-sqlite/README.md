@@ -151,3 +151,7 @@ results correct, including with `samples(1)`, but requires exhaustive candidate
 retrieval. For frequently-used scalar filters, prefer storing the value in a
 regular column marked with `Column::indexed()` so sqlite-vec can apply it during
 candidate search.
+
+Columns that declare a collation, such as `TEXT COLLATE NOCASE`, use document-table
+filtering even when marked `indexed()`. This preserves their equality and ordering
+semantics and requires exhaustive candidate retrieval.

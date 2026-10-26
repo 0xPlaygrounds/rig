@@ -73,7 +73,9 @@ impl Column {
     ///
     /// Filterable columns are indexed on the document table and stored as
     /// sqlite-vec metadata columns so supported filters can be applied during
-    /// KNN candidate search. Filters on other document-table fields are applied
+    /// KNN candidate search. Columns declaring a collation are filtered on
+    /// the document table to preserve their comparison semantics.
+    /// Filters on other document-table fields are applied
     /// after candidate search with an exhaustive candidate limit, which is
     /// correct but can be more expensive on large stores.
     pub fn indexed(mut self) -> Self {
@@ -300,6 +302,7 @@ impl SqliteColumnAffinity {
 struct SqliteMetadataColumn {
     name: &'static str,
     metadata_type: SqliteMetadataType,
+    native_comparisons: bool,
 }
 
 fn sqlite_metadata_columns(
@@ -320,6 +323,8 @@ fn sqlite_metadata_columns(
             Ok(SqliteMetadataColumn {
                 name: column.name,
                 metadata_type,
+                // vec0 metadata does not retain the document column's collation.
+                native_comparisons: !column.col_type.to_ascii_uppercase().contains("COLLATE"),
             })
         })
         .collect()
@@ -1151,7 +1156,9 @@ fn sqlite_native_metadata_column<'a>(
         return None;
     }
 
-    metadata_columns.iter().find(|column| column.name == key)
+    metadata_columns
+        .iter()
+        .find(|column| column.name == key && column.native_comparisons)
 }
 
 fn sqlite_is_plain_identifier(key: &str) -> bool {
