@@ -17,7 +17,6 @@
 //! ([`inform_build_failure`]): the model reads why, and where the whole
 //! output and the files the build is made from are.
 
-use std::fmt::Write as _;
 use std::io::{ErrorKind, IsTerminal};
 use std::path::Path;
 use std::sync::Arc;
@@ -238,23 +237,15 @@ struct StartBuildFailure(String);
 
 /// The message on a failed build of `what`, for the model: `summary` (the
 /// reason and the first errors) and where the whole output is. It does not
-/// point at the plugin list or the generated project, which only the user
-/// changes.
+/// point at the plugin list, the generated project or rig's source, which
+/// only the user changes.
 pub fn build_failure_message(what: &str, summary: &str) -> String {
-    let mut message = format!(
+    format!(
         "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
          Whole build output: {}",
         summary.trim(),
         Home::from_env().build_log().display(),
-    );
-    if let Some(source) = std::env::var_os(env::SOURCE).filter(|source| !source.is_empty()) {
-        let _ = write!(
-            message,
-            "\nrig-harness source (RIG_SOURCE): {}",
-            std::path::Path::new(&source).display()
-        );
-    }
-    message
+    )
 }
 
 /// Puts `text`, on a failed build, in `agent`'s conversation from the

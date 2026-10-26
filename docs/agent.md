@@ -275,11 +275,10 @@ the new build.
 Every build, the one before each start and `/reload`'s, writes its whole
 output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
 message names its reason and first compiler error. The agent sees build
-failures too: the reason, the first errors and the paths of `build.log`,
-`plugins.toml` and the generated project go into its conversation as a message
-from the `build` plugin, which starts no turn when the agent is idle and is
-saved with the session. Ask it why the build failed and it can read the log
-and fix the cause; `/reload` then tries again.
+failures too: the reason, the first errors and the path of `build.log` go into
+its conversation as a message from the `build` plugin, which starts no turn
+when the agent is idle and is saved with the session. Ask it why the build
+failed and it can read the log and fix the cause; `/reload` then tries again.
 
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
