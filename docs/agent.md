@@ -336,9 +336,7 @@ the built-in ones do, never by editing rig's crates.
 [`crates/rig-harness/PLUGINS.md`](../crates/rig-harness/PLUGINS.md) is the
 plugin guide, with a copy-ready example of each kind, its names from
 `rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig
-plugin new` writes is a working, commented slash command. An agent started by
-the launcher knows its plugins, commands and tools, and how to write and add
-its own plugins, from its system prompt.
+plugin new` writes is a working, commented slash command.
 
 The default [`rig-traffic`](../plugins/rig-traffic) plugin optionally records
 provider HTTP exchanges in the session's `traffic.jsonl`. Its README covers

@@ -340,20 +340,26 @@ fn launch(
             directory.log()
         };
         let refusal = fs::read_to_string(run.refusal()).ok();
-        let resume = resume_command(home, &session, refusal.is_some());
         if !rejected && headless {
             return Ok(Ended::quiet(exit_code(status)));
+        }
+        if !rejected && status.success() {
+            let resume = started
+                .then(|| resume_command(home, &session, refusal.is_some()))
+                .flatten();
+            let said = resume.map(|resume| format!("To resume this session: {resume}"));
+            // The agent left the terminal as it found it; the line needs
+            // it out of the full screen in case it did not.
+            if said.is_some() {
+                restore_terminal();
+            }
+            return Ok(Ended::new(status, said));
         }
         if !headless {
             restore_terminal();
         }
-        if !rejected && status.success() {
-            let said = resume
-                .filter(|_| started)
-                .map(|resume| format!("To resume this session: {resume}"));
-            return Ok(Ended::new(status, said));
-        }
         if !rejected {
+            let resume = resume_command(home, &session, refusal.is_some());
             let lost = refusal.filter(|_| kept_screen);
             let log = Some(log.as_path()).filter(|log| log.exists());
             let said = stopped(status, resume.as_deref(), lost.as_deref(), log);
@@ -429,7 +435,7 @@ fn stopped(
 /// `refused` (a refused session would be refused again). It names the
 /// session by its name, single-quoted for the shell, when [`Home::find`]
 /// finds this session by it; by its id when the name is not unique, could
-/// be read as an id or an option, or holds a control character.
+/// be read as an id or an option, or holds a control or format character.
 fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<String> {
     let directory = home.session(session);
     if refused || !directory.is_saved() {
@@ -437,7 +443,7 @@ fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<Str
     }
     let name = directory.name().filter(|name| {
         !name.starts_with('-')
-            && !name.chars().any(char::is_control)
+            && !name.chars().any(|c| c.is_control() || is_format(c))
             && name.parse::<SessionId>().is_err()
             && home.find(name).as_ref() == Ok(session)
     });
@@ -445,6 +451,24 @@ fn resume_command(home: &Home, session: &SessionId, refused: bool) -> Option<Str
         Some(name) => format!("rig --resume '{}'", name.replace('\'', r"'\''")),
         None => format!("rig --resume {session}"),
     })
+}
+
+/// Whether `c` is an invisible Unicode format character, such as a bidi
+/// override, which shows a name otherwise than it is typed.
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{ad}'
+            | '\u{61c}'
+            | '\u{180e}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{206f}'
+            | '\u{feff}'
+            | '\u{fff9}'..='\u{fffb}'
+            | '\u{e0001}'
+            | '\u{e0020}'..='\u{e007f}'
+    )
 }
 
 /// The session the agent asked to run next in `directory`'s switch file,

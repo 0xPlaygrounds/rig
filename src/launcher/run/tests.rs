@@ -61,6 +61,8 @@ fn a_resume_command_names_the_session_quoted_or_by_its_id() {
         ("dash", "-p", "other"),
         ("control", "a\tb", "other"),
         ("newline", "a\nb", "other"),
+        ("bidi", "a\u{202e}b", "other"),
+        ("tag", "a\u{e0041}b", "other"),
         ("id-shaped", "2026-10-25", "other"),
     ];
     for (test, name, other) in by_id {
@@ -78,7 +80,7 @@ fn a_resume_command_names_the_session_quoted_or_by_its_id() {
 /// and exits; and the session the run ended in.
 #[cfg(unix)]
 fn interactive(test: &str, agent: &str, headless: bool) -> Option<(Ended, SessionId)> {
-    let home = builds(test, "", "");
+    let home = builds(&format!("interactive-{test}"), "", "");
     let ended = locks::hold_run(&home).and_then(|run| {
         // The good build only: a trial that never says it started is rolled back.
         fs::remove_file(home.staged())?;

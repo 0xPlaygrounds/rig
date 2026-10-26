@@ -59,7 +59,8 @@ pub enum ReloadStatus {
     #[default]
     Idle,
     /// Asked for by `/reload` or a plugin, for `agent`, whose model is
-    /// told when the build fails: the build starts once no turn runs. `/reload cancel` or [`CancelReload`] drops it.
+    /// told when the build fails: the build starts once no turn runs.
+    /// `/reload cancel` or [`CancelReload`] drops it.
     Queued {
         /// The agent that asked.
         agent: Entity,
