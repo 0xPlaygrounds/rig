@@ -13,7 +13,9 @@ use rig_ecs::agent::{Conversation, Notice};
 use rig_ecs::session_log::{SessionLogPlugin, SessionStore};
 use rig_harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, MemoryStore, SessionMeta, Store, Strings, save};
+use rig_memory::migration::KEPT;
+use rig_memory::migration::testing::{self, SYNTHETIC};
+use rig_memory::{DirStore, Files, MemoryStore, SessionMeta, Store, Strings, save};
 
 use super::{
     AppStart, DeleteSession, Scratch, SessionDeleteFailed, SessionDeleted, SessionPaths,
@@ -294,6 +296,49 @@ fn resuming_a_session_an_older_rig_saved_changes_none_of_its_bytes() {
         assert!(logged.starts_with("this run\n"), "{logged}");
         fs::remove_dir_all(run.path()).ok();
     }
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A session in an earlier format a step of the chain starts from is
+/// migrated through its store as the run opens it, and restored; the
+/// store keeps a copy of it as it was. The chain of this crate's tests
+/// starts from the synthetic format.
+#[test]
+fn resuming_a_session_in_an_earlier_format_migrates_and_restores_it() {
+    let home = scratch_home("rig-session-migrated");
+    let Ok(id) = "1700000000-25".parse::<SessionId>() else {
+        return;
+    };
+    let session = home.session(&id);
+    let written = dir_store(&session).map(|store| testing::write_fixture(&store));
+    assert!(matches!(written, Some(Ok(()))), "{written:?}");
+    session.mark_saved().ok();
+
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, SessionLogPlugin))
+        .add_plugins(SessionPlugin);
+    app.finish();
+    app.update();
+    app.update();
+    let stored = app.world().contains_resource::<SessionStore>();
+    let mut conversations = app.world_mut().query::<&Conversation>();
+    let restored = conversations
+        .iter(app.world())
+        .any(|conversation| conversation.messages().len() == 2);
+    drop(app);
+    assert!(stored && restored, "stored {stored}, restored {restored}");
+    let store = dir_store(&session);
+    let read = store
+        .as_ref()
+        .map(|store| rig_memory::Session::read(store).is_ok());
+    assert_eq!(read, Some(true));
+    let files = store
+        .and_then(|store| store.files().ok())
+        .unwrap_or_default();
+    let kept = format!("{KEPT}{SYNTHETIC}/logs/agent.jsonl");
+    assert!(files.contains(&kept), "{files:?}");
     fs::remove_dir_all(home.root()).ok();
 }
 

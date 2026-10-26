@@ -9,5 +9,10 @@ any `AsyncStore`, such as a database or IndexedDB, and every local store is one;
 log is still as long as the writer read it, checking and appending in one step, so of two saves
 that read one log the second is refused. Database stores ship in `rig-sqlite` (`SqliteSessionStore`)
 and `rig-postgres` (`PostgresSessionStore`) behind their `memory` feature. Feature `test-utils`
-adds `conformance::check_store`, the contract suite every store's tests run against it. See the
-crate docs for the API.
+adds `conformance::check_store`, the contract suite every store's tests run against it, and
+`migration::testing`, a synthetic earlier format with its migration.
+
+A session in another format is refused untouched. `migration::SHIPPED` is the chain of steps, each
+taking the whole session from one format to the next, that brings an earlier one to the current
+format through the session's own `Store`, keeping a copy of it as it was under `rig/kept/`. It has
+no step yet, as no earlier format was released. See the crate docs for the API.

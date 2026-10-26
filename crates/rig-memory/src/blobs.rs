@@ -141,6 +141,20 @@ pub(crate) fn named_blobs(bytes: &[u8], named: &mut std::collections::BTreeSet<S
     }
 }
 
+/// Adds the blob of every image a message of `change` names to `named`.
+pub(crate) fn image_blobs(change: &Change, named: &mut std::collections::BTreeSet<String>) {
+    let (Change::Push { entries } | Change::Splice { with: entries, .. }) = change else {
+        return;
+    };
+    for image in entries.iter().flat_map(|entry| entry.message.images()) {
+        if let Url(url) = &image.data
+            && let Some(name) = url.strip_prefix(BLOB)
+        {
+            named.insert(name.to_owned());
+        }
+    }
+}
+
 /// Calls `f` on each message `change` saves: the entries of a push or a
 /// splice.
 pub(crate) fn messages_mut(
