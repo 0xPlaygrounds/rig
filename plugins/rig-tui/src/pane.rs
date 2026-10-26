@@ -373,7 +373,8 @@ fn draw_below(buffer: &mut ratatui::buffer::Buffer, below: Below, area: Rect, th
         Below::New => " ↓ new output (PgDn) ",
     };
     let width = u16::try_from(Span::from(text).width()).unwrap_or(u16::MAX);
-    if area.height == 0 || area.width < width {
+    // A pane of one row keeps it for text.
+    if area.height < 2 || area.width < width {
         return;
     }
     let marker = Rect::new(area.right() - width, area.bottom() - 1, width, 1);

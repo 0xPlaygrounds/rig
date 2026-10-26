@@ -1182,6 +1182,7 @@ impl Transcript {
 
     /// The rows of `parts` that fit `height` rows at `width`, where
     /// `scroll` places them, what is below them, and where the items are.
+    /// A view scrolled up shows [`Below::text_rows`] rows.
     /// A jump to an item's match counts the matches of `highlights`.
     pub(crate) fn visible(
         &self,
@@ -1202,22 +1203,24 @@ impl Transcript {
                 };
                 lit.unwrap_or(rows.start)
             });
-            if let Some(row) = row.filter(|row| !(top..top + height).contains(row)) {
+            let shown = top..top + below.text_rows(height);
+            if let Some(row) = row.filter(|row| !shown.contains(row)) {
                 scroll.at = Some(row);
                 (top, below) = scroll.place(&counts, height, width);
             }
         }
-        let mut shown = Vec::with_capacity(height);
+        let rows = below.text_rows(height);
+        let mut shown = Vec::with_capacity(rows);
         let mut start = 0;
         for (part, count) in parts.iter().zip(&counts) {
             let end = start + count;
-            if end > top && start < top + height {
+            if end > top && start < top + rows {
                 let from = top.saturating_sub(start);
-                let to = (top + height - start).min(*count);
+                let to = (top + rows - start).min(*count);
                 shown.extend(self.lit_rows(part, start, from..to, &lights));
             }
             start = end;
-            if start >= top + height {
+            if start >= top + rows {
                 break;
             }
         }
@@ -1435,6 +1438,18 @@ pub(crate) enum Below {
     More,
     /// Rows that arrived since.
     New,
+}
+
+impl Below {
+    /// The text rows of a view `height` rows high with this below it: a
+    /// view scrolled up leaves its last row to the marker of what is below,
+    /// unless that would leave it no text row.
+    pub(crate) fn text_rows(self, height: usize) -> usize {
+        match self {
+            Self::More | Self::New if height > 1 => height - 1,
+            _ => height,
+        }
+    }
 }
 
 impl Scroll {

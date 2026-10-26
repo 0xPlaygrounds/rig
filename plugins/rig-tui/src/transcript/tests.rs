@@ -60,6 +60,29 @@ fn a_view_scrolled_up_stays_put_while_rows_arrive() {
 }
 
 #[test]
+fn a_view_scrolled_up_leaves_its_last_row_to_the_marker() {
+    let lines: Vec<Line<'static>> = (1..=30).map(|n| Line::from(format!("row-{n}"))).collect();
+    let parts = [Part::rows(&lines, &[], usize::from(WIDTH))];
+    let transcript = Transcript::default();
+    let shown = |scroll: &mut Scroll, height| {
+        let visible = transcript.visible(&parts, (WIDTH, height), scroll, &[]);
+        let rows: Vec<String> = visible.rows.iter().map(ToString::to_string).collect();
+        (rows, visible.below)
+    };
+    let mut scroll = Scroll::default();
+    let (rows, below) = shown(&mut scroll, 10);
+    assert_eq!((rows.len(), below), (10, Below::Nothing));
+    assert_eq!(rows.last().map(String::as_str), Some("row-30"));
+    scroll.up(5);
+    let (rows, below) = shown(&mut scroll, 10);
+    assert_eq!((rows.len(), below), (9, Below::More));
+    assert_eq!(rows.first().map(String::as_str), Some("row-16"));
+    // A view of one row keeps it for text.
+    let (rows, below) = shown(&mut scroll, 1);
+    assert_eq!((rows.len(), below), (1, Below::More));
+}
+
+#[test]
 fn scrolling_back_to_the_bottom_follows_again() {
     let mut scroll = Scroll::default();
     scroll.up(10);
