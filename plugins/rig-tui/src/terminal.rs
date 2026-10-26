@@ -527,6 +527,8 @@ fn hold_failure(exit: &Result<ExitStatus, String>, mut keys: impl Read, mut scre
             break;
         }
     }
+    // The next program's output starts on a line of its own.
+    write!(screen, "\r\n").and_then(|()| screen.flush()).ok();
 }
 
 /// The terminal's mode before a program ran, put back after it, so one
