@@ -15,6 +15,7 @@ use bevy_ecs::prelude::*;
 use rig_ecs::agent::Notice;
 use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
+use unicode_width::UnicodeWidthStr;
 
 pub mod activity;
 pub mod agents_md;
@@ -47,15 +48,24 @@ impl Plugin for BasicCommandsPlugin {
     }
 }
 
-/// `/help`: every command with its help.
+/// `/help`: every command with its help, the helps in one column after the
+/// widest name.
 fn help(
     In(args): In<CommandArgs>,
     commands: Query<(&Name, &SlashCommand)>,
     mut notices: MessageWriter<Notice>,
 ) {
+    let column = commands
+        .iter()
+        .map(|(name, _)| name.as_str().width())
+        .max()
+        .unwrap_or_default();
     let mut lines: Vec<String> = commands
         .iter()
-        .map(|(name, command)| format!("{:<11} {}", name.as_str(), command.help))
+        .map(|(name, command)| {
+            let pad = column.saturating_sub(name.as_str().width());
+            format!("{}{:pad$} {}", name.as_str(), "", command.help)
+        })
         .collect();
     lines.sort();
     notices.write(Notice::info(args.agent, lines.join("\n")));
