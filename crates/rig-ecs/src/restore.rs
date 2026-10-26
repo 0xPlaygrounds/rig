@@ -424,7 +424,8 @@ impl SavedKeys {
         &self.listed
     }
 
-    /// Each stable key, with the path of the type saved under it.
+    /// Each stable key, with the path of the type saved under it, in key
+    /// order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         (self.paths.iter()).map(|(key, path)| (key.as_str(), path.as_str()))
     }

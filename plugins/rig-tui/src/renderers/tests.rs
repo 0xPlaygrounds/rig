@@ -426,3 +426,70 @@ fn calls_sharing_a_provider_id_each_get_their_own_look() {
         .collect();
     assert_eq!(probes, ["probe 1", "probe 2"], "{rows:#?}");
 }
+
+#[derive(Resource, Default)]
+struct StreamingLooks(Vec<String>);
+
+fn note_streaming_looks(batch: Res<RenderBatch>, mut seen: ResMut<StreamingLooks>) {
+    for (key, request) in &batch.requests {
+        if matches!(key, RenderKey::Streaming(_)) {
+            seen.0.extend(request.output.lines.iter().map(ToString::to_string));
+        }
+    }
+}
+
+#[test]
+fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
+    use rig_core::completion::AssistantContent;
+    use rig_core::streaming::{Part, PartKind, StreamEvent};
+    use rig_ecs::agent::{CallOf, Partial, TurnOf};
+    use rig_ecs::turn::StreamDelta;
+
+    let (mut app, agent) = crate::tests::view_app();
+    let name = ToolName::new("probe");
+    assert!(name.is_ok(), "`probe` is a tool name");
+    let Ok(name) = name else {
+        return;
+    };
+    app.insert_resource(crate::TuiTestScreen::new(80, 24))
+        .init_resource::<StreamingLooks>()
+        .add_systems(
+            TranscriptRender,
+            (
+                label_by_argument.in_set(RenderSystems::Render),
+                note_streaming_looks.in_set(RenderSystems::Edit),
+            ),
+        );
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
+    let effect = app
+        .world_mut()
+        .spawn((CallOf(turn), Partial::default()))
+        .id();
+    for n in [1, 2] {
+        let part = Part::new(n);
+        let done = ToolCall::from_wire("same", ToolFunction::new(name.clone(), json!({ "n": n })));
+        for event in [
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name.clone()),
+            },
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(done),
+            },
+        ] {
+            app.world_mut().write_message(StreamDelta {
+                effect,
+                agent: Some(agent),
+                event,
+            });
+        }
+    }
+    app.world_mut().write_message(crate::RequestRedraw);
+    app.update();
+    let mut looks = app.world().resource::<StreamingLooks>().0.clone();
+    looks.sort();
+    looks.dedup();
+    assert_eq!(looks, ["probe 1", "probe 2"]);
+}

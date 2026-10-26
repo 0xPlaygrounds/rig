@@ -635,7 +635,7 @@ pub(crate) fn lay_out_transcript(
     shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
-    sources.renderers.at(Place::Outside);
+    sources.renderers.at(Place::default());
     let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
     let view = sources.view;
@@ -698,7 +698,7 @@ pub(crate) fn lay_out_transcript(
         }
     }
     transcript.update(shown.entity, conversation, shown.changed, &look, width);
-    sources.renderers.at(Place::Outside);
+    sources.renderers.at(Place::default());
     let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
         let (notices, asides) = after.next().unwrap_or_default();
@@ -735,7 +735,8 @@ pub(crate) fn lay_out_transcript(
                     extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
                 }
             }
-            for call in &shown.streaming {
+            for (at, call) in shown.streaming.iter().enumerate() {
+                sources.renderers.at(Place::Outside(at));
                 let mut view = ToolCallView::new(call, None, CallState::Streaming);
                 view.theme = *sources.theme;
                 let start = extra.len();

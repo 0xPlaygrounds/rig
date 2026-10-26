@@ -547,7 +547,7 @@ pub struct RenderRevision(pub u64);
 /// Lines of an item and named contributions after them. Contributions are
 /// ordered and names identify row ranges. An item with no lines and no
 /// contributions is hidden; contributions are drawn even when `lines` is
-/// empty.
+/// empty. A message's output only adds to it ([`RenderBatch::messages_mut`]).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderOutput {
     /// The item's unwrapped lines.
@@ -757,9 +757,9 @@ pub enum RenderInput {
 pub enum RenderKey {
     /// Message ordinal and block index of a tool call.
     Tool(usize, usize),
-    /// A call streaming in, by its call id, which may be synthetic until the
-    /// provider sends the final one.
-    Streaming(rig_core::message::CallId),
+    /// A call streaming in, by its position among the calls of the reply
+    /// streaming in, as its id may be synthetic or repeated.
+    Streaming(usize),
     /// An aside id, including notes.
     Aside(AsideId),
     /// Message ordinal and block index.
@@ -854,7 +854,9 @@ impl RenderBatch {
                 _ => None,
             })
     }
-    /// Messages that can receive decorations.
+    /// Messages that can receive decorations. A message request's `lines`
+    /// start empty and are drawn after the message, as an unnamed
+    /// decoration; they cannot hide the message.
     pub fn messages_mut(&mut self) -> impl Iterator<Item = (&MessageRender, &mut RenderOutput)> {
         self.requests.values_mut().filter_map(|r| match &r.input {
             RenderInput::Message(v) => Some((v, &mut r.output)),
@@ -904,13 +906,19 @@ pub(crate) enum Pass {
 }
 
 /// Where the traversal is.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Place {
     /// Block `block` of message `index`, whose rows the transcript caches.
     Message { index: usize, block: usize },
-    /// Outside any message: asides, the reply streaming in and its calls.
-    #[default]
-    Outside,
+    /// Outside any message: asides, the reply streaming in, and the call at
+    /// this position among those it streams.
+    Outside(usize),
+}
+
+impl Default for Place {
+    fn default() -> Self {
+        Self::Outside(0)
+    }
 }
 
 impl Renderers {
@@ -941,7 +949,7 @@ impl Renderers {
     fn in_message(&self) -> Option<(usize, usize)> {
         match self.place.get() {
             Place::Message { index, block } => Some((index, block)),
-            Place::Outside => None,
+            Place::Outside(_) => None,
         }
     }
 
@@ -951,7 +959,7 @@ impl Renderers {
     pub(crate) fn run(&mut self, world: &mut World) -> bool {
         let made = self.made.get_mut();
         let (cached, messages) = (self.cached.get_mut(), self.messages.get_mut());
-        cached.retain(|key, _| made.get(key) == Some(&Place::Outside));
+        cached.retain(|key, _| matches!(made.get(key), Some(Place::Outside(_))));
         messages.clear();
         self.pass = Pass::Finish;
         let batch = std::mem::take(self.batch.get_mut());
@@ -975,7 +983,7 @@ impl Renderers {
         let mut changed = false;
         for (key, request) in &batch.requests {
             let place = made.get(key).copied().unwrap_or_default();
-            if place == Place::Outside {
+            if matches!(place, Place::Outside(_)) {
                 cached.insert(key.clone(), request.clone());
             }
             if defaults.get(key) != Some(&request.output) {
@@ -998,7 +1006,7 @@ impl Renderers {
         match self.pass {
             Pass::Collect => {
                 let place = self.place.get();
-                if place == Place::Outside
+                if matches!(place, Place::Outside(_))
                     && let Some(previous) = self
                         .cached
                         .borrow()
@@ -1042,7 +1050,7 @@ impl Renderers {
         };
         let key = match self.place.get() {
             Place::Message { index, block } => RenderKey::Tool(index, block),
-            Place::Outside => RenderKey::Streaming(view.call.id.clone()),
+            Place::Outside(at) => RenderKey::Streaming(at),
         };
         self.output(key, RenderInput::Tool(input), view.default_lines())
     }

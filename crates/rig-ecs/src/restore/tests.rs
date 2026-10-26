@@ -1104,6 +1104,7 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
     let keyed = |app: &mut App, path: &str| {
         let mut keys = app.world_mut().resource_mut::<crate::restore::SavedKeys>();
         assert!(keys.add(path, "goals.goal").is_ok());
+        assert_eq!(keys.iter().collect::<Vec<_>>(), [("goals.goal", path)]);
     };
     let mut first = App::new();
     first

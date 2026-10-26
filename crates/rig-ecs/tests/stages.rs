@@ -4523,7 +4523,9 @@ fn a_held_call_goes_to_the_model_it_was_adapted_for() {
     let held = |world: &mut World| world.resource::<FirstHold>().0.is_some();
     assert!(run_until(&mut app, held), "{:?}", notices(&app));
     // While the call is held, the agent's model changes.
-    if let Some(changed) = connection(&second) {
+    let changed = connection(&second);
+    assert!(changed.is_some(), "the second model connects");
+    if let Some(changed) = changed {
         app.world_mut().entity_mut(agent).insert(changed);
     }
     if let Some(hold) = app.world().resource::<FirstHold>().0 {

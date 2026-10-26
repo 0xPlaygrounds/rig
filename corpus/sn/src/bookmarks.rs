@@ -82,7 +82,6 @@ struct Choices(Vec<(Entity, AsideId)>);
 #[derive(Component)]
 struct HistoryPane;
 
-/// The marker's look: a line naming the bookmark.
 /// Draws the bookmarks' asides.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (aside, output) in batch.asides_mut(KIND) {
@@ -90,6 +89,7 @@ fn draw(mut batch: ResMut<RenderBatch>) {
     }
 }
 
+/// The marker's look: a line naming the bookmark.
 fn marker(view: &AsideView<'_>) -> Vec<Line<'static>> {
     let label = Bookmark::of(view.aside).map(|bookmark| bookmark.label);
     let label = label.unwrap_or_default();

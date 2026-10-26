@@ -96,7 +96,7 @@ impl PluginSystems {
     }
 
     /// Each system recorded, as its name and its schedule's label, with
-    /// the plugin that added it, if one plugin did.
+    /// the plugin that added it, if one plugin did, in no particular order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str, Option<Entity>)> {
         (self.0.iter())
             .map(|((system, schedule), plugin)| (system.as_str(), schedule.as_str(), *plugin))

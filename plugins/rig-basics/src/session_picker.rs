@@ -127,15 +127,16 @@ fn tilde(path: &Path) -> String {
 
 /// The native session picker: put it on an entity (it requires a
 /// [`Picker`]) and, when [`SessionPickerPlugin`] is loaded, the picker is
-/// filled in place as items are read, newest first, and previews the highlighted one when `preview` is
-/// set. Picking runs `command` with `{session}`, `{agent}` and `{entry}`
-/// replaced; with an empty `command`, read `Picked` (the item's
-/// position is in `Chosen`) and [`SessionPicked`] on the same entity. A
-/// session's label holds its labels and listed values (rig-harness'
-/// `SavedAs::listed`). The items are the `Picker`'s, filled in
+/// filled in place as items are read, newest first, and previews the
+/// highlighted one when `preview` is set. Picking runs `command` with
+/// `{session}`, `{agent}` and `{entry}` replaced; with an empty `command`,
+/// read `Picked` (the item's position is in `Chosen`) and [`SessionPicked`]
+/// on the same entity. A session's label holds its labels and listed values
+/// (rig-harness' `SavedAs::listed`). The items are the `Picker`'s, filled in
 /// [`SessionPickerSystems`]: a system after it may change their labels and
 /// details, but not add, remove or reorder them, as a pick names the
-/// session at the item's position.
+/// session at the item's position. A [`SessionFilter`] matches the labels
+/// the fill wrote, not a later system's.
 #[derive(Component, Clone, Debug)]
 #[require(Picker, SessionPicked, SessionView)]
 pub struct SessionPicker {
