@@ -15,7 +15,7 @@
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
 //! ([`inform_build_failure`]): the model reads why, and where the whole
-//! output and the files the build is made from are.
+//! build output is.
 
 use std::io::{ErrorKind, IsTerminal};
 use std::path::Path;
