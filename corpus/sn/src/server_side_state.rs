@@ -58,7 +58,9 @@ pub const PREVIOUS: &str = "previous_response_id";
 #[derive(Default)]
 pub struct ServerSideStatePlugin;
 
-/// The plugin's stage system, after compaction fitted each request.
+/// The plugin's stage system, after compaction fitted each request: it
+/// sees the splices compaction made, and wraps only the handler of the
+/// [`Adapted`] connection, so what Fit measured holds.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServerStateSystems;
 
@@ -193,7 +195,7 @@ struct ChainHint {
 /// goes to if that model keeps state.
 fn chain_calls(
     mut committed: MessageReader<ConversationChanged>,
-    mut calls: Query<(&ForAgent, &mut Adapters), (Added<Admitted>, With<TurnCall>, ModelCalls)>,
+    mut calls: Query<(&ForAgent, &mut Adapted), (Added<Admitted>, With<TurnCall>, ModelCalls)>,
     mut chains: Query<&mut ServerChain, With<Conversation>>,
     vendors: Res<StatefulVendors>,
 ) {
@@ -214,28 +216,23 @@ fn chain_calls(
         };
         chain.note = Some(note.to_owned());
     }
-    for (&ForAgent(agent), mut adapters) in &mut calls {
+    for (&ForAgent(agent), mut adapted) in &mut calls {
         let Ok(chain) = chains.get(agent) else {
             continue;
         };
-        let hint = ChainHint {
-            link: chain.link.clone(),
-            note: chain.note.clone(),
+        let Adapted(connection) = &mut *adapted;
+        if !vendors.0.contains(&connection.spec.provider) {
+            continue;
+        }
+        let chained = Chained {
+            inner: connection.handler.0.clone(),
+            model: connection.spec.reference(),
+            hint: ChainHint {
+                link: chain.link.clone(),
+                note: chain.note.clone(),
+            },
         };
-        let vendors = vendors.0.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                if vendors.contains(&connection.spec.provider) {
-                    let chained = Chained {
-                        inner: connection.handler.0.clone(),
-                        model: connection.spec.reference(),
-                        hint: hint.clone(),
-                    };
-                    connection.handler = Handler(ErasedHandler::new(chained));
-                }
-                connection
-            }));
+        connection.handler = Handler(ErasedHandler::new(chained));
     }
 }
 

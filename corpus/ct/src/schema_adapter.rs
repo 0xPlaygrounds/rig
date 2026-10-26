@@ -127,8 +127,8 @@ struct Reported(HashSet<String>);
 #[derive(Default)]
 pub struct SchemaAdapterPlugin;
 
-/// The plugin's stage system, in [`PrepareSystems::Edit`]: it gives each
-/// model call the `schema-adapter` adapter.
+/// The plugin's stage system, in [`PrepareSystems::Adapt`]: it adapts each
+/// model call a rule is for.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SchemaAdapterSystems;
 
@@ -136,7 +136,10 @@ impl Plugin for SchemaAdapterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<SchemaAdapterSettings>("schema_adapter")
             .init_resource::<Reported>()
-            .configure_sets(AgentPass, SchemaAdapterSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                SchemaAdapterSystems.in_set(PrepareSystems::Adapt),
+            )
             .add_systems(AgentPass, adapt.in_set(SchemaAdapterSystems))
             .add_observer(report_rejections)
             .add_command(
@@ -147,17 +150,13 @@ impl Plugin for SchemaAdapterPlugin {
     }
 }
 
-/// Gives each model call admitted this pass the `schema-adapter` adapter.
+/// Adapts each model call admitted this pass that a rule is for.
 fn adapt(
-    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
+    mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>,
     settings: Res<SchemaAdapterSettings>,
 ) {
-    let settings = Arc::new(settings.clone());
-    for mut adapters in &mut calls {
-        let settings = settings.clone();
-        adapters.0.push(Adapter::new(NAME, move |connection| {
-            adapted(connection, &settings)
-        }));
+    for mut call in &mut calls {
+        call.0 = adapted(call.0.clone(), &settings);
     }
 }
 

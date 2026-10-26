@@ -585,11 +585,10 @@ struct Fit<'w, 's> {
         (
             &'static Effect,
             &'static mut ModelRequest,
-            Option<&'static Adapters>,
+            Option<&'static Adapted>,
             Option<&'static ForAgent>,
         ),
     >,
-    starts: ModelStarts<'w, 's>,
     overrides: Res<'w, ParamOverrides>,
     table: Res<'w, HeaderTable>,
     warned: ResMut<'w, Warned>,
@@ -602,14 +601,11 @@ impl Fit<'_, '_> {
     /// and leaves out each one that model does not take, warning of it
     /// once.
     fn fit(&mut self, call: Entity, files: &Files) {
-        let Ok((effect, mut model, adapters, agent)) = self.calls.get_mut(call) else {
+        let Ok((effect, mut model, Some(adapted), agent)) = self.calls.get_mut(call) else {
             return;
         };
         let agent = agent.map(|agent| agent.0);
-        let Ok((connection, ..)) = self.starts.sent(&model, adapters, agent) else {
-            return;
-        };
-        let reference = connection.spec.reference();
+        let reference = adapted.0.spec.reference();
         let params = effective(files, &self.overrides, &reference);
         if params.is_empty() {
             return;
@@ -619,10 +615,7 @@ impl Fit<'_, '_> {
             self.table.lock().insert(effect.id(), headers);
             self.commands.entity(call).insert(Headed);
         }
-        let Ok(dropped) = self.starts.dropped(&model, adapters, agent) else {
-            return;
-        };
-        for option in dropped {
+        for option in adapted.dropped(&model) {
             let Some(name) = leave_out(model.request_mut(), &option.option, &params) else {
                 continue;
             };

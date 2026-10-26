@@ -50,10 +50,12 @@ pub struct SecretRedactionPlugin;
 /// The plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RedactionSystems {
-    /// Redacts messages, adapts model calls, reveals tool arguments; in
+    /// Redacts messages and reveals tool arguments; in
     /// [`PrepareSystems::Edit`], once the files a message names are
     /// attached and the calls have their handlers.
     Prepare,
+    /// Adapts model calls, in [`PrepareSystems::AdaptOutermost`].
+    Adapt,
     /// Refuses a tool call naming an unknown placeholder.
     Gate,
     /// Redacts tool results.
@@ -79,6 +81,7 @@ impl Plugin for SecretRedactionPlugin {
                 AgentPass,
                 (
                     Set::Prepare.in_set(PrepareSystems::Edit),
+                    Set::Adapt.in_set(PrepareSystems::AdaptOutermost),
                     Set::Gate.in_set(Stage::Gate),
                     Set::Review.in_set(Stage::Review),
                 ),
@@ -89,7 +92,8 @@ impl Plugin for SecretRedactionPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (redact_messages, adapt_model_calls, reveal_placeholders).in_set(Set::Prepare),
+                    (redact_messages, reveal_placeholders).in_set(Set::Prepare),
+                    adapt_model_calls.in_set(Set::Adapt),
                     refuse_forgotten.in_set(Set::Gate),
                     redact_results.in_set(Set::Review),
                 ),
@@ -318,23 +322,23 @@ fn redact_messages(
 }
 
 /// Every model call, whichever model it goes to, is sent with placeholders
-/// and streams its reply with them. The adapter is outermost, so every
-/// other adapter sees the request with placeholders, and what any of them
+/// and streams its reply with them. It adapts outermost, so every other
+/// adapter sees the request with placeholders, and what any of them
 /// streams is redacted.
 fn adapt_model_calls(
-    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
+    mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>,
     secrets: Res<Secrets>,
 ) {
-    for mut adapters in &mut calls {
+    for mut adapted in &mut calls {
+        let sent = adapted
+            .0
+            .handler
+            .0
+            .clone()
+            .layered(RedactRequest(secrets.clone()));
         let secrets = secrets.clone();
-        let adapter = Adapter::new(NAME, move |mut connection: Connection| {
-            let secrets = secrets.clone();
-            let sent = connection.handler.0.layered(RedactRequest(secrets.clone()));
-            let streamed = sent.map_stream(NAME, move |_| redact_stream(secrets.clone()));
-            connection.handler = Handler(streamed);
-            connection
-        });
-        adapters.0.push(adapter.outermost());
+        let streamed = sent.map_stream(NAME, move |_| redact_stream(secrets.clone()));
+        adapted.0.handler = Handler(streamed);
     }
 }
 

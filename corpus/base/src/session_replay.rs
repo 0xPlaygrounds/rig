@@ -543,9 +543,6 @@ fn split_system(
     (prompt, rest)
 }
 
-/// The adapter's name on a replayed model call.
-const ADAPTER: &str = "replay";
-
 /// Why an effect after a divergence is refused.
 const STOPPED: &str = "the replay stopped at a divergence";
 
@@ -623,9 +620,13 @@ pub struct SessionReplayPlugin;
 /// The replay's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReplaySystems {
-    /// Puts the record outermost on each model call, before compaction
-    /// measures the request.
+    /// Gives each spawn request the recorded agent's id, in
+    /// [`PrepareSystems::Edit`].
     Prepare,
+    /// Puts the record outermost on each model call, in
+    /// [`PrepareSystems::AdaptOutermost`], before compaction measures the
+    /// request.
+    Adapt,
     /// Decides tool calls and replayable plugin effects from the record,
     /// before any gate refuses or holds them or a front answers a question.
     Gate,
@@ -654,6 +655,7 @@ impl Plugin for SessionReplayPlugin {
             AgentPass,
             (
                 ReplaySystems::Prepare.in_set(PrepareSystems::Edit),
+                ReplaySystems::Adapt.in_set(PrepareSystems::AdaptOutermost),
                 ReplaySystems::Gate.in_set(GateSystems::FromRecord),
                 ReplaySystems::Review.in_set(Stage::Review),
             ),
@@ -709,9 +711,8 @@ impl Plugin for SessionReplayPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (recorded_ids, models_from_record)
-                        .chain()
-                        .in_set(ReplaySystems::Prepare),
+                    recorded_ids.in_set(ReplaySystems::Prepare),
+                    models_from_record.in_set(ReplaySystems::Adapt),
                     answer_from_record.in_set(ReplaySystems::Gate),
                     keep_recorded_timing
                         .in_set(ReplaySystems::Review)
@@ -906,27 +907,17 @@ fn end(replay: &mut Replay, status: ReplayStatus, commands: &mut Commands) {
 /// Puts the record outermost on each model call, whichever model the call
 /// goes to: it replaces the model as every other adapter made it.
 fn models_from_record(
-    mut calls: Query<(&mut Adapters, Option<&ForAgent>), Added<Admitted>>,
+    mut calls: Query<(&mut Adapted, Option<&ForAgent>), Added<Admitted>>,
     replay: Res<Replay>,
 ) {
-    for (mut adapters, agent) in &mut calls {
-        // A successor cloned from a replayed call has the adapter already.
-        if adapters.0.iter().any(|adapter| adapter.name == ADAPTER) {
-            continue;
-        }
-        let scope = replay.scope(agent);
-        let (answers, flags) = (replay.answers.clone(), replay.flags);
-        let adapter = Adapter::new(ADAPTER, move |mut connection: Connection| {
-            let model = FromRecord {
-                answers: answers.clone(),
-                scope: scope.clone(),
-                live: connection.handler.0,
-                flags,
-            };
-            connection.handler = Handler(ErasedHandler::new(model));
-            connection
-        });
-        adapters.0.push(adapter.outermost());
+    for (mut adapted, agent) in &mut calls {
+        let model = FromRecord {
+            answers: replay.answers.clone(),
+            scope: replay.scope(agent),
+            live: adapted.0.handler.0.clone(),
+            flags: replay.flags,
+        };
+        adapted.0.handler = Handler(ErasedHandler::new(model));
     }
 }
 

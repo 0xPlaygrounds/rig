@@ -5,7 +5,7 @@
 //! `anthropic-batch`, at half its list price, connected to a handler that
 //! serves nothing (`ErasedHandler::unavailable`). A model call to a twin is
 //! held in [`GateSystems::After`] (`batch: queued`), and the request Start
-//! would send it ([`ModelStarts::sent`]), encoded by rig-core's Messages
+//! would send it ([`Adapted::sent`]), encoded by rig-core's Messages
 //! wire, is queued as a batch item. Items queued within
 //! [`BatchSettings::window_ms`] go together as one batch. The batch is
 //! polled with backoff ([`BatchSettings::first_poll_secs`], doubling up to
@@ -299,7 +299,7 @@ fn take_over(
         (
             Entity,
             &ModelRequest,
-            Option<&Adapters>,
+            Option<&Adapted>,
             &Effect,
             &mut Decision,
             Option<&ForAgent>,
@@ -307,7 +307,6 @@ fn take_over(
         ),
         (ReadyToStart, ModelCalls, Without<Batched>),
     >,
-    starts: ModelStarts,
     agents: Query<&BatchWait>,
     (models, account, settings, invoked): (
         Res<Models>,
@@ -320,17 +319,19 @@ fn take_over(
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    for (call, model, adapters, effect, mut decision, agent, turn_call) in &mut calls {
+    for (call, model, adapted, effect, mut decision, agent, turn_call) in &mut calls {
         let agent = agent.map(|agent| agent.0);
         if decision.is_decided() {
             continue;
         }
-        let Ok((connection, request)) = starts.sent(model, adapters, agent) else {
+        let Some(adapted) = adapted else {
             continue;
         };
+        let connection = &adapted.0;
         if connection.spec.provider.vendor() != VENDOR {
             continue;
         }
+        let request = adapted.sent(model);
         let (Some(account), Some(http)) = (&account, models.0.transport().shared()) else {
             let why = "batch models need ANTHROPIC_API_KEY and an HTTP client";
             decision.decide(Decider::plugin(NAME), failed(why));

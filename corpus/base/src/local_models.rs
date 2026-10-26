@@ -214,7 +214,10 @@ impl Plugin for LocalModelsPlugin {
                 models_command,
             )
             .add_systems(Startup, probe_at_startup)
-            .configure_sets(AgentPass, LocalModelSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                LocalModelSystems.in_set(PrepareSystems::AdaptOutermost),
+            )
             .add_systems(AgentPass, adapt.in_set(LocalModelSystems))
             .add_observer(found)
             .add_observer(warm_up);
@@ -461,14 +464,12 @@ fn serve(
     Ok(ErasedHandler::new(adapter))
 }
 
-/// Gives each model call the outermost adapter that serves a local model:
-/// it sees the model the call finally goes to, whoever routed or adapted
-/// it, with the local models as they are now.
-fn adapt(mut calls: Query<&mut Adapters, Added<Admitted>>, local: Res<LocalModels>) {
-    for mut adapters in &mut calls {
-        let local = local.clone();
-        let adapter = Adapter::new(TAG, move |connection| local.adapt(connection));
-        adapters.0.push(adapter.outermost());
+/// Serves each model call that goes to a local model, outermost: it sees
+/// the model the call finally goes to, whoever routed or adapted it, with
+/// the local models as they are now.
+fn adapt(mut calls: Query<&mut Adapted, Added<Admitted>>, local: Res<LocalModels>) {
+    for mut adapted in &mut calls {
+        adapted.0 = local.adapt(adapted.0.clone());
     }
 }
 

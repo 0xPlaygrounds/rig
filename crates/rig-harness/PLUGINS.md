@@ -82,7 +82,8 @@ each plugin added): ask it before reading rig's source.
   **answer** is what a handler or decision gave (`effect::Answered`), the
   **outcome** the answer or an error (`Outcome`). A **handler** serves an
   effect, a **layer** wraps one (`Intercept`: `BeforeServe`, `AfterServe`), an
-  **adapter** changes the model a call goes to. An **open tool**'s calls are
+  **adapter** is a system that changes the model a call goes to
+  (`Adapted`). An **open tool**'s calls are
   answered by observers; a **footprint** what a tool call may read and change;
   **facts** are typed values a handler publishes with its answer (`Published`).
 - **Messages.** A **message** is text sent to an agent (`Incoming`) to
@@ -296,7 +297,9 @@ orders a system by what it does, not by which plugin does what:
 |---|---|---|
 | `PrepareSystems::Input` | what came in, rewritten before anything is read from it: a message's text, a tool call's arguments | |
 | `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_basics::coding_tools::AttachSystems`), the default system prompt, each coding tool call's handler for its place in the workspace |
-| `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to, its `Adapters`, a call's `CallHandler` | |
+| `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to (`connection`), a call's `CallHandler` | |
+| `PrepareSystems::Adapt` | the model a call goes to (`Adapted`), changed in place: its handler wrapped, its spec saying what the wrapped model takes | |
+| `PrepareSystems::AdaptOutermost` | the same, after every other adapter: a change that sees what they made of the model, such as a replay that replaces it | |
 | `PrepareSystems::Fit` | the request as sent, measured against the window of the model it goes to and fitted | compaction |
 | `ReviewSystems::Edit` | an `Outcome`, a `RetryVerdict` or a proposed `TurnOutcome`, edited in place | compaction reading a summary or notes from its reply |
 | `ReviewSystems::Act` | what was reviewed, acted on: a failed call taken over, a result followed up, a summary or notes reviewed | compaction's recovery from an overflow |
@@ -891,17 +894,22 @@ caching), one it cannot take is left out.
 - **Routing** a call to another model is a Prepare edit of its
   `connection`; it then asks for that model's caching.
 - **Adapting** the model, whichever it is, such as so it reads tools as
-  text, is an `Adapter` pushed on the call's `Adapters`, applied at Start
-  to the connection the call finally goes to, in order, `outermost()` ones
-  last, so a router and an adapter never undo each other. It wraps
+  text, is a system in `PrepareSystems::Adapt` (or `AdaptOutermost`, after
+  the others) that changes the call's `Adapted(connection)` in place,
+  `Query<&mut Adapted, Added<Admitted>>`. After Edit, the kernel puts on
+  each model call the connection it goes to, its own or else its agent's
+  model at that moment, so a router and an adapter never undo each other,
+  and a call keeps that model while it is held or waits. An adapter wraps
   `connection.handler` with rig-core's `ErasedHandler::layered` or
   `map_stream` (each streamed item rewritten, and recorded so), and says
-  what the wrapped model takes on `connection.spec`.
-- **What a call is sent as.** `ModelStarts::sent` gives a call's
-  connection and its request as Start will send it (to measure in
-  `PrepareSystems::Fit`), `dropped` the options its model leaves out,
-  `prompt` its system prompt in parts. From Start on, a call has
-  `SentTo(connection)`, its request as sent, and `DroppedOptions`, the options
+  what the wrapped model takes on `connection.spec`. A successor is
+  routed and adapted anew, so no call is adapted twice.
+- **What a call is sent as.** `Adapted::sent` gives a call's request as
+  Start will send it to that connection (to measure in
+  `PrepareSystems::Fit`), `dropped` the options its model leaves out; its
+  system prompt in parts is `ModelRequest::prompt`. Start sends the request
+  to the `Adapted` connection and moves it into `SentTo(connection)`; from
+  then on a call has its request as sent, and `DroppedOptions`, the options
   left out (by the model's spec or a dry run, rig-core's `Serve::check`).
   A fact a `map_stream` closure inserts in the call's `PublishedContext`
   is its `Published` once answered.
@@ -930,7 +938,7 @@ caching), one it cannot take is left out.
 - **Answering later, from elsewhere,** such as a batch API: the model is
   connected with rig-core's `ErasedHandler::unavailable(descriptor, why)`,
   and a system in `GateSystems::After` holds each call, submits what
-  `ModelStarts::sent` gives, and keeps the batch's id in a saved component
+  `Adapted::sent` gives, and keeps the batch's id in a saved component
   by turn (a restart runs the call again, `Restored`, to hold again). A
   `WakeAt` polls, and rig-core's `wire::decode_reply` turns the result's
   body into the reply it decides the call with.
@@ -964,25 +972,24 @@ use rig_harness::rig_ecs::effects::Handler;
 const FALLBACK: &str = "deepseek/deepseek-flash";
 
 fn build(app: &mut App) {
-    let edits = tools_as_text.in_set(PrepareSystems::Edit);
-    app.add_systems(AgentPass, (edits, fall_back.in_set(ReviewSystems::Act)));
+    let adapt = tools_as_text.in_set(PrepareSystems::Adapt);
+    app.add_systems(AgentPass, (adapt, fall_back.in_set(ReviewSystems::Act)));
 }
 
 /// Tools as text for a model that calls none, whichever a router picks.
-fn tools_as_text(mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>) {
-    for mut adapters in &mut calls {
-        adapters.0.push(Adapter::new("text-tools", |mut connection: Connection| {
-            if !connection.spec.tools {
-                let mut spec = (*connection.spec).clone();
-                spec.tools = true;
-                connection.spec = Arc::new(spec);
-                // Each streamed item, rewritten: here passed on, where the
-                // plugin's parser reads tool calls from the text.
-                let pass_on = |_published| |item| vec![item];
-                connection.handler = Handler(connection.handler.0.map_stream("text-tools", pass_on));
-            }
-            connection
-        }));
+fn tools_as_text(mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>) {
+    for mut adapted in &mut calls {
+        let Adapted(connection) = &mut *adapted;
+        if !connection.spec.tools {
+            let mut spec = (*connection.spec).clone();
+            spec.tools = true;
+            connection.spec = Arc::new(spec);
+            // Each streamed item, rewritten: here passed on, where the
+            // plugin's parser reads tool calls from the text.
+            let pass_on = |_published| |item| vec![item];
+            let handler = connection.handler.0.clone().map_stream("text-tools", pass_on);
+            connection.handler = Handler(handler);
+        }
     }
 }
 
@@ -1015,7 +1022,7 @@ Every model call streams, a turn's and a plugin's own alike. Each event is a
 `StreamEvent`: a part's `Start` (a tool call's name), its `Text`,
 `Reasoning` or `Arguments` fragments, and its `End` (a finished tool call
 with its id); `part` tells parallel tool calls apart. It is written in
-Arrive in order, after the call's adapters rewrote it, and kept two frames,
+Arrive in order, after the call's adapted handler rewrote it, and kept two frames,
 so a reader in `PostUpdate` gets a reply's last events even when it settled
 that frame. A turn's call also adds its text and reasoning up in its
 `Partial` (a successor continuing a reply may start it with the text so
@@ -1300,7 +1307,7 @@ session stopped. rig-core's `redact` finds keys and tokens by their shapes
 (`json`, `text`).
 
 **Replaying.** A replayer answers effects from a recorded log before
-they start: a model call by an adapter placed outermost, the others in
+they start: a model call by an adapter in `PrepareSystems::AdaptOutermost`, the others in
 `GateSystems::FromRecord` (rig-cassette's `RecordedAnswers` pairs agents).
 
 ```rust,no_run

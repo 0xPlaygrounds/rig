@@ -22,26 +22,21 @@ struct Read {
 
 /// Puts a counter under the cutter on every call, so it sees what was
 /// pulled from the provider.
-fn count_reads(mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>, read: Res<Read>) {
-    for mut adapters in &mut calls {
+fn count_reads(mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>, read: Res<Read>) {
+    for mut adapted in &mut calls {
         let read = read.clone();
-        adapters
-            .0
-            .push(Adapter::new("count", move |mut connection: Connection| {
-                let read = read.clone();
-                let count = move |_| {
-                    let read = read.clone();
-                    move |item: Relayed| {
-                        read.items.fetch_add(1, Ordering::SeqCst);
-                        if matches!(item, Relayed::Done(_)) {
-                            read.to_end.store(true, Ordering::SeqCst);
-                        }
-                        vec![item]
-                    }
-                };
-                connection.handler = Handler(connection.handler.0.map_stream("count", count));
-                connection
-            }));
+        let count = move |_| {
+            let read = read.clone();
+            move |item: Relayed| {
+                read.items.fetch_add(1, Ordering::SeqCst);
+                if matches!(item, Relayed::Done(_)) {
+                    read.to_end.store(true, Ordering::SeqCst);
+                }
+                vec![item]
+            }
+        };
+        let handler = adapted.0.handler.0.clone().map_stream("count", count);
+        adapted.0.handler = Handler(handler);
     }
 }
 
@@ -113,7 +108,7 @@ fn looping_and_role_play_replies_are_cut_where_they_go_wrong() {
         .add_systems(
             AgentPass,
             count_reads
-                .in_set(Stage::Prepare)
+                .in_set(PrepareSystems::Adapt)
                 .before(StreamCutterSystems),
         )
         .init_resource::<ToolOutputs>()

@@ -83,8 +83,8 @@ pub struct ThinkTagSplitterPlugin;
 /// The plugin's stage systems, to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ThinkTagSystems {
-    /// In [`PrepareSystems::Edit`], before compaction measures the adapted
-    /// call: puts the split on each model call.
+    /// In [`PrepareSystems::Adapt`], before compaction measures the
+    /// adapted call: puts the split on each model call.
     Prepare,
     /// In [`Stage::Review`]: learns which models send tags.
     Review,
@@ -97,7 +97,7 @@ impl Plugin for ThinkTagSplitterPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ThinkTagSystems::Prepare.in_set(PrepareSystems::Edit),
+                    ThinkTagSystems::Prepare.in_set(PrepareSystems::Adapt),
                     ThinkTagSystems::Review.in_set(Stage::Review),
                 ),
             )
@@ -113,35 +113,28 @@ impl Plugin for ThinkTagSplitterPlugin {
 
 /// Puts the split on each new model call, for whichever model it goes to.
 fn adapt(
-    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
+    mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>,
     tags: Res<ThinkTags>,
     sends: Res<SendsTags>,
 ) {
     if !tags.detect && tags.models.is_empty() && sends.0.is_empty() {
         return;
     }
-    for mut adapters in &mut calls {
-        let tags = tags.clone();
-        let sends = sends.0.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                let model = connection.spec.reference();
-                let always = tags.models.contains(&model);
-                let mut handler = connection.handler.0;
-                if always || tags.detect {
-                    let split = move |published| {
-                        let mut parts = Parts::new(always, published);
-                        move |relayed| parts.relay(relayed)
-                    };
-                    handler = handler.map_stream(NAME, split);
-                }
-                if !tags.resend_reasoning && (always || sends.contains(&model)) {
-                    handler = handler.layered(LeaveOutReasoning);
-                }
-                connection.handler = Handler(handler);
-                connection
-            }));
+    for mut adapted in &mut calls {
+        let model = adapted.0.spec.reference();
+        let always = tags.models.contains(&model);
+        let mut handler = adapted.0.handler.0.clone();
+        if always || tags.detect {
+            let split = move |published| {
+                let mut parts = Parts::new(always, published);
+                move |relayed| parts.relay(relayed)
+            };
+            handler = handler.map_stream(NAME, split);
+        }
+        if !tags.resend_reasoning && (always || sends.0.contains(&model)) {
+            handler = handler.layered(LeaveOutReasoning);
+        }
+        adapted.0.handler = Handler(handler);
     }
 }
 

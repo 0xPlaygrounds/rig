@@ -88,9 +88,8 @@ impl StreamCutter {
 #[reflect(Resource, Saved)]
 pub struct Cuts(pub HashMap<String, u32>);
 
-/// The cutter's stage system, which adds its adapter to each model call,
-/// for others to order against. It runs before compaction measures the
-/// call with its adapters.
+/// The cutter's stage system, which adapts each model call, in
+/// [`PrepareSystems::Adapt`], for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StreamCutterSystems;
 
@@ -101,7 +100,7 @@ impl Plugin for StreamCutterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<StreamCutter>("stream_cutter")
             .init_resource::<Cuts>()
-            .configure_sets(AgentPass, StreamCutterSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(AgentPass, StreamCutterSystems.in_set(PrepareSystems::Adapt))
             .add_systems(AgentPass, adapt.in_set(StreamCutterSystems))
             .add_observer(announce)
             .add_command("cuts", "How many replies were cut, per model", cuts);
@@ -118,28 +117,24 @@ impl ContextValue for Cut {
 
 /// Puts the cutter on each new model call, for whichever model it goes to.
 fn adapt(
-    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
+    mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>,
     settings: Res<StreamCutter>,
 ) {
     if settings.models.is_empty() {
         return;
     }
     let rules = Arc::new(Rules::from(&*settings));
-    for mut adapters in &mut calls {
+    for mut adapted in &mut calls {
+        let Adapted(connection) = &mut *adapted;
+        if !rules.settings.watches(&connection.spec.reference()) {
+            continue;
+        }
         let rules = rules.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                if rules.settings.watches(&connection.spec.reference()) {
-                    let rules = rules.clone();
-                    let cut = move |published| {
-                        let mut cutter = Cutter::new(rules.clone(), published);
-                        move |relayed| cutter.relay(relayed)
-                    };
-                    connection.handler = Handler(connection.handler.0.map_stream(NAME, cut));
-                }
-                connection
-            }));
+        let cut = move |published| {
+            let mut cutter = Cutter::new(rules.clone(), published);
+            move |relayed| cutter.relay(relayed)
+        };
+        connection.handler = Handler(connection.handler.0.clone().map_stream(NAME, cut));
     }
 }
 

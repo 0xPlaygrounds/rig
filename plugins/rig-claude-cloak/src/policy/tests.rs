@@ -8,16 +8,16 @@ mod fingerprint;
 struct FitObservations(Vec<bool>);
 
 fn observe_fit(
-    mut calls: Query<(&mut ModelRequest, &mut Adapters), Added<Admitted>>,
+    mut calls: Query<(&mut ModelRequest, &Adapted), Added<Admitted>>,
     mut agents: Query<&mut Conversation>,
     mut observations: ResMut<FitObservations>,
 ) {
-    for (_, adapters) in &mut calls {
+    for (_, adapted) in &mut calls {
+        let layers = adapted.0.handler.0.descriptor().layers;
         observations.0.push(
-            adapters
-                .0
+            layers
                 .iter()
-                .any(|adapter| adapter.name == "claude-cloak-identity"),
+                .any(|layer| layer == "claude-cloak-agent-identity"),
         );
     }
     // Hold the same mutable component access as a compaction system.
@@ -52,10 +52,7 @@ fn agent_loop_sets_profile_default_before_explicit_edits() -> anyhow::Result<()>
                 AgentPass,
                 (
                     default_cache.in_set(PrepareSystems::Input),
-                    identify_requests
-                        .in_set(Stage::Prepare)
-                        .after(PrepareSystems::Edit)
-                        .before(PrepareSystems::Fit),
+                    identify_requests.in_set(PrepareSystems::Adapt),
                 ),
             )
             .add_systems(
@@ -142,10 +139,7 @@ fn started_fallback_recovers_omission_without_overriding_explicit_short() -> any
                 AgentPass,
                 (
                     default_cache.in_set(PrepareSystems::Input),
-                    identify_requests
-                        .in_set(Stage::Prepare)
-                        .after(PrepareSystems::Edit)
-                        .before(PrepareSystems::Fit),
+                    identify_requests.in_set(PrepareSystems::Adapt),
                     (move |failed: Query<
                         (Entity, &ModelRequest, &Outcome, &CallOf, &ForAgent),
                         (With<Started>, Without<SupersededBy>),
@@ -211,14 +205,11 @@ fn started_fallback_recovers_omission_without_overriding_explicit_short() -> any
 struct PreparedRequests(Vec<CompletionRequest>);
 
 fn capture_prepared(
-    starts: ModelStarts,
-    calls: Query<(&ModelRequest, &ForAgent, &Adapters), Added<Admitted>>,
+    calls: Query<(&ModelRequest, &Adapted), Added<Admitted>>,
     mut prepared: ResMut<PreparedRequests>,
 ) {
-    for (model, agent, adapters) in &calls {
-        if let Ok((_, request)) = starts.sent(model, Some(adapters), Some(agent.0)) {
-            prepared.0.push(request.clone());
-        }
+    for (model, adapted) in &calls {
+        prepared.0.push(adapted.sent(model));
     }
 }
 
@@ -261,10 +252,7 @@ fn routing_and_cloned_fallbacks_do_not_carry_private_policy() -> anyhow::Result<
                 AgentPass,
                 (
                     default_cache.in_set(PrepareSystems::Input),
-                    identify_requests
-                        .in_set(Stage::Prepare)
-                        .after(PrepareSystems::Edit)
-                        .before(PrepareSystems::Fit),
+                    identify_requests.in_set(PrepareSystems::Adapt),
                     (move |mut calls: Query<&mut ModelRequest, Added<Admitted>>| {
                         for mut call in &mut calls {
                             let mut fallback = call.clone();
@@ -338,10 +326,7 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
                 AgentPass,
                 (
                     default_cache.in_set(PrepareSystems::Input),
-                    identify_requests
-                        .in_set(Stage::Prepare)
-                        .after(PrepareSystems::Edit)
-                        .before(PrepareSystems::Fit),
+                    identify_requests.in_set(PrepareSystems::Adapt),
                 ),
             );
         app.add_plugins((AgentPlugin, SessionLogPlugin))

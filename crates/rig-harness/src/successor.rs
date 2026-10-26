@@ -39,8 +39,8 @@ use crate::load::ProvidedBy;
 /// request, unless it settled or was superseded already. A [`TurnCall`]
 /// or [`SideCall`] is built anew by the kernel. A plugin's own
 /// [`ModelRequest`], [`EffectRequest`] or [`ToolRequest`] is copied as it
-/// is now, with its Prepare edits (a model call's adapters, apart in
-/// `Adapters`, are pushed again in Prepare), and its [`Effect`] parent and
+/// is now, with its Prepare edits (a model call's connection is routed and
+/// adapted again in Prepare, as `Adapted` is not copied), and its [`Effect`] parent and
 /// purpose, `CallOf`, `ForAgent`, `ChildOf`, `ProvidedBy` and `Name`. The
 /// owner's markers follow by [`follow_successor`](rig_ecs::stage::follow_successor):
 /// `commands.queue(resend(call))`.

@@ -51,18 +51,15 @@ impl<'de> Deserialize<'de> for Policy {
 /// Drops the oldest turns of a turn's request, and of its agent's
 /// conversation, when the request as it will be sent nears the window.
 fn near_the_window(
-    mut calls: Query<(&mut ModelRequest, &Adapters, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &Adapted, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     mut agents: Query<(&mut Conversation, &LastUsage)>,
-    starts: ModelStarts,
     policy: Res<Policy>,
 ) {
-    for (mut model, adapters, &ForAgent(agent)) in &mut calls {
+    for (mut model, adapted, &ForAgent(agent)) in &mut calls {
         let Ok((mut conversation, last)) = agents.get_mut(agent) else {
             continue;
         };
-        let Ok((connection, request)) = starts.sent(&model, Some(adapters), Some(agent)) else {
-            continue;
-        };
+        let (connection, request) = (&adapted.0, adapted.sent(&model));
         let used = last
             .context()
             .unwrap_or(0)

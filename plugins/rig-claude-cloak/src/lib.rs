@@ -77,10 +77,7 @@ impl Plugin for ClaudeCloakPlugin {
                 AgentPass,
                 (
                     policy::default_cache.in_set(PrepareSystems::Input),
-                    policy::identify_requests
-                        .in_set(Stage::Prepare)
-                        .after(PrepareSystems::Edit)
-                        .before(PrepareSystems::Fit),
+                    policy::identify_requests.in_set(PrepareSystems::Adapt),
                 ),
             )
             .add_command(

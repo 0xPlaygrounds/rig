@@ -1480,6 +1480,50 @@ fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
     );
 }
 
+/// Says every turn's call goes to a model with a 40,000-token window, as
+/// an adapter that changes the spec would.
+fn shrink_window(mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>) {
+    for mut adapted in &mut calls {
+        let spec = adapted.0.spec.as_ref().clone().with_context_window(40_000);
+        adapted.0.spec = Arc::new(spec);
+    }
+}
+
+#[test]
+fn a_routed_call_is_measured_against_its_adapted_model() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let own = MockCompletionModel::from_stream_turns([reply("own")]);
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    let Some(routed) = connect(&model) else {
+        return;
+    };
+    let routed = Connection {
+        spec: Arc::new(routed.spec.as_ref().clone().with_context_window(1_000_000)),
+        ..routed
+    };
+    app.insert_resource(Routed(routed)).add_systems(
+        AgentPass,
+        (
+            route.in_set(PrepareSystems::Edit),
+            shrink_window.in_set(PrepareSystems::Adapt),
+        ),
+    );
+    // Both the agent's model and the routed one have room; the adapted
+    // one has not.
+    let agent = agent(&mut app, &own, 1_000_000, long_conversation(6));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(own.request_count(), 0);
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if asks_summary(summary)),
+        "a summary, then the request: {sent:?}"
+    );
+}
+
 #[test]
 fn a_model_whose_input_limit_is_below_its_window_compacts_before_that_limit() {
     let (mut app, wakes) = start(&MemoryStore::default());
