@@ -77,6 +77,8 @@ use rig_memory::{
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
+#[cfg(feature = "tui")]
+pub use tui::SummaryLooks;
 
 /// The purpose of a summary's model call.
 pub const PURPOSE: &str = "compaction";

@@ -646,12 +646,18 @@ fn shown(base: &Path, path: &str) -> String {
 mod look {
     use rig_harness::prelude::*;
     use rig_tui::ratatui::text::Line;
-    use rig_tui::{AppToolRenderersExt, ToolCallView};
+    use rig_tui::{RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
 
     use super::IMPLEMENT;
 
     pub(super) fn add(app: &mut App) {
-        app.add_tool_renderer(IMPLEMENT, look);
+        app.add_systems(TranscriptRender, draw.in_set(RenderSystems::Render));
+    }
+
+    fn draw(mut batch: ResMut<RenderBatch>) {
+        for (call, output) in batch.tools_mut(IMPLEMENT) {
+            output.lines = look(&call.view());
+        }
     }
 
     fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {

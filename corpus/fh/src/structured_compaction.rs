@@ -117,11 +117,7 @@ impl Plugin for StructuredCompactionPlugin {
             )
             .add_observer(follow_successor::<Structured>)
             .add_observer(keep_verbatim);
-    }
-
-    /// Draws summaries as a "Summary" entry once rig-tui's renderers are in.
-    #[cfg(feature = "tui")]
-    fn finish(&self, app: &mut App) {
+        #[cfg(feature = "tui")]
         tui::add(app);
     }
 }

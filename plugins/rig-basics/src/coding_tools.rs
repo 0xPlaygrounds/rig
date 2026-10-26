@@ -29,7 +29,13 @@ use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_tools::attach::{Attached, attachments};
 use rig_tools::{Edit, OutputLimit, Read, Seen, Shell, Write};
 #[cfg(feature = "tui")]
-use rig_tui::AppToolRenderersExt;
+use rig_tui::{RenderSystems, TranscriptRender};
+
+/// The systems that draw the coding tools' calls in the terminal view, in
+/// `rig_tui::RenderSystems::Render`, with the `tui` feature. A plugin that
+/// draws them its own way runs after it.
+#[derive(bevy_ecs::schedule::SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CodingToolLooks;
 
 #[cfg(feature = "tui")]
 mod looks;
@@ -59,7 +65,12 @@ impl Plugin for ReadTool {
             seen: seen.clone(),
         });
         #[cfg(feature = "tui")]
-        app.add_tool_renderer(Read::NAME, looks::read);
+        app.add_systems(
+            TranscriptRender,
+            looks::draw_read
+                .in_set(CodingToolLooks)
+                .in_set(RenderSystems::Render),
+        );
     }
 }
 
@@ -81,7 +92,12 @@ impl Plugin for EditTool {
             seen: seen.clone(),
         });
         #[cfg(feature = "tui")]
-        app.add_tool_renderer(Edit::NAME, looks::edit);
+        app.add_systems(
+            TranscriptRender,
+            looks::draw_edit
+                .in_set(CodingToolLooks)
+                .in_set(RenderSystems::Render),
+        );
     }
 }
 
@@ -105,7 +121,12 @@ impl Plugin for WriteTool {
             }
         });
         #[cfg(feature = "tui")]
-        app.add_tool_renderer(Write::NAME, looks::write);
+        app.add_systems(
+            TranscriptRender,
+            looks::draw_write
+                .in_set(CodingToolLooks)
+                .in_set(RenderSystems::Render),
+        );
     }
 }
 
@@ -147,7 +168,12 @@ impl Plugin for ShellTool {
             ..per.clone()
         });
         #[cfg(feature = "tui")]
-        app.add_tool_renderer(Shell::NAME, looks::shell);
+        app.add_systems(
+            TranscriptRender,
+            looks::draw_shell
+                .in_set(CodingToolLooks)
+                .in_set(RenderSystems::Render),
+        );
     }
 }
 

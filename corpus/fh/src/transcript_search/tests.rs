@@ -1,4 +1,3 @@
-use bevy_ecs::system::RunSystemOnce;
 use rig_core::message::CallId;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
@@ -100,11 +99,11 @@ fn typed(text: &str) -> Vec<KeyCode> {
 
 /// `agent`'s transcript as the view lays it out, `width` columns wide.
 fn laid_out(app: &mut App, agent: Entity, width: u16) -> DrawnTranscript {
-    let lay_out = move |layout: TranscriptLayout, view: Single<&TranscriptView, With<MainPane>>| {
-        layout.lay_out(&view, agent, width)
-    };
-    let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
-    laid_out.unwrap_or_default()
+    let world = app.world_mut();
+    let mut panes = world.query_filtered::<&TranscriptView, With<MainPane>>();
+    let view = panes.single(world).ok().cloned();
+    let drawn = view.and_then(|view| TranscriptLayout::lay_out(world, &view, agent, width));
+    drawn.unwrap_or_default()
 }
 
 /// The matches lit in the rows of `drawn` with `text`.

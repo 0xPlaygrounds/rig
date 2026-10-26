@@ -27,8 +27,8 @@ use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, CallState, KeyBinding, KeyPress, ToolCallView,
-    run_command, text_rows,
+    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, RenderBatch, ToolCallView, run_command,
+    text_rows,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -90,7 +90,11 @@ impl Plugin for CancellableRunPlugin {
         // `--print` writes each change of the progress as one line, so the
         // terminal view alone gets several.
         if app.runs_front(rig_tui::FRONT) {
-            app.add_tool_renderer(RUN, look).add_systems(
+            app.add_systems(
+                rig_tui::TranscriptRender,
+                draw.in_set(rig_tui::RenderSystems::Render),
+            )
+            .add_systems(
                 PostUpdate,
                 show_progress(RunOutput::all).run_if(on_real_timer(REDRAW)),
             );
@@ -375,6 +379,13 @@ fn show_progress(
         for (output, mut progress) in &mut calls {
             progress.set_if_neq(ToolProgress(shown(output)));
         }
+    }
+}
+
+/// Draws the `run` calls.
+fn draw(mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.tools_mut(RUN) {
+        output.lines = look(&call.view());
     }
 }
 

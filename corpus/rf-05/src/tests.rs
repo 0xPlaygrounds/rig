@@ -291,7 +291,6 @@ fn the_total_survives_a_restart_without_counting_twice() {
 #[cfg(feature = "tui")]
 #[test]
 fn the_terminal_view_draws_the_file_and_its_count() {
-    use bevy_ecs::system::RunSystemOnce;
     use rig_tui::{TranscriptLayout, TranscriptView};
 
     let add_view = |app: &mut App| {
@@ -304,17 +303,13 @@ fn the_terminal_view_draws_the_file_and_its_count() {
         add_view,
     );
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    let rows = app
-        .world_mut()
-        .run_system_once(move |layout: TranscriptLayout| {
-            let laid_out = layout.lay_out(&TranscriptView::default(), agent, 80);
-            let rows = laid_out
-                .iter()
-                .flat_map(|it| it.rows().iter().map(|row| row.text.clone()));
-            rows.collect::<Vec<String>>()
-        });
-    assert!(rows.is_ok(), "{rows:?}");
-    let rows = rows.unwrap_or_default();
+    let laid_out =
+        TranscriptLayout::lay_out(app.world_mut(), &TranscriptView::default(), agent, 80);
+    assert!(laid_out.is_some(), "no conversation");
+    let rows: Vec<String> = laid_out
+        .iter()
+        .flat_map(|it| it.rows().iter().map(|row| row.text.clone()))
+        .collect();
     let call = rows
         .iter()
         .position(|row| row.contains("Count") && row.contains("notes.txt"));

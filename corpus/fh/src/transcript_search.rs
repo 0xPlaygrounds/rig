@@ -167,6 +167,8 @@ pub struct TranscriptSearch {
     taken: bool,
     /// The query or scope changed since the last search.
     dirty: bool,
+    /// Whether to search again, with the layout, this frame.
+    pending: bool,
     /// The agent shown and where the view was scrolled when it opened.
     back: Option<(Entity, Option<(TranscriptItem, usize)>)>,
     /// The match the view was last scrolled to, and its row then.
@@ -200,6 +202,7 @@ impl TranscriptSearch {
             editing: true,
             taken: false,
             dirty: true,
+            pending: false,
             back,
             went: None,
             lit: Vec::new(),
@@ -230,21 +233,23 @@ impl TranscriptSearch {
         self.hits.get(at?).map(Hit::key)
     }
 
-    /// Searches `transcripts` again with the query, keeping the match
-    /// shown where it still is; else, while typing, the latest match.
-    fn search(&mut self, transcripts: &Transcripts, view: &TranscriptView) {
-        let was = self.key(self.current);
+    /// The regular expression of the query, compiled again when it
+    /// changed.
+    fn compiled(&mut self) -> Option<Regex> {
         if self.dirty {
             self.dirty = false;
             let compiled = compile(&self.query);
             self.error = compiled.is_err();
             self.regex = compiled.ok().flatten();
         }
-        self.hits = self
-            .regex
-            .as_ref()
-            .map(|regex| transcripts.find(regex, self.scope, view))
-            .unwrap_or_default();
+        self.regex.clone()
+    }
+
+    /// Takes the matches of a new search, keeping the match shown where it
+    /// still is; else, while typing, the latest match.
+    fn found(&mut self, hits: Vec<Hit>) {
+        let was = self.key(self.current);
+        self.hits = hits;
         let kept = (0..self.hits.len()).find(|&at| was.is_some() && self.key(Some(at)) == was);
         let last = self.hits.len().checked_sub(1);
         self.current = match kept {
@@ -364,7 +369,13 @@ impl Plugin for TranscriptSearchPlugin {
         );
         app.add_systems(rig_tui::TuiKeys, type_in_bar.in_set(InputSystems::Filter))
             .add_systems(Update, follow)
-            .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
+            .add_systems(
+                PostUpdate,
+                (
+                    search_pending.before(TuiSystems::Prepare),
+                    draw.in_set(TuiSystems::Draw),
+                ),
+            );
     }
 }
 
@@ -392,11 +403,11 @@ fn open(
 /// The main pane: the one the bar searches, lights and scrolls.
 type Main<'w, 's> = Single<'w, 's, (Entity, &'static mut TranscriptView), With<MainPane>>;
 
-/// What the bar searches, read live.
+/// What a search reads live: whether a conversation (its notes too), a
+/// reply streaming in, a running call's output or the agent shown changed
+/// since the last frame; the notices and the width are the view's.
 #[derive(bevy_ecs::system::SystemParam)]
-struct Transcripts<'w, 's> {
-    layout: TranscriptLayout<'w, 's>,
-    agents: Query<'w, 's, Entity, With<Agent>>,
+struct Changes<'w, 's> {
     changed: Query<
         'w,
         's,
@@ -411,75 +422,126 @@ struct Transcripts<'w, 's> {
     shown: Res<'w, ShownAgent>,
 }
 
-impl Transcripts<'_, '_> {
-    /// Whether a conversation (its notes too), a reply streaming in, a running
-    /// call's output or the agent shown changed since the last frame; the
-    /// notices and the width are the view's.
-    fn changed(&self) -> bool {
+impl Changes<'_, '_> {
+    fn any(&self) -> bool {
         !self.changed.is_empty() || self.shown.is_changed()
     }
+}
 
-    /// The matches of `regex` in the transcript of the agent shown, or of
-    /// every agent, laid out as the view draws it, at the width it draws
-    /// at.
-    fn find(&self, regex: &Regex, scope: Scope, view: &TranscriptView) -> Vec<Hit> {
-        let mut agents: Vec<Entity> = self
-            .agents
-            .iter()
-            .filter(|agent| scope == Scope::All || Some(*agent) == self.shown.0)
-            .collect();
-        agents.sort();
-        let width = view.width().unwrap_or(u16::MAX);
+/// Searches the open bar again when it asked ([`TranscriptSearch`]'s
+/// `pending`), and shows the matches.
+fn search_pending(world: &mut World) {
+    let mut bars = world.query::<(Entity, &TranscriptSearch)>();
+    let Some(bar) = bars
+        .iter(world)
+        .find(|(_, search)| search.pending)
+        .map(|(bar, _)| bar)
+    else {
+        return;
+    };
+    search_now(world, bar);
+    world.run_system_cached(show_current).ok();
+}
+
+/// Searches the bar `bar` again: the matches of its query in the transcript
+/// of the agent shown, or of every agent, laid out as the view draws it, at
+/// the width it draws at. It needs the world, since the layout runs the
+/// render systems.
+fn search_now(world: &mut World, bar: Entity) {
+    let Some((regex, scope)) = world.get_mut::<TranscriptSearch>(bar).map(|mut search| {
+        search.pending = false;
+        (search.compiled(), search.scope)
+    }) else {
+        return;
+    };
+    let shown = world.resource::<ShownAgent>().0;
+    let mut panes = world.query_filtered::<&TranscriptView, With<MainPane>>();
+    let Ok(view) = panes.single(world).cloned() else {
+        return;
+    };
+    let mut agents: Vec<Entity> = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .filter(|agent| scope == Scope::All || Some(*agent) == shown)
+        .collect();
+    agents.sort();
+    let width = view.width().unwrap_or(u16::MAX);
+    let hits = regex.map_or_else(Vec::new, |regex| {
         let laid_out = agents.into_iter().filter_map(|agent| {
-            let laid_out = self.layout.lay_out(view, agent, width)?;
-            Some(find(regex, agent, &laid_out))
+            let laid_out = TranscriptLayout::lay_out(world, &view, agent, width)?;
+            Some(find(&regex, agent, &laid_out))
         });
         laid_out.flatten().collect()
+    });
+    if let Some(mut search) = world.get_mut::<TranscriptSearch>(bar) {
+        search.found(hits);
     }
+}
+
+/// Shows the open bar's matches.
+fn show_current(
+    mut bars: Query<&mut TranscriptSearch>,
+    shown: Res<ShownAgent>,
+    main: Main,
+    mut redraw: MessageWriter<RequestRedraw>,
+    mut commands: Commands,
+) {
+    let Ok(mut search) = bars.single_mut() else {
+        return;
+    };
+    let (pane, mut view) = main.into_inner();
+    show(&mut search, (pane, &mut view), shown.0, &mut commands);
+    redraw.write(RequestRedraw);
+}
+
+/// Closes the open bar.
+fn close_bar(mut bars: Query<(Entity, &mut TranscriptSearch)>, main: Main, mut commands: Commands) {
+    let Ok((bar, mut search)) = bars.single_mut() else {
+        return;
+    };
+    let (pane, mut view) = main.into_inner();
+    close(bar, &mut search, (pane, &mut view), &mut commands);
 }
 
 /// Types the key into the open bar, searching again when the query
 /// changed, and shows the match in the transcript; Esc closes it. A filter
 /// of each key.
-fn type_in_bar(
-    mut events: ResMut<PendingInput>,
-    mut bars: Query<(Entity, &mut TranscriptSearch)>,
-    transcripts: Transcripts,
-    main: Main,
-    mut redraw: MessageWriter<RequestRedraw>,
-    mut commands: Commands,
-) {
-    let Ok((bar, mut search)) = bars.single_mut() else {
+fn type_in_bar(world: &mut World) {
+    let mut bars = world.query_filtered::<Entity, With<TranscriptSearch>>();
+    let Ok(bar) = bars.single(world) else {
         return;
     };
-    let (pane, mut view) = main.into_inner();
     // The bar takes the keys it does, as the panel with the keys; those
     // after an Esc are the input's again.
+    let events = std::mem::take(&mut world.resource_mut::<PendingInput>().0);
+    let mut kept = Vec::with_capacity(events.len());
     let (mut closing, mut typed) = (false, false);
-    events.0.retain(|item| {
-        let KeyInput::Event(event) = item else {
-            return true;
+    for item in events {
+        let KeyInput::Event(event) = &item else {
+            kept.push(item);
+            continue;
         };
         if closing {
-            return true;
+            kept.push(item);
+            continue;
         }
-        match search.press(event) {
-            Pressed::Other => return true,
-            Pressed::Esc => closing = true,
-            Pressed::Done => {
+        let mut search = world.get_mut::<TranscriptSearch>(bar);
+        match search.as_mut().map(|search| search.press(event)) {
+            Some(Pressed::Other) | None => kept.push(item),
+            Some(Pressed::Esc) => closing = true,
+            Some(Pressed::Done) => {
                 typed = true;
-                if search.dirty {
-                    search.search(&transcripts, &view);
+                if search.is_some_and(|search| search.dirty) {
+                    search_now(world, bar);
                 }
             }
         }
-        false
-    });
+    }
+    world.resource_mut::<PendingInput>().0 = kept;
     if closing {
-        close(bar, &mut search, (pane, &mut view), &mut commands);
+        world.run_system_cached(close_bar).ok();
     } else if typed {
-        show(&mut search, (pane, &mut view), &transcripts, &mut commands);
-        redraw.write(RequestRedraw);
+        world.run_system_cached(show_current).ok();
     }
 }
 
@@ -488,9 +550,8 @@ fn type_in_bar(
 fn follow(
     mut bars: Query<(Entity, &mut TranscriptSearch)>,
     focus: Res<KeyFocus>,
-    transcripts: Transcripts,
+    changes: Changes,
     main: Main,
-    mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
     let Ok((bar, mut search)) = bars.single_mut() else {
@@ -499,12 +560,10 @@ fn follow(
     let (pane, mut view) = main.into_inner();
     if focus.0 != Some(bar) {
         close(bar, &mut search, (pane, &mut view), &mut commands);
-    } else if transcripts.changed() || view.is_changed() {
+    } else if changes.any() || view.is_changed() {
         // The view counts as changed only when it changes, such as on a
         // new width, which the layout wraps at, or a notice.
-        search.search(&transcripts, &view);
-        show(&mut search, (pane, &mut view), &transcripts, &mut commands);
-        redraw.write(RequestRedraw);
+        search.pending = true;
     }
 }
 
@@ -513,7 +572,7 @@ fn follow(
 fn show(
     search: &mut TranscriptSearch,
     (pane, view): (Entity, &mut Mut<TranscriptView>),
-    transcripts: &Transcripts,
+    showing: Option<Entity>,
     commands: &mut Commands,
 ) {
     let shown = search.key(search.current);
@@ -522,7 +581,7 @@ fn show(
     search.went = went;
     let jump = jump.flatten();
     // The agent the view draws once it jumps.
-    let agent = jump.as_ref().map(|hit| hit.agent).or(transcripts.shown.0);
+    let agent = jump.as_ref().map(|hit| hit.agent).or(showing);
     if let Some(hit) = jump {
         let (item, row) = (hit.item().cloned(), ItemRow::Top(hit.row));
         commands.trigger(ShowAgent { entity: hit.agent });

@@ -13,8 +13,8 @@
 //! - otherwise half-block characters coloured as the image
 //!   ([`Mode::Blocks`]), or with [`Mode::Off`] one line saying what it is.
 //!
-//! A message's images are drawn by a content renderer and a call's by a
-//! call decorator. `o` on a selected image or call opens the image in the
+//! A render system draws a message's images in place of the block and a
+//! call's under it, as a decoration. `o` on a selected image or call opens the image in the
 //! system viewer and `y` copies the path it was saved to. The images are
 //! drawn from the conversation, so a resumed session draws them again.
 
@@ -41,9 +41,9 @@ use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, CallDecorator, ContentBlock, ContentKind,
-    CopyToClipboard, DrawnTranscript, KeyBinding, KeyPress, KeyPressed, KeyScope, MainPane,
-    RedrawArea, TerminalSize, TerminalWrite, ToolCallView, TranscriptItem, TranscriptView,
+    AppKeyBindingsExt, ContentBlock, ContentKind, CopyToClipboard, DrawnTranscript, KeyBinding,
+    KeyPress, KeyPressed, KeyScope, MainPane, RedrawArea, RenderBatch, RenderRevision,
+    RenderSystems, TerminalSize, TerminalWrite, TranscriptItem, TranscriptRender, TranscriptView,
     TuiFrame, TuiSystems,
 };
 use serde::Deserialize;
@@ -51,7 +51,7 @@ use serde::Deserialize;
 /// Columns an image is indented by in the transcript.
 const INDENT: u16 = 4;
 
-/// The name of this plugin's call decorator.
+/// The name of this plugin's decoration under calls.
 const DECORATOR: &str = "images";
 
 /// What an image looks like in the transcript.
@@ -261,16 +261,15 @@ struct Fitted {
     rows: u16,
 }
 
-/// What the renderers, which run inside the view's layout with no world,
-/// share with the plugin's systems: the look to draw and the decoded
-/// images.
+/// What the render systems share with the plugin's other systems: the look
+/// to draw and the decoded images.
 #[derive(Default)]
 struct Shared {
     params: Params,
     decoded: HashMap<u64, Arc<Decoded>>,
 }
 
-/// The state the renderers share with the plugin's systems.
+/// The decoded images and their look, shared by the plugin's systems.
 #[derive(Resource, Clone, Default)]
 struct Images(Arc<Mutex<Shared>>);
 
@@ -506,7 +505,7 @@ fn follow_look(
         Res<TerminalSize>,
         Option<Single<&TranscriptView, With<MainPane>>>,
     ),
-    mut decorators: Query<&mut CallDecorator>,
+    mut revision: ResMut<RenderRevision>,
 ) {
     let width = match screen.0.width {
         0 => 80,
@@ -520,10 +519,27 @@ fn follow_look(
     }
     shared.params = params;
     // A changed look draws the whole transcript again, images and all.
-    for mut decorator in &mut decorators {
-        if decorator.name == DECORATOR {
-            decorator.set_changed();
+    revision.0 = revision.0.wrapping_add(1);
+}
+
+/// Draws the image blocks of messages.
+fn draw_images(images: Res<Images>, mut batch: ResMut<RenderBatch>) {
+    for (content, output) in batch.contents_mut(ContentKind::Image) {
+        if let ContentBlock::Image(image) = content.view().block {
+            output.lines = images.lock().lines(image).0;
         }
+    }
+}
+
+/// Draws the images a tool call's result holds under the call.
+fn decorate_calls(images: Res<Images>, mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.calls_mut() {
+        let content = call
+            .result
+            .as_ref()
+            .map_or(&[][..], |result| result.content.as_slice());
+        let lines = images.lock().all_lines(result_images(content)).0;
+        output.decorate(DECORATOR, lines);
     }
 }
 
@@ -947,25 +963,20 @@ impl Plugin for InlineImagesPlugin {
             let graphics = TerminalGraphics::detect(&launcher.unwrap_or_default(), protocol);
             app.insert_resource(graphics);
         }
-        let images = Images::default();
-        let (content, call) = (images.clone(), images.clone());
-        app.insert_resource(images)
+        app.init_resource::<Images>()
             .init_resource::<Placed>()
             .init_resource::<TuiFrame>()
             .init_resource::<TerminalSize>()
             .add_message::<TerminalWrite>()
             .add_message::<RedrawArea>()
             .add_message::<CopyToClipboard>()
-            .add_content_renderer(ContentKind::Image, move |view| match view.block {
-                ContentBlock::Image(image) => content.lock().lines(image).0,
-                _ => view.default_lines(),
-            })
-            .add_call_decorator(DECORATOR, move |view: &ToolCallView<'_>| {
-                let content = view
-                    .result
-                    .map_or(&[][..], |result| result.content.as_slice());
-                call.lock().all_lines(result_images(content)).0
-            })
+            .add_systems(
+                TranscriptRender,
+                (
+                    draw_images.in_set(RenderSystems::Render),
+                    decorate_calls.in_set(RenderSystems::Decorate),
+                ),
+            )
             .add_systems(
                 PostUpdate,
                 (

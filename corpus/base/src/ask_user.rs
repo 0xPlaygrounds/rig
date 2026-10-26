@@ -73,15 +73,22 @@ impl Plugin for AskUserPlugin {
             .configure_sets(AgentPass, AskUserSystems.in_set(Stage::Review))
             .add_systems(AgentPass, answered.in_set(AskUserSystems));
         #[cfg(feature = "tui")]
-        {
-            use rig_tui::AppToolRenderersExt;
-            app.add_tool_renderer("ask_user", |call| {
-                let question = call.argument("question").unwrap_or_default();
-                let mut lines = vec![call.header("Ask", question)];
-                lines.extend(call.result_lines());
-                lines
-            });
-        }
+        app.add_systems(
+            rig_tui::TranscriptRender,
+            draw.in_set(rig_tui::RenderSystems::Render),
+        );
+    }
+}
+
+/// Draws an `ask_user` call: the question, then the answer.
+#[cfg(feature = "tui")]
+fn draw(mut batch: ResMut<rig_tui::RenderBatch>) {
+    for (call, output) in batch.tools_mut("ask_user") {
+        let call = call.view();
+        let question = call.argument("question").unwrap_or_default();
+        let mut lines = vec![call.header("Ask", question)];
+        lines.extend(call.result_lines());
+        output.lines = lines;
     }
 }
 

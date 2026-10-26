@@ -56,10 +56,10 @@ impl Plugin for WordCountPlugin {
         .configure_sets(AgentPass, WordCountSystems.in_set(Stage::Gate))
         .add_systems(AgentPass, refuse_big_files.in_set(WordCountSystems));
         #[cfg(feature = "tui")]
-        {
-            use rig_tui::AppToolRenderersExt;
-            app.add_tool_renderer(TOOL, render);
-        }
+        app.add_systems(
+            rig_tui::TranscriptRender,
+            draw.in_set(rig_tui::RenderSystems::Render),
+        );
     }
 }
 
@@ -194,6 +194,14 @@ fn reset(
     if let Ok(mut total) = totals.get_mut(args.agent) {
         total.0 = 0;
         notices.write(Notice::info(args.agent, "Words counted: 0"));
+    }
+}
+
+/// Draws the `word_count` calls with [`render`].
+#[cfg(feature = "tui")]
+fn draw(mut batch: ResMut<rig_tui::RenderBatch>) {
+    for (call, output) in batch.tools_mut(TOOL) {
+        output.lines = render(&call.view());
     }
 }
 

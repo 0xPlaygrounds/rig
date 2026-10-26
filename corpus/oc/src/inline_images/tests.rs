@@ -67,13 +67,23 @@ fn front(
     // Another plugin's decorator, drawn after this one's under the call.
     tui_view(&mut app)
         .add_plugins(InlineImagesPlugin)
-        .add_call_decorator("note", |_| vec![Line::from("  (a note under the call)")]);
+        .add_systems(
+            TranscriptRender,
+            note.after(decorate_calls).in_set(RenderSystems::Decorate),
+        );
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     app.world_mut().insert_resource(ShownAgent(Some(agent)));
     app.update();
     (app, wakes, agent)
+}
+
+/// Another plugin's decoration under every call.
+fn note(mut batch: ResMut<RenderBatch>) {
+    for (_, output) in batch.calls_mut() {
+        output.decorate("note", vec![Line::from("  (a note under the call)")]);
+    }
 }
 
 /// What the plugin wrote to the terminal so far.

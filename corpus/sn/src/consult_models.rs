@@ -130,7 +130,10 @@ impl Plugin for ConsultPlugin {
             .add_observer(stop_consultants)
             .add_observer(cancel_on_interrupt);
         #[cfg(feature = "tui")]
-        rig_tui::AppToolRenderersExt::add_tool_renderer(app, CONSULT, render::consult);
+        app.add_systems(
+            rig_tui::TranscriptRender,
+            render::draw.in_set(rig_tui::RenderSystems::Render),
+        );
     }
 }
 

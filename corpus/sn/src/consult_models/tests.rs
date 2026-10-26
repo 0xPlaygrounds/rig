@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::time::SystemTime;
 
-use bevy_ecs::system::RunSystemOnce;
 use rig_basics::coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_basics::telemetry::{
     effect_log::{EffectLog, EffectLogPlugin},
@@ -136,10 +135,10 @@ fn main_model() -> MockCompletionModel {
 
 /// The rows of `agent`'s transcript as the terminal view lays it out.
 fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
-    let lay_out = move |layout: TranscriptLayout, view: Single<&TranscriptView, With<MainPane>>| {
-        layout.lay_out(&view, agent, 120)
-    };
-    let drawn = app.world_mut().run_system_once(lay_out).ok().flatten();
+    let world = app.world_mut();
+    let mut panes = world.query_filtered::<&TranscriptView, With<MainPane>>();
+    let view = panes.single(world).ok().cloned();
+    let drawn = view.and_then(|view| TranscriptLayout::lay_out(world, &view, agent, 120));
     let rows = drawn.iter().flat_map(|drawn| drawn.rows().iter());
     rows.map(|row: &DrawnRow| row.text.clone()).collect()
 }

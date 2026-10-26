@@ -119,9 +119,10 @@ fn shown(path: &std::path::Path) -> String {
 #[cfg(feature = "tui")]
 mod tui {
     use bevy_app::App;
+    use rig_harness::prelude::*;
     use rig_tui::ratatui::style::{Color, Stylize};
     use rig_tui::ratatui::text::{Line, Span};
-    use rig_tui::{AppToolRenderersExt, AsideView, Theme};
+    use rig_tui::{AsideView, RenderBatch, RenderSystems, Theme, TranscriptRender};
 
     use super::{WELCOME, Welcome};
 
@@ -161,7 +162,14 @@ mod tui {
     }
 
     pub(super) fn add(app: &mut App) {
-        app.add_aside_renderer(WELCOME, lines);
+        app.add_systems(TranscriptRender, draw.in_set(RenderSystems::Render));
+    }
+
+    /// Draws the welcome asides.
+    fn draw(mut batch: ResMut<RenderBatch>) {
+        for (aside, output) in batch.asides_mut(WELCOME) {
+            output.lines = lines(&aside.view());
+        }
     }
 
     /// The mark in grays, and beside it rig's version, the model and the
