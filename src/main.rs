@@ -4,10 +4,10 @@
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses only std.
 //!
-//! Its own first words (`build`, `plugin`, `help`, `help-agents`) are read before the
-//! build; the rest of the command line, `--resume` included, once the
-//! agent is built, against the commands and options its plugins add (`rig
-//! help` lists them).
+//! Its own first words (`build`, `plugin`, `help`, `help-agents`,
+//! `--version`) are read before the build; the rest of the command line,
+//! `--resume` included, once the agent is built, against the commands and
+//! options its plugins add (`rig help` lists them).
 
 mod launcher;
 
@@ -32,6 +32,7 @@ stdin; `rig help-agents` says how.
   rig help [command]     This text, or what a command does.
   rig help-agents        How a script or another agent drives rig headless,
                          over its stdin and stdout (-p, --json).
+  rig --version          The launcher's version.
 ";
 
 const SESSION: &str = "
@@ -85,6 +86,10 @@ fn main() -> ExitCode {
         }
         ["help-agents"] => {
             print!("{AGENTS}");
+            Ok(ExitCode::SUCCESS)
+        }
+        ["--version" | "-V"] => {
+            println!("rig {}", launcher::VERSION);
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),

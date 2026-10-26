@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use bevy_tasks::futures_lite::stream;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_core::completion::{CompletionResponse, Usage};
+use rig_core::completion::{CompletionResponse, Message, Usage};
 use rig_core::message::{AssistantContent, Origin as Made, Text};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
@@ -908,13 +908,18 @@ fn an_approval_is_answered_over_the_pipe_and_eof_ends_the_run() {
         Some(&Value::Bool(true))
     );
 
-    // The driver goes away mid-turn: the agent exits at once.
+    // The driver goes away mid-turn: the agent exits at once, closing the
+    // call and the turn it cut off, with no `exit` line.
     drop(input);
-    test_support::run_until(&mut app, &wakes, |world| {
-        world.contains_resource::<ExitReason>()
-    });
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     let exit = app.world().get_resource::<ExitReason>();
     assert_eq!(exit, Some(&ExitReason::Quit));
+    let result = lines.of("tool_result").first().cloned().unwrap_or_default();
+    assert_eq!(at(&result, "cancelled"), &json!(true), "{result}");
+    let end = lines.of("turn_end").first().cloned().unwrap_or_default();
+    let why = (at(&end, "outcome"), at(&end, "error"));
+    assert_eq!(why, (&json!("stopped"), &json!("the run ended")));
+    assert!(lines.of("exit").is_empty());
 }
 
 #[test]
@@ -951,6 +956,19 @@ fn one_shot(
     json: bool,
     setup: impl FnOnce(&mut App),
 ) -> (App, Lines) {
+    let store = MemoryStore::default();
+    one_shot_on(&store, prompt, named, model, json, setup)
+}
+
+/// [`one_shot`], its session on `store`.
+fn one_shot_on(
+    store: &MemoryStore,
+    prompt: &str,
+    named: Option<&str>,
+    model: &MockCompletionModel,
+    json: bool,
+    setup: impl FnOnce(&mut App),
+) -> (App, Lines) {
     let lines = Lines::default();
     let invoked = Invocation {
         print: Some(prompt.to_owned()),
@@ -958,7 +976,7 @@ fn one_shot(
         flags: json.then(|| (JSON.to_owned(), None)).into_iter().collect(),
         ..Invocation::default()
     };
-    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    let (mut app, _) = noting(store, invoked);
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
@@ -1038,6 +1056,112 @@ fn a_kernel_failure_reads_the_same_in_exit_turn_end_and_its_notice() {
         of("turn_end").map(|line| at(line, "error").clone()),
         Some(why.into())
     );
+}
+
+/// The kernel takes a reply with no final text as the turn's answer.
+#[derive(Resource, Default)]
+struct Answered(bool);
+
+#[test]
+fn a_turn_that_ends_without_text_fails_the_run() {
+    let reasoning = MockStreamEvent::Reasoning {
+        id: "r1".to_owned(),
+        text: "Thinking it over.".to_owned(),
+    };
+    let only_reasoning = vec![
+        reasoning,
+        MockStreamEvent::final_response_with_default_usage(),
+    ];
+    for events in [only_reasoning, reply(" \n")] {
+        let model = MockCompletionModel::from_stream_turns([events.clone(), events]);
+        let noted = |app: &mut App| {
+            app.init_resource::<Answered>().add_observer(
+                |settled: On<Add<Settled>>,
+                 turns: Query<&TurnOutcome>,
+                 mut seen: ResMut<Answered>| {
+                    let outcome = turns.get(settled.entity);
+                    seen.0 |= matches!(outcome, Ok(TurnOutcome::Answered(_)));
+                },
+            );
+        };
+        let (app, lines) = one_shot("hi", None, &model, true, noted);
+        assert!(app.world().resource::<Answered>().0, "the kernel answered");
+        let end = lines.of("turn_end").first().cloned().unwrap_or_default();
+        assert_eq!(
+            (at(&end, "outcome"), at(&end, "answer"), at(&end, "error")),
+            (&json!("failed"), &Value::Null, &json!(NO_ANSWER)),
+            "{end}"
+        );
+        let exit = lines.parsed().last().cloned().unwrap_or_default();
+        assert_eq!(
+            (at(&exit, "code"), at(&exit, "error")),
+            (&json!(1), &json!(NO_ANSWER))
+        );
+        // Answered, as far as the session goes: its prompt is not taken back.
+        assert!(lines.of("recalled").is_empty(), "{:?}", lines.parsed());
+        // Plain: the reason once on stderr, exit 1.
+        let stderr = Lines::default();
+        let (app, _) = one_shot("hi", None, &model, false, |app| {
+            app.insert_resource(Printed::to(stderr.clone()));
+        });
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+        assert_eq!(stderr.text(), [format!("rig: {NO_ANSWER}")]);
+    }
+}
+
+#[test]
+fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({}))]);
+    let (app, lines) = one_shot_on(&store, "Wait.", None, &model, true, |app| {
+        // The signal comes while the call runs, as Ctrl+C or the launcher's
+        // death does.
+        app.add_open_tool(
+            "wait",
+            "Wait.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                commands.entity(called.call).insert(Waiting);
+                commands.trigger(Exit(ExitReason::Signal));
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
+    let parsed = lines.parsed();
+    let kinds: Vec<&str> = parsed
+        .iter()
+        .filter_map(|l| at(l, "type").as_str())
+        .collect();
+    let at_end = kinds.get(kinds.len().saturating_sub(4)..);
+    assert_eq!(
+        at_end,
+        Some(&["tool_call", "tool_result", "turn_end", "exit"][..]),
+        "{kinds:?}"
+    );
+    let why = "the run was interrupted";
+    let result = lines.of("tool_result").first().cloned().unwrap_or_default();
+    let fields = ["id", "ok", "refused", "cancelled"].map(|key| at(&result, key).clone());
+    assert_eq!(
+        fields,
+        [json!("c1"), json!(false), json!(false), json!(true)],
+        "{result}"
+    );
+    let end = lines.of("turn_end").first().cloned().unwrap_or_default();
+    assert_eq!(
+        (at(&end, "outcome"), at(&end, "error")),
+        (&json!("stopped"), &json!(why))
+    );
+    let exit = parsed.last().cloned().unwrap_or_default();
+    assert_eq!(
+        (at(&exit, "code"), at(&exit, "error")),
+        (&json!(130), &json!(why))
+    );
+    drop(app);
+
+    // The session still holds the turn, unended: a resumed run finishes it.
+    let second = answering(&["done"]);
+    let (mut app, _) = scripted(&store, (&second, false), None, || {});
+    assert_eq!(ended(&mut app), answered("done"));
 }
 
 /// An error notice the work recovered from, answering after it, is spent

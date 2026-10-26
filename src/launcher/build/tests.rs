@@ -99,3 +99,81 @@ fn no_launcher_child_gets_a_secret() {
         assert!(removed, "{command:?}");
     }
 }
+
+/// What a [`BuildLog`] shows, kept for the test to read.
+#[derive(Clone, Default)]
+struct Shown(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
+
+impl Write for Shown {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Shown {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.borrow()).into_owned()
+    }
+}
+
+/// A build as `output` shows it, of a fake cargo that writes `stderr`:
+/// what it showed, what it logged, and its failure's report.
+fn fake_build(name: &str, output: BuildOutput, stderr: &str) -> (String, String, String) {
+    let root = std::env::temp_dir().join(format!("rig-build-log-{name}-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let shown = Shown::default();
+    let mut log = BuildLog::create(&home, output, Box::new(shown.clone()));
+    let mut cargo = Command::new("sh");
+    cargo
+        .args(["-c", "printf \"$0\" >&2", stderr])
+        .stderr(Stdio::piped());
+    let ran = log.run(cargo).map(|status| status.success());
+    let told = log.fail("cargo could not build the agent".to_owned());
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    fs::remove_dir_all(&root).ok();
+    assert!(matches!(ran, Ok(true)), "{ran:?}");
+    (shown.text(), logged, told.told(output))
+}
+
+#[test]
+fn a_log_only_build_shows_one_line_while_cargo_works_and_its_errors_once_it_fails() {
+    let cargo = "   Compiling a v1.0.0\n   Compiling b v1.0.0\nerror: boom\n";
+    let (shown, logged, told) = fake_build("quiet", BuildOutput::LogOnly, cargo);
+    let lines: Vec<&str> = shown.lines().collect();
+    let [line] = lines.as_slice() else {
+        return assert_eq!(lines.len(), 1, "{shown:?}");
+    };
+    assert!(
+        line.starts_with("rig: building the agent (output in "),
+        "{line}"
+    );
+    for line in cargo.lines() {
+        assert!(logged.contains(line), "{logged:?}");
+    }
+    // Nothing showed the errors, so the failure tells them, and the log.
+    assert!(
+        told.contains("error: boom") && told.contains("build.log"),
+        "{told}"
+    );
+    // A build with nothing to do says nothing at all.
+    let finished = "    Finished `dev` profile [unoptimized] target(s) in 0.20s\n";
+    let (shown, logged, _) = fake_build("noop", BuildOutput::LogOnly, finished);
+    assert_eq!(shown, "");
+    assert!(logged.contains("Finished"), "{logged:?}");
+}
+
+#[test]
+fn a_live_build_shows_cargo_as_it_writes_erasing_each_redrawn_line() {
+    // The bar's tail outlived a shorter line after it: `… in 4.57s)`.
+    let cargo = "   Compiling a v1.0.0\n    Building [=> ] 1/2: a(bin)\r    Finished in 1s\n";
+    let (shown, _, told) = fake_build("live", BuildOutput::Live, cargo);
+    assert_eq!(shown, cargo.replace('\r', "\r\x1b[K"));
+    // The terminal showed the errors; the failure is one line.
+    assert_eq!(told.lines().count(), 1, "{told}");
+}
