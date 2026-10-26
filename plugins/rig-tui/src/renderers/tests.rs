@@ -433,7 +433,8 @@ struct StreamingLooks(Vec<String>);
 fn note_streaming_looks(batch: Res<RenderBatch>, mut seen: ResMut<StreamingLooks>) {
     for (key, request) in &batch.requests {
         if matches!(key, RenderKey::Streaming(_)) {
-            seen.0.extend(request.output.lines.iter().map(ToString::to_string));
+            seen.0
+                .extend(request.output.lines.iter().map(ToString::to_string));
         }
     }
 }

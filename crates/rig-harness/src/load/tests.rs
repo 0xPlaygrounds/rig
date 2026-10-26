@@ -197,7 +197,10 @@ fn plugin_systems_list_each_system_with_its_plugin() {
     load::<Counter>(&mut app, "counter", "path plugins/counter");
     let counter = app.world().resource::<PluginEntity<Counter>>().entity();
     let systems = app.world().resource::<super::PluginSystems>();
-    let listed: Vec<_> = systems.iter().filter(|(.., plugin)| *plugin == Some(counter)).collect();
+    let listed: Vec<_> = systems
+        .iter()
+        .filter(|(.., plugin)| *plugin == Some(counter))
+        .collect();
     assert!(!listed.is_empty());
     assert!(
         listed
