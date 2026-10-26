@@ -2552,12 +2552,24 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
                 vec![AssistantContent::text("The crate builds")],
                 "stopped",
             )));
-            conversation.end_turn(TurnEnd::Stopped { why: None });
+            let at = conversation.entries().next_back().map(|entry| entry.id);
+            let calls = Vec::new();
+            conversation.end_turn(TurnEnd::Stopped {
+                why: None,
+                at,
+                calls,
+            });
         } else {
             for message in read("stopped", "a.rs", "Stopped") {
                 conversation.push(message);
             }
-            conversation.end_turn(TurnEnd::Stopped { why: None });
+            let at = conversation.entries().next_back().map(|entry| entry.id);
+            let calls = Vec::new();
+            conversation.end_turn(TurnEnd::Stopped {
+                why: None,
+                at,
+                calls,
+            });
         }
         let spec = connect(&model).map(|connection| connection.spec);
         let Some(spec) = spec else {

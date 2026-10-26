@@ -88,8 +88,9 @@ fn a_summary_a_later_compaction_took_out_is_still_drawn_from_its_state() {
     let second = state("## Goal\nThe second goal.", "b.rs");
     let spliced = rig_memory::apply_summary(&mut conversation, None, &second);
     let agent = app.world_mut().spawn(Conversation(conversation)).id();
+    assert!(spliced.is_some());
     let Some(spliced) = spliced else {
-        panic!("the second summary went in");
+        return;
     };
     before.keep(&mut app.world_mut().commands(), agent, &spliced);
     app.world_mut().flush();
