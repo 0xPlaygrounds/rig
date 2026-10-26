@@ -41,8 +41,8 @@ const RATE: StatusItem = StatusItem::new("fh-prompt-cache-shaping", Side::Right,
 /// The breaks `/cache why` keeps per agent.
 const KEPT_BREAKS: usize = 10;
 
-/// The Prepare system that lays requests out: after every request edit,
-/// before the request is fitted to its model.
+/// The Prepare system that lays requests out: after every request edit and
+/// adapter, before the request is fitted to its model.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CacheShapingSystems;
 
@@ -58,7 +58,7 @@ impl Plugin for CacheShapingPlugin {
                 AgentPass,
                 CacheShapingSystems
                     .in_set(Stage::Prepare)
-                    .after(PrepareSystems::Edit)
+                    .after(PrepareSystems::AdaptOutermost)
                     .before(PrepareSystems::Fit),
             )
             .add_systems(AgentPass, shape.in_set(CacheShapingSystems))

@@ -77,8 +77,8 @@ pub const KNOWN: [&str; 8] = [
 ];
 
 /// The Prepare system that puts each model request's parameters on it,
-/// in `PrepareSystems::Edit`: a plugin that routes a request to another
-/// model goes before it, one that edits the parameters after it.
+/// for the model it goes to, after every adapter and before
+/// `PrepareSystems::Fit`: a plugin that edits the parameters goes after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModelParamsSystems;
 
@@ -106,7 +106,13 @@ impl Plugin for ModelParamsPlugin {
             .init_resource::<ProjectWorkspace>()
             .insert_resource(ParamOverrides::default())
             .register_type::<ParamOverrides>()
-            .configure_sets(AgentPass, ModelParamsSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                ModelParamsSystems
+                    .in_set(Stage::Prepare)
+                    .after(PrepareSystems::AdaptOutermost)
+                    .before(PrepareSystems::Fit),
+            )
             .add_systems(AgentPass, apply.in_set(ModelParamsSystems))
             .add_systems(Startup, load)
             .add_observer(forget_headers)
