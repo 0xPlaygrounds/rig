@@ -1,9 +1,19 @@
 //! How the terminal view draws a `consult` call: the question, then each
 //! consultant's model and tool calls nested under it, then the answers.
 
+use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{CallState, ChildCall, ToolCallView};
+use rig_tui::{CallState, ChildCall, RenderBatch, ToolCallView};
+
+use super::CONSULT;
+
+/// Draws the `consult` calls.
+pub(crate) fn draw(mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.tools_mut(CONSULT) {
+        output.lines = consult(&call.view());
+    }
+}
 
 /// A `consult` call.
 pub(crate) fn consult(view: &ToolCallView) -> Vec<Line<'static>> {

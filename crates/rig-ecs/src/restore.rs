@@ -423,6 +423,12 @@ impl SavedKeys {
     pub fn listed(&self) -> &BTreeSet<String> {
         &self.listed
     }
+
+    /// Each stable key, with the path of the type saved under it, in key
+    /// order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        (self.paths.iter()).map(|(key, path)| (key.as_str(), path.as_str()))
+    }
 }
 
 /// The one reader of saved values, for a restore: each value is read under

@@ -57,7 +57,9 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use bevy_app::prelude::*;
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::Allow;
 use rig_harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
 use rig_memory::{SessionError, Store};
 
@@ -210,11 +212,9 @@ impl Front {
     }
 }
 
-/// The front that takes this run, once chosen, and the declarations of
-/// options, fronts and secrets in the order they were made.
+/// The front that takes this run, once chosen.
 #[derive(Resource, Default, Debug)]
 pub struct Cli {
-    declared: Vec<Entity>,
     /// The front of this run, once chosen; why none could be, if so.
     chosen: Option<Result<Option<Front>, String>>,
 }
@@ -236,17 +236,35 @@ impl Cli {
     }
 }
 
+/// On the entity of each declaration of an option, front, secret or
+/// [project setting](crate::settings::ProjectSetting): its place in the
+/// order they were declared, which is the order fronts are offered in,
+/// options described and project settings applied.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Declared(pub usize);
+
+impl Declared {
+    /// The place after every declaration made in `world`, those turned off
+    /// included, as they still hold their places.
+    pub(crate) fn next(world: &mut World) -> Self {
+        let mut made = world.query_filtered::<&Declared, Allow<Disabled>>();
+        Self(made.iter(world).map(|it| it.0 + 1).max().unwrap_or(0))
+    }
+}
+
 /// Every declaration of a `T` not turned off, in the order made, with its
 /// entity.
 pub(crate) fn declared<T: Component + Clone>(world: &mut World) -> Vec<(Entity, T)> {
-    let order = world
-        .get_resource::<Cli>()
-        .map(|cli| cli.declared.clone())
-        .unwrap_or_default();
-    let mut query = world.query::<&T>();
-    order
+    let mut declared: Vec<(Declared, Entity, T)> = world
+        .query::<(&Declared, Entity, &T)>()
+        .iter(world)
+        .map(|(&order, entity, it)| (order, entity, it.clone()))
+        .collect();
+    // Spawned ahead, the entity orders declarations of the same place.
+    declared.sort_unstable_by_key(|&(order, entity, _)| (order, entity));
+    declared
         .into_iter()
-        .filter_map(|entity| Some((entity, query.get(world, entity).ok()?.clone())))
+        .map(|(_, entity, it)| (entity, it))
         .collect()
 }
 
@@ -394,11 +412,12 @@ pub trait AppCliExt {
     fn runs_front(&mut self, name: &str) -> bool;
 }
 
-/// Spawns the declaration `what` as an entity named `name`.
+/// Spawns the declaration `what` as an entity named `name`, after every
+/// declaration before it.
 fn declare(app: &mut App, name: String, what: impl Bundle) {
     let world = app.world_mut();
-    let entity = world.spawn((Name::new(name), what)).id();
-    world.get_resource_or_init::<Cli>().declared.push(entity);
+    let order = Declared::next(world);
+    world.spawn((Name::new(name), order, what));
 }
 
 impl AppCliExt for App {

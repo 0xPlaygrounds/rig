@@ -52,7 +52,10 @@ impl Plugin for ProviderToolsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ProviderTools>("provider_tools")
             .init_resource::<ProviderToolUsage>()
-            .configure_sets(AgentPass, ProviderToolsSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                ProviderToolsSystems.in_set(PrepareSystems::Adapt),
+            )
             .add_systems(AgentPass, adapt.in_set(ProviderToolsSystems))
             .add_systems(Update, note_provider_runs.after(AgentLoop))
             .add_systems(PostUpdate, (announce, show_usage));
@@ -60,8 +63,8 @@ impl Plugin for ProviderToolsPlugin {
     }
 }
 
-/// The plugin's Prepare system, which pushes its adapter on every model
-/// call, for others to order against.
+/// The plugin's Prepare system, which adapts every model call, in
+/// [`PrepareSystems::Adapt`], for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProviderToolsSystems;
 
@@ -134,27 +137,22 @@ pub struct ProviderToolUsage {
     pub calls: BTreeMap<String, u64>,
 }
 
-/// Pushes the adapter on each model call: whatever model the call finally
-/// goes to, its request gets that model's server tools (a turn's only)
-/// and foreign provider-run calls as text.
+/// Adapts each model call: whatever model the call goes to, its request
+/// gets that model's server tools (a turn's only) and foreign provider-run
+/// calls as text.
 fn adapt(
-    mut calls: Query<(&mut Adapters, Has<TurnCall>), (Added<Admitted>, ModelCalls)>,
+    mut calls: Query<(&mut Adapted, Has<TurnCall>), (Added<Admitted>, ModelCalls)>,
     settings: Res<ProviderTools>,
 ) {
-    for (mut adapters, turn) in &mut calls {
-        let settings = settings.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                let tools = match turn {
-                    true => settings.definitions(&connection.spec),
-                    false => Vec::new(),
-                };
-                let vendor = connection.spec.provider.vendor();
-                let intercept = ProviderSide { vendor, tools };
-                connection.handler = Handler(connection.handler.0.layered(intercept));
-                connection
-            }));
+    for (mut adapted, turn) in &mut calls {
+        let Adapted(connection) = &mut *adapted;
+        let tools = match turn {
+            true => settings.definitions(&connection.spec),
+            false => Vec::new(),
+        };
+        let vendor = connection.spec.provider.vendor();
+        let intercept = ProviderSide { vendor, tools };
+        connection.handler = Handler(connection.handler.0.clone().layered(intercept));
     }
 }
 

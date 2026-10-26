@@ -40,26 +40,22 @@ impl Plugin for WordCountPlugin {
             base: None,
             confine: false,
         };
-        app.add_tool_per_call(here, ToolOptions::default(), |at| WordCount {
-            workspace: at.workspace,
-            base: Some(at.base),
-            confine: at.confine,
-        })
-        .register_required_components::<Agent, WordsCounted>()
-        .keeps_saved::<WordsCounted>()
-        .add_observer(count)
-        .add_command(
-            "wc-reset",
-            "Set this agent's total of words counted to 0",
-            reset,
-        )
-        .configure_sets(AgentPass, WordCountSystems.in_set(Stage::Gate))
-        .add_systems(AgentPass, refuse_big_files.in_set(WordCountSystems));
+        app.add_tool_per_call(here, ToolOptions::default())
+            .register_required_components::<Agent, WordsCounted>()
+            .keeps_saved::<WordsCounted>()
+            .add_observer(count)
+            .add_command(
+                "wc-reset",
+                "Set this agent's total of words counted to 0",
+                reset,
+            )
+            .configure_sets(AgentPass, WordCountSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, refuse_big_files.in_set(WordCountSystems));
         #[cfg(feature = "tui")]
-        {
-            use rig_tui::AppToolRenderersExt;
-            app.add_tool_renderer(TOOL, render);
-        }
+        app.add_systems(
+            rig_tui::TranscriptRender,
+            draw.in_set(rig_tui::RenderSystems::Render),
+        );
     }
 }
 
@@ -81,7 +77,18 @@ impl ContextValue for Counted {
     const KEY: &'static str = "wordcount.counted";
 }
 
+impl PerCallTool for WordCount {
+    fn at(&self, at: CallPlace) -> Self {
+        Self {
+            workspace: at.workspace,
+            base: Some(at.base),
+            confine: at.confine,
+        }
+    }
+}
+
 /// The `word_count` tool: reads in `workspace`, a path relative to `base`.
+#[derive(Clone)]
 pub struct WordCount {
     /// Where it reads.
     pub workspace: Arc<dyn Workspace>,
@@ -194,6 +201,14 @@ fn reset(
     if let Ok(mut total) = totals.get_mut(args.agent) {
         total.0 = 0;
         notices.write(Notice::info(args.agent, "Words counted: 0"));
+    }
+}
+
+/// Draws the `word_count` calls with [`render`].
+#[cfg(feature = "tui")]
+fn draw(mut batch: ResMut<rig_tui::RenderBatch>) {
+    for (call, output) in batch.tools_mut(TOOL) {
+        output.lines = render(&call.view());
     }
 }
 

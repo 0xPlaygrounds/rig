@@ -4,8 +4,9 @@
 //! as a value (a saved session). Each pane has its own
 //! [`TranscriptView`] (what is selected and lit, where it is
 //! scrolled), its own scroll and, once a plugin adds one, its own
-//! [`DrawnTranscript`]. A look spawned as a child of a pane applies in it
-//! only. The default screen's transcript is one, marked [`MainPane`].
+//! [`DrawnTranscript`]. Render systems select a pane through
+//! [`crate::RenderBatch::pane`]. The default screen's transcript is one,
+//! marked [`MainPane`].
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -36,7 +37,8 @@ use rig_harness::main_agent::ShownAgent;
 
 use super::keys::{InputAction, KeyBinding, KeyPress, KeyScope};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
-use super::render::{ShownConversation, Sources, TranscriptLayout, decorate, lay_out_transcript};
+use super::render::{Showing, decorate, lay_out_rendered};
+use super::renderers::{RenderKey, RenderRequest, Renderers};
 use super::theme::Theme;
 use super::transcript::{Below, Part, Scroll, Transcript};
 use super::view::{DrawnTranscript, TranscriptView};
@@ -127,6 +129,12 @@ pub struct PaneKeys;
 pub(crate) struct PaneState {
     /// Its messages' rows, kept between frames.
     pub(crate) transcript: Transcript,
+    pub(crate) revision: u64,
+    pub(crate) width: u16,
+    pub(crate) theme: Option<Theme>,
+    pub(crate) source: Option<Entity>,
+    /// The outputs of its items outside any message.
+    pub(crate) rendered: std::collections::HashMap<RenderKey, RenderRequest>,
     /// Where it is scrolled.
     pub(crate) scroll: Scroll,
     /// The parts laid out last, whose items, top to bottom, the selection
@@ -197,92 +205,121 @@ fn bind_pane_keys(mut world: DeferredWorld, context: HookContext) {
 /// are laid out, and again with them after
 /// [`TuiSystems::Fit`](crate::TuiSystems::Fit) when a panel changed there.
 pub(crate) fn lay_out_panes(
-    from: TranscriptLayout,
-    shown: Res<ShownAgent>,
-    changed: Query<(), Changed<AgentConversation>>,
-    mut panes: Query<(
-        Entity,
-        Ref<TranscriptPane>,
-        &mut TranscriptView,
-        &mut PaneState,
-        &PanelCanvas,
-        Option<&mut DrawnTranscript>,
+    world: &mut World,
+    changes: &mut bevy_ecs::system::SystemState<(
+        Query<Entity, Changed<AgentConversation>>,
+        Query<Entity, Changed<TranscriptPane>>,
     )>,
 ) {
-    let looks_changed = from.looks.changed();
-    for (entity, pane, view, mut state, canvas, drawn) in &mut panes {
+    let Ok((agents, panes)) = changes.get(world) else {
+        return;
+    };
+    let changed_agents: std::collections::HashSet<Entity> = agents.iter().collect();
+    let changed_panes: std::collections::HashSet<Entity> = panes.iter().collect();
+    let entities: Vec<Entity> = world
+        .query_filtered::<Entity, With<TranscriptPane>>()
+        .iter(world)
+        .collect();
+    let revision = world
+        .get_resource::<crate::RenderRevision>()
+        .copied()
+        .unwrap_or_default()
+        .0;
+    let shown_agent = world.get_resource::<ShownAgent>().and_then(|shown| shown.0);
+    let Some(theme) = world.get_resource::<Theme>().copied() else {
+        return;
+    };
+    for entity in entities {
+        let Some(pane) = world.get::<TranscriptPane>(entity).cloned() else {
+            continue;
+        };
+        let Some(canvas) = world.get::<PanelCanvas>(entity) else {
+            continue;
+        };
         let area = inner(&pane, canvas.area());
         if area.is_empty() {
             continue;
         }
-        let state = state.bypass_change_detection();
-        if looks_changed {
-            state.transcript.clear();
-        }
+        let Some(mut view) = world.get::<TranscriptView>(entity).cloned() else {
+            continue;
+        };
+        let Some(mut stored) = world.get_mut::<PaneState>(entity) else {
+            continue;
+        };
+        let mut state = std::mem::take(stored.bypass_change_detection());
         let agent = match &pane.source {
-            TranscriptSource::Shown => shown.0,
+            TranscriptSource::Shown => shown_agent,
             TranscriptSource::Agent(agent) => Some(*agent),
             TranscriptSource::Value(_) => None,
         };
-        let value = match &pane.source {
-            TranscriptSource::Value(conversation) => {
-                let mut value = ShownConversation::value(conversation, entity);
-                value.changed = pane.is_changed();
-                Some(value)
+        if state.revision != revision
+            || state.width != area.width
+            || state.theme != Some(theme)
+            || state.source != agent
+            || changed_panes.contains(&entity)
+        {
+            state.transcript.clear();
+            state.revision = revision;
+            state.width = area.width;
+            state.theme = Some(theme);
+            state.source = agent;
+            state.rendered.clear();
+        }
+        let showing = match (&pane.source, agent) {
+            (TranscriptSource::Value(conversation), _) => {
+                Showing::Value(conversation, entity, changed_panes.contains(&entity))
             }
-            _ => None,
+            (_, Some(agent)) => Showing::Agent(agent, changed_agents.contains(&agent)),
+            (_, None) => Showing::Nothing,
         };
-        let live = agent.and_then(|agent| from.agent(agent, changed.contains(agent)));
-        let shown = value.or(live);
-        lay_out_pane(&from, entity, (view, state, drawn), shown.as_ref(), area);
-    }
-}
-
-/// Lays out the pane `entity` at `area` with `shown`, as
-/// [`lay_out_panes`] does.
-pub(crate) fn lay_out_pane(
-    from: &TranscriptLayout,
-    entity: Entity,
-    (mut view, state, drawn): (
-        Mut<TranscriptView>,
-        &mut PaneState,
-        Option<Mut<DrawnTranscript>>,
-    ),
-    shown: Option<&ShownConversation<'_>>,
-    area: Rect,
-) {
-    let renderers = from.looks.by_kind(Some(entity));
-    let sources = Sources {
-        view: &view,
-        notices: from.notices(),
-        renderers: &renderers,
-        facts: from.facts(),
-        theme: from.theme(),
-    };
-    let parts = lay_out_transcript(&mut state.transcript, &sources, shown, area.width);
-    let height = usize::from(area.height);
-    let highlights = &view.highlights;
-    let visible =
-        (state.transcript).visible(&parts, (area.width, height), &mut state.scroll, highlights);
-    if let Some(mut drawn) = drawn {
-        let agent = shown.and_then(|shown| shown.id.map(|_| shown.entity));
-        let on_screen = visible.first..visible.first + visible.rows.len();
-        let laid_out = state
-            .transcript
-            .laid_out(agent, &parts, highlights, on_screen);
-        drawn.set_if_neq(laid_out.at(area));
-    }
-    let selected = view.selected.as_ref();
-    let selected = selected.and_then(|item| state.transcript.rows_of(&parts, item));
-    state.rows = decorate(visible.rows, visible.first, selected, from.theme());
-    state.below = visible.below;
-    state.parts = parts;
-    state.area = area;
-    if view.top() != visible.top.as_ref() {
+        let cached = std::mem::take(&mut state.rendered);
+        let mut renderers = Renderers::new((Some(entity), agent, area.width), cached);
+        let parts = lay_out_rendered(
+            world,
+            (&mut state.transcript, &mut renderers),
+            (&view, &showing, area.width),
+        )
+        .unwrap_or_default();
+        state.rendered = renderers.cached.into_inner();
+        let visible = state.transcript.visible(
+            &parts,
+            (area.width, usize::from(area.height)),
+            &mut state.scroll,
+            &view.highlights,
+        );
+        // Copying every row as text costs the whole transcript, so only a
+        // pane whose rows a plugin reads gets them.
+        let drawn = world.get::<DrawnTranscript>(entity).is_some().then(|| {
+            let on_screen = visible.first..visible.first + visible.rows.len();
+            state
+                .transcript
+                .laid_out(agent, &parts, &view.highlights, on_screen)
+                .at(area)
+        });
+        let selected = view
+            .selected
+            .as_ref()
+            .and_then(|item| state.transcript.rows_of(&parts, item));
+        state.rows = decorate(visible.rows, visible.first, selected, &theme);
+        state.below = visible.below;
+        state.parts = parts;
+        state.area = area;
         view.set_top(visible.top);
-    }
-    if view.width() != Some(area.width) {
         view.set_width(area.width);
+        if let Some(mut stored) = world.get_mut::<PaneState>(entity) {
+            *stored.bypass_change_detection() = state;
+        }
+        if let Some(mut old) = world.get_mut::<TranscriptView>(entity) {
+            if old.top() != view.top() {
+                old.set_top(view.top().cloned());
+            }
+            if old.width() != Some(area.width) {
+                old.set_width(area.width);
+            }
+        }
+        if let Some((mut old, drawn)) = world.get_mut::<DrawnTranscript>(entity).zip(drawn) {
+            old.set_if_neq(drawn);
+        }
     }
 }
 

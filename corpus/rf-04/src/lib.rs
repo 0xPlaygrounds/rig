@@ -155,13 +155,7 @@ impl Plugin for PolicyPlugin {
             processes,
             command,
         };
-        let per = tool.clone();
-        app.add_tool_per_call(tool, ToolOptions::default(), move |place| RunTests {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-            ..per.clone()
-        });
+        app.add_tool_per_call(tool, ToolOptions::default());
     }
 }
 
@@ -445,6 +439,17 @@ fn answered(
             decision.decide(Decider::Person, Outcome::refused(why));
         }
         commands.entity(ask).remove::<HoldOf>();
+    }
+}
+
+impl PerCallTool for RunTests {
+    fn at(&self, place: CallPlace) -> Self {
+        Self {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+            ..self.clone()
+        }
     }
 }
 

@@ -3768,22 +3768,13 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
     // What the adapter was given: whether that model calls tools.
     let given = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (seen, wrap) = (Arc::clone(&given), adapted.clone());
-    let adapt = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
-        for mut adapters in &mut calls {
-            let (seen, wrap) = (Arc::clone(&seen), wrap.clone());
-            adapters
-                .0
-                .push(Adapter::new("wrap", move |connection: Connection| {
-                    if let Ok(mut seen) = seen.lock() {
-                        seen.push(connection.spec.tools);
-                    }
-                    let model =
-                        ModelAdapter::<Completion>::new(connection.spec.reference(), wrap.clone());
-                    Connection {
-                        handler: Handler(ErasedHandler::new(model)),
-                        ..connection
-                    }
-                }));
+    let adapt = move |mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapted in &mut calls {
+            if let Ok(mut seen) = seen.lock() {
+                seen.push(adapted.0.spec.tools);
+            }
+            let model = ModelAdapter::<Completion>::new(adapted.0.spec.reference(), wrap.clone());
+            adapted.0.handler = Handler(ErasedHandler::new(model));
         }
     };
     let to = connection_with(&routed, true);
@@ -3794,7 +3785,13 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
     };
     app.init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_systems(AgentPass, (adapt, route).chain().in_set(Stage::Prepare));
+        .add_systems(
+            AgentPass,
+            (
+                adapt.in_set(PrepareSystems::Adapt),
+                route.in_set(PrepareSystems::Edit),
+            ),
+        );
     plain_agent(&mut app, &own);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
@@ -3816,7 +3813,7 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
 }
 
 #[test]
-fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
+fn an_outermost_adapter_added_first_wraps_one_added_later() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("own")]);
     let adapted = MockCompletionModel::from_stream_turns([answer("adapted")]);
@@ -3824,38 +3821,32 @@ fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
     // tools.
     let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (seen, wrap) = (Arc::clone(&applied), adapted.clone());
-    let adapt = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
-        for mut adapters in &mut calls {
-            let outer = Arc::clone(&seen);
-            adapters.0.push(
-                Adapter::new("outer", move |connection: Connection| {
-                    if let Ok(mut applied) = outer.lock() {
-                        applied.push(("outer", connection.spec.tools));
-                    }
-                    connection
-                })
-                .outermost(),
-            );
-            let (inner, wrap) = (Arc::clone(&seen), wrap.clone());
-            adapters
-                .0
-                .push(Adapter::new("inner", move |connection: Connection| {
-                    if let Ok(mut applied) = inner.lock() {
-                        applied.push(("inner", connection.spec.tools));
-                    }
-                    let mut spec = (*connection.spec).clone();
-                    spec.tools = false;
-                    let model = ModelAdapter::<Completion>::new(spec.reference(), wrap.clone());
-                    Connection {
-                        spec: Arc::new(spec),
-                        handler: Handler(ErasedHandler::new(model)),
-                    }
-                }));
+    let outer = Arc::clone(&applied);
+    let outermost = move |calls: Query<&Adapted, (Added<Admitted>, With<TurnCall>)>| {
+        for adapted in &calls {
+            if let Ok(mut applied) = outer.lock() {
+                applied.push(("outer", adapted.0.spec.tools));
+            }
+        }
+    };
+    let adapt = move |mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapted in &mut calls {
+            if let Ok(mut applied) = seen.lock() {
+                applied.push(("inner", adapted.0.spec.tools));
+            }
+            let mut spec = (*adapted.0.spec).clone();
+            spec.tools = false;
+            let model = ModelAdapter::<Completion>::new(spec.reference(), wrap.clone());
+            adapted.0 = Connection {
+                spec: Arc::new(spec),
+                handler: Handler(ErasedHandler::new(model)),
+            };
         }
     };
     app.init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_systems(AgentPass, adapt.in_set(Stage::Prepare));
+        .add_systems(AgentPass, outermost.in_set(PrepareSystems::AdaptOutermost))
+        .add_systems(AgentPass, adapt.in_set(PrepareSystems::Adapt));
     agent_on(&mut app, &own);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
@@ -3868,30 +3859,31 @@ fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
     assert_eq!((own.request_count(), adapted.request_count()), (0, 1));
 }
 
-/// The system prompts of the model calls Prepare saw, in parts and as
-/// Start sends them.
+/// The system prompts of the model calls Prepare saw, in parts, and the
+/// system message Fit measured.
 #[derive(Resource, Default)]
-struct Prompts(Vec<Option<rig_core::completion::SystemPrompt>>);
+struct Prompts(Vec<(Option<rig_core::completion::SystemPrompt>, Option<Message>)>);
 
 #[test]
 fn a_model_that_calls_no_tools_is_sent_none() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
     // Each call's prompt in parts, then as Start sends it.
-    let read = |calls: Query<(&ModelRequest, &Adapters, &ForAgent), Added<Admitted>>,
-                starts: ModelStarts,
+    let read = |calls: Query<(&ModelRequest, &Adapted), Added<Admitted>>,
                 mut prompts: ResMut<Prompts>| {
-        for (call, adapters, agent) in &calls {
-            let sent = starts.prompt(call, Some(adapters), Some(agent.0));
-            prompts
-                .0
-                .extend([call.prompt.clone(), sent.ok().and_then(|(_, it)| it)]);
+        for (call, adapted) in &calls {
+            let sent = adapted
+                .sent(call)
+                .chat_history
+                .first()
+                .map(|it| (**it).clone());
+            prompts.0.push((call.prompt.clone(), sent));
         }
     };
     app.init_resource::<Ended>()
         .init_resource::<Prompts>()
         .add_observer(log_ended)
-        .add_systems(AgentPass, read.in_set(PrepareSystems::Edit));
+        .add_systems(AgentPass, read.in_set(PrepareSystems::Fit));
     let agent = plain_agent(&mut app, &own);
     app.world_mut()
         .entity_mut(agent)
@@ -3902,14 +3894,15 @@ fn a_model_that_calls_no_tools_is_sent_none() {
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     // Prepare sees the parts, and Start sends them as they are.
     let prompts = &app.world().resource::<Prompts>().0;
-    assert!(matches!(prompts.first(), Some(Some(_))), "{prompts:?}");
-    let Some(Some(prompt)) = prompts.first() else {
+    assert!(matches!(prompts.first(), Some((Some(_), _))), "{prompts:?}");
+    let Some((Some(prompt), measured)) = prompts.first() else {
         return;
     };
     assert_eq!(prompt.role, "You add.");
     let tags: Vec<&str> = prompt.sections.iter().map(|s| s.tag.as_str()).collect();
     assert_eq!(tags, ["environment"]);
-    assert_eq!(prompts.get(1), prompts.first());
+    let rendered = Message::system(prompt.text());
+    assert_eq!(measured.as_ref(), Some(&rendered));
     // The model is sent no tools, and one system message.
     let requests = own.requests();
     let tools = offered(requests.first());
@@ -3949,7 +3942,7 @@ impl Serve for NoSeed {
     }
 }
 
-/// What `ModelStarts::sent` said in Prepare, and `DroppedOptions` after Start.
+/// What `Adapted::dropped` said in Prepare, and `DroppedOptions` after Start.
 #[derive(Resource, Default)]
 struct LeftOut(Vec<Vec<String>>);
 
@@ -3961,17 +3954,17 @@ fn options(dropped: &[rig_core::completion::UnsupportedOption]) -> Vec<String> {
 fn a_call_knows_the_options_its_model_left_out() {
     let mut app = app();
     let model = MockCompletionModel::from_stream_turns([answer("ok")]);
-    let ask_top_p =
-        |mut calls: Query<(&mut ModelRequest, &Adapters, &ForAgent), Added<Admitted>>,
-         starts: ModelStarts,
-         mut left: ResMut<LeftOut>| {
-            for (mut call, adapters, agent) in &mut calls {
-                call.request_mut().options.top_p = Some(0.9);
-                if let Ok(dropped) = starts.dropped(&call, Some(adapters), Some(agent.0)) {
-                    left.0.push(options(&dropped));
-                }
-            }
-        };
+    let ask_top_p = |mut calls: Query<&mut ModelRequest, Added<Admitted>>| {
+        for mut call in &mut calls {
+            call.request_mut().options.top_p = Some(0.9);
+        }
+    };
+    let measure = |calls: Query<(&ModelRequest, &Adapted), Added<Admitted>>,
+                   mut left: ResMut<LeftOut>| {
+        for (call, adapted) in &calls {
+            left.0.push(options(&adapted.dropped(call)));
+        }
+    };
     app.init_resource::<Ended>()
         .init_resource::<LeftOut>()
         .add_observer(log_ended)
@@ -3983,7 +3976,13 @@ fn a_call_knows_the_options_its_model_left_out() {
                     .extend(calls.get(fitted.entity).map(|it| options(&it.0)));
             },
         )
-        .add_systems(AgentPass, ask_top_p.in_set(PrepareSystems::Edit));
+        .add_systems(
+            AgentPass,
+            (
+                ask_top_p.in_set(PrepareSystems::Edit),
+                measure.in_set(PrepareSystems::Fit),
+            ),
+        );
     let agent = agent_on(&mut app, &model);
     let spec = Catalog::builtin().resolve("anthropic/claude-fable-5");
     let Ok(spec) = spec.map(|spec| spec.shared()) else {
@@ -4025,26 +4024,27 @@ fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("hi")]);
     // Says the model calls no tools, and tells the call it saw the reply.
-    let adapt = |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
-        for mut adapters in &mut calls {
-            adapters
+    let adapt = |mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapted in &mut calls {
+            let mut spec = (*adapted.0.spec).clone();
+            spec.tools = false;
+            let handler = adapted
                 .0
-                .push(Adapter::new("plain", |connection: Connection| {
-                    let mut spec = (*connection.spec).clone();
-                    spec.tools = false;
-                    let handler = connection.handler.0.map_stream("plain", |published| {
-                        move |item: Relayed| {
-                            if let Relayed::Done(_) = &item {
-                                published.insert(Rewritten(true)).ok();
-                            }
-                            vec![item]
+                .handler
+                .0
+                .clone()
+                .map_stream("plain", |published| {
+                    move |item: Relayed| {
+                        if let Relayed::Done(_) = &item {
+                            published.insert(Rewritten(true)).ok();
                         }
-                    });
-                    Connection {
-                        spec: Arc::new(spec),
-                        handler: Handler(handler),
+                        vec![item]
                     }
-                }));
+                });
+            adapted.0 = Connection {
+                spec: Arc::new(spec),
+                handler: Handler(handler),
+            };
         }
     };
     let review = |calls: Query<(&ModelRequest, &SentTo, Option<&Published>), ReadyToSettle>,
@@ -4060,7 +4060,10 @@ fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
         .add_observer(log_ended)
         .add_systems(
             AgentPass,
-            (adapt.in_set(Stage::Prepare), review.in_set(Stage::Review)),
+            (
+                adapt.in_set(PrepareSystems::Adapt),
+                review.in_set(Stage::Review),
+            ),
         );
     agent_on(&mut app, &own);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
@@ -4449,4 +4452,87 @@ fn a_call_routed_to_another_model_asks_for_that_models_caching() {
         .collect();
     assert_eq!(caching, [Some(CacheRetention::Short); 2]);
     assert_eq!(own.request_count(), 0);
+}
+
+/// The layers of the handler each settled model call went to.
+#[derive(Resource, Default)]
+struct SentLayers(Vec<Vec<String>>);
+
+fn log_sent_layers(
+    settled: On<Add<Settled>>,
+    calls: Query<&SentTo, With<TurnCall>>,
+    mut seen: ResMut<SentLayers>,
+) {
+    if let Ok(SentTo(connection)) = calls.get(settled.entity) {
+        seen.0.push(connection.handler.0.descriptor().layers);
+    }
+}
+
+#[test]
+fn a_retried_call_is_adapted_once() {
+    let mut app = app();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(30)));
+    let model = MockCompletionModel::from_stream_turns([overloaded(), answer("ok")]);
+    let adapt = |mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapted in &mut calls {
+            let handler = adapted.0.handler.0.clone();
+            adapted.0.handler = Handler(handler.map_stream("count", |_| |item| vec![item]));
+        }
+    };
+    app.init_resource::<Ended>()
+        .init_resource::<SentLayers>()
+        .add_observer(log_ended)
+        .add_observer(log_sent_layers)
+        .add_systems(AgentPass, adapt.in_set(PrepareSystems::Adapt));
+    agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    assert_eq!(model.request_count(), 2);
+    // The failed call and its retry each went through the adapter once.
+    let layers = &app.world().resource::<SentLayers>().0;
+    let counted: Vec<usize> = layers
+        .iter()
+        .map(|layers| layers.iter().filter(|it| *it == "count").count())
+        .collect();
+    assert_eq!(counted, [1, 1], "{layers:?}");
+}
+
+/// The hold the gate put on the first turn call it saw.
+#[derive(Resource, Default)]
+struct FirstHold(Option<Entity>);
+
+#[test]
+fn a_held_call_goes_to_the_model_it_was_adapted_for() {
+    let mut app = app();
+    let first = MockCompletionModel::from_stream_turns([answer("first")]);
+    let second = MockCompletionModel::from_stream_turns([answer("second")]);
+    let hold_once = |calls: Query<Entity, (ReadyToStart, With<TurnCall>)>,
+                     mut held: ResMut<FirstHold>,
+                     mut commands: Commands| {
+        for call in &calls {
+            if held.0.is_none() {
+                held.0 = Some(commands.spawn(HoldOf(call)).id());
+            }
+        }
+    };
+    app.init_resource::<Ended>()
+        .init_resource::<FirstHold>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, hold_once.in_set(Stage::Gate));
+    let agent = agent_on(&mut app, &first);
+    let held = |world: &mut World| world.resource::<FirstHold>().0.is_some();
+    assert!(run_until(&mut app, held), "{:?}", notices(&app));
+    // While the call is held, the agent's model changes.
+    let changed = connection(&second);
+    assert!(changed.is_some(), "the second model connects");
+    if let Some(changed) = changed {
+        app.world_mut().entity_mut(agent).insert(changed);
+    }
+    if let Some(hold) = app.world().resource::<FirstHold>().0 {
+        app.world_mut().despawn(hold);
+    }
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // It goes where Fit measured it: the model it was adapted for.
+    assert_eq!((first.request_count(), second.request_count()), (1, 0));
 }

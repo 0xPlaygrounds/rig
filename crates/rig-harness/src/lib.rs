@@ -115,7 +115,7 @@ pub mod prelude {
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
     };
     pub use crate::harness_protocol::{Home, StartReason};
-    pub use crate::host::cli::{AppCliExt, Flag, Front};
+    pub use crate::host::cli::{AppCliExt, Declared, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
@@ -123,13 +123,17 @@ pub mod prelude {
         SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
-    pub use crate::per_call::{AppPerCallExt, CallPlace, PerCallTools};
+    pub use crate::per_call::{
+        AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,
+    };
     pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
     pub use crate::plugin_data::PluginData;
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
-    pub use crate::settings::{AppSettingsExt, Settings};
+    pub use crate::settings::{
+        AppSettingsExt, ProjectSetting, ProjectSettings, ProjectSettingsSystems, Settings,
+    };
     pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};

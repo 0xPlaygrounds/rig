@@ -56,12 +56,20 @@ impl Plugin for SqlQueryToolPlugin {
         let options = || ToolOptions {
             footprint: Some(Touches::Reads(Scope::Anything)),
         };
-        app.add_tool_per_call(DbSchema(At::default()), options(), |place| {
-            DbSchema(At::from(place))
-        })
-        .add_tool_per_call(DbQuery(At::default()), options(), |place| {
-            DbQuery(At::from(place))
-        });
+        app.add_tool_per_call(DbSchema(At::default()), options())
+            .add_tool_per_call(DbQuery(At::default()), options());
+    }
+}
+
+impl PerCallTool for DbSchema {
+    fn at(&self, place: CallPlace) -> Self {
+        Self(At::from(place))
+    }
+}
+
+impl PerCallTool for DbQuery {
+    fn at(&self, place: CallPlace) -> Self {
+        Self(At::from(place))
     }
 }
 
@@ -233,6 +241,7 @@ impl Drop for CancelOnDrop {
 }
 
 /// The `db_schema` tool.
+#[derive(Clone)]
 struct DbSchema(At);
 
 /// `db_schema`'s arguments.
@@ -275,6 +284,7 @@ impl Tool for DbSchema {
 }
 
 /// The `db_query` tool.
+#[derive(Clone)]
 struct DbQuery(At);
 
 /// `db_query`'s arguments.

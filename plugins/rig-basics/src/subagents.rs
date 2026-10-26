@@ -96,6 +96,8 @@ mod looks;
 mod spawn;
 mod tools;
 
+#[cfg(feature = "tui")]
+pub use looks::SubagentLooks;
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
 pub use tools::{MESSAGE, TASK, WAIT};
 

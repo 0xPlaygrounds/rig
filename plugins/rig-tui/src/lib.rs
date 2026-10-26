@@ -16,8 +16,8 @@
 //!   agent or a conversation, with its [`TranscriptView`], [`ScrollTo`],
 //!   [`DrawnTranscript`] and [`TranscriptLayout`] ([`pane`]); [`ShowAgent`]
 //!   shows another agent.
-//! - **Looks:** [`AppToolRenderersExt`] for tool calls, notes, content
-//!   blocks, asides, message text and decorators.
+//! - **Looks:** [`TranscriptRender`] for tool calls, notes, content
+//!   blocks, asides, message text and decorations; [`BuildFailedLooks`].
 //! - **Status line:** [`StatusItems`], [`AppStatus`] ([`status`]).
 //! - **Keys:** [`KeyBinding`], [`KeyFocus`] ([`keys`]); [`PendingInput`]
 //!   in [`InputSystems::Filter`] for keys before any binding, with the
@@ -87,10 +87,10 @@ pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
 pub use ratatui;
 pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
-    AppToolRenderersExt, AsideRenderer, AsideView, CallDecorator, CallState, ChildCall,
-    ContentBlock, ContentKind, ContentRenderer, ContentView, DecorateMessage, DecoratedMessage,
-    EntryRenderer, EntryView, MessageDecorator, MessageView, OUTPUT_INDENT, RenderAside,
-    RenderContent, RenderEntry, RenderToolCall, Role, ToolCallView, ToolRenderer, text_rows,
+    AsideRender, AsideView, CallState, ChildCall, ContentBlock, ContentKind, ContentRender,
+    ContentView, DecoratedMessage, EntryRender, EntryView, MessageRender, MessageView,
+    OUTPUT_INDENT, RenderBatch, RenderContent, RenderInput, RenderKey, RenderOutput, RenderRequest,
+    RenderRevision, RenderSystems, Role, ToolCallView, ToolRender, TranscriptRender, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};
@@ -133,7 +133,13 @@ impl Plugin for TuiViewPlugin {
         status::add(app);
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
-        app.add_entry_renderer(BUILD_ORIGIN, build_failed);
+        renderers::add(app);
+        app.add_systems(
+            TranscriptRender,
+            render_build_failed
+                .in_set(BuildFailedLooks)
+                .in_set(RenderSystems::Render),
+        );
         // The notices shown and the unsent draft, in the session's files.
         app.keeps_files("tui");
         app.add_setting::<turns::TuiSettings>("tui");
@@ -219,7 +225,6 @@ pub fn add_view(app: &mut App) {
         .add_observer(transcript::forget_streams)
         .add_observer(clipboard::type_pasted)
         .add_observer(render::redraw_on_remove)
-        .add_observer(render::forget_looks)
         .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(
             PreUpdate,
@@ -343,6 +348,12 @@ pub fn add_view(app: &mut App) {
         .add_observer(turns::turn_ended);
 }
 
+/// The system that draws a failed build's note, in
+/// [`RenderSystems::Render`]. A plugin that draws it its own way runs after
+/// it.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BuildFailedLooks;
+
 /// The look of a failed build's note, which the model reads too.
 fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
     use ratatui::style::Style;
@@ -352,6 +363,13 @@ fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
     )];
     lines.extend(text_rows(entry.text, Style::new().red().dim()));
     lines
+}
+
+/// Draws the notes of failed builds.
+fn render_build_failed(mut batch: ResMut<RenderBatch>) {
+    for (entry, output) in batch.entries_mut(BUILD_ORIGIN) {
+        output.lines = build_failed(&entry.view());
+    }
 }
 
 #[cfg(test)]

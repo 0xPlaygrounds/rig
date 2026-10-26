@@ -62,28 +62,23 @@ fn app(
     }
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let valve = valve.clone();
-    let held = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
-        for mut adapters in &mut calls {
+    let held = move |mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapted in &mut calls {
             let valve = valve.clone();
-            adapters
-                .0
-                .push(Adapter::new("held", move |mut connection: Connection| {
-                    let valve = valve.clone();
-                    let hold = move |_| {
-                        let valve = valve.clone();
-                        move |item| {
-                            valve.wait();
-                            vec![item]
-                        }
-                    };
-                    connection.handler = Handler(connection.handler.0.map_stream("held", hold));
-                    connection
-                }));
+            let hold = move |_| {
+                let valve = valve.clone();
+                move |item| {
+                    valve.wait();
+                    vec![item]
+                }
+            };
+            let handler = adapted.0.handler.0.clone().map_stream("held", hold);
+            adapted.0.handler = Handler(handler);
         }
     };
     app.insert_resource(models)
         .add_plugins((AgentPlugin, SessionLogPlugin, ReplyPrefillPlugin))
-        .add_systems(AgentPass, held.in_set(PrepareSystems::Edit))
+        .add_systems(AgentPass, held.in_set(PrepareSystems::Adapt))
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .init_resource::<Ended>()
         .add_observer(log_ended)

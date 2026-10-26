@@ -29,15 +29,11 @@ fn recorded_source(dir: &std::path::Path) -> io::Result<ReplaySource> {
 /// Every call goes to its model as to one that calls no tools, so Start
 /// takes the tools out of the request: what is sent, and recorded, is not
 /// what Gate sees.
-fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
-    for mut adapters in &mut calls {
-        let adapter = Adapter::new("no-tools", |mut connection: Connection| {
-            let mut spec = (*connection.spec).clone();
-            spec.tools = false;
-            connection.spec = Arc::new(spec);
-            connection
-        });
-        adapters.0.push(adapter);
+fn without_tools(mut calls: Query<&mut Adapted, Added<Admitted>>) {
+    for mut adapted in &mut calls {
+        let mut spec = (*adapted.0.spec).clone();
+        spec.tools = false;
+        adapted.0.spec = Arc::new(spec);
     }
 }
 
@@ -46,7 +42,7 @@ fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
 fn with_agents(app: &mut App, connection: Option<Connection>) {
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, SessionLogPlugin))
-        .add_systems(AgentPass, without_tools.in_set(Stage::Prepare))
+        .add_systems(AgentPass, without_tools.in_set(PrepareSystems::Adapt))
         .add_tool_with(
             Write::default(),
             ToolOptions {

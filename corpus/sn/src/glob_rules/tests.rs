@@ -119,11 +119,6 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
         .add_tool_per_call(
             rig_harness::rig_tools::List::default(),
             ToolOptions::default(),
-            |place| rig_harness::rig_tools::List {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-            },
         )
         .add_plugins((SubagentsPlugin, CompactionPlugin, GlobRulesPlugin))
         .init_resource::<Ended>()

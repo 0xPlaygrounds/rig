@@ -9,10 +9,10 @@
 //! Each agent keeps its own chain, [`ServerChain`], saved with the session:
 //! the id of the last reply its model sent and fingerprints of what the
 //! server holds under it (the system prompt, the tools, every message sent
-//! and the reply). A turn's model call gets an [`Adapter`] that wraps the
-//! model's handler, for that call only, with the chain as it stands. The
-//! wrapper compares the request it is handed, the logical one every other
-//! plugin, the effect log and the inspectors see, with the chain, and
+//! and the reply). A system wraps the handler of a turn's model call
+//! ([`Adapted`]), for that call only, with the chain as it stands. The
+//! wrapper runs inside the outermost adapters, such as secret redaction,
+//! so it compares the request as they changed it with the chain, and
 //! uploads only the messages after the reply with the reply's id, or the
 //! whole request with the reason. A server that no longer knows the id
 //! (`previous_response_not_found`) gets the whole request at once, in the
@@ -58,7 +58,11 @@ pub const PREVIOUS: &str = "previous_response_id";
 #[derive(Default)]
 pub struct ServerSideStatePlugin;
 
-/// The plugin's stage system, after compaction fitted each request.
+/// The plugin's stage system, an ordinary adapter: it wraps only the
+/// handler of the [`Adapted`] connection, inside the outermost adapters
+/// such as a replay's, which then see the whole request. It sees every
+/// splice compaction made before the request, as conversation changes are
+/// announced only between stages.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServerStateSystems;
 
@@ -68,9 +72,7 @@ impl Plugin for ServerSideStatePlugin {
             .register_required_components::<Agent, ServerChain>()
             .configure_sets(
                 AgentPass,
-                ServerStateSystems
-                    .in_set(Stage::Prepare)
-                    .after(PrepareSystems::Fit),
+                ServerStateSystems.in_set(PrepareSystems::Adapt),
             )
             .add_systems(AgentPass, chain_calls.in_set(ServerStateSystems))
             .add_observer(move_chain)
@@ -189,11 +191,12 @@ struct ChainHint {
 }
 
 /// Notes what each splice did to a chained conversation, then gives each
-/// turn's model call its agent's chain, applied to the model it finally
-/// goes to if that model keeps state.
+/// turn's model call its agent's chain, applied to the model the call is
+/// adapted for if that model keeps state. An adapter that changes the
+/// call's provider orders itself before [`ServerStateSystems`].
 fn chain_calls(
     mut committed: MessageReader<ConversationChanged>,
-    mut calls: Query<(&ForAgent, &mut Adapters), (Added<Admitted>, With<TurnCall>, ModelCalls)>,
+    mut calls: Query<(&ForAgent, &mut Adapted), (Added<Admitted>, With<TurnCall>, ModelCalls)>,
     mut chains: Query<&mut ServerChain, With<Conversation>>,
     vendors: Res<StatefulVendors>,
 ) {
@@ -214,28 +217,23 @@ fn chain_calls(
         };
         chain.note = Some(note.to_owned());
     }
-    for (&ForAgent(agent), mut adapters) in &mut calls {
+    for (&ForAgent(agent), mut adapted) in &mut calls {
         let Ok(chain) = chains.get(agent) else {
             continue;
         };
-        let hint = ChainHint {
-            link: chain.link.clone(),
-            note: chain.note.clone(),
+        let Adapted(connection) = &mut *adapted;
+        if !vendors.0.contains(&connection.spec.provider) {
+            continue;
+        }
+        let chained = Chained {
+            inner: connection.handler.0.clone(),
+            model: connection.spec.reference(),
+            hint: ChainHint {
+                link: chain.link.clone(),
+                note: chain.note.clone(),
+            },
         };
-        let vendors = vendors.0.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                if vendors.contains(&connection.spec.provider) {
-                    let chained = Chained {
-                        inner: connection.handler.0.clone(),
-                        model: connection.spec.reference(),
-                        hint: hint.clone(),
-                    };
-                    connection.handler = Handler(ErasedHandler::new(chained));
-                }
-                connection
-            }));
+        connection.handler = Handler(ErasedHandler::new(chained));
     }
 }
 

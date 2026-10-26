@@ -188,3 +188,23 @@ fn unordered_agent_loop_systems_name_both_plugins() {
         "{conflicts:?}"
     );
 }
+
+/// Each system a plugin added is listed with that plugin.
+#[test]
+fn plugin_systems_list_each_system_with_its_plugin() {
+    let mut app = App::new();
+    app.init_schedule(rig_ecs::stage::AgentPass);
+    load::<Counter>(&mut app, "counter", "path plugins/counter");
+    let counter = app.world().resource::<PluginEntity<Counter>>().entity();
+    let systems = app.world().resource::<super::PluginSystems>();
+    let listed: Vec<_> = systems
+        .iter()
+        .filter(|(.., plugin)| *plugin == Some(counter))
+        .collect();
+    assert!(!listed.is_empty());
+    assert!(
+        listed
+            .iter()
+            .all(|&(system, schedule, plugin)| systems.plugin(system, schedule) == plugin)
+    );
+}

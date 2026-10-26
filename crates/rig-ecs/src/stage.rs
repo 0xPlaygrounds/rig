@@ -74,10 +74,10 @@ use super::tools::{
     redact_results, refuse_calls,
 };
 use super::turn::{
-    Adapters, DroppedOptions, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
+    Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, TurnCall, back_off,
     build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
-    judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
-    wait_in_order,
+    judge_failures, keeps_settled, model_pool, route_calls, stop_calls, stream_partials,
+    stream_reply, wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -154,10 +154,18 @@ pub enum PrepareSystems {
     /// directory a tool call runs in.
     Compose,
     /// The composed request is edited as it will be sent: its prompt,
-    /// messages, tools and options, the model it goes to, its [`Adapters`],
-    /// a tool call's [`CallHandler`].
+    /// messages, tools and options, the model it goes to
+    /// ([`ModelRequest::connection`]), a tool call's [`CallHandler`].
     Edit,
-    /// The request as it will be sent ([`ModelStarts::sent`]) is measured
+    /// The model a call goes to, put on it as [`Adapted`] once Edit
+    /// routed it, is changed in place: its handler wrapped, its spec
+    /// changed to say what the wrapped model takes.
+    Adapt,
+    /// After [`Adapt`](Self::Adapt): a change that sees what every other
+    /// adapter made of the model, such as a local model's wrap or a
+    /// recording that replaces the adapted handler.
+    AdaptOutermost,
+    /// The request as it will be sent ([`Adapted::sent`]) is measured
     /// against the window of the model it goes to and fitted, such as by
     /// compaction.
     Fit,
@@ -674,6 +682,8 @@ pub(crate) fn build(app: &mut App) {
                     PrepareSystems::Input,
                     PrepareSystems::Compose,
                     PrepareSystems::Edit,
+                    PrepareSystems::Adapt,
+                    PrepareSystems::AdaptOutermost,
                     PrepareSystems::Fit,
                 )
                     .chain()
@@ -725,6 +735,10 @@ pub(crate) fn build(app: &mut App) {
                 (complete_calls, admit, carry_on_called, build_requests)
                     .chain()
                     .in_set(Stage::Admit),
+                route_calls
+                    .in_set(Stage::Prepare)
+                    .after(PrepareSystems::Edit)
+                    .before(PrepareSystems::Adapt),
                 (
                     answer_unprepared,
                     compute_footprints.run_if(moved_since_quiet),
@@ -1071,13 +1085,13 @@ type Saving<'w, 's> = ParamSet<
 /// Starts every admitted, unheld, unanswered, undecided effect, unless a
 /// Gate system failed this pass: an effect request with a handler is
 /// dispatched on the kernel's recorded path, a model call and a tool call
-/// as [`ModelStarts`] and [`ToolStarts`] say, and any other effect stays
+/// as [`Adapted`] and [`ToolStarts`] say, and any other effect stays
 /// open.
 fn start(
     mut ready: Query<StartItem, ReadyToStart>,
     agents: Query<&AgentId>,
     turns: Query<&TurnOutcome>,
-    (tools, models): (ToolStarts, ModelStarts),
+    tools: ToolStarts,
     effects: Res<Effects>,
     wake: Res<Wake>,
     (log, mut saving): (Res<SessionLog>, Saving),
@@ -1157,13 +1171,13 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (connection, mut dropped) = match models.start(&mut model, item.adapters, agent) {
-                Ok(started) => started,
-                Err(report) => {
-                    started.try_insert_if_new(Outcome(Err(report)));
-                    continue;
-                }
+            let Some(adapted) = item.adapted else {
+                let report = ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL);
+                started.try_insert_if_new(Outcome(Err(report)));
+                continue;
             };
+            let mut dropped = adapted.start(&mut model);
+            let connection = adapted.0.clone();
             let kind = EffectKind::Completion {
                 request: model.request.clone(),
                 stream: true,
@@ -1178,7 +1192,7 @@ fn start(
             let handler = connection.handler.0.clone();
             let work = effects.run(effect.id, origin, handler, kind, consume);
             let running = Running::finishing(model_pool(), &wake, work.instrument(span), answer);
-            started.try_insert((
+            started.try_remove::<Adapted>().try_insert((
                 Started { at },
                 running,
                 feed,
@@ -1251,7 +1265,7 @@ struct StartItem {
     request: Option<&'static EffectRequest>,
     tool: Option<&'static ToolRequest>,
     model: Option<&'static mut ModelRequest>,
-    adapters: Option<&'static Adapters>,
+    adapted: Option<&'static Adapted>,
     turn_call: Has<TurnCall>,
     message: Has<Incoming>,
     handler: Option<&'static CallHandler>,

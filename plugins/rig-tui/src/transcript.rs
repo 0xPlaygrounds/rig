@@ -27,7 +27,8 @@ use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
     AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
-    MessageView, Renderers, Role, ToolCallView, plugin_name, result_style, result_text, text_rows,
+    MessageView, Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style,
+    result_text, text_rows,
 };
 use super::theme::Theme;
 use super::view::{
@@ -575,7 +576,7 @@ pub(crate) fn forget_streams(gone: On<Remove<Partial>>, mut streams: Query<&mut 
 /// What the messages' look depends on besides the messages.
 pub(crate) struct Look<'a> {
     /// The looks plugins added.
-    pub(crate) renderers: &'a Renderers<'a>,
+    pub(crate) renderers: &'a Renderers,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
     /// The output so far of each of its running calls that reports it.
@@ -604,7 +605,7 @@ pub(crate) enum Inside<'a> {
 }
 
 /// An aside a look draws in the conversation of the shown agent: a
-/// plugin's note, or one of a kind with an aside renderer.
+/// plugin's note, or one of a kind a render system draws.
 pub(crate) struct ShownAside<'a> {
     /// Its id.
     pub(crate) id: AsideId,
@@ -618,7 +619,7 @@ impl ShownAside<'_> {
         TranscriptItem::Aside(self.id)
     }
 
-    /// The aside as its renderer sees it, in `theme`'s colors.
+    /// The aside as a render system sees it, in `theme`'s colors.
     pub(crate) fn view(&self, theme: Theme) -> AsideView<'_> {
         AsideView {
             id: self.id,
@@ -628,7 +629,7 @@ impl ShownAside<'_> {
     }
 
     /// Its lines in `theme`'s colors; none for a kind nothing draws.
-    pub(crate) fn lines(&self, renderers: &Renderers<'_>, theme: &Theme) -> Vec<Line<'static>> {
+    pub(crate) fn lines(&self, renderers: &Renderers, theme: &Theme) -> Vec<Line<'static>> {
         renderers.aside(&self.view(*theme)).unwrap_or_default()
     }
 }
@@ -680,8 +681,15 @@ impl Look<'_> {
     /// A hash of what message `index` (with `id`) looks like besides its
     /// messages: its notices and its calls' states, output so far and
     /// running times.
-    fn hash_message(&self, (index, id): (usize, Option<MessageId>), message: &Message) -> u64 {
+    fn hash_message(
+        &self,
+        (index, id): (usize, Option<MessageId>),
+        message: &Message,
+        author: Option<&Author>,
+    ) -> u64 {
         let hasher = &mut DefaultHasher::new();
+        id.hash(hasher);
+        author.hash(hasher);
         self.hash_inside(index, hasher);
         let marks = self.marks.iter();
         marks
@@ -692,6 +700,7 @@ impl Look<'_> {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
+                    // Its facts come with its running time.
                     self.facts.of(&call.id).1.hash(hasher);
                     hash_children(self.children.get(&call.id), hasher);
                 }
@@ -700,7 +709,7 @@ impl Look<'_> {
         hasher.finish()
     }
 
-    /// A hash of all of it but the renderers, whose changes
+    /// A hash of all of it but the render systems, whose changes
     /// [`Transcript::clear`] handles.
     fn digest(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -724,7 +733,7 @@ impl Look<'_> {
     }
 }
 
-/// Hashes what a call's renderer draws of `children`.
+/// Hashes what a call's look draws of `children`.
 fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) {
     for child in children.into_iter().flatten() {
         (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
@@ -755,6 +764,37 @@ struct Cached {
     /// Whether its lines depend on the width, as a reply's table does, so
     /// a new width renders it again rather than only wrapping it.
     fitted: bool,
+}
+
+impl Cached {
+    /// Message `index` of `conversation` laid out in `look` at `usable`
+    /// columns; `None` past its end.
+    fn new(
+        conversation: &conversation::Conversation,
+        index: usize,
+        look_hash: u64,
+        (look, usable): (&Look<'_>, usize),
+    ) -> Option<Self> {
+        let messages = conversation.messages();
+        let message = messages.get(index)?;
+        let previous = index.checked_sub(1).and_then(|before| messages.get(before));
+        let next = messages.get(index + 1);
+        let (lines, line_marks) = message_lines(
+            message,
+            (conversation, index),
+            (previous.map(|m| &**m), next.map(|m| &**m)),
+            (look, usable),
+        );
+        let wrapped = wrap_marked(&lines, &line_marks, usable);
+        Some(Self {
+            message: message.clone(),
+            look: look_hash,
+            lines,
+            line_marks,
+            wrapped,
+            fitted: fitted(message),
+        })
+    }
 }
 
 /// Lines wrapped to a width: the rows, whether each continues the row
@@ -823,11 +863,15 @@ impl Transcript {
         look: &Look<'_>,
         width: u16,
     ) {
+        let usable = usize::from(width.max(1));
+        if look.renderers.pass == Pass::Finish {
+            self.finish(conversation, look, usable);
+            return;
+        }
         if self.agent != Some(agent) {
             self.agent = Some(agent);
             self.messages.clear();
         }
-        let usable = usize::from(width.max(1));
         let resized = self.width != width;
         if resized {
             self.width = width;
@@ -853,12 +897,11 @@ impl Transcript {
             .collect();
         self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
-            let previous = index.checked_sub(1).and_then(|before| messages.get(before));
-            let (previous, next) = (
-                previous.map(|m| &**m),
-                messages.get(index + 1).map(|m| &**m),
+            let look_hash = look.hash_message(
+                (index, conversation.id(index)),
+                message,
+                conversation.author(index),
             );
-            let look_hash = look.hash_message((index, conversation.id(index)), message);
             if self
                 .messages
                 .get(index)
@@ -867,24 +910,32 @@ impl Transcript {
             {
                 continue;
             }
-            let (lines, line_marks) = message_lines(
-                message,
-                (conversation, index),
-                (previous, next),
-                (look, usable),
-            );
-            let wrapped = wrap_marked(&lines, &line_marks, usable);
-            let cached = Cached {
-                message: message.clone(),
-                look: look_hash,
-                lines,
-                line_marks,
-                wrapped,
-                fitted: fitted(message),
+            let Some(cached) = Cached::new(conversation, index, look_hash, (look, usable)) else {
+                continue;
             };
             match self.messages.get_mut(index) {
                 Some(slot) => *slot = cached,
                 None => self.messages.push(cached),
+            }
+        }
+    }
+
+    /// Lays out again the messages whose presentation the render systems
+    /// changed, from their outputs; the rest stand as the collecting pass
+    /// left them.
+    fn finish(
+        &mut self,
+        conversation: &conversation::Conversation,
+        look: &Look<'_>,
+        usable: usize,
+    ) {
+        for &index in look.renderers.messages.borrow().iter() {
+            let Some(slot) = self.messages.get_mut(index) else {
+                continue;
+            };
+            let look_hash = slot.look;
+            if let Some(cached) = Cached::new(conversation, index, look_hash, (look, usable)) {
+                *slot = cached;
             }
         }
     }
@@ -1318,6 +1369,10 @@ fn message_lines(
 ) -> (Vec<Line<'static>>, Marks) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
+    look.renderers.at(Place::Message {
+        index: at,
+        block: 0,
+    });
     let id = conversation.id(at);
     let author = conversation.author(at);
     let stopped = conversation
@@ -1330,12 +1385,13 @@ fn message_lines(
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
                 Inside::Aside(shown) => {
+                    let drawn = shown.lines(look.renderers, look.theme);
+                    if drawn.is_empty() {
+                        continue;
+                    }
                     let start = lines.len();
                     lines.push(Line::default());
-                    lines.extend(on_band(
-                        shown.lines(look.renderers, look.theme),
-                        look.theme.tool,
-                    ));
+                    lines.extend(on_band(drawn, look.theme.tool));
                     marks.push((shown.item(), start..lines.len()));
                 }
             }
@@ -1345,6 +1401,10 @@ fn message_lines(
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
+                look.renderers.at(Place::Message {
+                    index: at,
+                    block: item_at,
+                });
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     UserContent::Text(text) => {
@@ -1415,6 +1475,10 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
+                look.renderers.at(Place::Message {
+                    index: at,
+                    block: item_at,
+                });
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     AssistantContent::Text(text) => {
@@ -1526,8 +1590,8 @@ fn content_lines(
 }
 
 /// Text an agent or a plugin sent, without the header the model reads:
-/// drawn by the renderer of the plugin that sent it, if it has one, else
-/// as where it came from and its start.
+/// drawn by the render system of the plugin that sent it, if it has one,
+/// else as where it came from and its start.
 fn delivered_lines(author: &Author, text: &str, look: &Look<'_>) -> Vec<Line<'static>> {
     let body = author
         .header()

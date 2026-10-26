@@ -77,8 +77,10 @@ pub const KNOWN: [&str; 8] = [
 ];
 
 /// The Prepare system that puts each model request's parameters on it,
-/// in `PrepareSystems::Edit`: a plugin that routes a request to another
-/// model goes before it, one that edits the parameters after it.
+/// for the model it goes to: after the adapters of `PrepareSystems::Adapt`,
+/// before the outermost ones, so a system that lays out the whole request
+/// after `PrepareSystems::AdaptOutermost` sees them. A plugin that edits
+/// the parameters goes after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModelParamsSystems;
 
@@ -106,7 +108,13 @@ impl Plugin for ModelParamsPlugin {
             .init_resource::<ProjectWorkspace>()
             .insert_resource(ParamOverrides::default())
             .register_type::<ParamOverrides>()
-            .configure_sets(AgentPass, ModelParamsSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                ModelParamsSystems
+                    .in_set(Stage::Prepare)
+                    .after(PrepareSystems::Adapt)
+                    .before(PrepareSystems::AdaptOutermost),
+            )
             .add_systems(AgentPass, apply.in_set(ModelParamsSystems))
             .add_systems(Startup, load)
             .add_observer(forget_headers)
@@ -585,11 +593,10 @@ struct Fit<'w, 's> {
         (
             &'static Effect,
             &'static mut ModelRequest,
-            Option<&'static Adapters>,
+            Option<&'static Adapted>,
             Option<&'static ForAgent>,
         ),
     >,
-    starts: ModelStarts<'w, 's>,
     overrides: Res<'w, ParamOverrides>,
     table: Res<'w, HeaderTable>,
     warned: ResMut<'w, Warned>,
@@ -602,14 +609,11 @@ impl Fit<'_, '_> {
     /// and leaves out each one that model does not take, warning of it
     /// once.
     fn fit(&mut self, call: Entity, files: &Files) {
-        let Ok((effect, mut model, adapters, agent)) = self.calls.get_mut(call) else {
+        let Ok((effect, mut model, Some(adapted), agent)) = self.calls.get_mut(call) else {
             return;
         };
         let agent = agent.map(|agent| agent.0);
-        let Ok((connection, ..)) = self.starts.sent(&model, adapters, agent) else {
-            return;
-        };
-        let reference = connection.spec.reference();
+        let reference = adapted.0.spec.reference();
         let params = effective(files, &self.overrides, &reference);
         if params.is_empty() {
             return;
@@ -619,10 +623,7 @@ impl Fit<'_, '_> {
             self.table.lock().insert(effect.id(), headers);
             self.commands.entity(call).insert(Headed);
         }
-        let Ok(dropped) = self.starts.dropped(&model, adapters, agent) else {
-            return;
-        };
-        for option in dropped {
+        for option in adapted.dropped(&model) {
             let Some(name) = leave_out(model.request_mut(), &option.option, &params) else {
                 continue;
             };

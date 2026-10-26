@@ -12,8 +12,8 @@
 //!
 //! The consultants' requests are effects under the `consult` call, so the
 //! session's effect log keeps their work under it. With the default `tui`
-//! feature the call's renderer draws each consultant's model and tool calls
-//! nested under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)),
+//! feature the call's render system draws each consultant's model and tool
+//! calls nested under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)),
 //! live and after a resume. Their model calls are ordinary model calls, so
 //! they count toward the session's spending per model (`rig_basics::telemetry`),
 //! which also gives each consultant's cost.
@@ -130,7 +130,10 @@ impl Plugin for ConsultPlugin {
             .add_observer(stop_consultants)
             .add_observer(cancel_on_interrupt);
         #[cfg(feature = "tui")]
-        rig_tui::AppToolRenderersExt::add_tool_renderer(app, CONSULT, render::consult);
+        app.add_systems(
+            rig_tui::TranscriptRender,
+            render::draw.in_set(rig_tui::RenderSystems::Render),
+        );
     }
 }
 

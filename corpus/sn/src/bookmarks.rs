@@ -23,9 +23,9 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppToolRenderersExt, AsideView, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope,
-    MainPane, PaneKeys, Placement, ScrollTo, ShowAgent, TranscriptItem, TranscriptPane,
-    TranscriptSource, TranscriptView, TuiPanel,
+    AsideView, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, MainPane, PaneKeys,
+    Placement, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem, TranscriptPane,
+    TranscriptRender, TranscriptSource, TranscriptView, TuiPanel,
 };
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +70,7 @@ impl Plugin for BookmarksPlugin {
             bookmark,
         )
         .add_command("bookmarks", "List the bookmarks and jump to one", list)
-        .add_aside_renderer(KIND, marker);
+        .add_systems(TranscriptRender, draw.in_set(RenderSystems::Render));
     }
 }
 
@@ -81,6 +81,13 @@ struct Choices(Vec<(Entity, AsideId)>);
 /// On the pane showing a condensed-away bookmark's saved history.
 #[derive(Component)]
 struct HistoryPane;
+
+/// Draws the bookmarks' asides.
+fn draw(mut batch: ResMut<RenderBatch>) {
+    for (aside, output) in batch.asides_mut(KIND) {
+        output.lines = marker(&aside.view());
+    }
+}
 
 /// The marker's look: a line naming the bookmark.
 fn marker(view: &AsideView<'_>) -> Vec<Line<'static>> {

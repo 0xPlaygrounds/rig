@@ -1,28 +1,29 @@
 //! The summary in the terminal view: a "Summary" entry that shows all of
 //! it. It takes the place of `rig_basics::compaction`'s look for its summaries.
 
-use rig_basics::compaction::summary_author;
+use rig_basics::compaction::{SummaryLooks, summary_author};
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, EntryRenderer, EntryView, text_rows};
+use rig_tui::{EntryView, RenderBatch, RenderSystems, TranscriptRender, text_rows};
 
-/// Draws summaries as a "Summary" entry, in place of `rig_basics::compaction`'s look.
+/// Draws summaries as a "Summary" entry, after `rig_basics::compaction`'s
+/// look, so its lines are the ones drawn.
 pub(crate) fn add(app: &mut App) {
+    app.add_systems(
+        TranscriptRender,
+        draw.after(SummaryLooks).in_set(RenderSystems::Render),
+    );
+}
+
+/// Draws the summaries.
+fn draw(mut batch: ResMut<RenderBatch>) {
     let AuthorKind::Plugin(origin) = summary_author().kind else {
         return;
     };
-    let world = app.world_mut();
-    let mut renderers = world.query::<(Entity, &EntryRenderer)>();
-    let theirs: Vec<Entity> = renderers
-        .iter(world)
-        .filter(|(_, renderer)| renderer.plugin == origin)
-        .map(|(entity, _)| entity)
-        .collect();
-    for renderer in theirs {
-        world.entity_mut(renderer).insert(Disabled);
+    for (entry, output) in batch.entries_mut(&origin) {
+        output.lines = summary(&entry.view());
     }
-    app.add_entry_renderer(&origin, summary);
 }
 
 /// "Summary", then the summary.

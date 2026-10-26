@@ -44,15 +44,7 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         .insert_resource(ProjectRoot(project.clone()))
         .insert_resource(RigHome(Home::at(dir.join("home"))))
         .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, WriteTool))
-        .add_tool_per_call(
-            rig_tools::Search::default(),
-            ToolOptions::default(),
-            |place| rig_tools::Search {
-                workspace: place.workspace,
-                base: Some(place.base),
-                confine: place.confine,
-            },
-        )
+        .add_tool_per_call(rig_tools::Search::default(), ToolOptions::default())
         .add_plugins(ProtectedPathsPlugin)
         .init_resource::<Ended>()
         .add_observer(log_ended);

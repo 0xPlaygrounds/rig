@@ -3,14 +3,30 @@
 
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, ToolCallView};
+use rig_tui::{RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
 
 use super::{MESSAGE, TASK, WAIT};
 
+/// The system that draws the subagent tools' calls, in
+/// [`RenderSystems::Render`]. A plugin that draws them its own way runs
+/// after it.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SubagentLooks;
+
 pub(super) fn add(app: &mut App) {
-    app.add_tool_renderer(TASK, |view| look(view, "description"))
-        .add_tool_renderer(MESSAGE, |view| look(view, "agent"))
-        .add_tool_renderer(WAIT, |view| look(view, "agent"));
+    app.add_systems(
+        TranscriptRender,
+        draw.in_set(SubagentLooks).in_set(RenderSystems::Render),
+    );
+}
+
+/// Draws the subagent tools' calls.
+fn draw(mut batch: ResMut<RenderBatch>) {
+    for (tool, shown) in [(TASK, "description"), (MESSAGE, "agent"), (WAIT, "agent")] {
+        for (call, output) in batch.tools_mut(tool) {
+            output.lines = look(&call.view(), shown);
+        }
+    }
 }
 
 /// The tool's name and its argument `shown`, then the result.

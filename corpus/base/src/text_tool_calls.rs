@@ -1,7 +1,7 @@
 //! Tool calls for models without native tool calling (spec `59-text-tool-calls.md`).
 //!
-//! Every model call gets a `text-tools` [`Adapter`]. At Start, on the model
-//! the call finally goes to, it acts when that model's catalog entry says it
+//! Every model call is adapted ([`Adapted`]): on the model the call finally
+//! goes to, it acts when that model's catalog entry says it
 //! cannot call tools, or the `[text_tools]` settings name it: the model is
 //! then said to take tools, and its handler is wrapped. The request side
 //! (an [`Intercept`]) describes the offered tools in the system prompt with
@@ -59,19 +59,19 @@ pub struct TextToolCallsSystems;
 impl Plugin for TextToolCallsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<TextTools>("text_tools")
-            .configure_sets(AgentPass, TextToolCallsSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                TextToolCallsSystems.in_set(PrepareSystems::Adapt),
+            )
             .add_systems(AgentPass, adapt.in_set(TextToolCallsSystems));
     }
 }
 
-/// Gives each model call admitted this pass the `text-tools` adapter.
-fn adapt(mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>, settings: Res<TextTools>) {
-    let models = Arc::new(settings.models.clone());
-    for mut adapters in &mut calls {
-        let models = models.clone();
-        adapters.0.push(Adapter::new(NAME, move |connection| {
-            as_text(connection, &models)
-        }));
+/// Adapts each model call admitted this pass whose model takes tool calls
+/// as text.
+fn adapt(mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>, settings: Res<TextTools>) {
+    for mut adapted in &mut calls {
+        adapted.0 = as_text(adapted.0.clone(), &settings.models);
     }
 }
 

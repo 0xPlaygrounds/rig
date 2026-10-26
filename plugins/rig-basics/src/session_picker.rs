@@ -29,7 +29,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig_core::conversation::{Conversation, EntryRef, MessageId};
+use rig_core::conversation::{Conversation, MessageId};
 use rig_ecs::prelude::{PollTasks, Running, Wake};
 use rig_ecs::session_log::SessionStore;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
@@ -127,10 +127,16 @@ fn tilde(path: &Path) -> String {
 
 /// The native session picker: put it on an entity (it requires a
 /// [`Picker`]) and, when [`SessionPickerPlugin`] is loaded, the picker is
-/// filled in place as items are read, newest first, and previews the highlighted one when `preview` is
-/// set. Picking runs `command` with `{session}`, `{agent}` and `{entry}`
-/// replaced; with an empty `command`, read `Picked` (the item's
-/// position is in `Chosen`) and [`SessionPicked`] on the same entity.
+/// filled in place as items are read, newest first, and previews the
+/// highlighted one when `preview` is set. Picking runs `command` with
+/// `{session}`, `{agent}` and `{entry}` replaced; with an empty `command`,
+/// read `Picked` (the item's position is in `Chosen`) and [`SessionPicked`]
+/// on the same entity. A session's label holds its labels and listed values
+/// (rig-harness' `SavedAs::listed`). The items are the `Picker`'s, filled in
+/// [`SessionPickerSystems`]: a system after it may change their labels and
+/// details, but not add, remove or reorder them, as a pick names the
+/// session at the item's position. A [`SessionFilter`] matches the labels
+/// the fill wrote, not a later system's.
 #[derive(Component, Clone, Debug)]
 #[require(Picker, SessionPicked, SessionView)]
 pub struct SessionPicker {
@@ -140,41 +146,20 @@ pub struct SessionPicker {
     pub filter: SessionFilter,
     /// The command picking an item runs, its placeholders replaced.
     pub command: String,
-    /// The item's label and detail; `None` for the default labels.
-    pub show: Option<fn(&SessionItem<'_>) -> (String, Option<String>)>,
     /// Whether the highlighted item is previewed.
     pub preview: bool,
 }
 
-/// The saved sessions, no filter, no command, the default labels, and a
-/// preview.
+/// The saved sessions, no filter, no command, and a preview.
 impl Default for SessionPicker {
     fn default() -> Self {
         Self {
             source: SessionSource::Saved,
             filter: SessionFilter::default(),
             command: String::new(),
-            show: None,
             preview: true,
         }
     }
-}
-
-/// One item of a session picker, whichever its source: what
-/// [`SessionPicker::show`] labels.
-#[derive(Clone, Copy, Debug)]
-pub enum SessionItem<'a> {
-    /// A saved session.
-    Session(&'a SessionEntry),
-    /// An entry of an agent's conversation.
-    Entry {
-        /// The session.
-        session: &'a SessionEntry,
-        /// The entry's position in the conversation.
-        at: usize,
-        /// The entry.
-        entry: EntryRef<'a>,
-    },
 }
 
 /// What a [`SessionPicker`] lists.
@@ -225,14 +210,6 @@ impl SessionFilter {
         (self.running || !session.running)
             && (self.project.is_none() || session.directory == self.project)
             && (text.is_empty() || holds(&shown.0) || shown.1.as_deref().is_some_and(holds))
-    }
-}
-
-/// The default labels of `item`.
-fn default_show(item: &SessionItem<'_>) -> (String, Option<String>) {
-    match item {
-        SessionItem::Session(session) => (session.label(), Some(session.detail())),
-        SessionItem::Entry { entry, .. } => (excerpt(entry), Some(entry.id.to_string())),
     }
 }
 
@@ -404,19 +381,16 @@ impl Sessions<'_> {
     }
 }
 
-/// Starts reading for each session picker added, or whose source changed,
-/// and fills the picker again when its filter or labels did.
+/// Starts reading for each session picker added, or whose source changed;
+/// one whose filter changed is filled again.
 fn start(
-    mut pickers: Query<
-        (Entity, &SessionPicker, &mut SessionView, &mut Picker),
-        Changed<SessionPicker>,
-    >,
+    mut pickers: Query<(Entity, &SessionPicker, &mut SessionView), Changed<SessionPicker>>,
     sessions: Sessions,
     mut commands: Commands,
 ) {
-    for (entity, picker, mut view, mut items) in &mut pickers {
+    for (entity, picker, mut view) in &mut pickers {
         if view.source.as_ref() == Some(&picker.source) {
-            fill(picker, &mut view, &mut items, sessions.paths.as_deref());
+            view.set_changed();
             continue;
         }
         commands.entity(entity).despawn_related::<Reading>();
@@ -464,12 +438,11 @@ fn start(
     }
 }
 
-/// Takes what a task read into its picker's view and fills the picker.
+/// Takes what a task read into its picker's view, to be filled in.
 fn read_done(
     done: On<Insert<ReadDone>>,
     mut tasks: Query<(&ReadFor, &mut ReadDone)>,
-    mut pickers: Query<(&SessionPicker, &mut SessionView, &mut Picker)>,
-    paths: Option<Res<SessionPaths>>,
+    mut views: Query<&mut SessionView>,
     mut commands: Commands,
 ) {
     let Ok((ReadFor(picker), mut read)) = tasks.get_mut(done.entity) else {
@@ -477,7 +450,7 @@ fn read_done(
     };
     let read = read.0.take();
     commands.entity(done.entity).despawn();
-    let Ok((picker, mut view, mut items)) = pickers.get_mut(*picker) else {
+    let Ok(mut view) = views.get_mut(*picker) else {
         return;
     };
     match read {
@@ -492,20 +465,33 @@ fn read_done(
             view.conversation = Some(conversation);
         }
         Some(Err(why)) => view.failed = Some(why),
-        None => return,
+        None => {}
     }
-    fill(picker, &mut view, &mut items, paths.as_deref());
+}
+
+/// Fills each session picker whose view or filter changed in place with
+/// what its view read that it lists, and keeps in the view what each item
+/// names.
+fn fill(
+    mut pickers: Query<
+        (&SessionPicker, &mut SessionView, &mut Picker),
+        Or<(Changed<SessionView>, Changed<SessionPicker>)>,
+    >,
+    paths: Option<Res<SessionPaths>>,
+) {
+    for (picker, mut view, mut items) in &mut pickers {
+        fill_one(picker, &mut view, &mut items, paths.as_deref());
+    }
 }
 
 /// Fills `items` in place with what `view` read that `picker` lists,
 /// labelled as it says, and keeps in `view` what each item names.
-fn fill(
+fn fill_one(
     picker: &SessionPicker,
     view: &mut SessionView,
     items: &mut Mut<Picker>,
     paths: Option<&SessionPaths>,
 ) {
-    let show = picker.show.unwrap_or(default_show);
     let this =
         |session: &SessionEntry| paths.and_then(|paths| paths.id()).as_ref() == Some(&session.id);
     let named = |session: &SessionEntry| (!this(session)).then(|| session.id.clone());
@@ -514,8 +500,7 @@ fn fill(
         _ => view.home.session(&session.id),
     };
     let mut made: Vec<(PickItem, SessionPicked, SessionDir)> = Vec::new();
-    let mut push = |item: &SessionItem<'_>, picked: SessionPicked, at: SessionDir| {
-        let (label, detail) = show(item);
+    let mut push = |(label, detail), picked: SessionPicked, at: SessionDir| {
         let command = placeholders(&picker.command, &picked, paths);
         made.push((
             PickItem {
@@ -537,27 +522,23 @@ fn fill(
                     agent: Some(view.agent.clone()),
                     entry: Some(entry.id),
                 };
-                let item = SessionItem::Entry {
-                    session,
-                    at: entry.index,
-                    entry,
-                };
-                push(&item, picked, dir(session));
+                let shown = (excerpt(&entry), Some(entry.id.to_string()));
+                push(shown, picked, dir(session));
             }
         }
         _ => {
             for session in &view.sessions {
                 let mut session = session.clone();
                 session.running |= this(&session);
-                let item = SessionItem::Session(&session);
-                if !picker.filter.passes(&session, &show(&item)) {
+                let shown = (session.label(), Some(session.detail()));
+                if !picker.filter.passes(&session, &shown) {
                     continue;
                 }
                 let picked = SessionPicked {
                     session: named(&session),
                     ..SessionPicked::default()
                 };
-                push(&item, picked, dir(&session));
+                push(shown, picked, dir(&session));
             }
         }
     }
@@ -724,9 +705,15 @@ fn picked(pick: On<Pick>, mut pickers: Query<(&SessionView, &mut SessionPicked)>
 #[derive(Default)]
 pub struct SessionPickerPlugin;
 
+/// Where [`SessionPickerPlugin`] fills session pickers' items, in
+/// `Update`: order a system after it to change their labels.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SessionPickerSystems;
+
 impl Plugin for SessionPickerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (start, preview).chain().after(PollTasks))
+        let fill = fill.in_set(SessionPickerSystems);
+        app.add_systems(Update, (start, fill, preview).chain().after(PollTasks))
             .add_observer(read_done)
             .add_observer(preview_done)
             .add_observer(picked);

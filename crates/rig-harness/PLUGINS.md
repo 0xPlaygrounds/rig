@@ -82,7 +82,8 @@ each plugin added): ask it before reading rig's source.
   **answer** is what a handler or decision gave (`effect::Answered`), the
   **outcome** the answer or an error (`Outcome`). A **handler** serves an
   effect, a **layer** wraps one (`Intercept`: `BeforeServe`, `AfterServe`), an
-  **adapter** changes the model a call goes to. An **open tool**'s calls are
+  **adapter** is a system that changes the model a call goes to
+  (`Adapted`). An **open tool**'s calls are
   answered by observers; a **footprint** what a tool call may read and change;
   **facts** are typed values a handler publishes with its answer (`Published`).
 - **Messages.** A **message** is text sent to an agent (`Incoming`) to
@@ -295,8 +296,10 @@ orders a system by what it does, not by which plugin does what:
 | Phase | What goes there | The default plugins' systems there |
 |---|---|---|
 | `PrepareSystems::Input` | what came in, rewritten before anything is read from it: a message's text, a tool call's arguments | |
-| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_basics::coding_tools::AttachSystems`), the default system prompt, each coding tool call's handler for its place in the workspace |
-| `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to, its `Adapters`, a call's `CallHandler` | |
+| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`, in `rig_basics::coding_tools::AttachSystems`), the default system prompt, each coding tool call's place and handler (`PerCallSystems`) |
+| `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to (`connection`), a call's `CallHandler` | |
+| `PrepareSystems::Adapt` | the model a call goes to (`Adapted`), changed in place: its handler wrapped, its spec saying what the wrapped model takes | |
+| `PrepareSystems::AdaptOutermost` | the same, after every other adapter: a change that sees what they made of the model, such as a replay that replaces it | |
 | `PrepareSystems::Fit` | the request as sent, measured against the window of the model it goes to and fitted | compaction |
 | `ReviewSystems::Edit` | an `Outcome`, a `RetryVerdict` or a proposed `TurnOutcome`, edited in place | compaction reading a summary or notes from its reply |
 | `ReviewSystems::Act` | what was reviewed, acted on: a failed call taken over, a result followed up, a summary or notes reviewed | compaction's recovery from an overflow |
@@ -381,14 +384,19 @@ comments describe them, and a call whose arguments do not fit is refused with
 where and why (rig-core's `tool::validate`); a schema that declares no
 `properties` takes any arguments.
 
-A tool registered with `app.add_tool_per_call(tool, options, make)`
-is built for each call's `CallPlace`: the app's workspace (an overlay of it
-for a [preview](#gating-and-reviewing-tool-calls)), the calling agent's
-`WorkDir` else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and
-for a tool registered with `add_live_tool_per_call` the `Live` its output
-goes to, as the coding tools are. A plugin that builds such a call somewhere
-else uses `PerCallTools` (`place(agent, workspace)`, then `build(name,
-place)`), as preview builds it on an overlay.
+A tool registered with `app.add_tool_per_call(tool, options)`, a
+`PerCallTool`, is built for each call's `CallPlace` by its `at(place)`: the
+app's workspace (an overlay of it for a
+[preview](#gating-and-reviewing-tool-calls)), the calling agent's `WorkDir`
+else the `ProjectRoot` (`base`, `confine` for a `WorkDir`), and for a tool
+registered with `add_live_tool_per_call` the `Live` its output goes to, as
+the coding tools are. Each such call gets its `CallPlace` component in
+`PerCallSystems::Place` and its `CallHandler` in `PerCallSystems::Build`,
+both in `PrepareSystems::Compose`: a system between them changes where the
+call works, one after replaces or wraps the handler. The tool's entity has
+its `PerCall`. A plugin that builds such a call somewhere else uses
+`PerCallTools` (`place(agent, workspace)`, then `build(name, place)`), as
+preview builds it on an overlay.
 
 ```rust,no_run
 use std::{path::PathBuf, sync::Arc};
@@ -403,12 +411,17 @@ fn build(app: &mut App) {
         footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let here = WordCount { workspace: Arc::new(Local), base: None, confine: false };
-    app.add_tool_per_call(here, options, |at| {
+    app.add_tool_per_call(here, options);
+}
+
+impl PerCallTool for WordCount {
+    fn at(&self, at: CallPlace) -> Self {
         WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
-    });
+    }
 }
 
 /// Reads in `workspace`, a relative path from `base`.
+#[derive(Clone)]
 struct WordCount {
     workspace: Arc<dyn Workspace>,
     base: Option<PathBuf>,
@@ -457,28 +470,50 @@ command; despawning the entity removes it. Its annotations are hints: a
 call that only reads, and so runs again after a restart, is one that
 `options.footprint` declares so.
 
-`rig-tui` draws a tool's calls with the first renderer its plugin adds
-(`add_tool_renderer`), given a `ToolCallView`: the call, its state, result,
-output and the calls it started (`children`). A crate that should also build
+`rig-tui` runs ordinary presentation systems in `TranscriptRender`. Its
+`RenderBatch` holds owned inputs and mutable lines for items needing rendering,
+including saved calls and calls with synthetic streaming ids. The
+`RenderSystems::Render`, `Decorate`, and `Edit` sets run in that order. Order
+competing systems within a phase using your plugin's public sets. These systems
+may read agent data but write only presentation data. A crate that also builds
 without `rig-tui` puts it behind a default `tui = ["dep:rig-tui"]` feature.
 
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::AppToolRenderersExt;
+use rig_tui::{RenderBatch, RenderSystems, TranscriptRender};
 
 fn build(app: &mut App) {
-    app.add_tool_renderer("word_count", |call| {
+    app.add_systems(TranscriptRender, draw_count.in_set(RenderSystems::Render));
+}
+
+fn draw_count(mut batch: ResMut<RenderBatch>) {
+    for (input, output) in batch.tools_mut("word_count") {
+        let call = input.view();
         let mut lines = vec![call.header("Count", call.argument("path").unwrap_or_default())];
         lines.extend(call.result_lines());
         for child in call.children {
             let indent = "  ".repeat(child.depth + 1);
             lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
         }
-        lines
-    });
+        output.lines = lines;
+    }
 }
 ```
+
+The batch's `pane`, `agent`, and `width` describe this layout. A system can
+select a pane by its entity or query a marker on it; `pane = None` means an
+export. The typed `tools_mut`, `entries_mut`, `contents_mut`, `asides_mut`,
+`calls_mut`, and `messages_mut` iterators select inputs without depending on
+live effect entities. `requests` exposes every request and output by its typed
+`RenderKey`. Unchanged messages stay cached and do not enter the schedule.
+A cached item is drawn again only when its inputs change, so after changing
+anything else a look reads, or adding or removing a look system at runtime,
+increment `RenderRevision.0`; this requests a frame and invalidates cached
+presentation. A look that replaces another is ordered after the other's
+public set: the shipped looks are in `CodingToolLooks`, `SummaryLooks`,
+`SubagentLooks`, `WelcomeLooks` and `BuildFailedLooks`.
+
 
 # Gating and reviewing tool calls
 
@@ -870,20 +905,29 @@ Start puts the prompt and `history` into the request's messages and fits it
 to the model it goes to: an unset option takes that model's default (its
 caching), one it cannot take is left out.
 
-- **Routing** a call to another model is a Prepare edit of its
-  `connection`; it then asks for that model's caching.
+- **Routing** a call to another model is an edit of its `connection` in
+  `PrepareSystems::Edit` or before; it then asks for that model's caching.
+  The kernel reads `connection` once, after Edit, so a later change is a
+  change of the call's `Adapted` instead.
 - **Adapting** the model, whichever it is, such as so it reads tools as
-  text, is an `Adapter` pushed on the call's `Adapters`, applied at Start
-  to the connection the call finally goes to, in order, `outermost()` ones
-  last, so a router and an adapter never undo each other. It wraps
+  text, is a system in `PrepareSystems::Adapt` (or `AdaptOutermost`, after
+  the others) that changes the call's `Adapted(connection)` in place,
+  `Query<&mut Adapted, Added<Admitted>>`. After Edit, the kernel puts on
+  each model call the connection it goes to, its own or else its agent's
+  model at that moment, so a router and an adapter never undo each other,
+  and a call keeps that model while it is held or waits. A call admitted
+  while it has neither gets none, and Start fails it with "No model is
+  connected", even if its agent was connected meanwhile. An adapter wraps
   `connection.handler` with rig-core's `ErasedHandler::layered` or
   `map_stream` (each streamed item rewritten, and recorded so), and says
-  what the wrapped model takes on `connection.spec`.
-- **What a call is sent as.** `ModelStarts::sent` gives a call's
-  connection and its request as Start will send it (to measure in
-  `PrepareSystems::Fit`), `dropped` the options its model leaves out,
-  `prompt` its system prompt in parts. From Start on, a call has
-  `SentTo(connection)`, its request as sent, and `DroppedOptions`, the options
+  what the wrapped model takes on `connection.spec`. A successor is
+  routed and adapted anew, so no call is adapted twice.
+- **What a call is sent as.** `Adapted::sent` gives a call's request as
+  Start will send it to that connection (to measure in
+  `PrepareSystems::Fit`), `dropped` the options its model leaves out; its
+  system prompt in parts is `ModelRequest::prompt`. Start sends the request
+  to the `Adapted` connection and moves it into `SentTo(connection)`; from
+  then on a call has its request as sent, and `DroppedOptions`, the options
   left out (by the model's spec or a dry run, rig-core's `Serve::check`).
   A fact a `map_stream` closure inserts in the call's `PublishedContext`
   is its `Published` once answered.
@@ -912,7 +956,7 @@ caching), one it cannot take is left out.
 - **Answering later, from elsewhere,** such as a batch API: the model is
   connected with rig-core's `ErasedHandler::unavailable(descriptor, why)`,
   and a system in `GateSystems::After` holds each call, submits what
-  `ModelStarts::sent` gives, and keeps the batch's id in a saved component
+  `Adapted::sent` gives, and keeps the batch's id in a saved component
   by turn (a restart runs the call again, `Restored`, to hold again). A
   `WakeAt` polls, and rig-core's `wire::decode_reply` turns the result's
   body into the reply it decides the call with.
@@ -946,25 +990,24 @@ use rig_harness::rig_ecs::effects::Handler;
 const FALLBACK: &str = "deepseek/deepseek-flash";
 
 fn build(app: &mut App) {
-    let edits = tools_as_text.in_set(PrepareSystems::Edit);
-    app.add_systems(AgentPass, (edits, fall_back.in_set(ReviewSystems::Act)));
+    let adapt = tools_as_text.in_set(PrepareSystems::Adapt);
+    app.add_systems(AgentPass, (adapt, fall_back.in_set(ReviewSystems::Act)));
 }
 
 /// Tools as text for a model that calls none, whichever a router picks.
-fn tools_as_text(mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>) {
-    for mut adapters in &mut calls {
-        adapters.0.push(Adapter::new("text-tools", |mut connection: Connection| {
-            if !connection.spec.tools {
-                let mut spec = (*connection.spec).clone();
-                spec.tools = true;
-                connection.spec = Arc::new(spec);
-                // Each streamed item, rewritten: here passed on, where the
-                // plugin's parser reads tool calls from the text.
-                let pass_on = |_published| |item| vec![item];
-                connection.handler = Handler(connection.handler.0.map_stream("text-tools", pass_on));
-            }
-            connection
-        }));
+fn tools_as_text(mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>) {
+    for mut adapted in &mut calls {
+        let Adapted(connection) = &mut *adapted;
+        if !connection.spec.tools {
+            let mut spec = (*connection.spec).clone();
+            spec.tools = true;
+            connection.spec = Arc::new(spec);
+            // Each streamed item, rewritten: here passed on, where the
+            // plugin's parser reads tool calls from the text.
+            let pass_on = |_published| |item| vec![item];
+            let handler = connection.handler.0.clone().map_stream("text-tools", pass_on);
+            connection.handler = Handler(handler);
+        }
     }
 }
 
@@ -997,7 +1040,7 @@ Every model call streams, a turn's and a plugin's own alike. Each event is a
 `StreamEvent`: a part's `Start` (a tool call's name), its `Text`,
 `Reasoning` or `Arguments` fragments, and its `End` (a finished tool call
 with its id); `part` tells parallel tool calls apart. It is written in
-Arrive in order, after the call's adapters rewrote it, and kept two frames,
+Arrive in order, after the call's adapted handler rewrote it, and kept two frames,
 so a reader in `PostUpdate` gets a reply's last events even when it settled
 that frame. A turn's call also adds its text and reasoning up in its
 `Partial` (a successor continuing a reply may start it with the text so
@@ -1282,8 +1325,8 @@ session stopped. rig-core's `redact` finds keys and tokens by their shapes
 (`json`, `text`).
 
 **Replaying.** A replayer answers effects from a recorded log before
-they start: a model call by an adapter placed outermost, the others in
-`GateSystems::FromRecord` (rig-cassette's `RecordedAnswers` pairs agents).
+they start: a model call by an adapter in
+`PrepareSystems::AdaptOutermost`, the others in `GateSystems::FromRecord` (rig-cassette's `RecordedAnswers` pairs agents).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1315,7 +1358,10 @@ keeps the default and is shown at startup. A test inserts
 `Settings::from_toml(..)` before adding the plugin, so the user's file is
 never read. `add_project_setting::<T>(section)` also merges the table of
 the project's `.rig/settings.toml` over the user's, key by key, at
-startup (a cloned repository changes only what a plugin lets it). Here a
+startup (a cloned repository changes only what a plugin lets it): each
+such table is a `ProjectSetting` entity, the project's file is the
+`ProjectSettings` resource, and both happen in `PreStartup`'s
+`ProjectSettingsSystems::{Read, Apply}`. Here a
 [command-line option](#fronts-options-and-commands) overrides the setting.
 
 ```rust,no_run
@@ -1755,10 +1801,12 @@ A `SessionPicker` on a `Picker` (`rig_basics::session_picker`, with its
 `SessionFilter` (running ones, a project, a text), the highlighted item
 previewed (`PickPreview`, which any picker sets as its `Highlighted` moves).
 Picking runs its `command` with `{session}`, `{agent}` and `{entry}` filled
-in, or, with none, puts `SessionPicked` on the entity before `Picked`; `show`
-labels items. `/resume` and `/fork at` are this view; a program reads the same
-with `Home::saved_sessions()`, `SessionMeta::read(&store)` and
-`read_conversation`.
+in, or, with none, puts `SessionPicked` on the entity before `Picked`. The
+items are filled in `SessionPickerSystems`; a system after it may relabel
+them, but not add, remove or reorder them, as a pick names the session at
+the item's position. `/resume` and `/fork at` are this view; a program
+reads the same with `Home::saved_sessions()`, `SessionMeta::read(&store)`
+and `read_conversation`.
 
 ```rust,no_run
 use rig_basics::session_picker::{SessionPicked, SessionPicker, SessionSource};
@@ -1882,7 +1930,7 @@ fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut P
 
 A whole plugin is replaced in `plugins.toml`: disable its entry and list
 yours, as for [compaction](#changing-history). Tools, slash commands,
-renderers, key bindings, options, fronts and prompt sections are entities.
+key bindings, options, fronts and prompt sections are entities.
 `Disabled` on one turns it off and frees its name for a replacement (a second
 one of a taken name is refused), in `Plugin::finish`, which runs once every
 `build` did. What a plugin spawns in `build`, `finish` and `cleanup` is marked
@@ -1893,6 +1941,9 @@ system changes its results, and a default tool may have a switch, such as
 `rig_basics::coding_tools::ShellOutput`. A plugin's stage systems in a public
 set are turned off with a run condition
 (`configure_sets(AgentPass, AttachSystems.run_if(|| false))` in `finish`).
+A shipped transcript look is replaced by a render system ordered after its
+public set (`CodingToolLooks`, `SummaryLooks`, `SubagentLooks`,
+`WelcomeLooks`, `BuildFailedLooks`) that writes the same output.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1911,7 +1962,7 @@ impl Plugin for NoShellPlugin {
             world.entity_mut(shell).insert(Disabled);
         }
         // `app.add_tool(MyShell)` would replace it. A command is found by its
-        // `Name` ("/help"), a renderer by its ("renderer:shell").
+        // `Name` ("/help").
     }
 }
 ```
@@ -2073,9 +2124,8 @@ with its title and its text. Every front draws it, it is kept as any aside
 is, and `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a plugin
-(such as `rig_basics::compaction`'s summary), with the look
-`add_entry_renderer(plugin, ..)` gives that plugin's author; other asides with
-`add_aside_renderer(kind, ..)`. The transcript puts each item on the band of
+(such as `rig_basics::compaction`'s summary), with systems selecting
+`RenderBatch::entries_mut(plugin)`; other asides use `asides_mut(kind)`. The transcript puts each item on the band of
 what it is, from the `Theme` resource (mixed from the terminal's background):
 a user message on `user`, a tool call and what a plugin added on `tool`, a
 reply on none; a look's line with a background of its own keeps it, as a
@@ -2095,17 +2145,20 @@ drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a
 `TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at a
 row of it or its `n`th lit match; `item: None` follows the newest output. A
 `DrawnTranscript` added to a pane holds the rows it drew by item;
-`TranscriptLayout::lay_out` lays any agent's out so, undrawn.
+`TranscriptLayout::lay_out(world, view, agent, width)` lays any agent's out
+so, undrawn. It takes `&mut World` and runs the same render schedule, so call it
+from an exclusive system or an exclusive command.
 
 A message's images, audio, videos and documents, the user's or the
-model's, are drawn by `add_content_renderer(ContentKind::Image, ..)`,
-given a `ContentView` (`default_lines()` is `[image]`), each block an item
-`TranscriptItem::Content(id, index)` with its rows; `add_call_decorator`
-draws lines under every tool call, after its look, an item
-`Decoration(call, name)`. `TuiFrame`, written in `TuiSystems::Render`,
+model's, are drawn by systems selecting `contents_mut(ContentKind::Image)`.
+The input's `view()` gives a `ContentView` (`default_lines()` is `[image]`),
+each block an item `TranscriptItem::Content(id, index)` with its rows.
+`RenderOutput::decorate(name, lines)` appends named lines after a call, an item
+`Decoration(call, name)`. For messages, use `messages_mut()` and the same
+method to produce `MessageDecoration(message, name)`. `TuiFrame`, written in `TuiSystems::Render`,
 says where the frame drew each panel (`area`) and row (`screen_row`) and
 what an overlay `covered`, for a plugin that writes to the terminal
-itself, such as an image over rows its renderer left blank, and
+itself, such as an image over rows its render system left blank, and
 `RedrawArea(rect)` writes cells it drew over again.
 
 ```rust,no_run
@@ -2114,23 +2167,34 @@ use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppToolRenderersExt, ContentKind, DrawnTranscript, Highlight, ItemRow, MainPane, MainTranscript,
+    RenderBatch, RenderSystems, TranscriptRender, ContentKind, DrawnTranscript, Highlight, ItemRow, MainPane, MainTranscript,
     ScrollTo, TerminalWrite, TranscriptItem, TuiFrame, TuiSystems,
 };
 
 fn build(app: &mut App) {
     app.add_command("mark", "Mark the newest message: /mark why", mark)
         .add_command("find", "Light a text and show the last message with it", find)
-        .add_entry_renderer("mark", |entry| {
-            let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
-            lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
-            lines
-        })
-        // An image keeps four rows, which `place_images` draws it over.
-        .add_content_renderer(ContentKind::Image, |image| [image.default_lines(), vec![Line::default(); 3]].concat())
-        .add_call_decorator("took", |call| call.took.map(|it| Line::from(format!("  {it:?}"))).into_iter().collect())
+        .add_systems(TranscriptRender, draw_marks.in_set(RenderSystems::Render))
+        .add_systems(TranscriptRender, show_duration.in_set(RenderSystems::Decorate))
         .add_systems(PostUpdate, place_images.after(TuiSystems::Render))
         .register_required_components::<MainPane, DrawnTranscript>();
+}
+
+fn draw_marks(mut batch: ResMut<RenderBatch>) {
+    for (entry, output) in batch.entries_mut("mark") {
+        let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
+        lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
+        output.lines = lines;
+    }
+    for (image, output) in batch.contents_mut(ContentKind::Image) {
+        output.lines = [image.view().default_lines(), vec![Line::default(); 3]].concat();
+    }
+}
+
+fn show_duration(mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.calls_mut() {
+        output.decorate("took", call.took.map(|it| Line::from(format!("  {it:?}"))).into_iter().collect());
+    }
 }
 
 /// Puts the cursor on each image's first row, unless an overlay covers its

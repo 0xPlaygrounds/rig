@@ -3,14 +3,18 @@ use std::fs;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use corpus_base::session_replay::{
+    Replay, ReplayFlags, ReplaySource, ReplayStatus, SessionReplayPlugin,
+};
 use rig_basics::subagents::SubagentsPlugin;
+use rig_basics::telemetry::effect_log::EffectLogPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::completion::{ModelRef, Usage};
 use rig_core::effect::{FamilyDescriptor, model_key};
 use rig_core::error::ErrorKind;
 use rig_core::message::{Origin as Made, Reasoning, ToolName};
 use rig_core::providers::registry::ConnectError;
-use rig_harness::harness_protocol::SessionId;
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::rig_ecs::session_log::SessionLogPlugin;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, run_until, scratch_home,
@@ -447,6 +451,87 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
     assert!(original.is_some());
     assert_eq!(got, Some((original, vec!["Back again.".to_owned()])));
     drop(app);
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// The plugin, the kernel and the effect log on session `id` of `home`,
+/// every agent on `stateful/a`, before its first frame.
+fn logged(home: &Home, id: &SessionId, server: &Server) -> (App, Receiver<()>) {
+    let (models, vendor) = models(server);
+    let (mut app, wakes) = app_in(home, id);
+    app.insert_resource(models)
+        .insert_resource(StatefulVendors(vendor.into_iter().collect()))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            EffectLogPlugin,
+            ServerSideStatePlugin,
+        ))
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_observer(|agent: On<Add<Agent>>, mut commands: Commands| {
+            let model = "stateful/a".to_owned();
+            commands.trigger(SetModel {
+                entity: agent.entity,
+                model,
+            });
+        });
+    (app, wakes)
+}
+
+/// The session recorded in `dir`, read as the app's stores read it.
+fn record_of(dir: &std::path::Path) -> std::io::Result<ReplaySource> {
+    let store = StoreOpener::default().open(&SessionDir::at(dir))?;
+    ReplaySource::from_store(&*store, ReplayFlags::default())
+}
+
+/// The replay answers outside the chain: it sees the whole request it
+/// recorded, not the part the chain would upload, so a session whose
+/// second request went incrementally replays without the server.
+#[test]
+fn a_chained_session_replays_from_its_record() {
+    let home = scratch_home("sn-server-state-replay");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded, replayed) = (id("1-1"), id("1-2"));
+    let server = Server::default();
+    let (mut app, wakes) = logged(&home, &recorded, &server);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    server.script([
+        vec![AssistantContent::text("A room.")],
+        vec![AssistantContent::text("Still a room.")],
+    ]);
+    say(&mut app, &wakes, agent, "Where am I?", 1);
+    say(&mut app, &wakes, agent, "And now?", 1);
+    let previous = last(&server).and_then(|got| got.previous);
+    assert_eq!(previous.as_deref(), Some("resp_1"), "{:#?}", server.got());
+    // The effect log is written at the end of the frame.
+    app.update();
+    drop(app);
+
+    let dir = home.session(&recorded).path().to_owned();
+    let source = record_of(&dir);
+    assert!(source.is_ok(), "{:?}", source.err());
+    let idle = Server::default();
+    let (mut app, wakes) = logged(&home, &replayed, &idle);
+    if let Ok(source) = source {
+        app.insert_resource(source);
+    }
+    app.add_plugins(SessionReplayPlugin);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        world.get_resource::<Replay>().is_some_and(|replay| {
+            matches!(
+                replay.status(),
+                ReplayStatus::Finished | ReplayStatus::Stopped
+            )
+        })
+    });
+    let replay = app.world().get_resource::<Replay>();
+    let outcome = replay.map(|replay| (replay.status(), replay.divergences(), replay.answered()));
+    assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 0))));
+    assert!(idle.got().is_empty(), "{:#?}", idle.got());
     fs::remove_dir_all(home.root()).ok();
 }
 

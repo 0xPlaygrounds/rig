@@ -30,8 +30,7 @@ use super::panel::{
 };
 use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
 use super::renderers::{
-    AsideRenderer, CallDecorator, CallState, ContentRenderer, EntryRenderer, Looks,
-    MessageDecorator, MessageView, Renderers, Role, ToolCallView, ToolRenderer, UNNAMED_HOLD,
+    CallState, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
@@ -87,12 +86,6 @@ pub(crate) fn needs_redraw(
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
-            Changed<ToolRenderer>,
-            Changed<EntryRenderer>,
-            Changed<ContentRenderer>,
-            Changed<CallDecorator>,
-            Changed<AsideRenderer>,
-            Changed<MessageDecorator>,
         )>,
     >,
     widgets: Query<
@@ -124,11 +117,13 @@ pub(crate) fn needs_redraw(
     >,
     (app_status, test): (Option<Res<AppStatus>>, Option<Res<TuiTestScreen>>),
     (mut requests, mut repaints): (MessageReader<RequestRedraw>, MessageReader<RedrawArea>),
+    revision: Res<crate::RenderRevision>,
     mut paced: Local<Paced>,
 ) -> bool {
     // Both readers are drained, so neither redraws again for the same change.
     let requested = requests.read().count() + repaints.read().count() > 0;
     let changed = requested
+        || revision.is_changed()
         || view.is_changed()
         || notices.is_changed()
         || facts.is_changed()
@@ -167,27 +162,6 @@ pub(crate) fn redraw_on_remove(
     >,
     mut redraw: MessageWriter<RequestRedraw>,
 ) {
-    redraw.write(RequestRedraw);
-}
-
-/// Lays every pane's transcript out again once a look went away.
-pub(crate) fn forget_looks(
-    _: On<
-        Remove<(
-            ToolRenderer,
-            EntryRenderer,
-            ContentRenderer,
-            AsideRenderer,
-            CallDecorator,
-            MessageDecorator,
-        )>,
-    >,
-    mut panes: Query<&mut PaneState>,
-    mut redraw: MessageWriter<RequestRedraw>,
-) {
-    for mut pane in &mut panes {
-        pane.bypass_change_detection().transcript.clear();
-    }
     redraw.write(RequestRedraw);
 }
 
@@ -436,44 +410,116 @@ pub(crate) struct Sources<'a> {
     /// The notices shown.
     pub(crate) notices: &'a Notices,
     /// The looks plugins added.
-    pub(crate) renderers: &'a Renderers<'a>,
+    pub(crate) renderers: &'a Renderers,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
     /// The transcript's colors.
     pub(crate) theme: &'a Theme,
 }
 
-/// Lays out an agent's transcript as the terminal view draws it, without
-/// drawing it: for any agent, shown or not, in a run with the terminal or
-/// without, by the view's own layout (its order, its renderers, wrapping
-/// and the matches it lights), so an export, a copy, a search or a screen
-/// reader reads what the view shows. Each layout renders and wraps the
-/// whole transcript, so lay one out when asked, not every frame. It is
-/// there in any run with the [`TuiPlugin`](crate::TuiPlugin), and takes
-/// the [`TranscriptView`] to lay out with, such as a pane's, so a system
-/// that changes the view lays out with it too.
+/// Lays out an agent's transcript through [`crate::TranscriptRender`],
+/// including pane-less exports. Call from an exclusive system so render
+/// systems can access the world synchronously.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
-/// use rig_tui::{MainPane, TranscriptLayout, TranscriptView};
-///
-/// /// `/export`: the agent's transcript as the main pane draws it, a line
-/// /// per row.
-/// fn export(
-///     In(args): In<CommandArgs>,
-///     layout: TranscriptLayout,
-///     view: Single<&TranscriptView, With<MainPane>>,
-/// ) {
-///     let width = view.width().unwrap_or(100);
-///     let Some(laid_out) = layout.lay_out(&view, args.agent, width) else {
-///         return;
-///     };
-///     let rows: Vec<&str> = laid_out.rows().iter().map(|row| row.text.as_str()).collect();
-///     std::fs::write("transcript.txt", rows.join("\n")).ok();
+/// use rig_tui::{TranscriptLayout, TranscriptView};
+/// fn export(world: &mut World, agent: Entity) {
+///     let rows = TranscriptLayout::lay_out(world, &TranscriptView::default(), agent, 80);
 /// }
 /// ```
+pub struct TranscriptLayout;
+
+impl TranscriptLayout {
+    /// Draw `agent` at `width` using global render systems (`pane = None`).
+    /// Returns `None` if the entity has no conversation.
+    pub fn lay_out(
+        world: &mut World,
+        view: &TranscriptView,
+        agent: Entity,
+        width: u16,
+    ) -> Option<DrawnTranscript> {
+        world.get::<AgentId>(agent)?;
+        world.get::<Conversation>(agent)?;
+        let mut transcript = Transcript::default();
+        let mut renderers = Renderers::new((None, Some(agent), width), HashMap::new());
+        let showing = Showing::Agent(agent, true);
+        let parts = lay_out_rendered(
+            world,
+            (&mut transcript, &mut renderers),
+            (view, &showing, width),
+        )?;
+        Some(transcript.laid_out(Some(agent), &parts, &view.highlights, 0..0))
+    }
+}
+
+/// What a layout draws.
+pub(crate) enum Showing<'v> {
+    /// This agent, live; its conversation changed since the last frame or
+    /// not.
+    Agent(Entity, bool),
+    /// A conversation no agent holds, in this pane; changed or not.
+    Value(&'v conversation::Conversation, Entity, bool),
+    /// No agent: the notices about every agent.
+    Nothing,
+}
+
+/// The [`LayoutSources`] state, kept between layouts.
+#[derive(Resource)]
+struct SourcesState(bevy_ecs::system::SystemState<LayoutSources<'static, 'static>>);
+
+/// Brings `transcript` up to date with `showing` through
+/// [`crate::TranscriptRender`] and returns its parts: one pass draws the
+/// default lines and collects the requests of what is not cached, the
+/// render systems run, and a second pass lays out only what they changed.
+/// `None` when the sources cannot be read.
+pub(crate) fn lay_out_rendered(
+    world: &mut World,
+    (transcript, renderers): (&mut Transcript, &mut Renderers),
+    (view, showing, width): (&TranscriptView, &Showing<'_>, u16),
+) -> Option<Vec<Part>> {
+    let mut state = match world.remove_resource::<SourcesState>() {
+        Some(state) => state,
+        None => SourcesState(bevy_ecs::system::SystemState::new(world)),
+    };
+    let pass = |world: &World,
+                state: &mut SourcesState,
+                transcript: &mut Transcript,
+                renderers: &Renderers| {
+        let from = state.0.get(world).ok()?;
+        let shown = match *showing {
+            Showing::Agent(agent, changed) => from.agent(agent, changed),
+            Showing::Value(conversation, pane, changed) => {
+                let mut value = ShownConversation::value(conversation, pane);
+                value.changed = changed;
+                Some(value)
+            }
+            Showing::Nothing => None,
+        };
+        let sources = Sources {
+            view,
+            notices: from.notices(),
+            renderers,
+            facts: from.facts(),
+            theme: from.theme(),
+        };
+        Some(lay_out_transcript(
+            transcript,
+            &sources,
+            shown.as_ref(),
+            width,
+        ))
+    };
+    let mut parts = pass(world, &mut state, transcript, renderers);
+    if parts.is_some() && renderers.run(world) {
+        parts = pass(world, &mut state, transcript, renderers);
+    }
+    world.insert_resource(state);
+    parts
+}
+
 #[derive(SystemParam)]
-pub struct TranscriptLayout<'w, 's> {
+pub(crate) struct LayoutSources<'w, 's> {
     agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
@@ -486,7 +532,6 @@ pub struct TranscriptLayout<'w, 's> {
         (&'static Effect, &'static Incoming, &'static ForAgent),
         (With<Started>, Without<Outcome>),
     >,
-    pub(crate) looks: Looks<'w, 's>,
     calls: CallStates<'w, 's>,
     live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
@@ -496,32 +541,7 @@ pub struct TranscriptLayout<'w, 's> {
     theme: Res<'w, Theme>,
 }
 
-impl TranscriptLayout<'_, '_> {
-    /// `agent`'s transcript laid out in rows `width` columns wide (as
-    /// [`TranscriptView::width`] says the view draws it; `u16::MAX` keeps
-    /// a line in one row), the matches of `view`'s highlights counted, as
-    /// the view would draw it with `view`. It has no rows on screen. [`DrawnTranscript::item`] takes one item's rows out of
-    /// it. `None` when `agent` is no agent.
-    pub fn lay_out(
-        &self,
-        view: &TranscriptView,
-        agent: Entity,
-        width: u16,
-    ) -> Option<DrawnTranscript> {
-        let shown = self.agent(agent, true)?;
-        let renderers = self.looks.by_kind(None);
-        let sources = Sources {
-            view,
-            notices: self.notices(),
-            renderers: &renderers,
-            facts: &self.facts,
-            theme: &self.theme,
-        };
-        let mut transcript = Transcript::default();
-        let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
-        Some(transcript.laid_out(Some(agent), &parts, &view.highlights, 0..0))
-    }
-
+impl LayoutSources<'_, '_> {
     /// The agent `entity` as its transcript draws it, its conversation
     /// `changed` since the last frame or not; `None` when it is no agent.
     pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownConversation<'_>> {
@@ -615,6 +635,7 @@ pub(crate) fn lay_out_transcript(
     shown: Option<&ShownConversation<'_>>,
     width: u16,
 ) -> Vec<Part> {
+    sources.renderers.at(Place::default());
     let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
     let view = sources.view;
@@ -662,7 +683,7 @@ pub(crate) fn lay_out_transcript(
         }
     }
     let drawn = shown.asides.iter();
-    for aside in drawn.filter(|shown| sources.renderers.draws(shown.aside)) {
+    for aside in drawn {
         let before = match TranscriptSlot::of_aside(aside.aside, conversation) {
             TranscriptSlot::Top => 0,
             TranscriptSlot::After(index) => index + 1,
@@ -677,15 +698,17 @@ pub(crate) fn lay_out_transcript(
         }
     }
     transcript.update(shown.entity, conversation, shown.changed, &look, width);
+    sources.renderers.at(Place::default());
     let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
         let (notices, asides) = after.next().unwrap_or_default();
         for aside in asides {
+            let drawn = aside.lines(sources.renderers, sources.theme);
+            if drawn.is_empty() {
+                continue;
+            }
             let mut lines = vec![Line::default()];
-            lines.extend(on_band(
-                aside.lines(sources.renderers, sources.theme),
-                sources.theme.tool,
-            ));
+            lines.extend(on_band(drawn, sources.theme.tool));
             let marks = [(aside.item(), 0..lines.len())];
             parts.push(Part::rows(&lines, &marks, wrap_width));
         }
@@ -712,10 +735,20 @@ pub(crate) fn lay_out_transcript(
                     extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
                 }
             }
-            for call in &shown.streaming {
+            for (at, call) in shown.streaming.iter().enumerate() {
+                sources.renderers.at(Place::Outside(at));
                 let mut view = ToolCallView::new(call, None, CallState::Streaming);
                 view.theme = *sources.theme;
-                extra.extend(on_band(sources.renderers.call(&view), sources.theme.tool));
+                let start = extra.len();
+                let (drawn, decorated) = sources.renderers.call_decorated(&view);
+                extra.extend(on_band(drawn, sources.theme.tool));
+                marks.push((TranscriptItem::Call(call.id.clone()), start..extra.len()));
+                for (name, rows) in decorated {
+                    marks.push((
+                        TranscriptItem::Decoration(call.id.clone(), name),
+                        start + rows.start..start + rows.end,
+                    ));
+                }
             }
             inbox_lines(&shown.inbox, sources.theme, &mut extra);
             parts.push(Part::rows(&extra, &marks, wrap_width));
@@ -1084,7 +1117,7 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
         .collect()
 }
 
-/// Whether a selection moves through `item`: all but a decorator's rows,
+/// Whether a selection moves through `item`: all but a decoration's rows,
 /// which belong to their call.
 pub(crate) fn selectable(item: &TranscriptItem) -> bool {
     !matches!(
@@ -1095,7 +1128,7 @@ pub(crate) fn selectable(item: &TranscriptItem) -> bool {
 
 /// Where the last frame drew each part of the screen: for a plugin that
 /// writes to the terminal itself after the frame ([`TerminalWrite`]),
-/// such as an image over the rows its content renderer left blank,
+/// such as an image over the rows its render system left blank,
 /// which finds those rows in a pane's [`DrawnTranscript`] (see
 /// [`TuiFrame::screen_row`]) and leaves out what an overlay covers. The
 /// view writes it after each frame it draws, in

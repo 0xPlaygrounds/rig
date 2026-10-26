@@ -66,13 +66,7 @@ pub struct ProjectReplaceSystems;
 impl Plugin for ProjectReplacePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectWorkspace>()
-            .add_tool_per_call(ReplaceInFiles::default(), ToolOptions::default(), |at| {
-                ReplaceInFiles {
-                    workspace: at.workspace,
-                    base: Some(at.base),
-                    confine: at.confine,
-                }
-            })
+            .add_tool_per_call(ReplaceInFiles::default(), ToolOptions::default())
             .configure_sets(
                 AgentPass,
                 ProjectReplaceSystems.in_set(PrepareSystems::Edit),
@@ -150,7 +144,18 @@ impl ReplaceArgs {
     }
 }
 
+impl PerCallTool for ReplaceInFiles {
+    fn at(&self, at: CallPlace) -> Self {
+        Self {
+            workspace: at.workspace,
+            base: Some(at.base),
+            confine: at.confine,
+        }
+    }
+}
+
 /// The tool, built for each call's place.
+#[derive(Clone)]
 struct ReplaceInFiles {
     workspace: Arc<dyn Workspace>,
     base: Option<PathBuf>,

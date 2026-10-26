@@ -186,7 +186,7 @@ pub(crate) fn default_cache(
 }
 
 pub(crate) fn identify_requests(
-    mut calls: Query<(Entity, &ModelRequest, &ForAgent, &mut Adapters), Added<Admitted>>,
+    mut calls: Query<(Entity, &ModelRequest, &ForAgent, &mut Adapted), Added<Admitted>>,
     mut commands: Commands,
     mut agents: Query<(
         &OAuthSession,
@@ -195,7 +195,7 @@ pub(crate) fn identify_requests(
         &mut FingerprintSeed,
     )>,
 ) {
-    for (entity, call, ForAgent(agent), mut adapters) in &mut calls {
+    for (entity, call, ForAgent(agent), mut adapted) in &mut calls {
         commands
             .entity(entity)
             .insert(OmittedCache(call.request.options.cache.is_none()));
@@ -208,15 +208,9 @@ pub(crate) fn identify_requests(
             suffix: fingerprint.0.clone(),
             default_cache: call.request.options.cache.is_none(),
         };
-        adapters.0.push(Adapter::new(
-            "claude-cloak-identity",
-            move |mut connection| {
-                if connection.spec.provider.vendor() == crate::VENDOR {
-                    connection.handler.0 = connection.handler.0.layered(identity.clone());
-                }
-                connection
-            },
-        ));
+        if adapted.0.spec.provider.vendor() == crate::VENDOR {
+            adapted.0.handler.0 = adapted.0.handler.0.clone().layered(identity);
+        }
     }
 }
 

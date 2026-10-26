@@ -9,7 +9,7 @@
 //! prompt in front of the messages and sends it. The kernel's own prompt
 //! and tools are kept as the call's [`Built`] when the `ModelRequest` is
 //! inserted, before any Prepare system ran. After Prepare, the prompt in
-//! parts as Start will send it ([`ModelStarts::prompt`]), who wrote each
+//! parts as Start will send it ([`ModelRequest::prompt`]), who wrote each
 //! message and the attributed edits of the messages are kept as the
 //! call's [`Prepared`]. When the call is `Started`, the request as sent
 //! goes to the agent's [`LastRequest`] with the model it went to after
@@ -168,15 +168,11 @@ fn keep_built(
 /// After Prepare, keeps what each admitted turn call will send and who
 /// edited its messages, before Start takes its prompt and history.
 fn keep_prepared(
-    calls: Query<(Entity, &ModelRequest, &Adapters, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
-    starts: ModelStarts,
+    calls: Query<(Entity, &ModelRequest), (Added<Admitted>, With<TurnCall>)>,
     mut commands: Commands,
 ) {
-    for (call, model, adapters, &ForAgent(agent)) in &calls {
-        let (Ok((_, Some(prompt))), Some(history)) = (
-            starts.prompt(model, Some(adapters), Some(agent)),
-            &model.history,
-        ) else {
+    for (call, model) in &calls {
+        let (Some(prompt), Some(history)) = (model.prompt.clone(), &model.history) else {
             continue;
         };
         let prepared = Prepared {

@@ -14,8 +14,6 @@
 //! it: the user's unanswered message goes back to the views. Every end is
 //! a [`TurnOutcome`] proposed on the turn; [`StopTurn`] ends it at once.
 
-use std::borrow::Cow;
-use std::fmt;
 use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -121,27 +119,29 @@ impl Backoff {
 }
 
 /// A model call: an effect entity whose request is `request`, sent to
-/// `connection`, else to the model of the agent it is [`ForAgent`], as its
-/// [`Adapters`] change that model. Its [`Outcome`] is rig-core's
-/// `Outcome::Completion` (see [`Outcome::completion`]). Prepare may change
-/// the request, the connection and the adapters; Start then takes the
-/// model it goes to, applies the adapters to it, fits the request
-/// to the result (an option the model cannot take is left out, as
-/// none) and sends it streamed, recording on the call where it went
-/// ([`SentTo`]). A [`TurnCall`] or [`SideCall`] has its
+/// `connection`, else to the model of the agent it is [`ForAgent`]. Its
+/// [`Outcome`] is rig-core's `Outcome::Completion` (see
+/// [`Outcome::completion`]). Prepare may change the request and the
+/// connection; after its Edit phase the kernel puts the connection the
+/// call goes to on it as [`Adapted`], which the Adapt phases change. Start
+/// fits the request to that connection (an option the model cannot take
+/// is left out, as none), sends it streamed, and records on the call
+/// where it went ([`SentTo`]). A [`TurnCall`] or [`SideCall`] has its
 /// request built by the kernel when it is admitted, with its system prompt
 /// in parts ([`ModelRequest::prompt`]) and its conversation
 /// ([`ModelRequest::history`]) beside it; a plugin's own call, such as a
 /// summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
-#[require(Effect, Adapters)]
+#[require(Effect)]
 pub struct ModelRequest {
     /// The request, shared with the effect from Start on; edit it with
     /// [`Self::request_mut`].
     pub request: Arc<CompletionRequest>,
     /// The model it goes to, when not its agent's, such as a fallback
-    /// model; `Models::connect` makes one.
+    /// model; `Models::connect` makes one. Read once, after
+    /// [`PrepareSystems::Edit`](super::stage::PrepareSystems::Edit), into
+    /// the call's [`Adapted`]; a later change goes there.
     pub connection: Option<Connection>,
     /// The system prompt of a request the kernel built, in parts, until
     /// Start puts it in front of the request's messages; `None`
@@ -189,92 +189,41 @@ impl ModelRequest {
     }
 }
 
-/// On a model call the kernel started: the model it went to, its adapters
-/// applied, which its request was fitted to. Its spec says what that model
-/// finally takes, such as tools another adapter made it read as text, and
-/// its handler is the adapted one. From Start on, the call's
+/// On a model call the kernel started: the [`Adapted`] connection it went
+/// to, which its request was fitted to, moved here by Start. Its spec says
+/// what that model finally takes, such as tools an adapter made it read as
+/// text, and its handler is the adapted one. From Start on, the call's
 /// [`ModelRequest::request`] is the request as sent to that handler (a
 /// layer of the handler may still change what the provider gets). Read it
-/// in Review, or once the call settled, to learn what every adapter made
-/// of the call rather than guess.
+/// in Review, or once the call settled, to learn what the adapters made of
+/// the call rather than guess.
 #[derive(Component, Clone)]
 pub struct SentTo(pub Connection);
 
 /// On a model call the kernel started, beside [`SentTo`]: the options its
 /// request asked for that the model it went to does not take, left out
 /// when it was fitted to the model's spec or named by a dry run of its
-/// handler (rig-core's `Serve::check`). [`ModelStarts::sent`] gives the
+/// handler (rig-core's `Serve::check`). [`Adapted::dropped`] gives the
 /// same list before Start, such as to warn about an option in Prepare.
 #[derive(Component, Clone, Debug, Default)]
 pub struct DroppedOptions(pub Vec<UnsupportedOption>);
 
-/// The adapters of a model call, applied to its final [`Connection`] at
-/// Start: those placed [`outermost`](Adapter::outermost) last, each group
-/// in the order pushed. Its own component beside the [`ModelRequest`], so
-/// pushing an adapter and editing the request are different data: push in
-/// Prepare, `Query<&mut Adapters, Added<Admitted>>`.
-#[derive(Component, Clone, Default, Debug)]
-pub struct Adapters(pub Vec<Adapter>);
-
-impl Adapters {
-    /// `connection`, as these adapters change it.
-    pub fn apply(&self, connection: Connection) -> Connection {
-        let placed = |outermost| self.0.iter().filter(move |it| it.outermost == outermost);
-        placed(false)
-            .chain(placed(true))
-            .fold(connection, |connection, adapter| adapter.apply(connection))
-    }
-}
-
-/// A change to the model a call goes to, in its [`Adapters`]: Start
-/// applies it to the call's final [`Connection`], after every Prepare edit,
-/// so routing a call (its `connection`) and adapting it commute. It may
-/// wrap the handler, such as with a stream transform, and change the spec
-/// to say what the wrapped model takes, such as tools it reads as text;
-/// the request is fitted to the adapted spec.
-#[derive(Clone)]
-pub struct Adapter {
-    /// What it does, for readers, such as `text-tools`.
-    pub name: Cow<'static, str>,
-    outermost: bool,
-    apply: Arc<dyn Fn(Connection) -> Connection + Send + Sync>,
-}
-
-impl Adapter {
-    /// The adapter `name`, which changes a connection with `apply`.
-    pub fn new(
-        name: impl Into<Cow<'static, str>>,
-        apply: impl Fn(Connection) -> Connection + Send + Sync + 'static,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            outermost: false,
-            apply: Arc::new(apply),
-        }
-    }
-
-    /// This adapter, applied after every adapter not placed outermost: it
-    /// sees what every other adapter made of the model, such as a local
-    /// model's wrap or a recording that replaces the adapted handler.
-    #[must_use]
-    pub fn outermost(self) -> Self {
-        Self {
-            outermost: true,
-            ..self
-        }
-    }
-
-    /// `connection`, adapted.
-    pub fn apply(&self, connection: Connection) -> Connection {
-        (self.apply)(connection)
-    }
-}
-
-impl fmt::Debug for Adapter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Adapter").field(&self.name).finish()
-    }
-}
+/// The connection a model call goes to, put on it by the kernel after
+/// [`PrepareSystems::Edit`](super::stage::PrepareSystems::Edit): its
+/// [`ModelRequest::connection`], else its agent's model at that moment, so
+/// the call keeps it while held or waiting. Systems in
+/// [`PrepareSystems::Adapt`](super::stage::PrepareSystems::Adapt), then
+/// [`PrepareSystems::AdaptOutermost`](super::stage::PrepareSystems::AdaptOutermost),
+/// change it in place, `Query<&mut Adapted, Added<Admitted>>`: wrap its
+/// handler, such as with a stream transform, and change its spec to say
+/// what the wrapped model takes, such as tools it reads as text. Fit
+/// measures the request against it ([`Adapted::sent`]) and Start sends the
+/// request to it, then moves it into [`SentTo`]. A call admitted without a
+/// model gets none, and Start answers it with an error, even if its agent
+/// was connected meanwhile: a connection put on it later would skip the
+/// adapters and Fit. A successor is admitted, routed and adapted anew.
+#[derive(Component, Clone)]
+pub struct Adapted(pub Connection);
 
 /// The turn's own model call, [`CallOf`] its turn: built from its agent
 /// when admitted (unless spawned with a [`ModelRequest`]), after the
@@ -898,90 +847,63 @@ fn build(
     }
 }
 
-/// What Start sends a model call: read it in Prepare's Fit phase to
-/// measure a request as its model will get it, or in Gate to answer a call
-/// with what its model would have been sent.
-#[derive(SystemParam)]
-pub struct ModelStarts<'w, 's> {
-    agents: Query<'w, 's, &'static Connection, With<Agent>>,
+/// Puts on each model call admitted this pass the connection it goes to,
+/// once Edit routed it: its own, else its agent's.
+pub(crate) fn route_calls(
+    calls: Query<(Entity, &ModelRequest, Option<&ForAgent>), Added<Admitted>>,
+    agents: Query<&Connection, With<Agent>>,
+    mut commands: Commands,
+) {
+    for (call, model, agent) in &calls {
+        let own = agent.and_then(|&ForAgent(agent)| agents.get(agent).ok());
+        if let Some(connection) = model.connection.as_ref().or(own) {
+            commands
+                .entity(call)
+                .try_insert(Adapted(connection.clone()));
+        }
+    }
 }
 
-impl ModelStarts<'_, '_> {
-    /// The connection `model`, a call for `agent`, goes to, its `adapters`
-    /// applied, and its request as Start sends it: its
+impl Adapted {
+    /// The request Start sends for `model` to this connection: its
     /// [`history`](ModelRequest::history)'s messages, tools taken off a
     /// model that calls none, options left unset taking that model's
     /// defaults (its caching), options it does not take left out, and the
-    /// [`prompt`](ModelRequest::prompt) in front. Refused without a model.
-    pub fn sent(
-        &self,
-        model: &ModelRequest,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<(Connection, CompletionRequest), ErrorReport> {
-        let (connection, request, _) = self.sending(model, adapters, agent)?;
-        Ok((connection, request))
+    /// [`prompt`](ModelRequest::prompt) in front. Read it in Prepare's Fit
+    /// phase to measure a request as its model will get it, or in Gate to
+    /// answer a call with what its model would have been sent.
+    pub fn sent(&self, model: &ModelRequest) -> CompletionRequest {
+        self.sending(model).0
     }
 
-    /// The options the request Start sends for `model`, a call for `agent`,
-    /// leaves out, as [`DroppedOptions`] will say: those its model does not
-    /// take and those its handler's check refuses. The check builds the
-    /// provider's request, so a caller that needs only [`sent`](Self::sent)
-    /// does not pay for it. Refused without a model.
-    pub fn dropped(
-        &self,
-        model: &ModelRequest,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<Vec<UnsupportedOption>, ErrorReport> {
-        let (connection, request, mut dropped) = self.sending(model, adapters, agent)?;
+    /// The options the request Start sends for `model` leaves out, as
+    /// [`DroppedOptions`] will say: those this model does not take and
+    /// those its handler's check refuses. The check builds the provider's
+    /// request, so a caller that needs only [`sent`](Self::sent) does not
+    /// pay for it.
+    pub fn dropped(&self, model: &ModelRequest) -> Vec<UnsupportedOption> {
+        let (request, mut dropped) = self.sending(model);
         let kind = EffectKind::Completion {
             request: request.into(),
             stream: true,
         };
-        dropped.extend(connection.handler.0.check(&kind));
-        Ok(dropped)
-    }
-
-    /// The connection `model`, a call for `agent`, goes to, as
-    /// [`sent`](Self::sent) says, and the system prompt Start sends in
-    /// front of its messages (`None` without a prompt in parts): what
-    /// [`sent`](Self::sent) puts before the history, without copying the
-    /// request. Refused without a model.
-    pub fn prompt(
-        &self,
-        model: &ModelRequest,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<(Connection, Option<completion::SystemPrompt>), ErrorReport> {
-        let connection = self.connection(model.connection.as_ref(), adapters, agent)?;
-        Ok((connection, model.prompt.clone()))
+        dropped.extend(self.0.handler.0.check(&kind));
+        dropped
     }
 
     /// [`Self::sent`], with the options fitting left out: Start on a copy
     /// of `model`, whose messages are shared.
-    fn sending(
-        &self,
-        model: &ModelRequest,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<(Connection, CompletionRequest, Vec<UnsupportedOption>), ErrorReport> {
+    fn sending(&self, model: &ModelRequest) -> (CompletionRequest, Vec<UnsupportedOption>) {
         let mut model = model.clone();
-        let (connection, dropped) = self.start(&mut model, adapters, agent)?;
-        Ok((connection, Arc::unwrap_or_clone(model.request), dropped))
+        let dropped = self.start(&mut model);
+        (Arc::unwrap_or_clone(model.request), dropped)
     }
 
-    /// Makes `model`'s request the one [`Self::sent`] says, in place, on the
-    /// connection it returns with the options fitting left out.
-    pub(crate) fn start(
-        &self,
-        model: &mut ModelRequest,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
+    /// Makes `model`'s request the one [`Self::sent`] says, in place, and
+    /// returns the options fitting left out.
+    pub(crate) fn start(&self, model: &mut ModelRequest) -> Vec<UnsupportedOption> {
         let request = Arc::make_mut(&mut model.request);
-        let to = model.connection.as_ref();
-        let started = self.fit(request, to, adapters, agent)?;
+        let dropped = self.fit(request);
         let history = match model.history.take() {
             Some(history) => history.into_messages(),
             None => mem::take(&mut request.chat_history),
@@ -990,40 +912,14 @@ impl ModelStarts<'_, '_> {
         let prompt = model.prompt.take();
         let prompt = prompt.map(|prompt| Arc::new(Message::system(prompt.text())));
         request.chat_history = prompt.into_iter().chain(history).collect();
-        Ok(started)
+        dropped
     }
 
-    /// The connection a call goes to: `to` or else `agent`'s, with
-    /// `adapters` applied. Refused without a model.
-    fn connection(
-        &self,
-        to: Option<&Connection>,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<Connection, ErrorReport> {
-        let own = agent.and_then(|agent| self.agents.get(agent).ok());
-        let Some(connection) = to.or(own).cloned() else {
-            return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
-        };
-        Ok(match adapters {
-            Some(adapters) => adapters.apply(connection),
-            None => connection,
-        })
-    }
-
-    /// Fits `request` to the [connection](Self::connection) it goes to:
-    /// tools taken off a model that calls none, options left unset taking
-    /// that model's defaults (its caching), options it does not take left
-    /// out.
-    fn fit(
-        &self,
-        request: &mut CompletionRequest,
-        to: Option<&Connection>,
-        adapters: Option<&Adapters>,
-        agent: Option<Entity>,
-    ) -> Result<(Connection, Vec<UnsupportedOption>), ErrorReport> {
-        let connection = self.connection(to, adapters, agent)?;
-        let spec = &connection.spec;
+    /// Fits `request` to this connection: tools taken off a model that
+    /// calls none, options left unset taking that model's defaults (its
+    /// caching), options it does not take left out.
+    fn fit(&self, request: &mut CompletionRequest) -> Vec<UnsupportedOption> {
+        let spec = &self.0.spec;
         if !spec.tools {
             request.tools.clear();
         }
@@ -1033,8 +929,7 @@ impl ModelStarts<'_, '_> {
         if request.options.cache.is_none() {
             request.options.cache = spec.default_options(request.options.reasoning).cache;
         }
-        let dropped = spec.fit(request);
-        Ok((connection, dropped))
+        spec.fit(request)
     }
 }
 

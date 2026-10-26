@@ -77,6 +77,8 @@ use rig_memory::{
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
 use serde::{Deserialize, Deserializer};
+#[cfg(feature = "tui")]
+pub use tui::SummaryLooks;
 
 /// The purpose of a summary's model call.
 pub const PURPOSE: &str = "compaction";
@@ -887,7 +889,7 @@ fn compact_near_the_window(
         (
             Entity,
             &mut ModelRequest,
-            &Adapters,
+            &Adapted,
             &CallOf,
             &ForAgent,
             Option<&Recovering>,
@@ -895,20 +897,17 @@ fn compact_near_the_window(
         (Added<Admitted>, With<TurnCall>),
     >,
     mut agents: Query<(Compacting, &LastUsage, Option<&Sent>)>,
-    starts: ModelStarts,
     (default, disk): (Res<CompactionDefault>, Disk),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, mut model, adapters, &CallOf(turn), &ForAgent(agent), step) in &mut calls {
+    for (call, mut model, Adapted(connection), &CallOf(turn), &ForAgent(agent), step) in &mut calls
+    {
         let Ok((mut compacting, last, sent)) = agents.get_mut(agent) else {
             continue;
         };
-        let Ok((connection, prompt)) = starts.prompt(&model, Some(adapters), Some(agent)) else {
-            continue;
-        };
         let spec = &*connection.spec;
-        let prompt = prompt.map(|prompt| prompt.text());
+        let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
         let prompt = prompt.as_deref();
         let anchor = (last, sent.map(|sent| sent.0));
         let (mut used, mut start) = measure(&model, spec, prompt, anchor);
@@ -1070,7 +1069,7 @@ fn recover_from_overflow(
     failed: Query<
         (
             Entity,
-            (&ModelRequest, &Adapters),
+            (&ModelRequest, &SentTo),
             (&RetryVerdict, &Effect),
             (&CallOf, &ForAgent),
             Option<&Recovering>,
@@ -1078,21 +1077,22 @@ fn recover_from_overflow(
         (ReadyToSettle, With<TurnCall>, Without<SupersededBy>),
     >,
     mut agents: Query<Compacting>,
-    starts: ModelStarts,
     (default, disk): (Res<CompactionDefault>, Disk),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, (model, adapters), (verdict, effect), (&CallOf(turn), &ForAgent(agent)), step) in
-        &failed
+    for (
+        call,
+        (model, SentTo(connection)),
+        (verdict, effect),
+        (&CallOf(turn), &ForAgent(agent)),
+        step,
+    ) in &failed
     {
         if verdict.0 != Verdict::Overflow || step >= Some(&Recovering::NotSummarized) {
             continue;
         }
         let Ok(mut compacting) = agents.get_mut(agent) else {
-            continue;
-        };
-        let Ok((connection, _)) = starts.prompt(model, Some(adapters), Some(agent)) else {
             continue;
         };
         let policy = &default.0;
@@ -1255,33 +1255,23 @@ fn supersede(
 /// with that; one a plugin brought whole is left as it is.
 fn ask_in_place(
     mut calls: Query<
-        (
-            Entity,
-            &mut ModelRequest,
-            &Adapters,
-            &SideCall,
-            &Summarizing,
-        ),
+        (Entity, &mut ModelRequest, &Adapted, &SideCall, &Summarizing),
         Added<Admitted>,
     >,
     agents: Query<(&Conversation, &LastUsage, Option<&Sent>)>,
-    starts: ModelStarts,
     default: Res<CompactionDefault>,
     mut commands: Commands,
 ) {
-    for (call, mut model, adapters, &SideCall(agent), summarizing) in &mut calls {
+    for (call, mut model, Adapted(connection), &SideCall(agent), summarizing) in &mut calls {
         if model.history.is_none() {
             // A plugin brought it whole, such as from `plan`: it asks itself.
             continue;
         }
-        let Ok((connection, prompt)) = starts.prompt(&model, Some(adapters), Some(agent)) else {
-            continue;
-        };
         let Ok((conversation, last, sent)) = agents.get(agent) else {
             continue;
         };
         let spec = &*connection.spec;
-        let prompt = prompt.map(|prompt| prompt.text());
+        let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
         let prompt = prompt.as_deref();
         let used = measure(&model, spec, prompt, (last, sent.map(|sent| sent.0))).0;
         let measured = Measure::of(&model, spec, prompt, used);

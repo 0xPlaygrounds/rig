@@ -155,3 +155,56 @@ fn a_session_picker_fills_previews_filters_on_listed_values_and_names_the_pick()
     assert_ne!(goal_id, newest);
     fs::remove_dir_all(home.root()).ok();
 }
+
+/// Marks every session picker item, as a plugin that labels them would.
+fn mark(mut pickers: Query<&mut Picker, Changed<Picker>>) {
+    for mut picker in &mut pickers {
+        for item in &mut picker.items {
+            if !item.label.ends_with(" *") {
+                item.label.push_str(" *");
+            }
+        }
+    }
+}
+
+/// A system after the fill changes the items' labels, which stay as it
+/// left them, and a pick still names the session at the item's position.
+#[test]
+fn a_system_after_the_fill_relabels_the_items() {
+    let home = scratch_home("rig-harness-session-picker-labels");
+    let ids: Vec<SessionId> = (1..=3).map(|n| saved(&home, n, &[])).collect();
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, PickPlugin))
+        .add_plugins(SessionPickerPlugin)
+        .add_systems(Update, mark.after(SessionPickerSystems))
+        .insert_resource(RigHome(home.clone()))
+        .init_resource::<Seen>()
+        .add_observer(
+            |picked: On<Picked>, named: Query<&SessionPicked>, mut seen: ResMut<Seen>| {
+                seen.0.extend(named.get(picked.entity).cloned());
+            },
+        );
+    let picker = app
+        .world_mut()
+        .spawn((Picker::new("Resume"), SessionPicker::default()))
+        .id();
+    let labels = |world: &World| -> Vec<String> {
+        let items = world.get::<Picker>(picker).map(|it| it.items.clone());
+        let items = items.unwrap_or_default().into_iter();
+        items.map(|it| it.label).collect()
+    };
+    let filled = until(&mut app, |world| labels(world).len() == 3);
+    assert!(filled, "{:?}", labels(app.world()));
+    app.update();
+    assert_eq!(
+        labels(app.world()),
+        ["session 3 *", "session 2 *", "session 1 *"]
+    );
+
+    app.world_mut()
+        .trigger(Pick::person(picker, Some(Chosen::item(1))));
+    app.update();
+    let seen = &app.world().resource::<Seen>().0;
+    assert_eq!(seen.first().and_then(|it| it.session.as_ref()), ids.get(1));
+    fs::remove_dir_all(home.root()).ok();
+}

@@ -12,7 +12,10 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
 };
-use rig_tui::{CallState, ToolCallView, TuiPlugin};
+use rig_tui::{
+    CallState, RenderInput, RenderKey, RenderOutput, RenderRequest, ToolCallView, ToolRender,
+    TuiPlugin,
+};
 use serde_json::json;
 
 use super::*;
@@ -37,19 +40,41 @@ fn note_facts(
     }
 }
 
-/// The lines of `view` as the terminal view draws them: by its tool's
-/// renderer, else the default look.
+/// The lines of `view` as the terminal view draws them: through the
+/// render systems, which start from the default look.
 fn drawn(world: &mut World, view: &ToolCallView<'_>) -> Vec<String> {
-    // A query skips a disabled renderer, as the view's does.
-    let mut renderers = world.query::<&ToolRenderer>();
-    let renderer = renderers
-        .iter(world)
-        .find(|renderer| renderer.tool == view.name());
-    let lines = match renderer {
-        Some(renderer) => (renderer.render)(view),
-        None => view.default_lines(),
+    let input = ToolRender {
+        call: view.call.clone(),
+        result: view.result.cloned(),
+        state: view.state.clone(),
+        theme: view.theme,
+        facts: view.facts.cloned(),
+        took: view.took,
+        output: view.output.map(str::to_owned),
+        children: view.children.to_vec(),
     };
-    lines.iter().map(ToString::to_string).collect()
+    let key = RenderKey::Tool(0, 0);
+    let request = RenderRequest {
+        input: RenderInput::Tool(input),
+        output: RenderOutput {
+            lines: view.default_lines(),
+            decorations: Vec::new(),
+        },
+    };
+    let mut batch = RenderBatch::default();
+    batch.requests.insert(key.clone(), request);
+    world.insert_resource(batch);
+    world.try_run_schedule(TranscriptRender).ok();
+    let mut batch = world.remove_resource::<RenderBatch>().unwrap_or_default();
+    let lines = batch.requests.remove(&key).map(|drawn| drawn.output.lines);
+    lines.iter().flatten().map(ToString::to_string).collect()
+}
+
+/// Another plugin's look, of its `probe` tool.
+fn draw_probe(mut batch: ResMut<RenderBatch>) {
+    for (call, output) in batch.tools_mut("probe") {
+        output.lines = vec![call.view().header("probe says hi", "")];
+    }
 }
 
 /// A call of `tool` with `args`.
@@ -88,7 +113,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         TuiPlugin,
     ))
     .add_plugins(RichToolRenderingPlugin)
-    .add_tool_renderer("probe", |call| vec![call.header("probe says hi", "")])
+    .add_systems(TranscriptRender, draw_probe.in_set(RenderSystems::Render))
     .init_resource::<Ended>()
     .init_resource::<Facts>()
     .add_observer(log_ended)

@@ -23,9 +23,9 @@ use rig_tui::crossterm::event::{KeyCode, KeyModifiers};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, AppToolRenderersExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress,
-    KeyPressed, KeyScope, MainPane, ScrollTo, ShowAgent, TranscriptItem, TranscriptView, TuiPlugin,
-    run_command,
+    AppKeyBindingsExt, EntryView, InputAction, ItemRow, KeyBinding, KeyPress, KeyPressed, KeyScope,
+    MainPane, RenderBatch, RenderSystems, ScrollTo, ShowAgent, TranscriptItem, TranscriptRender,
+    TranscriptView, TuiPlugin, run_command,
 };
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +109,7 @@ impl Plugin for MessageRatingsPlugin {
             "This session's ratings; --all: the project's, by model",
             list,
         )
-        .add_entry_renderer(AUTHOR, marker);
+        .add_systems(TranscriptRender, draw.in_set(RenderSystems::Render));
     }
 
     fn finish(&self, app: &mut App) {
@@ -147,6 +147,13 @@ fn bind_keys(app: &mut App) {
         if let Some(bound) = app.add_key_binding(reading, |_: On<KeyPressed>| {}) {
             app.world_mut().entity_mut(bound).insert(select);
         }
+    }
+}
+
+/// Draws the ratings' notes as markers.
+fn draw(mut batch: ResMut<RenderBatch>) {
+    for (entry, output) in batch.entries_mut(AUTHOR) {
+        output.lines = marker(&entry.view());
     }
 }
 

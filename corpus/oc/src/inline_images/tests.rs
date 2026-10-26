@@ -67,13 +67,23 @@ fn front(
     // Another plugin's decorator, drawn after this one's under the call.
     tui_view(&mut app)
         .add_plugins(InlineImagesPlugin)
-        .add_call_decorator("note", |_| vec![Line::from("  (a note under the call)")]);
+        .add_systems(
+            TranscriptRender,
+            note.after(decorate_calls).in_set(RenderSystems::Decorate),
+        );
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     app.world_mut().insert_resource(ShownAgent(Some(agent)));
     app.update();
     (app, wakes, agent)
+}
+
+/// Another plugin's decoration under every call.
+fn note(mut batch: ResMut<RenderBatch>) {
+    for (_, output) in batch.calls_mut() {
+        output.decorate("note", vec![Line::from("  (a note under the call)")]);
+    }
 }
 
 /// What the plugin wrote to the terminal so far.
@@ -253,4 +263,49 @@ fn a_screenshot_is_placed_under_its_call_taken_off_when_scrolled_away_and_drawn_
         drawn.rows()
     );
     assert_eq!(block_rows(&app), 0);
+}
+
+/// The widths of the rows of `drawn` that are an image in half-blocks.
+fn block_widths(drawn: &DrawnTranscript) -> Vec<usize> {
+    let rows = drawn.rows().iter().map(|row| row.text.trim());
+    let blocks = rows.filter(|row| !row.is_empty() && row.chars().all(|c| c == '▀'));
+    blocks.map(|row| row.chars().count()).collect()
+}
+
+#[test]
+fn an_image_in_blocks_is_sized_to_each_pane_and_export_it_is_drawn_in() {
+    use rig_tui::ratatui::layout::Constraint;
+    use rig_tui::{Placement, TranscriptLayout, TranscriptPane, TranscriptSource, TuiPanel};
+
+    let store = MemoryStore::default();
+    let (mut app, _, agent) = front(&store, "[images]\nmode = \"blocks\"\n", None);
+    let attached = ChatMessage::User {
+        content: vec![UserContent::Image(screenshot())],
+    };
+    for message in [attached, ChatMessage::assistant("A login page.")] {
+        let committed = commit_message(app.world_mut(), agent, message);
+        assert!(committed.is_ok(), "{committed:?}");
+    }
+    let side = app
+        .world_mut()
+        .spawn((
+            TranscriptPane::new(TranscriptSource::Agent(agent)),
+            TuiPanel::new(Placement::Right(Constraint::Length(14))),
+            DrawnTranscript::default(),
+        ))
+        .id();
+    app.update();
+    // 100×50 pixels in 8×16 cells: 13×4 cells in the main pane, scaled
+    // down to the 10 columns the side pane leaves after the indent, and to
+    // the 6 a 10-column export leaves, each keeping the 2:1 shape.
+    assert_eq!(block_widths(&main_drawn(&app)), vec![13; 4]);
+    let side = app.world().get::<DrawnTranscript>(side).cloned();
+    assert_eq!(side.as_ref().map(block_widths), Some(vec![10; 3]));
+    let view = TranscriptView::default();
+    let export = TranscriptLayout::lay_out(app.world_mut(), &view, agent, 10);
+    assert_eq!(export.as_ref().map(block_widths), Some(vec![6; 2]));
+    // The export sized nothing for the panes: they draw as before.
+    app.world_mut().write_message(rig_tui::RequestRedraw);
+    app.update();
+    assert_eq!(block_widths(&main_drawn(&app)), vec![13; 4]);
 }

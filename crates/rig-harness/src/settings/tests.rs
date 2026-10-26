@@ -3,7 +3,8 @@ use bevy_ecs::prelude::*;
 use rig_harness_protocol::Home;
 use serde::Deserialize;
 
-use super::{AppSettingsExt, Settings};
+use super::{AppSettingsExt, ProjectSetting, Settings};
+use crate::host::cli::Declared;
 use crate::services::{ProjectRoot, RigHome};
 
 #[derive(Resource, Deserialize, Default, Debug, PartialEq)]
@@ -135,4 +136,87 @@ fn a_project_overrides_only_the_tables_declared_for_it() {
     assert_eq!(app.world().resource::<Counts>(), &Counts { n: 2, m: 5 });
     assert_eq!(app.world().resource::<Others>(), &Others { n: 1 });
     assert!(app.world().resource::<Settings>().problems().is_empty());
+    // What a project may override is data a system can list.
+    let world = app.world_mut();
+    let declared: Vec<String> = world
+        .query::<&ProjectSetting>()
+        .iter(world)
+        .map(|it| it.0.clone())
+        .collect();
+    assert_eq!(declared, ["a"]);
+}
+
+/// Tables read into one type apply in the order declared, the last
+/// winning, even when a declaration was turned off while others were made.
+#[test]
+fn the_last_declared_project_table_wins_across_a_disabled_declaration() {
+    use bevy_ecs::entity_disabling::Disabled;
+    let root = std::env::temp_dir().join(format!("rig-settings-order-{}", std::process::id()));
+    std::fs::create_dir_all(root.join(".rig")).ok();
+    std::fs::write(
+        root.join(".rig/settings.toml"),
+        "[a]\nn = 1\n\n[b]\nn = 2\n",
+    )
+    .ok();
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml(""))
+        .insert_resource(ProjectRoot(root.clone()))
+        .add_project_setting::<Counts>("a");
+    let world = app.world_mut();
+    let first = world
+        .query::<(Entity, &ProjectSetting)>()
+        .iter(world)
+        .find_map(|(entity, setting)| (setting.0 == "a").then_some(entity));
+    let first = first.map(|entity| world.entity_mut(entity).insert(Disabled).id());
+    app.add_project_setting::<Counts>("b");
+    if let Some(first) = first {
+        app.world_mut().entity_mut(first).remove::<Disabled>();
+    }
+    app.update();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(first.is_some(), "the first declaration was found");
+    assert_eq!(app.world().resource::<Counts>().n, 2);
+    let world = app.world_mut();
+    let mut places: Vec<(Declared, String)> = world
+        .query::<(&Declared, &ProjectSetting)>()
+        .iter(world)
+        .map(|(&place, setting)| (place, setting.0.clone()))
+        .collect();
+    places.sort();
+    let sections: Vec<&str> = places.iter().map(|(_, section)| section.as_str()).collect();
+    assert_eq!(sections, ["a", "b"]);
+    assert!(
+        places
+            .windows(2)
+            .all(|pair| pair.first().map(|it| it.0) < pair.last().map(|it| it.0)),
+        "{places:?}"
+    );
+}
+
+/// A type read from a turned-off declaration and a later one is applied by
+/// one system: a malformed table is one problem, not one per declaration.
+#[test]
+fn a_disabled_declaration_adds_no_second_apply_system() {
+    use bevy_ecs::entity_disabling::Disabled;
+    let root = std::env::temp_dir().join(format!("rig-settings-once-{}", std::process::id()));
+    std::fs::create_dir_all(root.join(".rig")).ok();
+    std::fs::write(root.join(".rig/settings.toml"), "[b]\nn = \"x\"\n").ok();
+    let mut app = App::new();
+    app.insert_resource(Settings::from_toml(""))
+        .insert_resource(ProjectRoot(root.clone()))
+        .add_project_setting::<Counts>("a");
+    let world = app.world_mut();
+    let first = world
+        .query::<(Entity, &ProjectSetting)>()
+        .iter(world)
+        .find_map(|(entity, setting)| (setting.0 == "a").then_some(entity));
+    if let Some(first) = first {
+        world.entity_mut(first).insert(Disabled);
+    }
+    app.add_project_setting::<Counts>("b");
+    app.update();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(first.is_some(), "the first declaration was found");
+    let problems = app.world().resource::<Settings>().problems();
+    assert_eq!(problems.len(), 1, "{problems:?}");
 }
