@@ -16,6 +16,7 @@ use serde_json::{Map, Value, json};
 use crate::completion::{FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{
     DocumentRange, DocumentSourceKind, Image, ImageMediaType, MimeType, Source, SourceLocation,
 };
@@ -104,7 +105,7 @@ pub struct SseEvent {
 impl<'de> serde::Deserialize<'de> for SseEvent {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let mut fields = Map::deserialize(deserializer)?;
-        match fields.shift_remove("event_type") {
+        match remove_preserving_order(&mut fields, "event_type") {
             Some(Value::String(event_type)) => Ok(Self { event_type, fields }),
             Some(_) => Err(serde::de::Error::custom("`event_type` is not a string")),
             None => Err(serde::de::Error::missing_field("event_type")),
@@ -316,7 +317,7 @@ impl InteractionsDecoder {
                 }
             },
             (Open::Thought, "thought_summary") => {
-                let content = delta.shift_remove("content").unwrap_or_default();
+                let content = remove_preserving_order(&mut delta, "content").unwrap_or_default();
                 if let Some(text) = content
                     .str("text")
                     .filter(|_| content.str("type") == Some("text"))
@@ -558,7 +559,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
         } = match event {
             InteractionsEvent::Sse(event) => event,
             InteractionsEvent::Whole(mut interaction) => {
-                let steps = match interaction.shift_remove("steps") {
+                let steps = match remove_preserving_order(&mut interaction, "steps") {
                     Some(Value::Array(steps)) => steps,
                     _ => Vec::new(),
                 };

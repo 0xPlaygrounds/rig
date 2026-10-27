@@ -1059,7 +1059,8 @@ mod option_matrix {
         match (&mut body, patch) {
             (Value::Object(target), Value::Object(patch)) => {
                 for (key, value) in patch {
-                    let slot = target.shift_remove(key).unwrap_or(Value::Null);
+                    let slot = rig_core::json_utils::remove_preserving_order(target, key)
+                        .unwrap_or(Value::Null);
                     target.insert(key.clone(), merged(slot, value));
                 }
                 body

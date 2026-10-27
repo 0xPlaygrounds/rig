@@ -12,6 +12,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use serde_json::{Value, json};
 
 use rig_core::completion::CompletionRequest;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::operation::Completion;
 use rig_core::wire::{Mode, Wire};
 
@@ -80,7 +81,7 @@ fn numbered(mut turn: Value) -> Value {
     fn walk(value: &mut Value, next: &mut usize) {
         match value {
             Value::Object(fields) => {
-                fields.shift_remove("fingerprint");
+                remove_preserving_order(fields, "fingerprint");
                 if let Some(local) = fields.get_mut("local") {
                     *local = json!(*next);
                     *next += 1;
@@ -414,7 +415,7 @@ pub fn responses_build(spec: &Spec) -> (Vec<String>, Vec<String>) {
                     added["content"] = json!([]);
                 }
                 if let Some(fields) = added.as_object_mut() {
-                    fields.shift_remove("encrypted_content");
+                    remove_preserving_order(fields, "encrypted_content");
                 }
             }
             "function_call" => {
@@ -490,7 +491,7 @@ pub fn responses_build(spec: &Spec) -> (Vec<String>, Vec<String>) {
     if variant == 1 {
         for event in &mut events[start..] {
             if let Some(fields) = event.as_object_mut() {
-                fields.shift_remove("output_index");
+                remove_preserving_order(fields, "output_index");
             }
         }
     }
@@ -562,7 +563,7 @@ pub fn chat_spec(rng: &mut Rng, key: Option<&str>, shapes: ChatShapes) -> Spec {
                 let arguments = if rng.chance(10) { String::new() } else { args(rng).to_string() };
                 let mut call = json!({"id": format!("abcDEF{i:03}"), "type": "function", "function": {"name": "lookup", "arguments": arguments}});
                 if idless && let Some(fields) = call.as_object_mut() {
-                    fields.shift_remove("id");
+                    remove_preserving_order(fields, "id");
                 }
                 call
             })
@@ -617,7 +618,7 @@ pub fn chat_fields(spec: &Spec) -> Vec<Spec> {
         for key in fields.keys().filter(|k| *k != "role") {
             let mut smaller = spec.clone();
             if let Some(Value::Object(f)) = smaller.blocks.first_mut() {
-                f.shift_remove(key);
+                remove_preserving_order(f, key);
             }
             out.push(smaller);
         }
@@ -681,7 +682,7 @@ pub fn chat_build(model: &str, key: Option<&str>, spec: &Spec) -> (Vec<String>, 
                 if at != last
                     && let Some(fields) = detail.as_object_mut()
                 {
-                    fields.shift_remove("signature");
+                    remove_preserving_order(fields, "signature");
                 }
                 delta["reasoning_details"] = json!([detail]);
             }
@@ -870,7 +871,7 @@ pub fn gemini_build(model: &str, spec: &Spec, signature_only: bool) -> (Vec<Valu
                     if (i != last || alone)
                         && let Some(fields) = piece_part.as_object_mut()
                     {
-                        fields.shift_remove("thoughtSignature");
+                        remove_preserving_order(fields, "thoughtSignature");
                     }
                     chunks.push(vec![piece_part]);
                 }
@@ -911,7 +912,7 @@ pub fn gemini_build(model: &str, spec: &Spec, signature_only: bool) -> (Vec<Valu
     if finish_alone {
         let mut doc = gemini_document(json!([]), Some(&spec.finish), model);
         if let Some(candidate) = doc["candidates"][0].as_object_mut() {
-            candidate.shift_remove("content");
+            remove_preserving_order(candidate, "content");
         }
         docs.push(doc);
     }
@@ -1009,7 +1010,7 @@ pub fn converse_build(spec: &Spec) -> (Value, Vec<Value>) {
             "toolUse" => {
                 let mut opened = body.clone();
                 if let Value::Object(fields) = &mut opened {
-                    fields.shift_remove("input");
+                    remove_preserving_order(fields, "input");
                 }
                 events.push(json!({ "contentBlockStart": { "contentBlockIndex": index, "start": { "toolUse": opened } } }));
                 for piece in rng.split(&body["input"].to_string()) {
@@ -1082,7 +1083,7 @@ pub fn interactions_build(model: &str, spec: &Spec) -> (Vec<Value>, Vec<Value>) 
             "model_output" => {
                 let mut opening = step.clone();
                 if let Some(fields) = opening.as_object_mut() {
-                    fields.shift_remove("content");
+                    remove_preserving_order(fields, "content");
                 }
                 events.push(start(opening));
                 for item in step["content"].as_array().into_iter().flatten() {

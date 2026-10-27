@@ -18,6 +18,7 @@
 //! assert_eq!(schema["additionalProperties"], false);
 //! ```
 
+use crate::json_utils::remove_preserving_order;
 use schemars::generate::SchemaSettings;
 use schemars::transform::RecursiveTransform;
 use schemars::{JsonSchema, Schema};
@@ -36,7 +37,7 @@ pub fn args_schema<A: JsonSchema>() -> Value {
     settings.meta_schema = None;
     let mut schema = settings.into_generator().into_root_schema_for::<A>();
     if let Some(root) = schema.as_object_mut() {
-        root.shift_remove("description");
+        remove_preserving_order(root, "description");
     }
     schema.to_value()
 }
@@ -58,7 +59,7 @@ fn plain(schema: &mut Schema) {
             && before > 1
         {
             let only = only.clone();
-            schema.shift_remove("anyOf");
+            remove_preserving_order(schema, "anyOf");
             for (key, value) in only {
                 schema.entry(key).or_insert(value);
             }
@@ -69,7 +70,7 @@ fn plain(schema: &mut Schema) {
         *text = paragraphs.join("\n\n");
     }
     for key in ["title", "default", "format"] {
-        schema.shift_remove(key);
+        remove_preserving_order(schema, key);
     }
     if schema.contains_key("properties") && !schema.contains_key("additionalProperties") {
         schema.insert("additionalProperties".to_owned(), Value::Bool(false));

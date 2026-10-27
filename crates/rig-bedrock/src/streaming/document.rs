@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::json_utils::Lenient;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::wire::document::Reassemble;
 use serde_json::{Map, Value, json};
 
@@ -265,7 +266,7 @@ impl Reassemble<ConverseFrame> for ConverseOutput {
             "messageStop" | "metadata" => {
                 if let Some(fields) = payload.as_object() {
                     let mut fields = fields.clone();
-                    fields.shift_remove(PADDING);
+                    remove_preserving_order(&mut fields, PADDING);
                     merge(&mut self.top, &fields);
                 }
             }

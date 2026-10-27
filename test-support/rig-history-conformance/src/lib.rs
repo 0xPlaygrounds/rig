@@ -27,6 +27,7 @@ use std::borrow::Borrow;
 
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::error::EncodeError;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, DocumentData, Image, Message, Origin, StopReason,
     Text, ToolCall, ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
@@ -1166,7 +1167,7 @@ fn remove_pointer(document: &mut Value, pointer: &str) {
     };
     let key = key.replace("~1", "/").replace("~0", "~");
     if let Some(Value::Object(fields)) = document.pointer_mut(parent) {
-        fields.shift_remove(&key);
+        remove_preserving_order(fields, &key);
     }
 }
 

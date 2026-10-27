@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use std::hash::{BuildHasher, RandomState};
 use std::ops::Range;
 
+use rig_core::json_utils::remove_preserving_order;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::ser::PrettyFormatter;
@@ -433,8 +434,8 @@ fn replaced(old: &Value, source: &str, kind: Option<CellType>) -> Value {
         cell.insert("execution_count".to_owned(), Value::Null);
         cell.insert("outputs".to_owned(), json!([]));
     } else {
-        cell.shift_remove("execution_count");
-        cell.shift_remove("outputs");
+        remove_preserving_order(cell, "execution_count");
+        remove_preserving_order(cell, "outputs");
     }
     cell.insert("source".to_owned(), lines(source));
     Value::Object(cell)

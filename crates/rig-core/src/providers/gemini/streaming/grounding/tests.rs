@@ -4,6 +4,7 @@
 use serde_json::{Value, json};
 
 use crate::completion::CompletionResponse;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{AssistantContent, Source, SourceLocation, Text};
 use crate::test_utils::history::{assert_restated_agrees, decode};
 use crate::wire::{Mode, WireFrame};
@@ -335,10 +336,7 @@ fn a_reversed_or_huge_range_is_dropped_without_panicking() {
         for quoted in [true, false] {
             let mut segment = segment.clone();
             if !quoted {
-                segment
-                    .as_object_mut()
-                    .expect("a segment object")
-                    .shift_remove("text");
+                remove_preserving_order(segment.as_object_mut().expect("a segment object"), "text");
             }
             let metadata = json!({
                 "groundingMetadata": {

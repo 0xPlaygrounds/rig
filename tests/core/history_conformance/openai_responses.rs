@@ -3,6 +3,7 @@
 //! own response objects and SSE events, and the body is the JSON the wire
 //! sends.
 
+use rig::json_utils::remove_preserving_order;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::AssistantContent;
@@ -140,7 +141,7 @@ fn added(item: &Value) -> Value {
             }
             Some("reasoning") => {
                 fields.insert("summary".to_owned(), json!([]));
-                fields.shift_remove("encrypted_content");
+                remove_preserving_order(fields, "encrypted_content");
             }
             Some("function_call") => {
                 fields.insert("arguments".to_owned(), json!(""));

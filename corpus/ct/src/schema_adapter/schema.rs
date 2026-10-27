@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use rig_harness::rig_core::json_utils::remove_preserving_order;
 use rig_harness::rig_core::tool::validate::validate;
 use serde_json::{Map, Value};
 
@@ -92,8 +93,8 @@ fn walk(schema: &mut Value, edit: &mut impl FnMut(&mut Map<String, Value>)) {
 pub fn inline_refs(root: &Value, changes: &mut Changes) -> Value {
     let mut inlined = root.clone();
     if let Value::Object(map) = &mut inlined {
-        map.shift_remove("$defs");
-        map.shift_remove("definitions");
+        remove_preserving_order(map, "$defs");
+        remove_preserving_order(map, "definitions");
     }
     resolve(&mut inlined, root, 0, changes);
     inlined
@@ -103,7 +104,7 @@ fn resolve(schema: &mut Value, root: &Value, depth: usize, changes: &mut Changes
     let Value::Object(map) = schema else {
         return;
     };
-    if let Some(Value::String(pointer)) = map.shift_remove("$ref") {
+    if let Some(Value::String(pointer)) = remove_preserving_order(map, "$ref") {
         changes.note("inlined $ref");
         let target = pointer.strip_prefix('#').and_then(|at| root.pointer(at));
         if let (Some(Value::Object(target)), true) = (target, depth < MAX_REF_DEPTH) {
@@ -126,13 +127,13 @@ pub fn strict_subset(parameters: &Value, changes: &mut Changes) -> Value {
     let mut schema = inline_refs(parameters, changes);
     walk(&mut schema, &mut |map| {
         for union in ["oneOf", "anyOf"] {
-            if let Some(Value::Array(alternatives)) = map.shift_remove(union) {
+            if let Some(Value::Array(alternatives)) = remove_preserving_order(map, union) {
                 changes.note(format!("flattened {union}"));
                 flatten(map, alternatives);
             }
         }
         for keyword in DROPPED {
-            if map.shift_remove(keyword).is_some() {
+            if remove_preserving_order(map, keyword).is_some() {
                 changes.note(format!("dropped {keyword}"));
             }
         }
@@ -168,7 +169,7 @@ fn flatten(map: &mut Map<String, Value>, alternatives: Vec<Value>) {
         })
         .collect();
     if !alternatives.is_empty() && alternatives.iter().all(is_object) {
-        let mut properties = match map.shift_remove("properties") {
+        let mut properties = match remove_preserving_order(map, "properties") {
             Some(Value::Object(own)) => own,
             _ => Map::new(),
         };
@@ -249,7 +250,7 @@ fn merge_field(properties: &mut Map<String, Value>, name: &str, field: &Value) {
                 joined.push(value);
             }
         }
-        have.shift_remove("const");
+        remove_preserving_order(have, "const");
         have.insert("enum".to_owned(), Value::Array(joined));
     }
 }

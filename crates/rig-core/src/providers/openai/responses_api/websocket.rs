@@ -12,6 +12,7 @@ use crate::completion::options::FinalBody;
 use crate::driver::Model;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
+use crate::json_utils::remove_preserving_order;
 use crate::operation::{Completion, ReplyFold};
 use crate::providers::openai::responses_api::streaming::{
     ResponsesDecoder, ResponsesEvent, classify_responses_payload, document, is_lifecycle_event,
@@ -811,7 +812,7 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
                     if is_lifecycle_event(&kind) {
                         let response = frame
                             .as_object_mut()
-                            .and_then(|frame| frame.shift_remove("response"))
+                            .and_then(|frame| remove_preserving_order(frame, "response"))
                             .unwrap_or_else(|| Value::Object(Map::new()));
                         Some(ResponsesWebSocketEvent::Response { kind, response })
                     } else {

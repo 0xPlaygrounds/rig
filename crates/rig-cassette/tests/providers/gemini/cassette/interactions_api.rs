@@ -1,6 +1,7 @@
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
+use rig_core::json_utils::remove_preserving_order;
 
 use crate::support::assert_nonempty_response;
 use rig::completion::CompletionRequest;
@@ -304,15 +305,16 @@ fn restated(document: &serde_json::Value) -> Vec<rig_core::wire::WireFrame> {
     let mut envelope = document.clone();
     let steps = envelope
         .as_object_mut()
-        .and_then(|document| document.shift_remove("steps"))
+        .and_then(|document| remove_preserving_order(document, "steps"))
         .unwrap_or_else(|| json!([]));
     let mut frames = Vec::new();
     for (index, step) in steps.as_array().into_iter().flatten().enumerate() {
         let mut head = step.as_object().cloned().unwrap_or_default();
         let deltas: Vec<Value> = match step["type"].as_str() {
             Some("thought") => {
-                let summary = head.shift_remove("summary").unwrap_or_else(|| json!([]));
-                let signature = head.shift_remove("signature");
+                let summary =
+                    remove_preserving_order(&mut head, "summary").unwrap_or_else(|| json!([]));
+                let signature = remove_preserving_order(&mut head, "signature");
                 summary
                     .as_array()
                     .into_iter()
@@ -323,8 +325,7 @@ fn restated(document: &serde_json::Value) -> Vec<rig_core::wire::WireFrame> {
                     ))
                     .collect()
             }
-            Some("model_output") => head
-                .shift_remove("content")
+            Some("model_output") => remove_preserving_order(&mut head, "content")
                 .and_then(|content| content.as_array().cloned())
                 .unwrap_or_default(),
             Some("function_call") => {
@@ -456,7 +457,7 @@ fn the_recorded_search_interaction_cites_its_answer_in_both_modes() {
             let annotations = event["delta"]
                 .as_object_mut()
                 .filter(|delta| delta.get("type") == Some(&json!("text")))
-                .and_then(|delta| delta.shift_remove("annotations"));
+                .and_then(|delta| remove_preserving_order(delta, "annotations"));
             let Some(annotations) = annotations else {
                 return vec![frame];
             };

@@ -677,6 +677,7 @@ fn a_gateway_rig_does_not_know_refuses_every_option() {
 }
 
 mod responses {
+    use crate::json_utils::remove_preserving_order;
     use serde_json::{Value, json};
 
     use crate::completion::{
@@ -1091,8 +1092,8 @@ mod responses {
         assert_eq!(http["background"], true);
         let mut expected = http;
         if let Some(fields) = expected.as_object_mut() {
-            fields.shift_remove("stream");
-            fields.shift_remove("background");
+            remove_preserving_order(fields, "stream");
+            remove_preserving_order(fields, "background");
         }
         assert_eq!(socket, expected);
     }

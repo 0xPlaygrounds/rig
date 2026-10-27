@@ -36,6 +36,7 @@ use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_p
 use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, ReplayTarget};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{
     AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind as Source, Message,
     MimeType, ToolChoice, ToolResultContent, UserContent,
@@ -152,7 +153,7 @@ fn drop_finished_signatures(contents: &mut [Value]) {
     for content in contents.iter_mut().take(current.unwrap_or(0)) {
         let parts = content.get_mut("parts").and_then(Value::as_array_mut);
         for part in parts.into_iter().flatten().filter_map(Value::as_object_mut) {
-            part.shift_remove("thoughtSignature");
+            remove_preserving_order(part, "thoughtSignature");
         }
     }
 }
@@ -755,7 +756,7 @@ fn assistant_part(
         let mut item = item.into_owned();
         if let Some(part) = item.as_object_mut() {
             if let (false, Some(Value::Object(call))) = (with_ids, part.get_mut("functionCall")) {
-                call.shift_remove("id");
+                remove_preserving_order(call, "id");
             }
             // Gemini rejects the whole request over a signature that is
             // not base64 ("Base64 decoding failed").
@@ -764,7 +765,7 @@ fn assistant_part(
                 .and_then(Value::as_str)
                 .is_some_and(|signature| !is_base64(signature))
             {
-                part.shift_remove("thoughtSignature");
+                remove_preserving_order(part, "thoughtSignature");
             }
         }
         return Ok(Some(item));

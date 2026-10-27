@@ -1,5 +1,6 @@
 //! Anthropic tool-schema normalization and request-wide strict grammar budgets.
 
+use rig_harness::rig_core::json_utils::remove_preserving_order;
 use serde_json::{Map, Value, json};
 
 const COMBINATORS: &[&str] = &["anyOf", "oneOf", "allOf"];
@@ -77,7 +78,7 @@ pub(crate) fn normalize_tools(body: &mut Value) {
             .unwrap_or_default();
         raw.insert("required".into(), Value::Array(required));
         let mut schema = normalize(Value::Object(raw), true);
-        tool.shift_remove("strict");
+        remove_preserving_order(tool, "strict");
         if candidate && strict_count < 20 {
             let mut budget = remaining;
             if let Some(strict) = strict_schema(schema.clone(), &mut budget) {
@@ -165,7 +166,7 @@ fn normalize(value: Value, root: bool) -> Value {
         _ => None,
     };
     if let Some(key) = prune
-        && let Some(value) = result.shift_remove(key)
+        && let Some(value) = remove_preserving_order(&mut result, key)
     {
         spill.push((key.into(), value));
     }
@@ -496,7 +497,7 @@ fn postprocess(value: &mut Value) {
                         .any(|value| value == &json!({"type":"null"}))
                     && let Some(scalar) = scalar
                 {
-                    schema.shift_remove("anyOf");
+                    remove_preserving_order(schema, "anyOf");
                     for (key, value) in scalar {
                         if !["type", "enum", "const"].contains(&key.as_str())
                             && !schema.contains_key(key)
@@ -560,7 +561,7 @@ fn postprocess(value: &mut Value) {
                                 .and_then(Value::as_str)
                                 .is_some_and(|description| Some(description) != shared));
                     if let Some(kind) = homogeneous(&values).filter(|_| consistent) {
-                        schema.shift_remove("anyOf");
+                        remove_preserving_order(schema, "anyOf");
                         schema.insert("type".into(), json!(kind));
                         schema.insert("enum".into(), Value::Array(values));
                         if !schema.get("description").is_some_and(Value::is_string)
@@ -727,7 +728,7 @@ fn upgrade(value: Value) -> Value {
         {
             result.insert("items".into(), upgrade(rest.clone()));
         } else {
-            result.shift_remove("items");
+            remove_preserving_order(&mut result, "items");
         }
     }
     if let Some(Value::Object(dependencies)) = source.get("dependencies") {

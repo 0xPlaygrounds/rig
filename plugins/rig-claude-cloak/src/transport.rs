@@ -20,6 +20,8 @@ use std::{
     sync::OnceLock,
 };
 
+use rig_harness::rig_core::json_utils::remove_preserving_order;
+
 use crate::profile::{self, BETAS, VERSION};
 const MARKER: &str = "\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header:";
 
@@ -641,12 +643,12 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     crate::schema::normalize_tools(&mut value);
     prefix_tools(&mut value);
     let object = value.as_object_mut().ok_or(Error::Body)?;
-    let options = object.shift_remove("_omp").unwrap_or(Value::Null);
+    let options = remove_preserving_order(object, "_omp").unwrap_or(Value::Null);
     let had_output_config = object.contains_key("output_config");
     if options.get("cache_retention").is_some()
         && options.get("explicit_cache_control") != Some(&Value::Bool(true))
     {
-        object.shift_remove("cache_control");
+        remove_preserving_order(object, "cache_control");
     }
     normalize_messages(object);
     let thinking = object
@@ -657,11 +659,11 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         || thinking.is_some_and(|t| t != "disabled")
     {
         for key in ["temperature", "top_p", "top_k"] {
-            object.shift_remove(key);
+            remove_preserving_order(object, key);
         }
     }
     if object.contains_key("compaction") {
-        object.shift_remove("stop_sequences");
+        remove_preserving_order(object, "stop_sequences");
     }
     if let Some(stops) = object
         .get_mut("stop_sequences")
@@ -669,7 +671,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     {
         stops.truncate(4);
         if stops.is_empty() {
-            object.shift_remove("stop_sequences");
+            remove_preserving_order(object, "stop_sequences");
         }
     }
     if (options.get("forced_tools_allowed") == Some(&Value::Bool(false))
@@ -691,7 +693,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
             .and_then(Value::as_str),
         Some("any" | "tool")
     ) {
-        object.shift_remove("thinking");
+        remove_preserving_order(object, "thinking");
         if let Some(edits) = object
             .get_mut("context_management")
             .and_then(|v| v.get_mut("edits"))
@@ -699,7 +701,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         {
             edits.retain(|e| e.get("type").and_then(Value::as_str) == Some("compact_20260112"));
             if edits.is_empty() {
-                object.shift_remove("context_management");
+                remove_preserving_order(object, "context_management");
             }
         }
         if options.get("adaptive_only") == Some(&Value::Bool(true)) {
@@ -708,9 +710,9 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
             .get_mut("output_config")
             .and_then(Value::as_object_mut)
         {
-            output.shift_remove("effort");
+            remove_preserving_order(output, "effort");
             if output.is_empty() {
-                object.shift_remove("output_config");
+                remove_preserving_order(object, "output_config");
             }
         }
     }
@@ -756,7 +758,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     if options.get("tool_choice_explicit") == Some(&Value::Bool(false))
         && object.get("tool_choice") == Some(&json!({"type":"auto"}))
     {
-        object.shift_remove("tool_choice");
+        remove_preserving_order(object, "tool_choice");
     }
     if matches!(
         object
@@ -780,7 +782,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
             .entry("display")
             .or_insert_with(|| "updates".into());
     }
-    let existing = object.shift_remove("system");
+    let existing = remove_preserving_order(object, "system");
     let has_billing = match &existing {
         Some(Value::String(text)) => text.starts_with("x-anthropic-billing-header:"),
         Some(Value::Array(blocks)) => blocks.iter().any(|b| {
@@ -854,11 +856,11 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
         if key == "output_config" && !had_output_config {
             continue;
         }
-        if let Some(value) = object.shift_remove(key) {
+        if let Some(value) = remove_preserving_order(object, key) {
             ordered.insert(key.into(), value);
         }
     }
-    if let Some(output) = object.shift_remove("output_config") {
+    if let Some(output) = remove_preserving_order(object, "output_config") {
         ordered.insert("output_config".into(), output);
     }
     ordered.extend(std::mem::take(object));

@@ -19,6 +19,7 @@
 
 use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
+use crate::json_utils::remove_preserving_order;
 use crate::operation::Completion;
 use crate::wire::{Mode, Wire};
 
@@ -73,7 +74,7 @@ fn numbered(mut turn: serde_json::Value) -> serde_json::Value {
     fn walk(value: &mut serde_json::Value, next: &mut usize) {
         match value {
             serde_json::Value::Object(fields) => {
-                fields.shift_remove("fingerprint");
+                remove_preserving_order(fields, "fingerprint");
                 if let Some(local) = fields.get_mut("local") {
                     *local = serde_json::json!(*next);
                     *next += 1;

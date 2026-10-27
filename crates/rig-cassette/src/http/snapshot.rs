@@ -29,6 +29,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use rig_core::json_utils::remove_preserving_order;
+
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value, json};
 
@@ -506,7 +508,7 @@ fn apply_change(value: &mut Value, change: &Change) -> Result<(), &'static str> 
                     if map.get(&key) != Some(recorded) {
                         return Err("the recording holds another value here");
                     }
-                    map.shift_remove(&key);
+                    remove_preserving_order(map, &key);
                     Ok(())
                 }
                 _ => Err("a change needs a recorded or a sent value"),

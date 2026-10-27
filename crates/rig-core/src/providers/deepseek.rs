@@ -29,6 +29,7 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 
 pub mod extension;
 
+use crate::json_utils::remove_preserving_order;
 use serde_json::{Map, Value};
 
 /// The string formats DeepSeek's strict mode takes on a `"string"` schema.
@@ -89,7 +90,7 @@ fn close(node: &mut Value) -> Result<(), &'static str> {
             .entry("additionalProperties")
             .or_insert(Value::Bool(false));
     }
-    if let Some(one_of) = object.shift_remove("oneOf") {
+    if let Some(one_of) = remove_preserving_order(object, "oneOf") {
         if object.contains_key("anyOf") {
             return Err("a `oneOf` beside an `anyOf`");
         }
@@ -181,7 +182,7 @@ fn split_type_list(object: &mut Map<String, Value>) -> Result<(), &'static str> 
     if object.contains_key("anyOf") {
         return Err("a type list naming an object or array beside an `anyOf`");
     }
-    let Some(Value::Array(types)) = object.shift_remove("type") else {
+    let Some(Value::Array(types)) = remove_preserving_order(object, "type") else {
         return Ok(());
     };
     let mut members: Vec<Value> = Vec::new();
@@ -200,7 +201,7 @@ fn split_type_list(object: &mut Map<String, Value>) -> Result<(), &'static str> 
     }
     for (_, keywords) in TYPE_KEYWORDS {
         for keyword in keywords {
-            object.shift_remove(*keyword);
+            remove_preserving_order(object, *keyword);
         }
     }
     object.insert("anyOf".to_owned(), Value::Array(members));
@@ -221,7 +222,7 @@ fn strict_node(
             _ => Ok(()),
         };
     };
-    while let Some(all_of) = object.shift_remove("allOf") {
+    while let Some(all_of) = remove_preserving_order(object, "allOf") {
         let Value::Array(members) = all_of else {
             return Err("an `allOf` that is not a list");
         };
@@ -267,7 +268,7 @@ fn strict_node(
             .and_then(Value::as_str)
             .is_some_and(|format| !STRICT_FORMATS.contains(&format))
     {
-        object.shift_remove("format");
+        remove_preserving_order(object, "format");
     }
     if let Some(Value::Array(members)) = object.get_mut("anyOf") {
         for member in members {
@@ -275,12 +276,12 @@ fn strict_node(
             // Written out to the end: a merged `allOf` or a definition may
             // itself be a reference.
             while let Value::Object(fields) = member {
-                if let Some(all_of) = fields.shift_remove("allOf") {
+                if let Some(all_of) = remove_preserving_order(fields, "allOf") {
                     fields.insert("allOf".to_owned(), all_of);
                     strict_node(member, root, inlining, false)?;
                     continue;
                 }
-                let Some(Value::String(name)) = fields.shift_remove("$ref") else {
+                let Some(Value::String(name)) = remove_preserving_order(fields, "$ref") else {
                     break;
                 };
                 if inlining.contains(&name) {

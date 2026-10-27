@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::completion::{CacheRetention, Effort, GenerationOptions, Reasoning};
+use crate::json_utils::remove_preserving_order;
 
 fn options(reasoning: impl Into<Reasoning>) -> GenerationOptions {
     GenerationOptions::default().reasoning(reasoning)
@@ -1283,8 +1284,7 @@ fn contradicting_models_dev() -> String {
             .values_mut()
             .filter_map(serde_json::Value::as_object_mut)
         {
-            let pinned: Vec<String> = row
-                .shift_remove("rig")
+            let pinned: Vec<String> = remove_preserving_order(row, "rig")
                 .and_then(|mut facts| facts.get_mut("pinned").map(serde_json::Value::take))
                 .and_then(|pinned| serde_json::from_value(pinned).ok())
                 .unwrap_or_default();

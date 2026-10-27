@@ -15,6 +15,7 @@ use std::time::Duration;
 
 use rig_agent::tool::ToolSet;
 use rig_core::effect::FamilyDescriptor;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::{self, CallId, ToolCall, ToolFunction, ToolName};
 use rig_core::tool::feedback::arguments_refusal;
 use rig_core::tool::validate::{Problem, validate};
@@ -168,7 +169,7 @@ fn parse_call(call_json: &str) -> Result<ToolCall, (CallId, String)> {
         Some(_) => return Err((id, "`name` must be a string".to_owned())),
         None => return Err((id, "missing `name`".to_owned())),
     };
-    let arguments = fields.shift_remove("arguments").unwrap_or(Value::Null);
+    let arguments = remove_preserving_order(fields, "arguments").unwrap_or(Value::Null);
     Ok(ToolCall::new(id, ToolFunction::new(name, arguments)))
 }
 

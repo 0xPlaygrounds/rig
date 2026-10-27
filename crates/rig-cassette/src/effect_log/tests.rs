@@ -1,3 +1,4 @@
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::{
     completion::{AssistantContent, CompletionRequest, CompletionResponse, Message, Usage},
     effect::{Answered, EffectId, EffectKind, EffectRecord, HandlerKey},
@@ -167,10 +168,7 @@ fn missing_published_output_is_unknown_not_explicitly_absent() {
     assert!(json["records"][0].get("tool_output").is_some());
     assert!(json["records"][0]["tool_output"].is_null());
     serde_json::from_value::<EffectLog>(json.clone()).expect("explicit absence is valid");
-    json["records"][0]
-        .as_object_mut()
-        .unwrap()
-        .shift_remove("tool_output");
+    remove_preserving_order(json["records"][0].as_object_mut().unwrap(), "tool_output");
     let error = serde_json::from_value::<EffectLog>(json).expect_err("old recorder omitted output");
     assert!(error.to_string().contains("tool_output"));
 }

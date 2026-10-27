@@ -8,6 +8,7 @@ use bytes::Bytes;
 use serde_json::{Map, Value, json};
 
 use super::{comparable, interactions, raw_pair, recorded_reply, scalar};
+use crate::json_utils::remove_preserving_order;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::providers::gemini::GeminiConfig;
 use crate::providers::openai::wire::{
@@ -87,8 +88,8 @@ impl Recorded {
     fn turn(&self) -> Option<(String, String)> {
         let mut request = self.request.clone()?;
         if let Some(body) = request.as_object_mut() {
-            body.shift_remove("stream");
-            body.shift_remove("stream_options");
+            remove_preserving_order(body, "stream");
+            remove_preserving_order(body, "stream_options");
         }
         let endpoint = ["-stream", ":streamGenerateContent", ":generateContent"]
             .iter()
@@ -1111,7 +1112,7 @@ async fn interactions_rebuilds_the_recorded_unary_interaction() {
     let mut interaction: Value =
         serde_json::from_slice(&unary).unwrap_or_else(|error| panic!("{error}"));
     if let Some(interaction) = interaction.as_object_mut() {
-        interaction.shift_remove("steps");
+        remove_preserving_order(interaction, "steps");
     }
     let events = [
         json!({"event_type": "interaction.created", "interaction": {

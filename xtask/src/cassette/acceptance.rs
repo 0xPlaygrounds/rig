@@ -337,7 +337,7 @@ pub(crate) fn apply(view: &mut Value, change: &Change) -> Result<(), String> {
                     map.insert(key, sent.clone());
                 }
                 (Some(_), None) => {
-                    map.shift_remove(&key);
+                    map.retain(|candidate, _| candidate != &key);
                 }
                 _ => return Err("a change needs a recorded or a sent value".into()),
             }

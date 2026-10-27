@@ -6,7 +6,7 @@ use super::{generate, is_rfc3339_utc, pin, read_rows, render, rfc3339};
 fn facts(row: &serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
     let mut facts = row.get("rig").cloned().unwrap_or_default();
     if let Some(facts) = facts.as_object_mut() {
-        facts.shift_remove("pinned");
+        facts.retain(|candidate, _| candidate != "pinned");
     }
     facts
 }
@@ -88,7 +88,7 @@ fn sync_keeps_rigs_providers_and_every_field_of_their_rows() {
     );
     let mut row = models_dev()["anthropic"]["models"]["claude-x-1"].clone();
     if let Some(row) = row.as_object_mut() {
-        row.shift_remove("id");
+        row.retain(|candidate, _| candidate != "id");
     }
     let claude = serde_json::Value::Object(rows["anthropic"]["claude-x-1"].clone());
     assert_eq!(

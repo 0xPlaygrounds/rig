@@ -66,6 +66,7 @@ use std::sync::{Arc, OnceLock};
 
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::redact;
 use rig_memory::Files;
 use serde::{Deserialize, Serialize};
@@ -217,7 +218,7 @@ impl Writer {
         let mut value = serde_json::to_value(&shallow)?;
         for (parent, key) in RAW_ECHOES {
             if let Some(parent) = value.pointer_mut(parent).and_then(Value::as_object_mut) {
-                parent.shift_remove(key);
+                remove_preserving_order(parent, key);
             }
         }
         let chain = chain_of(&value);
@@ -280,7 +281,7 @@ impl Writer {
         {
             fields.insert("chat_history".to_owned(), Value::Array(written));
             if plan.as_ref().is_some_and(|plan| plan.same_tools) {
-                fields.shift_remove("tools");
+                remove_preserving_order(fields, "tools");
             } else {
                 let stated = match stated.take() {
                     Some(value) => value,
@@ -295,7 +296,7 @@ impl Writer {
             return Ok(serde_json::to_writer(out, &value)?);
         };
         if let Some(fields) = value.as_object_mut() {
-            fields.shift_remove("id");
+            remove_preserving_order(fields, "id");
         }
         let line = DeltaLine {
             id: record.id,
@@ -450,7 +451,7 @@ impl Reply {
             ));
         };
         let mut whole = serde_json::Map::new();
-        if let Some(role) = rest.shift_remove("role") {
+        if let Some(role) = remove_preserving_order(&mut rest, "role") {
             whole.insert("role".to_owned(), role);
         }
         whole.insert("content".to_owned(), serde_json::from_str(&self.content)?);
@@ -627,8 +628,8 @@ impl Known {
             })?
             .id;
         let mut rest = fields.clone();
-        rest.shift_remove("content");
-        rest.shift_remove("origin");
+        remove_preserving_order(&mut rest, "content");
+        remove_preserving_order(&mut rest, "origin");
         Some((id, Value::Object(rest)))
     }
 
@@ -654,7 +655,7 @@ impl Known {
                 .find(|(_, result)| *result == content)
             {
                 ids.push(*id);
-                item.shift_remove("content");
+                remove_preserving_order(item, "content");
             }
         }
         (!ids.is_empty()).then(|| (ids, Value::Object(fields)))
@@ -743,7 +744,7 @@ impl Known {
             .pointer_mut("/kind/request")
             .and_then(Value::as_object_mut)
             .ok_or_else(|| invalid(format!("record {id} continues a request but has none")))?;
-        let mut held = match request.shift_remove("chat_history") {
+        let mut held = match remove_preserving_order(request, "chat_history") {
             Some(Value::Array(held)) => held,
             _ => Vec::new(),
         }

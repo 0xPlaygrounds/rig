@@ -26,6 +26,7 @@ use rig_agent::agent::StreamingResult;
 use rig_agent::completion::PromptError;
 
 use rig_core::effect::EffectFamily;
+use rig_core::json_utils::remove_preserving_order;
 
 use rig_core::error::ErrorKind;
 
@@ -325,9 +326,9 @@ fn refuse_part(part: &mut serde_json::Value) {
         part["type"] = "refusal".into();
         let text = part["text"].take();
         let object = part.as_object_mut().expect("a part");
-        object.shift_remove("text");
-        object.shift_remove("annotations");
-        object.shift_remove("logprobs");
+        remove_preserving_order(object, "text");
+        remove_preserving_order(object, "annotations");
+        remove_preserving_order(object, "logprobs");
         part["refusal"] = text;
     }
 }
@@ -352,8 +353,8 @@ fn responses_refusal(frames: &[String]) -> Vec<String> {
                         data["type"] = "response.refusal.done".into();
                         let text = data["text"].take();
                         let object = data.as_object_mut().expect("an event");
-                        object.shift_remove("text");
-                        object.shift_remove("logprobs");
+                        remove_preserving_order(object, "text");
+                        remove_preserving_order(object, "logprobs");
                         data["refusal"] = text;
                     }
                     "response.content_part.added" | "response.content_part.done" => {

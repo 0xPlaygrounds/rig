@@ -90,6 +90,7 @@ use serde_json::value::RawValue;
 use sha2::{Digest, Sha256};
 
 use crate::completion::CacheCost;
+use crate::json_utils::remove_preserving_order;
 
 /// Unix seconds.
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
@@ -619,7 +620,7 @@ fn digest(hasher: &mut Sha256, fragment: &str) -> u64 {
     fn scrub(value: &mut serde_json::Value) {
         match value {
             serde_json::Value::Object(map) => {
-                map.shift_remove("thoughtSignature");
+                remove_preserving_order(map, "thoughtSignature");
                 map.values_mut().for_each(scrub);
             }
             serde_json::Value::Array(items) => items.iter_mut().for_each(scrub),
