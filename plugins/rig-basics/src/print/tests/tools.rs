@@ -143,6 +143,11 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
             "alowed",
             "--tools: unknown tool `alowed`; did you mean `allowed`?",
         ),
+        // Two letters swapped are one edit.
+        (
+            "dneied",
+            "--tools: unknown tool `dneied`; did you mean `denied`?",
+        ),
         (
             "alowed,bogus",
             "--tools: unknown tools `alowed`, `bogus`; the tools are allowed, denied, late",

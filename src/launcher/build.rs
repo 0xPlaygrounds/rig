@@ -138,9 +138,7 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     log.say("Compiling the agent…");
     let mut command = cargo(home);
     command.args(["build", "--package", PACKAGE]);
-    if log.output == BuildOutput::Live {
-        show_progress(&mut command);
-    }
+    log.erase = log.output == BuildOutput::Live && show_progress(&mut command);
     let status = log.run(command)?;
     // The check reads the graph the build resolved into `Cargo.lock`, so a
     // lock it passed passes again; after a failed build it runs anyway, to
@@ -222,8 +220,8 @@ fn cargo(home: &Home) -> Command {
 }
 
 /// Keeps cargo's progress bar on a terminal, which cargo no longer sees
-/// through the pipe. A caller's own settings win.
-fn show_progress(command: &mut Command) {
+/// through the pipe; whether it did. A caller's own settings win.
+fn show_progress(command: &mut Command) -> bool {
     if std::io::stderr().is_terminal()
         && std::env::var_os("CARGO_TERM_PROGRESS_WHEN").is_none()
         && let Some(width) = terminal_width()
@@ -231,7 +229,9 @@ fn show_progress(command: &mut Command) {
         command
             .env("CARGO_TERM_PROGRESS_WHEN", "always")
             .env("CARGO_TERM_PROGRESS_WIDTH", width.to_string());
+        return true;
     }
+    false
 }
 
 /// The terminal's width in columns: `COLUMNS`, else `stty size`.
@@ -268,6 +268,11 @@ struct BuildLog {
     shown: Box<dyn Write>,
     /// Whether a [`BuildOutput::LogOnly`] build said it works.
     announced: bool,
+    /// Whether what it shows is a terminal that draws cargo's progress
+    /// bar, whose redrawn lines it erases.
+    erase: bool,
+    /// Whether the last byte passed on was a `\r`, which a `\n` may end.
+    after_cr: bool,
 }
 
 impl BuildLog {
@@ -287,6 +292,8 @@ impl BuildLog {
             output,
             shown,
             announced: false,
+            erase: false,
+            after_cr: false,
         }
     }
 
@@ -320,7 +327,8 @@ impl BuildLog {
     /// lines. cargo redraws its progress bar after `\r`, so `\r` ends a
     /// line too; the bar is not logged. Through a pipe cargo does not
     /// erase the bar's line before a shorter one, which would keep the
-    /// bar's tail on screen, so each `\r` passed on erases it.
+    /// bar's tail on screen, so on a terminal each `\r` but a `\r\n` erases
+    /// it.
     fn pass_on(&mut self, child: &mut Child) {
         let Some(mut stderr) = child.stderr.take() else {
             return;
@@ -334,13 +342,7 @@ impl BuildLog {
             };
             let chunk = buffer.get(..read).unwrap_or_default();
             if self.output == BuildOutput::Live {
-                for part in chunk.split_inclusive(|&byte| byte == b'\r') {
-                    self.shown.write_all(part).ok();
-                    if part.ends_with(b"\r") {
-                        self.shown.write_all(b"\x1b[K").ok();
-                    }
-                }
-                self.shown.flush().ok();
+                self.show(chunk);
             }
             for &byte in chunk {
                 if byte == b'\r' || byte == b'\n' {
@@ -352,6 +354,25 @@ impl BuildLog {
             }
         }
         self.record_segment(&segment);
+    }
+
+    /// Shows `chunk`, erasing after each `\r` that no `\n` follows when
+    /// [`Self::erase`], as soon as the byte after it shows.
+    fn show(&mut self, chunk: &[u8]) {
+        let mut start = 0;
+        for (at, &byte) in chunk.iter().enumerate() {
+            if std::mem::take(&mut self.after_cr) && byte != b'\n' {
+                let before = chunk.get(start..at).unwrap_or_default();
+                self.shown.write_all(before).ok();
+                self.shown.write_all(b"\x1b[K").ok();
+                start = at;
+            }
+            self.after_cr = self.erase && byte == b'\r';
+        }
+        self.shown
+            .write_all(chunk.get(start..).unwrap_or_default())
+            .ok();
+        self.shown.flush().ok();
     }
 
     fn record_segment(&mut self, segment: &[u8]) {

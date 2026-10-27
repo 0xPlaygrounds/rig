@@ -69,9 +69,10 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // prompt that is just `-p` matches too: the type-ahead guard, and the
     // build's output, which a headless run keeps off its stderr.
     let print = args.iter().any(|arg| arg == "-p" || arg == "--print");
-    let output = match print || !terminal {
-        true => BuildOutput::LogOnly,
-        false => BuildOutput::Live,
+    let output = if print || !terminal {
+        BuildOutput::LogOnly
+    } else {
+        BuildOutput::Live
     };
     // Before the build, `-r` as the last build reads it; the new build may
     // read it otherwise (below).
@@ -740,10 +741,8 @@ fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Opti
         Ok(()) => Ok(None),
         Err(failure) if first_run => Err(failure.told(output).into()),
         Err(failure) => {
-            eprintln!(
-                "error: {}; starting the previous build",
-                failure.told(output)
-            );
+            let told = failure.told(output);
+            eprintln!("error: building the agent failed; starting the previous build: {told}");
             Ok(Some(failure))
         }
     }

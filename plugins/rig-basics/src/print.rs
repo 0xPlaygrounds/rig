@@ -42,6 +42,7 @@ use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::edit_distance;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -63,9 +64,10 @@ pub const ANSWER: &str = "answer";
 /// The option that intersects every agent's tool access with the names given.
 /// Omission leaves access unchanged; an empty value permits no tools. A
 /// headless run refuses a name no registered tool has, with exit code 2,
-/// before any model call; it checks once every plugin started, so a tool
-/// registered later, such as an MCP server's, cannot be named. Subagents
-/// retain inherited restrictions and this limit.
+/// before any model call; it checks once every plugin finished, so a tool
+/// registered later, such as an MCP server's, cannot be named. Elsewhere an
+/// unknown name grants nothing. Subagents retain inherited restrictions and
+/// this limit.
 pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
@@ -244,6 +246,10 @@ impl Plugin for PrintPlugin {
     /// even a restored turn's.
     fn cleanup(&self, app: &mut App) {
         let world = app.world_mut();
+        // A run someone sits at keeps an unknown name as granting nothing.
+        if !world.contains_resource::<Run>() {
+            return;
+        }
         let mut tools = world.query::<&ToolDef>();
         let names: Vec<String> = tools
             .iter(world)
@@ -312,7 +318,8 @@ impl Tools {
 }
 
 /// The name of `names` closest to `name`, within a quarter of its length
-/// (at least one edit), so a typo finds its tool and another word none.
+/// (at least one edit), so a typo finds its tool and another word none, as
+/// the model catalog suggests.
 fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
     let limit = (name.chars().count() / 4).max(1);
     let distances = names
@@ -320,31 +327,6 @@ fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
         .map(|close| (edit_distance(name, close), *close));
     let close = distances.filter(|(distance, _)| *distance <= limit).min();
     close.map(|(_, close)| close)
-}
-
-/// The edit distance between `a` and `b`, by character: each insertion,
-/// deletion and substitution counts one.
-fn edit_distance(a: &str, b: &str) -> usize {
-    let b: Vec<char> = b.chars().collect();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, left) in a.chars().enumerate() {
-        let mut diagonal = i;
-        let mut before = i + 1;
-        for (j, right) in b.iter().enumerate() {
-            let above = row.get(j + 1).copied().unwrap_or(usize::MAX);
-            let here = (diagonal + usize::from(left != *right))
-                .min(above.saturating_add(1))
-                .min(before + 1);
-            if let Some(cell) = row.get_mut(j) {
-                *cell = before;
-            }
-            (diagonal, before) = (above, here);
-        }
-        if let Some(last) = row.last_mut() {
-            *last = before;
-        }
-    }
-    row.last().copied().unwrap_or(0)
 }
 
 /// Intersects access before dispatch, including agents admitted this pass.
@@ -1169,26 +1151,6 @@ impl Out<'_, '_> {
         }
     }
 
-    /// Writes the `exit` line, after which nothing is written.
-    fn exit(
-        &mut self,
-        agent: Option<Entity>,
-        code: u8,
-        answer: Option<String>,
-        error: Option<String>,
-        (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
-    ) {
-        let fields = json!({
-            "code": code,
-            "answer": answer,
-            "error": error,
-            "session": session_id(paths),
-            "usage": usage.map(|usage| usage.0.total),
-        });
-        self.emit(agent, "exit", fields);
-        self.out.closed = true;
-    }
-
     fn write(&mut self, agent: Option<Entity>, kind: &str, fields: Value) {
         if self.out.closed {
             return;
@@ -1293,11 +1255,11 @@ fn close_cut_off(
 /// On the exit frame, once the turns are stopped and the session log is
 /// written: the lines [`close_cut_off`] kept, then the `exit` line of a run
 /// that ended ([`HeadlessEnded`]) or of a one-shot run cut off, with the
-/// code the process exits with.
+/// agent's exit code.
 fn json_exit(
     reason: Option<Res<ExitReason>>,
     primary: MainAgentQuery,
-    session: (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
+    (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
     mut out: Out,
 ) {
     let reason = reason.as_deref();
@@ -1327,7 +1289,16 @@ fn json_exit(
             (code != 0).then(|| why.to_owned()),
         ),
     };
-    out.exit(agent, code, answer, error, session);
+    let fields = json!({
+        "code": code,
+        "answer": answer,
+        "error": error,
+        "session": session_id(paths),
+        "usage": usage.map(|usage| usage.0.total),
+    });
+    out.emit(agent, "exit", fields);
+    // Nothing after it.
+    out.out.closed = true;
 }
 
 fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {

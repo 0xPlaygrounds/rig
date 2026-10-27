@@ -33,7 +33,8 @@ or name> (go on with a session; the id is in the `ready` line). rig
 works in its current directory. RIG_HOME (default ~/.rig) holds its
 builds, settings and sessions. The first start builds the agent, which
 takes minutes, and a start waits for another rig's build; stderr says
-so meanwhile, in one line, and is otherwise quiet about the build.
+so meanwhile, in one line, and is otherwise quiet about the build
+unless it fails.
 
 Every line, both ways, is a JSON object with "v":1. A line of another
 version is refused with a reply saying whether rig or the driver needs
