@@ -138,7 +138,9 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     log.say("Compiling the agent…");
     let mut command = cargo(home);
     command.args(["build", "--package", PACKAGE]);
-    log.erase = log.output == BuildOutput::Live && show_progress(&mut command);
+    // A Windows console may not take the erase sequence, which cargo
+    // itself writes on Unix only.
+    log.erase = cfg!(unix) && log.output == BuildOutput::Live && show_progress(&mut command);
     let status = log.run(command)?;
     // The check reads the graph the build resolved into `Cargo.lock`, so a
     // lock it passed passes again; after a failed build it runs anyway, to

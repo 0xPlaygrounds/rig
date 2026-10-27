@@ -191,7 +191,8 @@ fn a_live_build_shows_cargo_as_it_writes_erasing_each_redrawn_line_on_a_terminal
 
 #[test]
 fn a_crlf_split_between_two_reads_is_not_erased() {
-    let home = Home::at(std::env::temp_dir().join("rig-build-log-split"));
+    let name = format!("rig-build-log-split-{}", std::process::id());
+    let home = Home::at(std::env::temp_dir().join(name));
     let shown = Shown::default();
     let mut log = BuildLog::create(&home, BuildOutput::Live, Box::new(shown.clone()));
     log.erase = true;
