@@ -232,15 +232,24 @@ impl Serialize for Canonical<'_, serde_json::Value> {
 /// One provider item, verbatim in its API's JSON shape, beside the
 /// canonical block (or message) it was decoded to.
 ///
-/// `fingerprint` is the canonical form's at decode time. When the block is
-/// edited its fingerprint changes, the item is stale, and encoders rebuild
-/// the wire item from the canonical fields instead.
+/// `baseline` compares calls after storage; other blocks and older records
+/// use `fingerprint`. An edited block keeps its item for identity, but
+/// encoders rebuild it from canonical fields.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Native {
     /// The provider item.
     pub item: serde_json::Value,
     /// The fingerprint of the canonical form the item was decoded to.
     pub fingerprint: Fingerprint,
+    /// The original projection of a call containing floats, with unnormalized
+    /// numbers. It passes through the same JSON parser as the call's fields.
+    /// Other blocks and older records use fingerprint-only validation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline: Option<serde_json::Value>,
+    /// Whether an edit was detected before serialization. A stored edit
+    /// stays stale even if JSON parsing makes its numbers equal again.
+    #[serde(default, skip_serializing_if = "crate::json_utils::is_false")]
+    pub edited: bool,
     /// Where the item keeps its reasoning blob, as a JSON pointer such as
     /// `/signature`, when it holds one. The reply fold sets it from the
     /// wire's [`ReplayTarget::blob_slots`].
@@ -260,6 +269,13 @@ pub struct Blob<'a> {
 }
 
 impl Native {
+    pub(crate) fn matches(&self, fingerprint: Fingerprint) -> bool {
+        !self.edited
+            && self.baseline.as_ref().map_or(self.fingerprint, |baseline| {
+                Fingerprint::of_canonical(&Canonical(baseline))
+            }) == fingerprint
+    }
+
     /// The opaque part of this item, when it holds one: a reasoning
     /// signature or encrypted reasoning, which only the provider that made
     /// it can read and which it may refuse once anything around it changed.
@@ -270,6 +286,8 @@ impl Native {
     /// let native = Native {
     ///     item: serde_json::json!({"type": "thinking", "thinking": "plan", "signature": "c2ln"}),
     ///     fingerprint: Fingerprint::of(&"plan"),
+    ///     baseline: None,
+    ///     edited: false,
     ///     blob_slot: Some("/signature".into()),
     /// };
     /// assert_eq!(native.reasoning_blob().map(|blob| blob.value), Some("c2ln"));

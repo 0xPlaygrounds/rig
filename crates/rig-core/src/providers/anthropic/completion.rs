@@ -335,7 +335,10 @@ fn base(
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
         ("max_tokens", Some(json!(max_tokens))),
-        ("system", (!system.is_empty()).then(|| Value::Array(system))),
+        (
+            "system",
+            (!system.is_empty()).then_some(Value::Array(system)),
+        ),
         (
             "temperature",
             request.temperature.map(|temperature| json!(temperature)),
@@ -344,7 +347,7 @@ fn base(
             "tool_choice",
             request.tool_choice.clone().map(tool_choice).transpose()?,
         ),
-        ("tools", has_tools.then(|| Value::Array(tools))),
+        ("tools", has_tools.then_some(Value::Array(tools))),
         ("output_config", output_config),
         ("container", container.map(Value::String)),
     ]))

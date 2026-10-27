@@ -75,31 +75,32 @@ fn strict_tools_reach_the_beta_endpoint() {
 /// `description`) are kept, as it takes them.
 #[test]
 fn a_strict_schema_takes_the_shape_deepseek_accepts() {
-    let (_, functions) = sent(
-        None,
-        true,
-        vec![tool(
-            "find",
-            json!({
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "minLength": 1},
-                    "when": {"type": "string", "format": "date-time"},
-                    "since": {"type": ["string", "null"], "format": "date-time"},
-                    "owner_email": {"type": "string", "format": "email"},
-                    "limit": {"type": ["integer", "null"], "format": "uint32", "minimum": 0},
-                    "tags": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                    "author": {"anyOf": [{"$ref": "#/$defs/Author"}, {"type": "null"}]},
-                    "editor": {"allOf": [{"$ref": "#/$defs/Author"}], "description": "who edits"},
-                    "first": {"$ref": "#/$defs/Author"},
-                    "reviewer": {"$ref": "#/$defs/Author", "description": "who reviews"},
-                    "nested": {"allOf": [{"allOf": [{"type": "integer", "minimum": 10}]}]}
-                },
-                "required": ["name"],
-                "$defs": {"Author": {"type": "object", "properties": {"name": {"type": "string"}}}}
-            }),
-        )],
-    );
+    let parameters = json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "when": {"type": "string", "format": "date-time"},
+            "since": {"type": ["string", "null"], "format": "date-time"},
+            "owner_email": {"type": "string", "format": "email"},
+            "limit": {"type": ["integer", "null"], "format": "uint32", "minimum": 0},
+            "tags": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "author": {"anyOf": [{"$ref": "#/$defs/Author"}, {"type": "null"}]},
+            "editor": {"allOf": [{"$ref": "#/$defs/Author"}], "description": "who edits"},
+            "first": {"$ref": "#/$defs/Author"},
+            "reviewer": {"$ref": "#/$defs/Author", "description": "who reviews"},
+            "nested": {"allOf": [{"allOf": [{"type": "integer", "minimum": 10}]}]}
+        },
+        "required": ["name"],
+        "$defs": {"Author": {"type": "object", "properties": {"name": {"type": "string"}}}}
+    });
+    let required: Vec<_> = parameters
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("object properties")
+        .keys()
+        .cloned()
+        .collect();
+    let (_, functions) = sent(None, true, vec![tool("find", parameters)]);
     let author = json!({
         "type": "object",
         "properties": {"name": {"type": "string"}},
@@ -127,10 +128,7 @@ fn a_strict_schema_takes_the_shape_deepseek_accepts() {
                     "reviewer": {"$ref": "#/$defs/Author", "description": "who reviews"},
                     "nested": {"type": "integer", "minimum": 10}
                 },
-                "required": [
-                    "name", "when", "since", "owner_email", "limit", "tags", "author", "editor",
-                    "first", "reviewer", "nested"
-                ],
+                "required": required,
                 "additionalProperties": false,
                 "$defs": {"Author": author}
             }

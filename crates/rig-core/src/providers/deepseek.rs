@@ -201,7 +201,7 @@ fn split_type_list(object: &mut Map<String, Value>) -> Result<(), &'static str> 
     }
     for (_, keywords) in TYPE_KEYWORDS {
         for keyword in keywords {
-            remove_preserving_order(object, *keyword);
+            remove_preserving_order(object, keyword);
         }
     }
     object.insert("anyOf".to_owned(), Value::Array(members));

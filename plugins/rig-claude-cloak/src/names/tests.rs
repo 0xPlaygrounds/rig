@@ -55,6 +55,8 @@ fn stale_native_metadata_is_not_revalidated_by_decoding() -> anyhow::Result<()> 
         call.native = Some(Native {
             item: item.clone(),
             fingerprint,
+            baseline: None,
+            edited: false,
             blob_slot: None,
         });
         let mut content = AssistantContent::ToolCall(call);
@@ -66,7 +68,7 @@ fn stale_native_metadata_is_not_revalidated_by_decoding() -> anyhow::Result<()> 
             .native
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("missing native"))?;
-        anyhow::ensure!(native.fingerprint != content.fingerprint());
+        anyhow::ensure!(content.native_item().is_none());
         anyhow::ensure!(native.item == item);
         anyhow::ensure!(call.function.name.as_str() == "read");
     }
@@ -86,6 +88,8 @@ fn completed_parts_and_final_response_decode_without_changing_arguments_or_ids()
     original.native = Some(Native {
         item: json!({"type":"tool_use","id":"call_1","name":"__private","input":{"text":"_not_a_name"},"caller":{"type":"code_execution_20250825","tool_id":"server_1"},"future_field":{"keep":true}}),
         fingerprint: AssistantContent::ToolCall(original.clone()).fingerprint(),
+        baseline: None,
+        edited: false,
         blob_slot: None,
     });
     let content = AssistantContent::ToolCall(original.clone());

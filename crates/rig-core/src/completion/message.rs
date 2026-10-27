@@ -293,20 +293,7 @@ impl AssistantContent {
             Self::Reasoning(reasoning) => {
                 Fingerprint::of_canonical(&("v1", "reasoning", &reasoning.text, reasoning.redacted))
             }
-            Self::ToolCall(call) => {
-                let id = match &call.id {
-                    CallId::Provider(id) => id.as_str(),
-                    CallId::Local(_) => "~local",
-                };
-                Fingerprint::of_canonical(&(
-                    "v1",
-                    "call",
-                    id,
-                    call.function.name.as_str(),
-                    native::Canonical(&call.function.arguments),
-                    &call.function.invalid_arguments,
-                ))
-            }
+            Self::ToolCall(call) => call.fingerprint(),
             Self::Image(image) => Fingerprint::of_canonical(&(
                 "v1",
                 "image",
@@ -332,10 +319,16 @@ impl AssistantContent {
     /// canonical form. An [`Opaque`] block has no separate item.
     pub fn with_native(mut self, item: serde_json::Value) -> Self {
         let fingerprint = self.fingerprint();
+        let baseline = match &self {
+            Self::ToolCall(call) => call.baseline(),
+            _ => None,
+        };
         if let Some(native) = self.native_slot() {
             *native = Some(Native {
                 item,
                 fingerprint,
+                baseline,
+                edited: false,
                 blob_slot: None,
             });
         }
@@ -352,7 +345,7 @@ impl AssistantContent {
             Self::Image(image) => image.native.as_ref(),
             Self::Opaque(_) => None,
         }?;
-        Some((&native.item, native.fingerprint == self.fingerprint()))
+        Some((&native.item, native.matches(self.fingerprint())))
     }
 
     /// The provider item of an edited block: no longer current, but its
@@ -480,7 +473,7 @@ impl ToolResultContent {
 }
 
 /// A tool call: its id, and the function and arguments requested.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct ToolCall {
     /// The call's one identity: the provider's id, or one rig issued when
     /// the provider sent none.
@@ -497,6 +490,47 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
+    fn fingerprint(&self) -> Fingerprint {
+        let id = match &self.id {
+            CallId::Provider(id) => id.as_str(),
+            CallId::Local(_) => "~local",
+        };
+        Fingerprint::of_canonical(&(
+            "v1",
+            "call",
+            id,
+            self.function.name.as_str(),
+            native::Canonical(&self.function.arguments),
+            &self.function.invalid_arguments,
+        ))
+    }
+
+    fn baseline(&self) -> Option<serde_json::Value> {
+        fn has_float(value: &serde_json::Value) -> bool {
+            match value {
+                serde_json::Value::Number(number) => number.is_f64(),
+                serde_json::Value::Array(values) => values.iter().any(has_float),
+                serde_json::Value::Object(fields) => fields.values().any(has_float),
+                _ => false,
+            }
+        }
+        if !self.function.arguments.values().any(has_float) {
+            return None;
+        }
+        let id = match &self.id {
+            CallId::Provider(id) => id.as_str(),
+            CallId::Local(_) => "~local",
+        };
+        Some(serde_json::json!([
+            "v1",
+            "call",
+            id,
+            self.function.name.as_str(),
+            self.function.arguments,
+            self.function.invalid_arguments,
+        ]))
+    }
+
     /// A call with `id` and no provider item.
     pub fn new(id: CallId, function: ToolFunction) -> Self {
         Self {
@@ -529,6 +563,36 @@ impl ToolCall {
             is_error: !result.is_success(),
             ..self.result(result.output().clone().into_content())
         }
+    }
+}
+
+impl Serialize for ToolCall {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Stored<'a> {
+            id: &'a CallId,
+            function: &'a ToolFunction,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            native: Option<std::borrow::Cow<'a, Native>>,
+        }
+
+        let native = self.native.as_ref().map(|native| {
+            // Record staleness before parsing can collapse adjacent floats.
+            // The attachment baseline itself is never regenerated on save.
+            if native.matches(self.fingerprint()) {
+                std::borrow::Cow::Borrowed(native)
+            } else {
+                let mut stale = native.clone();
+                stale.edited = true;
+                std::borrow::Cow::Owned(stale)
+            }
+        });
+        Stored {
+            id: &self.id,
+            function: &self.function,
+            native,
+        }
+        .serialize(serializer)
     }
 }
 

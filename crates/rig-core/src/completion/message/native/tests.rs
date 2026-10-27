@@ -15,14 +15,115 @@ fn call(arguments: serde_json::Value) -> AssistantContent {
 
 #[test]
 fn fingerprints_survive_a_serde_round_trip() {
-    // Key order and float digits must survive, or a stored block would
-    // never match its item again after a history is saved and loaded.
+    // Object order is canonicalized before hashing.
     let arguments = json!({"zeta": 1, "alpha": {"y": 0.1, "x": [2.718_281_828_459_1, 1e-7]}});
     let block = call(arguments).with_native(json!({"type": "function_call", "id": "fc_1"}));
     let saved = serde_json::to_string(&block).expect("serialize");
     let loaded: AssistantContent = serde_json::from_str(&saved).expect("deserialize");
     assert_eq!(loaded.fingerprint(), block.fingerprint());
     assert!(loaded.native_item().is_some());
+}
+
+#[test]
+fn native_calls_survive_repeated_float_storage() {
+    let floats = [
+        0.1,
+        2.718_281_828_459_045,
+        51.248_178_375_505_404,
+        -93.311_370_376_880_33,
+        2.003_039_774_426_776_2e-253,
+        7.101_215_824_554_616e260,
+        1.769_268_377_902_049e74,
+        3.928_753_217_337_331_5e299,
+        1e20,
+        -0.0,
+    ];
+    for float in floats {
+        let mut block = call(json!({"nested": [{"value": float}]}))
+            .with_native(json!({"type": "function_call", "id": "fc_1", "signature": "keep"}));
+        let fingerprint = block.fingerprint();
+        for cycle in 0..9 {
+            block = match cycle % 3 {
+                0 => serde_json::from_str(&serde_json::to_string(&block).expect("serialize"))
+                    .expect("load JSON"),
+                1 => serde_json::from_value(serde_json::to_value(&block).expect("to value"))
+                    .expect("load value"),
+                _ => {
+                    let value = serde_json::to_value(&block).expect("to value");
+                    serde_json::from_str(&value.to_string()).expect("load stored value")
+                }
+            };
+            assert_eq!(
+                block.native_item().and_then(|item| item.get("signature")),
+                Some(&json!("keep")),
+                "{float} after storage cycle {cycle}"
+            );
+            let AssistantContent::ToolCall(tool) = &block else {
+                panic!("a call stays a call");
+            };
+            assert_eq!(
+                tool.native.as_ref().map(|native| native.fingerprint),
+                Some(fingerprint)
+            );
+        }
+    }
+}
+
+#[test]
+fn adjacent_float_edits_stay_stale_before_and_after_storage() {
+    let original = 0.100_000_000_000_000_03_f64;
+    let edited = f64::from_bits(original.to_bits() + 1);
+    let mut block = call(json!({"value": original}))
+        .with_native(json!({"type": "function_call", "id": "fc_1"}));
+    if let AssistantContent::ToolCall(call) = &mut block {
+        call.function
+            .arguments
+            .insert("value".into(), json!(edited));
+    }
+    assert!(block.native_item().is_none());
+    for _ in 0..4 {
+        let saved = serde_json::to_string(&block).expect("serialize edited call");
+        block = serde_json::from_str(&saved).expect("load edited call");
+        assert!(block.native_item().is_none(), "{saved}");
+    }
+
+    let mut loaded: AssistantContent = serde_json::from_str(
+        &serde_json::to_string(
+            &call(json!({"value": original})).with_native(json!({"id": "fc_1"})),
+        )
+        .expect("serialize"),
+    )
+    .expect("load");
+    if let AssistantContent::ToolCall(call) = &mut loaded {
+        let current = call
+            .function
+            .arguments
+            .get("value")
+            .and_then(serde_json::Value::as_f64)
+            .expect("a float");
+        call.function
+            .arguments
+            .insert("value".into(), json!(f64::from_bits(current.to_bits() + 1)));
+    }
+    assert!(loaded.native_item().is_none());
+}
+
+#[test]
+fn legacy_native_records_keep_exact_fingerprint_validation() {
+    let block = call(json!({"limit": 20})).with_native(json!({"id": "fc_1"}));
+    let mut stored = serde_json::to_value(&block).expect("serialize");
+    if let Some(native) = stored
+        .get_mut("native")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        native.retain(|key, _| key != "baseline");
+    }
+    let mut loaded: AssistantContent = serde_json::from_value(stored).expect("legacy load");
+    assert!(loaded.native_item().is_some());
+    if let AssistantContent::ToolCall(call) = &mut loaded {
+        call.function.arguments.insert("limit".into(), json!(21));
+    }
+    assert!(loaded.native_item().is_none());
 }
 
 #[test]
@@ -102,6 +203,8 @@ fn a_reasoning_blob_is_read_where_its_wire_put_it() {
     let mut redacted = Native {
         item: json!({"type": "redacted_thinking", "data": "r"}),
         fingerprint: Fingerprint::of(&"x"),
+        baseline: None,
+        edited: false,
         blob_slot: None,
     };
     redacted.find_blob(&slots);
