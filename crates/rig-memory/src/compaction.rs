@@ -22,12 +22,12 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, Message, UnsupportedOption,
 };
 use rig_core::conversation::{
-    Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced,
+    Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced, pairing,
 };
 use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use crate::session::{LogRecord, as_of, history};
+use crate::session::replay;
 use crate::{HeuristicTokenCounter, SessionError, Store, TokenCounter};
 
 /// A summary of a conversation's older messages and the values tracked
@@ -53,7 +53,7 @@ pub struct TrackedSet {
 }
 
 /// A rule of [`SummaryState::track`]: the string argument `argument` of
-/// every call of the tool `tool` goes into the set `set`.
+/// every call of the tool `tool` that succeeded goes into the set `set`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrackArgument {
     /// The tool's name.
@@ -119,7 +119,7 @@ impl SummaryState {
         Some(text)
     }
 
-    /// Adds the arguments `rules` name of the tool calls in `messages` to
+    /// Adds the arguments `rules` name of successful tool calls in `messages` to
     /// the tracked sets, creating the rules' sets in rule order first.
     pub fn track(&mut self, messages: &[impl Borrow<Message>], rules: &[TrackArgument]) {
         for rule in rules {
@@ -130,19 +130,41 @@ impl SummaryState {
                 });
             }
         }
-        let calls = messages.iter().flat_map(|message| match message.borrow() {
-            Message::Assistant(reply) => reply.content.as_slice(),
-            _ => &[],
-        });
-        for item in calls {
-            let AssistantContent::ToolCall(call) = item else {
-                continue;
-            };
-            for rule in rules {
-                let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
-                if let (Some(value), Some(set)) = (rule.value(call), set) {
-                    set.values.insert(value.to_owned());
+        let paired = pairing::pair(
+            messages
+                .iter()
+                .map(|message| Some(message.borrow().clone()))
+                .collect(),
+            pairing::Pairing::canonical(),
+        );
+        let mut waiting: Vec<&ToolCall> = Vec::new();
+        for message in &paired.messages {
+            match message {
+                Message::Assistant(reply) => {
+                    waiting = reply.tool_calls().collect();
                 }
+                Message::User { content } => {
+                    for result in content.iter().filter_map(|part| match part {
+                        UserContent::ToolResult(result) => Some(result),
+                        _ => None,
+                    }) {
+                        let Some(at) = waiting.iter().position(|call| call.id == result.call)
+                        else {
+                            continue;
+                        };
+                        let call = waiting.remove(at);
+                        if result.is_error {
+                            continue;
+                        }
+                        for rule in rules {
+                            let set = self.tracked.iter_mut().find(|set| set.name == rule.set);
+                            if let (Some(value), Some(set)) = (rule.value(call), set) {
+                                set.values.insert(value.to_owned());
+                            }
+                        }
+                    }
+                }
+                Message::System { .. } => {}
             }
         }
     }
@@ -634,23 +656,10 @@ pub fn undo_summary(
     let at = conversation
         .index_of(compacted.summary)
         .ok_or(UndoError::SummaryGone)?;
-    // The splice that made the summary, the first naming it: later ones
-    // put it back.
-    let made = history(store, log)?
-        .into_iter()
-        .find_map(|(stamp, record)| match record {
-            LogRecord::Change(recorded)
-                if summary_in(&recorded.change) == Some(compacted.summary) =>
-            {
-                Some(stamp.n)
-            }
-            _ => None,
-        });
-    let before = as_of(store, log, made.ok_or(UndoError::NotInLog)?)?;
-    let originals: Option<Vec<Entry>> = (compacted.replaced.iter())
-        .map(|id| before.entry(before.index_of(*id)?))
-        .collect();
-    let originals = originals.ok_or(UndoError::NotInLog)?;
+    let originals = summarized_in_log(store, log)?
+        .replaced
+        .remove(&compacted.summary)
+        .ok_or(UndoError::NotInLog)?;
     let restored = conversation.restore(at..=at, originals, by).restored;
     conversation.remove_aside(aside);
     let state = Compacted::of(conversation).last().map(|(_, it)| it.state);
@@ -658,6 +667,55 @@ pub fn undo_summary(
         restored,
         state: state.unwrap_or_default(),
     })
+}
+
+/// What the compactions in a session's log replaced ([`summarized_in_log`]).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Summarized {
+    /// The entries each summary's splice ([`summary_in`]) took out, by the
+    /// summary's id, as they were just before it.
+    pub replaced: BTreeMap<MessageId, Vec<Entry>>,
+    /// The record of each summary a later compaction took out, by the
+    /// summary's id: the conversation lost it with its summary.
+    pub records: BTreeMap<MessageId, Compacted>,
+}
+
+/// What the compactions in the log `log` of `store` replaced, read in one
+/// pass over the log. A summary named again, as by an undo that put it
+/// back, keeps what it first replaced. A summary whose entries the log
+/// does not hold is left out.
+///
+/// # Errors
+///
+/// As [`load`](crate::load).
+pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, SessionError> {
+    let mut first: BTreeMap<MessageId, Option<Vec<Entry>>> = BTreeMap::new();
+    let mut records = BTreeMap::new();
+    replay(store, log, |before, recorded| {
+        let change = &recorded.change;
+        let (Some(summary), Change::Splice { removed, with, .. }) = (summary_in(change), change)
+        else {
+            return;
+        };
+        let kept = |id: &&MessageId| with.iter().any(|entry| entry.id == Some(**id));
+        let taken: Vec<&MessageId> = removed.iter().filter(|id| !kept(id)).collect();
+        for (_, record) in Compacted::of(before) {
+            if taken.contains(&&record.summary) {
+                records.entry(record.summary).or_insert(record);
+            }
+        }
+        first.entry(summary).or_insert_with(|| {
+            taken
+                .iter()
+                .map(|id| before.entry(before.index_of(**id)?))
+                .collect()
+        });
+    })?;
+    let found = first.into_iter();
+    let replaced = found
+        .filter_map(|(summary, taken)| Some((summary, taken?)))
+        .collect();
+    Ok(Summarized { replaced, records })
 }
 
 /// What a [`Summarizer`] asks the model. Each prompt missing from its serde
@@ -729,6 +787,8 @@ impl SummaryPrompts {
              character from the messages, tool outputs, notes on cleared outputs and the earlier \
              summary: names, numbers, identifiers, paths, commands, errors. Never guess a value. Or \
              \"(none)\".]\n\n\
+             Do not copy file contents or long outputs: a file on disk can be read again, so \
+             give its path and what in it matters.\n\n\
              Keep each section short, except Critical context. Keep exact file paths, function \
              names, commands and error messages.",
         ),

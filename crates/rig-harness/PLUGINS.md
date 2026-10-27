@@ -1112,15 +1112,16 @@ something inserts a `TurnOutcome`.
 **Turn records.** Each turn is saved in its agent's conversation as a
 `TurnRecord` aside by rig (`TURN`), and `Turn` is filled from it, a
 restarted turn's too: its `index`, `start`, and how it ended,
-`TurnEnd::Answered { answer }`, `Failed { why }` or `Stopped { why }`, or
-`None` while it runs or once a crash or an exit cut it short;
-`conversation.turns()` lists them, for a program without the app too. A stop
-mid-reply saves what streamed as an aborted reply (`StopReason::Aborted`) no
-model reads again, its request `halted()` `Stopped`, and the kernel's note
-after it by `Author::rig()` (`EntryRef::is_stop_marker`); a
-plugin-stopped turn's request, and an agent's or a plugin's message a
-failed turn left, is halted `Kept`. A front shows a stop from
-the halt, never from text.
+`TurnEnd::Answered { answer }`, `Failed { why }` or
+`Stopped { why, at, calls }`, or `None` while it runs or once a crash or an
+exit cut it short; `conversation.turns()` lists them, for a program without
+the app too. A stop mid-reply saves what streamed as an aborted reply
+(`StopReason::Aborted`), which goes back to the model as its text alone, its
+request `halted()` `Stopped`, and the kernel's note after it by
+`Author::rig()` (`EntryRef::is_stop_marker`); a plugin-stopped turn's
+request, and an agent's or a plugin's message a failed turn left, is halted
+`Kept`. A stop's record names the turn's last entry (`at`), which a front
+draws the stop under, and the tool calls the stop answered (`calls`).
 
 **Ending a turn with an answer already known**, such as the JSON a
 `submit` tool was called with: a Gate system decides the turn's next

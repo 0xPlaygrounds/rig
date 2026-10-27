@@ -154,3 +154,29 @@ fn an_edit_is_drawn_as_the_diff_it_published() {
     assert!(!without.contains("new_call"), "{without}");
     assert!(without.contains("Edited a.rs: line 2."), "{without}");
 }
+
+/// A stopped call draws what the stop answered it, not what it would have
+/// done, and says it stopped.
+#[test]
+fn a_stopped_call_draws_its_answer_not_its_proposal() {
+    use rig_harness::rig_core::tool::ToolExecutionError;
+
+    let Ok(name) = ToolName::new("write") else {
+        return;
+    };
+    let args = json!({ "path": "a.rs", "content": "fn proposed() {}\n" });
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, args));
+    for said in [
+        "Not run: the user stopped the turn.",
+        "Stopped before it finished; it may have partly run.",
+    ] {
+        let stopped = ToolResult::failed(ToolExecutionError::other(said.to_owned()));
+        let result = call.answer(&stopped);
+        let view = ToolCallView::new(&call, Some(&result), CallState::Stopped);
+        let lines: Vec<String> = write(&view).iter().map(ToString::to_string).collect();
+        let drawn = lines.join("\n");
+        assert!(drawn.contains("· stopped"), "{drawn}");
+        assert!(drawn.contains(said), "{drawn}");
+        assert!(!drawn.contains("fn proposed"), "{drawn}");
+    }
+}

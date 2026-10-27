@@ -348,6 +348,7 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
     let cleared = serde_json::to_string(&live).unwrap_or_default();
     assert!(cleared.contains(placeholder));
     assert_eq!(ids(&live).get(..before.len()), Some(before.as_slice()));
+    assert!(app.world().get::<ContextStale>(agent).is_some());
     drop(app);
 
     let (mut restarted, _wakes) = start(&store);
@@ -355,6 +356,7 @@ fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
         return;
     };
     assert_eq!(entries(restarted.world(), agent), live);
+    assert!(restarted.world().get::<ContextStale>(agent).is_some());
 }
 
 /// A conversation of `messages`, and a model that answers the request
@@ -648,7 +650,7 @@ fn a_summary_in_place_has_room_for_the_thinking_budget() {
         let asked = ask_for(
             &mut model,
             Upto::Before(None),
-            (summarizer, Asking::Summary("")),
+            (summarizer, Asking::Summary("", None)),
             measure,
         );
         let max_tokens = asked.filter(|asked| *asked).and(model.request.max_tokens);
@@ -663,7 +665,7 @@ fn a_summary_in_place_has_room_for_the_thinking_budget() {
     let asked = ask_for(
         &mut model,
         Upto::Before(None),
-        (summarizer, Asking::Summary("")),
+        (summarizer, Asking::Summary("", None)),
         measure,
     );
     assert_eq!((asked, model.request.max_tokens), (Some(true), None));
@@ -1423,6 +1425,16 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         "{:?}",
         world.resource::<Ended>().0
     );
+    // The `/compact` turn added nothing, so its stop has no place to be
+    // drawn: not under the answer before it.
+    let ended = world
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.turns().next_back())
+        .and_then(|(_, turn)| turn.end);
+    assert!(
+        matches!(ended, Some(TurnEnd::Stopped { at: None, .. })),
+        "{ended:?}"
+    );
 }
 
 /// `turns` exchanges of about 5,000 tokens each, after a first question.
@@ -1714,6 +1726,7 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     decide(&mut app, &wakes, None);
     run_until(&mut app, &wakes, ended(1));
     assert_eq!(entries(app.world(), agent), original);
+    assert!(app.world().get::<ContextStale>(agent).is_none());
 
     // Edited: the reviewer's text is the summary.
     compact(&mut app);
@@ -1729,6 +1742,8 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
             .map(|c| summary_state(c))
     };
     assert!(state(&app).is_some_and(|it| it.summary.contains("reviewed")));
+    assert!(app.world().get::<ContextStale>(agent).is_some());
+    app.world_mut().entity_mut(agent).remove::<ContextStale>();
 
     // Undone: the messages are back with their ids, and the state before.
     app.update();
@@ -1736,6 +1751,7 @@ fn a_held_summary_is_applied_as_reviewed_or_cancelled_and_undone_with_its_ids() 
     app.update();
     assert_eq!(entries(app.world(), agent), original);
     assert_eq!(state(&app), Some(SummaryState::default()));
+    assert!(app.world().get::<ContextStale>(agent).is_some());
 }
 
 /// A summary near the window that a reviewer cancels lets the request go
@@ -2515,3 +2531,313 @@ fn clearing_that_frees_little_checkpoints_once_from_a_cached_prefix() {
 /// request still does not fit: said once.
 const NOT_SUMMARIZED: &str =
     "The conversation does not fit the model's context window, and was not summarized";
+
+#[test]
+fn an_asked_summary_is_told_the_reply_it_keeps() {
+    for outcome in ["answered", "stopped text", "stopped tools"] {
+        let answered = outcome == "answered";
+        let store = MemoryStore::default();
+        let (mut app, wakes) = start(&store);
+        let model = MockCompletionModel::from_stream_turns([reply("## Goal\nCheckpoint.")]);
+        let Some(agent) = agent(
+            &mut app,
+            &model,
+            40_000,
+            vec![Message::user("Explain the crate.")],
+        ) else {
+            return;
+        };
+        let mut conversation = app.world_mut().get_mut::<Conversation>(agent);
+        let Some(conversation) = conversation.as_deref_mut() else {
+            return;
+        };
+        conversation.open_turn();
+        if answered {
+            conversation.push(Message::assistant("The crate builds agents."));
+            let answer = conversation.entries().next_back().map(|entry| entry.id);
+            conversation.end_turn(TurnEnd::Answered { answer });
+        } else if outcome == "stopped text" {
+            conversation.push(Message::Assistant(AssistantMessage::aborted(
+                None,
+                vec![AssistantContent::text("The crate builds")],
+                "stopped",
+            )));
+            let at = conversation.entries().next_back().map(|entry| entry.id);
+            let calls = Vec::new();
+            conversation.end_turn(TurnEnd::Stopped {
+                why: None,
+                at,
+                calls,
+            });
+        } else {
+            for message in read("stopped", "a.rs", "Stopped") {
+                conversation.push(message);
+            }
+            let at = conversation.entries().next_back().map(|entry| entry.id);
+            let calls = Vec::new();
+            conversation.end_turn(TurnEnd::Stopped {
+                why: None,
+                at,
+                calls,
+            });
+        }
+        let spec = connect(&model).map(|connection| connection.spec);
+        let Some(spec) = spec else {
+            return;
+        };
+        let planned = plan(
+            conversation,
+            &CompactionPolicy::default(),
+            CompactReason::Asked {
+                focus: String::new(),
+            },
+            &spec,
+        );
+        let separate = planned
+            .ok()
+            .flatten()
+            .map(|(_, request)| serde_json::to_string(&request).unwrap_or_default())
+            .unwrap_or_default();
+        let hint = match outcome {
+            "answered" => "so the request is answered",
+            _ => "the user stopped that reply",
+        };
+        assert!(separate.contains(hint), "{separate}");
+        app.world_mut()
+            .trigger(RunCommand::new(agent, "compact".to_owned()));
+        run_until(&mut app, &wakes, |world| {
+            !world.resource::<Ended>().0.is_empty()
+        });
+        let summary = sent(&model).first().cloned().unwrap_or_default();
+        assert!(summary.contains(hint), "{summary}");
+        if !answered {
+            assert!(!summary.contains("so the request is answered"), "{summary}");
+        }
+    }
+}
+
+/// What `agent`'s summaries replaced, by summary, as the terminal view
+/// draws it: each entry's id and message.
+#[cfg(feature = "tui")]
+fn replaced(world: &World, agent: Entity) -> Vec<(MessageId, Vec<(Option<MessageId>, Message)>)> {
+    let Some(replaced) = world.get::<rig_tui::Replaced>(agent) else {
+        return Vec::new();
+    };
+    let entry = |entry: &Entry| (entry.id, (*entry.message).clone());
+    let sets = replaced.0.iter();
+    sets.map(|(summary, entries)| (*summary, entries.iter().map(entry).collect()))
+        .collect()
+}
+
+/// The agent of `app` whose id is `id`.
+#[cfg(feature = "tui")]
+fn agent_of(app: &mut App, id: &AgentId) -> Option<Entity> {
+    let world = app.world_mut();
+    let mut agents = world.query::<(Entity, &AgentId)>();
+    id.find_in(agents.iter(world))
+}
+
+/// The terminal view keeps drawing what each compaction replaced: filled
+/// as a summary goes in, nothing for a cancelled one, read back from the
+/// log after a restart for every agent, and taken over by a fork. The
+/// model still reads only the summary.
+#[cfg(feature = "tui")]
+#[test]
+fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nCancelled."),
+        reply("## Goal\nThe first summary."),
+        reply("## Goal\nThe second summary."),
+    ]);
+    let mut messages = vec![Message::user("What does the crate do?")];
+    messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
+    messages.extend(long_conversation(3).into_iter().skip(1));
+    let Some(agent) = agent(&mut app, &model, 1_000_000, messages) else {
+        return;
+    };
+    app.update();
+    let original = entries(app.world(), agent);
+    let compact = |app: &mut App, review: Option<&str>, count: usize| {
+        let focus = String::new();
+        app.world_mut().trigger(Compact {
+            entity: agent,
+            focus,
+        });
+        decide(app, &wakes, review);
+        run_until(app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == count
+        });
+    };
+    compact(&mut app, None, 1);
+    assert!(replaced(app.world(), agent).is_empty());
+
+    compact(&mut app, Some("## Goal\nThe first summary."), 2);
+    let live = entries(app.world(), agent);
+    let first = live.first().and_then(|entry| entry.id);
+    let sets = replaced(app.world(), agent);
+    assert_eq!(sets.len(), 1, "one summary's set: {sets:?}");
+    let Some((summary, taken)) = sets.first() else {
+        return;
+    };
+    assert_eq!(Some(*summary), first);
+    let gone = original.iter().filter(|entry| !live.contains(entry));
+    let gone: Vec<_> = gone
+        .map(|entry| (entry.id, (*entry.message).clone()))
+        .collect();
+    assert_eq!(taken, &gone);
+    let asks = |message: &Message| format!("{message:?}").contains("What does the crate do?");
+    let calls_read = |message: &Message| format!("{message:?}").contains("src/lib.rs");
+    assert!(taken.iter().any(|(_, message)| asks(message)), "{taken:?}");
+    assert!(
+        taken.iter().any(|(_, message)| calls_read(message)),
+        "{taken:?}"
+    );
+    // The model's view is the summary alone.
+    assert!(live.first().is_some_and(holds_summary));
+    assert!(!live.iter().any(|entry| asks(&entry.message)));
+
+    // A second compaction replaces the first summary, kept in its own set.
+    let world = app.world_mut();
+    for message in [Message::user("question 9"), Message::assistant("answer 9")] {
+        assert!(commit_message(world, agent, message).is_ok());
+    }
+    compact(&mut app, Some("## Goal\nThe second summary."), 3);
+    let sets = replaced(app.world(), agent);
+    assert_eq!(sets.len(), 2, "{sets:?}");
+    let nested = sets.iter().find(|(summary, _)| Some(*summary) != first);
+    let nested = nested.is_some_and(|(_, taken)| taken.iter().any(|(id, _)| *id == first));
+    assert!(nested, "{sets:?}");
+
+    // A subagent compacted too.
+    let world = app.world_mut();
+    let child = world.spawn((Agent, SpawnedBy(agent))).id();
+    for text in ["one", "two", "three"] {
+        assert!(commit_message(world, child, Message::user(text)).is_ok());
+    }
+    let state = SummaryState {
+        summary: "The subagent's summary.".to_owned(),
+        ..SummaryState::default()
+    };
+    if let Some(mut conversation) = world.get_mut::<Conversation>(child) {
+        let upto = conversation.id(2);
+        assert!(apply_summary(&mut conversation, upto, &state).is_some());
+    }
+    app.update();
+    let ids = |app: &App, entity| app.world().get::<AgentId>(entity).cloned();
+    let (Some(main_id), Some(child_id)) = (ids(&app, agent), ids(&app, child)) else {
+        return;
+    };
+    drop(app);
+
+    let (mut restarted, _wakes) = start(&store);
+    let restored = (
+        agent_of(&mut restarted, &main_id),
+        agent_of(&mut restarted, &child_id),
+    );
+    assert!(
+        matches!(restored, (Some(_), Some(_))),
+        "both agents were restored"
+    );
+    let (Some(agent), Some(child)) = restored else {
+        return;
+    };
+    assert_eq!(replaced(restarted.world(), agent), sets);
+    let child_sets = replaced(restarted.world(), child);
+    let child_taken = child_sets.first().map(|(_, taken)| taken.len());
+    assert_eq!(child_taken, Some(2), "{child_sets:?}");
+
+    restarted.world_mut().trigger(ForkAgent {
+        agent,
+        through: None,
+    });
+    restarted.update();
+    let world = restarted.world_mut();
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let fork = agents.iter(world).find(|it| ![agent, child].contains(it));
+    assert!(fork.is_some(), "the fork was made");
+    let Some(fork) = fork else { return };
+    assert_eq!(replaced(restarted.world(), fork), sets);
+
+    // A fork through the first summary ends before the compaction that
+    // made it, so its next entries, which may reuse the summary's id, draw
+    // nothing above them.
+    restarted.world_mut().trigger(ForkAgent {
+        agent,
+        through: first,
+    });
+    restarted.update();
+    let world = restarted.world_mut();
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let earlier = agents
+        .iter(world)
+        .find(|it| ![agent, child, fork].contains(it));
+    assert!(earlier.is_some(), "the fork was made");
+    let Some(earlier) = earlier else { return };
+    assert_eq!(replaced(restarted.world(), earlier), Vec::new());
+}
+
+/// Only a kept part that begins with a reply gets a word on it, and the
+/// word follows how the reply's turn ended.
+#[test]
+fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
+    use rig_core::conversation::{Author, Conversation, Entry, Halt};
+
+    let mut conversation = Conversation::default();
+    conversation.push(Message::user("Explain the crate."));
+    conversation.open_turn();
+    let answer = conversation.push(Message::assistant("It builds agents."));
+    conversation.end_turn(TurnEnd::Answered {
+        answer: Some(answer),
+    });
+    let delivered = Entry::new(Message::user("Subagent report.")).by(Author::plugin("subagents"));
+    let delivered = conversation.push(delivered);
+    assert_eq!(kept_reply(&conversation, Some(delivered)), None);
+    assert!(kept_reply(&conversation, Some(answer)).is_some_and(|it| it.contains("is answered")));
+    // A later turn's record that spans nothing, such as an earlier
+    // compaction's whose start went with it, says nothing about the reply.
+    conversation.open_turn();
+    conversation.end_turn(TurnEnd::Stopped {
+        why: Some("compacted".to_owned()),
+        at: None,
+        calls: Vec::new(),
+    });
+    conversation.splice(2..3, [], Author::plugin("compaction"));
+    assert!(kept_reply(&conversation, Some(answer)).is_some_and(|it| it.contains("is answered")));
+    conversation.push(Message::user("Go on."));
+
+    conversation.open_turn();
+    let cut = conversation.push(Message::Assistant(AssistantMessage::aborted(
+        None,
+        vec![AssistantContent::text("Half a reply")],
+        "stopped",
+    )));
+    assert!(kept_reply(&conversation, Some(cut)).is_some_and(|it| it.contains("continues")));
+    conversation.halt(Halt::Stopped);
+    conversation.end_turn(TurnEnd::Stopped {
+        why: None,
+        at: Some(cut),
+        calls: Vec::new(),
+    });
+    assert!(kept_reply(&conversation, Some(cut)).is_some_and(|it| it.contains("user stopped")));
+    conversation.push(Message::user("Next."));
+    let note = conversation
+        .entries()
+        .find(|entry| entry.is_stop_marker())
+        .map(|entry| entry.id);
+    assert!(note.is_some());
+    assert_eq!(kept_reply(&conversation, note), None);
+
+    // A turn a plugin stopped, for its own reason, is not the user's stop.
+    conversation.open_turn();
+    let cut = conversation.push(Message::assistant("Working on it"));
+    conversation.end_turn(TurnEnd::Stopped {
+        why: Some("restarted".to_owned()),
+        at: Some(cut),
+        calls: Vec::new(),
+    });
+    let said = kept_reply(&conversation, Some(cut));
+    assert!(said.is_some_and(|it| it.contains("continues") && !it.contains("user stopped")));
+}

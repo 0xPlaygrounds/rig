@@ -7,9 +7,11 @@ use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
+use rig_core::conversation::TurnEnd;
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, Image, ToolCall, ToolFunction, ToolName,
+    ToolResult as ToolResultMessage, ToolResultContent,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
@@ -26,7 +28,8 @@ use rig_harness::rig_core::conversation::Note;
 use serde_json::json;
 
 use super::{
-    Below, CallFacts, ChildCalls, Look, Part, Pass, Renderers, Scroll, StreamingCalls, Transcript,
+    Below, CallFacts, ChildCalls, Look, Part, Pass, Renderers, Scroll, ShownEntries, Stops,
+    StreamingCalls, Transcript,
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
@@ -107,6 +110,8 @@ fn drawn(
     renderers: &Renderers,
 ) -> String {
     let (facts, theme) = (CallFacts::default(), crate::Theme::default());
+    // The conversation is the same each time.
+    let entries = ShownEntries::new(conversation, None);
     let look = Look {
         renderers,
         calls,
@@ -116,9 +121,9 @@ fn drawn(
         theme: &theme,
         children: &ChildCalls::default(),
         marks: &[],
+        stops: &Stops::of(conversation, &entries),
     };
-    // The conversation is the same each time.
-    transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
+    transcript.update(Entity::PLACEHOLDER, &entries, false, &look, WIDTH);
     let parts = [Part::Message(0)];
     let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default(), &[]);
     let rows: Vec<String> = visible.rows.iter().map(ToString::to_string).collect();
@@ -483,29 +488,187 @@ fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
     assert!(order.is_sorted(), "{lines:#?}");
 }
 
-#[test]
-fn the_note_rig_adds_after_a_stop_is_drawn_as_a_stop() {
-    let (mut app, agent) = view_app();
-    say(&mut app, agent, Message::user("first question"));
+/// Ends the turn `agent` runs as a stop does: the request halted, the
+/// record ending at the last entry with the calls the stop answered.
+fn stop(app: &mut App, agent: Entity, calls: &[&str]) {
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.halt(Halt::Stopped);
+        let at = conversation.entries().next_back().map(|entry| entry.id);
+        let calls = calls.iter().map(|id| CallId::from_wire(*id)).collect();
+        let why = None;
+        conversation.end_turn(TurnEnd::Stopped { why, at, calls });
     }
-    say(&mut app, agent, Message::user("second question"));
+    app.update();
+}
+
+/// Puts `agent`'s conversation back as a session restore reads it, so
+/// only what is saved draws it; whether it could.
+fn reload(app: &mut App, agent: Entity) -> bool {
+    let saved = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(serde_json::to_value);
+    let restored = saved
+        .and_then(Result::ok)
+        .map(serde_json::from_value::<Conversation>);
+    let Some(Ok(restored)) = restored else {
+        return false;
+    };
+    app.world_mut().entity_mut(agent).insert(restored);
+    app.update();
+    true
+}
+
+/// How many of `lines` contain `text`.
+fn count_of(lines: &[String], text: &str) -> usize {
+    lines.iter().filter(|line| line.contains(text)).count()
+}
+
+#[test]
+fn a_stopped_reply_ends_in_a_stop_at_once_and_after_a_reload() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("write an essay"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    let text = vec![AssistantContent::text("half an essay")];
+    let aborted = AssistantMessage::aborted(None, text, "stopped");
+    say(&mut app, agent, Message::Assistant(aborted));
+    stop(&mut app, agent, &[]);
+    let order = ["write an essay", "half an essay", "[stopped]"];
     let lines = on_screen(&mut app, agent, 100);
-    let order = [
-        "first question",
-        "[stopped before it was answered]",
-        "second question",
-    ];
-    let order = order.map(|text| line_of(&lines, text));
-    assert!(order.iter().all(Option::is_some), "{lines:#?}");
-    assert!(order.is_sorted(), "{lines:#?}");
-    assert!(
-        !lines
-            .iter()
-            .any(|line| line.contains("not the user's words")),
-        "{lines:#?}"
+    let at = order.map(|text| line_of(&lines, text));
+    assert!(at.iter().all(Option::is_some), "{lines:#?}");
+    assert!(at.is_sorted(), "{lines:#?}");
+    // The note the next message brings draws nothing; the stop stays put.
+    say(&mut app, agent, Message::user("go on"));
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        let at = ["half an essay", "[stopped]", "go on"].map(|text| line_of(&lines, text));
+        assert!(at.iter().all(Option::is_some), "{lines:#?}");
+        assert!(at.is_sorted(), "{lines:#?}");
+        assert_eq!(count_of(&lines, "[stopped"), 1, "{lines:#?}");
+        assert_eq!(count_of(&lines, "Do not carry it out"), 0, "{lines:#?}");
+        assert!(reload(&mut app, agent));
+    }
+}
+
+#[test]
+fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
+    let (mut app, agent) = view_app();
+    let (Ok(look), Ok(shell), Ok(read)) = (
+        ToolName::new("look"),
+        ToolName::new("shell"),
+        ToolName::new("read"),
+    ) else {
+        return;
+    };
+    let call = |id: &str, name: &ToolName| {
+        ToolCall::from_wire(id, ToolFunction::new(name.clone(), json!({})))
+    };
+    let reply = |calls: Vec<ToolCall>| {
+        let calls = calls.into_iter().map(AssistantContent::ToolCall).collect();
+        Message::Assistant(AssistantMessage::new(calls))
+    };
+    // An earlier turn's call shares an id with a call the stop answered.
+    say(&mut app, agent, Message::user("first"));
+    let earlier = call("a", &look);
+    say(&mut app, agent, reply(vec![earlier.clone()]));
+    let looked = earlier.result(vec![ToolResultContent::text("seen")]);
+    say(&mut app, agent, Message::tool_results(vec![looked]));
+    say(&mut app, agent, Message::assistant("done"));
+    say(&mut app, agent, Message::user("second"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    let (running, held, failed) = (call("a", &shell), call("b", &shell), call("c", &read));
+    say(
+        &mut app,
+        agent,
+        reply(vec![running.clone(), held.clone(), failed.clone()]),
     );
+    let results = [
+        (running, "partial output", true),
+        (held, "Not run: the user stopped the turn.", true),
+        (failed, "no such file", true),
+    ];
+    let results = results.map(|(call, text, error)| ToolResultMessage {
+        is_error: error,
+        ..call.result(vec![ToolResultContent::text(text)])
+    });
+    say(&mut app, agent, Message::tool_results(results.to_vec()));
+    stop(&mut app, agent, &["a", "b"]);
+    let drawn_stopped = |lines: &[String]| {
+        let headers: Vec<&str> = lines
+            .iter()
+            .filter(|line| {
+                [" look", " shell", " read"]
+                    .iter()
+                    .any(|name| line.starts_with(name))
+            })
+            .map(String::as_str)
+            .collect();
+        let states: Vec<bool> = headers
+            .iter()
+            .map(|header| header.contains("· stopped"))
+            .collect();
+        let failed = headers
+            .last()
+            .is_some_and(|header| header.contains("· failed"));
+        let order = ["no such file", "[stopped before it was answered]"];
+        let at = order.map(|text| line_of(lines, text));
+        states == [false, true, true, false]
+            && failed
+            && at.iter().all(Option::is_some)
+            && at.is_sorted()
+    };
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        assert!(drawn_stopped(&lines), "{lines:#?}");
+        assert!(reload(&mut app, agent));
+    }
+    // A compaction that takes the stopped turn out keeps it drawn so.
+    say(&mut app, agent, Message::user("third"));
+    let count = app
+        .world()
+        .get::<Conversation>(agent)
+        .map(|it| it.messages().len());
+    compact(&mut app, agent, count.unwrap_or(1) - 1, "the summary");
+    let lines = on_screen(&mut app, agent, 100);
+    assert!(drawn_stopped(&lines), "{lines:#?}");
+    assert!(line_of(&lines, "the summary").is_some(), "{lines:#?}");
+}
+
+/// A call a stop answered is drawn stopped whatever live state it still
+/// has.
+#[test]
+fn a_stopped_call_wins_over_its_live_state() {
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "command": "make" })));
+    let mut conversation = Conversation::default();
+    conversation.open_turn();
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    let at = conversation.push(Message::Assistant(reply));
+    let calls = vec![call.id.clone()];
+    conversation.end_turn(TurnEnd::Stopped {
+        why: None,
+        at: Some(at),
+        calls,
+    });
+    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
+    let outputs = BTreeMap::from([(call.id.clone(), "cc a.c".to_owned())]);
+    let mut transcript = Transcript::default();
+    let renderers = Renderers::default();
+    let shown = drawn(
+        &mut transcript,
+        &conversation,
+        (&calls, &outputs),
+        &renderers,
+    );
+    assert!(shown.contains("· stopped"), "{shown}");
+    assert!(!shown.contains("running"), "{shown}");
 }
 
 #[test]
@@ -1211,4 +1374,180 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
         let rows = drawn.rows_of(&decoration(name)).unwrap_or_default();
         assert!(call.start <= rows.start && rows.end <= call.end, "{name}");
     }
+}
+
+/// Puts a summary, `text` by compaction, in place of the first `count`
+/// messages of `agent`'s conversation, and what it took out in the agent's
+/// [`Replaced`](crate::Replaced); the summary's id.
+fn compact(app: &mut App, agent: Entity, count: usize, text: &str) -> Option<MessageId> {
+    let world = app.world_mut();
+    let mut conversation = world.get_mut::<Conversation>(agent)?;
+    let taken: Vec<Entry> = (0..count).filter_map(|at| conversation.entry(at)).collect();
+    let compaction = Author::plugin("compaction");
+    let summary = Entry::new(Message::user(text)).by(compaction.clone());
+    let spliced = conversation.splice(..count, [summary], compaction);
+    let summary = spliced.changed.first().copied()?;
+    let mut replaced = world
+        .get::<crate::Replaced>(agent)
+        .cloned()
+        .unwrap_or_default();
+    replaced.0.insert(summary, taken);
+    world.entity_mut(agent).insert(replaced);
+    app.update();
+    Some(summary)
+}
+
+/// The rows of `agent`'s transcript in the main pane at `width` columns.
+fn rows_at(app: &mut App, agent: Entity, width: u16) -> Vec<String> {
+    use crate::pane::{PaneState, lay_out_panes};
+    let pane = crate::tests::main_pane(app.world());
+    if let Some(mut canvas) = app.world_mut().get_mut::<crate::PanelCanvas>(pane) {
+        canvas.reset(ratatui::layout::Rect::new(0, 0, width, 1000));
+    }
+    if let Some(mut shown) = app
+        .world_mut()
+        .get_resource_mut::<rig_harness::main_agent::ShownAgent>()
+    {
+        shown.0 = Some(agent);
+    }
+    app.world_mut().run_system_once(lay_out_panes).ok();
+    let state = app.world().get::<PaneState>(pane);
+    let rows = state.map(|state| state.rows.iter().map(ToString::to_string).collect());
+    rows.unwrap_or_default()
+}
+
+/// The entries a summary replaced are drawn above it, through the same
+/// looks as live ones, after a line that says how many, and laid out again
+/// at a new width; none of them is an item to select, rewind to or fork
+/// from.
+#[test]
+fn what_a_summary_replaced_is_drawn_above_it_with_no_items() {
+    let (mut app, agent) = view_app();
+    crate::tests::keep_drawn(&mut app);
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), json!({})));
+    let long = "a long old question ".repeat(6);
+    say(
+        &mut app,
+        agent,
+        Message::user(format!("old question: {long}")),
+    );
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    say(
+        &mut app,
+        agent,
+        Message::tool_result(call.id.clone(), name, "old output"),
+    );
+    say(&mut app, agent, Message::assistant("old answer"));
+    say(&mut app, agent, Message::user("kept prompt"));
+    let old: Vec<MessageId> = (0..4)
+        .filter_map(|at| message_id(&app, agent, at))
+        .collect();
+    let summary = compact(&mut app, agent, 4, "the summary");
+    let lines = on_screen(&mut app, agent, 100);
+    let order = [
+        "old question",
+        "old output",
+        "old answer",
+        "── 4 messages above were compacted ──",
+        "the summary",
+        "kept prompt",
+    ];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+
+    let drawn = crate::tests::drawn(&app);
+    let items: Vec<&TranscriptItem> = drawn.items().iter().map(|(item, _)| item).collect();
+    let archived = |item: &&TranscriptItem| match item {
+        TranscriptItem::Message(id) => old.contains(id),
+        TranscriptItem::Call(_) => true,
+        _ => false,
+    };
+    assert!(!items.iter().any(archived), "{items:#?}");
+    let summary = summary.map(TranscriptItem::Message);
+    assert!(summary.is_some_and(|it| items.contains(&&it)), "{items:#?}");
+
+    // Narrower, the old question wraps to more rows.
+    let wide = rows_at(&mut app, agent, 80);
+    let narrow = rows_at(&mut app, agent, 30);
+    let question = |rows: &[String]| {
+        let first = line_of(rows, "old question");
+        let output = line_of(rows, "old output");
+        first.zip(output).map(|(first, output)| output - first)
+    };
+    assert!(
+        question(&narrow) > question(&wide),
+        "{wide:#?}\n{narrow:#?}"
+    );
+}
+
+/// A summary of a summary draws what each replaced in its place; what a
+/// summary no longer in the conversation replaced is drawn nowhere.
+#[test]
+fn each_summary_draws_what_it_replaced_while_it_is_in_the_conversation() {
+    let (mut app, agent) = view_app();
+    for text in ["first", "second", "third", "fourth"] {
+        say(&mut app, agent, Message::user(text));
+    }
+    compact(&mut app, agent, 2, "summary one");
+    compact(&mut app, agent, 2, "summary two");
+    let lines = on_screen(&mut app, agent, 100);
+    let order = [
+        "first",
+        "second",
+        "── 2 messages above were compacted ──",
+        "summary one",
+        "third",
+        "── 3 messages above were compacted ──",
+        "summary two",
+        "fourth",
+    ];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+
+    // A rewind past both summaries.
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.splice(..1, [], Author::user());
+    }
+    app.update();
+    let lines = on_screen(&mut app, agent, 100);
+    assert!(line_of(&lines, "fourth").is_some(), "{lines:#?}");
+    let gone = ["first", "summary one", "third", "compacted"];
+    assert!(
+        gone.iter().all(|text| line_of(&lines, text).is_none()),
+        "{lines:#?}"
+    );
+}
+
+/// What a summary replaced, filled in after the summary went in, is drawn
+/// at the next frame.
+#[test]
+fn filling_what_a_summary_replaced_draws_a_frame() {
+    let (mut app, agent) = view_app();
+    app.insert_resource(crate::TuiTestScreen::new(80, 30));
+    say(&mut app, agent, Message::user("old question"));
+    say(&mut app, agent, Message::user("kept prompt"));
+    let summary = compact(&mut app, agent, 1, "the summary");
+    let screen = |app: &App| app.world().resource::<crate::TuiTestScreen>().rows();
+    let taken = app
+        .world_mut()
+        .get_mut::<crate::Replaced>(agent)
+        .and_then(|mut replaced| replaced.0.remove(&summary?));
+    app.update();
+    assert!(line_of(&screen(&app), "old question").is_none());
+    if let (Some(mut replaced), Some(summary), Some(taken)) = (
+        app.world_mut().get_mut::<crate::Replaced>(agent),
+        summary,
+        taken,
+    ) {
+        replaced.0.insert(summary, taken);
+    }
+    app.update();
+    let rows = screen(&app);
+    assert!(line_of(&rows, "old question").is_some(), "{rows:#?}");
 }

@@ -116,3 +116,44 @@ fn a_question_is_a_dialog_its_buttons_answer() {
     assert_eq!(answer, Some(Answer::choice("yes")));
     assert!(app.world().resource::<GuiDialogs>().open.is_empty());
 }
+
+/// Ends `conversation`'s turn as a stop does, at its last entry.
+fn stop_turn(conversation: &mut Conversation) {
+    conversation.halt(Halt::Stopped);
+    let at = conversation.entries().next_back().map(|entry| entry.id);
+    let calls = Vec::new();
+    conversation.end_turn(TurnEnd::Stopped {
+        why: None,
+        at,
+        calls,
+    });
+}
+
+/// A stop follows the last message of the turn it cut off: the cut reply,
+/// or the request nothing answered. The note it leaves the model draws
+/// nothing.
+#[test]
+fn a_stop_follows_the_turn_it_cut_off() {
+    let mut conversation = Conversation::default();
+    conversation.push(Message::user("write"));
+    conversation.open_turn();
+    let text = vec![AssistantContent::text("half")];
+    let aborted = AssistantMessage::aborted(None, text, "stopped");
+    conversation.push(Message::Assistant(aborted));
+    stop_turn(&mut conversation);
+    conversation.push(Message::user("again"));
+    conversation.open_turn();
+    stop_turn(&mut conversation);
+    conversation.push(Message::user("third"));
+    assert_eq!(
+        blocks_of(&conversation, &HashSet::new()),
+        [
+            Block::User("write".to_owned()),
+            Block::Answer("half".to_owned()),
+            Block::Stopped { replied: true },
+            Block::User("again".to_owned()),
+            Block::Stopped { replied: false },
+            Block::User("third".to_owned()),
+        ]
+    );
+}

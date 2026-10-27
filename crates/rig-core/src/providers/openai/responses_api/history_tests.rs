@@ -465,3 +465,45 @@ fn reasoning_before_a_dropped_call_does_not_go_back() {
         "{input:?}"
     );
 }
+
+/// A stopped reply goes back as a message of the text it had sent, under an
+/// id rig makes, without its reasoning, its call or the call's output.
+#[test]
+fn a_stopped_reply_goes_back_as_its_text() {
+    let response = whole(json!([
+        reasoning("rs_1", Some("ciphertext")),
+        message("msg_1", "half an essay"),
+        function_call("fc_1", "call_1")
+    ]));
+    let Some(Message::Assistant(mut turn)) = response.message() else {
+        panic!("the reply is a turn: {:?}", response.choice);
+    };
+    turn.stop = Some(crate::message::StopReason::Aborted("stopped".into()));
+    let results = response
+        .tool_calls()
+        .map(|call| {
+            crate::message::UserContent::ToolResult(
+                call.result(vec![ToolResultContent::text("not finished")]),
+            )
+        })
+        .collect();
+    let history = vec![
+        Message::user("q"),
+        Message::Assistant(turn),
+        Message::User { content: results },
+        Message::user("next"),
+    ];
+    let request = CompletionRequest::from(history).tools(vec![tool("f")]);
+    let input = input_of(&wire(), request);
+    assert_eq!(
+        Value::Array(input),
+        json!([
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "q"}]},
+            {"type": "message", "role": "assistant", "status": "completed", "id": "msg_rig_1",
+             "content": [{"type": "output_text", "text": "half an essay", "annotations": []}]},
+            {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": "next"}]},
+        ])
+    );
+}

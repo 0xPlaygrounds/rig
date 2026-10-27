@@ -227,8 +227,8 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
     assert!(conversation.awaits_model());
 }
 
-/// A reply stopped halfway is kept aborted and never read, so the user's
-/// message is still owed an answer: a stop halts it, and the next message
+/// A reply stopped halfway is kept aborted and never read as an answer, so
+/// the user's message is still owed one: a stop halts it, and the next message
 /// comes after the stopped note.
 #[test]
 fn a_reply_stopped_halfway_leaves_the_request_owed() {
@@ -555,11 +555,16 @@ fn turn_records_open_numbered_and_end_once() {
     assert!(!conversation.end_turn(TurnEnd::Failed { why: "late".into() }));
     conversation.push(Message::user("and?"));
     assert_eq!(conversation.open_turn().index, 1);
-    assert!(conversation.end_turn(TurnEnd::Stopped { why: None }));
+    let stopped = TurnEnd::Stopped {
+        why: None,
+        at: conversation.entries().next_back().map(|entry| entry.id),
+        calls: vec![crate::message::CallId::from_wire("c1")],
+    };
+    assert!(conversation.end_turn(stopped.clone()));
 
     let records: Vec<_> = conversation.turns().map(|(_, record)| record).collect();
     let ends: Vec<_> = records.iter().map(|record| record.end.clone()).collect();
-    let stopped = Some(TurnEnd::Stopped { why: None });
+    let stopped = Some(stopped);
     assert_eq!(
         ends,
         [

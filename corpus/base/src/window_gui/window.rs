@@ -321,11 +321,13 @@ fn draw_block(block: &Block, panel: Entity, commands: &mut Commands) {
                 });
         }
         Block::Tool(tool) => draw_tool(tool, panel, commands),
-        Block::Stopped => {
-            commands.spawn((
-                text("[stopped before it was answered]", DIM),
-                ChildOf(panel),
-            ));
+        Block::Stopped { replied } => {
+            let said = if *replied {
+                "[stopped]"
+            } else {
+                "[stopped before it was answered]"
+            };
+            commands.spawn((text(said, DIM), ChildOf(panel)));
         }
     }
 }

@@ -51,8 +51,9 @@ use rig_memory::Anchor;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, Conversation, EffectParent, LastUsage,
-    Notice, Partial, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextStale, Conversation, EffectParent,
+    LastUsage, Notice, Partial, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
+    TurnOutcome,
 };
 use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver};
 use super::model::{Connection, ReasoningSetting};
@@ -353,7 +354,11 @@ fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
             }
         }
         TurnOutcome::Failed(why) => TurnEnd::Failed { why: why.clone() },
-        TurnOutcome::Stopped(why) => TurnEnd::Stopped { why: why.clone() },
+        TurnOutcome::Stopped(why) => TurnEnd::Stopped {
+            why: why.clone(),
+            at: None,
+            calls: Vec::new(),
+        },
     }
 }
 
@@ -480,17 +485,19 @@ const STOPPED_BY_USER: &str = "the user stopped the turn";
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is
 /// spawned without [`SpawnedBy`](super::agent::SpawnedBy). What a streaming
-/// reply had sent is kept as the model's message, aborted, so no model
-/// reads it again and the user's request is halted as stopped, unless its
-/// call was superseded; every tool call of the last reply gets a result,
-/// real, its [`IfStopped`] or what [`not_finished`](feedback::not_finished)
-/// says, and every call of the turn that has not settled is answered so
-/// and settled, whatever held it gone. Each turn ends
-/// [`TurnOutcome::Stopped`], in its record too, set before its calls
-/// settle, so a call's owner sees it stopped them. The conversations are
-/// saved and written to the log at once, in one flush, so a log that ends
-/// mid-turn means a crash, a restart or a log that stopped (shown once, as
-/// every log failure is); a stop never waits on the log.
+/// reply had sent is kept as the model's message, aborted, so the model
+/// reads its text as no answer, and the user's request is halted as
+/// stopped, unless its call was superseded; every tool call of the last
+/// reply gets a result, real, its [`IfStopped`] or what
+/// [`not_finished`](feedback::not_finished) says, and every call of the
+/// turn that has not settled is answered so and settled, whatever held it
+/// gone. Each turn ends [`TurnOutcome::Stopped`], in its record too, set
+/// before its calls settle, so a call's owner sees it stopped them; the
+/// record names the last entry and the calls the stop answered. The
+/// conversations are saved and written to the log at once, in one flush,
+/// so a log that ends mid-turn means a crash, a restart or a log that
+/// stopped (shown once, as every log failure is); a stop never waits on
+/// the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     spawned: Query<&Spawned>,
@@ -534,15 +541,31 @@ pub(crate) fn on_stop_turn(
         }
         let reply = reply
             .zip(calls)
-            .map(|(reply, calls)| reply_calls(reply, calls, &replies));
+            .map(|(reply, calls)| reply_calls(reply, calls, &replies))
+            .unwrap_or_default();
+        let answered = reply
+            .iter()
+            .filter(|call| call.outcome.is_none())
+            .map(|call| call.request.call.id.clone())
+            .collect();
         let stopped_call =
             |call: &ReplyCallItem| Some(not_finished(&why, call.started, call.footprint));
-        if let Some(results) = reply_results(reply.unwrap_or_default(), stopped_call) {
+        if let Some(results) = reply_results(reply, stopped_call) {
             commit_results(&mut conversation, results);
         }
         conversation.halt(Halt::Stopped);
+        // The stop is drawn under the turn's last entry; a turn that has
+        // none, stopped before it added or answered anything, has no place.
+        let start = conversation.turns().next_back();
+        let start = start.map(|(_, record)| conversation.start_of(record.start));
+        let last = conversation.entries().next_back();
+        let at = last
+            .filter(|last| start.is_some_and(|start| last.index >= start))
+            .map(|last| last.id);
         conversation.end_turn(TurnEnd::Stopped {
             why: reason.clone(),
+            at,
+            calls: answered,
         });
         let conversation = conversation.bypass_change_detection();
         committed.write_batch(save_conversation(&log, agent, id, conversation));
@@ -1298,6 +1321,7 @@ fn commit_reply(
         if let Some(through) = through.filter(|_| response.usage.context_tokens().is_some()) {
             let usage = response.usage;
             *answered.last = LastUsage(Some(Anchor { usage, through }));
+            commands.entity(agent).remove::<ContextStale>();
         }
     }
     if !tool_calls.is_empty() {

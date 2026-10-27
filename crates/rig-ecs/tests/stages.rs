@@ -55,7 +55,7 @@ use rig_core::effect::{
     Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
 };
 use rig_core::error::ErrorKind;
-use rig_core::message::{Message, StopReason, ToolFunction, ToolName};
+use rig_core::message::{CallId, Message, StopReason, ToolFunction, ToolName};
 use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
@@ -3161,7 +3161,15 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
             .turns()
             .last()
             .and_then(|(_, record)| record.end);
-        assert_eq!(ended, Some(TurnEnd::Stopped { why: None }));
+        // The record ends at the kept text; the held call was no call of
+        // the reply, so the stop answered none.
+        let at = conversation.entries().next_back().map(|entry| entry.id);
+        let stopped = TurnEnd::Stopped {
+            why: None,
+            at,
+            calls: Vec::new(),
+        };
+        assert_eq!(ended, Some(stopped));
         conversation.push(Message::user("never mind"));
         let note = conversation.entries().rev().nth(1);
         assert!(note.is_some_and(|entry| entry.is_stop_marker()));
@@ -3427,7 +3435,8 @@ impl Tool for Peek {
 
 /// A stopped call that may have changed something, a stopped one that
 /// only read, and one that never started each read as rig-core's
-/// `not_finished` says.
+/// `not_finished` says, beside a call that finished first. The turn's
+/// record names the calls the stop answered, not the finished one.
 #[test]
 fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something() {
     let mut app = app();
@@ -3435,10 +3444,12 @@ fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something(
     let footprint = |touches| ToolOptions {
         footprint: Some(touches),
     };
-    app.add_tool_with(Stall, footprint(Touches::Writes(paths("/work/b"))))
+    app.add_tool_with(Sum, footprint(Touches::Reads(paths("/work/c"))))
+        .add_tool_with(Stall, footprint(Touches::Writes(paths("/work/b"))))
         .add_tool_with(Peek, footprint(Touches::Reads(paths("/work/a"))));
-    // `touch` may change anything, so it waits behind both.
+    // `touch` may change anything, so it waits behind the others.
     let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::tool_call("a1", "add", serde_json::json!({"a": 1, "b": 2})),
         MockStreamEvent::tool_call("s1", "stall", serde_json::json!({})),
         MockStreamEvent::tool_call("p1", "peek", serde_json::json!({})),
         MockStreamEvent::tool_call("t1", "touch", serde_json::json!({})),
@@ -3446,9 +3457,12 @@ fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something(
     ]]);
     let agent = agent_on(&mut app, &model);
     let running = |world: &mut World| {
-        ["s1", "p1"].iter().all(|id| {
-            call_named(world, id).is_some_and(|call| world.get::<Started>(call).is_some())
-        })
+        let added =
+            call_named(world, "a1").is_some_and(|call| world.get::<Outcome>(call).is_some());
+        added
+            && ["s1", "p1"].iter().all(|id| {
+                call_named(world, id).is_some_and(|call| world.get::<Started>(call).is_some())
+            })
     };
     assert!(run_until(&mut app, running), "{:?}", notices(&app));
     app.world_mut().trigger(StopTurn::new(agent));
@@ -3456,16 +3470,38 @@ fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something(
     let said = conversation(&app, agent);
     let results = results_at(&said, said.len().saturating_sub(1));
     let expected = [
-        "Stopped: the user stopped the turn. It may have partly run; check before running it again.",
-        "Stopped: the user stopped the turn. It only read; run it again if you still need it.",
-        "Not run: the user stopped the turn.",
+        (false, "3"),
+        (
+            true,
+            "Stopped: the user stopped the turn. It may have partly run; check before running it again.",
+        ),
+        (
+            true,
+            "Stopped: the user stopped the turn. It only read; run it again if you still need it.",
+        ),
+        (true, "Not run: the user stopped the turn."),
     ];
     let read: Vec<bool> = results
         .iter()
         .zip(expected)
-        .map(|((error, result), text)| *error && result.contains(text))
+        .map(|((error, result), (failed, text))| *error == failed && result.contains(text))
         .collect();
-    assert_eq!(read, [true, true, true], "{results:?}");
+    assert_eq!(read, [true, true, true, true], "{results:?}");
+    let ended = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| {
+            let (_, record) = conversation.turns().next_back()?;
+            match record.end? {
+                TurnEnd::Stopped { at, calls, .. } => Some((
+                    at == conversation.entries().next_back().map(|entry| entry.id),
+                    calls,
+                )),
+                _ => None,
+            }
+        });
+    let calls = ["s1", "p1", "t1"].map(CallId::from_wire).to_vec();
+    assert_eq!(ended, Some((true, calls)));
 }
 
 /// Stopping an idle agent's turn stops the running turns of the agents

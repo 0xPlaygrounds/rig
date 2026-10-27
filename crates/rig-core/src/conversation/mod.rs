@@ -297,6 +297,12 @@ impl Entry {
         }
     }
 
+    /// Whether it is the [`STOPPED`] note, as
+    /// [`EntryRef::is_stop_marker`].
+    pub fn is_stop_marker(&self) -> bool {
+        is_stop_marker(&self.message, self.author.as_ref())
+    }
+
     /// This entry, written by `author`.
     #[must_use]
     pub fn by(self, author: Author) -> Self {
@@ -377,19 +383,23 @@ impl EntryRef<'_> {
     /// Whether it is the [`STOPPED`] note rig puts between a request the
     /// user stopped and what came next.
     pub fn is_stop_marker(&self) -> bool {
-        let by_rig = self
-            .author
-            .is_some_and(|author| author.kind == AuthorKind::Rig);
-        by_rig
-            && matches!(self.message, Message::User { content }
-                if matches!(content.as_slice(), [UserContent::Text(text)] if text.text == STOPPED))
+        is_stop_marker(self.message, self.author)
     }
+}
+
+/// Whether `message` by `author` is the [`STOPPED`] note.
+fn is_stop_marker(message: &Message, author: Option<&Author>) -> bool {
+    let by_rig = author.is_some_and(|author| author.kind == AuthorKind::Rig);
+    by_rig
+        && matches!(message, Message::User { content }
+            if matches!(content.as_slice(), [UserContent::Text(text)] if text.text == STOPPED))
 }
 
 /// The text of the entry that goes between a request the user stopped and
 /// the next entry, so the model does not carry the request out. rig pushes
 /// it as its own entry, by [`Author::rig`].
-pub const STOPPED: &str = "[The request above was stopped by the user before it was answered. \
+pub const STOPPED: &str = "[The user stopped the request above before it was fully answered; \
+                           any reply to it above was cut off there. \
                            Do not carry it out unless asked again.]";
 
 /// Why the user's last message is left without an answer, so a restore
@@ -626,7 +636,7 @@ impl Conversation {
 
     /// Whether the model owes an answer: the last message a model reads is
     /// the user's, and it was not halted. A failed or stopped reply after it
-    /// is never read ([`StopReason::is_failure`]), so the answer is still
+    /// is no answer ([`StopReason::is_failure`]), so the answer is still
     /// owed.
     pub fn awaits_model(&self) -> bool {
         let read = self.messages.iter().rev().map(Arc::as_ref).find(|message| {

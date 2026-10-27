@@ -57,11 +57,12 @@ use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{Command, SystemParam};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{self, CompletionRequest, tokens_label};
-use rig_core::conversation::Entry;
+use rig_core::conversation::{Entry, TurnEnd};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_ecs::turn::RETRY_POLICY;
+use rig_harness::AppKeepsExt;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::rig_tools::workspace::Stat;
 use rig_harness::services::{ProjectRoot, WorkDir};
@@ -90,7 +91,8 @@ pub struct CompactionPlugin;
 
 impl Plugin for CompactionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_setting::<CompactionDefault>("compaction")
+        app.keeps_saved::<ContextStale>()
+            .add_setting::<CompactionDefault>("compaction")
             .init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_command(
@@ -357,12 +359,17 @@ pub fn plan(
     let Some(SummaryPlan {
         keep_from,
         state,
-        request,
+        mut request,
         ..
     }) = planned.map_err(|why| why.to_string())?
     else {
         return Ok(None);
     };
+    if let Some(hint) = kept_reply(conversation, keep_from) {
+        request
+            .chat_history
+            .push(completion::Message::user(hint).into());
+    }
     let summarizing = Summarizing {
         reason,
         keep_from,
@@ -370,6 +377,50 @@ pub fn plan(
         summary: None,
     };
     Ok(Some((summarizing, request)))
+}
+
+/// What the summarizer is told when the kept part begins with the model's
+/// reply to the last summarized request: whether that request was
+/// answered, stopped by the user, or is still being worked on. `None` when
+/// the kept part begins with anything but a reply. The turn that says so is
+/// the one whose record spans the kept reply: its start at or before it,
+/// its answer or the user's stop at or after it.
+fn kept_reply(
+    conversation: &rig_core::conversation::Conversation,
+    keep_from: Option<MessageId>,
+) -> Option<&'static str> {
+    let kept = conversation.index_of(keep_from?)?;
+    let reply = conversation.messages().get(kept)?;
+    if !matches!(&**reply, completion::Message::Assistant(_)) {
+        return None;
+    }
+    let spans = |start: MessageId, end: MessageId| {
+        conversation.start_of(start) <= kept
+            && conversation.index_of(end).is_some_and(|end| end >= kept)
+    };
+    let ended = |answered: bool| {
+        conversation.turns().any(|(_, turn)| match turn.end {
+            Some(TurnEnd::Answered { answer: Some(end) }) => answered && spans(turn.start, end),
+            Some(TurnEnd::Stopped {
+                why: None,
+                at: Some(end),
+                ..
+            }) => !answered && spans(turn.start, end),
+            _ => false,
+        })
+    };
+    Some(if ended(true) {
+        "The conversation to summarize stops just before the model's answer to its last request; \
+         that answer is kept after the summary, so the request is answered: do not list it as \
+         pending."
+    } else if ended(false) {
+        "The conversation to summarize stops partway through the model's reply to its last \
+         request, and the user stopped that reply: do not list the request as pending or as a \
+         next step."
+    } else {
+        "The conversation to summarize stops partway through the model's reply to its last \
+         request; the reply continues in the messages kept after the summary."
+    })
 }
 
 /// What the summary for `reason` should keep above all; may be empty.
@@ -419,7 +470,7 @@ fn ask_at(
 #[derive(Clone, Copy)]
 enum Asking<'a> {
     /// A summary, with this focus.
-    Summary(&'a str),
+    Summary(&'a str, Option<&'a str>),
     /// Notes on the tool outputs about to be cleared.
     Notes,
 }
@@ -435,7 +486,14 @@ fn ask_for(
     measure: Measure,
 ) -> Option<bool> {
     let ask = |tokens| match asking {
-        Asking::Summary(focus) => summarizer.instruction(focus, tokens),
+        Asking::Summary(focus, hint) => {
+            let mut instruction = summarizer.instruction(focus, tokens);
+            if let Some(hint) = hint {
+                instruction.push_str("\n\n");
+                instruction.push_str(hint);
+            }
+            instruction
+        }
         Asking::Notes => summarizer.notes_instruction(tokens),
     };
     let most = summarizer.max_tokens(measure.spec);
@@ -511,7 +569,10 @@ fn plan_in_place(
     let mut request = held.clone();
     let ask = (
         &policy.summarizer,
-        Asking::Summary(focus(&summarizing.reason)),
+        Asking::Summary(
+            focus(&summarizing.reason),
+            kept_reply(conversation, summarizing.keep_from),
+        ),
     );
     let upto = Upto::Before(summarizing.keep_from);
     if ask_for(&mut request, upto, ask, measure) != Some(true) {
@@ -1005,7 +1066,11 @@ fn compact_near_the_window(
                     None => {}
                 }
             }
+            let revision = compacting.conversation.revision();
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
+            if compacting.conversation.revision() != revision {
+                commands.entity(agent).try_insert(ContextStale {});
+            }
             // The request's copy too, as cleared by compaction.
             match &mut model.history {
                 Some(history) => {
@@ -1114,7 +1179,11 @@ fn recover_from_overflow(
             continue;
         }
         if clears {
+            let revision = compacting.conversation.revision();
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
+            if compacting.conversation.revision() != revision {
+                commands.entity(agent).try_insert(ContextStale {});
+            }
             let then = " and sending it again";
             notices.write(cleared_notice(
                 agent,
@@ -1279,7 +1348,10 @@ fn ask_in_place(
         let policy = &default.0;
         let ask = (
             &policy.summarizer,
-            Asking::Summary(focus(&summarizing.reason)),
+            Asking::Summary(
+                focus(&summarizing.reason),
+                kept_reply(conversation, summarizing.keep_from),
+            ),
         );
         let upto = Upto::Before(summarizing.keep_from);
         match ask_for(&mut model, upto, ask, measured) {
@@ -1379,7 +1451,8 @@ fn taken(outcome: &Outcome, read: Option<&String>) -> Result<String, NotTaken> {
 }
 
 /// Takes a settled summary: it replaces the summarized messages in the
-/// conversation as an entry of its own, a splice its log records. A failed
+/// conversation as an entry of its own, a splice its log records, and the
+/// terminal view keeps drawing them above it. A failed
 /// summary, one a reviewer cancelled, one whose turn was stopped or failed
 /// first, even once answered, or one whose kept message is gone, replaces
 /// nothing, and is never asked again; a failed one that held a call clears
@@ -1408,6 +1481,7 @@ fn take_summary(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
+    let revision = conversation.revision();
     let end = match summarizing.keep_from {
         None => Some(conversation.messages().len()),
         Some(kept) => conversation.index_of(kept),
@@ -1429,7 +1503,15 @@ fn take_summary(
             summary,
             ..summarizing.state.clone()
         };
+        #[cfg(feature = "tui")]
+        let before = tui::Before::of(&conversation, end);
         match apply_summary(&mut conversation, summarizing.keep_from, &state) {
+            #[cfg(feature = "tui")]
+            Some(spliced) => {
+                before.keep(&mut commands, agent, &spliced);
+                Ok((older, kept))
+            }
+            #[cfg(not(feature = "tui"))]
             Some(_) => Ok((older, kept)),
             None => Err(failed("the summary was empty")),
         }
@@ -1458,6 +1540,9 @@ fn take_summary(
             (Recovering::NotSummarized, plan.is_some())
         }
     };
+    if conversation.revision() != revision {
+        commands.entity(agent).try_insert(ContextStale {});
+    }
     match hold {
         // Built again unchanged, the refused call would be refused again:
         // it fails as it is.
@@ -1498,6 +1583,7 @@ fn take_notes(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
+    let revision = conversation.revision();
     let (by, plan) = (summary_author(), &noting.plan);
     let notes = match ended.contains(turn) {
         true => Err(NotTaken::Cancelled),
@@ -1521,6 +1607,9 @@ fn take_notes(
             Recovering::Cleared
         }
     };
+    if conversation.revision() != revision {
+        commands.entity(agent).try_insert(ContextStale {});
+    }
     if let Some(&HoldOf(call)) = hold {
         let parent = held.get(call).ok().and_then(|effect| effect.parent);
         supersede(&mut commands, (turn, agent, call), parent, step);
@@ -1540,6 +1629,7 @@ fn on_uncompact(
     uncompact: On<Uncompact>,
     mut agents: Query<(&AgentId, &mut Conversation, Has<ActiveTurn>)>,
     store: Option<Res<SessionStore>>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = uncompact.entity;
@@ -1557,6 +1647,7 @@ fn on_uncompact(
     };
     match undo_summary(&mut conversation, &*store.0, &id.0, summary_author()) {
         Ok(undone) => {
+            commands.entity(agent).try_insert(ContextStale {});
             let left = estimate_tokens(conversation.messages());
             let count = undone.restored.len();
             let text = format!(

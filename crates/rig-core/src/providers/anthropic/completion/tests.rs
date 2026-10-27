@@ -1796,6 +1796,52 @@ fn thinking_without_a_binding_replays_another_contexts_turn_as_text() {
     );
 }
 
+/// A stopped reply goes back to the same model as the text it had sent: its
+/// signed thinking, its call and the call's result stay out.
+#[test]
+fn a_stopped_reply_goes_back_as_its_text() {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_5_5);
+    let made = hello_request().tools(vec![generic_tool("add")]);
+    let mut turn = folded_turn(
+        &wire,
+        &made,
+        json!({"model": CLAUDE_SONNET_5_5, "stop_reason": "tool_use", "content": [
+            {"type": "thinking", "thinking": "plan", "signature": "sig"},
+            {"type": "text", "text": "half an essay"},
+            {"type": "tool_use", "id": "toolu_1", "name": "add", "input": {"x": 1}}]}),
+    );
+    turn.stop = Some(message::StopReason::Aborted("stopped".into()));
+    let history = vec![
+        message::Message::user("go"),
+        message::Message::Assistant(turn),
+        message::Message::tool_result(
+            message::CallId::from_wire("toolu_1"),
+            message::ToolName::new("add").expect("a name"),
+            "not finished",
+        ),
+        message::Message::user("next"),
+    ];
+    let mut request = completion_request_with_history(history, None);
+    request.tools = vec![generic_tool("add").into()];
+    let value = request_body(Params {
+        model: CLAUDE_SONNET_5_5,
+        request,
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .expect("encodes");
+    assert_eq!(
+        value.get("messages"),
+        Some(&json!([
+            {"role": "user", "content": [{"type": "text", "text": "go"}]},
+            {"role": "assistant", "content": [{"type": "text", "text": "half an essay"}]},
+            {"role": "user", "content": [{"type": "text", "text": "next"}]},
+        ])),
+        "{value}"
+    );
+}
+
 /// What Anthropic would reject in `body`: an empty message or blank text,
 /// a system message outside a slot (after a user turn, before an assistant
 /// turn or the end), and a call its next message does not answer first.

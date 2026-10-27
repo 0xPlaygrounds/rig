@@ -36,12 +36,12 @@ use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
 use super::theme::Theme;
 use super::transcript::{
-    CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownAside, StreamingCalls,
-    Transcript, live_call, notice_lines, on_band, plain_lines,
+    CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, Replaced, ShownAside, ShownEntries,
+    Stops, StreamingCalls, Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
     DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
-    TranscriptSlot, TranscriptView, TuiView,
+    TranscriptSlot, TranscriptView, TuiView, message_items,
 };
 use super::wrap::wrap_all;
 use rig_core::conversation;
@@ -82,6 +82,7 @@ pub(crate) fn needs_redraw(
         (),
         Or<(
             Changed<Conversation>,
+            Changed<Replaced>,
             Changed<ActiveTurn>,
             Changed<Calls>,
             Changed<StatusItems>,
@@ -344,7 +345,10 @@ pub(crate) struct ShownConversation<'a> {
     /// which shows no notices.
     pub(crate) id: Option<&'a AgentId>,
     pub(crate) conversation: &'a conversation::Conversation,
-    /// Whether its conversation changed since the last frame.
+    /// What entries of it stand for, drawn above them.
+    pub(crate) replaced: Option<&'a Replaced>,
+    /// Whether its conversation, or what its entries stand for, changed
+    /// since the last frame.
     pub(crate) changed: bool,
     /// The messages it accepted and has not sent yet, in the order they
     /// came.
@@ -371,6 +375,7 @@ impl<'a> ShownConversation<'a> {
             entity,
             id: None,
             conversation,
+            replaced: None,
             changed: true,
             inbox: Vec::new(),
             calls: BTreeMap::new(),
@@ -520,7 +525,15 @@ pub(crate) fn lay_out_rendered(
 
 #[derive(SystemParam)]
 pub(crate) struct LayoutSources<'w, 's> {
-    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
+    agents: Query<
+        'w,
+        's,
+        (
+            &'static AgentId,
+            &'static Conversation,
+            Option<&'static Replaced>,
+        ),
+    >,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
     /// The replies streaming in that nothing superseded, such as a race's
@@ -545,7 +558,7 @@ impl LayoutSources<'_, '_> {
     /// The agent `entity` as its transcript draws it, its conversation
     /// `changed` since the last frame or not; `None` when it is no agent.
     pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownConversation<'_>> {
-        let (id, conversation) = self.agents.get(entity).ok()?;
+        let (id, conversation, replaced) = self.agents.get(entity).ok()?;
         let turn = self.active.get(entity).ok();
         let calls = turn.and_then(|turn| self.turns.get(turn.turn()).ok());
         // The newest of the turn's replies streaming in that nothing
@@ -568,6 +581,7 @@ impl LayoutSources<'_, '_> {
             entity,
             id: Some(id),
             conversation,
+            replaced,
             changed,
             inbox: inbox.into_iter().map(|(_, message)| message).collect(),
             calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
@@ -600,7 +614,7 @@ impl LayoutSources<'_, '_> {
             let child = live_call(requests, (name, outcome), state);
             live.add(effect.parent, effect.id(), child, None);
             let id = agent.and_then(|agent| self.agents.get(agent).ok());
-            if let (Some(request), Some((id, _))) = (requests.0, id) {
+            if let (Some(request), Some((id, ..))) = (requests.0, id) {
                 live.tool_call(effect.id(), &id.0, request.call.id.clone());
             }
         }
@@ -625,7 +639,8 @@ impl LayoutSources<'_, '_> {
 
 /// Brings `transcript` up to date with the shown agent and returns its
 /// parts at `width`: each message, with the notices written inside it,
-/// after the notes and notices written before it; then those after the
+/// after the notes and notices written before it, and after the archived
+/// entries it stands for and a line saying how many; then those after the
 /// last message, the reply streaming in with the tool calls it streams,
 /// and the messages the agent accepted and has not sent yet. Without an
 /// agent, the notices about every agent.
@@ -648,11 +663,14 @@ pub(crate) fn lay_out_transcript(
         parts.push(Part::rows(&extra, &marks, wrap_width));
         return parts;
     };
-    let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
+    let conversation = shown.conversation;
+    let entries = ShownEntries::new(conversation, shown.replaced);
+    let count = entries.len();
     // Notes and notices before the first message, after each message,
-    // and notices inside one.
+    // and notices inside one, by where it is among the entries drawn.
     let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
     let mut asides_after: Vec<Vec<&ShownAside<'_>>> = vec![Vec::new(); count + 1];
+    let stops = Stops::of(conversation, &entries);
     let mut look = Look {
         renderers: sources.renderers,
         calls: &shown.calls,
@@ -662,13 +680,34 @@ pub(crate) fn lay_out_transcript(
         theme: sources.theme,
         children: &shown.children,
         marks: &view.marks,
+        stops: &stops,
     };
     let notices = shown.id.map(|id| (id, sources.notices));
     let notices = notices
         .into_iter()
         .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
     for (id, at, notice) in notices {
-        let before = match notice.slot(id, conversation) {
+        let Some(slot) = notice.slot(id, conversation) else {
+            continue;
+        };
+        // Where it goes among the entries drawn: a notice about an archived
+        // entry keeps its place there.
+        let archived = notice.message_in(id).and_then(|(message, items)| {
+            let shown = entries.of_archived(message)?;
+            let count = entries.get(shown).map(|entry| message_items(entry.message));
+            Some(match count.is_some_and(|count| count > items) {
+                true => TranscriptSlot::Inside(shown, items),
+                false => TranscriptSlot::After(shown),
+            })
+        });
+        let shown = archived.or_else(|| match slot {
+            TranscriptSlot::Top => Some(TranscriptSlot::Top),
+            TranscriptSlot::After(index) => entries.of_live(index).map(TranscriptSlot::After),
+            TranscriptSlot::Inside(index, item) => entries
+                .of_live(index)
+                .map(|index| TranscriptSlot::Inside(index, item)),
+        });
+        let before = match shown {
             None => continue,
             Some(TranscriptSlot::Top) => 0,
             Some(TranscriptSlot::After(index)) => index + 1,
@@ -684,20 +723,27 @@ pub(crate) fn lay_out_transcript(
     }
     let drawn = shown.asides.iter();
     for aside in drawn {
+        let archived = aside
+            .aside
+            .after
+            .and_then(|after| entries.of_archived(after));
         let before = match TranscriptSlot::of_aside(aside.aside, conversation) {
-            TranscriptSlot::Top => 0,
-            TranscriptSlot::After(index) => index + 1,
+            _ if archived.is_some() => archived.map(|at| at + 1),
+            TranscriptSlot::Top => Some(0),
+            TranscriptSlot::After(index) => entries.of_live(index).map(|at| at + 1),
             TranscriptSlot::Inside(index, item) => {
-                let inside = look.inside.entry(index).or_default();
-                inside.push((item, Inside::Aside(aside)));
+                if let Some(index) = entries.of_live(index) {
+                    let inside = look.inside.entry(index).or_default();
+                    inside.push((item, Inside::Aside(aside)));
+                }
                 continue;
             }
         };
-        if let Some(at) = asides_after.get_mut(before) {
+        if let Some(at) = before.and_then(|before| asides_after.get_mut(before)) {
             at.push(aside);
         }
     }
-    transcript.update(shown.entity, conversation, shown.changed, &look, width);
+    transcript.update(shown.entity, &entries, shown.changed, &look, width);
     sources.renderers.at(Place::default());
     let mut after = after.into_iter().zip(asides_after);
     for index in 0..=count {
@@ -754,12 +800,26 @@ pub(crate) fn lay_out_transcript(
             parts.push(Part::rows(&extra, &marks, wrap_width));
             break;
         }
+        let stands_for = entries.get(index).map_or(0, |entry| entry.stands_for);
+        if stands_for > 0 {
+            extra.extend([Line::default(), compacted_line(stands_for)]);
+        }
         if !extra.is_empty() {
             parts.push(Part::rows(&extra, &marks, wrap_width));
         }
         parts.push(Part::Message(index));
     }
     parts
+}
+
+/// The dim line between the `count` archived entries an entry stands for
+/// and that entry.
+fn compacted_line(count: usize) -> Line<'static> {
+    let text = match count {
+        1 => "── 1 message above was compacted ──".to_owned(),
+        count => format!("── {count} messages above were compacted ──"),
+    };
+    Line::styled(text, Style::new().dim())
 }
 
 /// `rows`, the first being row `first` of the transcript, with the rows of

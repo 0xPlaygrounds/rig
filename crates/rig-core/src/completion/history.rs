@@ -69,8 +69,8 @@ use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
 use crate::conversation::pairing::is_result;
 use crate::message::{
     Api, AssistantContent, AssistantMessage, CallId, DocumentData, DocumentMediaType,
-    DocumentSourceKind, ImageMediaType, Message, Origin, Text, ToolResult, ToolResultContent,
-    UserContent,
+    DocumentSourceKind, ImageMediaType, Message, Origin, StopReason, Text, ToolResult,
+    ToolResultContent, UserContent,
 };
 use crate::wasm_compat::WasmCompatSync;
 
@@ -485,7 +485,9 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   to a user message after the results when only user images are read,
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
-///   that ended in an error or was aborted, with the results answering it.
+///   that ended in an error, with the results answering it. An aborted turn
+///   is read as the text it had sent, as a turn from no known model: its
+///   reasoning, its calls and the results answering them are dropped.
 /// - Calls and results pair by [`crate::conversation::pairing::pair`]: an
 ///   unanswered call gets a
 ///   [`NO_RESULT_PROVIDED`](crate::conversation::pairing::NO_RESULT_PROVIDED)
@@ -685,6 +687,9 @@ pub(crate) fn adapt_for(
                         .into_iter()
                         .map(Some),
                 );
+            }
+            Message::Assistant(turn) if matches!(turn.stop, Some(StopReason::Aborted(_))) => {
+                shaped.push(stopped(turn));
             }
             // A failed turn is skipped, with the results answering it.
             Message::Assistant(turn)
@@ -1336,6 +1341,21 @@ fn assistant<'a>(
         origin: turn.origin.clone(),
         stop: turn.stop.clone(),
     })))
+}
+
+/// The stopped turn `turn` as the text it had sent, shaped as a reply from
+/// no known model: canonical, blank text dropped, nothing when no text is
+/// left. Its reasoning and calls are dropped, so the results answering them
+/// go too.
+fn stopped(turn: &AssistantMessage) -> Option<Arc<Message>> {
+    let content: Vec<AssistantContent> = turn
+        .content
+        .iter()
+        .filter(|block| matches!(block, AssistantContent::Text(_)))
+        .map(AssistantContent::canonical)
+        .filter(|block| !block.is_blank())
+        .collect();
+    (!content.is_empty()).then(|| Arc::new(Message::Assistant(AssistantMessage::new(content))))
 }
 
 /// The hosted uses and results that pair, as (message, block) positions in

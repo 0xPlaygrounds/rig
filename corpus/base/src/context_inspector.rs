@@ -284,7 +284,17 @@ fn alias(
 /// `/why [full] [agent]`.
 fn why(
     In(args): In<CommandArgs>,
-    agents: Query<(Entity, &Name, &AgentId, Option<&LastRequest>, &LastUsage), With<Agent>>,
+    agents: Query<
+        (
+            Entity,
+            &Name,
+            &AgentId,
+            Option<&LastRequest>,
+            &LastUsage,
+            Has<ContextStale>,
+        ),
+        With<Agent>,
+    >,
     tools: Query<(&ToolDef, Option<&ProvidedBy>)>,
     names: Query<&Name>,
     session: Option<Res<SessionPaths>>,
@@ -302,7 +312,7 @@ fn why(
             name.as_str() == wanted || id.0 == wanted
         }
     });
-    let Some((_, name, id, last, usage)) = found else {
+    let Some((_, name, id, last, usage, stale)) = found else {
         notices.write(Notice::error(args.agent, format!("No agent `{wanted}`.")));
         return;
     };
@@ -328,7 +338,12 @@ fn why(
             (def.0.name.as_str().to_owned(), plugin)
         })
         .collect();
-    let text = report(name.as_str(), last, &providers, usage.context());
+    let text = report(
+        name.as_str(),
+        last,
+        &providers,
+        usage.context().filter(|_| !stale),
+    );
     notices.write(Notice::info(args.agent, text));
 }
 
