@@ -28,7 +28,7 @@ fn fingerprints_survive_a_serde_round_trip() {
 fn native_calls_survive_repeated_float_storage() {
     let floats = [
         0.1,
-        2.718_281_828_459_045,
+        std::f64::consts::E,
         51.248_178_375_505_404,
         -93.311_370_376_880_33,
         2.003_039_774_426_776_2e-253,
