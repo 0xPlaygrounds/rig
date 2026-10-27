@@ -88,6 +88,7 @@ async fn websocket_serializes_input_and_output_cap_last() -> anyhow::Result<()> 
                 ("zzz_order_sentinel".to_owned(), json!("stable")),
                 ("stream".to_owned(), json!(true)),
                 ("background".to_owned(), json!(true)),
+                ("generate".to_owned(), json!(true)),
             ]);
             if let Some(cap) = cap {
                 request.max_tokens = Some(50);
@@ -112,6 +113,11 @@ async fn websocket_serializes_input_and_output_cap_last() -> anyhow::Result<()> 
             anyhow::ensure!(!text.contains("\"stream\":"), "{text}");
             anyhow::ensure!(!text.contains("\"background\":"), "{text}");
             let parsed: serde_json::Value = serde_json::from_str(text)?;
+            anyhow::ensure!(
+                parsed.get("generate") == Some(&json!(generate.unwrap_or(true))),
+                "unexpected generate precedence: {text}"
+            );
+            anyhow::ensure!(text.matches("\"generate\":").count() == 1, "{text}");
             let input = serde_json::to_string(parsed.get("input").context("input value")?)?;
             let expected = match cap {
                 Some(cap) => format!("{input},\"max_output_tokens\":{cap}}}"),
@@ -119,6 +125,29 @@ async fn websocket_serializes_input_and_output_cap_last() -> anyhow::Result<()> 
             };
             anyhow::ensure!(tail == expected, "unexpected tail: {text}");
         }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_warmup_handles_empty_and_conflicting_raw_parameters() -> anyhow::Result<()> {
+    use anyhow::Context;
+    use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketCreateOptions;
+
+    for raw in [None, Some(json!(null)), Some(json!({"generate": true}))] {
+        let script = Script::turn([]);
+        let client = test_client();
+        let mut session = session(&client, &script);
+        let mut request = CompletionRequest::new("warmup");
+        request.additional_params = raw;
+        session
+            .send_with_options(request, ResponsesWebSocketCreateOptions::warmup())
+            .await?;
+        let sent = script.sent();
+        let text = sent.first().context("warmup frame")?;
+        let parsed: serde_json::Value = serde_json::from_str(text)?;
+        anyhow::ensure!(parsed.get("generate") == Some(&json!(false)), "{text}");
+        anyhow::ensure!(text.matches("\"generate\":").count() == 1, "{text}");
     }
     Ok(())
 }

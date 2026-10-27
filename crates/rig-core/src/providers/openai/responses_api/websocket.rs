@@ -60,8 +60,6 @@ impl ResponsesWebSocketCreateOptions {
 struct ResponsesWebSocketClientEvent {
     #[serde(rename = "type")]
     kind: ResponsesWebSocketClientEventKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    generate: Option<bool>,
     #[serde(flatten)]
     request: FinalBody,
 }
@@ -375,6 +373,17 @@ impl ResponsesWebSocketSession {
         // session's chain, so the history is shaped as a stored
         // continuation's.
         let mut completion_request = completion_request;
+        if let Some(generate) = options.generate {
+            let params = completion_request
+                .additional_params
+                .get_or_insert_with(|| Value::Object(Map::new()));
+            if params.is_null() {
+                *params = Value::Object(Map::new());
+            }
+            if let Some(params) = params.as_object_mut() {
+                params.insert("generate".to_owned(), Value::Bool(generate));
+            }
+        }
         if let Some(previous) = &self.previous_response_id {
             let params = completion_request
                 .additional_params
@@ -401,7 +410,6 @@ impl ResponsesWebSocketSession {
         let payload = ResponsesWebSocketClientEvent {
             kind: ResponsesWebSocketClientEventKind::ResponseCreate,
             request: self.prepare_request(completion_request)?,
-            generate: options.generate,
         };
 
         crate::providers::internal::trace_json(
