@@ -60,8 +60,9 @@ fn edit_input(app: &mut App, edit: impl FnOnce(&mut Editor)) {
     }
 }
 
-/// Only the first "a" is recorded; the draft typed survives a restart,
-/// with the cursor at its end, and Up and Down browse past it and back.
+/// Only the first "a" is recorded, and only it is browsed after a resume;
+/// the draft typed survives a restart, with the cursor at its end, and Up
+/// and Down browse past it and back.
 #[test]
 fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
     let home = scratch_home("corpus-ho-history-and-drafts");
@@ -109,6 +110,10 @@ fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
 
     let (mut app, _wakes) = start(&store, &home);
     assert_eq!(input(&app), ("half writ".to_owned(), 9));
+    // The view seeds the resumed conversation's prompts before a key,
+    // the secret too; this plugin's history takes their place.
+    rig_tui::add_view(&mut app);
+    app.world_mut().run_schedule(rig_tui::TuiKeys);
     assert_eq!(app.world().resource::<PromptHistory>().entries, ["a"]);
     browse(&mut app, true);
     assert_eq!(input(&app).0, "a");

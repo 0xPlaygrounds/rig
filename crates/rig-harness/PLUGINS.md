@@ -2390,10 +2390,14 @@ any run and inert without the view:
 - **The input.** An `Editor` holds a draft (`text()`, `set`, `insert`,
   `take`, …), the main one's read as `MainInput`; the keys type into a
   panel's own while it has the `KeyFocus`. `PromptHistory` is the prompts
-  Up and Down browse, kept in `PluginData.user`: the view appends each one
-  sent (`Sent`, which a plugin writes too) in `HistorySystems::Record` and
-  saves in `HistorySystems::Save`; a system between the two filters what
-  is kept.
+  Up and Down browse, each text once, kept in `PluginData.project`: the
+  view puts each one sent (`Sent`, which a plugin writes too) as the
+  newest in `HistorySystems::Record` and saves in `HistorySystems::Save`;
+  a system between the two filters what is kept. After another agent is
+  shown, `HistorySystems::Seed` puts its conversation's typed prompts as
+  the newest, unsaved, in `TuiKeys` before the next key; a filter that
+  should also keep them from Up runs there too, after it and before
+  `InputSystems::Dispatch`.
 - **The terminal.** `TerminalFocus` says whether it has the user's focus,
   a `TerminalWrite(bytes)` message goes to the terminal between frames,
   `CopyToClipboard(text)` copies (OSC 52 and this machine's clipboard),

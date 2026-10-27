@@ -52,8 +52,9 @@ pub struct Editor {
     text: String,
     /// A byte offset in `text`, on a character boundary.
     cursor: usize,
-    /// The history entry shown, while browsing it.
-    browsing: Option<usize>,
+    /// The history entry shown, while browsing it: its index, and its
+    /// text, which finds it again when the entries move.
+    browsing: Option<(usize, String)>,
     /// What was typed before browsing started.
     draft: String,
 }
@@ -356,31 +357,38 @@ impl Editor {
     }
 
     fn history_back(&mut self, history: &[String]) {
-        let index = match self.browsing {
-            Some(0) => return,
-            Some(index) => index.min(history.len()).saturating_sub(1),
+        let index = match &self.browsing {
+            Some(shown) => match place(shown, history) {
+                0 => return,
+                index => index - 1,
+            },
             None if history.is_empty() => return,
             None => {
                 self.draft = self.text.clone();
                 history.len() - 1
             }
         };
-        self.browsing = Some(index);
-        let text = history.get(index).cloned().unwrap_or_default();
-        self.show(text);
+        self.browse(history, index);
     }
 
     fn history_forward(&mut self, history: &[String]) {
-        let Some(index) = self.browsing else {
+        let Some(shown) = &self.browsing else {
             return;
         };
-        let text = if index + 1 < history.len() {
-            self.browsing = Some(index + 1);
-            history.get(index + 1).cloned().unwrap_or_default()
+        let index = place(shown, history) + 1;
+        if index < history.len() {
+            self.browse(history, index);
         } else {
             self.browsing = None;
-            std::mem::take(&mut self.draft)
-        };
+            let draft = std::mem::take(&mut self.draft);
+            self.show(draft);
+        }
+    }
+
+    /// Shows the history entry at `index`.
+    fn browse(&mut self, history: &[String], index: usize) {
+        let text = history.get(index).cloned().unwrap_or_default();
+        self.browsing = Some((index, text.clone()));
         self.show(text);
     }
 
@@ -447,6 +455,18 @@ impl Editor {
             cursor_column,
         }
     }
+}
+
+/// Where the history entry `shown` is now: at its index while it is still
+/// there, else where its text moved, else past the newest.
+fn place((index, text): &(usize, String), history: &[String]) -> usize {
+    if history.get(*index) == Some(text) {
+        return *index;
+    }
+    history
+        .iter()
+        .rposition(|entry| entry == text)
+        .unwrap_or(history.len())
 }
 
 /// The keys of an empty editor that has them, over where its text goes:
