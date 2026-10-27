@@ -115,6 +115,32 @@ fn adjacent_float_edits_stay_stale_before_and_after_storage() {
 }
 
 #[test]
+fn float_baselines_detect_integer_precision_lost_by_a_store() {
+    fn through_f64(value: &mut serde_json::Value) {
+        use serde_json::Value;
+        match value {
+            Value::Number(number) => {
+                if let Some(float) = number.as_f64().and_then(serde_json::Number::from_f64) {
+                    *number = float;
+                }
+            }
+            Value::Array(values) => values.iter_mut().for_each(through_f64),
+            Value::Object(fields) => fields.values_mut().for_each(through_f64),
+            _ => {}
+        }
+    }
+    for (big, current) in [(12_345_678_901_234_567_u64, false), (20, true)] {
+        let block =
+            call(json!({"big": big, "scale": 0.5, "nested": [{"a/b~c": big}], "text": "i:20"}))
+                .with_native(json!({"arguments": format!(r#"{{"big":{big},"scale":0.5}}"#)}));
+        let mut stored = serde_json::to_value(&block).expect("save call");
+        through_f64(&mut stored);
+        let loaded: AssistantContent = serde_json::from_value(stored).expect("load call");
+        assert_eq!(loaded.native_item().is_some(), current, "integer {big}");
+    }
+}
+
+#[test]
 fn legacy_native_records_keep_exact_fingerprint_validation() {
     let block = call(json!({"limit": 20})).with_native(json!({"id": "fc_1"}));
     let mut stored = serde_json::to_value(&block).expect("serialize");

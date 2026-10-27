@@ -78,6 +78,68 @@ fn a_written_reply_names_its_origin_before_its_first_item() {
     );
 }
 
+#[test]
+fn restating_stored_float_calls_preserves_native_currentness() {
+    use crate::message::{AssistantContent, CallId, Origin, ToolCall, ToolFunction, ToolName};
+    use serde_json::json;
+
+    for edited in [false, true] {
+        let original = 0.100_000_000_000_000_03_f64;
+        let mut block = AssistantContent::ToolCall(ToolCall::new(
+            CallId::from_wire("call_1"),
+            ToolFunction::new(
+                ToolName::new("measure").expect("tool name"),
+                json!({"value": original}),
+            ),
+        ))
+        .with_native(json!({"id": "fc_1", "signature": "keep"}));
+        if edited && let AssistantContent::ToolCall(call) = &mut block {
+            call.function.arguments.insert(
+                "value".into(),
+                json!(f64::from_bits(original.to_bits() + 1)),
+            );
+        }
+        let block: AssistantContent =
+            serde_json::from_str(&serde_json::to_string(&block).expect("save call"))
+                .expect("load call");
+        let response = Arc::new(CompletionResponse::new(
+            vec![block.clone()],
+            crate::completion::Usage::default(),
+            Origin::new("test", "test", "test"),
+            json!({}),
+        ));
+        let items: Vec<_> = block_on(
+            Reply::Outcome(Ok(Answered::Completion(response.clone())))
+                .into_stream()
+                .collect(),
+        );
+        let ended = items
+            .iter()
+            .find_map(|item| match item.as_ref().ok()? {
+                Relayed::Item(Item::Event(StreamEvent::End { content, .. })) => Some(content),
+                _ => None,
+            })
+            .expect("ended call");
+        let done = items
+            .iter()
+            .find_map(|item| match item.as_ref().ok()? {
+                Relayed::Done(response) => Some(response),
+                _ => None,
+            })
+            .expect("final response");
+        assert_eq!(ended, &block);
+        assert_eq!(done, &response);
+        assert_eq!(ended.native_item().is_some(), !edited);
+        assert_eq!(
+            done.choice
+                .first()
+                .and_then(AssistantContent::native_item)
+                .is_some(),
+            !edited
+        );
+    }
+}
+
 /// A writer relaying a provider's reply reports its request id and document
 /// in place of a transport; an empty id is no id.
 #[test]

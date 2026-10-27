@@ -336,7 +336,7 @@ impl AssistantContent {
     }
 
     /// The provider item the block holds, and whether it is still current
-    /// (the block is what it was decoded from), for one fingerprint.
+    /// (the block is what it was decoded from).
     pub(crate) fn native(&self) -> Option<(&serde_json::Value, bool)> {
         let native = match self {
             Self::Text(text) => text.native.as_ref(),
@@ -512,7 +512,7 @@ impl ToolCall {
     fn native_is_current(&self, native: &Native) -> bool {
         !native.edited
             && match &native.baseline {
-                Some(baseline) => *baseline == self.projection(),
+                Some(baseline) => native::matches_baseline(baseline, &self.projection()),
                 None => native.fingerprint == self.fingerprint(),
             }
     }
@@ -530,7 +530,7 @@ impl ToolCall {
             .arguments
             .values()
             .any(has_float)
-            .then(|| self.projection())
+            .then(|| native::baseline(self.projection()))
     }
 
     fn projection(&self) -> serde_json::Value {

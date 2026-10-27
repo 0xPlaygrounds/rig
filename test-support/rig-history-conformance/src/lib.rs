@@ -1769,37 +1769,47 @@ pub fn h10_persistence<F: HistoryFixture>(fixture: &F) {
         }
     }
     let wire = fixture.wire(fixture.model());
-    for mode in MODES {
-        let Some(frames) = fixture.call_reply(r#"{"big":12345678901234567}"#, mode) else {
-            continue;
-        };
-        let response = decode(&wire, &CompletionRequest::new("restate"), mode, frames)
-            .unwrap_or_else(|error| panic!("{mode:?}: a call with a big integer decodes: {error}"));
-        let Some(turn) = response.message() else {
-            panic!("{mode:?}: the call is a turn");
-        };
-        let stored = serde_json::to_value(turn).expect("a turn serializes");
-        let loaded: Message = serde_json::from_value(numbers(stored, Numbers::ThroughF64))
-            .expect("a rewritten turn loads");
-        let Message::Assistant(loaded) = loaded else {
-            panic!("an assistant turn loads as one");
-        };
-        let results = loaded
-            .tool_calls()
-            .map(|call| UserContent::ToolResult(call.result(vec![ToolResultContent::text("ok")])))
-            .collect();
-        let history = vec![
-            Message::user("q"),
-            Message::Assistant(loaded),
-            Message::User { content: results },
-        ];
-        let body = sent(fixture, fixture.model(), history, mode)
-            .unwrap_or_else(|error| panic!("{mode:?}: a call a store changed encodes: {error}"));
-        let text = body.to_string();
-        assert!(
-            !text.contains("2345678901234567") && text.contains("2345678901234568"),
-            "{mode:?}: a call a store changed goes out with the value the store holds: {body}"
-        );
+    for arguments in [
+        r#"{"big":12345678901234567}"#,
+        r#"{"big":12345678901234567,"scale":0.5}"#,
+    ] {
+        for mode in MODES {
+            let Some(frames) = fixture.call_reply(arguments, mode) else {
+                continue;
+            };
+            let response = decode(&wire, &CompletionRequest::new("restate"), mode, frames)
+                .unwrap_or_else(|error| {
+                    panic!("{mode:?}: a call with a big integer decodes: {error}")
+                });
+            let Some(turn) = response.message() else {
+                panic!("{mode:?}: the call is a turn");
+            };
+            let stored = serde_json::to_value(turn).expect("a turn serializes");
+            let loaded: Message = serde_json::from_value(numbers(stored, Numbers::ThroughF64))
+                .expect("a rewritten turn loads");
+            let Message::Assistant(loaded) = loaded else {
+                panic!("an assistant turn loads as one");
+            };
+            let results = loaded
+                .tool_calls()
+                .map(|call| {
+                    UserContent::ToolResult(call.result(vec![ToolResultContent::text("ok")]))
+                })
+                .collect();
+            let history = vec![
+                Message::user("q"),
+                Message::Assistant(loaded),
+                Message::User { content: results },
+            ];
+            let body = sent(fixture, fixture.model(), history, mode).unwrap_or_else(|error| {
+                panic!("{mode:?}: a call a store changed encodes: {error}")
+            });
+            let text = body.to_string();
+            assert!(
+                !text.contains("2345678901234567") && text.contains("2345678901234568"),
+                "{mode:?}: a call a store changed goes out with the value the store holds: {body}"
+            );
+        }
     }
 }
 

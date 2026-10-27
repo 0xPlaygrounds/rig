@@ -54,13 +54,15 @@ Cargo unifies features across dependencies. `rig-cassette` with `traffic`
 and `rig-mongodb` through BSON still enable `preserve_order`. These are
 application-level serde_json choices; Rig has no forwarding feature.
 
-Native calls with float arguments store an unnormalized projection baseline
-beside their provider item. Arguments and baseline pass through the same JSON
-parser on each load, so repeated float drift does not stale an unedited item.
-Saving preserves the baseline and records edits before parsing can make adjacent
-floats equal. Calls without floats need only the existing fingerprint. Older
-fingerprint-only records keep their previous validation and can become stale
-when float parsing changes their canonical values.
+Native calls with float arguments store a projection baseline beside their
+provider item. Its floats pass through the same JSON parser as the arguments
+on each load, so repeated float drift does not stale an unedited item. Integers
+are encoded as text, with distinct markers for integers and strings, so a store
+that rounds a large integer still invalidates the item. Saving preserves the
+baseline and records edits before parsing can make adjacent floats equal. Calls
+without floats need only the existing fingerprint. Older fingerprint-only
+records keep their previous validation and can become stale when float parsing
+changes their canonical values.
 
 ## WASM target support
 

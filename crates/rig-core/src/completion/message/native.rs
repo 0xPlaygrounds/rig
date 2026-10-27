@@ -1,8 +1,8 @@
 //! Where an assistant turn came from and the provider items it was decoded
 //! from. An [`Origin`] names the wire, provider and requested model of a
 //! turn; a [`Native`] holds one provider item verbatim beside the canonical
-//! block it decoded to, with a [`Fingerprint`] of that block so an edited
-//! block stops replaying its stale item.
+//! block it decoded to. Its baseline or [`Fingerprint`] detects edits so
+//! an edited block stops replaying its stale item.
 //!
 //! ```
 //! use rig_core::message::{AssistantContent, Text};
@@ -241,9 +241,10 @@ pub struct Native {
     pub item: serde_json::Value,
     /// The fingerprint of the canonical form the item was decoded to.
     pub fingerprint: Fingerprint,
-    /// The original projection of a call containing floats, with unnormalized
-    /// numbers. It passes through the same JSON parser as the call's fields.
-    /// Other blocks and older records use fingerprint-only validation.
+    /// The original projection of a call containing floats. Floats stay
+    /// numeric; integers and strings carry text markers to preserve their type
+    /// and exact value. Other blocks and older records use fingerprint-only
+    /// validation. Construct this with [`super::AssistantContent::with_native`].
     /// Keep it unchanged when editing the call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline: Option<serde_json::Value>,
@@ -302,6 +303,63 @@ impl Native {
                 .is_some_and(|value| !value.is_empty())
         };
         self.blob_slot = slots.iter().copied().find(holds).map(Cow::Borrowed);
+    }
+}
+
+pub(super) fn baseline(value: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match value {
+        Value::Number(number) if !number.is_f64() => Value::String(format!("i:{number}")),
+        Value::String(text) => Value::String(format!("s:{text}")),
+        Value::Array(values) => Value::Array(values.into_iter().map(baseline).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .map(|(key, value)| (key, baseline(value)))
+                .collect(),
+        ),
+        value => value,
+    }
+}
+
+pub(super) fn matches_baseline(saved: &serde_json::Value, current: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match (saved, current) {
+        (Value::String(saved), Value::Number(number)) => {
+            let Some(integer) = saved.strip_prefix("i:") else {
+                return false;
+            };
+            if number.is_f64() {
+                number
+                    .as_f64()
+                    .filter(|value| value.fract() == 0.0)
+                    .is_some_and(|value| format!("{value:.0}") == integer)
+            } else {
+                number.to_string() == integer
+            }
+        }
+        (Value::String(saved), Value::String(current)) => {
+            saved.strip_prefix("s:") == Some(current.as_str())
+        }
+        (Value::Array(saved), Value::Array(current)) => {
+            saved.len() == current.len()
+                && saved
+                    .iter()
+                    .zip(current)
+                    .all(|(saved, current)| matches_baseline(saved, current))
+        }
+        (Value::Object(saved), Value::Object(current)) => {
+            saved.len() == current.len()
+                && saved.iter().all(|(key, saved)| {
+                    current
+                        .get(key)
+                        .is_some_and(|current| matches_baseline(saved, current))
+                })
+        }
+        (Value::Number(_), Value::Number(_))
+        | (Value::Bool(_), Value::Bool(_))
+        | (Value::Null, Value::Null) => saved == current,
+        _ => false,
     }
 }
 
