@@ -69,6 +69,15 @@ const READ_ONLY: i32 = 4;
 const A_DIRECTORY: i32 = 5;
 const ROOT_IS_A_FILE: i32 = 6;
 
+// Resolve the final link before copying or renaming. The sentinel preserves
+// trailing newlines in targets across shell command substitution.
+const FOLLOW_LINKS: &str = r#"n=0; while [ -L "$p" ]; do
+    [ "$n" -lt 40 ] || exit 1; n=$((n + 1));
+    l=$(readlink -- "$p" && printf '.') || exit 1;
+    l=${l%.}; l=${l%?};
+    case "$l" in /*) p=$l ;; *) p=$(dirname -- "$p")/$l ;; esac;
+done;"#;
+
 /// Another machine, reached through a transport (see the [module](self)
 /// docs). Its paths are that machine's: absolute, or under `~`, its user's
 /// home; a relative path is relative to that home, where the transport
@@ -527,7 +536,7 @@ impl Workspace for Remote {
     /// is sent back, in the same call.
     fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
         let script = format!(
-            "p={}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+            "p={}; {FOLLOW_LINKS} if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
              mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
              if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
@@ -561,7 +570,7 @@ impl Workspace for Remote {
         held: &ContentHash,
     ) -> io::Result<Option<Contents>> {
         let script = format!(
-            "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
+            "p={}; {FOLLOW_LINKS} [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; \
              t=$(mktemp \"$(dirname -- \"$p\")/.rig-write.XXXXXX\") || exit 1; \
              cp -p -- \"$p\" \"$t\" || {{ rm -f -- \"$t\"; exit 1; }}; \
