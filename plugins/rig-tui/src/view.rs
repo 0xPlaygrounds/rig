@@ -602,10 +602,11 @@ impl ShownNotice {
     }
 
     /// The message it was written after in the transcript of the agent
-    /// `id`, when it was written there.
-    pub(crate) fn message_in(&self, id: &AgentId) -> Option<MessageId> {
+    /// `id`, when it was written there, with how many of its content items
+    /// there were then.
+    pub(crate) fn message_in(&self, id: &AgentId) -> Option<(MessageId, usize)> {
         let at = self.at.as_ref().filter(|at| &at.agent == id)?;
-        Some(at.message)
+        Some((at.message, at.items))
     }
 
     /// Where it is drawn in the transcript of the agent `id` with
@@ -641,10 +642,18 @@ impl ShownNotice {
 
 /// The content items of message `index`.
 fn items(conversation: &conversation::Conversation, index: usize) -> usize {
-    match conversation.messages().get(index).map(|message| &**message) {
-        Some(Message::User { content }) => content.len(),
-        Some(Message::Assistant(assistant)) => assistant.content.len(),
-        _ => 0,
+    conversation
+        .messages()
+        .get(index)
+        .map_or(0, |message| message_items(message))
+}
+
+/// The content items of `message`.
+pub(crate) fn message_items(message: &Message) -> usize {
+    match message {
+        Message::User { content } => content.len(),
+        Message::Assistant(assistant) => assistant.content.len(),
+        Message::System { .. } => 0,
     }
 }
 

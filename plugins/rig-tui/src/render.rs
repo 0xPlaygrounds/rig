@@ -41,7 +41,7 @@ use super::transcript::{
 };
 use super::view::{
     DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
-    TranscriptSlot, TranscriptView, TuiView,
+    TranscriptSlot, TranscriptView, TuiView, message_items,
 };
 use super::wrap::wrap_all;
 use rig_core::conversation;
@@ -687,22 +687,37 @@ pub(crate) fn lay_out_transcript(
         .into_iter()
         .flat_map(|(id, notices)| notices.numbered().map(move |(at, notice)| (id, at, notice)));
     for (id, at, notice) in notices {
-        let slot = notice.slot(id, conversation);
-        let archived = notice.message_in(id).and_then(|at| entries.of_archived(at));
-        let before = match slot {
+        let Some(slot) = notice.slot(id, conversation) else {
+            continue;
+        };
+        // Where it goes among the entries drawn: a notice about an archived
+        // entry keeps its place there.
+        let archived = notice.message_in(id).and_then(|(message, items)| {
+            let shown = entries.of_archived(message)?;
+            let count = entries.get(shown).map(|entry| message_items(entry.message));
+            Some(match count.is_some_and(|count| count > items) {
+                true => TranscriptSlot::Inside(shown, items),
+                false => TranscriptSlot::After(shown),
+            })
+        });
+        let shown = archived.or_else(|| match slot {
+            TranscriptSlot::Top => Some(TranscriptSlot::Top),
+            TranscriptSlot::After(index) => entries.of_live(index).map(TranscriptSlot::After),
+            TranscriptSlot::Inside(index, item) => entries
+                .of_live(index)
+                .map(|index| TranscriptSlot::Inside(index, item)),
+        });
+        let before = match shown {
             None => continue,
-            Some(_) if archived.is_some() => archived.map(|at| at + 1),
-            Some(TranscriptSlot::Top) => Some(0),
-            Some(TranscriptSlot::After(index)) => entries.of_live(index).map(|at| at + 1),
+            Some(TranscriptSlot::Top) => 0,
+            Some(TranscriptSlot::After(index)) => index + 1,
             Some(TranscriptSlot::Inside(index, item)) => {
-                if let Some(index) = entries.of_live(index) {
-                    let inside = look.inside.entry(index).or_default();
-                    inside.push((item, Inside::Notice(at, notice)));
-                }
+                let inside = look.inside.entry(index).or_default();
+                inside.push((item, Inside::Notice(at, notice)));
                 continue;
             }
         };
-        if let Some(after) = before.and_then(|before| after.get_mut(before)) {
+        if let Some(after) = after.get_mut(before) {
             after.push((at, notice));
         }
     }

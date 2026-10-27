@@ -50,6 +50,25 @@ fn a_notice_stays_before_what_an_edit_adds_to_the_message_it_followed() {
     let order = ["first", "Interrupted.", "second"].map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
+
+    // A compaction that takes the message out keeps the notice in it.
+    let world = app.world_mut();
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        let taken: Vec<_> = conversation.entry(0).into_iter().collect();
+        let compaction = Author::plugin("compaction");
+        let summary = rig_core::conversation::Entry::new(Message::user("the summary"));
+        let spliced = conversation.splice(..1, [summary.by(compaction.clone())], compaction);
+        if let Some(summary) = spliced.changed.first() {
+            let replaced = crate::Replaced([(*summary, taken)].into());
+            world.entity_mut(agent).insert(replaced);
+        }
+    }
+    app.update();
+    let lines = transcript(&mut app, agent);
+    let order = ["first", "Interrupted.", "second", "the summary"];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
 }
 
 #[test]

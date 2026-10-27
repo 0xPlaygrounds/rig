@@ -134,12 +134,16 @@ impl<'a> ToolCallView<'a> {
     }
 
     /// Whether the call failed: the tool answered with an error, or the
-    /// process it ran did not exit with 0 ([`ExitStatus`]). A stopped call
-    /// did not fail.
+    /// process it ran did not exit with 0 ([`ExitStatus`]). A stopped
+    /// call's result is an error too, which a look draws as its result.
     pub fn failed(&self) -> bool {
-        self.state != CallState::Stopped
-            && (self.result.is_some_and(|result| result.is_error)
-                || self.exit().is_some_and(|exit| !exit.success()))
+        self.result.is_some_and(|result| result.is_error)
+            || self.exit().is_some_and(|exit| !exit.success())
+    }
+
+    /// Whether a stop answered the call ([`CallState::Stopped`]).
+    pub fn stopped(&self) -> bool {
+        self.state == CallState::Stopped
     }
 
     /// How the process the call ran ended, if the tool said.
@@ -193,7 +197,8 @@ impl<'a> ToolCallView<'a> {
         Line::from(spans).bg(band)
     }
 
-    /// The whole result, indented under the header, red for an error. A unified diff is
+    /// The whole result, indented under the header, red for an error but
+    /// a stop's. A unified diff is
     /// coloured. The line that says the tool cut its output
     /// ([`OutputCut`]), naming the file with all of it, is on its side.
     /// Before the result, a running call's progress.
@@ -207,7 +212,8 @@ impl<'a> ToolCallView<'a> {
             return lines;
         }
         let (output, marker) = self.cut_marker(&text);
-        result_rows(output.into_iter(), marker, result_style(self.failed()))
+        let failed = self.failed() && !self.stopped();
+        result_rows(output.into_iter(), marker, result_style(failed))
     }
 
     /// The lines of `text`, the result, without the line that says the
