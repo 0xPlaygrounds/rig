@@ -8,9 +8,8 @@ use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write as _};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -155,7 +154,10 @@ impl Launcher {
         // reading never ends.
         drop(command);
         let child = spawned?;
-        let group = Group(Arc::new(AtomicU32::new(child.id())));
+        let group = Group(Arc::new(Mutex::new(GroupState {
+            leader: child.id(),
+            stopping: false,
+        })));
         // From here on, an error drops the process, which kills it.
         let mut process = Process {
             child,
@@ -425,10 +427,19 @@ impl Process {
 
     /// How it ended, if it has.
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+        let mut group = self.group.state();
+        #[cfg(unix)]
+        if group.leader != 0 && group.stopping {
+            if !exited_unreaped(group.leader)? {
+                return Ok(None);
+            }
+            // The unreaped leader reserves the id until all descendants have
+            // been signalled, even when they closed both output pipes.
+            signal_group(group.leader, Signal::Kill);
+        }
         let status = self.child.try_wait();
         if !matches!(status, Ok(None)) {
-            // Reaped, or about to be: its id may be reused.
-            self.group.0.store(0, Ordering::SeqCst);
+            group.leader = 0;
         }
         status
     }
@@ -578,9 +589,10 @@ impl Process {
     /// process itself ended, and says how the process ended. Kill within
     /// moments of the end: once the group is empty its id is free again.
     pub fn kill(&mut self) -> io::Result<ExitStatus> {
-        self.group.0.store(0, Ordering::SeqCst);
+        let mut group = self.group.state();
         #[cfg(unix)]
         kill_group_of(self.child.id());
+        group.leader = 0;
         #[cfg(not(unix))]
         if self.child.try_wait()?.is_none() {
             self.child.kill()?;
@@ -602,7 +614,8 @@ pub enum Ended {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        if self.group.0.load(Ordering::SeqCst) != 0 {
+        let active = self.group.state().leader != 0;
+        if active {
             self.kill().ok();
         }
     }
@@ -611,9 +624,41 @@ impl Drop for Process {
 /// A [`Process`]'s group, to stop from another thread. It acts only while
 /// the process runs: once it was reaped, its id may name another process.
 #[derive(Clone, Debug)]
-pub struct Group(Arc<AtomicU32>);
+pub struct Group(Arc<Mutex<GroupState>>);
+
+#[derive(Debug)]
+struct GroupState {
+    leader: u32,
+    stopping: bool,
+}
+
+/// Observes an exit without releasing the leader's process id.
+#[cfg(unix)]
+fn exited_unreaped(leader: u32) -> io::Result<bool> {
+    // SAFETY: waitid initializes the zeroed siginfo and WNOWAIT leaves
+    // the child available for std::process::Child to reap.
+    unsafe {
+        let mut info: libc::siginfo_t = std::mem::zeroed();
+        if libc::waitid(
+            libc::P_PID,
+            leader as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        ) == -1
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(info.si_pid() != 0)
+    }
+}
 
 impl Group {
+    fn state(&self) -> MutexGuard<'_, GroupState> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Kills the group (`SIGKILL`); elsewhere than unix, nothing.
     pub fn kill(&self) {
         self.signal(Signal::Kill);
@@ -625,7 +670,9 @@ impl Group {
     }
 
     fn signal(&self, signal: Signal) {
-        let leader = self.0.load(Ordering::SeqCst);
+        let mut state = self.state();
+        state.stopping = true;
+        let leader = state.leader;
         #[cfg(unix)]
         if leader != 0 {
             signal_group(leader, signal);
