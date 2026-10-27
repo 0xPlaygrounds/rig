@@ -82,17 +82,20 @@ impl Before {
     }
 }
 
-/// What each restored agent's summaries replaced, read from its log.
+/// What each restored agent's summaries replaced, read from its log; an
+/// agent with no summary has nothing to read.
 fn replaced_from_logs(
     store: Option<Res<SessionStore>>,
-    agents: Query<(Entity, &AgentId), With<Conversation>>,
+    agents: Query<(Entity, &AgentId, &Conversation)>,
     mut commands: Commands,
 ) {
     let Some(store) = store else {
         return;
     };
-    for (agent, id) in &agents {
-        read_replaced(&store, (agent, id), &mut commands);
+    for (agent, id, conversation) in &agents {
+        if Compacted::of(conversation).next().is_some() {
+            read_replaced(&store, (agent, id), &mut commands);
+        }
     }
 }
 

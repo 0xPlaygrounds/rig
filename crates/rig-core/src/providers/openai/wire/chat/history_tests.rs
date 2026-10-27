@@ -790,11 +790,11 @@ fn a_stopped_reply_goes_back_as_its_text() {
         ],
     );
     assert_eq!(
-        body["messages"],
-        json!([
+        body.get("messages"),
+        Some(&json!([
             {"role": "user", "content": "q"},
             {"role": "assistant", "content": "half an essay"},
             {"role": "user", "content": "next"},
-        ])
+        ]))
     );
 }

@@ -1832,12 +1832,12 @@ fn a_stopped_reply_goes_back_as_its_text() {
     })
     .expect("encodes");
     assert_eq!(
-        value["messages"],
-        json!([
+        value.get("messages"),
+        Some(&json!([
             {"role": "user", "content": [{"type": "text", "text": "go"}]},
             {"role": "assistant", "content": [{"type": "text", "text": "half an essay"}]},
             {"role": "user", "content": [{"type": "text", "text": "next"}]},
-        ]),
+        ])),
         "{value}"
     );
 }
