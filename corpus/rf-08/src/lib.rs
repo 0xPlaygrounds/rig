@@ -169,7 +169,7 @@ fn parse_call(call_json: &str) -> Result<ToolCall, (CallId, String)> {
         Some(_) => return Err((id, "`name` must be a string".to_owned())),
         None => return Err((id, "missing `name`".to_owned())),
     };
-    let arguments = remove_preserving_order(fields, "arguments").unwrap_or(Value::Null);
+    let arguments = remove_preserving_order(&mut fields, "arguments").unwrap_or(Value::Null);
     Ok(ToolCall::new(id, ToolFunction::new(name, arguments)))
 }
 

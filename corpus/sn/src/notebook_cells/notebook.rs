@@ -434,8 +434,8 @@ fn replaced(old: &Value, source: &str, kind: Option<CellType>) -> Value {
         cell.insert("execution_count".to_owned(), Value::Null);
         cell.insert("outputs".to_owned(), json!([]));
     } else {
-        remove_preserving_order(cell, "execution_count");
-        remove_preserving_order(cell, "outputs");
+        remove_preserving_order(&mut cell, "execution_count");
+        remove_preserving_order(&mut cell, "outputs");
     }
     cell.insert("source".to_owned(), lines(source));
     Value::Object(cell)
