@@ -2,12 +2,13 @@ use bevy_app::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
+use rig_harness::pick::{Picked, Picker};
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
-use crate::tests::{edit, press, type_text, typed, view_app, view_app_with};
+use crate::tests::{edit, press, type_text, typed, view_app};
 use crate::view::ShowAgent;
-use rig_harness::pick::{Picked, Picker};
+use crate::{InputSystems, TuiKeys};
 
 /// Sends `prompt`, which comes back to the input with no model to answer
 /// it, and empties the input.
@@ -131,25 +132,24 @@ fn the_history_is_the_projects() {
 }
 
 #[test]
-fn a_resumed_conversations_prompts_come_first_and_are_not_saved_again() {
+fn a_resumed_conversations_prompts_come_first_filtered_and_are_not_saved_again() {
+    let (mut app, agent) = view_app();
     let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
-    let saved = files.clone();
-    let (mut app, _) = view_app_with(|app| {
-        app.insert_resource(PromptHistory {
-            entries: vec!["older".into(), "fix the build".into()],
-            file: Some(saved),
-            unsaved: Vec::new(),
-        });
-        // As a resume restores it, before the first frame.
-        app.add_systems(
-            PostStartup,
-            |mut conversations: Query<&mut Conversation>| {
-                for mut resumed in &mut conversations {
-                    *resumed = conversation(&["fix the build", "run the tests"]);
-                }
-            },
-        );
-    });
+    *app.world_mut().resource_mut::<PromptHistory>() = PromptHistory {
+        entries: vec!["older".into(), "fix the build".into()],
+        file: Some(files.clone()),
+        unsaved: Vec::new(),
+    };
+    app.add_systems(
+        TuiKeys,
+        (|mut history: ResMut<PromptHistory>| {
+            history.entries.retain(|prompt| !prompt.contains("sk-"));
+        })
+        .after(HistorySystems::Seed)
+        .before(InputSystems::Dispatch),
+    );
+    let resumed = conversation(&["fix the build", "run the tests", "my key is sk-123"]);
+    app.world_mut().entity_mut(agent).insert(resumed);
     for expected in ["run the tests", "fix the build", "older", "older"] {
         press(&mut app, "up");
         assert_eq!(typed(&app), expected);

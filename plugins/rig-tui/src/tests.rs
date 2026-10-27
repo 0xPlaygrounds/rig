@@ -31,11 +31,6 @@ pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
 /// its keys are the [`PendingInput`] [`press`] pushes. Also returns the
 /// agent.
 pub(crate) fn view_app() -> (App, Entity) {
-    view_app_with(|_| {})
-}
-
-/// A [`view_app`] that `setup` changes before its first frame.
-pub(crate) fn view_app_with(setup: impl FnOnce(&mut App)) -> (App, Entity) {
     let mut app = App::new();
     app.set_error_handler(rig_harness::error::panic)
         .insert_resource(Invoked::default())
@@ -51,7 +46,6 @@ pub(crate) fn view_app_with(setup: impl FnOnce(&mut App)) -> (App, Entity) {
             },
         );
     add_view(&mut app);
-    setup(&mut app);
     app.update();
     let world = app.world_mut();
     let agent = world

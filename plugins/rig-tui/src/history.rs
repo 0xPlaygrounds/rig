@@ -7,7 +7,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig_ecs::agent::{Agent, Conversation};
 use rig_harness::prelude::{Files, PluginData, ShownAgent};
-use rig_tools::attach::typed;
+use rig_tools::attach::typed_prompts;
 
 use super::jsonl::{self, Kept};
 
@@ -19,16 +19,18 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// (`file: None` saves nothing). Prompts are kept as typed, slash commands
 /// included.
 ///
-/// The view loads it in `PreStartup`, appends each prompt [`Sent`] in
-/// [`HistorySystems::Record`], and in [`HistorySystems::Save`] adds to the
-/// file those recorded since that are still in `entries`, keeping the
-/// newest [`Self::KEPT`]. A plugin filters `entries` between the two, such
-/// as to keep secrets out. Whenever another agent is shown, its
-/// conversation's typed prompts are [seeded](Self::seed) as the newest.
+/// The view loads it in `PreStartup`, puts each prompt [`Sent`] as the
+/// newest in [`HistorySystems::Record`], and in [`HistorySystems::Save`]
+/// adds to the file those recorded since that are still in `entries`,
+/// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
+/// the two, such as to keep secrets out. After another agent is shown,
+/// [`HistorySystems::Seed`] [seeds](Self::seed) its conversation's typed
+/// prompts as the newest before the next key; a filter that should also
+/// keep them from Up runs after it too.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
-/// use rig_tui::{HistorySystems, PromptHistory};
+/// use rig_tui::{HistorySystems, InputSystems, PromptHistory, TuiKeys};
 ///
 /// /// Prompts that look like they hold a key are never kept.
 /// fn scrub(mut history: ResMut<PromptHistory>) {
@@ -36,7 +38,11 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// }
 ///
 /// fn build(app: &mut App) {
-///     app.add_systems(Update, scrub.after(HistorySystems::Record).before(HistorySystems::Save));
+///     app.add_systems(Update, scrub.after(HistorySystems::Record).before(HistorySystems::Save))
+///         .add_systems(
+///             TuiKeys,
+///             scrub.after(HistorySystems::Seed).before(InputSystems::Dispatch),
+///         );
 /// }
 /// ```
 #[derive(Resource, Default)]
@@ -107,8 +113,7 @@ pub(crate) fn load(data: Option<Res<PluginData>>, mut history: ResMut<PromptHist
 }
 
 /// Seeds the history with the typed prompts of the agent shown, once each
-/// time another one is shown. It runs before each key, so a key after one
-/// that showed another agent browses the new order.
+/// time another one is shown.
 pub(crate) fn seed_shown(
     shown: Res<ShownAgent>,
     conversations: Query<&Conversation, With<Agent>>,
@@ -125,23 +130,31 @@ pub(crate) fn seed_shown(
         return;
     };
     *seeded = Some(agent);
-    history.seed((0..conversation.messages().len()).filter_map(|at| typed(conversation, at)));
+    history.seed(typed_prompts(conversation));
 }
 
 /// Where the terminal view records the prompts sent and saves them, in
-/// `Update`, in this order.
+/// `Update`, in this order, and seeds them in [`TuiKeys`](crate::TuiKeys).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HistorySystems {
-    /// Appends the prompts sent this frame to [`PromptHistory::entries`].
+    /// Puts the prompts sent this frame as the newest of
+    /// [`PromptHistory::entries`], moving any already there.
     Record,
     /// Saves the prompts recorded that are still there.
     Save,
+    /// In `TuiKeys`, before each key's
+    /// [`InputSystems::Filter`](crate::InputSystems::Filter): after
+    /// another agent is shown, puts its conversation's typed prompts as
+    /// the newest, so a key right after the one that showed it browses
+    /// them. A filter runs after it and before
+    /// [`InputSystems::Dispatch`](crate::InputSystems::Dispatch).
+    Seed,
 }
 
-/// A prompt sent, which [`HistorySystems::Record`] adds to the
-/// [`PromptHistory`] as the newest: the input writes one
-/// for each prompt it sends, and a plugin writes one for a prompt it sent
-/// for the user, such as from a panel of its own.
+/// A prompt sent, which [`HistorySystems::Record`] puts as the newest of
+/// the [`PromptHistory`]: the input writes one for each prompt it sends,
+/// and a plugin writes one for a prompt it sent for the user, such as
+/// from a panel of its own.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct Sent(pub String);
 

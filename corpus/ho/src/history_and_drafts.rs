@@ -12,8 +12,9 @@
 //!
 //! **Browsing.** The terminal view's Up and Down browse its
 //! [`PromptHistory`]; this plugin supplies its entries, this project's
-//! prompts with this session's newest, and turns the view's own file off,
-//! so nothing the rules above leave out is saved anywhere. Ctrl+R opens a
+//! prompts with this session's newest, in place of the conversation's
+//! prompts the view seeds, and turns the view's own file off,
+//! so nothing the rules above leave out is browsed or saved. Ctrl+R opens a
 //! fuzzy search of the history: typed characters match in order, the
 //! closest together first; Enter puts the prompt in the input.
 //!
@@ -205,7 +206,16 @@ impl Plugin for HistoryPlugin {
                     .after(HistorySystems::Record)
                     .before(HistorySystems::Save),
             )
-            .add_systems(rig_tui::TuiKeys, type_search.in_set(InputSystems::Filter))
+            .add_systems(
+                rig_tui::TuiKeys,
+                (
+                    offer
+                        .run_if(resource_changed::<PromptHistory>)
+                        .after(HistorySystems::Seed)
+                        .before(InputSystems::Dispatch),
+                    type_search.in_set(InputSystems::Filter),
+                ),
+            )
             .add_systems(
                 PostUpdate,
                 (
@@ -300,7 +310,7 @@ fn record(
 }
 
 /// Gives the view's Up and Down this project's history, in place of what
-/// the view recorded itself.
+/// the view recorded or seeded itself.
 fn offer(history: Res<History>, mut prompts: ResMut<PromptHistory>) {
     prompts.entries = history.browse_order();
 }

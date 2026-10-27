@@ -161,7 +161,12 @@ impl Plugin for TuiViewPlugin {
             .add_message::<PastEffects>()
             .configure_sets(
                 TuiKeys,
-                (InputSystems::Filter, InputSystems::Dispatch).chain(),
+                (
+                    HistorySystems::Seed,
+                    InputSystems::Filter,
+                    InputSystems::Dispatch,
+                )
+                    .chain(),
             )
             .add_systems(PreUpdate, input::run_keys)
             .add_systems(
@@ -226,7 +231,7 @@ pub fn add_view(app: &mut App) {
         .add_observer(clipboard::type_pasted)
         .add_observer(render::redraw_on_remove)
         .add_systems(Startup, (view::load_notices, view::load_draft))
-        .add_systems(TuiKeys, history::seed_shown.before(InputSystems::Filter))
+        .add_systems(TuiKeys, history::seed_shown.in_set(HistorySystems::Seed))
         .add_systems(
             PreUpdate,
             (

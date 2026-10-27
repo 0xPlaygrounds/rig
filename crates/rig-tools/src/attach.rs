@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use rig_core::completion::Message;
-use rig_core::conversation::{Conversation, FILE_CLOSE, FILE_OPEN, attached_file};
+use rig_core::conversation::{Conversation, EntryRef, FILE_CLOSE, FILE_OPEN, attached_file};
 use rig_core::message::{ImageMediaType, UserContent};
 
 use crate::workspace::{Stat, Workspace};
@@ -172,12 +172,22 @@ fn read_file(workspace: &dyn Workspace, path: &Path, label: &str) -> Result<User
 
 /// What the user typed in message `at` of `conversation`: the text items
 /// of a message of the user's own
-/// ([`EntryRef::is_users_own`](rig_core::conversation::EntryRef::is_users_own)), never of
+/// ([`EntryRef::is_users_own`]), never of
 /// one an agent or a plugin delivered, such as a note, nor a file
 /// attached, each trimmed, joined by a blank line; `None` when it has
 /// none.
 pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
-    let entry = conversation.entries().nth(at)?;
+    typed_in(conversation.entries().nth(at)?)
+}
+
+/// What the user typed in each message of `conversation` that has some
+/// ([`typed`]), oldest first.
+pub fn typed_prompts(conversation: &Conversation) -> impl Iterator<Item = String> + '_ {
+    conversation.entries().filter_map(typed_in)
+}
+
+/// What the user typed in `entry` ([`typed`]).
+fn typed_in(entry: EntryRef<'_>) -> Option<String> {
     let Message::User { content } = entry.message else {
         return None;
     };
