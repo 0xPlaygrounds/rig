@@ -59,12 +59,9 @@ impl Before {
         let Some(&summary) = spliced.changed.first() else {
             return;
         };
-        let Self(entries, records) = self;
+        // The entries before the summary are the ones it took out.
+        let Self(taken, records) = self;
         let out = |id: &MessageId| spliced.removed.contains(id);
-        let taken: Vec<Entry> = entries
-            .into_iter()
-            .filter(|entry| entry.id.as_ref().is_some_and(out))
-            .collect();
         let records = records.into_iter().filter(|record| out(&record.summary));
         let records: Vec<_> = records.map(|record| (record.summary, record)).collect();
         let mut agent = commands.entity(agent);
@@ -95,34 +92,38 @@ fn replaced_from_logs(
         return;
     };
     for (agent, id) in &agents {
-        match summarized_in_log(&*store.0, &id.0) {
-            Ok(Summarized { replaced, .. }) if replaced.is_empty() => {}
-            Ok(Summarized { replaced, records }) => {
-                let kept = (Replaced(replaced), ReplacedRecords(records));
-                commands.entity(agent).try_insert(kept);
-            }
-            Err(error) => {
-                bevy_log::warn!(
-                    "what the compactions of {} replaced is not shown: {error}",
-                    id.0
-                );
-            }
-        }
+        read_replaced(&store, (agent, id), &mut commands);
     }
 }
 
-/// A fork draws what its source's summaries replaced: its log is a copy
-/// of the source's.
+/// What a fork's summaries replaced, read from its own log, a copy of its
+/// source's up to where it forked: a summary its source made later is no
+/// part of it.
 fn replaced_in_fork(
     forked: On<AgentForked>,
-    replaced: Query<(&Replaced, Option<&ReplacedRecords>)>,
+    store: Option<Res<SessionStore>>,
+    ids: Query<&AgentId>,
     mut commands: Commands,
 ) {
-    if let Ok((replaced, records)) = replaced.get(forked.from) {
-        let records = records.cloned().unwrap_or_default();
-        commands
-            .entity(forked.fork)
-            .try_insert((replaced.clone(), records));
+    if let (Some(store), Ok(id)) = (store, ids.get(forked.fork)) {
+        read_replaced(&store, (forked.fork, id), &mut commands);
+    }
+}
+
+/// Puts what the summaries in `agent`'s log, `id`, replaced on it.
+fn read_replaced(store: &SessionStore, (agent, id): (Entity, &AgentId), commands: &mut Commands) {
+    match summarized_in_log(&*store.0, &id.0) {
+        Ok(Summarized { replaced, .. }) if replaced.is_empty() => {}
+        Ok(Summarized { replaced, records }) => {
+            let kept = (Replaced(replaced), ReplacedRecords(records));
+            commands.entity(agent).try_insert(kept);
+        }
+        Err(error) => {
+            bevy_log::warn!(
+                "what the compactions of {} replaced is not shown: {error}",
+                id.0
+            );
+        }
     }
 }
 

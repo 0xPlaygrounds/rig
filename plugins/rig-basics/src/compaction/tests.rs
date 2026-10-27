@@ -1425,6 +1425,16 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         "{:?}",
         world.resource::<Ended>().0
     );
+    // The `/compact` turn added nothing, so its stop has no place to be
+    // drawn: not under the answer before it.
+    let ended = world
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.turns().next_back())
+        .and_then(|(_, turn)| turn.end);
+    assert!(
+        matches!(ended, Some(TurnEnd::Stopped { at: None, .. })),
+        "{ended:?}"
+    );
 }
 
 /// `turns` exchanges of about 5,000 tokens each, after a first question.
@@ -2750,6 +2760,23 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     assert!(fork.is_some(), "the fork was made");
     let Some(fork) = fork else { return };
     assert_eq!(replaced(restarted.world(), fork), sets);
+
+    // A fork through the first summary ends before the compaction that
+    // made it, so its next entries, which may reuse the summary's id, draw
+    // nothing above them.
+    restarted.world_mut().trigger(ForkAgent {
+        agent,
+        through: first,
+    });
+    restarted.update();
+    let world = restarted.world_mut();
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let earlier = agents
+        .iter(world)
+        .find(|it| ![agent, child, fork].contains(it));
+    assert!(earlier.is_some(), "the fork was made");
+    let Some(earlier) = earlier else { return };
+    assert_eq!(replaced(restarted.world(), earlier), Vec::new());
 }
 
 /// Only a kept part that begins with a reply gets a word on it, and the
@@ -2769,6 +2796,17 @@ fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
     let delivered = conversation.push(delivered);
     assert_eq!(kept_reply(&conversation, Some(delivered)), None);
     assert!(kept_reply(&conversation, Some(answer)).is_some_and(|it| it.contains("is answered")));
+    // A later turn's record that spans nothing, such as an earlier
+    // compaction's whose start went with it, says nothing about the reply.
+    conversation.open_turn();
+    conversation.end_turn(TurnEnd::Stopped {
+        why: Some("compacted".to_owned()),
+        at: None,
+        calls: Vec::new(),
+    });
+    conversation.splice(2..3, [], Author::plugin("compaction"));
+    assert!(kept_reply(&conversation, Some(answer)).is_some_and(|it| it.contains("is answered")));
+    conversation.push(Message::user("Go on."));
 
     conversation.open_turn();
     let cut = conversation.push(Message::Assistant(AssistantMessage::aborted(

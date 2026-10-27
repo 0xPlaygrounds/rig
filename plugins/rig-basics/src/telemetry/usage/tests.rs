@@ -387,7 +387,6 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
                 through: MessageId::default(),
             })),
             rig_tui::StatusItems::default(),
-            ContextStale {},
         ))
         .id();
     let context = |world: &World| {
@@ -396,6 +395,10 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
             .and_then(|items| items.iter().find(|item| item.name == "context"))
             .map(|item| item.text.clone())
     };
+    app.update();
+    assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
+    // The marker alone, with no usage changing, as after clearing outputs.
+    app.world_mut().entity_mut(agent).insert(ContextStale {});
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx ?/2.0k"));
     app.world_mut().entity_mut(agent).remove::<ContextStale>();

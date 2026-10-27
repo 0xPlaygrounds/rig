@@ -173,7 +173,7 @@ fn a_failed_turn_with_an_answer_fails_its_run() {
     assert_eq!(turn_failure(&answered, Some(&aborted), None), None);
 }
 
-/// A turn that will not replay runs none of its tool calls, whatever else
+/// A turn that failed or was stopped runs none of its tool calls, whatever else
 /// it holds; a call in a turn the token limit ended is finished and runs.
 #[test]
 fn a_failed_turn_with_calls_fails_its_run() {

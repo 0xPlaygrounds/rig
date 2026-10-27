@@ -49,8 +49,10 @@ pub enum TurnEnd {
         /// Why, when it was not the user.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         why: Option<String>,
-        /// The last entry when a stop cut the turn off; `None` when the turn
-        /// ended as stopped in its own course, such as a compaction ending it.
+        /// The turn's last entry when a stop cut it off, which a front draws
+        /// the stop under; `None` when the turn had no entry of its own yet,
+        /// or ended as stopped in its own course, such as a compaction
+        /// ending it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<MessageId>,
         /// The tool calls the stop answered: those that had no result of

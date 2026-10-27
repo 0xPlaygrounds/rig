@@ -382,7 +382,9 @@ pub fn plan(
 /// What the summarizer is told when the kept part begins with the model's
 /// reply to the last summarized request: whether that request was
 /// answered, stopped by the user, or is still being worked on. `None` when
-/// the kept part begins with anything but a reply.
+/// the kept part begins with anything but a reply. The turn that says so is
+/// the one whose record spans the kept reply: its start at or before it,
+/// its answer or the user's stop at or after it.
 fn kept_reply(
     conversation: &rig_core::conversation::Conversation,
     keep_from: Option<MessageId>,
@@ -392,27 +394,32 @@ fn kept_reply(
     if !matches!(&**reply, completion::Message::Assistant(_)) {
         return None;
     }
-    let turns = conversation.turns().rev();
-    let (_, turn) = turns
-        .into_iter()
-        .find(|(_, turn)| conversation.start_of(turn.start) <= kept)?;
-    Some(match turn.end {
-        Some(TurnEnd::Answered {
-            answer: Some(answer),
-        }) if conversation.index_of(answer).is_some_and(|at| at >= kept) => {
-            "The conversation to summarize stops just before the model's answer to its last \
-             request; that answer is kept after the summary, so the request is answered: do not \
-             list it as pending."
-        }
-        Some(TurnEnd::Stopped { .. }) => {
-            "The conversation to summarize stops partway through the model's reply to its last \
-             request, and the user stopped that reply: do not list the request as pending or as \
-             a next step."
-        }
-        _ => {
-            "The conversation to summarize stops partway through the model's reply to its last \
-             request; the reply continues in the messages kept after the summary."
-        }
+    let spans = |start: MessageId, end: MessageId| {
+        conversation.start_of(start) <= kept
+            && conversation.index_of(end).is_some_and(|end| end >= kept)
+    };
+    let ended = |answered: bool| {
+        conversation.turns().any(|(_, turn)| match turn.end {
+            Some(TurnEnd::Answered { answer: Some(end) }) => answered && spans(turn.start, end),
+            Some(TurnEnd::Stopped {
+                why: None,
+                at: Some(end),
+                ..
+            }) => !answered && spans(turn.start, end),
+            _ => false,
+        })
+    };
+    Some(if ended(true) {
+        "The conversation to summarize stops just before the model's answer to its last request; \
+         that answer is kept after the summary, so the request is answered: do not list it as \
+         pending."
+    } else if ended(false) {
+        "The conversation to summarize stops partway through the model's reply to its last \
+         request, and the user stopped that reply: do not list the request as pending or as a \
+         next step."
+    } else {
+        "The conversation to summarize stops partway through the model's reply to its last \
+         request; the reply continues in the messages kept after the summary."
     })
 }
 
