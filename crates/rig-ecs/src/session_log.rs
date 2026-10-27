@@ -136,7 +136,7 @@ impl SessionLog {
     }
 
     /// Whether a write stored a record ([`Writer::has_written`]), such as
-    /// for a host that marks its session saved once something is.
+    /// for a host that marks its session saved only once something is.
     pub fn has_written(&self) -> bool {
         self.0.has_written()
     }

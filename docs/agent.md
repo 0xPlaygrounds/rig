@@ -80,7 +80,7 @@ The input takes several lines. Enter sends; Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line; Up and Down move between lines and through the
 prompts sent before (kept in `RIG_HOME/data/tui/history.jsonl`); the usual
 emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and
-Ctrl+D pressed twice on an empty input quits. A
+Ctrl+D on an empty input quits. A
 leading `/` completes command names and `@` completes the project's paths
 (skipping what `.gitignore` leaves out); Tab or Enter takes the selected one.
 A command that is unknown or refused comes back in the input with the reason,
@@ -119,7 +119,9 @@ color. A plugin draws its tools' calls with ordinary systems in
 ## Sessions
 
 Each `rig` starts a new session. `/quit` ends it, `/new` starts a new one and
-`/name` names it. `/resume` lists the earlier sessions (name or first
+`/name` names it. A session is kept once it has a user or assistant message; one
+that only changed settings is removed when it ends, and `/resume` never
+lists it. `/resume` lists the earlier sessions (name or first
 message, cost, directory, age) and resumes the one picked, in its own
 directory; `rig --resume <id or name>` (or `/resume <id or name>`) resumes a
 given one, such as after a crash.

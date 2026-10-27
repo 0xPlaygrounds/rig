@@ -478,7 +478,7 @@ impl Writer {
     }
 
     /// Whether a [`flush`](Self::flush) wrote a record to the store, such
-    /// as for a host that marks its session saved once something is.
+    /// as for a host that marks its session saved only once something is.
     pub fn has_written(&self) -> bool {
         self.inner().book.wrote
     }

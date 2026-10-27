@@ -505,7 +505,7 @@ impl RunDir {
 /// store, which a plugin may replace (by default in the folders `logs`,
 /// `blobs` and `files`), so only the plain files beside the store are
 /// named here: the markers of a session an agent started in
-/// ([`Self::started`]), logged to ([`Self::is_saved`]) and being deleted
+/// ([`Self::started`]), saved ([`Self::is_saved`]) and being deleted
 /// ([`Self::is_deleting`]), the text log, the lock of the launcher running
 /// it, its working directory, its name and the session to switch to.
 #[derive(Clone, Debug)]
@@ -528,8 +528,8 @@ impl SessionDir {
         self.0.file_name()?.to_str()?.parse().ok()
     }
 
-    /// Whether an agent of the session wrote its log, so it can be
-    /// resumed: the session has the marker [`Self::mark_saved`] writes and
+    /// Whether the session holds a conversation, so it can be resumed:
+    /// the session has the marker [`Self::mark_saved`] writes and
     /// is not being deleted.
     pub fn is_saved(&self) -> bool {
         self.saved().exists() && !self.is_deleting()
@@ -558,8 +558,8 @@ impl SessionDir {
         self.0.join("deleting")
     }
 
-    /// Marks the session saved, as the agent's store does when it first
-    /// writes an agent's log there.
+    /// Marks the session saved, as the harness does once the session's log
+    /// wrote and an agent's conversation has a user or assistant message.
     ///
     /// # Errors
     ///

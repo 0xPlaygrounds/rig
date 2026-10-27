@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
@@ -399,9 +399,6 @@ pub(crate) struct Context<'a, 'w, 's> {
     choices: &'a Choices<'w, 's>,
 }
 
-/// How long a first Ctrl+D on an empty input keeps the exit armed.
-const EXIT_WINDOW: Duration = Duration::from_millis(500);
-
 /// What a built-in key changes: the view, the input, and the transcript
 /// pane the keys act on, the one with the [`KeyFocus`] or else the main
 /// one. Its view is marked changed only when a key really changes it, as
@@ -684,13 +681,8 @@ fn act(
     }
     match action {
         Do::Clear => input.clear(),
-        Do::Exit if !input.is_empty() => {}
-        Do::Exit => match view.exit_armed.take() {
-            Some(armed) if armed.elapsed() <= EXIT_WINDOW => {
-                commands.trigger(Exit(ExitReason::Quit));
-            }
-            _ => view.exit_armed = Some(Instant::now()),
-        },
+        Do::Exit if input.is_empty() => commands.trigger(Exit(ExitReason::Quit)),
+        Do::Exit => {}
         Do::NewLine => input.insert_char('\n'),
         Do::LineStart => input.home(),
         Do::LineEnd => input.end(),

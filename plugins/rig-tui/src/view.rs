@@ -67,9 +67,6 @@ pub(crate) struct TuiView {
     /// The open questions shown beside the work, oldest first; the first
     /// is shown.
     pub(crate) inline: Vec<Entity>,
-    /// When Ctrl+D on an empty input armed the exit, which a second press
-    /// within a moment takes.
-    pub(crate) exit_armed: Option<std::time::Instant>,
 }
 
 /// An item of a transcript, as plugins name it.
