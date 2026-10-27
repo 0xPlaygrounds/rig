@@ -28,8 +28,8 @@ A conversation:
                           events on stdout. Closing stdin ends rig at once.
 
 Both take --model vendor/model, --tools read,shell (only those tools; a
-name no tool has is refused, before any model call) and -r <session id
-or name> (go on with a session; the id is in the `ready` line). rig
+name no tool has is refused, before any model or tool call) and -r
+<session id or name> (go on with a session; the id is in the `ready` line). rig
 works in its current directory. RIG_HOME (default ~/.rig) holds its
 builds, settings and sessions. The first start builds the agent, which
 takes minutes, and a start waits for another rig's build; stderr says

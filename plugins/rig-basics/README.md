@@ -49,9 +49,9 @@ In TUI, print and JSON runs, omitting `--tools` preserves each agent's tool acce
 `--tools=` permits no tools; `--tools=read,write` intersects each agent's
 existing access with those names before its first request and at execution.
 A print or JSON run refuses a name no registered tool has, with exit code 2,
-before any model call; a TUI run ignores unknown names. Names are checked once
-every plugin finished, so a tool registered later, such as an MCP server's,
-cannot be named.
+before any model or tool call; a TUI run ignores unknown names. Names are
+checked once every plugin finished, so a tool registered later, such as an
+MCP server's, cannot be named.
 This limit also applies to subagents, including their normally supplied
 `message` and `wait` tools: include those names when children need them.
 Subagents cannot use this flag to broaden their inherited restrictions.

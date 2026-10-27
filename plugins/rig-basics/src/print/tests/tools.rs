@@ -166,7 +166,7 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
                 .flags
                 .push(flag);
         };
-        let (app, lines) = one_shot("hi", None, &model, true, setup);
+        let (app, lines) = one_shot("hi", Some(MODEL), &model, true, setup);
         assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{tools}");
         let kinds: Vec<Value> = lines
             .parsed()
@@ -180,7 +180,7 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
             (&json!(2), &json!(why))
         );
         // Plain: said once on stderr.
-        let (app, _) = one_shot("hi", None, &model, false, setup);
+        let (app, _) = one_shot("hi", Some(MODEL), &model, false, setup);
         assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{tools}");
         assert_eq!(stderr.text(), [format!("rig: {why}")]);
         // A long-lived run whose driver sent a message at once: no model
@@ -579,57 +579,89 @@ fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
 
 #[test]
 fn a_refused_tool_name_holds_back_a_restored_turn_too() {
-    // A session left mid-turn, before its model call went out.
-    let (first, store) = (silent(), MemoryStore::default());
-    let (mut app, wakes) = app_on(&store);
-    app.insert_resource(scripted_models([(MODEL, &first)]))
-        .add_plugins((AgentPlugin, SessionLogPlugin))
-        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
-    app.finish();
-    app.update();
-    let world = app.world_mut();
-    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-    let model = MODEL.to_owned();
-    world.trigger(SetModel {
-        entity: agent,
-        model,
-    });
-    world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
-    test_support::run_until(&mut app, &wakes, |world| {
-        world.get::<ActiveTurn>(agent).is_some()
-    });
-    app.world_mut().write_message(AppExit::Success);
-    app.update();
-    drop(app);
+    for pending_tool in [false, true] {
+        // A session left before its model call, or its write, started.
+        let first = match pending_tool {
+            true => MockCompletionModel::from_stream_turns([calls("c1", "write", json!({}))]),
+            false => silent(),
+        };
+        let store = MemoryStore::default();
+        let (mut app, _) = app_on(&store);
+        app.insert_resource(scripted_models([(MODEL, &first)]))
+            .add_plugins((AgentPlugin, SessionLogPlugin));
+        recording(&mut app, &["read", "write"]);
+        if pending_tool {
+            app.add_systems(
+                AgentPass,
+                (|calls: Query<Entity, (ReadyToStart, ToolCalls)>, mut commands: Commands| {
+                    for call in &calls {
+                        commands.spawn(HoldOf(call));
+                    }
+                })
+                .in_set(Stage::Gate),
+            );
+        } else {
+            app.add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+        }
+        app.finish();
+        app.cleanup();
+        app.update();
+        let world = app.world_mut();
+        let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+        let model = MODEL.to_owned();
+        world.trigger(SetModel {
+            entity: agent,
+            model,
+        });
+        world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
+        run_until(&mut app, |world| match pending_tool {
+            true => world
+                .query_filtered::<(), (With<ToolRequest>, With<Holds>)>()
+                .iter(world)
+                .next()
+                .is_some(),
+            false => world.get::<ActiveTurn>(agent).is_some(),
+        });
+        assert_eq!(first.request_count(), usize::from(pending_tool));
+        assert!(app.world().resource::<Executed>().0.is_empty());
+        app.world_mut().write_message(AppExit::Success);
+        app.update();
+        drop(app);
 
-    // `rig -r <id> -p --tools bogus`: the restored turn calls no model.
-    let second = answering(&["hello"]);
-    let (app, _) = one_shot_on(&store, "", None, &second, true, |app| {
-        let flag = (TOOLS.to_owned(), Some("bogus".to_owned()));
-        app.world_mut()
-            .resource_mut::<Invoked>()
-            .args
-            .flags
-            .push(flag);
-    });
-    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
-    assert_eq!(second.request_count(), 0);
-    drop(app);
+        // Refusal must run neither a model nor a restored tool call.
+        let second = answering(&["hello"]);
+        let (app, _) = one_shot_on(&store, "", Some(MODEL), &second, true, |app| {
+            recording(app, &["read", "write"]);
+            let flag = (TOOLS.to_owned(), Some("read,bogus".to_owned()));
+            app.world_mut()
+                .resource_mut::<Invoked>()
+                .args
+                .flags
+                .push(flag);
+        });
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+        assert_eq!(second.request_count(), 0);
+        assert!(app.world().resource::<Executed>().0.is_empty());
+        drop(app);
 
-    // The session keeps its access and its turn: a run without the bad
-    // name finishes it with every tool.
-    let third = answering(&["hello"]);
-    let (app, lines) = one_shot_on(&store, "", None, &third, true, |_| {});
-    let exit = lines.of("exit").first().cloned().unwrap_or_default();
-    assert_eq!(
-        (at(&exit, "code"), at(&exit, "answer")),
-        (&json!(0), &json!("hello"))
-    );
-    let mut world = app;
-    let world = world.world_mut();
-    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-    assert!(matches!(
-        world.get::<ToolAccess>(agent),
-        Some(ToolAccess::All)
-    ));
+        // A valid resume keeps the access and finishes the pending work.
+        let third = answering(&["hello"]);
+        let (mut app, lines) = one_shot_on(&store, "", Some(MODEL), &third, true, |app| {
+            recording(app, &["read", "write"]);
+        });
+        let exit = lines.of("exit").first().cloned().unwrap_or_default();
+        assert_eq!(
+            (at(&exit, "code"), at(&exit, "answer")),
+            (&json!(0), &json!("hello"))
+        );
+        let executed: Vec<_> = pending_tool.then_some("write").into_iter().collect();
+        assert_eq!(app.world().resource::<Executed>().0, executed);
+        assert_eq!(third.request_count(), 1);
+        let world = app.world_mut();
+        let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+        assert!(matches!(
+            world.get::<ToolAccess>(agent),
+            Some(ToolAccess::All)
+        ));
+    }
 }

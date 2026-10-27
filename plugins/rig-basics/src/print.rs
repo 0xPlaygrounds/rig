@@ -65,10 +65,10 @@ pub const ANSWER: &str = "answer";
 /// The option that intersects every agent's tool access with the names given.
 /// Omission leaves access unchanged; an empty value permits no tools. A
 /// headless run refuses a name no registered tool has, with exit code 2,
-/// before any model call; it checks once every plugin finished, so a tool
-/// registered later, such as an MCP server's, cannot be named. Elsewhere an
-/// unknown name grants nothing. Subagents retain inherited restrictions and
-/// this limit.
+/// before any model or tool call. It checks once every plugin finished,
+/// so a tool registered later, such as an MCP server's, cannot be named.
+/// Elsewhere an unknown name grants nothing. Subagents retain inherited
+/// restrictions and this limit.
 pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
@@ -243,10 +243,9 @@ impl Plugin for PrintPlugin {
             .run_headless(Some(full_prompt(&prompt)));
     }
 
-    /// Refuses a headless run's `--tools` naming a tool no plugin
-    /// registered, once every plugin finished: no model call goes out, not
-    /// even a restored turn's, and no agent's access, which its session
-    /// keeps, is limited.
+    /// Refuses unknown tools after every plugin finished, holding all
+    /// model and tool calls, including restored work. The session keeps
+    /// every agent's tool access unchanged.
     fn cleanup(&self, app: &mut App) {
         let world = app.world_mut();
         // A run someone sits at keeps an unknown name as granting nothing.
@@ -264,13 +263,16 @@ impl Plugin for PrintPlugin {
         if let (Some(why), Some(mut run)) = (refused, world.get_resource_mut::<Run>()) {
             run.refused = Some(why);
             world.remove_resource::<Tools>();
-            app.add_systems(AgentPass, hold_model_calls.in_set(Stage::Gate));
+            app.add_systems(AgentPass, hold_calls.in_set(Stage::Gate));
         }
     }
 }
 
-/// Holds every model call, for a run that ends before any goes out.
-fn hold_model_calls(calls: Query<Entity, (ReadyToStart, ModelCalls)>, mut commands: Commands) {
+/// Holds model and tool calls for a run whose tool list was refused.
+fn hold_calls(
+    calls: Query<Entity, (ReadyToStart, Or<(ModelCalls, ToolCalls)>)>,
+    mut commands: Commands,
+) {
     for call in &calls {
         commands.spawn(HoldOf(call));
     }
