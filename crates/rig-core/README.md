@@ -38,6 +38,22 @@ The `reqwest` feature gives provider clients a default HTTP transport, so
 `OpenAI::from_env()` needs no client of yours. Without it, pass a transport
 with `OpenAIConfig::from_env()?.connect(http)`.
 
+`rig-core` no longer forces serde_json's `preserve_order` or
+`float_roundtrip` features. Without them, JSON object keys sort by name,
+including schema properties and JSON text embedded in prompts, embeddings
+and tool results. Parsing floating-point numbers can change their low bits.
+To restore the previous configuration, add this to your application's
+`Cargo.toml` dependencies:
+
+```toml
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+```
+
+Cargo unifies features across dependencies. `rig-cassette` with `traffic`
+(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`
+and `rig-mongodb` through BSON still enable `preserve_order`. These are
+application-level serde_json choices; Rig has no forwarding feature.
+
 ## WASM target support
 
 `rig-core` supports the browser-oriented `wasm32-unknown-unknown` target. When

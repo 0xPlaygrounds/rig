@@ -15,6 +15,17 @@
 //! its operation, for consumers that store one. Companion crates supply
 //! transports, agent runtimes, and external storage integrations.
 //!
+//! `rig-core` does not force serde_json's `preserve_order` or `float_roundtrip`.
+//! Without them, schema properties and JSON text in prompts, embeddings and
+//! tool results use sorted object keys, and parsed floats can differ in their
+//! low bits. Restore the previous configuration in your application's
+//! dependencies with
+//! `serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }`.
+//!
+//! Cargo unifies these features: `rig-cassette` with `traffic` (including
+//! `rig-traffic`) enables both; `rig-claude-cloak` and `rig-mongodb` through BSON
+//! enable `preserve_order`. Rig has no forwarding feature for either setting.
+//!
 //! ```no_run
 //! use rig_core::DynModel;
 //! use rig_core::completion::{CompletionRequest, CompletionResponse};

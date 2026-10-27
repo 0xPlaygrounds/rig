@@ -258,3 +258,64 @@ fn the_lenient_reader_skips_what_it_cannot_use() {
     );
     assert!(Catalog::from_models_dev("[]").is_err());
 }
+
+#[test]
+fn the_last_alias_section_overlays_the_first_in_either_order() {
+    let base = Catalog::from_models_dev(
+        r#"{"google": {"models": {"model": {"limit": {"context": 100}}}}}"#,
+    )
+    .expect("base catalog")
+    .0;
+    let provider = ProviderId::catalog("gcp.gemini").expect("a known vendor");
+    for (first, last) in [("google", "gcp.gemini"), ("gcp.gemini", "google")] {
+        let json = format!(
+            r#"{{"{first}": {{"models": {{"model": {{"limit": {{"context": 200, "output": 50}}}}}}}},
+                 "{last}": {{"models": {{"model": {{"limit": {{"context": 300}}}}}}}}}}"#
+        );
+        let overrides = Catalog::from_overrides(&json, &base).expect("alias overrides");
+        let catalog = base.with_overrides(&overrides);
+        let model = catalog
+            .get_exact(provider, "model")
+            .expect("overridden model");
+        assert_eq!(model.context_window, Some(300));
+        assert_eq!(model.max_output_tokens, Some(50));
+    }
+}
+
+#[test]
+fn diagnostics_keep_file_order_across_models_and_nested_objects() {
+    let found = errors(
+        r#"{"anthropic": {"models": {
+            "z-model": {
+                "cost": {"tiers": [{"z-rate": 1, "a-rate": 2, "tier": {"type": "context", "size": 1}}]},
+                "limit": {"output": "bad", "context": "also bad"}
+            },
+            "a-model": {"z-field": true, "a-field": false}
+        }}, "z-vendor": {}, "a-vendor": {}}"#,
+    );
+    let paths: Vec<_> = found.iter().map(|error| error.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            "anthropic.models.z-model.cost.tiers.0.z-rate",
+            "anthropic.models.z-model.cost.tiers.0.a-rate",
+            "anthropic.models.z-model.limit.output",
+            "anthropic.models.z-model",
+            "anthropic.models.a-model.z-field",
+            "anthropic.models.a-model.a-field",
+            "anthropic.models.a-model",
+            "z-vendor",
+            "a-vendor",
+        ]
+    );
+    assert!(matches!(
+        found.get(2).map(|error| &error.kind),
+        Some(OverrideErrorKind::InvalidValue(_))
+    ));
+    for index in [3, 6] {
+        assert!(matches!(
+            found.get(index).map(|error| &error.kind),
+            Some(OverrideErrorKind::NewModel { .. })
+        ));
+    }
+}

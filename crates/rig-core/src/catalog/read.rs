@@ -5,12 +5,15 @@
 use std::fmt;
 
 use serde::Deserialize;
-use serde_json::{Map, Value};
+use serde_json::value::RawValue;
 
 use super::lookup::{self, edit_distance};
 use super::row::{Row, known_fields};
 use super::{Catalog, CatalogError, KEYS, vendor_of};
 use crate::providers::registry::{Format, ProviderId};
+
+/// Object entries in file order, borrowing each value's JSON text.
+type Entries<'a> = indexmap::IndexMap<String, &'a RawValue>;
 
 /// The row keys a model the base catalog does not list must set, since an
 /// absent one reads as "the model does not": reason, call tools, or read
@@ -158,7 +161,7 @@ impl Catalog {
                 kind: OverrideErrorKind::InvalidValue(message),
             }])
         };
-        let sections: Map<String, Value> =
+        let sections: Entries<'_> =
             serde_json::from_str(json).map_err(|error| whole(error.to_string()))?;
         let mut errors = Vec::new();
         let mut error = |path: String, kind| errors.push(OverrideError { path, kind });
@@ -169,7 +172,7 @@ impl Catalog {
                 error(key.clone(), OverrideErrorKind::UnknownVendor { suggestion });
                 continue;
             };
-            let Some(section) = section.as_object() else {
+            let Ok(section) = serde_json::from_str::<Entries<'_>>(section.get()) else {
                 error(key.clone(), invalid("expected an object with `models`"));
                 continue;
             };
@@ -183,27 +186,29 @@ impl Catalog {
             let Some(models) = section.get("models") else {
                 continue;
             };
-            let Some(models) = models.as_object() else {
+            let Ok(models) = serde_json::from_str::<Entries<'_>>(models.get()) else {
                 error(
                     format!("{key}.models"),
                     invalid("expected an object of model ids"),
                 );
                 continue;
             };
-            for (id, value) in models {
+            for (id, value) in &models {
                 let path = format!("{key}.models.{id}");
-                let Some(fields) = value.as_object() else {
+                let Ok(fields) = serde_json::from_str::<Entries<'_>>(value.get()) else {
                     error(path, invalid("expected an object"));
                     continue;
                 };
                 let mut problems = Vec::new();
-                unknown_fields(fields, &[], &mut |at, suggestion| {
+                unknown_fields(&fields, &[], &mut |at, suggestion| {
                     problems.push((
                         format!("{path}.{at}"),
                         OverrideErrorKind::UnknownField { suggestion },
                     ));
                 });
-                let row = match serde_path_to_error::deserialize::<_, Row>(value) {
+                let row = match serde_path_to_error::deserialize::<_, Row>(
+                    &mut serde_json::Deserializer::from_str(value.get()),
+                ) {
                     Ok(row) => Some(row),
                     Err(failed) => {
                         let at = failed.path().to_string();
@@ -272,9 +277,6 @@ impl Catalog {
     ///
     /// [`CatalogError::Json`] when the text is not a JSON object.
     pub fn from_models_dev(json: &str) -> Result<(Catalog, Vec<Skipped>), CatalogError> {
-        /// What the file holds, in its order, each row left as its text
-        /// until it is read.
-        type Entries<'a> = indexmap::IndexMap<String, &'a serde_json::value::RawValue>;
         #[derive(Deserialize)]
         struct Section<'a> {
             #[serde(borrow)]
@@ -341,7 +343,7 @@ fn invalid(message: &str) -> OverrideErrorKind {
 /// does not read there, then the same for each object below it. An object
 /// whose keys are free is not checked, but the objects below it are.
 fn unknown_fields(
-    object: &Map<String, Value>,
+    object: &Entries<'_>,
     path: &[String],
     report: &mut dyn FnMut(String, Option<&'static str>),
 ) {
@@ -356,18 +358,16 @@ fn unknown_fields(
             report(at.join("."), closest(key, known.iter().copied()));
             continue;
         }
-        match value {
-            Value::Object(inner) => unknown_fields(inner, &at, report),
-            Value::Array(items) => {
-                for (index, item) in items.iter().enumerate() {
-                    if let Value::Object(inner) = item {
-                        let mut at = at.clone();
-                        at.push(index.to_string());
-                        unknown_fields(inner, &at, report);
-                    }
+        if let Ok(inner) = serde_json::from_str::<Entries<'_>>(value.get()) {
+            unknown_fields(&inner, &at, report);
+        } else if let Ok(items) = serde_json::from_str::<Vec<&RawValue>>(value.get()) {
+            for (index, item) in items.iter().enumerate() {
+                if let Ok(inner) = serde_json::from_str::<Entries<'_>>(item.get()) {
+                    let mut at = at.clone();
+                    at.push(index.to_string());
+                    unknown_fields(&inner, &at, report);
                 }
             }
-            _ => {}
         }
     }
 }
