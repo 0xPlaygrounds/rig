@@ -193,6 +193,17 @@ fn an_image_is_read_as_an_image() {
         "{refused}"
     );
     assert_eq!(text(ReadArgs::new(at("notes.png"))), "not an image\n");
+    #[cfg(unix)]
+    {
+        std::fs::write(at("logo"), &png).ok();
+        std::os::unix::fs::symlink(at("logo"), at("link.png")).ok();
+        let (linked, _) = call(ReadArgs::new(at("link.png")));
+        let linked = linked.map(ToolOutput::into_content).unwrap_or_default();
+        assert!(
+            matches!(linked.get(1), Some(ToolResultContent::Image(_))),
+            "{linked:?}"
+        );
+    }
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -218,6 +229,50 @@ fn a_binary_file_is_refused_as_not_text() {
     std::fs::remove_file(path).ok();
 }
 
+/// The note on a line cut short gives a command only for a path `shell`
+/// reaches as written, also when lines are cut narrower to fit; the
+/// refusal of a file that is not text likewise.
+#[test]
+fn a_command_is_given_only_for_a_path_shell_reaches() {
+    let long = "x".repeat(640);
+    let lines: Vec<String> = (0..475).map(|n| format!("{n:03} {long}")).collect();
+    let asked: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let (shown, _) = super::show(asked.clone(), 1, 475, crate::MAX_BYTES, Some("/w/data.txt"));
+    let note = shown.lines().last().unwrap_or_default();
+    let width: usize = note
+        .split_once("cut at ")
+        .and_then(|(_, rest)| rest.split(' ').next())
+        .and_then(|width| width.parse().ok())
+        .unwrap_or_default();
+    assert!((100..2000).contains(&width), "{note}");
+    assert!(
+        note.ends_with(&format!(
+            " to fit 50 KB; a smaller limit shows more of each; the first, line 1, shows {width} \
+             of its 644 bytes: in `shell`, `sed -n '1p;1q' '/w/data.txt' | cut -b {}-644 | LC_ALL=C \
+             fold -b -w 2000` shows the remaining {} bytes]",
+            width + 1,
+            644 - width
+        )),
+        "{note}"
+    );
+    let (remote, _) = super::show(asked, 1, 475, crate::MAX_BYTES, Some("bench:~/data.txt"));
+    let note = remote.lines().last().unwrap_or_default();
+    assert!(
+        note.ends_with("a smaller limit shows more of each]"),
+        "{note}"
+    );
+    let refused = crate::workspace::text_error(
+        "bench:~/data.bin",
+        std::io::Error::from(std::io::ErrorKind::InvalidData),
+    );
+    assert!(
+        refused
+            .to_string()
+            .ends_with("bench:~/data.bin is not a text file (not UTF-8)"),
+        "{refused}"
+    );
+}
+
 /// The note on a line cut short names it and the byte its rest starts at,
 /// and gives a command that shows the rest in lines `shell` keeps whole,
 /// starting exactly where the read stopped.
@@ -230,7 +285,7 @@ fn a_cut_line_can_be_read_on_in_shell() {
     let path = dir.join("long.txt");
     let ascii = "x".repeat(30_000);
     let wide = "é".repeat(2_500);
-    let three = "日".repeat(2_500);
+    let three = "日".repeat(10_000);
     std::fs::write(&path, format!("short\n{ascii}\n{wide}\n{three}\n")).ok();
     let path = path.to_string_lossy().into_owned();
     let quoted = format!("'{}'", path.replace('\'', "'\\''"));
@@ -241,7 +296,7 @@ fn a_cut_line_can_be_read_on_in_shell() {
         note,
         format!(
             "[1 line was cut at 2000 characters; line 2 shows 2000 of its 30000 bytes: in \
-             `shell`, `sed -n '2p;2q' {quoted} | cut -b 2001-12000 | fold -b -w 2000` shows the \
+             `shell`, `sed -n '2p;2q' {quoted} | cut -b 2001-12000 | LC_ALL=C fold -b -w 2000` shows the \
              next 10000 bytes, and `cut -b 12001-22000` the ones after]"
         )
     );
@@ -250,8 +305,9 @@ fn a_cut_line_can_be_read_on_in_shell() {
     assert!(
         note.starts_with(
             "[2 lines were cut at 2000 characters; the first, line 3, shows 4000 of its 5000 bytes"
-        ) && note
-            .ends_with("| cut -b 4001-5000 | fold -b -w 2000` shows the remaining 1000 bytes]"),
+        ) && note.ends_with(
+            "| cut -b 4001-5000 | LC_ALL=C fold -b -w 2000` shows the remaining 1000 bytes]"
+        ),
         "{note}"
     );
 
@@ -269,8 +325,18 @@ fn a_cut_line_can_be_read_on_in_shell() {
     let next = rest(ascii_note.lines().nth(1).unwrap_or_default());
     assert!(next.lines().all(|line| line.len() == 2000), "{next:.100}");
     assert_eq!(next.lines().collect::<String>(), "x".repeat(10_000));
+    // Chunks of 10000 bytes start and end inside three-byte characters,
+    // as do the folds, which show as U+FFFD; every chunk still comes through.
     let three_note = text(ReadArgs::new(&path).lines(4, 1));
-    let next = rest(three_note.lines().nth(1).unwrap_or_default());
-    assert_eq!(next, format!("{}\n", "日".repeat(500)));
+    let three_note = three_note.lines().nth(1).unwrap_or_default();
+    assert!(three_note.contains("| cut -b 6001-16000 |"), "{three_note}");
+    for chunk in [
+        rest(three_note),
+        rest(&three_note.replace("6001-16000", "16001-26000")),
+    ] {
+        let characters = chunk.chars().filter(|c| *c == '日').count();
+        assert!(characters >= 3320, "{characters} {chunk:.60}");
+        assert!(chunk.lines().all(|line| line.len() <= 2000 * 3));
+    }
     std::fs::remove_dir_all(dir).ok();
 }

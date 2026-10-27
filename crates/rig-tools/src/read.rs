@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_core::message::ToolResultContent;
+use rig_core::message::{ImageMediaType, ToolResultContent};
 use rig_core::tool::{
     ContentHash, FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
     ToolExecutionError, ToolOutput, Touches, args_schema, content_hash,
@@ -255,17 +255,19 @@ impl Tool for Read {
             .workspace
             .place(self.base.as_deref(), self.confine, &args.path)?;
         let shown = path.to_string_lossy().into_owned();
+        // The name asked counts too, for a link named as an image.
+        let image = is_image_path(&path) || is_image_path(Path::new(&args.path));
         let workspace = self.workspace.clone();
         let seen = self.seen.clone();
         let (output, read) = blocking(move || {
-            if is_image_path(&path) {
+            if image {
                 match attach::image(workspace.as_ref(), &path) {
                     Ok(image) => {
                         let read = FileRead::new(&shown, content_hash(&image.bytes));
                         let output = ToolOutput::content(vec![
                             ToolResultContent::text(format!(
                                 "{shown}: a {} image of {} KB",
-                                image.media_type.extension().to_uppercase(),
+                                name(&image.media_type),
                                 image.bytes.len().div_ceil(1024)
                             )),
                             ToolResultContent::image_base64(
@@ -436,6 +438,19 @@ fn show(
     )
 }
 
+/// What an image of `media_type` is called.
+fn name(media_type: &ImageMediaType) -> &'static str {
+    match media_type {
+        ImageMediaType::PNG => "PNG",
+        ImageMediaType::JPEG => "JPEG",
+        ImageMediaType::GIF => "GIF",
+        ImageMediaType::WEBP => "WebP",
+        ImageMediaType::HEIC => "HEIC",
+        ImageMediaType::HEIF => "HEIF",
+        ImageMediaType::SVG => "SVG",
+    }
+}
+
 /// How to read on in line `number` of the file at `path`, quoted for
 /// `sh`, cut after its first `kept` of `bytes` bytes, the first of the
 /// `cut` lines cut: a command that prints the next bytes of it in lines
@@ -457,7 +472,7 @@ fn read_on(path: &str, cut: usize, number: usize, kept: usize, bytes: usize) -> 
     };
     format!(
         "; {which} shows {kept} of its {bytes} bytes: in `shell`, `sed -n '{number}p;{number}q' \
-         {path} | cut -b {from}-{to} | fold -b -w {MAX_LINE_CHARS}` shows {next}"
+         {path} | cut -b {from}-{to} | LC_ALL=C fold -b -w {MAX_LINE_CHARS}` shows {next}"
     )
 }
 

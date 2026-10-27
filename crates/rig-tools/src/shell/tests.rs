@@ -399,6 +399,9 @@ fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
         Some(format!("{}\n", "x".repeat(300_000)))
     );
 
+    let fits = shell(&format!("{}; echo", x(5000)), None);
+    assert_eq!(fits, format!("{}\n[exit code 0]", "x".repeat(5000)));
+
     let command = format!(
         "seq 1 3000; {}; echo ' test FAILED'; seq 1 3000; yes é | head -n 3000 | tr -d '\\n'; \
          echo",
