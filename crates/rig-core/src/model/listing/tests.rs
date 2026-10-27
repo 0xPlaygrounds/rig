@@ -5,6 +5,8 @@ fn test_model_new() {
     let model = ModelInfo::new("gpt-4", "GPT-4");
     assert_eq!(model.id, "gpt-4");
     assert_eq!(model.name, Some("GPT-4".to_string()));
+    assert_eq!(model.supports_tool_calls, None);
+    assert_eq!(ModelInfo::from_id("gpt-4").supports_tool_calls, None);
 }
 
 #[test]
@@ -90,6 +92,7 @@ fn test_model_serde() {
         owned_by: Some("openai".to_string()),
         context_length: Some(8192),
         max_output_tokens: Some(4096),
+        supports_tool_calls: Some(true),
     };
 
     let json = serde_json::to_string(&model).unwrap();
@@ -99,6 +102,26 @@ fn test_model_serde() {
     let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.id, "gpt-4");
     assert_eq!(deserialized.name, Some("GPT-4".to_string()));
+    assert_eq!(deserialized.supports_tool_calls, Some(true));
+}
+
+#[test]
+fn tool_call_support_preserves_false_and_unknown_in_serde() {
+    for support in [None, Some(false), Some(true)] {
+        let mut model = ModelInfo::from_id("example");
+        model.supports_tool_calls = support;
+        let value = serde_json::to_value(&model).expect("serialize model metadata");
+        assert_eq!(
+            value.get("supports_tool_calls"),
+            support.map(serde_json::Value::Bool).as_ref()
+        );
+        let restored: ModelInfo =
+            serde_json::from_value(value).expect("deserialize model metadata");
+        assert_eq!(restored.supports_tool_calls, support);
+    }
+    let legacy: ModelInfo = serde_json::from_str(r#"{"id":"example"}"#)
+        .expect("model metadata without a support flag still deserializes");
+    assert_eq!(legacy.supports_tool_calls, None);
 }
 
 #[test]
