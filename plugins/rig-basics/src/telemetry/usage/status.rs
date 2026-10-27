@@ -1,6 +1,8 @@
 //! Each agent's meter, and what its running turn spent, in the terminal
 //! view's status line.
 
+use std::collections::HashSet;
+
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -34,15 +36,30 @@ fn show_meter(
         (Option<&Connection>, Option<&InputLimit>),
         &mut StatusItems,
     )>,
+    changed: Query<
+        Entity,
+        Or<(
+            Changed<AgentUsage>,
+            Changed<LastUsage>,
+            Changed<Connection>,
+            Changed<InputLimit>,
+            Added<ContextStale>,
+        )>,
+    >,
+    mut known: RemovedComponents<ContextStale>,
 ) {
-    for ((AgentUsage { total: spent, .. }, last, stale), (connection, limit), mut items) in
-        &mut agents
-    {
+    let due: HashSet<Entity> = changed.iter().chain(known.read()).collect();
+    for agent in due {
+        let Ok(((AgentUsage { total: spent, .. }, last, stale), (connection, limit), mut items)) =
+            agents.get_mut(agent)
+        else {
+            continue;
+        };
         let shown = spent.calls > 0;
         let limit = InputLimit::of(limit, connection);
-        let context = (!stale)
-            .then(|| last.context())
-            .flatten()
+        let context = last
+            .context()
+            .filter(|_| !stale)
             .map(|tokens| ContextUse { tokens, limit });
         let tokens = format!(
             "↑{} ↓{}",
@@ -68,12 +85,10 @@ fn show_meter(
             context.map(|context| format!("ctx {context}"))
         };
         let text = |text: Option<String>| text.filter(|_| shown).unwrap_or_default();
-        let mut next = items.clone();
-        next.show(TOKENS.says(text(Some(tokens)), Tone::Dim));
-        next.show(CACHE.says(text(cache), Tone::Dim));
-        next.show(COST.says(text(spent.cost_label()), Tone::Dim));
-        next.show(CONTEXT.says(text(context), tone));
-        items.set_if_neq(next);
+        items.show(TOKENS.says(text(Some(tokens)), Tone::Dim));
+        items.show(CACHE.says(text(cache), Tone::Dim));
+        items.show(COST.says(text(spent.cost_label()), Tone::Dim));
+        items.show(CONTEXT.says(text(context), tone));
     }
 }
 

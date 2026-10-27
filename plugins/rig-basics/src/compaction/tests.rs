@@ -2588,10 +2588,9 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
             .flatten()
             .map(|(_, request)| serde_json::to_string(&request).unwrap_or_default())
             .unwrap_or_default();
-        let hint = if answered {
-            "so it is answered"
-        } else {
-            "reply to the last request above continues"
+        let hint = match outcome {
+            "answered" => "so the request is answered",
+            _ => "the user stopped that reply",
         };
         assert!(separate.contains(hint), "{separate}");
         app.world_mut()
@@ -2602,7 +2601,7 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
         let summary = sent(&model).first().cloned().unwrap_or_default();
         assert!(summary.contains(hint), "{summary}");
         if !answered {
-            assert!(!summary.contains("so it is answered"), "{summary}");
+            assert!(!summary.contains("so the request is answered"), "{summary}");
         }
     }
 }
@@ -2751,4 +2750,45 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     assert!(fork.is_some(), "the fork was made");
     let Some(fork) = fork else { return };
     assert_eq!(replaced(restarted.world(), fork), sets);
+}
+
+/// Only a kept part that begins with a reply gets a word on it, and the
+/// word follows how the reply's turn ended.
+#[test]
+fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
+    use rig_core::conversation::{Author, Conversation, Entry, Halt};
+
+    let mut conversation = Conversation::default();
+    conversation.push(Message::user("Explain the crate."));
+    conversation.open_turn();
+    let answer = conversation.push(Message::assistant("It builds agents."));
+    conversation.end_turn(TurnEnd::Answered {
+        answer: Some(answer),
+    });
+    let delivered = Entry::new(Message::user("Subagent report.")).by(Author::plugin("subagents"));
+    let delivered = conversation.push(delivered);
+    assert_eq!(kept_reply(&conversation, Some(delivered)), None);
+    assert!(kept_reply(&conversation, Some(answer)).is_some_and(|it| it.contains("is answered")));
+
+    conversation.open_turn();
+    let cut = conversation.push(Message::Assistant(AssistantMessage::aborted(
+        None,
+        vec![AssistantContent::text("Half a reply")],
+        "stopped",
+    )));
+    assert!(kept_reply(&conversation, Some(cut)).is_some_and(|it| it.contains("continues")));
+    conversation.halt(Halt::Stopped);
+    conversation.end_turn(TurnEnd::Stopped {
+        why: None,
+        at: Some(cut),
+        calls: Vec::new(),
+    });
+    assert!(kept_reply(&conversation, Some(cut)).is_some_and(|it| it.contains("user stopped")));
+    conversation.push(Message::user("Next."));
+    let note = conversation
+        .entries()
+        .find(|entry| entry.is_stop_marker())
+        .map(|entry| entry.id);
+    assert!(note.is_some());
+    assert_eq!(kept_reply(&conversation, note), None);
 }

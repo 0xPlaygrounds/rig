@@ -379,38 +379,41 @@ pub fn plan(
     Ok(Some((summarizing, request)))
 }
 
-/// Whether the last summarized request already has its answer in the kept part.
+/// What the summarizer is told when the kept part begins with the model's
+/// reply to the last summarized request: whether that request was
+/// answered, stopped by the user, or is still being worked on. `None` when
+/// the kept part begins with anything but a reply.
 fn kept_reply(
     conversation: &rig_core::conversation::Conversation,
     keep_from: Option<MessageId>,
 ) -> Option<&'static str> {
     let kept = conversation.index_of(keep_from?)?;
-    if conversation.entries().nth(kept)?.is_users_own() {
+    let reply = conversation.messages().get(kept)?;
+    if !matches!(&**reply, completion::Message::Assistant(_)) {
         return None;
     }
-    let request = conversation
-        .entries()
-        .take(kept)
-        .rev()
-        .find(|entry| entry.is_users_own())?;
-    let turn = conversation.turns().rev().find(|(_, turn)| {
-        conversation
-            .asked(turn.start)
-            .any(|asked| asked.id == request.id)
-    });
-    let answered = turn.is_some_and(|(_, turn)| {
-        matches!(turn.end, Some(TurnEnd::Answered { answer: Some(answer) })
-            if conversation.index_of(answer).is_some_and(|at| at >= kept))
-    });
-    if answered {
-        Some(
-            "The messages kept after this checkpoint begin with the model's answer to the last request above, so it is answered: do not list it as pending.",
-        )
-    } else {
-        Some(
-            "The model's reply to the last request above continues in the messages kept after this checkpoint.",
-        )
-    }
+    let turns = conversation.turns().rev();
+    let (_, turn) = turns
+        .into_iter()
+        .find(|(_, turn)| conversation.start_of(turn.start) <= kept)?;
+    Some(match turn.end {
+        Some(TurnEnd::Answered {
+            answer: Some(answer),
+        }) if conversation.index_of(answer).is_some_and(|at| at >= kept) => {
+            "The conversation to summarize stops just before the model's answer to its last \
+             request; that answer is kept after the summary, so the request is answered: do not \
+             list it as pending."
+        }
+        Some(TurnEnd::Stopped { .. }) => {
+            "The conversation to summarize stops partway through the model's reply to its last \
+             request, and the user stopped that reply: do not list the request as pending or as \
+             a next step."
+        }
+        _ => {
+            "The conversation to summarize stops partway through the model's reply to its last \
+             request; the reply continues in the messages kept after the summary."
+        }
+    })
 }
 
 /// What the summary for `reason` should keep above all; may be empty.
@@ -1056,9 +1059,9 @@ fn compact_near_the_window(
                     None => {}
                 }
             }
-            let before = compacting.conversation.revision();
+            let revision = compacting.conversation.revision();
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
-            if compacting.conversation.revision() != before {
+            if compacting.conversation.revision() != revision {
                 commands.entity(agent).try_insert(ContextStale {});
             }
             // The request's copy too, as cleared by compaction.
@@ -1169,9 +1172,9 @@ fn recover_from_overflow(
             continue;
         }
         if clears {
-            let before = compacting.conversation.revision();
+            let revision = compacting.conversation.revision();
             let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
-            if compacting.conversation.revision() != before {
+            if compacting.conversation.revision() != revision {
                 commands.entity(agent).try_insert(ContextStale {});
             }
             let then = " and sending it again";
@@ -1471,7 +1474,7 @@ fn take_summary(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    let before = conversation.revision();
+    let revision = conversation.revision();
     let end = match summarizing.keep_from {
         None => Some(conversation.messages().len()),
         Some(kept) => conversation.index_of(kept),
@@ -1530,7 +1533,7 @@ fn take_summary(
             (Recovering::NotSummarized, plan.is_some())
         }
     };
-    if conversation.revision() != before {
+    if conversation.revision() != revision {
         commands.entity(agent).try_insert(ContextStale {});
     }
     match hold {
@@ -1573,7 +1576,7 @@ fn take_notes(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    let before = conversation.revision();
+    let revision = conversation.revision();
     let (by, plan) = (summary_author(), &noting.plan);
     let notes = match ended.contains(turn) {
         true => Err(NotTaken::Cancelled),
@@ -1597,7 +1600,7 @@ fn take_notes(
             Recovering::Cleared
         }
     };
-    if conversation.revision() != before {
+    if conversation.revision() != revision {
         commands.entity(agent).try_insert(ContextStale {});
     }
     if let Some(&HoldOf(call)) = hold {

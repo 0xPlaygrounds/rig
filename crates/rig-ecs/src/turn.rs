@@ -554,7 +554,14 @@ pub(crate) fn on_stop_turn(
             commit_results(&mut conversation, results);
         }
         conversation.halt(Halt::Stopped);
-        let at = conversation.entries().next_back().map(|entry| entry.id);
+        // The stop is drawn under the turn's last entry; a turn that has
+        // none, stopped before it added or answered anything, has no place.
+        let start = conversation.turns().next_back();
+        let start = start.map(|(_, record)| conversation.start_of(record.start));
+        let last = conversation.entries().next_back();
+        let at = last
+            .filter(|last| start.is_some_and(|start| last.index >= start))
+            .map(|last| last.id);
         conversation.end_turn(TurnEnd::Stopped {
             why: reason.clone(),
             at,
