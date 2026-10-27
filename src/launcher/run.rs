@@ -525,8 +525,8 @@ impl Claimed {
     /// Removes the session's directory when no agent logged a message in
     /// it, such as a `/new` session left at once: a session with nothing
     /// to resume leaves nothing behind. Call it once the agent exited for
-    /// good or switched away. Best effort: a directory left behind has no
-    /// agent log, so `/resume` does not list it.
+    /// good or switched away. Best effort: a directory left behind is not
+    /// marked saved, so `/resume` does not list it.
     fn discard_if_unsaved(&self, home: &Home) {
         let session = home.session(&self.id);
         if !session.is_saved() {

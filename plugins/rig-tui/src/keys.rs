@@ -466,8 +466,7 @@ pub fn run_command(
 pub enum InputAction {
     /// Empties the input.
     Clear,
-    /// On an empty input, arms the exit for a moment; pressed again while
-    /// armed, quits as `/quit` does.
+    /// On an empty input, quits as `/quit` does; otherwise does nothing.
     Exit,
     /// Types a newline.
     NewLine,
