@@ -156,12 +156,10 @@ pub(crate) fn quote(text: &str) -> String {
 }
 
 /// `path`, a path a file tool resolved, quoted for a command in `shell`:
-/// `None` when it is not absolute, such as a remote `~/` path or a
-/// `HOST:PATH`, which `shell` would not find as written.
+/// `None` when it is not absolute for `sh`, such as a remote `~/` path, a
+/// `HOST:PATH` or a Windows path, which `shell` would not find as written.
 pub(crate) fn shell_path(path: &str) -> Option<String> {
-    std::path::Path::new(path)
-        .is_absolute()
-        .then(|| quote(path))
+    path.starts_with('/').then(|| quote(path))
 }
 
 /// `text` cut to fit in `width` terminal columns, ending in `…` when cut:

@@ -14,8 +14,9 @@ use rig_core::message::{ImageMediaType, UserContent};
 use crate::workspace::{Stat, Workspace};
 use crate::{MAX_LINES, show_lines};
 
-/// The largest image attached: providers refuse bigger ones.
-pub(crate) const MOST_BYTES: u64 = 5 * 1024 * 1024;
+/// The largest image attached: providers refuse one whose base64 is over
+/// 5 MB, which this many bytes make.
+pub(crate) const MOST_BYTES: u64 = 5 * 1024 * 1024 / 4 * 3;
 
 /// The most bytes of a text file attached; the model reads on with `read`.
 const MOST_TEXT_BYTES: usize = 32 * 1024;

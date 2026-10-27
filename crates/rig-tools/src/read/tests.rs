@@ -148,7 +148,7 @@ fn an_image_is_read_as_an_image() {
     let at = |name: &str| dir.join(name).to_string_lossy().into_owned();
     std::fs::write(at("logo.png"), &png).ok();
     let mut large = png.clone();
-    large.resize(5 * 1024 * 1024 + 1, 0);
+    large.resize(3840 * 1024 + 1, 0);
     std::fs::write(at("large.png"), &large).ok();
     std::fs::write(at("notes.png"), "not an image\n").ok();
 
@@ -188,7 +188,7 @@ fn an_image_is_read_as_an_image() {
         .unwrap_or_default();
     assert!(
         refused.ends_with(
-            "large.png: it is an image of 5121 KB, more than the 5120 KB a provider takes"
+            "large.png: it is an image of 3841 KB, more than the 3840 KB a provider takes"
         ),
         "{refused}"
     );
@@ -221,8 +221,13 @@ fn a_binary_file_is_refused_as_not_text() {
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(
-        refused.contains(&format!(
-            "{path} is not a text file (not UTF-8); `file '{path}'` in `shell` shows what it is"
+        refused.contains(&format!("{path} is not a text file (not UTF-8)")),
+        "{refused}"
+    );
+    #[cfg(unix)]
+    assert!(
+        refused.ends_with(&format!(
+            "(not UTF-8); `file '{path}'` in `shell` shows what it is"
         )),
         "{refused}"
     );

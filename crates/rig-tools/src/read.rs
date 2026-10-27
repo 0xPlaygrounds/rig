@@ -217,7 +217,7 @@ impl Tool for Read {
     fn description(&self) -> String {
         format!(
             "Read a regular text file of at most {} MB, or a PNG, JPEG, GIF or WebP image of at \
-             most {} MB, which comes back as the image. Returns a text file's lines as they are, \
+             most {} KB, which comes back as the image. Returns a text file's lines as they are, \
              at most {MAX_LINES} lines or {} KB (lines too long for that are cut shorter, and a \
              note says so and how to read on), then the offset to read on from if it stopped \
              early; use offset (from 1) and limit for part of a file, and `rg -n` in `shell` to \
@@ -225,7 +225,7 @@ impl Tool for Read {
              (but for the command a cut line's note gives), and read several files at once by \
              calling `read` several times in one reply.",
             MAX_FILE_BYTES / (1024 * 1024),
-            attach::MOST_BYTES / (1024 * 1024),
+            attach::MOST_BYTES / 1024,
             MAX_BYTES / 1024
         )
     }
