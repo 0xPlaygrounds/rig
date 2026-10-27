@@ -20,7 +20,6 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::process::Command;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
@@ -272,15 +271,18 @@ impl Edits<'_, '_> {
         let ask = (self.commands)
             .spawn((ask, ForAgent(hold.agent), HoldOf(hold.call), hold))
             .id();
-        let mut words = self.editor.0.iter().flat_map(|it| it.split_whitespace());
         let dir = self.scratch.as_ref().and_then(|scratch| scratch.0.as_ref());
-        let (Some(program), Some(dir)) = (words.next(), dir) else {
+        let line = self
+            .editor
+            .0
+            .as_deref()
+            .filter(|line| !line.trim().is_empty());
+        let (Some(line), Some(dir)) = (line, dir) else {
             return;
         };
         let path = dir.join(format!("step-arguments-{}.json", ask.to_bits()));
         if std::fs::write(&path, text).is_ok() {
-            let mut command = Command::new(program);
-            command.args(words).arg(&path);
+            let command = corpus_shared::editor::command(Some(line), &[&path]);
             (self.commands).spawn((RunInTerminal(command), InEditor { ask, path }));
         }
     }
@@ -473,16 +475,17 @@ fn edited(
         commands.entity(run).despawn();
         let text = std::fs::read_to_string(&editing.path);
         std::fs::remove_file(&editing.path).ok();
-        match (exit.success(), text) {
-            (true, Ok(text)) => {
+        let why = match (exit.failure(), text) {
+            (None, Ok(text)) => {
                 commands.trigger(Pick::person(editing.ask, Some(Chosen::text(text))));
+                continue;
             }
-            _ => {
-                let agent = holds.get(editing.ask).ok().map(|hold| hold.agent);
-                let why = "The editor failed: edit the arguments in the input.";
-                notices.write(Notice::error(agent, why));
-            }
-        }
+            (Some(why), _) => format!("The editor failed ({why})"),
+            (None, Err(why)) => format!("The edited arguments could not be read ({why})"),
+        };
+        let agent = holds.get(editing.ask).ok().map(|hold| hold.agent);
+        let text = format!("{why}: edit the arguments in the input.");
+        notices.write(Notice::error(agent, text));
     }
 }
 

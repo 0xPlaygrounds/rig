@@ -128,7 +128,7 @@ fn script(home: &Path, name: &str, body: &str) -> String {
     let path = home.join(name);
     let text = format!("f=\"$1\"\nd=\"$(dirname \"$0\")\"\n{body}\n");
     assert!(std::fs::write(&path, text).is_ok());
-    format!("sh {}", path.display())
+    format!("sh '{}'", path.display())
 }
 
 /// Rewrites the file with awk `program`.
@@ -304,5 +304,30 @@ skip { next }
         left.contains("Turn three answer") && paired(&app, agent),
         "{left}"
     );
+
+    // The editor line is shell syntax, quotes and all; a failed editor
+    // changes nothing and says how it ended.
+    let quoted = r#"sh -c 'sed -i.bak "s/Turn three answer/MARKER/" "$1"' sh"#;
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        quoted,
+        "Edited the conversation",
+    );
+    assert!(messages(&app, agent).contains("MARKER"), "{said}");
+    let marked = messages(&app, agent);
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        r#"sh -c 'echo junk >> "$1"; exit 3' sh"#,
+        "nothing changed",
+    );
+    assert!(
+        said.contains("/edit-history: the editor failed (exit status 3); nothing changed."),
+        "{said}"
+    );
+    assert_eq!(messages(&app, agent), marked);
     std::fs::remove_dir_all(&home).ok();
 }

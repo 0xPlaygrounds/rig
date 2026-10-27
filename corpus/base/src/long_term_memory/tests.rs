@@ -104,6 +104,46 @@ fn a_fact_remembered_in_one_session_is_recalled_in_the_next_but_not_saved() {
     fs::remove_dir_all(home.root()).ok();
 }
 
+/// A failed `/memory edit` says why, and what the editor saved before it
+/// failed is read all the same.
+#[cfg(unix)]
+#[test]
+fn a_failed_editor_says_why_and_the_files_are_read_again() {
+    use std::os::unix::process::ExitStatusExt;
+
+    use rig_harness_test_support::{Collected, collect};
+
+    let home = scratch_home("corpus-long-term-memory-editor");
+    let (mut app, _wakes, _model) = session(&home, Vec::new());
+    collect::<Notice>(&mut app);
+    let project = home.root().join("project/.rig/memory.md");
+    fs::create_dir_all(home.root().join("project/.rig")).ok();
+    fs::write(&project, "- Saved before the editor failed\n").ok();
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "no agent");
+    let Some(agent) = agent else {
+        return;
+    };
+    let failed = TerminalExit(Ok(std::process::ExitStatus::from_raw(3 << 8)));
+    app.world_mut().spawn((Editing(agent), failed));
+    app.update();
+    fs::remove_dir_all(home.root()).ok();
+
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let failure = notices
+        .iter()
+        .find(|notice| notice.text == "/memory edit: the editor failed (exit status 3).");
+    assert!(
+        failure.is_some_and(|notice| notice.agent == Some(agent)),
+        "{notices:?}"
+    );
+    let listed = app.world().resource::<Memories>().list().join("\n");
+    assert!(
+        listed.contains("Saved before the editor failed"),
+        "{listed}"
+    );
+}
+
 #[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(LongTermMemoryPlugin);

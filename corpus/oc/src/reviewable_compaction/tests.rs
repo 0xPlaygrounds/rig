@@ -202,3 +202,64 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(ReviewableCompactionPlugin);
 }
+
+/// A failed editor leaves the summary as the model wrote it, says why,
+/// and the review goes on.
+#[cfg(all(unix, feature = "tui"))]
+#[test]
+fn a_failed_editor_keeps_the_summary_and_says_why() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
+
+    use rig_harness_test_support::{Collected, collect, scratch_home};
+    use rig_tui::TerminalExit;
+
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns([
+        reply("SUMMARY v1"),
+        reply("Answer after compaction."),
+    ]);
+    let answers = vec![Answer::choice("editor"), Answer::choice("accept")];
+    let (mut app, wakes, agent) = start(&store, &model, answers);
+    let home = scratch_home("oc-reviewable-editor");
+    let dir = home.root().to_path_buf();
+    assert!(std::fs::create_dir_all(&dir).is_ok());
+    app.insert_resource(Scratch(Some(dir.clone())));
+    collect::<Notice>(&mut app);
+    for turn in 1..=12 {
+        let world = app.world_mut();
+        commit_message(world, agent, Message::user(format!("Q{turn:02}: question"))).ok();
+        commit_message(world, agent, Message::assistant(format!("A{turn:02}"))).ok();
+    }
+    app.update();
+
+    app.world_mut().trigger(RunCommand::new(agent, "compact"));
+    let editing = |world: &World| {
+        world
+            .iter_entities()
+            .find_map(|entity| entity.get::<editor::EditorFor>().map(|_| entity.id()))
+    };
+    run_until(&mut app, &wakes, |world| editing(world).is_some());
+    // The editor wrote the file, then exited with 3.
+    std::fs::write(dir.join("reviewable-compaction-summary.md"), "EDITED").ok();
+    if let Some(run) = editing(app.world()) {
+        let failed = TerminalExit(Ok(ExitStatus::from_raw(3 << 8)));
+        app.world_mut().entity_mut(run).insert(failed);
+    }
+    until_ended(&mut app, &wakes, 1);
+    std::fs::remove_dir_all(&dir).ok();
+
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let said: Vec<String> = notices.iter().map(|notice| notice.text.clone()).collect();
+    assert!(
+        said.contains(&"The editor failed (exit status 3); the summary is unchanged.".to_owned()),
+        "{said:?}"
+    );
+    ask(&mut app, &wakes, agent, "Q13: next");
+    let requests = model.requests();
+    let (_, first) = shape(requests.get(1));
+    assert!(
+        first.contains("SUMMARY v1") && !first.contains("EDITED"),
+        "{first}"
+    );
+}

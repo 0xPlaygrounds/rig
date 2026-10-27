@@ -404,7 +404,6 @@ mod editor {
     //! session's scratch directory, edited with the terminal.
 
     use std::path::PathBuf;
-    use std::process::Command;
 
     use rig_basics::compaction::Summarizing;
     use rig_harness::prelude::*;
@@ -434,26 +433,32 @@ mod editor {
             return;
         };
         let line = corpus_shared::editor::line();
-        let (program, args) = corpus_shared::editor::words(line.as_deref());
-        let mut editor = Command::new(program);
-        editor.args(args).arg(&path);
+        let editor = corpus_shared::editor::command(line.as_deref(), &[&path]);
         commands.spawn((RunInTerminal(editor), EditorFor(call, path), HoldOf(call)));
     }
 
-    /// Takes the summary as the editor left it, unless it failed, back to
-    /// the review.
+    /// Takes the summary as the editor left it back to the review, unless
+    /// it failed, which a notice says.
     pub(super) fn take_edit(
         done: Query<(Entity, &TerminalExit, &EditorFor), Added<TerminalExit>>,
         mut calls: Query<(&mut Summarizing, &Replaces, &ForAgent)>,
         mut commands: Commands,
+        mut notices: MessageWriter<Notice>,
     ) {
         for (run, exit, EditorFor(call, path)) in &done {
             commands.entity(run).despawn();
             let Ok((mut summarizing, &replaces, &ForAgent(agent))) = calls.get_mut(*call) else {
                 continue;
             };
-            let text = std::fs::read_to_string(path).ok();
-            edit(&mut summarizing, text.filter(|_| exit.success()));
+            let text = match exit.failure() {
+                Some(why) => {
+                    let why = format!("The editor failed ({why}); the summary is unchanged.");
+                    notices.write(Notice::error(agent, why));
+                    None
+                }
+                None => std::fs::read_to_string(path).ok(),
+            };
+            edit(&mut summarizing, text);
             let call = (*call, agent);
             present(&mut commands, call, &summarizing, replaces);
         }

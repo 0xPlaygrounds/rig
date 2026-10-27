@@ -19,7 +19,6 @@
 //! built, so `/reload` takes a change.
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use rig_harness::prelude::*;
 use rig_tui::{
@@ -39,9 +38,9 @@ pub struct KeyBindingsPlugin;
 #[derive(Component, Debug)]
 pub struct UserKey;
 
-/// A program writing the input's draft in this file.
+/// A program writing the input's draft in this file, for this agent.
 #[derive(Component)]
-struct Draft(PathBuf);
+struct Draft(PathBuf, Option<Entity>);
 
 impl Plugin for KeyBindingsPlugin {
     fn build(&self, app: &mut App) {
@@ -257,22 +256,29 @@ fn edit(
         return;
     }
     let line = corpus_shared::editor::line();
-    let (program, args) = corpus_shared::editor::words(line.as_deref());
-    let mut command = Command::new(program);
-    command.args(args).arg(&path);
-    commands.spawn((RunInTerminal(command), Draft(path)));
+    let command = corpus_shared::editor::command(line.as_deref(), &[&path]);
+    commands.spawn((RunInTerminal(command), Draft(path, pressed.agent)));
 }
 
 /// Puts the draft as the editor left it in the input, unless the editor
-/// failed.
+/// failed, which a notice says.
 fn take_draft(
     done: Query<(Entity, &TerminalExit, &Draft), Added<TerminalExit>>,
     mut input: MainInput,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    for (run, exit, Draft(path)) in &done {
-        if let (true, Ok(text)) = (exit.success(), std::fs::read_to_string(path)) {
-            input.set(text.trim_end());
+    for (run, exit, Draft(path, agent)) in &done {
+        match exit.failure() {
+            Some(why) => {
+                let text = format!("The editor failed ({why}); the draft is unchanged.");
+                notices.write(Notice::error(*agent, text));
+            }
+            None => {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    input.set(text.trim_end());
+                }
+            }
         }
         std::fs::remove_file(path).ok();
         commands.entity(run).despawn();

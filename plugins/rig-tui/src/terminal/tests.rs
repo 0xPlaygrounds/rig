@@ -36,6 +36,48 @@ fn a_program_runs_with_the_terminal_and_its_exit_comes_back() {
     assert!(!draft.exists());
 }
 
+/// A failed program's screen stays up: the view says how it ended and
+/// waits for Enter, reading no further, or for the keys' end.
+#[test]
+fn a_failed_program_waits_for_enter() {
+    for enter in [b'\n', b'\r', 0x03, 0x04] {
+        let typed = [b'x', enter, b'l', b'a', b't', b'e', b'r'];
+        let mut keys: &[u8] = &typed;
+        let mut screen = Vec::new();
+        hold_failure("exit status 2", &mut keys, &mut screen);
+        assert_eq!(keys, b"later", "{enter}");
+        let said = String::from_utf8_lossy(&screen);
+        let line = "[the program exited with exit status 2; press Enter to go back]\r\n";
+        assert!(
+            said.starts_with(PLAIN_KEYS) && said.ends_with(line),
+            "{said:?}"
+        );
+    }
+    let mut ended: &[u8] = b"";
+    hold_failure("exit status 2", &mut ended, io::sink());
+}
+
+/// Only a program that exited with a failure code holds the screen; every
+/// failure has a reason for the caller's notice.
+#[cfg(unix)]
+#[test]
+fn a_failure_is_described() {
+    use std::os::unix::process::ExitStatusExt;
+    let exited = Ok(ExitStatus::from_raw(2 << 8));
+    let killed = Ok(ExitStatus::from_raw(9));
+    let missing = Err("could not run vi: not found".to_owned());
+    let succeeded = Ok(ExitStatus::from_raw(0));
+    assert_eq!(failed_with(&exited).as_deref(), Some("exit status 2"));
+    for quiet in [&killed, &missing, &succeeded] {
+        assert_eq!(failed_with(quiet), None, "{quiet:?}");
+    }
+    let why = |exit: Result<ExitStatus, String>| TerminalExit(exit).failure();
+    assert_eq!(why(exited).as_deref(), Some("exit status 2"));
+    assert!(why(killed).is_some_and(|why| why.contains('9')));
+    assert_eq!(why(missing).as_deref(), Some("could not run vi: not found"));
+    assert_eq!(why(succeeded), None);
+}
+
 /// The terminal view drawing to the file at `path`, as the terminal
 /// stands in for it; it never asks the file for its size.
 fn tui_on(path: &PathBuf) -> Option<Tui> {

@@ -2403,7 +2403,9 @@ any run and inert without the view:
   a `TerminalWrite(bytes)` message goes to the terminal between frames,
   `CopyToClipboard(text)` copies (OSC 52 and this machine's clipboard),
   and a `RunInTerminal(command)` entity runs a program with the terminal,
-  without the session's secrets, and gets its `TerminalExit`.
+  without the session's secrets, and gets its `TerminalExit`. A program
+  that exits with a failure code keeps its output on the screen until the
+  user presses Enter, and `TerminalExit::failure()` says why it failed.
 
 This plugin writes the draft in `$EDITOR` on Ctrl+E, makes Ctrl+K browse
 back as Up does, and opens its search box on `/` when the input is empty:
@@ -2457,15 +2459,24 @@ fn edit(_: On<KeyPressed>, input: Single<&Editor, With<MainEditor>>, mut command
     commands.spawn((RunInTerminal(editor), Draft(path)));
 }
 
-/// The draft as the editor left it, unless the editor failed.
+/// The draft as the editor left it, unless the editor failed, which a
+/// notice says.
 fn take_draft(
     done: Query<(Entity, &TerminalExit, &Draft), Added<TerminalExit>>,
     mut input: MainInput,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
     for (run, exit, Draft(path)) in &done {
-        if let (true, Ok(text)) = (exit.success(), std::fs::read_to_string(path)) {
-            input.set(text.trim_end());
+        match exit.failure() {
+            Some(why) => {
+                notices.write(Notice::error(None, format!("The editor failed ({why}).")));
+            }
+            None => {
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    input.set(text.trim_end());
+                }
+            }
         }
         commands.entity(run).despawn();
     }
