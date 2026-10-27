@@ -5,11 +5,11 @@ use std::process::Command;
 
 use super::command;
 
-/// A fresh directory for one test, named `name`.
+/// A fresh directory for one test, named `name`, beside the test binary.
 #[cfg(unix)]
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("corpus-editor-{name}-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = rig_harness_test_support::scratch_home(&format!("corpus-editor-{name}"));
+    let dir = dir.root().to_path_buf();
     std::fs::create_dir_all(&dir).ok();
     dir
 }

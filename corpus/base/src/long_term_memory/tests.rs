@@ -119,7 +119,11 @@ fn a_failed_editor_says_why_and_the_files_are_read_again() {
     let project = home.root().join("project/.rig/memory.md");
     fs::create_dir_all(home.root().join("project/.rig")).ok();
     fs::write(&project, "- Saved before the editor failed\n").ok();
-    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "no agent");
+    let Some(agent) = agent else {
+        return;
+    };
     let failed = TerminalExit(Ok(std::process::ExitStatus::from_raw(3 << 8)));
     app.world_mut().spawn((Editing(agent), failed));
     app.update();

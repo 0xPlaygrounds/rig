@@ -506,10 +506,6 @@ fn hold_on_terminal(exit: &Result<ExitStatus, String>, screen: &File) {
         return;
     };
     let raw = enable_raw_mode();
-    // Keys as plain bytes again, should the program have left the keyboard
-    // protocol on; a terminal without it ignores this.
-    let mut plain = screen;
-    plain.write_all(b"\x1b[=0;1u").ok();
     match copy_of(io::stdin()) {
         Ok(keys) => hold_failure(&why, keys, screen),
         Err(failure) => error!("could not read the terminal: {failure}"),
@@ -521,11 +517,13 @@ fn hold_on_terminal(exit: &Result<ExitStatus, String>, screen: &File) {
 
 /// Says on `screen` that the program exited with `why`, then reads `keys`
 /// up to Enter (`\r` or `\n`), Ctrl+C, Ctrl+D, their end or an error, so
-/// what the program printed stays up until then.
+/// what the program printed stays up until then. The keys are asked for as
+/// plain bytes first, should the program have left the keyboard protocol
+/// on; a terminal without it ignores that.
 fn hold_failure(why: &str, mut keys: impl Read, mut screen: impl Write) {
     let said = write!(
         screen,
-        "\r\n[the program exited with {why}; press Enter to go back]"
+        "{PLAIN_KEYS}\r\n[the program exited with {why}; press Enter to go back]"
     );
     if said.and_then(|()| screen.flush()).is_err() {
         return;
@@ -539,6 +537,10 @@ fn hold_failure(why: &str, mut keys: impl Read, mut screen: impl Write) {
     // The next program's output starts on a line of its own.
     write!(screen, "\r\n").and_then(|()| screen.flush()).ok();
 }
+
+/// Asks the terminal to send keys as plain bytes: no keyboard protocol
+/// flags.
+const PLAIN_KEYS: &str = "\x1b[=0;1u";
 
 /// The terminal's mode before a program ran, put back after it, so one
 /// that left raw mode on does not become the mode restored when rig exits.

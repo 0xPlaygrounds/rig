@@ -267,3 +267,46 @@ fn read_only_calls_of_a_reply_do_not_run_side_by_side() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(StepModePlugin);
 }
+
+/// When the editor fails, or its file can't be read, a notice says why and
+/// the question waits in the input.
+#[cfg(unix)]
+#[test]
+fn a_failed_editor_says_why() {
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
+
+    use rig_harness_test_support::{Collected, collect};
+
+    let dir = workspace("failed-editor");
+    let model = MockCompletionModel::from_stream_turns([reply("Unused.")]);
+    let (mut app, _wakes, agent) = start(&MemoryStore::default(), &model, &dir);
+    collect::<Notice>(&mut app);
+    let world = app.world_mut();
+    let call = world.spawn_empty().id();
+    let kind = HoldKind::Editing;
+    let ask = world.spawn(StepHold { call, agent, kind }).id();
+    let written = dir.join("arguments.json");
+    std::fs::write(&written, "{}").ok();
+    let failed = TerminalExit(Ok(ExitStatus::from_raw(3 << 8)));
+    world.spawn((InEditor { ask, path: written }, failed));
+    let missing = dir.join("missing.json");
+    let succeeded = TerminalExit(Ok(ExitStatus::from_raw(0)));
+    world.spawn((InEditor { ask, path: missing }, succeeded));
+    app.update();
+    std::fs::remove_dir_all(&dir).ok();
+
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let said = |start: &str| {
+        notices.iter().any(|notice| {
+            notice.agent == Some(agent)
+                && notice.text.starts_with(start)
+                && notice.text.ends_with(": edit the arguments in the input.")
+        })
+    };
+    assert!(said("The editor failed (exit status 3)"), "{notices:?}");
+    assert!(
+        said("The edited arguments could not be read ("),
+        "{notices:?}"
+    );
+}

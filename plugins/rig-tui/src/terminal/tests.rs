@@ -48,7 +48,10 @@ fn a_failed_program_waits_for_enter() {
         assert_eq!(keys, b"later", "{enter}");
         let said = String::from_utf8_lossy(&screen);
         let line = "[the program exited with exit status 2; press Enter to go back]\r\n";
-        assert!(said.ends_with(line), "{said:?}");
+        assert!(
+            said.starts_with(PLAIN_KEYS) && said.ends_with(line),
+            "{said:?}"
+        );
     }
     let mut ended: &[u8] = b"";
     hold_failure("exit status 2", &mut ended, io::sink());
