@@ -508,7 +508,7 @@ fn upload(request: &CompletionRequest, previous: &str, from: usize) -> Completio
 }
 
 /// What the server holds once it answered `request` with `response`;
-/// `None` for a reply without an id, or one that is never replayed.
+/// `None` for a reply without an id, or one that failed or was stopped.
 fn link_after(
     request: &CompletionRequest,
     model: &str,

@@ -12,6 +12,8 @@
 //! The gauge replaces `rig_basics::telemetry`'s item named `context` (right, 40) in
 //! `StatusSystems::Edit`, so the line shows one context item, not two.
 
+use std::collections::HashSet;
+
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -111,24 +113,39 @@ pub fn label(context: Option<ContextUse>) -> String {
     }
 }
 
-/// Each agent's gauge, whenever its tokens, its model or its line changed
-/// (another plugin may have put its item at the same place). Writes only
-/// when the item differs, so its own write does not make it run again.
+/// Each agent's gauge, whenever its tokens, its model, its line or whether
+/// its context is known changed (another plugin may have put its item at
+/// the same place). Writes only when the item differs, so its own write
+/// does not make it run again. Unknown after a compaction: `ctx ?`.
 fn show(
     mut agents: Query<
         (
-            &LastUsage,
-            Option<&Connection>,
-            Has<ContextStale>,
+            Entity,
+            Ref<LastUsage>,
+            Option<Ref<Connection>>,
+            Option<Ref<ContextStale>>,
             &mut StatusItems,
         ),
         With<Agent>,
     >,
+    mut known: RemovedComponents<ContextStale>,
 ) {
-    for (last, connection, stale, mut items) in &mut agents {
-        let context = context_of(last, connection).filter(|_| !stale);
-        let text = if stale {
-            "ctx ?".to_owned()
+    let known: HashSet<Entity> = known.read().collect();
+    for (agent, last, connection, stale, mut items) in &mut agents {
+        let changed = items.is_changed()
+            || last.is_changed()
+            || connection.as_ref().is_some_and(Ref::is_changed)
+            || stale.as_ref().is_some_and(Ref::is_added)
+            || known.contains(&agent);
+        if !changed {
+            continue;
+        }
+        let connection = connection.as_deref();
+        let context = context_of(&last, connection).filter(|_| stale.is_none());
+        let text = if stale.is_some() {
+            let limit = connection.and_then(|connection| connection.spec.input_limit());
+            let limit = limit.map(|limit| format!("/{}", tokens_label(u64::from(limit))));
+            format!("ctx ?{}", limit.unwrap_or_default())
         } else {
             label(context)
         };

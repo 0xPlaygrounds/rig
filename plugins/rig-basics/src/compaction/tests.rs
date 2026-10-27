@@ -2829,4 +2829,15 @@ fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
         .map(|entry| entry.id);
     assert!(note.is_some());
     assert_eq!(kept_reply(&conversation, note), None);
+
+    // A turn a plugin stopped, for its own reason, is not the user's stop.
+    conversation.open_turn();
+    let cut = conversation.push(Message::assistant("Working on it"));
+    conversation.end_turn(TurnEnd::Stopped {
+        why: Some("restarted".to_owned()),
+        at: Some(cut),
+        calls: Vec::new(),
+    });
+    let said = kept_reply(&conversation, Some(cut));
+    assert!(said.is_some_and(|it| it.contains("continues") && !it.contains("user stopped")));
 }

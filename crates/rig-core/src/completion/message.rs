@@ -140,8 +140,9 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
 }
 
 /// Why a run fails on a turn, or `None` when it goes on. A turn that failed
-/// or was stopped ([`StopReason::is_failure`]) runs none of its tool calls. A turn the provider failed
-/// ([`StopReason::Error`]) fails even when it holds an answer, so the caller
+/// or was stopped ([`StopReason::is_failure`]) runs none of its tool calls.
+/// A turn the provider failed ([`StopReason::Error`]) fails even when it
+/// holds an answer, so the caller
 /// never takes as a success a turn the next request leaves out. A turn that
 /// delivered no answer ([`turn_delivered_no_answer`]) also fails when the
 /// output budget or a filter cut it (`finish` is truncating). A turn that
