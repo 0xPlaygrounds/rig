@@ -1849,13 +1849,15 @@ pub(crate) fn on_band(
     })
 }
 
-/// Whether `message`'s lines depend on the width: a reply with a table.
+/// Whether `message`'s lines depend on the width: a reply or its reasoning
+/// with a table.
 fn fitted(message: &Message) -> bool {
     let Message::Assistant(assistant) = message else {
         return false;
     };
     let texts = assistant.content.iter().filter_map(|item| match item {
         AssistantContent::Text(text) => Some(text.text.as_str()),
+        AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
         _ => None,
     });
     texts.into_iter().any(markdown::has_table)

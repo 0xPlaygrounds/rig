@@ -862,7 +862,7 @@ mod option_matrix {
                 "chatgpt",
                 responses(&chatgpt::DIALECT, chatgpt::GPT_5_4),
                 [
-                    Merge(json!({"reasoning": {"effort": "high"}})),
+                    Merge(json!({"reasoning": {"effort": "high", "summary": "auto"}})),
                     Refuse,
                     Refuse,
                     Merge(json!({"text": {"verbosity": "low"}})),

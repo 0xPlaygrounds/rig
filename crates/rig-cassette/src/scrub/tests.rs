@@ -197,6 +197,33 @@ fn short_credentials_and_numeric_echoes_are_masked_without_matching_longer_words
 }
 
 #[test]
+fn cassettes_scrub_openai_user_ids_and_keep_other_user_strings() {
+    let echoed = r#"{"safety_identifier":"user-AbCdEfGhIjKlMnOpQrStUvWx","user":"user-1"}"#;
+    let mut traffic = Scrubber::new(Purpose::Traffic);
+    assert_eq!(traffic.scrub_text(echoed), echoed);
+    let mut cassette = Scrubber::default();
+    assert_eq!(
+        cassette.scrub_text(echoed),
+        r#"{"safety_identifier":"user-REDACTED_1","user":"user-1"}"#
+    );
+    assert_eq!(
+        cassette.scrub_text("user-REDACTED_1"),
+        "user-REDACTED_1",
+        "a placeholder stays as it is"
+    );
+    assert_eq!(
+        cassette.scrub_text("é user-AbCdEfGhIjKlMnOpQrStUvWx é"),
+        "é user-REDACTED_1 é"
+    );
+    for kept in [
+        "superuser-AbCdEfGhIjKlMnOpQrStUvWx",
+        "user-AbCdEfGhIjKlMnOpQrStUvWxY",
+    ] {
+        assert_eq!(cassette.scrub_text(kept), kept);
+    }
+}
+
+#[test]
 fn traffic_keeps_paths_and_account_ids_while_cassettes_scrub_them() {
     let path = "/home/alice/code/src/main.rs";
     let arn = "arn:aws:bedrock:us-east-1:123456789012:model/example";

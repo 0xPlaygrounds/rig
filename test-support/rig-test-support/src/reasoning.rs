@@ -530,6 +530,8 @@ pub struct StreamStats {
     pub reasoning_block_count: usize,
     /// Reasoning content variant names in observation order.
     pub reasoning_content_types: Vec<&'static str>,
+    /// The text of every complete reasoning block, in observation order.
+    pub reasoning_text: String,
     /// Whether any reasoning text carried a signature.
     pub reasoning_has_signature: bool,
     /// Whether any reasoning content was encrypted.
@@ -556,6 +558,7 @@ fn record_reasoning(
     provider: &str,
 ) {
     stats.reasoning_block_count += 1;
+    stats.reasoning_text.push_str(&reasoning.text);
 
     let item = reasoning.native.as_ref().map(|native| &native.item);
     let has = |key: &str| {
