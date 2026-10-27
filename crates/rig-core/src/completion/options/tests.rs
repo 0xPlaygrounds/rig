@@ -406,3 +406,60 @@ fn a_wire_that_breaks_the_mapping_contract_names_the_option() {
         "{nothing}"
     );
 }
+
+#[test]
+fn move_last_keeps_the_last_rewrite_and_survives_catalog_refusals() -> anyhow::Result<()> {
+    let target = Fake(answers);
+    let mut request = request(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+    request.additional_params = Some(json!({"zzz": "raw"}));
+    let body = request_params(
+        &target,
+        &request,
+        |_| {
+            Ok(serde_json::Map::from_iter([
+                ("alpha".to_owned(), json!("stable")),
+                ("input".to_owned(), json!(["turn"])),
+                ("max_output_tokens".to_owned(), json!(9)),
+            ]))
+        },
+        RawAt::Top,
+        &[
+            Rewrite::MoveLast("input"),
+            Rewrite::MoveLast("max_output_tokens"),
+            Rewrite::MoveLast("absent"),
+            Rewrite::MoveLast("input"),
+        ],
+    )?;
+    anyhow::ensure!(
+        serde_json::to_string(&body)?
+            == r#"{"alpha":"stable","zzz":"raw","max_output_tokens":9,"input":["turn"]}"#,
+        "duplicate MoveLast must emit a key once, at its last position"
+    );
+    let body = catalog_refusals(
+        &target,
+        &request,
+        body,
+        vec![BodyRefusal {
+            field: "alpha",
+            reason: "unsupported stable field".to_owned(),
+        }],
+    )?;
+    anyhow::ensure!(
+        serde_json::to_string(&body)? == r#"{"zzz":"raw","max_output_tokens":9,"input":["turn"]}"#,
+        "catalog refusals must preserve trailing-key metadata"
+    );
+    let body = catalog_refusals(
+        &target,
+        &request,
+        body,
+        vec![BodyRefusal {
+            field: "max_output_tokens",
+            reason: "unsupported cap".to_owned(),
+        }],
+    )?;
+    anyhow::ensure!(
+        serde_json::to_string(&body)? == r#"{"zzz":"raw","input":["turn"]}"#,
+        "removed trailing fields must be omitted"
+    );
+    Ok(())
+}

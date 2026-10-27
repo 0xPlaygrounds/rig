@@ -59,10 +59,10 @@ impl ResponsesWebSocketCreateOptions {
 struct ResponsesWebSocketClientEvent {
     #[serde(rename = "type")]
     kind: ResponsesWebSocketClientEventKind,
-    #[serde(flatten)]
-    request: FinalBody,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate: Option<bool>,
+    #[serde(flatten)]
+    request: FinalBody,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -6,8 +6,9 @@
 
 use std::borrow::Cow;
 
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use super::mapping::{Mapping, OptionName};
@@ -15,32 +16,54 @@ use super::{CacheRetention, OnUnsupported, UnsupportedOption};
 use crate::completion::provider_options::SHARED;
 use crate::completion::{CompletionRequest, ReplayTarget};
 use crate::error::EncodeError;
+use crate::json_utils::remove_preserving_order;
 use crate::providers::openai::wire::BodyRewrite;
 use crate::wire::Body;
 
-/// The merged request body. Its field is private to this module, so only
-/// [`request_params`] builds one, and nothing writes to it afterwards.
-/// `Serialize` is for wires that hand their SDK the body as bytes.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct FinalBody(Map<String, Value>);
+/// The merged request body. Only [`request_params`] builds one.
+/// Serialization writes fields named by [`Rewrite::MoveLast`] after the
+/// other fields, in rewrite order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FinalBody {
+    fields: Map<String, Value>,
+    last: Vec<&'static str>,
+}
+
+impl Serialize for FinalBody {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.fields.len()))?;
+        for (key, value) in &self.fields {
+            if !self.last.contains(&key.as_str()) {
+                map.serialize_entry(key, value)?;
+            }
+        }
+        for key in &self.last {
+            if let Some(value) = self.fields.get(*key) {
+                map.serialize_entry(key, value)?;
+            }
+        }
+        map.end()
+    }
+}
 
 impl FinalBody {
     /// Whether the body has no key.
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.fields.is_empty()
     }
 
     /// The top-level value of `key`.
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(key)
+        self.fields.get(key)
     }
 
     /// The value at the JSON pointer `pointer`.
     pub fn pointer(&self, pointer: &str) -> Option<&Value> {
         let path = pointer.strip_prefix('/')?;
         let (head, rest) = path.split_once('/').unwrap_or((path, ""));
-        let value = self.0.get(&head.replace("~1", "/").replace("~0", "~"))?;
+        let value = self
+            .fields
+            .get(&head.replace("~1", "/").replace("~0", "~"))?;
         if rest.is_empty() {
             Some(value)
         } else {
@@ -51,7 +74,10 @@ impl FinalBody {
     /// The request bytes of an HTTP completion wire: the body as compact
     /// JSON.
     pub fn into_body(self) -> Body {
-        Body::Bytes(Value::Object(self.0).to_string().into_bytes())
+        let mut bytes = Vec::new();
+        // JSON values and string keys serialize infallibly into a byte vector.
+        let _ = serde_json::to_writer(&mut bytes, &self);
+        Body::Bytes(bytes)
     }
 
     /// The body read as `T`: an SDK-backed wire's request type, or a local
@@ -62,7 +88,7 @@ impl FinalBody {
     /// When the body is not a `T`.
     pub fn deserialize<T: DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
         // Read in place: a `Value` of the body would copy the whole history.
-        let fields = self.0.iter().map(|(key, value)| (key.as_str(), value));
+        let fields = self.fields.iter().map(|(key, value)| (key.as_str(), value));
         T::deserialize(serde::de::value::MapDeserializer::new(fields))
     }
 }
@@ -502,7 +528,7 @@ pub(crate) fn catalog_refusals(
         }
         return Ok(body);
     }
-    let FinalBody(mut body) = body;
+    let mut body = body;
     for BodyRefusal { field, reason } in refusals {
         let collecting =
             collected(|| UnsupportedOption::new(field, provider, model, reason.clone()));
@@ -517,7 +543,7 @@ pub(crate) fn catalog_refusals(
             .and_then(|params| params.get(field));
         let typed = field != "tools" && raw.is_none_or(|raw| body.get(field) != Some(raw));
         if typed {
-            body.shift_remove(field);
+            remove_preserving_order(&mut body.fields, field);
         }
         if collecting {
             continue;
@@ -534,7 +560,7 @@ pub(crate) fn catalog_refusals(
             }
         );
     }
-    Ok(FinalBody(body))
+    Ok(body)
 }
 
 /// A provider field the target cannot send: its body key, the section it
@@ -611,7 +637,7 @@ impl ProviderLayer {
         field: &'static str,
         reason: String,
     ) {
-        if self.fields.shift_remove(field).is_none() {
+        if remove_preserving_order(&mut self.fields, field).is_none() {
             return;
         }
         let api = target.api();
@@ -744,7 +770,7 @@ pub fn param(target: &dyn ReplayTarget, request: &CompletionRequest, key: &str) 
     if let Some(Value::Object(raw)) = &request.additional_params {
         deep_merge(&mut upper, raw.clone());
     }
-    upper.shift_remove(key)
+    remove_preserving_order(&mut upper, key)
 }
 
 /// The body `target` sends for `request`. Reports each refused option
@@ -788,7 +814,7 @@ pub fn request_params(
     let mut provider = provider.fields;
     let mut raw = raw_layer(request)?;
     let raw_tools = match raw_at {
-        RawAt::Top | RawAt::Split { .. } => raw.shift_remove("tools"),
+        RawAt::Top | RawAt::Split { .. } => remove_preserving_order(&mut raw, "tools"),
         RawAt::Under(_) | RawAt::Ignored(_) => None,
     };
     let mut handles = Vec::new();
@@ -797,7 +823,7 @@ pub fn request_params(
         .any(|rewrite| matches!(rewrite, Rewrite::GeminiCachedContent(_)))
     {
         for spelling in ["cachedContent", "cached_content"] {
-            match raw.shift_remove(spelling) {
+            match remove_preserving_order(&mut raw, spelling) {
                 None => {}
                 Some(Value::String(name)) => handles.push(name),
                 Some(other) => {
@@ -810,7 +836,7 @@ pub fn request_params(
         // GenerateContent has always read a raw `generationConfig: null` as
         // absent, so the typed and mapped fields under it are still sent.
         if raw.get("generationConfig").is_some_and(Value::is_null) {
-            raw.shift_remove("generationConfig");
+            remove_preserving_order(&mut raw, "generationConfig");
         }
     }
     let raw = placed(raw, raw_at);
@@ -826,7 +852,7 @@ pub fn request_params(
     };
     let mut body = base(&mut input)?;
     for key in input.claimed {
-        provider.shift_remove(key);
+        remove_preserving_order(&mut provider, key);
     }
     for send in settled.sends {
         if let Value::Object(send) = send {
@@ -835,19 +861,24 @@ pub fn request_params(
     }
     deep_merge(&mut body, provider);
     deep_merge(&mut body, raw);
+    let mut body = FinalBody {
+        fields: body,
+        last: Vec::new(),
+    };
     for rewrite in rewrites {
         apply(target, rewrite, &mut body, &handles)?;
     }
-    Ok(FinalBody(body))
+    Ok(body)
 }
 
 /// Apply one post-merge write to `body`.
 fn apply(
     target: &dyn ReplayTarget,
     rewrite: &Rewrite,
-    body: &mut Map<String, Value>,
+    body: &mut FinalBody,
     handles: &[String],
 ) -> Result<(), EncodeError> {
+    let FinalBody { fields: body, last } = body;
     match rewrite {
         Rewrite::OutputCapRename => {
             // Read on the full id: a `vendor/model` id (a LiteLLM-style
@@ -862,7 +893,7 @@ fn apply(
                     !model.contains('/')
                         && crate::providers::openai::options::reasons(facts, model) == Some(true)
                 });
-            if reasoning && let Some(max_tokens) = body.shift_remove("max_tokens") {
+            if reasoning && let Some(max_tokens) = remove_preserving_order(body, "max_tokens") {
                 body.entry("max_completion_tokens").or_insert(max_tokens);
             }
         }
@@ -875,7 +906,7 @@ fn apply(
             }
         }
         Rewrite::AnthropicVersionInBody(version) => {
-            body.shift_remove("model");
+            remove_preserving_order(body, "model");
             body.insert("anthropic_version".to_owned(), version.as_str().into());
         }
         Rewrite::ToolChoiceNeedsTools => {
@@ -887,17 +918,17 @@ fn apply(
                 body.entry("tool_choice")
                     .or_insert_with(|| serde_json::json!({ "type": "auto" }));
             } else {
-                body.shift_remove("tool_choice");
+                remove_preserving_order(body, "tool_choice");
             }
         }
         Rewrite::Stream(stream) => {
             body.insert("stream".to_owned(), Value::Bool(*stream));
         }
         Rewrite::NoStream => {
-            body.shift_remove("stream");
+            remove_preserving_order(body, "stream");
         }
         Rewrite::NoBackground => {
-            body.shift_remove("background");
+            remove_preserving_order(body, "background");
         }
         Rewrite::StreamUsage => {
             if let Some(options) = body
@@ -928,8 +959,9 @@ fn apply(
             }
         }
         Rewrite::MoveLast(key) => {
-            if let Some(value) = body.shift_remove(*key) {
-                body.insert((*key).to_owned(), value);
+            if body.contains_key(*key) {
+                last.retain(|previous| previous != key);
+                last.push(*key);
             }
         }
     }
