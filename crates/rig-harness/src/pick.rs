@@ -58,6 +58,9 @@ pub struct PickItem {
     /// shortened to fit, such as a session's age or why a model cannot be
     /// used.
     pub detail: Option<String>,
+    /// What a front shows when the user asks for more, such as a session's
+    /// full folder; a front falls back to the detail.
+    pub more: Option<String>,
     /// Whether it is ticked at first, in a picker of several items.
     pub checked: bool,
 }
@@ -115,6 +118,7 @@ impl Picker {
             label: label.into(),
             command: command.into(),
             detail: None,
+            more: None,
             checked: false,
         });
         self

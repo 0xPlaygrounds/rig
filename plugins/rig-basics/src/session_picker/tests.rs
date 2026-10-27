@@ -208,3 +208,54 @@ fn a_system_after_the_fill_relabels_the_items() {
     assert_eq!(seen.first().and_then(|it| it.session.as_ref()), ids.get(1));
     fs::remove_dir_all(home.root()).ok();
 }
+
+/// A session shows the last two parts of its folder beside its label, so
+/// two `work` folders differ, and its whole folder when asked for more,
+/// which the filter matches too.
+#[test]
+fn a_sessions_folder_is_in_its_detail_and_whole_in_its_more() {
+    let entry = |folder: &str| SessionEntry {
+        id: SessionId::generate(),
+        name: Some("fix the parser".to_owned()),
+        meta: SessionMeta::default(),
+        directory: Some(PathBuf::from(folder)),
+        updated: SystemTime::now(),
+        running: false,
+    };
+    let (a, b) = (entry("/x/a/work"), entry("/x/b/work"));
+    let compact = |parent: &str| format!("…{0}{parent}{0}work · ", std::path::MAIN_SEPARATOR);
+    assert!(a.detail().starts_with(&compact("a")), "{}", a.detail());
+    assert!(b.detail().starts_with(&compact("b")), "{}", b.detail());
+    assert_eq!(a.label(), "fix the parser");
+    assert_eq!(a.more(), "fix the parser\n/x/a/work");
+    assert!(entry("/x").detail().starts_with("/x · "));
+    // Cut only where that is shorter.
+    assert!(entry("/ab/c").detail().starts_with("/ab/c · "));
+    let shown = |entry: &SessionEntry| (entry.label(), Some(entry.detail()), Some(entry.more()));
+    let filter = SessionFilter {
+        text: "x/a".to_owned(),
+        ..SessionFilter::default()
+    };
+    assert!(filter.passes(&a, &shown(&a)));
+    assert!(!filter.passes(&b, &shown(&b)));
+}
+
+/// On Windows a share or a drive is the path's prefix, not one of its
+/// parts; the folder's end is still what shows.
+#[cfg(windows)]
+#[test]
+fn a_windows_folder_shows_its_end() {
+    let detail = |folder: &str| {
+        let entry = SessionEntry {
+            id: SessionId::generate(),
+            name: None,
+            meta: SessionMeta::default(),
+            directory: Some(PathBuf::from(folder)),
+            updated: SystemTime::now(),
+            running: false,
+        };
+        entry.detail()
+    };
+    assert!(detail(r"\\server\share\repo\work").starts_with(r"…\repo\work · "));
+    assert!(detail(r"C:\code\repo\work").starts_with(r"…\repo\work · "));
+}

@@ -241,6 +241,7 @@ fn list(
             label: bookmark.label.clone(),
             command: String::new(),
             detail: Some(format!("{when} · {name} · {}", bookmark.first_line)),
+            more: None,
             checked: false,
         });
     }

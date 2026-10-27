@@ -33,9 +33,6 @@ use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{Chosen, Pick};
 use rig_harness::prelude::{Exit, ExitReason, Processes, Scratch};
 
-/// Lines a page key scrolls.
-const PAGE: usize = 10;
-
 /// How long the input thread waits for an event before it checks whether
 /// the view is gone.
 const POLL: Duration = Duration::from_millis(100);
@@ -708,7 +705,7 @@ fn act(
         },
         Do::ScrollUp | Do::ScrollDown | Do::PageUp | Do::PageDown => {
             if let Some((_, state)) = pane {
-                let page = PAGE.min(state.page());
+                let page = state.page();
                 match action {
                     Do::ScrollUp => state.scroll.up(1),
                     Do::ScrollDown => state.scroll.down(1),

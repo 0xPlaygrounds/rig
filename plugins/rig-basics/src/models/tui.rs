@@ -70,12 +70,14 @@ pub(super) fn pick_model(
         label: item.label.clone(),
         command: item.command.clone(),
         detail: None,
+        more: None,
         checked: false,
     });
     let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
         label: listed.line,
         command: format!("model {}", listed.reference),
         detail: None,
+        more: None,
         checked: false,
     });
     let items: Vec<PickItem> = contributed.chain(listed).collect();
@@ -154,6 +156,7 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Comman
                 label: choice.label(),
                 command: format!("effort {}", choice.name),
                 detail: None,
+                more: None,
                 checked: false,
             })
             .collect(),

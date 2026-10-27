@@ -320,6 +320,7 @@ fn item_of(rated: &Rated) -> PickItem {
         label: format!("{} · {model}{reason}", rating.verdict.word()),
         command: String::new(),
         detail: Some(format!("{} · {}", when(rating.at_ms), rated.first_line)),
+        more: None,
         checked: false,
     }
 }

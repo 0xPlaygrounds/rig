@@ -272,6 +272,7 @@ fn agents(
             ),
             command: format!("agents {}", agent.id.0),
             detail: None,
+            more: None,
             checked: false,
         });
     }

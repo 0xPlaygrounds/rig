@@ -49,6 +49,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # A skill's frontmatter.
 serde_yaml = { workspace = true }
+# The width of a command's name in `/help`.
+unicode-width = { workspace = true }
 
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.

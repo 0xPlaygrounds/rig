@@ -5,9 +5,9 @@ use rig_core::completion::Message;
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
 use rig_harness::prelude::*;
 
-use crate::tests::{main_pane, main_view, view_app};
+use crate::tests::{main_pane, main_view, press, view_app};
 use crate::{
-    ItemRow, PaneKeys, Placement, RenderBatch, RenderSystems, ScrollTo, TranscriptItem,
+    ItemRow, KeyFocus, PaneKeys, Placement, RenderBatch, RenderSystems, ScrollTo, TranscriptItem,
     TranscriptPane, TranscriptRender, TranscriptSource, TranscriptView, TuiFrame, TuiPanel,
     TuiSystems, TuiTestScreen,
 };
@@ -219,4 +219,73 @@ fn a_panel_fitted_to_a_panes_scroll_is_laid_out_in_the_same_frame() {
     let shrunk = before.map(|(y, height)| (y.saturating_add(1), height.saturating_sub(1)));
     assert_eq!(area(&app).map(|area| (area.y, area.height)), shrunk);
     assert_eq!(main_view(&app).top().cloned(), item.map(|item| (item, 0)));
+}
+
+/// The numbers of the `row-N` lines in `rows`, top to bottom.
+fn numbered(rows: &[String]) -> Vec<usize> {
+    let number = |row: &String| {
+        let (_, rest) = row.split_once("row-")?;
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    };
+    rows.iter().filter_map(number).collect()
+}
+
+#[test]
+fn a_page_key_keeps_a_line_of_text_and_stops_at_the_ends() {
+    // 20 rows page by 18, more than the 10 lines a page used to be.
+    for height in [20, 10, 2, 1] {
+        let (mut app, _) = view_app();
+        app.insert_resource(TuiTestScreen::new(60, 30));
+        let lines: Vec<String> = (1..=60).map(|n| format!("row-{n}")).collect();
+        let mut saved = rig_core::conversation::Conversation::default();
+        saved.push(Message::user(lines.join("\n")));
+        let pane = TranscriptPane::new(TranscriptSource::Value(saved));
+        let placement = TuiPanel::new(Placement::Top(Constraint::Length(height)));
+        let pane = app.world_mut().spawn((pane, placement, PaneKeys)).id();
+        app.world_mut().resource_mut::<KeyFocus>().0 = Some(pane);
+        app.update();
+        let shown = |app: &App| numbered(&rows_in(app, pane));
+        let bottom = shown(&app);
+        press(&mut app, "pageup");
+        let first = shown(&app);
+        if height == 1 {
+            // One row keeps its text, with no marker over it.
+            let row = rows_in(&app, pane).concat();
+            assert!(row.contains("row-") && !row.contains("more below"), "{row}");
+        }
+        press(&mut app, "pageup");
+        let second = shown(&app);
+        press(&mut app, "pagedown");
+        let back = shown(&app);
+        let progress = [&bottom, &first, &second, &back].map(|rows| rows.first().copied());
+        if height >= 10 {
+            // The old top text row is the new bottom one, and back.
+            assert_eq!(first.last(), bottom.first(), "{progress:?}");
+            assert_eq!(second.last(), first.first(), "{progress:?}");
+            assert_eq!(back.first(), second.last(), "{progress:?}");
+        } else {
+            let [bottom, first, second, back] = progress;
+            let shown = progress.iter().all(Option::is_some);
+            assert!(
+                shown && first < bottom && second < first && back > second,
+                "{progress:?}"
+            );
+        }
+        // A blank row is above the message, so a short pane at the top
+        // may show no text: the top stays put.
+        for _ in 0..70 {
+            press(&mut app, "pageup");
+        }
+        let top = rows_in(&app, pane);
+        press(&mut app, "pageup");
+        assert_eq!(rows_in(&app, pane), top, "height {height}");
+        if height >= 10 {
+            assert_eq!(shown(&app).first(), Some(&1));
+        }
+        for _ in 0..70 {
+            press(&mut app, "pagedown");
+        }
+        assert_eq!(shown(&app).last(), Some(&60), "height {height}");
+    }
 }

@@ -19,6 +19,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Padding, Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 use super::complete::Completion;
 use super::editor::{Caret, Editor};
@@ -28,7 +29,7 @@ use super::pane::{PaneState, TranscriptPane};
 use super::panel::{
     self, PanelCanvas, PanelSpawns, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel,
 };
-use super::pick::{Choices, InlineStrip, Listing, PickerInput, Row};
+use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
 use super::renderers::{
     CallState, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
 };
@@ -170,8 +171,8 @@ pub(crate) fn redraw_on_remove(
 #[derive(Resource, Default)]
 pub(crate) struct FrameLayout {
     due: bool,
-    /// The box of the picker shown with a preview, its list at the left
-    /// and its preview at the right.
+    /// The area of the picker shown with a preview, the screen: its list
+    /// at the left and its preview at the right, over its keys row.
     picker: Option<Rect>,
 }
 
@@ -257,13 +258,18 @@ pub(crate) fn layout(
             let fits = editor.map(|editor| editor.fit_rows(screen.width));
             (entity, panel, fits.or(strip.then_some(inline)), canvas)
         });
+    // A picker with a preview takes the screen; what is laid out within it
+    // stays above its keys row.
     let previewed = previewed.iter().find(|(_, state)| !state.in_input());
-    let boxed = Constraint::Percentage(90);
-    let picker = previewed.map(|(entity, _)| (entity, screen.centered(boxed, boxed)));
-    panel::lay_out(panels, screen, picker.as_slice());
+    let above_keys = Rect {
+        height: screen.height.saturating_sub(1),
+        ..screen
+    };
+    let within = previewed.map(|(entity, _)| (entity, above_keys));
+    panel::lay_out(panels, screen, within.as_slice());
     *frame = FrameLayout {
         due: true,
-        picker: picker.map(|(_, area)| area),
+        picker: previewed.map(|_| screen),
     };
 }
 
@@ -1307,7 +1313,9 @@ const LEAST_LIST: usize = 3;
 /// transcript, titled, its keys on its last row: its body,
 /// scrolled to `choosing.scroll` (kept within it), what is typed, then the
 /// rows it leaves, each with its detail at the right and, in a choice of
-/// several, its tick box; for free text, the typed answer.
+/// several, its tick box; for free text, the typed answer. With a preview,
+/// it takes the whole of the preview's area instead, its keys on the last
+/// row under both columns.
 fn draw_choice(
     frame: &mut Frame,
     theme: &Theme,
@@ -1316,12 +1324,14 @@ fn draw_choice(
     preview: Option<(&PickPreview, Rect)>,
 ) -> Rect {
     let area = frame.area();
-    // With a preview, the list takes the left of its box, the preview the
+    // With a preview, the list takes the left of its area, the preview the
     // right: text drawn here, a conversation by its pane.
     let boxed = preview.map(|(preview, at)| {
+        let [columns, keys] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(at);
         let [list, beside] =
-            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(at);
-        (at, list, preview, beside)
+            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(columns);
+        (at, list, preview, beside, keys)
     });
     let width = boxed.map_or(area.width.saturating_mul(4) / 5, |(_, list, ..)| list.width);
     let more = shown.more(choosing);
@@ -1341,8 +1351,8 @@ fn draw_choice(
         Some((_, list, ..)) => list,
         None => area.centered(Constraint::Length(width), Constraint::Length(height)),
     };
-    frame.render_widget(Clear, popup);
-    if let Some((_, _, PickPreview::Text(text), beside)) = boxed {
+    frame.render_widget(Clear, boxed.map_or(popup, |(whole, ..)| whole));
+    if let Some((_, _, PickPreview::Text(text), beside, _)) = boxed {
         let wide = usize::from(beside.width.saturating_sub(2).max(1));
         let lines = wrap_all(&plain_lines(text, Style::new()), wide);
         frame.render_widget(Clear, beside);
@@ -1369,13 +1379,34 @@ fn draw_choice(
     if shown.ticks {
         keys.push("Tab ticks");
     }
+    let width = usize::from(inner.width);
+    let ticks = if shown.ticks { "[ ] ".len() } else { 0 };
+    let column = detail_column(&shown.items, width.saturating_sub(ticks));
+    // A detail standing in for more says more only where its row cuts it.
+    let room = width.saturating_sub(ticks + column);
+    let says_more = |item: &Item<'_>| {
+        item.more
+            .is_some_and(|more| Some(more) != item.detail || more.width() > room)
+    };
     if more.is_some() {
         keys.push("← hides more");
-    } else if shown.items.iter().any(|item| item.more.is_some()) {
+    } else if shown.items.iter().any(says_more) {
         keys.push("→ shows more");
     }
-    let keys = format!("{}, Enter picks, Esc closes", keys.join(", "));
-    frame.render_widget(with_keys(theme.raised(shown.title), &keys), popup);
+    let title = theme.raised(shown.title);
+    match boxed {
+        Some((.., row)) => {
+            let keys = keys_hint(&keys, usize::from(row.width.saturating_sub(2)));
+            let keys = Line::from(format!("{keys} ")).dim().right_aligned();
+            let surface = Style::new().bg(theme.raised_surface);
+            frame.render_widget(Paragraph::new(keys).style(surface), row);
+            frame.render_widget(title, popup);
+        }
+        None => {
+            let keys = keys_hint(&keys, usize::from(popup.width.saturating_sub(2)));
+            frame.render_widget(with_keys(title, &keys), popup);
+        }
+    }
     let [body_area, _, typed, list] = Layout::vertical([
         Constraint::Length(u16::try_from(body_height).unwrap_or(u16::MAX)),
         Constraint::Length(u16::from(body_height > 0)),
@@ -1387,7 +1418,6 @@ fn draw_choice(
     frame.render_widget(Paragraph::new(body).scroll((scroll, 0)), body_area);
     let typed_text = shown.typed(&choosing.filter);
     frame.render_widget(Line::from(format!("› {typed_text}▏")), typed);
-    let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
         .map(|row| match row {
@@ -1396,7 +1426,7 @@ fn draw_choice(
                     return Line::default();
                 };
                 if !shown.ticks {
-                    return item.line(width);
+                    return item.line(width, column);
                 }
                 let tick = match (shown.multiple, choosing.ticked.contains(index)) {
                     (true, true) => "[x] ",
@@ -1404,7 +1434,7 @@ fn draw_choice(
                     (false, true) => "(x) ",
                     (false, false) => "( ) ",
                 };
-                let mut line = item.line(width.saturating_sub(tick.len()));
+                let mut line = item.line(width.saturating_sub(tick.len()), column);
                 line.spans.insert(0, Span::from(tick));
                 line
             }
@@ -1436,6 +1466,20 @@ fn strip_colors(buffer: &mut Buffer) {
         cell.fg = Color::Reset;
         cell.bg = Color::Reset;
         cell.underline_color = Color::Reset;
+    }
+}
+
+/// A picker's keys, `keys` then Enter's and Esc's, in at most `width`
+/// columns: the first of `keys` are left out while it is wider.
+fn keys_hint(keys: &[&str], width: usize) -> String {
+    let mut keys = keys;
+    loop {
+        let all = keys.iter().copied().chain(["Enter picks", "Esc closes"]);
+        let hint = all.collect::<Vec<_>>().join(", ");
+        match keys.split_first() {
+            Some((_, rest)) if hint.width() > width => keys = rest,
+            _ => return hint,
+        }
     }
 }
 

@@ -427,6 +427,7 @@ fn picker(styles: &Styles, agent: Entity, current: &str) -> Picker {
             label: format!("{mark}{}", style.name),
             command: format!("style {}", style.name),
             detail: Some(style.description.clone()).filter(|text| !text.is_empty()),
+            more: None,
             checked: false,
         });
         if style.name == current {

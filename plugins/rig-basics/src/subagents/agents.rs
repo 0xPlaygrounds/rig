@@ -57,17 +57,22 @@ fn show(
         } else {
             String::new()
         };
-        let mine = match mine {
-            0 => String::new(),
-            1 => "1 subagent working (/agents)".to_owned(),
-            count => format!("{count} subagents working (/agents)"),
-        };
-        let others = match others {
-            0 => String::new(),
-            count => format!("+{count} other agents working (/agents)"),
-        };
         items.show(TITLE.says(title, Tone::Magenta));
-        items.show(SUBAGENTS.says(mine, Tone::Magenta));
-        items.show(OTHERS.says(others, Tone::Magenta));
+        items.show(SUBAGENTS.says(working("", "subagent", mine), Tone::Magenta));
+        items.show(OTHERS.says(working("+", "other agent", others), Tone::Magenta));
     }
 }
+
+/// `count` agents of `kind` at work, after `sign`, as the status line says
+/// it: `1 subagent working (/agents)`, `+2 other agents working (/agents)`;
+/// nothing for none.
+fn working(sign: &str, kind: &str, count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => format!("{sign}1 {kind} working (/agents)"),
+        count => format!("{sign}{count} {kind}s working (/agents)"),
+    }
+}
+
+#[cfg(test)]
+mod tests;

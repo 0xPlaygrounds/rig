@@ -137,7 +137,8 @@ pub struct Found {
 }
 
 impl Found {
-    /// The session's line: label, age, model, and whether it runs.
+    /// The session's line: label, folder and age, model, and whether it
+    /// runs.
     pub fn header(&self) -> String {
         let session = &self.session;
         let mut header = format!("{} · {}", session.label(), session.detail());

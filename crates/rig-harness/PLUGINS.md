@@ -682,7 +682,8 @@ next line never answers: the terminal view puts the first two in the input
 to Alt+9 pick, Alt+0 dismisses).
 
 A choice from a list is a `Picker` entity: a title, a body, items that
-each may run a command line and show a `detail`, and whether typed text
+each may run a command line and show a `detail` and a `more` (the
+terminal view shows it on Right, else the detail), and whether typed text
 answers it (`free_text`); a new `Picker` inserted replaces it, and
 despawning it closes it. A front answers it, or an open `Ask`, with
 `Pick::person(entity, chosen)`, a `Chosen { items, text }`: a picker runs

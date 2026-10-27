@@ -148,9 +148,12 @@ pub(crate) struct PaneState {
 }
 
 impl PaneState {
-    /// Rows a page key moves: the pane's height but one.
+    /// Rows a page key moves: the text rows of the pane scrolled up but
+    /// one, so a line of text stays on screen, also on the first PageUp
+    /// from the bottom; at least one.
     pub(crate) fn page(&self) -> usize {
-        usize::from(self.area.height).saturating_sub(1).max(1)
+        let rows = Below::More.text_rows(usize::from(self.area.height));
+        rows.saturating_sub(1).max(1)
     }
 }
 
@@ -373,7 +376,8 @@ fn draw_below(buffer: &mut ratatui::buffer::Buffer, below: Below, area: Rect, th
         Below::New => " ↓ new output (PgDn) ",
     };
     let width = u16::try_from(Span::from(text).width()).unwrap_or(u16::MAX);
-    if area.height == 0 || area.width < width {
+    // A pane of one row keeps it for text.
+    if area.height < 2 || area.width < width {
         return;
     }
     let marker = Rect::new(area.right() - width, area.bottom() - 1, width, 1);

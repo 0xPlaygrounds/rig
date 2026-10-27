@@ -12,6 +12,8 @@ fn a_fence_language_is_the_blocks_label_not_its_code() {
     let lines = text("Here:\n\n```rust\nfn main() {}\n```\n");
     assert_eq!(lines, ["Here:", "", "  rust", "  fn main() {}"]);
     assert_eq!(text("```\nplain\n```\n"), ["  plain"]);
+    assert_eq!(text("```text\nplain\n```\n"), ["  plain"]);
+    assert_eq!(text("```nolang\nplain\n```\n"), ["  plain"]);
 }
 
 #[test]

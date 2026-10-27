@@ -146,28 +146,28 @@ fn apply(
     notices.write(Notice::info(picker.agent, text));
 }
 
-/// What a front shows beside a plugin: its crate, its description, how it
-/// differs from what this build runs, and what goes without an essential
-/// one.
+/// What a front shows beside a plugin: how it differs from what this build
+/// runs and what goes without an essential one, first so a cut row keeps
+/// them, then its crate and its description.
 fn detail(listed: &Listed, running: &[String]) -> String {
     // A plugin's name is its type's path, which is the path its entry gives.
     let runs = running.contains(&listed.type_path);
-    let mut detail = format!("({})", listed.krate);
-    if !listed.description.is_empty() {
-        detail.push(' ');
-        detail.push_str(&listed.description);
-    }
+    let mut parts = Vec::new();
     match (listed.enabled, runs) {
-        (true, false) => detail.push_str(" [enabled, takes effect at the next reload]"),
-        (false, true) => detail.push_str(" [disabled, runs until the next reload]"),
+        (true, false) => parts.push("[enabled, takes effect at the next reload]".to_owned()),
+        (false, true) => parts.push("[disabled, runs until the next reload]".to_owned()),
         _ => {}
     }
     if listed.enabled
         && let Some(what) = essential(&listed.type_path)
     {
-        detail.push_str(&format!(" [warning: disabling it takes away {what}]"));
+        parts.push(format!("[warning: disabling it takes away {what}]"));
     }
-    detail
+    parts.push(format!("({})", listed.krate));
+    if !listed.description.is_empty() {
+        parts.push(listed.description.clone());
+    }
+    parts.join(" ")
 }
 
 /// The entries of `rig plugin list`'s output: `on` or `off`, the type, its

@@ -179,12 +179,14 @@ pub(super) fn login_picker(agent: Entity, connector: &Connector) -> Picker {
         label: "ChatGPT plan".to_owned(),
         command: format!("login {}", super::PROVIDER),
         detail: Some("sign in in the browser".to_owned()),
+        more: None,
         checked: false,
     };
     let keys = key_vendors(connector).into_iter().map(|vendor| PickItem {
         label: vendor.to_owned(),
         command: format!("login {vendor}"),
         detail: Some(format!("API key, used before {}", key_envs(vendor))),
+        more: None,
         checked: false,
     });
     Picker {
@@ -381,12 +383,14 @@ pub(super) fn logout_picker(
         label: format!("{title} sign-in"),
         command: format!("logout {provider}"),
         detail: Some("revoked, then deleted".to_owned()),
+        more: None,
         checked: false,
     });
     let saved = keys.vendors().into_iter().map(|vendor| PickItem {
         label: format!("API key for {vendor}"),
         command: format!("logout {vendor}"),
         detail: Some(keys.path(&vendor).display().to_string()),
+        more: None,
         checked: false,
     });
     let items: Vec<PickItem> = plan.into_iter().chain(saved).collect();

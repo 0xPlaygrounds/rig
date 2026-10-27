@@ -1,3 +1,5 @@
+use rig_core::tool::{Hunk, HunkLine, Lines};
+
 use super::*;
 
 const EDIT: &str = "Edited a.rs: line 10.
@@ -68,5 +70,43 @@ fn a_removed_line_like_a_file_header_stays_a_removed_line() {
     assert_eq!(
         texts.get(1).map(String::as_str),
         Some("    1   - -- not a file")
+    );
+}
+
+#[test]
+fn a_changes_lines_are_its_hunks_in_its_files_colors() {
+    let change = FileChange::modified("/p/a.rs", 1, 1).with_hunks(vec![Hunk {
+        old: Lines { start: 9, count: 2 },
+        new: Lines { start: 9, count: 2 },
+        lines: vec![
+            HunkLine::Same("fn main() {\n".into()),
+            HunkLine::Removed("    let last = end + 1;\n".into()),
+            HunkLine::Added("    let last = end;\n".into()),
+        ],
+    }]);
+    let lines = change_lines(&change, &Theme::on((0, 0, 0), true));
+    let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    assert!(
+        texts
+            .iter()
+            .all(|text| !text.contains("---") && !text.contains("+++")),
+        "{texts:?}"
+    );
+    assert_eq!(
+        texts.get(1..).unwrap_or_default(),
+        [
+            "     9  9   fn main() {",
+            "    10    -     let last = end + 1;",
+            "       10 +     let last = end;",
+        ]
+    );
+    // a.rs is Rust: its code is in the terminal's palette.
+    let same = lines
+        .get(1)
+        .map(|line| line.spans.clone())
+        .unwrap_or_default();
+    assert!(
+        same.iter().skip(1).any(|span| span.style.fg.is_some()),
+        "{same:?}"
     );
 }
