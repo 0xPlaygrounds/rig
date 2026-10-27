@@ -202,13 +202,17 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
 fn a_tool_a_later_plugin_registers_can_be_named() {
     let model =
         MockCompletionModel::from_stream_turns([calls("c1", "late", json!({})), reply("done")]);
-    let configure = |app: &mut App| {
+    let (app, lines) = one_shot("Run it.", Some(MODEL), &model, true, |app| {
         app.add_plugins(LatePlugin);
-    };
-    let (mut app, wakes, lines, input) =
-        restricted_run_with(&model, Some("late"), ToolAccess::All, configure);
-    send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
-    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+        let flag = (TOOLS.to_owned(), Some("late".to_owned()));
+        app.world_mut()
+            .resource_mut::<Invoked>()
+            .args
+            .flags
+            .push(flag);
+    });
+    let exit = lines.of("exit").first().cloned().unwrap_or_default();
+    assert_eq!(at(&exit, "answer"), &json!("done"), "{exit}");
     let first = model
         .requests()
         .first()
@@ -610,4 +614,22 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
     });
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
     assert_eq!(second.request_count(), 0);
+    drop(app);
+
+    // The session keeps its access and its turn: a run without the bad
+    // name finishes it with every tool.
+    let third = answering(&["hello"]);
+    let (app, lines) = one_shot_on(&store, "", None, &third, true, |_| {});
+    let exit = lines.of("exit").first().cloned().unwrap_or_default();
+    assert_eq!(
+        (at(&exit, "code"), at(&exit, "answer")),
+        (&json!(0), &json!("hello"))
+    );
+    let mut world = app;
+    let world = world.world_mut();
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    assert!(matches!(
+        world.get::<ToolAccess>(agent),
+        Some(ToolAccess::All)
+    ));
 }

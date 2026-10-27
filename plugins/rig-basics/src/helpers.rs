@@ -7,7 +7,9 @@
 //! A child works in its parent's directory, or one inside it, on its
 //! parent's model, with its parent's tools or fewer (never `helper` unless
 //! named), of those registered as the parent started: a fresh rig of the
-//! same build has those, and refuses a `--tools` name it has not. It runs [`HelperCommand`] through [`Processes`], with an empty
+//! same build has those, and refuses a `--tools` name it has not. A child
+//! built from a plugin list changed since the parent started may lack one:
+//! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
 //! stdin. Past its timeout or dead, it fails its task; stopping the turn
 //! kills every child, so none outlives the call.
 

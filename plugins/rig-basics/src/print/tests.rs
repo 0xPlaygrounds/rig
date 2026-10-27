@@ -1161,7 +1161,11 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         );
         // The result the session keeps, once.
         let (ok, cancelled, output) = match cut {
-            Cut::Running => (false, true, "Stopped: the run was interrupted."),
+            Cut::Running => (
+                false,
+                true,
+                "Stopped: the run was interrupted. It may have partly run; check before running it again.",
+            ),
             Cut::WithOutput => (true, true, "half"),
             Cut::Answered => (true, false, "Waited."),
         };

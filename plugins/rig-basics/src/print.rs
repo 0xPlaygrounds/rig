@@ -43,6 +43,7 @@ use bevy_ecs::system::SystemParam;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::edit_distance;
+use rig_harness::rig_core::tool::feedback::not_finished;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -159,7 +160,8 @@ impl Plugin for PrintPlugin {
                 (
                     limit_tools.in_set(PrepareSystems::Input),
                     limit_offers.in_set(PrepareSystems::Edit),
-                ),
+                )
+                    .distributive_run_if(resource_exists::<Tools>),
             );
         }
         let json = app.runs_front(JSON);
@@ -243,7 +245,8 @@ impl Plugin for PrintPlugin {
 
     /// Refuses a headless run's `--tools` naming a tool no plugin
     /// registered, once every plugin finished: no model call goes out, not
-    /// even a restored turn's.
+    /// even a restored turn's, and no agent's access, which its session
+    /// keeps, is limited.
     fn cleanup(&self, app: &mut App) {
         let world = app.world_mut();
         // A run someone sits at keeps an unknown name as granting nothing.
@@ -260,6 +263,7 @@ impl Plugin for PrintPlugin {
             .and_then(|tools| tools.unknown(names.iter().map(String::as_str)));
         if let (Some(why), Some(mut run)) = (refused, world.get_resource_mut::<Run>()) {
             run.refused = Some(why);
+            world.remove_resource::<Tools>();
             app.add_systems(AgentPass, hold_model_calls.in_set(Stage::Gate));
         }
     }
@@ -1209,7 +1213,8 @@ fn cut_off(reason: Option<&ExitReason>) -> Option<&'static str> {
 /// once they are stopped. The work settled before has its lines already.
 /// Each call has the result the session keeps: its answer, when it came and
 /// did not settle yet, else what it says if stopped ([`IfStopped`]), such
-/// as its output so far, else a stop; a call not answered is `cancelled`.
+/// as its output so far; else, keeping none, what a stop says of a call
+/// that ran. A call not answered is `cancelled`.
 fn close_cut_off(
     reason: Option<Res<ExitReason>>,
     calls: Query<
@@ -1218,6 +1223,7 @@ fn close_cut_off(
             &ForAgent,
             Option<&Outcome>,
             Option<&IfStopped>,
+            Option<&Footprint>,
         ),
         (With<Started>, Without<Settled>),
     >,
@@ -1229,11 +1235,14 @@ fn close_cut_off(
     };
     out.flush();
     let mut closing = Vec::new();
-    for (request, &ForAgent(agent), outcome, if_stopped) in &calls {
+    for (request, &ForAgent(agent), outcome, if_stopped, footprint) in &calls {
         let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
         let (ok, output) = match kept.map(Outcome::tool_result) {
             Some(result) => (result.is_success(), result.output().render()),
-            None => (false, format!("Stopped: {why}.")),
+            None => {
+                let footprint = footprint.cloned().unwrap_or_default();
+                (false, not_finished(why, true, &footprint.0))
+            }
         };
         let fields = json!({
             "id": request.call.id.wire(),

@@ -57,7 +57,9 @@ Events, each with "agent" when it is an agent's:
   tool_call {id, name, args}
   tool_result {id, name, ok, refused, cancelled, output}   refused:
         refused before it ran, such as a tool the agent may not use;
-        cancelled: still running when rig exited
+        cancelled: still running when rig exited, its output then what
+        the call gives when stopped, such as its output so far, which ok
+        may count as a success
   ask {ask, title, body, choices: [{id, label}], text, multiple}
         an approval (choices deny and allow) or a question, waiting
   turn_end {outcome, answer, error, usage, first_token_ms}   answered
@@ -73,9 +75,10 @@ Events, each with "agent" when it is an agent's:
         again only if sent again, or a refused /command, with why
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage}   the last line of
-        `rig -p --json`, after which nothing is written; error says why
-        for any code but 0; usage counts this session's own model calls,
-        not its helpers'
+        `rig -p --json`, and of a conversation that cannot start (an
+        unknown --tools name, no model reachable), after which nothing is
+        written; error says why for any code but 0; usage counts this
+        session's own model calls, not its helpers'
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.
