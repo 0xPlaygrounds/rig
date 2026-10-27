@@ -444,8 +444,8 @@ fn plain(line: &str) -> Cow<'_, str> {
     Cow::Owned(text)
 }
 
-/// A line of the output [`Kept`] holds whole, or cut at
-/// [`MAX_LINE_CHARS`] once the output is cut.
+/// A line of the output [`Kept`] holds whole, or cut short once the
+/// output is cut.
 struct Line {
     /// Its number, from 0.
     at: usize,
@@ -453,16 +453,15 @@ struct Line {
     text: String,
     /// Whether the whole line [`matters`].
     matters: bool,
-    /// Whether it was cut at [`MAX_LINE_CHARS`].
+    /// Whether it was cut short.
     long: bool,
 }
 
 impl Line {
-    /// Cuts the line at [`MAX_LINE_CHARS`] characters, marked, when it is
-    /// longer.
-    fn shorten(&mut self) {
+    /// Cuts the line at `chars` characters, marked, when it is longer.
+    fn shorten(&mut self, chars: usize) {
         let body = self.text.trim_end_matches(['\n', '\r']);
-        let kept = clip(body, MAX_LINE_CHARS);
+        let kept = clip(body, chars);
         if kept.len() < body.len() {
             self.text = format!("{kept}{CUT_MARK}\n");
             self.long = true;
@@ -492,14 +491,13 @@ struct Kept {
     head: Vec<Line>,
     /// The bytes of `head`.
     head_bytes: usize,
-    /// The first lines that matter from the middle, by number.
-    picked: Vec<(usize, String)>,
+    /// The first lines that matter from the middle.
+    picked: Vec<Line>,
     /// The bytes of `picked`.
     picked_bytes: usize,
     /// The last lines that matter from the middle once `picked` is full,
-    /// by number, each with whether it is one that matters rather than
-    /// one after it.
-    later: VecDeque<(usize, String, bool)>,
+    /// with the lines after them.
+    later: VecDeque<Line>,
     /// The bytes of `later`.
     later_bytes: usize,
     /// Whether some lines that matter, or lines after them, were cut.
@@ -578,12 +576,12 @@ impl Kept {
         }
         let mut line = Line {
             at: self.lines,
-            matters: matters(&line),
+            matters: self.cut.is_some() && matters(&line),
             text: line,
             long: false,
         };
         if self.cutting {
-            line.shorten();
+            line.shorten(MAX_LINE_CHARS);
         }
         self.tail_bytes += line.text.len();
         self.tail.push_back(line);
@@ -598,7 +596,7 @@ impl Kept {
             self.cutting = true;
             self.spill();
             for line in &mut self.tail {
-                line.shorten();
+                line.shorten(MAX_LINE_CHARS);
             }
             self.tail_bytes = self.tail.iter().map(|line| line.text.len()).sum();
             while self.head.len() < limit.lines / 2
@@ -623,7 +621,7 @@ impl Kept {
                     .bytes
                     .saturating_sub(self.head_bytes + self.picked_bytes + self.later_bytes)
         {
-            let Some(line) = self.tail.pop_front() else {
+            let Some(mut line) = self.tail.pop_front() else {
                 break;
             };
             self.tail_bytes -= line.text.len();
@@ -632,37 +630,32 @@ impl Kept {
             }
             if self.context > 0 {
                 self.context -= 1;
-                let body = line.text.trim_end_matches('\n');
-                let mut text = clip(body, MAX_PICKED).to_owned();
-                if text.len() < body.len() {
-                    text.push_str(CUT_MARK);
-                }
-                text.push('\n');
-                self.pick(limit, line.at, text, line.matters);
+                line.shorten(MAX_PICKED);
+                self.pick(limit, line);
             }
         }
     }
 
-    /// Keeps `line`, number `at`, from the middle: in `picked` while it
-    /// has room, then in `later`, which drops its oldest lines that matter,
-    /// with the lines after them, to make room for new ones.
-    fn pick(&mut self, limit: OutputLimit, at: usize, line: String, starts: bool) {
+    /// Keeps `line` from the middle: in `picked` while it has room, then
+    /// in `later`, which drops its oldest lines that matter, with the lines
+    /// after them, to make room for new ones.
+    fn pick(&mut self, limit: OutputLimit, line: Line) {
         let (lines, bytes) = (limit.lines / 8, limit.bytes / 8);
         if self.later.is_empty()
             && self.picked.len() < lines
-            && self.picked_bytes + line.len() <= bytes
+            && self.picked_bytes + line.text.len() <= bytes
         {
-            self.picked_bytes += line.len();
-            self.picked.push((at, line));
+            self.picked_bytes += line.text.len();
+            self.picked.push(line);
             return;
         }
-        self.later_bytes += line.len();
-        self.later.push_back((at, line, starts));
+        self.later_bytes += line.text.len();
+        self.later.push_back(line);
         while self.later.len() > lines || self.later_bytes > bytes {
             self.missed = true;
-            while let Some((_, line, _)) = self.later.pop_front() {
-                self.later_bytes -= line.len();
-                if self.later.front().is_none_or(|(_, _, starts)| *starts) {
+            while let Some(line) = self.later.pop_front() {
+                self.later_bytes -= line.text.len();
+                if self.later.front().is_none_or(|line| line.matters) {
                     break;
                 }
             }
@@ -720,14 +713,14 @@ impl Kept {
             false => "lines with errors or failures",
         };
         let cut = self.lines - kept_lines;
-        let long: Vec<usize> = (self.head.iter().chain(&self.tail))
+        let kept: Vec<&Line> = (self.head.iter().chain(&self.picked))
+            .chain(&self.later)
+            .chain(&self.tail)
+            .collect();
+        let long: Vec<usize> = kept
+            .iter()
             .filter(|line| line.long)
             .map(|line| line.at)
-            .collect();
-        let kept: Vec<(usize, &String)> = (self.head.iter().map(|line| (line.at, &line.text)))
-            .chain(self.picked.iter().map(|(at, line)| (*at, line)))
-            .chain(self.later.iter().map(|(at, line, _)| (*at, line)))
-            .chain(self.tail.iter().map(|line| (line.at, &line.text)))
             .collect();
         let mut text = String::new();
         let mut fact = None;
@@ -741,7 +734,7 @@ impl Kept {
             }
             if !long.is_empty() {
                 what.push(format!(
-                    "{} long {} cut at {MAX_LINE_CHARS} characters",
+                    "{} long {} cut short",
                     long.len(),
                     if long.len() == 1 { "line" } else { "lines" }
                 ));
@@ -753,9 +746,9 @@ impl Kept {
                     let mut next = 0;
                     let (first, gap) = kept
                         .iter()
-                        .find_map(|(at, _)| {
-                            let gap = (*at > next).then(|| (next + 1, at - next));
-                            next = at + 1;
+                        .find_map(|line| {
+                            let gap = (line.at > next).then(|| (next + 1, line.at - next));
+                            next = line.at + 1;
                             gap
                         })
                         .unwrap_or((next + 1, cut));
@@ -789,16 +782,17 @@ impl Kept {
             });
         }
         let mut next = 0;
-        for (at, line) in kept {
-            if at > next {
+        for line in kept {
+            if line.at > next {
                 text.push_str(&format!(
-                    "[… {} lines cut (lines {}-{at}) …]\n",
-                    at - next,
-                    next + 1
+                    "[… {} lines cut (lines {}-{}) …]\n",
+                    line.at - next,
+                    next + 1,
+                    line.at
                 ));
             }
-            text.push_str(line);
-            next = at + 1;
+            text.push_str(&line.text);
+            next = line.at + 1;
         }
         (text, fact)
     }

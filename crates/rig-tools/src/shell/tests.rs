@@ -14,13 +14,6 @@ fn shell(command: &str, spill: Option<crate::Spill>) -> String {
         .unwrap_or_default()
 }
 
-/// What `shell` runs `command` to, empty when it fails.
-fn shell_output(shell: &Shell, command: &str) -> String {
-    futures::executor::block_on(shell.run(ShellArgs::new(command)))
-        .map(|ran| ran.output)
-        .unwrap_or_default()
-}
-
 /// What `read` shows for `args`, empty when it fails.
 fn read_text(args: crate::ReadArgs) -> String {
     let (read, mut context) = (crate::Read::default(), ToolContext::new());
@@ -371,19 +364,19 @@ fn a_cut_keeps_both_ends_and_the_errors_between() {
 #[test]
 fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
     let dir = std::env::temp_dir().join(format!("rig-tools-long-{}", std::process::id()));
-    let shell = Shell {
+    let spilling = Shell {
         spill: Some(crate::Spill(dir.clone())),
         ..Shell::default()
     };
     let x = |n: usize| format!("head -c {n} /dev/zero | tr '\\0' x");
     let mut context = ToolContext::new();
     let args = ShellArgs::new(format!("{}; echo", x(300_000)));
-    let output = futures::executor::block_on(Tool::call(&shell, &mut context, args));
+    let output = futures::executor::block_on(Tool::call(&spilling, &mut context, args));
     let output = output.unwrap_or_default();
     let mut lines = output.lines();
     let marker = lines.next().unwrap_or_default();
     assert!(
-        marker.starts_with("[1 long line cut at 2000 characters; all of the output is in ")
+        marker.starts_with("[1 long line cut short; all of the output is in ")
             && marker.ends_with(
                 ": `read` it there with offset 1 and limit 1 for the first long line, whose \
                  note says how to read on in it, rather than running the command again]"
@@ -411,11 +404,11 @@ fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
          echo",
         x(5000)
     );
-    let output = shell_output(&shell, &command);
+    let output = shell(&command, Some(crate::Spill(dir.clone())));
     assert!(
         output.starts_with(
-            "[4002 of 6002 lines cut, but for lines with errors or failures, and 1 long line cut \
-             at 2000 characters; all of the output is in "
+            "[4002 of 6002 lines cut, but for lines with errors or failures, and 2 long lines \
+             cut short; all of the output is in "
         ),
         "{output:.300}"
     );
@@ -424,6 +417,36 @@ fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
         "{output:.300}"
     );
     assert!(output.contains(&format!("\n{} […]\n", "é".repeat(2000))));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// The cut note's offset and limit name the first lines missing, past an
+/// error kept right after the first lines.
+#[cfg(unix)]
+#[test]
+fn the_cut_note_names_the_first_lines_missing() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-gap-{}", std::process::id()));
+    let shell = Shell {
+        spill: Some(crate::Spill(dir.clone())),
+        cut: Some(OutputLimit {
+            lines: 40,
+            bytes: 100 * 1024,
+        }),
+        ..Shell::default()
+    };
+    let ran = shell.run(ShellArgs::new("seq 1 20; echo 'test FAILED'; seq 21 3000"));
+    let output = futures::executor::block_on(ran)
+        .map(|ran| ran.output)
+        .unwrap_or_default();
+    let first = output.lines().next().unwrap_or_default();
+    assert!(
+        first.contains("with offset 25 and limit 2000 for the first lines cut"),
+        "{first}"
+    );
+    assert!(
+        output.contains("\ntest FAILED\n21\n22\n23\n[… 2961 lines cut (lines 25-2985) …]\n"),
+        "{output:.600}"
+    );
     std::fs::remove_dir_all(dir).ok();
 }
 

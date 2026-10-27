@@ -180,8 +180,8 @@ impl fmt::Display for NoImage {
             Self::Other => write!(formatter, "it is not a PNG, JPEG, GIF or WebP image"),
             Self::TooLarge(size) => write!(
                 formatter,
-                "it has {} KB, more than the {} KB a provider takes",
-                size / 1024,
+                "it is an image of {} KB, more than the {} KB a provider takes",
+                size.div_ceil(1024),
                 MOST_BYTES / 1024
             ),
         }

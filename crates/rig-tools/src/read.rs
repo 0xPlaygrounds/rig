@@ -276,11 +276,9 @@ impl Tool for Read {
                         ])?;
                         return Ok((output, read));
                     }
-                    Err(NoImage::TooLarge(size)) => {
+                    Err(large @ NoImage::TooLarge(_)) => {
                         return Err(ToolExecutionError::invalid_args(format!(
-                            "{shown} is an image of {} KB, more than the {} KB a provider takes",
-                            size / 1024,
-                            attach::MOST_BYTES / 1024
+                            "{shown}: {large}"
                         )));
                     }
                     Err(NoImage::Read(error)) => return Err(text_error(&shown, error)),

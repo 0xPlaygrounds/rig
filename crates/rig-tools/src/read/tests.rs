@@ -143,6 +143,7 @@ fn a_read_that_stops_at_its_bytes_says_so() {
 fn an_image_is_read_as_an_image() {
     let dir = std::env::temp_dir().join(format!("rig-tools-read-image-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
+    let dir = resolve(None, &dir.to_string_lossy());
     let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
     let at = |name: &str| dir.join(name).to_string_lossy().into_owned();
     std::fs::write(at("logo.png"), &png).ok();
@@ -186,7 +187,9 @@ fn an_image_is_read_as_an_image() {
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(
-        refused.contains("more than the 5120 KB a provider takes"),
+        refused.ends_with(
+            "large.png: it is an image of 5121 KB, more than the 5120 KB a provider takes"
+        ),
         "{refused}"
     );
     assert_eq!(text(ReadArgs::new(at("notes.png"))), "not an image\n");
@@ -199,6 +202,7 @@ fn an_image_is_read_as_an_image() {
 fn a_binary_file_is_refused_as_not_text() {
     let path = std::env::temp_dir().join(format!("rig-tools-read-{}.bin", std::process::id()));
     std::fs::write(&path, b"\xff\xfe\0\x01").ok();
+    let path = resolve(None, &path.to_string_lossy());
     let path = path.to_string_lossy().into_owned();
     let (refused, _) = call(ReadArgs::new(&path));
     let refused = refused
@@ -222,6 +226,7 @@ fn a_binary_file_is_refused_as_not_text() {
 fn a_cut_line_can_be_read_on_in_shell() {
     let dir = std::env::temp_dir().join(format!("rig-tools-read-it's-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
+    let dir = resolve(None, &dir.to_string_lossy());
     let path = dir.join("long.txt");
     let ascii = "x".repeat(30_000);
     let wide = "é".repeat(2_500);
