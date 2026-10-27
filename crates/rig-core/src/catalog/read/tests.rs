@@ -283,6 +283,28 @@ fn the_last_alias_section_overlays_the_first_in_either_order() {
 }
 
 #[test]
+fn deeply_nested_provider_bodies_return_an_override_error() {
+    let body = format!("{}0{}", r#"{"x":"#.repeat(4096), "}".repeat(4096));
+    let json = [
+        r#"{"anthropic":{"models":{"claude-opus-5-5":{"provider":{"body":"#,
+        body.as_str(),
+        "}}}}}",
+    ]
+    .concat();
+    let found = errors(&json);
+    assert_eq!(found.len(), 1);
+    assert!(matches!(
+        found.first().map(|error| &error.kind),
+        Some(OverrideErrorKind::InvalidValue(message)) if message == "catalog override nesting limit exceeded"
+    ));
+    assert!(found.first().is_some_and(|error| {
+        error
+            .path
+            .starts_with("anthropic.models.claude-opus-5-5.provider.body.")
+    }));
+}
+
+#[test]
 fn diagnostics_keep_file_order_across_models_and_nested_objects() {
     let found = errors(
         r#"{"anthropic": {"models": {

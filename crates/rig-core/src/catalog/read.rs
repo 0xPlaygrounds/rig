@@ -200,24 +200,31 @@ impl Catalog {
                     continue;
                 };
                 let mut problems = Vec::new();
-                unknown_fields(&fields, &[], &mut |at, suggestion| {
+                let row = unknown_fields(&fields, &[], &mut |at, suggestion| {
                     problems.push((
                         format!("{path}.{at}"),
                         OverrideErrorKind::UnknownField { suggestion },
                     ));
+                })
+                .and_then(|()| {
+                    serde_path_to_error::deserialize::<_, Row>(
+                        &mut serde_json::Deserializer::from_str(value.get()),
+                    )
+                    .map_err(|failed| OverrideError {
+                        path: failed.path().to_string(),
+                        kind: invalid(&failed.into_inner().to_string()),
+                    })
                 });
-                let row = match serde_path_to_error::deserialize::<_, Row>(
-                    &mut serde_json::Deserializer::from_str(value.get()),
-                ) {
+                let row = match row {
                     Ok(row) => Some(row),
                     Err(failed) => {
-                        let at = failed.path().to_string();
+                        let at = failed.path;
                         let at = if at == "." {
                             path.clone()
                         } else {
                             format!("{path}.{at}")
                         };
-                        problems.push((at, invalid(&failed.into_inner().to_string())));
+                        problems.push((at, failed.kind));
                         None
                     }
                 };
@@ -346,7 +353,14 @@ fn unknown_fields(
     object: &Entries<'_>,
     path: &[String],
     report: &mut dyn FnMut(String, Option<&'static str>),
-) {
+) -> Result<(), OverrideError> {
+    // RawValue scans below each object without serde_json's recursion limit.
+    if path.len() >= 128 {
+        return Err(OverrideError {
+            path: path.join("."),
+            kind: invalid("catalog override nesting limit exceeded"),
+        });
+    }
     let keys: Vec<&str> = path.iter().map(String::as_str).collect();
     let known = known_fields(&keys);
     for (key, value) in object {
@@ -359,17 +373,18 @@ fn unknown_fields(
             continue;
         }
         if let Ok(inner) = serde_json::from_str::<Entries<'_>>(value.get()) {
-            unknown_fields(&inner, &at, report);
+            unknown_fields(&inner, &at, report)?;
         } else if let Ok(items) = serde_json::from_str::<Vec<&RawValue>>(value.get()) {
             for (index, item) in items.iter().enumerate() {
                 if let Ok(inner) = serde_json::from_str::<Entries<'_>>(item.get()) {
                     let mut at = at.clone();
                     at.push(index.to_string());
-                    unknown_fields(&inner, &at, report);
+                    unknown_fields(&inner, &at, report)?;
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// Every provider key a catalog file may use: rig's vendor names and the
