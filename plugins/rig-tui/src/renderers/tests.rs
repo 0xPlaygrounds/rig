@@ -81,12 +81,16 @@ fn reasoning_is_dimmed_markdown() {
         "{lines:?}"
     );
     let dim_italic = Modifier::DIM | Modifier::ITALIC;
-    assert!(
-        lines
-            .iter()
-            .all(|line| line.style.add_modifier.contains(dim_italic)),
-        "{lines:?}"
-    );
+    let drawn = |line: &Line<'_>| {
+        let mut spans = line.spans.iter();
+        spans.all(|span| {
+            line.style
+                .patch(span.style)
+                .add_modifier
+                .contains(dim_italic)
+        })
+    };
+    assert!(lines.iter().all(drawn), "{lines:?}");
 }
 
 #[test]

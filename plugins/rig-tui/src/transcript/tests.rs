@@ -210,7 +210,7 @@ fn a_table_in_reasoning_is_laid_out_again_when_the_width_changes() {
     let reply = Message::Assistant(AssistantMessage::new(vec![reasoning]));
     let conversation = Conversation(rig_core::conversation::Conversation::from_messages([reply]));
     let none = (BTreeMap::new(), BTreeMap::new(), Renderers::default());
-    let mut drawn = |transcript: &mut Transcript, width| {
+    let drawn = |transcript: &mut Transcript, width| {
         drawn_at(
             transcript,
             &conversation,

@@ -206,8 +206,21 @@ fn cassettes_scrub_openai_user_ids_and_keep_other_user_strings() {
         cassette.scrub_text(echoed),
         r#"{"safety_identifier":"user-REDACTED_1","user":"user-1"}"#
     );
-    let longer = "superuser-AbCdEfGhIjKlMnOpQrStUvWxx";
-    assert_eq!(cassette.scrub_text(longer), longer);
+    assert_eq!(
+        cassette.scrub_text("user-REDACTED_1"),
+        "user-REDACTED_1",
+        "a placeholder stays as it is"
+    );
+    assert_eq!(
+        cassette.scrub_text("é user-AbCdEfGhIjKlMnOpQrStUvWx é"),
+        "é user-REDACTED_1 é"
+    );
+    for kept in [
+        "superuser-AbCdEfGhIjKlMnOpQrStUvWx",
+        "user-AbCdEfGhIjKlMnOpQrStUvWxY",
+    ] {
+        assert_eq!(cassette.scrub_text(kept), kept);
+    }
 }
 
 #[test]

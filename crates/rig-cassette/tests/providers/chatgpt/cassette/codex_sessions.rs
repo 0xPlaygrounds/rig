@@ -171,6 +171,11 @@ async fn reasoning_session_two_tool_calls_streaming() {
                 stats.reasoning_block_count >= 1,
                 "expected reasoning output from a reasoning-enabled session"
             );
+            // The effort asks for a summary, so the reasoning carries text.
+            assert!(
+                !stats.reasoning_text.trim().is_empty(),
+                "expected a reasoning summary"
+            );
             assert!(
                 stats.got_final_response,
                 "stream should emit a final response"
