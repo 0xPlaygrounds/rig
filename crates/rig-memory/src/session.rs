@@ -532,7 +532,9 @@ impl Session {
     /// one): appends each agent's unsaved changes (an agent new to the
     /// store gets a header), its changed and removed saved values, and its
     /// retirement, and the session's changed values. Each agent's
-    /// conversation is left with nothing unsaved. A torn last line of a log
+    /// conversation is left with nothing unsaved after its log is written.
+    /// If a write fails, uncommitted conversations keep their pending changes
+    /// for a retry; logs already written are not appended again. A torn last line of a log
     /// written to is first set aside, as [`Writer::open`](crate::Writer::open)
     /// does.
     ///
@@ -561,7 +563,8 @@ impl Session {
         let torn = torn_tails(store, &folded)?.into_iter();
         book.set_aside(torn.map(|(log, _, cut)| (log, cut)));
         book.start();
-        for agent in &mut self.agents {
+        let mut staged = self.agents.clone();
+        for agent in &mut staged {
             let _ = book.opened(&agent.id, agent.parent.as_deref());
             let put = &mut |name: String, bytes: Vec<u8>| put_blob(store, &name, &bytes);
             book.save(put, &agent.id, &mut agent.conversation);
@@ -573,7 +576,13 @@ impl Session {
         }
         let known = had(SESSION).map(|log| &log.state);
         book.states(SESSION, known, &self.saved);
-        book.flush(store)
+        let result = book.flush(store);
+        for (agent, saved) in self.agents.iter_mut().zip(staged) {
+            if result.is_ok() || book.flushed(&agent.id) {
+                agent.conversation = saved.conversation;
+            }
+        }
+        result
     }
 }
 

@@ -29,6 +29,8 @@ pub(crate) struct Log {
     /// Whether the log holds a change or a saved value, so it is written.
     started: bool,
     pending: Vec<u8>,
+    /// Whether this book successfully flushed this log.
+    flushed: bool,
     /// The newest value of each saved value, so an unchanged one is not
     /// written again.
     state: BTreeMap<String, Value>,
@@ -347,6 +349,11 @@ impl Book {
         self.meta(name, &Meta::Retired);
     }
 
+    /// Whether this book successfully flushed the log `name`.
+    pub fn flushed(&self, name: &str) -> bool {
+        self.logs.get(name).is_some_and(|log| log.flushed)
+    }
+
     /// Writes every queued record to `store`: each started log's records
     /// with one write, a subagent's log before its parent's, and the
     /// [`SESSION`] log once any is started. A failed write stops the
@@ -397,6 +404,7 @@ impl Book {
             }
             log.len += log.pending.len() as u64;
             log.pending.clear();
+            log.flushed = true;
             self.wrote = true;
         }
         Ok(())
