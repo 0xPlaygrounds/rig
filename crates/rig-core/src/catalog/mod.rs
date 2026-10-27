@@ -64,7 +64,7 @@ pub use details::{
     CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates, Tier,
 };
 pub use facts::ModelFacts;
-pub use lookup::{Matched, NotFound, Resolved};
+pub use lookup::{Matched, NotFound, Resolved, edit_distance};
 pub use read::{OverrideError, OverrideErrorKind, OverrideErrors, SkipReason, Skipped};
 pub use spec::{
     CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningChoice, ReasoningSupport,

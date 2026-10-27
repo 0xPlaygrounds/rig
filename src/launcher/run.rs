@@ -40,7 +40,7 @@ use rig_harness_protocol::{
     SessionId, StartReason, env, secret_variable,
 };
 
-use super::build::{self, BuildFailure, Staging, child};
+use super::build::{self, BuildFailure, BuildOutput, Staging, child};
 use super::{Result, locks};
 
 /// How often the launcher looks for the ready file while the agent runs.
@@ -65,8 +65,15 @@ pub enum Start {
 pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let terminal = std::io::stdin().is_terminal();
-    // Before the build, only whether `-p` is there: the type-ahead guard.
+    // Before the build, only whether `-p` is there, by a plain scan that a
+    // prompt that is just `-p` matches too: the type-ahead guard, and the
+    // build's output, which a headless run keeps off its stderr.
     let print = args.iter().any(|arg| arg == "-p" || arg == "--print");
+    let output = if print || !terminal {
+        BuildOutput::LogOnly
+    } else {
+        BuildOutput::Live
+    };
     // Before the build, `-r` as the last build reads it; the new build may
     // read it otherwise (below).
     let asked = last_report(home).unwrap_or_default().resume(args);
@@ -82,7 +89,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         locks::sweep(home)?;
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
-        let failure = rebuild(home, &claimed.id)?;
+        let failure = rebuild(home, &claimed.id, output)?;
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
         });
@@ -712,26 +719,30 @@ fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
     }
 }
 
-/// Builds before every start, staging for this launcher; cargo does no
-/// work when nothing changed. With no good build yet, the build is staged
-/// even if it was rejected before, so each start retries it. A failed build
-/// with an older binary at hand is returned, for that binary to start with.
-fn rebuild(home: &Home, session: &SessionId) -> Result<Option<BuildFailure>> {
+/// Builds before every start, staging for this launcher, its output as
+/// `output` says; cargo does no work when nothing changed. With no good
+/// build yet, the build is staged even if it was rejected before, so each
+/// start retries it. A failed build with an older binary at hand is
+/// returned, for that binary to start with.
+fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Option<BuildFailure>> {
     let first_run = !home.staged().exists() && !home.good().exists();
-    eprintln!(
-        "Building the rig agent{}…",
-        if first_run { " (first run)" } else { "" }
-    );
+    if output == BuildOutput::Live {
+        eprintln!(
+            "Building the rig agent{}…",
+            if first_run { " (first run)" } else { "" }
+        );
+    }
     let staging = if first_run {
         Staging::Always
     } else {
         Staging::OnlyNew
     };
-    match build::compile(home, &home.staged_for(session), staging) {
+    match build::compile(home, &home.staged_for(session), staging, output) {
         Ok(()) => Ok(None),
-        Err(failure) if first_run => Err(failure.into()),
+        Err(failure) if first_run => Err(failure.told(output).into()),
         Err(failure) => {
-            eprintln!("error: {failure}; starting the previous build");
+            let told = failure.told(output);
+            eprintln!("error: building the agent failed; starting the previous build: {told}");
             Ok(Some(failure))
         }
     }

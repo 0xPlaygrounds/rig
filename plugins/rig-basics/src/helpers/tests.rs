@@ -62,6 +62,15 @@ fn helped(name: &str, args: &[Value]) -> (App, std::sync::mpsc::Receiver<()>, Pa
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     app.finish();
+    app.cleanup();
+    // Registered while the app runs, as an MCP server's tools are: a child
+    // would not have it.
+    app.add_open_tool(
+        "mcp__late",
+        "Late.",
+        ToolOptions::default(),
+        |_: On<ToolCalled<Value>>| {},
+    );
     app.update();
     let world = app.world_mut();
     if let (Some(agent), Some(connection)) = (first_agent(world), connect(&model)) {
@@ -106,7 +115,7 @@ fn a_helper_answers_and_a_chain_hands_each_answer_on() {
     let first = args.lines().next().unwrap_or_default();
     assert!(
         first.starts_with("-p --json --tools=read -- one"),
-        "a one-shot JSON run with the agent's tools but `helper`: {first}"
+        "a one-shot JSON run with the agent's tools but `helper` and the late one: {first}"
     );
 }
 

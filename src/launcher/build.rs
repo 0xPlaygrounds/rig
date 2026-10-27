@@ -1,6 +1,7 @@
 //! `rig build`: regenerate the agent project, check that every plugin uses
-//! the agent's Bevy version, compile with cargo's output on stderr, and
-//! stage the new binary for the next start. Before it is staged, a build
+//! the agent's Bevy version, compile with cargo's output on stderr (or only
+//! in the log, for a headless start: [`BuildOutput`]), and stage the new
+//! binary for the next start. Before it is staged, a build
 //! describes what its plugins add ([`described`]): a build whose plugins
 //! clash, or that does not describe itself, is rejected. Everything a build
 //! prints also goes to [`Home::build_log`], and a failure names its reason
@@ -40,6 +41,17 @@ pub enum Staging {
     Never,
 }
 
+/// Where a build's output goes besides [`Home::build_log`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuildOutput {
+    /// To stderr as it comes, with cargo's progress bar on a terminal.
+    Live,
+    /// To the log only, for a headless start whose stderr a script reads:
+    /// one line says so once cargo starts real work, so a long build does
+    /// not look stuck, and a build with nothing to do says nothing.
+    LogOnly,
+}
+
 /// Lines of a failed build's output a [`BuildFailure`] keeps, from its
 /// first error on.
 const ERROR_LINES: usize = 40;
@@ -69,6 +81,18 @@ impl BuildFailure {
             .collect::<Vec<_>>()
             .join("\n")
     }
+
+    /// What to tell about it after a build whose output went as `output`
+    /// went: its one line after output shown live, else its details and
+    /// the log, which nothing showed yet.
+    pub fn told(&self, output: BuildOutput) -> String {
+        match output {
+            BuildOutput::Live => self.to_string(),
+            BuildOutput::LogOnly => {
+                format!("{}\n(whole output: {})", self.details(), self.log.display())
+            }
+        }
+    }
 }
 
 impl fmt::Display for BuildFailure {
@@ -88,13 +112,15 @@ impl std::error::Error for BuildFailure {}
 
 /// Reads `plugins.toml`, writes the agent project, checks its Bevy version,
 /// builds it, and copies the binary to `staged` as `staging` says. The
-/// build's output goes to stderr and to [`Home::build_log`].
+/// build's output goes to [`Home::build_log`], and to stderr as `output`
+/// says.
 pub fn compile(
     home: &Home,
     staged: &Path,
     staging: Staging,
+    output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
-    let mut log = BuildLog::create(home);
+    let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
     match compile_logged(home, staged, staging, &mut log) {
         Ok(()) => {
             log.record("build succeeded");
@@ -112,7 +138,9 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     log.say("Compiling the agent…");
     let mut command = cargo(home);
     command.args(["build", "--package", PACKAGE]);
-    show_progress(&mut command);
+    // A Windows console may not take the erase sequence, which cargo
+    // itself writes on Unix only.
+    log.erase = cfg!(unix) && log.output == BuildOutput::Live && show_progress(&mut command);
     let status = log.run(command)?;
     // The check reads the graph the build resolved into `Cargo.lock`, so a
     // lock it passed passes again; after a failed build it runs anyway, to
@@ -148,14 +176,14 @@ pub fn build(home: &Home) -> Result<()> {
         Some(session) => home.staged_for(&session),
         None => home.staged(),
     };
-    Ok(compile(home, &staged, Staging::Always)?)
+    Ok(compile(home, &staged, Staging::Always, BuildOutput::Live)?)
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
 /// agent like [`build`] but stages nothing, and returns its report.
 pub fn check(home: &Home) -> Result<AgentDescription> {
     let _lock = locks::hold_build_lock(home)?;
-    compile(home, &home.staged(), Staging::Never)?;
+    compile(home, &home.staged(), Staging::Never, BuildOutput::Live)?;
     described(home, &artifact(home))
 }
 
@@ -194,8 +222,8 @@ fn cargo(home: &Home) -> Command {
 }
 
 /// Keeps cargo's progress bar on a terminal, which cargo no longer sees
-/// through the pipe. A caller's own settings win.
-fn show_progress(command: &mut Command) {
+/// through the pipe; whether it did. A caller's own settings win.
+fn show_progress(command: &mut Command) -> bool {
     if std::io::stderr().is_terminal()
         && std::env::var_os("CARGO_TERM_PROGRESS_WHEN").is_none()
         && let Some(width) = terminal_width()
@@ -203,7 +231,9 @@ fn show_progress(command: &mut Command) {
         command
             .env("CARGO_TERM_PROGRESS_WHEN", "always")
             .env("CARGO_TERM_PROGRESS_WIDTH", width.to_string());
+        return true;
     }
+    false
 }
 
 /// The terminal's width in columns: `COLUMNS`, else `stty size`.
@@ -235,11 +265,21 @@ struct BuildLog {
     /// `None` when the file could not be written; the build goes on.
     file: Option<File>,
     lines: Vec<String>,
+    output: BuildOutput,
+    /// Where it shows what `output` shows: stderr, but in tests.
+    shown: Box<dyn Write>,
+    /// Whether a [`BuildOutput::LogOnly`] build said it works.
+    announced: bool,
+    /// Whether what it shows is a terminal that draws cargo's progress
+    /// bar, whose redrawn lines it erases.
+    erase: bool,
+    /// Whether the last byte passed on was a `\r`, which a `\n` may end.
+    after_cr: bool,
 }
 
 impl BuildLog {
-    /// Starts the log over.
-    fn create(home: &Home) -> Self {
+    /// Starts the log over, showing on `shown` what `output` says.
+    fn create(home: &Home, output: BuildOutput, shown: Box<dyn Write>) -> Self {
         let path = home.build_log();
         let file = fs::create_dir_all(home.root())
             .and_then(|()| File::create(&path))
@@ -251,12 +291,19 @@ impl BuildLog {
             path,
             file,
             lines: Vec::new(),
+            output,
+            shown,
+            announced: false,
+            erase: false,
+            after_cr: false,
         }
     }
 
-    /// Shows `line` on stderr and logs it.
+    /// Shows `line` when the output is live, and logs it.
     fn say(&mut self, line: &str) {
-        eprintln!("{line}");
+        if self.output == BuildOutput::Live {
+            writeln!(self.shown, "{line}").ok();
+        }
         self.record(line);
     }
 
@@ -278,14 +325,16 @@ impl BuildLog {
         Ok(child.wait()?)
     }
 
-    /// Passes `child`'s stderr on to ours and logs its lines. cargo
-    /// redraws its progress bar after `\r`, so `\r` ends a line too; the
-    /// bar is not logged.
+    /// Passes `child`'s stderr on when the output is live, and logs its
+    /// lines. cargo redraws its progress bar after `\r`, so `\r` ends a
+    /// line too; the bar is not logged. Through a pipe cargo does not
+    /// erase the bar's line before a shorter one, which would keep the
+    /// bar's tail on screen, so on a terminal each `\r` but a `\r\n` erases
+    /// it.
     fn pass_on(&mut self, child: &mut Child) {
         let Some(mut stderr) = child.stderr.take() else {
             return;
         };
-        let mut out = std::io::stderr();
         let mut buffer = [0_u8; 8192];
         let mut segment: Vec<u8> = Vec::new();
         loop {
@@ -294,8 +343,9 @@ impl BuildLog {
                 Ok(read) => read,
             };
             let chunk = buffer.get(..read).unwrap_or_default();
-            out.write_all(chunk).ok();
-            out.flush().ok();
+            if self.output == BuildOutput::Live {
+                self.show(chunk);
+            }
             for &byte in chunk {
                 if byte == b'\r' || byte == b'\n' {
                     self.record_segment(&segment);
@@ -308,13 +358,49 @@ impl BuildLog {
         self.record_segment(&segment);
     }
 
+    /// Shows `chunk`, erasing after each `\r` that no `\n` follows when
+    /// [`Self::erase`], as soon as the byte after it shows.
+    fn show(&mut self, chunk: &[u8]) {
+        let mut start = 0;
+        for (at, &byte) in chunk.iter().enumerate() {
+            if std::mem::take(&mut self.after_cr) && byte != b'\n' {
+                let before = chunk.get(start..at).unwrap_or_default();
+                self.shown.write_all(before).ok();
+                self.shown.write_all(b"\x1b[K").ok();
+                start = at;
+            }
+            self.after_cr = self.erase && byte == b'\r';
+        }
+        self.shown
+            .write_all(chunk.get(start..).unwrap_or_default())
+            .ok();
+        self.shown.flush().ok();
+    }
+
     fn record_segment(&mut self, segment: &[u8]) {
         let line = String::from_utf8_lossy(segment);
         let line = line.trim_end();
         if line.trim().is_empty() || line.trim_start().starts_with("Building [") {
             return;
         }
+        self.announce(line);
         self.record(line);
+    }
+
+    /// Says once, for a [`BuildOutput::LogOnly`] build, that cargo works
+    /// or waits, as its `line` shows: it fetches, compiles, or waits for
+    /// another cargo's lock.
+    fn announce(&mut self, line: &str) {
+        let working = ["Updating ", "Downloading ", "Compiling ", "Blocking "];
+        let line = line.trim_start();
+        if self.output == BuildOutput::LogOnly
+            && !self.announced
+            && working.iter().any(|word| line.starts_with(word))
+        {
+            self.announced = true;
+            let log = self.path.display();
+            writeln!(self.shown, "rig: building the agent (output in {log})…").ok();
+        }
     }
 
     /// Ends the log with `reason` and makes it the [`BuildFailure`].

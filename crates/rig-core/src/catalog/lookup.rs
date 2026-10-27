@@ -140,7 +140,7 @@ fn closest<'a>(
 /// The edit distance between `a` and `b`, by character: insertions,
 /// deletions, substitutions and swaps of two adjacent characters each count
 /// one (optimal string alignment), so `inptu` is one edit from `input`.
-pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
+pub fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let at = |row: &[usize], k: usize| row.get(k).copied().unwrap_or(usize::MAX);

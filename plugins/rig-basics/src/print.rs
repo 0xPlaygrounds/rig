@@ -8,9 +8,9 @@
 //! [`PrintSection`]s; failures, notices and each [`ToolProgress`] line go
 //! to stderr. `--json` ([`JSON`]) writes the run as JSON lines instead,
 //! each with the protocol's [`VERSION`] as `v` and the time it was written
-//! as `ms`, after the notices before it; `exit` is the last, with why the
-//! run failed as its `error`, and a notice written after it, even in the
-//! same frame, is not written. Without `-p` it is
+//! as `ms`, after the notices before it; `exit` is the last, written as
+//! the agent exits, after its session log, with why the run failed as its
+//! `error`, and nothing is written after it. Without `-p` it is
 //! long-lived: each line on stdin is a request, answered by a `reply`
 //! line, and the end of stdin ends the agent at once. Nobody answers a
 //! one-shot run's questions: each is refused, with why, unless
@@ -28,17 +28,22 @@
 //! may one whose restored session left a turn unfinished (`rig -r <id>
 //! -p`): that turn's answer is the run's; a run the launcher restarted on a
 //! reload with nothing left ends with 0. The exit code is 0 answered, 2
-//! for no prompt or a refused slash command, else 1, such as for a failed
-//! turn, or an error notice about the agent and no answer; a run of
-//! several turns exits with the worst.
+//! for no prompt, a refused slash command or a `--tools` name no tool has,
+//! else 1, such as for a failed turn, a turn that ended with no answer, or
+//! an error notice about the agent and no answer; a run of several turns
+//! exits with the worst. A `--json` run that exits before its work ends,
+//! such as on a signal, still closes each tool call and turn it started,
+//! and a one-shot one writes its `exit` line.
 
 use std::io::{IsTerminal, Read, Write};
 
 use async_channel::{Receiver, Sender};
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
+use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::Message;
+use rig_harness::rig_core::catalog::edit_distance;
+use rig_harness::rig_core::tool::feedback::not_finished;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -58,8 +63,12 @@ pub const ORIGIN: &str = "print";
 pub const ANSWER: &str = "answer";
 
 /// The option that intersects every agent's tool access with the names given.
-/// Omission leaves access unchanged; an empty value permits no tools. Unknown
-/// names grant nothing. Subagents retain inherited restrictions and this limit.
+/// Omission leaves access unchanged; an empty value permits no tools. A
+/// headless run refuses a name no registered tool has, with exit code 2,
+/// before any model or tool call. It checks once every plugin finished,
+/// so a tool registered later, such as an MCP server's, cannot be named.
+/// Elsewhere an unknown name grants nothing. Subagents retain inherited
+/// restrictions and this limit.
 pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
@@ -151,7 +160,8 @@ impl Plugin for PrintPlugin {
                 (
                     limit_tools.in_set(PrepareSystems::Input),
                     limit_offers.in_set(PrepareSystems::Edit),
-                ),
+                )
+                    .distributive_run_if(resource_exists::<Tools>),
             );
         }
         let json = app.runs_front(JSON);
@@ -174,7 +184,19 @@ impl Plugin for PrintPlugin {
                         .before(AgentLoop),
                 )
                 .init_resource::<LinesRead>()
-                .add_systems(PostUpdate, flush);
+                .add_systems(PostUpdate, flush)
+                .add_systems(
+                    Last,
+                    (
+                        close_cut_off.before(StopTurnsOnExit),
+                        json_exit.after(WriteLogs),
+                    )
+                        .in_set(OnAppExitSystems)
+                        .distributive_run_if(on_message::<AppExit>),
+                );
+            if prompt.is_some() {
+                app.world_mut().resource_mut::<JsonOut>().one_shot = true;
+            }
         } else {
             let command = prompt.as_deref().unwrap_or_default().trim_start();
             app.init_resource::<Printed>()
@@ -220,6 +242,40 @@ impl Plugin for PrintPlugin {
             .add_systems(AgentPass, answer.in_set(PrintSystems))
             .run_headless(Some(full_prompt(&prompt)));
     }
+
+    /// Refuses unknown tools after every plugin finished, holding all
+    /// model and tool calls, including restored work. The session keeps
+    /// every agent's tool access unchanged.
+    fn cleanup(&self, app: &mut App) {
+        let world = app.world_mut();
+        // A run someone sits at keeps an unknown name as granting nothing.
+        if !world.contains_resource::<Run>() {
+            return;
+        }
+        let mut tools = world.query::<&ToolDef>();
+        let names: Vec<String> = tools
+            .iter(world)
+            .map(|tool| tool.0.name.to_string())
+            .collect();
+        let refused = world
+            .get_resource::<Tools>()
+            .and_then(|tools| tools.unknown(names.iter().map(String::as_str)));
+        if let (Some(why), Some(mut run)) = (refused, world.get_resource_mut::<Run>()) {
+            run.refused = Some(why);
+            world.remove_resource::<Tools>();
+            app.add_systems(AgentPass, hold_calls.in_set(Stage::Gate));
+        }
+    }
+}
+
+/// Holds model and tool calls for a run whose tool list was refused.
+fn hold_calls(
+    calls: Query<Entity, (ReadyToStart, Or<(ModelCalls, ToolCalls)>)>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands.spawn(HoldOf(call));
+    }
 }
 
 /// The Gate system that answers each question of a one-shot run, after
@@ -234,6 +290,50 @@ struct Answers(Vec<String>);
 /// The tools `--tools` leaves the agent.
 #[derive(Resource)]
 struct Tools(Vec<String>);
+
+impl Tools {
+    /// Why some of the names no tool of `registered` has, if any does:
+    /// each unknown name, then the names they likely mean, or else every
+    /// tool there is.
+    fn unknown<'a>(&self, registered: impl IntoIterator<Item = &'a str>) -> Option<String> {
+        let mut registered: Vec<&str> = registered.into_iter().collect();
+        registered.sort_unstable();
+        let unknown: Vec<&str> = self
+            .0
+            .iter()
+            .map(String::as_str)
+            .filter(|name| !registered.contains(name))
+            .collect();
+        if unknown.is_empty() {
+            return None;
+        }
+        let names = unknown.iter().map(|name| format!("`{name}`"));
+        let names = names.collect::<Vec<_>>().join(", ");
+        let tools = if unknown.len() == 1 { "tool" } else { "tools" };
+        let meant: Option<Vec<String>> = unknown
+            .iter()
+            .map(|name| closest(name, &registered).map(|close| format!("`{close}`")))
+            .collect();
+        let hint = match (meant, registered.is_empty()) {
+            (Some(meant), _) => format!("did you mean {}?", meant.join(", ")),
+            (None, true) => "this build has no tools".to_owned(),
+            (None, false) => format!("the tools are {}", registered.join(", ")),
+        };
+        Some(format!("--tools: unknown {tools} {names}; {hint}"))
+    }
+}
+
+/// The name of `names` closest to `name`, within a quarter of its length
+/// (at least one edit), so a typo finds its tool and another word none, as
+/// the model catalog suggests.
+fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
+    let limit = (name.chars().count() / 4).max(1);
+    let distances = names
+        .iter()
+        .map(|close| (edit_distance(name, close), *close));
+    let close = distances.filter(|(distance, _)| *distance <= limit).min();
+    close.map(|(_, close)| close)
+}
 
 /// Intersects access before dispatch, including agents admitted this pass.
 fn limit_tools(mut agents: Query<&mut ToolAccess, With<Agent>>, tools: Res<Tools>) {
@@ -398,7 +498,7 @@ struct Run {
     kept: bool,
     step: Step,
     /// What the agent's last turn since the work last settled answered.
-    answer: Option<Message>,
+    answer: Option<String>,
     /// Whether a turn of the agent ended since the work last settled.
     turned: bool,
     /// The answer of the last [`HeadlessTurnEnded`].
@@ -410,6 +510,10 @@ struct Run {
     failed: Option<Failure>,
     /// Whether a line already told why the run that ended failed.
     told: bool,
+    /// Why `--tools` is refused, which ends the run at once.
+    refused: Option<String>,
+    /// Whether the agent's last turn ended with no answer text.
+    unanswered: bool,
 }
 
 /// Why a run fails: its exit code, why, and whether a line already said so.
@@ -431,26 +535,34 @@ impl Run {
 
     /// Notes a turn of the agent that ended: a failed one fails the run,
     /// told already by the kernel's error notice, and takes back an earlier
-    /// answer; a stopped one changes neither.
+    /// answer, as one with no answer text does; a stopped one changes
+    /// neither.
     fn turn_ended(&mut self, outcome: &TurnOutcome) {
         self.turned = true;
-        match outcome {
-            TurnOutcome::Answered(message) => self.answer = Some(message.clone()),
-            TurnOutcome::Failed(why) => {
-                self.fail(1, why.clone(), true);
+        self.unanswered = false;
+        match TurnEnd::of(outcome) {
+            TurnEnd::Answered(answer) => self.answer = Some(answer),
+            TurnEnd::Unanswered => {
+                self.unanswered = true;
                 self.answer = None;
             }
-            TurnOutcome::Stopped(_) => {}
+            TurnEnd::Failed(why) => {
+                self.fail(1, why, true);
+                self.answer = None;
+            }
+            TurnEnd::Stopped(_) => {}
         }
     }
 
     /// Takes what came since the work last settled: the answer, and the
-    /// exit code an error notice and no answer earns.
+    /// exit code an error notice, or a last turn with no answer text, and
+    /// no answer earns. A turn with no text that a later one answers after,
+    /// such as once a subagent reported, fails nothing.
     fn settled(&mut self) -> Option<String> {
-        let answer = self
-            .answer
-            .take()
-            .and_then(|message| message.final_answer());
+        let answer = self.answer.take();
+        if std::mem::take(&mut self.unanswered) && answer.is_none() {
+            self.fail(1, NO_ANSWER.to_owned(), false);
+        }
         self.notice_fails(answer.is_some());
         answer
     }
@@ -474,6 +586,35 @@ impl Run {
                 Some(agent)
             }
             Step::Done => None,
+        }
+    }
+}
+
+/// Why a turn that ended with no final text fails a headless run.
+const NO_ANSWER: &str = "the model ended the turn without an answer";
+
+/// How a turn ended, as a headless run reports it, both in its exit code
+/// and in its `turn_end` line.
+enum TurnEnd {
+    /// With this final text.
+    Answered(String),
+    /// Answered with no final text, such as a reply of reasoning alone: a
+    /// failed turn, [`NO_ANSWER`].
+    Unanswered,
+    /// For this reason.
+    Failed(String),
+    /// Stopped, and why when something said.
+    Stopped(Option<String>),
+}
+
+impl TurnEnd {
+    fn of(outcome: &TurnOutcome) -> Self {
+        match outcome {
+            TurnOutcome::Answered(message) => message
+                .final_answer()
+                .map_or(Self::Unanswered, Self::Answered),
+            TurnOutcome::Failed(why) => Self::Failed(why.clone()),
+            TurnOutcome::Stopped(why) => Self::Stopped(why.clone()),
         }
     }
 }
@@ -538,7 +679,8 @@ impl Agents<'_, '_> {
     }
 }
 
-/// Chooses the model, sends the prompt, and exits after the turn.
+/// Ends a run whose `--tools` was refused, chooses the model, sends the
+/// prompt, and exits after the turn.
 fn drive(
     mut run: ResMut<Run>,
     agents: Agents,
@@ -572,6 +714,10 @@ fn drive(
             let Some(agent) = main_agent(&agents.primary) else {
                 return;
             };
+            if let Some(why) = run.refused.take() {
+                let ended = ended(Some(agent), 2);
+                return end(&mut run, (ended, Reason::Said(&why)), commands);
+            }
             let Ok((chosen, connected)) = agents.choices.get(agent) else {
                 return;
             };
@@ -907,6 +1053,13 @@ struct JsonOut {
     ms: u64,
     /// Whether the `exit` line was written, after which nothing is.
     closed: bool,
+    /// Whether the run answers one prompt, and so writes `exit` however it
+    /// exits.
+    one_shot: bool,
+    /// How the run ended, for its `exit` line.
+    ended: Option<HeadlessEnded>,
+    /// The lines that close what the exit cut off, each with its agent.
+    closing: Vec<(Entity, &'static str, Value)>,
 }
 
 impl JsonOut {
@@ -915,6 +1068,9 @@ impl JsonOut {
             out: Box::new(out),
             ms: 0,
             closed: false,
+            one_shot: false,
+            ended: None,
+            closing: Vec::new(),
         }
     }
 }
@@ -1035,20 +1191,124 @@ fn ready(primary: MainAgentQuery, paths: Option<Res<SessionPaths>>, mut out: Out
     out.write(main_agent(&primary), "ready", json!({ "session": session }));
 }
 
-/// The last line, as the run asks to exit.
-fn json_ended(
-    ended: On<HeadlessEnded>,
+/// Keeps how the run ended for its `exit` line, which the real exit
+/// writes.
+fn json_ended(ended: On<HeadlessEnded>, mut out: ResMut<JsonOut>) {
+    out.ended = Some(ended.event().clone());
+}
+
+/// Why an exit cuts off the work the run started, as the lines that close
+/// it say; `None` for a reload, after which the launcher starts the agent
+/// again and the run goes on.
+fn cut_off(reason: Option<&ExitReason>) -> Option<&'static str> {
+    match reason {
+        Some(ExitReason::Reload) => None,
+        Some(ExitReason::Signal) => Some("the run was interrupted"),
+        _ => Some("the run ended"),
+    }
+}
+
+/// On the exit frame, before the exit stops the running turns and despawns
+/// them unended, for the session to carry them on: writes what streamed,
+/// and keeps a `tool_result` for each tool call that started and a
+/// `turn_end` for each turn the exit cuts off, which [`json_exit`] writes
+/// once they are stopped. The work settled before has its lines already.
+/// Each call has the result the session keeps: its answer, when it came and
+/// did not settle yet, else what it says if stopped ([`IfStopped`]), such
+/// as its output so far; else, keeping none, what a stop says of a call
+/// that ran. A call not answered is `cancelled`.
+fn close_cut_off(
+    reason: Option<Res<ExitReason>>,
+    calls: Query<
+        (
+            &ToolRequest,
+            &ForAgent,
+            Option<&Outcome>,
+            Option<&IfStopped>,
+            Option<&Footprint>,
+        ),
+        (With<Started>, Without<Settled>),
+    >,
+    turns: Query<(&TurnOf, Option<&TurnUsage>, Option<&FirstStreamed>), Without<Settled>>,
+    mut out: Out,
+) {
+    let Some(why) = cut_off(reason.as_deref()) else {
+        return;
+    };
+    out.flush();
+    let mut closing = Vec::new();
+    for (request, &ForAgent(agent), outcome, if_stopped, footprint) in &calls {
+        let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
+        let (ok, output) = match kept.map(Outcome::tool_result) {
+            Some(result) => (result.is_success(), result.output().render()),
+            None => {
+                let footprint = footprint.cloned().unwrap_or_default();
+                (false, not_finished(why, true, &footprint.0))
+            }
+        };
+        let fields = json!({
+            "id": request.call.id.wire(),
+            "name": request.call.function.name.as_str(),
+            "ok": ok,
+            "refused": false,
+            "cancelled": outcome.is_none(),
+            "output": output,
+        });
+        closing.push((agent, "tool_result", fields));
+    }
+    for (&TurnOf(agent), used, first) in &turns {
+        let ended = TurnEnd::Stopped(Some(why.to_owned()));
+        closing.push((agent, "turn_end", turn_end_fields(ended, used, first)));
+    }
+    out.out.closing = closing;
+}
+
+/// On the exit frame, once the turns are stopped and the session log is
+/// written: the lines [`close_cut_off`] kept, then the `exit` line of a run
+/// that ended ([`HeadlessEnded`]) or of a one-shot run cut off, with the
+/// agent's exit code.
+fn json_exit(
+    reason: Option<Res<ExitReason>>,
+    primary: MainAgentQuery,
     (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
     mut out: Out,
 ) {
+    let reason = reason.as_deref();
+    let Some(why) = cut_off(reason) else {
+        return;
+    };
+    for (agent, kind, fields) in std::mem::take(&mut out.out.closing) {
+        out.emit(Some(agent), kind, fields);
+    }
+    let ended = out.out.ended.take();
+    if ended.is_none() && !out.out.one_shot {
+        return;
+    }
+    let code = match reason.map(ExitReason::exit) {
+        Some(AppExit::Error(code)) => code.get(),
+        _ => 0,
+    };
+    let (agent, answer, error) = match ended {
+        Some(ended) if ended.code == code => (ended.agent, ended.answer, ended.why),
+        // Something else ended it first, such as a signal.
+        ended => (
+            ended
+                .as_ref()
+                .and_then(|ended| ended.agent)
+                .or(main_agent(&primary)),
+            ended.and_then(|ended| ended.answer),
+            (code != 0).then(|| why.to_owned()),
+        ),
+    };
     let fields = json!({
-        "code": ended.code,
-        "answer": ended.answer,
-        "error": ended.why,
+        "code": code,
+        "answer": answer,
+        "error": error,
         "session": session_id(paths),
         "usage": usage.map(|usage| usage.0.total),
     });
-    out.emit(ended.agent, "exit", fields);
+    out.emit(agent, "exit", fields);
+    // Nothing after it.
     out.out.closed = true;
 }
 
@@ -1119,24 +1379,35 @@ fn settled(
             // Refused before it ran: the agent may not use it, or a gate
             // refused it, as its report says.
             "refused": !started && outcome.0.as_ref().err().is_some_and(|report| report.refusal),
+            "cancelled": false,
             "output": result.output().render(),
         });
         out.emit(Some(agent), "tool_result", fields);
     } else if let Some(ended) = ended {
-        let (outcome, answer, error) = match ended {
-            TurnOutcome::Answered(message) => ("answered", message.final_answer(), None),
-            TurnOutcome::Failed(why) => ("failed", None, Some(why.clone())),
-            TurnOutcome::Stopped(why) => ("stopped", None, why.clone()),
-        };
-        let fields = json!({
-            "outcome": outcome,
-            "answer": answer,
-            "error": error,
-            "usage": used.map(|used| used.0),
-            "first_token_ms": first.map(|first| rig_harness::rig_core::millis(first.0)),
-        });
+        let fields = turn_end_fields(TurnEnd::of(ended), used, first);
         out.emit(Some(agent), "turn_end", fields);
     }
+}
+
+/// The fields of a `turn_end` line.
+fn turn_end_fields(
+    ended: TurnEnd,
+    used: Option<&TurnUsage>,
+    first: Option<&FirstStreamed>,
+) -> Value {
+    let (outcome, answer, error) = match ended {
+        TurnEnd::Answered(answer) => ("answered", Some(answer), None),
+        TurnEnd::Unanswered => ("failed", None, Some(NO_ANSWER.to_owned())),
+        TurnEnd::Failed(why) => ("failed", None, Some(why)),
+        TurnEnd::Stopped(why) => ("stopped", None, why),
+    };
+    json!({
+        "outcome": outcome,
+        "answer": answer,
+        "error": error,
+        "usage": used.map(|used| used.0),
+        "first_token_ms": first.map(|first| rig_harness::rig_core::millis(first.0)),
+    })
 }
 
 /// Writes the text that streamed and the notices written this frame.
