@@ -71,21 +71,27 @@ fn native_calls_survive_repeated_float_storage() {
 
 #[test]
 fn adjacent_float_edits_stay_stale_before_and_after_storage() {
+    for original in [
+        0.100_000_000_000_000_03_f64,
+        f64::from_bits(0x7617_17c1_3ccb_d15f),
+        9.999_999_999_999_84e19,
+    ] {
+        let edited = f64::from_bits(original.to_bits() + 1);
+        let mut block = call(json!({"value": original}))
+            .with_native(json!({"type": "function_call", "id": "fc_1"}));
+        if let AssistantContent::ToolCall(call) = &mut block {
+            call.function
+                .arguments
+                .insert("value".into(), json!(edited));
+        }
+        assert!(block.native_item().is_none());
+        for _ in 0..4 {
+            let saved = serde_json::to_string(&block).expect("serialize edited call");
+            block = serde_json::from_str(&saved).expect("load edited call");
+            assert!(block.native_item().is_none(), "{saved}");
+        }
+    }
     let original = 0.100_000_000_000_000_03_f64;
-    let edited = f64::from_bits(original.to_bits() + 1);
-    let mut block = call(json!({"value": original}))
-        .with_native(json!({"type": "function_call", "id": "fc_1"}));
-    if let AssistantContent::ToolCall(call) = &mut block {
-        call.function
-            .arguments
-            .insert("value".into(), json!(edited));
-    }
-    assert!(block.native_item().is_none());
-    for _ in 0..4 {
-        let saved = serde_json::to_string(&block).expect("serialize edited call");
-        block = serde_json::from_str(&saved).expect("load edited call");
-        assert!(block.native_item().is_none(), "{saved}");
-    }
 
     let mut loaded: AssistantContent = serde_json::from_str(
         &serde_json::to_string(

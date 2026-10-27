@@ -345,7 +345,11 @@ impl AssistantContent {
             Self::Image(image) => image.native.as_ref(),
             Self::Opaque(_) => None,
         }?;
-        Some((&native.item, native.matches(self.fingerprint())))
+        let current = match self {
+            Self::ToolCall(call) => call.native_is_current(native),
+            _ => !native.edited && native.fingerprint == self.fingerprint(),
+        };
+        Some((&native.item, current))
     }
 
     /// The provider item of an edited block: no longer current, but its
@@ -505,6 +509,14 @@ impl ToolCall {
         ))
     }
 
+    fn native_is_current(&self, native: &Native) -> bool {
+        !native.edited
+            && match &native.baseline {
+                Some(baseline) => *baseline == self.projection(),
+                None => native.fingerprint == self.fingerprint(),
+            }
+    }
+
     fn baseline(&self) -> Option<serde_json::Value> {
         fn has_float(value: &serde_json::Value) -> bool {
             match value {
@@ -514,21 +526,26 @@ impl ToolCall {
                 _ => false,
             }
         }
-        if !self.function.arguments.values().any(has_float) {
-            return None;
-        }
+        self.function
+            .arguments
+            .values()
+            .any(has_float)
+            .then(|| self.projection())
+    }
+
+    fn projection(&self) -> serde_json::Value {
         let id = match &self.id {
             CallId::Provider(id) => id.as_str(),
             CallId::Local(_) => "~local",
         };
-        Some(serde_json::json!([
+        serde_json::json!([
             "v1",
             "call",
             id,
             self.function.name.as_str(),
             self.function.arguments,
             self.function.invalid_arguments,
-        ]))
+        ])
     }
 
     /// A call with `id` and no provider item.
@@ -579,7 +596,7 @@ impl Serialize for ToolCall {
         let native = self.native.as_ref().map(|native| {
             // Record staleness before parsing can collapse adjacent floats.
             // The attachment baseline itself is never regenerated on save.
-            if native.matches(self.fingerprint()) {
+            if self.native_is_current(native) {
                 std::borrow::Cow::Borrowed(native)
             } else {
                 let mut stale = native.clone();

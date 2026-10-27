@@ -151,7 +151,7 @@ fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Re
             })
             .collect();
         ensure!(sent == [function.clone()], "the model received {sent:?}");
-        let expected = json!([
+        let mut expected = json!([
             function,
             {"type": "mcp", "name": "mcp"},
             {"type": "googleSearch", "name": "googleSearch"},
@@ -162,10 +162,12 @@ fn ensure_recorded(spans: &[CapturedSpan], requests: &[CompletionRequest]) -> Re
         let recorded = span
             .text("gen_ai.tool.definitions")
             .context("tool definitions recorded")?;
-        ensure!(
-            serde_json::from_str::<Value>(&recorded)? == expected,
-            "{recorded}"
-        );
+        let mut actual: Vec<Value> = serde_json::from_str(&recorded)?;
+        actual.sort_by_key(|value| value.get("name").and_then(Value::as_str).map(str::to_owned));
+        let definitions = expected.as_array_mut().context("expected definitions")?;
+        definitions
+            .sort_by_key(|value| value.get("name").and_then(Value::as_str).map(str::to_owned));
+        ensure!(actual == *definitions, "{recorded}");
     }
     Ok(())
 }

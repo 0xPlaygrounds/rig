@@ -244,6 +244,7 @@ pub struct Native {
     /// The original projection of a call containing floats, with unnormalized
     /// numbers. It passes through the same JSON parser as the call's fields.
     /// Other blocks and older records use fingerprint-only validation.
+    /// Keep it unchanged when editing the call.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline: Option<serde_json::Value>,
     /// Whether an edit was detected before serialization. A stored edit
@@ -269,13 +270,6 @@ pub struct Blob<'a> {
 }
 
 impl Native {
-    pub(crate) fn matches(&self, fingerprint: Fingerprint) -> bool {
-        !self.edited
-            && self.baseline.as_ref().map_or(self.fingerprint, |baseline| {
-                Fingerprint::of_canonical(&Canonical(baseline))
-            }) == fingerprint
-    }
-
     /// The opaque part of this item, when it holds one: a reasoning
     /// signature or encrypted reasoning, which only the provider that made
     /// it can read and which it may refuse once anything around it changed.
