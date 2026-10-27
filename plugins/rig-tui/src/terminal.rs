@@ -39,10 +39,12 @@ use rig_harness::prelude::{Exit, ExitReason, Scratch};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
-/// the terminal, its output included, until it exits. When it fails, what
-/// it printed stays up until the user presses Enter. Then the view takes
-/// the terminal back, draws again, and inserts [`TerminalExit`] on the
-/// entity, which the plugin despawns once it read it. The agent's loop waits
+/// the terminal, its output included, until it exits. When it exits with
+/// a failure code, on a terminal, what it printed stays up until the user
+/// presses Enter (or Ctrl+C or Ctrl+D); a program ended by a signal, or
+/// one that did not start, is not waited for. Then the view takes the
+/// terminal back, draws again, and inserts [`TerminalExit`] on the entity,
+/// which the plugin despawns once it read it. The agent's loop waits
 /// while the program runs. Only the terminal view runs it, in the frame
 /// it is spawned.
 ///
@@ -424,12 +426,14 @@ pub(crate) fn run_in_terminal(world: &mut World) {
             Err(failure) => error!("could not hand the terminal over: {failure}"),
         }
     }
+    #[cfg(unix)]
     let mode = screen.as_ref().and_then(|_| TerminalMode::now());
     for entity in runs {
         let Some(mut run) = world.get_mut::<RunInTerminal>(entity) else {
             continue;
         };
         let exit = run_with(&mut run.0, screen.as_ref());
+        #[cfg(unix)]
         if let Some(mode) = &mode {
             mode.restore();
         }
@@ -483,23 +487,31 @@ fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, 
         .map_err(|failure| format!("could not run {program}: {failure}"))
 }
 
-/// The code a program exited with, when it is a failure. A program ended
-/// by a signal has none: whoever stopped it knows why.
-fn failed_code(exit: &Result<ExitStatus, String>) -> Option<i32> {
-    let code = exit.as_ref().ok().and_then(ExitStatus::code);
-    code.filter(|&code| code != 0)
+/// How a program that exited with a failure code ended, such as
+/// `exit status 2`. A program ended by a signal has none: whoever stopped
+/// it knows why.
+fn failed_with(exit: &Result<ExitStatus, String>) -> Option<String> {
+    let failed = exit
+        .as_ref()
+        .ok()
+        .filter(|status| status.code().is_some_and(|code| code != 0));
+    failed.map(|&status| described(status))
 }
 
 /// [`hold_failure`] on the terminal, its keys read raw and one at a time,
 /// so Ctrl+C is a key rather than a signal and nothing typed after Enter
 /// is taken from the view.
 fn hold_on_terminal(exit: &Result<ExitStatus, String>, screen: &File) {
-    if failed_code(exit).is_none() || !io::stdin().is_terminal() {
+    let Some(why) = failed_with(exit).filter(|_| io::stdin().is_terminal()) else {
         return;
-    }
+    };
     let raw = enable_raw_mode();
+    // Keys as plain bytes again, should the program have left the keyboard
+    // protocol on; a terminal without it ignores this.
+    let mut plain = screen;
+    plain.write_all(b"\x1b[=0;1u").ok();
     match copy_of(io::stdin()) {
-        Ok(keys) => hold_failure(exit, keys, screen),
+        Ok(keys) => hold_failure(&why, keys, screen),
         Err(failure) => error!("could not read the terminal: {failure}"),
     }
     if raw.is_ok() {
@@ -507,16 +519,13 @@ fn hold_on_terminal(exit: &Result<ExitStatus, String>, screen: &File) {
     }
 }
 
-/// When a program exited with a failure code, says so on `screen` and
-/// reads `keys` up to Enter (`\r` or `\n`), Ctrl+C, Ctrl+D, their end or
-/// an error, so what the program printed stays up until then.
-fn hold_failure(exit: &Result<ExitStatus, String>, mut keys: impl Read, mut screen: impl Write) {
-    let Some(code) = failed_code(exit) else {
-        return;
-    };
+/// Says on `screen` that the program exited with `why`, then reads `keys`
+/// up to Enter (`\r` or `\n`), Ctrl+C, Ctrl+D, their end or an error, so
+/// what the program printed stays up until then.
+fn hold_failure(why: &str, mut keys: impl Read, mut screen: impl Write) {
     let said = write!(
         screen,
-        "\r\n[the program exited with exit status {code}; press Enter to go back]"
+        "\r\n[the program exited with {why}; press Enter to go back]"
     );
     if said.and_then(|()| screen.flush()).is_err() {
         return;
@@ -553,19 +562,6 @@ impl TerminalMode {
         // SAFETY: `self.0` is a mode `tcgetattr` filled.
         unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &self.0) };
     }
-}
-
-/// Other platforms keep whatever mode a program left.
-#[cfg(not(unix))]
-struct TerminalMode;
-
-#[cfg(not(unix))]
-impl TerminalMode {
-    fn now() -> Option<Self> {
-        None
-    }
-
-    fn restore(&self) {}
 }
 
 /// A file of its own for `stream`, such as the screen behind stdout.

@@ -316,16 +316,18 @@ skip { next }
         "Edited the conversation",
     );
     assert!(messages(&app, agent).contains("MARKER"), "{said}");
+    let marked = messages(&app, agent);
     let said = typed(
         &mut app,
         &wakes,
         (agent, "/edit-history"),
-        "exit 3;",
+        r#"sh -c 'echo junk >> "$1"; exit 3' sh"#,
         "nothing changed",
     );
     assert!(
         said.contains("/edit-history: the editor failed (exit status 3); nothing changed."),
         "{said}"
     );
+    assert_eq!(messages(&app, agent), marked);
     std::fs::remove_dir_all(&home).ok();
 }
