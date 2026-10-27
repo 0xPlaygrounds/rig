@@ -524,6 +524,8 @@ struct Run {
     told: bool,
     /// Why `--tools` is refused, which ends the run at once.
     refused: Option<String>,
+    /// Whether the agent's last turn ended with no answer text.
+    unanswered: bool,
 }
 
 /// Why a run fails: its exit code, why, and whether a line already said so.
@@ -543,14 +545,21 @@ impl Run {
         }
     }
 
-    /// Notes a turn of the agent that ended: a failed one fails the run
-    /// and takes back an earlier answer; a stopped one changes neither.
+    /// Notes a turn of the agent that ended: a failed one fails the run,
+    /// told already by the kernel's error notice, and takes back an earlier
+    /// answer, as one with no answer text does; a stopped one changes
+    /// neither.
     fn turn_ended(&mut self, outcome: &TurnOutcome) {
         self.turned = true;
+        self.unanswered = false;
         match TurnEnd::of(outcome) {
             TurnEnd::Answered(answer) => self.answer = Some(answer),
-            TurnEnd::Failed { why, told } => {
-                self.fail(1, why, told);
+            TurnEnd::Unanswered => {
+                self.unanswered = true;
+                self.answer = None;
+            }
+            TurnEnd::Failed(why) => {
+                self.fail(1, why, true);
                 self.answer = None;
             }
             TurnEnd::Stopped(_) => {}
@@ -558,9 +567,14 @@ impl Run {
     }
 
     /// Takes what came since the work last settled: the answer, and the
-    /// exit code an error notice and no answer earns.
+    /// exit code an error notice, or a last turn with no answer text, and
+    /// no answer earns. A turn with no text that a later one answers after,
+    /// such as once a subagent reported, fails nothing.
     fn settled(&mut self) -> Option<String> {
         let answer = self.answer.take();
+        if std::mem::take(&mut self.unanswered) && answer.is_none() {
+            self.fail(1, NO_ANSWER.to_owned(), false);
+        }
         self.notice_fails(answer.is_some());
         answer
     }
@@ -593,13 +607,14 @@ const NO_ANSWER: &str = "the model ended the turn without an answer";
 
 /// How a turn ended, as a headless run reports it, both in its exit code
 /// and in its `turn_end` line.
-#[derive(Debug)]
 enum TurnEnd {
     /// With this final text.
     Answered(String),
-    /// For `why`, which the kernel's error notice `told` already, or with
-    /// no final text ([`NO_ANSWER`]), which nothing told.
-    Failed { why: String, told: bool },
+    /// Answered with no final text, such as a reply of reasoning alone: a
+    /// failed turn, [`NO_ANSWER`].
+    Unanswered,
+    /// For this reason.
+    Failed(String),
     /// Stopped, and why when something said.
     Stopped(Option<String>),
 }
@@ -607,17 +622,10 @@ enum TurnEnd {
 impl TurnEnd {
     fn of(outcome: &TurnOutcome) -> Self {
         match outcome {
-            TurnOutcome::Answered(message) => match message.final_answer() {
-                Some(answer) => Self::Answered(answer),
-                None => Self::Failed {
-                    why: NO_ANSWER.to_owned(),
-                    told: false,
-                },
-            },
-            TurnOutcome::Failed(why) => Self::Failed {
-                why: why.clone(),
-                told: true,
-            },
+            TurnOutcome::Answered(message) => message
+                .final_answer()
+                .map_or(Self::Unanswered, Self::Answered),
+            TurnOutcome::Failed(why) => Self::Failed(why.clone()),
             TurnOutcome::Stopped(why) => Self::Stopped(why.clone()),
         }
     }
@@ -1236,12 +1244,21 @@ fn cut_off(reason: Option<&ExitReason>) -> Option<&'static str> {
 /// them unended, for the session to carry them on: writes what streamed,
 /// and keeps a `tool_result` for each tool call that started and a
 /// `turn_end` for each turn the exit cuts off, which [`json_exit`] writes
-/// once they are stopped. The work settled before has its lines already. A
-/// call answered and not settled yet, whose result the session keeps, has
-/// that result; any other is `cancelled`.
+/// once they are stopped. The work settled before has its lines already.
+/// Each call has the result the session keeps: its answer, when it came and
+/// did not settle yet, else what it says if stopped ([`IfStopped`]), such
+/// as its output so far, else a stop; a call not answered is `cancelled`.
 fn close_cut_off(
     reason: Option<Res<ExitReason>>,
-    calls: Query<(&ToolRequest, &ForAgent, Option<&Outcome>), (With<Started>, Without<Settled>)>,
+    calls: Query<
+        (
+            &ToolRequest,
+            &ForAgent,
+            Option<&Outcome>,
+            Option<&IfStopped>,
+        ),
+        (With<Started>, Without<Settled>),
+    >,
     turns: Query<(&TurnOf, Option<&TurnUsage>, Option<&FirstStreamed>), Without<Settled>>,
     mut out: Out,
 ) {
@@ -1250,8 +1267,9 @@ fn close_cut_off(
     };
     out.flush();
     let mut closing = Vec::new();
-    for (request, &ForAgent(agent), outcome) in &calls {
-        let (ok, output) = match outcome.map(Outcome::tool_result) {
+    for (request, &ForAgent(agent), outcome, if_stopped) in &calls {
+        let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
+        let (ok, output) = match kept.map(Outcome::tool_result) {
             Some(result) => (result.is_success(), result.output().render()),
             None => (false, format!("Stopped: {why}.")),
         };
@@ -1301,8 +1319,11 @@ fn json_exit(
         Some(ended) if ended.code == code => (ended.agent, ended.answer, ended.why),
         // Something else ended it first, such as a signal.
         ended => (
-            ended.and_then(|ended| ended.agent).or(main_agent(&primary)),
-            None,
+            ended
+                .as_ref()
+                .and_then(|ended| ended.agent)
+                .or(main_agent(&primary)),
+            ended.and_then(|ended| ended.answer),
             (code != 0).then(|| why.to_owned()),
         ),
     };
@@ -1394,7 +1415,8 @@ fn turn_end_fields(
 ) -> Value {
     let (outcome, answer, error) = match ended {
         TurnEnd::Answered(answer) => ("answered", Some(answer), None),
-        TurnEnd::Failed { why, .. } => ("failed", None, Some(why)),
+        TurnEnd::Unanswered => ("failed", None, Some(NO_ANSWER.to_owned())),
+        TurnEnd::Failed(why) => ("failed", None, Some(why)),
         TurnEnd::Stopped(why) => ("stopped", None, why),
     };
     json!({

@@ -10,9 +10,11 @@ One task:
                           is {"v":1,"type":"exit","ms":…,"code":0,
                           "answer":"…","error":null,"session":"…",
                           "usage":{…}}.
-  Exit codes: 0 answered, 1 failed (also a turn that ends with no
-  answer text), 2 no task, a refused /command or an unknown --tools name,
-  130 interrupted by a signal.
+  Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
+  no answer text), 2 no task, a refused /command or an unknown --tools
+  name, 130 interrupted by a signal. The exit line's code is the agent's:
+  a launcher killed by a signal itself ends as that signal says (143 for
+  SIGTERM) while its agent's exit line says 130.
   A failed turn hands its unanswered task back: stderr says "rig: not
   answered: <task>" (with --json, a recalled event), and the session no
   longer holds it; a turn that ended with no answer text keeps it.

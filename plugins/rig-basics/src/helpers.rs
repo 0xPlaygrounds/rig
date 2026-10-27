@@ -6,7 +6,8 @@
 //!
 //! A child works in its parent's directory, or one inside it, on its
 //! parent's model, with its parent's tools or fewer (never `helper` unless
-//! named). It runs [`HelperCommand`] through [`Processes`], with an empty
+//! named), of those registered as the parent started: a fresh rig of the
+//! same build has those, and refuses a `--tools` name it has not. It runs [`HelperCommand`] through [`Processes`], with an empty
 //! stdin. Past its timeout or dead, it fails its task; stopping the turn
 //! kills every child, so none outlives the call.
 
@@ -74,7 +75,22 @@ impl Plugin for HelpersPlugin {
             .init_resource::<ProjectRoot>()
             .add_open_tool(HELPER, &description, ToolOptions::default(), start);
     }
+
+    /// Notes the tools every plugin registered by now, which a child has
+    /// too, unlike one registered while the app runs, such as an MCP
+    /// server's.
+    fn cleanup(&self, app: &mut App) {
+        let world = app.world_mut();
+        let mut tools = world.query::<&ToolDef>();
+        let names = tools.iter(world).map(|tool| tool.0.name.to_string());
+        let lendable = Lendable(names.collect());
+        world.insert_resource(lendable);
+    }
 }
+
+/// The tools a child has: those registered as the app started.
+#[derive(Resource, Default)]
+struct Lendable(Vec<String>);
 
 /// A task for one helper.
 #[derive(Deserialize, JsonSchema, Clone)]
@@ -165,7 +181,7 @@ impl Lent {
 fn start(
     called: On<ToolCalled<Args>>,
     agents: Query<(Option<&ModelChoice>, Option<&ToolAccess>, Option<&WorkDir>)>,
-    tools: Query<&ToolDef>,
+    lendable: Option<Res<Lendable>>,
     (root, processes, command): (Res<ProjectRoot>, Res<Processes>, Res<HelperCommand>),
     wake: Res<Wake>,
     mut commands: Commands,
@@ -173,11 +189,12 @@ fn start(
     let Ok((model, access, dir)) = agents.get(called.agent) else {
         return;
     };
-    let names = tools.iter().map(|def| def.0.name.as_str().to_owned());
+    let names = lendable.iter().flat_map(|lendable| lendable.0.iter());
     let lent = Lent {
         model: model.map(|model| model.0.clone()),
         tools: names
             .filter(|name| access.is_none_or(|access| access.allows(name)))
+            .cloned()
             .collect(),
         base: dir.map_or(&root.0, |dir| &dir.0).clone(),
     };

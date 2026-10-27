@@ -364,10 +364,11 @@ impl BuildLog {
         self.record(line);
     }
 
-    /// Says once, for a [`BuildOutput::LogOnly`] build, that cargo works,
-    /// as its `line` shows: it fetches or compiles.
+    /// Says once, for a [`BuildOutput::LogOnly`] build, that cargo works
+    /// or waits, as its `line` shows: it fetches, compiles, or waits for
+    /// another cargo's lock.
     fn announce(&mut self, line: &str) {
-        let working = ["Updating ", "Downloading ", "Compiling "];
+        let working = ["Updating ", "Downloading ", "Compiling ", "Blocking "];
         let line = line.trim_start();
         if self.output == BuildOutput::LogOnly
             && !self.announced
