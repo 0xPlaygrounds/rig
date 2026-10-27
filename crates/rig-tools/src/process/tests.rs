@@ -190,3 +190,20 @@ fn a_piece_ends_after_a_newline_or_before_a_character() {
     long.extend_from_slice("é".as_bytes());
     assert_eq!(piece_end(&long), Some(super::MAX_PIECE - 1));
 }
+
+#[cfg(unix)]
+#[test]
+fn reaping_disarms_every_group_handle() -> std::io::Result<()> {
+    let mut process = Launcher::default().spawn("true", [""; 0], Spawn::default())?;
+    let group = process.group();
+    let status = process.wait_for(Duration::from_secs(5))?;
+    if !status.is_some_and(|s| s.success()) || group.state().leader != 0 {
+        return Err(std::io::Error::other("exit did not disarm the group"));
+    }
+    group.terminate();
+    group.kill();
+    if group.state().leader != 0 {
+        return Err(std::io::Error::other("a stale handle was rearmed"));
+    }
+    Ok(())
+}
