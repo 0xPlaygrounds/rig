@@ -342,7 +342,7 @@ fn why(
         name.as_str(),
         last,
         &providers,
-        (!stale).then(|| usage.context()).flatten(),
+        usage.context().filter(|_| !stale),
     );
     notices.write(Notice::info(args.agent, text));
 }

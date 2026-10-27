@@ -126,7 +126,7 @@ fn show(
     >,
 ) {
     for (last, connection, stale, mut items) in &mut agents {
-        let context = (!stale).then(|| context_of(last, connection)).flatten();
+        let context = context_of(last, connection).filter(|_| !stale);
         let text = if stale {
             "ctx ?".to_owned()
         } else {

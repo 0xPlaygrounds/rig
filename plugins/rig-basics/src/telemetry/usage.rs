@@ -252,9 +252,9 @@ fn usage(
         lines.push(format!("This turn: {turn}."));
     }
     let limit = InputLimit::of(limit, connection);
-    match (!stale)
-        .then(|| last.context())
-        .flatten()
+    match last
+        .context()
+        .filter(|_| !stale)
         .map(|tokens| ContextUse { tokens, limit })
     {
         None if stale => {

@@ -911,19 +911,7 @@ impl<'a> ShownEntries<'a> {
                 .id
                 .map_or(0, |id| self.archive(replaced, id, expanded));
             count += below.max(1);
-            let stop = entry.id.is_some_and(|id| {
-                let made = entry.made.unwrap_or_default();
-                let (message, author) = (&*entry.message, entry.author.as_ref());
-                let index = 0;
-                conversation::EntryRef {
-                    index,
-                    id,
-                    message,
-                    author,
-                    made,
-                }
-                .is_stop_marker()
-            });
+            let stop = entry.is_stop_marker();
             if let Some(id) = entry.id {
                 self.ids.insert(id, self.entries.len());
             }

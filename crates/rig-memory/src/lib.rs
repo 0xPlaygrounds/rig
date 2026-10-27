@@ -85,8 +85,7 @@ pub use rewrite::{
 };
 pub use saved::{MODEL, TITLE, main_order};
 pub use session::{
-    LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, replay, save,
-    save_async,
+    LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, save, save_async,
 };
 pub use store::{
     AsyncStore, Files, LogWriteError, MemoryStore, PLUGINS, PluginFiles, Store, check_log_name,

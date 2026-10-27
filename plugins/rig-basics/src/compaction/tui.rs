@@ -174,6 +174,8 @@ fn summary_lines(
         theme,
         Some(width),
     ));
+    // A path a later set holds (changed) is not listed again in an earlier
+    // one (read), as the model-facing message does.
     for (index, set) in state.tracked.iter().enumerate() {
         let later = state.tracked.get(index + 1..).unwrap_or_default();
         let values: Vec<_> = set

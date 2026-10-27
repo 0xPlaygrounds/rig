@@ -307,7 +307,7 @@ fn observe(
         .unwrap_or_default();
     let busy = agent.is_some_and(|(.., busy, _)| busy);
     let context_tokens =
-        agent.and_then(|(_, _, last, .., stale)| (!stale).then(|| last.context()).flatten());
+        agent.and_then(|(_, _, last, .., stale)| last.context().filter(|_| !stale));
     let limit = agent
         .and_then(|(.., connection, _, _)| connection)
         .and_then(|connection| connection.spec.input_limit());

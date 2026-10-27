@@ -297,6 +297,12 @@ impl Entry {
         }
     }
 
+    /// Whether it is the [`STOPPED`] note, as
+    /// [`EntryRef::is_stop_marker`].
+    pub fn is_stop_marker(&self) -> bool {
+        is_stop_marker(&self.message, self.author.as_ref())
+    }
+
     /// This entry, written by `author`.
     #[must_use]
     pub fn by(self, author: Author) -> Self {
@@ -377,13 +383,16 @@ impl EntryRef<'_> {
     /// Whether it is the [`STOPPED`] note rig puts between a request the
     /// user stopped and what came next.
     pub fn is_stop_marker(&self) -> bool {
-        let by_rig = self
-            .author
-            .is_some_and(|author| author.kind == AuthorKind::Rig);
-        by_rig
-            && matches!(self.message, Message::User { content }
-                if matches!(content.as_slice(), [UserContent::Text(text)] if text.text == STOPPED))
+        is_stop_marker(self.message, self.author)
     }
+}
+
+/// Whether `message` by `author` is the [`STOPPED`] note.
+fn is_stop_marker(message: &Message, author: Option<&Author>) -> bool {
+    let by_rig = author.is_some_and(|author| author.kind == AuthorKind::Rig);
+    by_rig
+        && matches!(message, Message::User { content }
+            if matches!(content.as_slice(), [UserContent::Text(text)] if text.text == STOPPED))
 }
 
 /// The text of the entry that goes between a request the user stopped and

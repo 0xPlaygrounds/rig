@@ -1,6 +1,6 @@
 //! Reading a session back ([`Session`]), saving to it without a running
 //! [`Writer`](crate::Writer) ([`load`], [`save`]), and one log's history
-//! ([`history`], [`as_of`], [`replay`]).
+//! ([`history`], [`as_of`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
@@ -804,7 +804,7 @@ pub fn history(store: &dyn Store, log: &str) -> Result<Vec<(Stamp, LogRecord)>, 
 /// # Errors
 ///
 /// As [`load`].
-pub fn replay(
+pub(crate) fn replay(
     store: &dyn Store,
     log: &str,
     mut each: impl FnMut(&Conversation, &ChangeRecord),
