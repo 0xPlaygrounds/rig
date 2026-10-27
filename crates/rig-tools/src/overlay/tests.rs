@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, content_hash};
+use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, ToolOutput, content_hash};
 
 use super::Overlay;
 use crate::workspace::{Listing, Local, Workspace};
@@ -52,8 +52,12 @@ fn tools_on_an_overlay_leave_the_disk_and_list_their_changes() {
     assert!(edited.is_ok(), "{edited:?}");
     let written = run(&write, WriteArgs::new("new/b.rs", "b\n"));
     assert!(written.is_ok(), "{written:?}");
-    let shown = run(&read, ReadArgs::new("a.rs"));
-    assert_eq!(shown.ok().as_deref(), Some("fn two() {}\n"));
+    let shown =
+        futures::executor::block_on(read.call(&mut ToolContext::new(), ReadArgs::new("a.rs")));
+    assert_eq!(
+        shown.ok().as_ref().and_then(ToolOutput::as_text),
+        Some("fn two() {}\n")
+    );
 
     assert_eq!(
         std::fs::read_to_string(dir.join("a.rs")).ok().as_deref(),

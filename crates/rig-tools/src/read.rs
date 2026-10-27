@@ -5,23 +5,25 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use rig_core::message::{ImageMediaType, ToolResultContent};
 use rig_core::tool::{
     ContentHash, FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
-    ToolExecutionError, Touches, args_schema, content_hash,
+    ToolExecutionError, ToolOutput, Touches, args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::attach::{self, NoImage, is_image_path};
 use crate::workspace::{Local, Workspace, text_error};
-use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
+use crate::{
+    CUT_MARK, MAX_BYTES, MAX_FILE_BYTES, MAX_LINE_CHARS, MAX_LINES, blocking, clip, shell_path,
+};
 
-/// Characters of one line shown; the rest of a longer line is cut.
-const MAX_LINE_CHARS: usize = 2000;
-
-/// Reads a text file's lines as they are. Publishes the file it read
-/// ([`FilesRead`]), by its [resolved](Workspace) path, with the
-/// hash of the bytes it read and the lines it showed, and, when lines after
-/// those were left out, [`OutputCut`].
+/// Reads a text file's lines as they are, or a PNG, JPEG, GIF or WebP
+/// image as a line saying what it is and the image. Publishes the file it
+/// read ([`FilesRead`]), by its [resolved](Workspace) path, with the hash
+/// of the bytes it read and, for a text file, the lines it showed, and,
+/// when lines after those were left out, [`OutputCut`].
 #[derive(Clone, Debug)]
 pub struct Read {
     /// Where the file is read.
@@ -209,18 +211,21 @@ impl ReadArgs {
 impl Tool for Read {
     const NAME: &'static str = "read";
     type Args = ReadArgs;
-    type Output = String;
+    type Output = ToolOutput;
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
         format!(
-            "Read a regular text file of at most {} MB. Returns its lines as they are, at most \
-             {MAX_LINES} lines or {} KB (lines too long for that are cut shorter, and a note \
-             says so), then the offset to read on from if it stopped early; \
-             use offset (from 1) and limit for part of a file, and `rg -n` in `shell` to find a \
-             line. Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`, and read \
-             several files at once by calling `read` several times in one reply.",
+            "Read a regular text file of at most {} MB, or a PNG, JPEG, GIF or WebP image of at \
+             most {} KB, which comes back as the image. Returns a text file's lines as they are, \
+             at most {MAX_LINES} lines or {} KB (lines too long for that are cut shorter, and a \
+             note says so and how to read on), then the offset to read on from if it stopped \
+             early; use offset (from 1) and limit for part of a file, and `rg -n` in `shell` to \
+             find a line. Use `read` to look at a file, not `cat`, `head` or `sed` in `shell` \
+             (but for the command a cut line's note gives), and read several files at once by \
+             calling `read` several times in one reply.",
             MAX_FILE_BYTES / (1024 * 1024),
+            attach::MOST_BYTES / 1024,
             MAX_BYTES / 1024
         )
     }
@@ -245,20 +250,50 @@ impl Tool for Read {
         &self,
         context: &mut ToolContext,
         args: ReadArgs,
-    ) -> Result<String, ToolExecutionError> {
+    ) -> Result<ToolOutput, ToolExecutionError> {
         let path = self
             .workspace
             .place(self.base.as_deref(), self.confine, &args.path)?;
         let shown = path.to_string_lossy().into_owned();
+        // The name asked counts too, for a link named as an image.
+        let image = is_image_path(&path) || is_image_path(Path::new(&args.path));
         let workspace = self.workspace.clone();
         let seen = self.seen.clone();
         let (output, read) = blocking(move || {
+            if image {
+                match attach::image(workspace.as_ref(), &path) {
+                    Ok(image) => {
+                        let read = FileRead::new(&shown, content_hash(&image.bytes));
+                        let output = ToolOutput::content(vec![
+                            ToolResultContent::text(format!(
+                                "{shown}: a {} image of {} KB",
+                                name(&image.media_type),
+                                image.bytes.len().div_ceil(1024)
+                            )),
+                            ToolResultContent::image_base64(
+                                image.base64(),
+                                Some(image.media_type),
+                                None,
+                            ),
+                        ])?;
+                        return Ok((output, read));
+                    }
+                    Err(large @ NoImage::TooLarge(_)) => {
+                        return Err(ToolExecutionError::invalid_args(format!(
+                            "{shown}: {large}"
+                        )));
+                    }
+                    Err(NoImage::Read(error)) => return Err(text_error(&shown, error)),
+                    // Named as an image but not one: read as any other file.
+                    Err(NoImage::Other) => {}
+                }
+            }
             let (first, limit) = args.span();
             let excerpt = workspace
                 .excerpt(&path, first, limit)
                 .map_err(|error| text_error(&shown, error))?;
             let asked = excerpt.text.lines().take(limit).collect();
-            let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES);
+            let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES, Some(&shown));
             let hash = excerpt.hash;
             // A read that got the whole file leaves its text for an edit.
             let whole = excerpt
@@ -271,7 +306,7 @@ impl Tool for Read {
                 None => seen.saw(&path, hash.clone()),
             }
             let read = FileRead::new(shown, hash).with_lines(lines);
-            Ok::<_, ToolExecutionError>((output, read))
+            Ok::<_, ToolExecutionError>((ToolOutput::text(output), read))
         })
         .await?;
         let cut = read.lines.and_then(cut_of);
@@ -308,24 +343,34 @@ pub fn show_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> S
 
 /// The narrowest a line is cut to so that more lines fit.
 const MIN_LINE_CHARS: usize = 100;
-/// What marks a line that was cut.
-const CUT_MARK: &str = " […]";
+/// The bytes of a cut line the command in a read's note shows at once:
+/// a fifth of what `shell` returns, in lines it keeps whole.
+const CHUNK_BYTES: usize = 10_000;
 
 /// [`show_lines`], and which lines it shows.
 fn lines_from(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
     let first = first.max(1);
     let asked = text.lines().skip(first - 1).take(limit).collect();
-    show(asked, first, text.lines().count(), max_bytes)
+    show(asked, first, text.lines().count(), max_bytes, None)
 }
 
 /// [`lines_from`] given the lines `asked`, from line `first` (from 1) of
-/// a file of `total` lines.
-fn show(asked: Vec<&str>, first: usize, total: usize, max_bytes: usize) -> (String, LinesShown) {
+/// a file of `total` lines. With the file's `path`, the note on the lines
+/// cut says how to read on in the first of them.
+fn show(
+    asked: Vec<&str>,
+    first: usize,
+    total: usize,
+    max_bytes: usize,
+    path: Option<&str>,
+) -> (String, LinesShown) {
     let width = width(&asked, max_bytes);
     let mut out = String::new();
     let mut shown = 0;
     let mut cut = 0;
-    for line in &asked {
+    // The first line cut, its number, and the bytes shown of it.
+    let mut first_cut = None;
+    for (at, line) in asked.iter().enumerate() {
         let kept = clip(line, width);
         let clipped = kept.len() < line.len();
         let mark = if clipped { CUT_MARK.len() } else { 0 };
@@ -337,15 +382,16 @@ fn show(asked: Vec<&str>, first: usize, total: usize, max_bytes: usize) -> (Stri
         if clipped {
             out.push_str(CUT_MARK);
             cut += 1;
+            first_cut = first_cut.or(Some((first + at, kept.len(), line.len())));
         }
         out.push('\n');
         shown += 1;
     }
     let last = first - 1 + shown;
     if cut > 0 {
-        let _ = writeln!(
+        let _ = write!(
             out,
-            "[{cut} {} cut at {width} characters{}]",
+            "[{cut} {} cut at {width} characters{}",
             if cut == 1 { "line was" } else { "lines were" },
             if width < MAX_LINE_CHARS {
                 format!(
@@ -356,6 +402,10 @@ fn show(asked: Vec<&str>, first: usize, total: usize, max_bytes: usize) -> (Stri
                 String::new()
             }
         );
+        if let (Some(path), Some((number, kept, bytes))) = (path.and_then(shell_path), first_cut) {
+            out.push_str(&read_on(&path, cut, number, kept, bytes));
+        }
+        out.push_str("]\n");
     }
     if last < total {
         let full = shown < asked.len();
@@ -385,6 +435,44 @@ fn show(asked: Vec<&str>, first: usize, total: usize, max_bytes: usize) -> (Stri
             count: shown,
             total,
         },
+    )
+}
+
+/// What an image of `media_type` is called.
+fn name(media_type: &ImageMediaType) -> &'static str {
+    match media_type {
+        ImageMediaType::PNG => "PNG",
+        ImageMediaType::JPEG => "JPEG",
+        ImageMediaType::GIF => "GIF",
+        ImageMediaType::WEBP => "WebP",
+        ImageMediaType::HEIC => "HEIC",
+        ImageMediaType::HEIF => "HEIF",
+        ImageMediaType::SVG => "SVG",
+    }
+}
+
+/// How to read on in line `number` of the file at `path`, quoted for
+/// `sh`, cut after its first `kept` of `bytes` bytes, the first of the
+/// `cut` lines cut: a command that prints the next bytes of it in lines
+/// `shell` keeps whole.
+fn read_on(path: &str, cut: usize, number: usize, kept: usize, bytes: usize) -> String {
+    let which = match cut {
+        1 => format!("line {number}"),
+        _ => format!("the first, line {number},"),
+    };
+    let from = kept + 1;
+    let to = bytes.min(kept + CHUNK_BYTES);
+    let next = match to < bytes {
+        true => format!(
+            "the next {CHUNK_BYTES} bytes, and `cut -b {}-{}` the ones after",
+            to + 1,
+            bytes.min(to + CHUNK_BYTES)
+        ),
+        false => format!("the remaining {} bytes", to - kept),
+    };
+    format!(
+        "; {which} shows {kept} of its {bytes} bytes: in `shell`, `sed -n '{number}p;{number}q' \
+         {path} | cut -b {from}-{to} | LC_ALL=C fold -b -w {MAX_LINE_CHARS}` shows {next}"
     )
 }
 

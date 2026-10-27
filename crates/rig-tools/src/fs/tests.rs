@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rig_core::tool::{FilesRead, Tool, ToolContext, ToolErrorKind};
+use rig_core::tool::{FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
 
 use super::resolve;
 use crate::{Read, ReadArgs, Write, WriteArgs};
@@ -53,7 +53,10 @@ fn a_confined_tool_stays_in_its_base() {
 
     let mut context = ToolContext::new();
     let shown = futures::executor::block_on(read.call(&mut context, ReadArgs::new("a.txt")));
-    assert_eq!(shown.ok().as_deref(), Some("one\n"));
+    assert_eq!(
+        shown.ok().as_ref().and_then(ToolOutput::as_text),
+        Some("one\n")
+    );
     let published = context.result::<FilesRead>().ok().flatten();
     assert_eq!(
         published.map(|read| read.paths().map(str::to_owned).collect::<Vec<_>>()),

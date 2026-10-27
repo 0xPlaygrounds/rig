@@ -14,6 +14,15 @@ fn shell(command: &str, spill: Option<crate::Spill>) -> String {
         .unwrap_or_default()
 }
 
+/// What `read` shows for `args`, empty when it fails.
+fn read_text(args: crate::ReadArgs) -> String {
+    let (read, mut context) = (crate::Read::default(), ToolContext::new());
+    futures::executor::block_on(Tool::call(&read, &mut context, args))
+        .ok()
+        .and_then(|shown| shown.as_text().map(str::to_owned))
+        .unwrap_or_default()
+}
+
 /// The command runs as the launcher starts it (under its wrapper, with its
 /// variables) in the directory the call names, and the call publishes how
 /// it ended beside its output.
@@ -91,16 +100,9 @@ fn cut_output_is_read_back_by_its_handle() {
             .map(|(path, _)| path.to_owned())
             .unwrap_or_default();
         let args = crate::ReadArgs::new(handle.clone()).lines(lines / 2, 1);
-        let read = futures::executor::block_on(Tool::call(
-            &crate::Read::default(),
-            &mut ToolContext::new(),
-            args,
-        ));
+        let read = read_text(args);
         let wanted = format!("{}\n[", lines / 2);
-        assert!(
-            matches!(&read, Ok(text) if text.starts_with(&wanted)),
-            "{output:.200} {read:?}"
-        );
+        assert!(read.starts_with(&wanted), "{output:.200} {read:?}");
         // The note's own offset and limit read the first lines it cut.
         let number = |after: &str| {
             let first = output.lines().next().unwrap_or_default();
@@ -109,12 +111,7 @@ fn cut_output_is_read_back_by_its_handle() {
         };
         let (offset, limit) = (number("with offset ").unwrap_or(0), number(" and limit "));
         let args = crate::ReadArgs::new(handle).lines(offset, limit.unwrap_or(0));
-        let read = futures::executor::block_on(Tool::call(
-            &crate::Read::default(),
-            &mut ToolContext::new(),
-            args,
-        ))
-        .unwrap_or_default();
+        let read = read_text(args);
         let gap = format!("lines cut (lines {offset}-");
         assert!(output.contains(&gap), "{output:.300}");
         assert!(read.starts_with(&format!("{offset}\n")), "{read:.100}");
@@ -281,6 +278,14 @@ fn a_command_runs_to_its_end_unless_its_timeout_stops_it() {
         split_status(&output),
         ("started\n", Some("[timed out after 1s and stopped]"))
     );
+    let args = ShellArgs::new("sleep 10").timeout_secs(1);
+    let output = futures::executor::block_on(shell.run(args)).map(|ran| ran.output);
+    let output = output.unwrap_or_default();
+    assert!(
+        output.contains("It printed nothing. If it should have,")
+            && output.ends_with("if it needs longer, give a larger `timeout_secs`]"),
+        "{output}"
+    );
 }
 
 /// stdout and stderr interleave only where a line ends: a line one stream
@@ -348,6 +353,104 @@ fn a_cut_keeps_both_ends_and_the_errors_between() {
             spill: None,
         })
     );
+}
+
+/// Once the output is cut, every line kept for the model is cut at 2000
+/// characters, on a character boundary, while the spill file keeps it
+/// whole: a first line of 300,000 characters keeps its start, and one
+/// among short lines too. An error word past the cut still keeps a line
+/// from the middle.
+#[cfg(unix)]
+#[test]
+fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-long-{}", std::process::id()));
+    let spilling = Shell {
+        spill: Some(crate::Spill(dir.clone())),
+        ..Shell::default()
+    };
+    let x = |n: usize| format!("head -c {n} /dev/zero | tr '\\0' x");
+    let mut context = ToolContext::new();
+    let args = ShellArgs::new(format!("{}; echo", x(300_000)));
+    let output = futures::executor::block_on(Tool::call(&spilling, &mut context, args));
+    let output = output.unwrap_or_default();
+    let mut lines = output.lines();
+    let marker = lines.next().unwrap_or_default();
+    assert!(
+        marker.starts_with("[1 long line cut short; all of the output is in ")
+            && marker.ends_with(
+                ": `read` it there with offset 1 and limit 1 for the first long line, whose \
+                 note says how to read on in it, rather than running the command again]"
+            ),
+        "{marker}"
+    );
+    assert_eq!(
+        lines.next(),
+        Some(format!("{} […]", "x".repeat(2000)).as_str())
+    );
+    assert_eq!(lines.next(), Some("[exit code 0]"));
+    let cut = context.result::<OutputCut>().ok().flatten();
+    assert_eq!(
+        cut.as_ref().map(|cut| (cut.kept_lines, cut.total_lines)),
+        Some((1, 1))
+    );
+    let spilled = cut.and_then(|cut| cut.spill).unwrap_or_default();
+    assert_eq!(
+        std::fs::read_to_string(&spilled).ok(),
+        Some(format!("{}\n", "x".repeat(300_000)))
+    );
+
+    let fits = shell(&format!("{}; echo", x(5000)), None);
+    assert_eq!(fits, format!("{}\n[exit code 0]", "x".repeat(5000)));
+
+    let command = format!(
+        "seq 1 3000; {}; echo ' test FAILED'; seq 1 3000; yes é | head -n 3000 | tr -d '\\n'; \
+         echo",
+        x(5000)
+    );
+    let output = shell(&command, Some(crate::Spill(dir.clone())));
+    assert!(
+        output.starts_with(
+            "[4002 of 6002 lines cut, but for lines with errors or failures, and 2 long lines \
+             cut short; all of the output is in "
+        ),
+        "{output:.300}"
+    );
+    assert!(
+        output.contains(&format!("\n{} […]\n", "x".repeat(300))),
+        "{output:.300}"
+    );
+    assert!(output.contains(&format!("\n{} […]\n", "é".repeat(2000))));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// The cut note's offset and limit name the first lines missing, past an
+/// error kept right after the first lines.
+#[cfg(unix)]
+#[test]
+fn the_cut_note_names_the_first_lines_missing() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-gap-{}", std::process::id()));
+    let shell = Shell {
+        spill: Some(crate::Spill(dir.clone())),
+        cut: Some(OutputLimit {
+            lines: 40,
+            bytes: 100 * 1024,
+        }),
+        ..Shell::default()
+    };
+    let ran = shell.run(ShellArgs::new("seq 1 20; echo 'test FAILED'; seq 21 3000"));
+    let output = futures::executor::block_on(ran)
+        .map(|ran| ran.output)
+        .unwrap_or_default();
+    let first = output.lines().next().unwrap_or_default();
+    assert!(
+        first.contains("with offset 25 and limit 2000 for the first lines cut"),
+        "{first}"
+    );
+    assert!(
+        output.contains("\ntest FAILED\n21\n22\n23\n[… 2961 lines cut (lines 25-2985) …]\n"),
+        "{output:.600}"
+    );
+    std::fs::remove_dir_all(dir).ok();
 }
 
 /// Past what the cut keeps of the lines that matter from the middle, it

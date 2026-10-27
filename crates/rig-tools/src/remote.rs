@@ -50,7 +50,7 @@ use crate::process::{Launcher, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
     Contents, Excerpt, Listing, Stat, Workspace, excerpt_of, not_text, read_file, too_large,
 };
-use crate::{MAX_BYTES, MAX_FILE_BYTES};
+use crate::{MAX_BYTES, MAX_FILE_BYTES, quote};
 
 /// The exit status with which a transport says it failed, as `ssh` does.
 pub const TRANSPORT_FAILED: i32 = 255;
@@ -948,11 +948,6 @@ fn guarded(run: &str) -> String {
          trap 'kill $w; stop; exit 143' HUP INT TERM; \
          exec 3<&-; wait $c; s=$?; kill $w 2>/dev/null; exit $s"
     )
-}
-
-/// `text` quoted for `sh`.
-fn quote(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 /// A remote path quoted for `sh`, a leading `~` kept as the home
