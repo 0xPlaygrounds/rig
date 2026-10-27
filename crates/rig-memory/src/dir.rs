@@ -6,6 +6,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{Files, LogWriteError, SessionError, Store, check_log_name, check_name};
 
@@ -131,7 +132,7 @@ fn absent_is_fine(removed: io::Result<()>) -> io::Result<()> {
 /// renamed over it.
 fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let part = write_part(path, bytes, false)?;
-    fs::rename(&part, path)
+    fs::rename(&part.0, path)
 }
 
 /// As [`write_atomic`], and durably: the part file is synced before the
@@ -139,7 +140,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
 /// the old file or the new, never an empty one.
 fn write_durable(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let part = write_part(path, bytes, true)?;
-    fs::rename(&part, path)?;
+    fs::rename(&part.0, path)?;
     if let Some(parent) = path.parent() {
         let _ = File::open(parent).and_then(|folder| folder.sync_all());
     }
@@ -148,19 +149,39 @@ fn write_durable(path: &Path, bytes: &[u8]) -> io::Result<()> {
 
 /// Writes `bytes` to the part file beside `path`, whose folder it makes,
 /// synced with `sync`, and returns the part file's path.
-fn write_part(path: &Path, bytes: &[u8], sync: bool) -> io::Result<PathBuf> {
+fn write_part(path: &Path, bytes: &[u8], sync: bool) -> io::Result<Part> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut part = path.as_os_str().to_owned();
-    part.push(PART);
-    let part = PathBuf::from(part);
-    let mut file = File::create(&part)?;
+    let (part, mut file) = loop {
+        let mut name = path.as_os_str().to_owned();
+        name.push(format!(
+            ".{}-{}{PART}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let part = PathBuf::from(name);
+        match File::create_new(&part) {
+            Ok(file) => break (Part(part), file),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    };
     file.write_all(bytes)?;
     if sync {
         file.sync_all()?;
     }
     Ok(part)
+}
+
+/// A private temporary file, removed on failed writes and renames too.
+struct Part(PathBuf);
+
+impl Drop for Part {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
 }
 
 impl Files for DirFiles {
