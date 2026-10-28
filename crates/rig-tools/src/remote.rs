@@ -604,6 +604,15 @@ impl Workspace for Remote {
         self.checked(&script, None, Again::Never).map(drop)
     }
 
+    /// A path starting with `~` stays whole: the remote `sh` reads it as
+    /// the home directory there.
+    fn join(&self, base: &Path, path: &Path) -> PathBuf {
+        match path.starts_with("~") {
+            true => path.to_path_buf(),
+            false => base.join(path),
+        }
+    }
+
     /// Folds `.` and `..` without asking the machine, a relative path under
     /// `~`; a `..` above `~` stays, as the remote `sh` reads it.
     fn canonical(&self, path: &Path) -> PathBuf {
@@ -771,10 +780,13 @@ impl Workspace for Hosts {
         self.inner.host()
     }
 
+    /// A `HOST:` path stays whole; a path starting with `~` joined onto a
+    /// `HOST:` base is in that host's home.
     fn join(&self, base: &Path, path: &Path) -> PathBuf {
-        match self.route(path) {
-            Some(_) => path.to_path_buf(),
-            None => self.inner.join(base, path),
+        match (self.route(path), self.route(base)) {
+            (Some(_), _) => path.to_path_buf(),
+            (None, Some((remote, _))) if path.starts_with("~") => Self::named(remote, path),
+            (None, _) => self.inner.join(base, path),
         }
     }
 

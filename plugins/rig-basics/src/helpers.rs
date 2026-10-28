@@ -23,6 +23,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::UsageTotals;
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, ToolResult};
 use rig_tools::process::{Ended, KillOnDrop, OutputLine, Spawn};
+use rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -160,7 +161,7 @@ impl Lent {
                 None => asked.clone(),
             },
         };
-        let dir = self.base.join(job.dir.as_deref().unwrap_or("."));
+        let dir = Local.join(&self.base, Path::new(job.dir.as_deref().unwrap_or(".")));
         let dir = dir
             .canonicalize()
             .map_err(|error| format!("no directory {}: {error}", dir.display()))?;

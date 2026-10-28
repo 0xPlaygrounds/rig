@@ -11,8 +11,8 @@ use rig_core::tool::{
 use super::{Contents, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
 use crate::{
-    Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Read, ReadArgs, Replacement, Search,
-    SearchArgs, Write, WriteArgs,
+    Delete, DeleteArgs, Edit, EditArgs, List, ListArgs, Move, MoveArgs, Read, ReadArgs,
+    Replacement, Search, SearchArgs, Write, WriteArgs,
 };
 
 /// Files held in memory, by absolute path: a workspace that is not this
@@ -230,4 +230,101 @@ fn every_file_tool_goes_through_its_workspace() {
         [("/project/src/b.rs".to_owned(), ChangeKind::Deleted)]
     );
     assert!(memory.files().is_empty());
+}
+
+/// The home directory the copy of [`tilde_is_the_home_directory`] runs
+/// with.
+const TEST_HOME: &str = "RIG_TOOLS_TEST_HOME";
+
+/// A path starting with `~` is in the home directory, for every file tool
+/// and the shell's directory; a confined tool refuses it as outside the
+/// project. The project's own `~` is reached as `./~`, and listed and found
+/// so that reading the shown path reads it. Runs again as a copy of itself
+/// with a home of its own, so the real one is never touched.
+#[test]
+fn tilde_is_the_home_directory() {
+    let Some(home) = std::env::var_os(TEST_HOME).map(PathBuf::from) else {
+        let dir = std::env::temp_dir().join(format!("rig-tools-tilde-{}", std::process::id()));
+        let home = dir.join("home");
+        std::fs::create_dir_all(&home).ok();
+        std::fs::create_dir_all(dir.join("project")).ok();
+        let name = "workspace::tests::tilde_is_the_home_directory";
+        let output = std::env::current_exe().and_then(|test| {
+            std::process::Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(TEST_HOME, &home)
+                .env("HOME", &home)
+                .env("USERPROFILE", &home)
+                .output()
+        });
+        std::fs::remove_dir_all(&dir).ok();
+        let (ran, said) = output.map_or_else(
+            |error| (false, error.to_string()),
+            |output| {
+                let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+                let ran = output.status.success() && stdout.contains("1 passed");
+                (ran, stdout + &String::from_utf8_lossy(&output.stderr))
+            },
+        );
+        assert!(ran, "the run with a home of its own failed:\n{said}");
+        return;
+    };
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    let project = home.with_file_name("project");
+    let base = Some(project.clone());
+    let write = Write {
+        base: base.clone(),
+        ..Write::default()
+    };
+    let read = Read {
+        base: base.clone(),
+        ..Read::default()
+    };
+    let text = |shown: ToolOutput| shown.as_text().unwrap_or_default().to_owned();
+
+    let (wrote, _) = call(&write, WriteArgs::new("~/notes/a.txt", "home\n"));
+    let there = std::fs::read_to_string(home.join("notes/a.txt")).ok();
+    let (read_back, _) = call(&read, ReadArgs::new("~/notes/a.txt"));
+    assert_eq!(wrote.ok().as_deref(), Some("Created ~/notes/a.txt."));
+    assert_eq!(there.as_deref(), Some("home\n"));
+    assert!(read_back.map(text).unwrap_or_default().contains("home"));
+    assert!(!project.join("~/notes").exists());
+
+    let confined = Write {
+        confine: true,
+        ..write.clone()
+    };
+    let (refused, _) = call(&confined, WriteArgs::new("~/b.txt", "no\n"));
+    assert!(refused.is_err() && !home.join("b.txt").exists());
+
+    let (own, _) = call(&write, WriteArgs::new("./~/own.txt", "own\n"));
+    assert!(own.is_ok() && project.join("~/own.txt").is_file());
+    let list = List {
+        workspace: Arc::new(super::Local),
+        base: base.clone(),
+        confine: true,
+    };
+    let (listed, _) = call(&list, ListArgs::new("."));
+    let search = Search {
+        base: base.clone(),
+        ..Search::default()
+    };
+    let (found, _) = call(&search, SearchArgs::new("own"));
+    let listed = listed.unwrap_or_default();
+    let found = found.unwrap_or_default();
+    assert!(listed.lines().any(|line| line == "./~/own.txt"), "{listed}");
+    assert!(found.starts_with("./~/own.txt:"), "{found}");
+    let (again, _) = call(&read, ReadArgs::new("./~/own.txt"));
+    assert!(again.map(text).unwrap_or_default().contains("own"));
+
+    #[cfg(unix)]
+    {
+        let shell = crate::Shell {
+            launcher: Launcher::default().in_dir(&project),
+            ..crate::Shell::default()
+        };
+        let (ran, _) = call(&shell, crate::ShellArgs::new("pwd -P").in_dir("~"));
+        let ran = ran.unwrap_or_default();
+        assert_eq!(ran.lines().next(), home.to_str(), "{ran}");
+    }
 }

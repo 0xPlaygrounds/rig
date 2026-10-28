@@ -11,7 +11,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{Conversation, EntryRef, FILE_CLOSE, FILE_OPEN, attached_file};
 use rig_core::message::{ImageMediaType, UserContent};
 
-use crate::workspace::{Stat, Workspace};
+use crate::workspace::{Stat, Workspace, home_path};
 use crate::{MAX_LINES, show_lines};
 
 /// The largest image attached: providers refuse one whose base64 is over
@@ -68,14 +68,14 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
             continue;
         };
         let trimmed = reference.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'']);
-        if trimmed.starts_with("~/") && workspace.host().is_some() {
+        if Path::new(trimmed).starts_with("~") && workspace.host().is_some() {
             attached.notes.push(format!(
                 "{trimmed} is not attached: home paths are this machine's."
             ));
             continue;
         }
         let found = [reference, trimmed].into_iter().find_map(|named| {
-            let label = expand(named);
+            let label = home_path(Path::new(named)).unwrap_or_else(|| PathBuf::from(named));
             let path = base.join(&label);
             matches!(workspace.stat(&path), Ok(Stat::File { .. }))
                 .then(|| (label.display().to_string(), path))
@@ -126,14 +126,6 @@ pub fn is_path_reference(reference: &str) -> bool {
                 && (1..=4).contains(&extension.len())
                 && extension.chars().all(|c| c.is_ascii_alphanumeric())
         })
-}
-
-/// `path` with a leading `~/` made the home directory.
-fn expand(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), std::env::home_dir()) {
-        (Some(rest), Some(home)) => home.join(rest),
-        _ => PathBuf::from(path),
-    }
 }
 
 /// The image at `path` in `workspace` as message content, its type told

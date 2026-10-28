@@ -222,7 +222,8 @@ pub(crate) fn listed(
 }
 
 /// `path` as the file tools open it: made absolute against `base` (`None`:
-/// this process's working directory), with every symbolic link of its
+/// this process's working directory) or, when its first component is `~`,
+/// against the home directory, with every symbolic link of its
 /// longest existing part followed (the file's own too, when it exists) and
 /// `..` folded. Two spellings of one file resolve alike, so this is how the
 /// facts the tools publish ([`FilesRead`](rig_core::tool::FilesRead),

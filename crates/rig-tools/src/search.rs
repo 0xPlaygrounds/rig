@@ -214,18 +214,23 @@ impl Tool for Search {
         let path = args.path.as_deref().unwrap_or(".");
         self.workspace
             .place(self.base.as_deref(), self.confine, path)?;
+        let joined = self.workspace.join(
+            self.base.as_deref().unwrap_or(Path::new("")),
+            Path::new(path),
+        );
         let base = self.base.clone().filter(|_| Path::new(path).is_relative());
-        if let Some(base) = &base {
-            let joined = self.workspace.join(base, Path::new(path));
-            args.path = Some(joined.to_string_lossy().into_owned());
-        }
+        args.path = Some(joined.to_string_lossy().into_owned());
         let workspace = self.workspace.clone();
         let mut found = blocking(move || find(&*workspace, &args)).await?;
         if let Some(base) = &base {
             let paths = found.hits.iter_mut().map(|hit| &mut hit.path);
             for path in paths.chain(&mut found.names) {
                 if let Ok(below) = path.strip_prefix(base) {
-                    *path = below.to_path_buf();
+                    // A tool reads a leading `~` as the home directory.
+                    *path = match below.starts_with("~") {
+                        true => Path::new(".").join(below),
+                        false => below.to_path_buf(),
+                    };
                 }
             }
         }
@@ -372,9 +377,13 @@ fn lone_cr(text: &str) -> bool {
     text.contains('\r') && text.matches('\r').count() != text.matches("\r\n").count()
 }
 
-/// `path` as the walk reached it, without a leading `./`.
+/// `path` as the walk reached it, without a leading `./` unless the rest
+/// starts with `~`, which a tool reads as the home directory.
 fn walked(path: &Path) -> &Path {
-    path.strip_prefix("./").unwrap_or(path)
+    match path.strip_prefix("./") {
+        Ok(rest) if !rest.starts_with("~") => rest,
+        _ => path,
+    }
 }
 
 #[cfg(test)]

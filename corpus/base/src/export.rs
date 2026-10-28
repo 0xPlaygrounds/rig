@@ -25,6 +25,7 @@ use rig_core::effect::{Answered, Disposition, EffectId, EffectKind, EffectRecord
 use rig_ecs::session_log::SessionStore;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
+use rig_tools::workspace::{Local, Workspace};
 use serde::de::DeserializeSeed;
 
 mod render;
@@ -215,11 +216,12 @@ impl Sessions<'_> {
             let name = slug(&session.name);
             PathBuf::from(format!("rig-{name}.{}", request.format.extension()))
         });
-        // Paths the user names are the project's.
-        let path = match &self.root {
-            Some(root) => root.0.join(path),
-            None => path,
-        };
+        // Paths the user names are the project's, `~` the home directory.
+        let root = self
+            .root
+            .as_ref()
+            .map_or(Path::new(""), |root| root.0.as_path());
+        let path = Local.join(root, &path);
         for (file, bytes) in render::render(&session, request.format, request.thinking, &path) {
             write(&file, &bytes)
                 .map_err(|failure| format!("writing {}: {failure}", file.display()))?;

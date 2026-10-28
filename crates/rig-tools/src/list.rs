@@ -184,6 +184,11 @@ fn list(
                 _ => below.to_string_lossy().into_owned(),
             })
         })
+        // A tool reads a leading `~` as the home directory.
+        .map(|entry| match Path::new(&entry).starts_with("~") {
+            true => format!("./{entry}"),
+            false => entry,
+        })
         .collect();
     let total = entries.len();
     let mut text = String::new();

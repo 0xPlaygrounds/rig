@@ -134,7 +134,10 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// `path` relative to `base`, as `resolve` joins them:
     /// `base.join(path)`, so an absolute `path` stays as it is. A workspace
     /// whose paths can name another machine, such as
-    /// [`Hosts`](crate::remote::Hosts), keeps such a path whole too.
+    /// [`Hosts`](crate::remote::Hosts), keeps such a path whole too, and one
+    /// with a home directory reads a first component `~` as that home
+    /// ([`Local`]: `~`, `~/notes` and, on Windows, `~\notes`; not `~bob` or
+    /// `./~`).
     fn join(&self, base: &Path, path: &Path) -> PathBuf {
         base.join(path)
     }
@@ -293,13 +296,11 @@ pub enum Stat {
 }
 
 impl dyn Workspace {
-    /// `path` as the file tools name it: joined onto `base` when relative,
-    /// then made [`canonical`](Workspace::canonical).
+    /// `path` as the file tools name it: [`join`](Workspace::join)ed onto
+    /// `base` (`None`: the working directory), then made
+    /// [`canonical`](Workspace::canonical).
     pub fn resolve(&self, base: Option<&Path>, path: &str) -> PathBuf {
-        self.canonical(&base.map_or_else(
-            || PathBuf::from(path),
-            |base| self.join(base, path.as_ref()),
-        ))
+        self.canonical(&self.join(base.unwrap_or(Path::new("")), path.as_ref()))
     }
 
     /// `path` `resolve`d against `base`, as a file tool
@@ -425,6 +426,17 @@ pub(crate) fn read_file<W: Workspace + ?Sized>(
         .map(|contents| contents.bytes)
 }
 
+/// `path` in this machine's home directory when its first component is
+/// `~`: `None` for any other path, and when the home is unknown.
+pub(crate) fn home_path(path: &Path) -> Option<PathBuf> {
+    let rest = path.strip_prefix("~").ok()?;
+    let home = std::env::home_dir()?;
+    Some(match rest.as_os_str().is_empty() {
+        true => home,
+        false => home.join(rest),
+    })
+}
+
 /// This machine: its file system and its processes.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Local;
@@ -477,6 +489,11 @@ impl Workspace for Local {
             }
             moved => moved,
         }
+    }
+
+    /// `~` is this machine's home directory, when it is known.
+    fn join(&self, base: &Path, path: &Path) -> PathBuf {
+        home_path(path).unwrap_or_else(|| base.join(path))
     }
 
     fn canonical(&self, path: &Path) -> PathBuf {
