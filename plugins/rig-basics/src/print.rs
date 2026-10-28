@@ -177,7 +177,14 @@ impl Plugin for PrintPlugin {
         if !json && !app.runs_front(FRONT) {
             return;
         }
-        app.insert_resource(ExitWhenUnread);
+        // Output an app sends elsewhere has no reader of stdout to lose.
+        if !json || !app.world().contains_resource::<JsonOut>() {
+            app.init_resource::<ExitWhenUnread>();
+        }
+        let unread = app
+            .world()
+            .get_resource::<ExitWhenUnread>()
+            .map(|unread| unread.0);
         let prompt = invoked.and_then(|invoked| invoked.args.print);
         if json {
             if !app.world().contains_resource::<JsonOut>() {
@@ -251,9 +258,12 @@ impl Plugin for PrintPlugin {
             app.world_mut().spawn(Answerer::default());
         }
         // Read before the first frame, so no work starts before the
-        // prompt is known; a signal or the launcher's death ends the wait,
-        // and the first frame exits.
-        let prompt = full_prompt(&prompt, signals::interruption(app.world()));
+        // prompt is known; a signal, the launcher's death or a reader of
+        // stdout gone ends the wait, and the first frame exits.
+        let signalled = signals::interruption(app.world());
+        let interrupted = move || signalled() || unread.is_some_and(|unread| unread());
+        let piped = app.world_mut().remove_resource::<PipedIn>();
+        let prompt = full_prompt(&prompt, piped, interrupted);
         let interrupted = prompt.is_none();
         if interrupted {
             app.insert_resource(HoldCalls);
@@ -267,6 +277,7 @@ impl Plugin for PrintPlugin {
             .run_headless(Some(prompt.unwrap_or_default()));
         if let Some(mut run) = app.world_mut().get_resource_mut::<Run>() {
             run.interrupted = interrupted;
+            run.unread = unread;
         }
     }
 
@@ -448,12 +459,22 @@ fn answer(
 /// leave stdin, must not hold the run.
 const PIPED_WAIT: Duration = Duration::from_secs(1);
 
-/// The prompt with what was piped in on stdin after it; `None` once
-/// `interrupted` says the run is.
-fn full_prompt(prompt: &str, interrupted: impl Fn() -> bool) -> Option<String> {
-    match std::io::stdin().is_terminal() {
-        true => Some(prompt.to_owned()),
-        false => with_piped(prompt, std::io::stdin(), PIPED_WAIT, interrupted),
+/// What a one-shot run reads after its prompt: stdin unless the app
+/// inserted another.
+#[derive(Resource)]
+struct PipedIn(Box<dyn Read + Send + Sync>);
+
+/// The prompt with what was piped in after it, on stdin or `piped`;
+/// `None` once `interrupted` says the run is.
+fn full_prompt(
+    prompt: &str,
+    piped: Option<PipedIn>,
+    interrupted: impl Fn() -> bool,
+) -> Option<String> {
+    match piped {
+        Some(PipedIn(piped)) => with_piped(prompt, piped, PIPED_WAIT, interrupted),
+        None if std::io::stdin().is_terminal() => Some(prompt.to_owned()),
+        None => with_piped(prompt, std::io::stdin(), PIPED_WAIT, interrupted),
     }
 }
 
@@ -497,7 +518,9 @@ fn with_piped(
             Err(RecvTimeoutError::Disconnected) => break String::new(),
             Err(RecvTimeoutError::Timeout) => {
                 if !came && deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                    eprintln!(
+                    // A closed stderr leaves nothing to tell it on.
+                    let _ = writeln!(
+                        std::io::stderr(),
                         "rig: nothing came on stdin within {}s, so the prompt goes alone; give \
                          -p stdin from /dev/null, or pipe in what goes with it",
                         wait.as_secs_f32()
@@ -573,6 +596,9 @@ struct Run {
     /// Whether the run was interrupted before its first frame, which then
     /// exits: nothing is sent.
     interrupted: bool,
+    /// What says that nobody reads the run's output any more, which cuts
+    /// it off ([`ExitWhenUnread`]).
+    unread: Option<fn() -> bool>,
 }
 
 /// Why a run fails: its exit code, why, and whether a line already said so.
@@ -983,7 +1009,7 @@ fn end(run: &mut Run, (mut ended, reason): (HeadlessEnded, Reason), mut commands
     }
     let exit = match ended.code {
         // Nobody reads the answer: the run was cut off, as by SIGPIPE.
-        _ if signals::stdout_unread() => ExitReason::Signal,
+        _ if run.unread.is_some_and(|unread| unread()) => ExitReason::Signal,
         0 => ExitReason::Quit,
         code => ExitReason::Failed(code),
     };
@@ -1077,15 +1103,18 @@ fn output<'a>(
 
 /// Writes each new line of a running call's [`ToolProgress`] to stderr,
 /// after the tool's name.
-fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed<ToolProgress>>) {
+fn print_progress(
+    progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed<ToolProgress>>,
+    mut printed: ResMut<Printed>,
+) {
     for (ToolProgress(line), tool) in &progress {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
         match tool {
-            Some(tool) => eprintln!("rig: {}: {line}", tool.call.function.name),
-            None => eprintln!("rig: {line}"),
+            Some(tool) => printed.error(&format!("{}: {line}", tool.call.function.name)),
+            None => printed.error(line),
         }
     }
 }
@@ -1117,9 +1146,10 @@ fn print_notices(
     }
 }
 
-/// The most of a recalled text stderr shows: its first lines, up to a
-/// number of bytes.
+/// The most lines of a recalled text stderr shows.
 const EXCERPT_LINES: usize = 10;
+
+/// The most bytes of a recalled text stderr shows.
 const EXCERPT_BYTES: usize = 1000;
 
 /// `text` as stderr shows it: its first [`EXCERPT_LINES`] lines, at most
@@ -1136,9 +1166,9 @@ fn excerpt(text: &str) -> String {
         end -= 1;
     }
     let (shown, left) = text.split_at(end);
-    match left.len() {
-        0 => shown.to_owned(),
-        left => format!("{}\n… ({left} more bytes)", shown.trim_end()),
+    match left.trim_end().len() {
+        0 => text.to_owned(),
+        _ => format!("{}\n… ({} more bytes)", shown.trim_end(), left.len()),
     }
 }
 

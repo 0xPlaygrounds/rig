@@ -4,7 +4,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_harness_protocol::{Home, Invocation};
 
-use super::{Invoked, LauncherPlugin, LauncherRun, refuse, watch_launcher};
+use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
 use crate::host::exit::{Exit, ExitPlugin, ExitReason, SIGNAL_EXIT_CODE};
 use crate::host::session::Scratch;
 
@@ -45,6 +45,9 @@ fn an_exit_on_purpose_in_the_first_frame_counts_as_started() {
         let run = home.run(1);
         std::fs::remove_dir_all(run.path()).ok();
         std::fs::create_dir_all(run.path()).ok();
+        // Its launcher lives.
+        let lock = std::fs::File::create(run.lock());
+        let _held = lock.as_ref().map(std::fs::File::try_lock);
         let mut app = App::new();
         app.add_message::<AppExit>()
             .add_message::<Notice>()
@@ -156,7 +159,6 @@ fn an_agent_exits_once_its_launcher_is_gone() {
         .insert_resource(LauncherRun(run))
         .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
         .add_plugins((LauncherPlugin, ExitPlugin));
-    watch_launcher(&mut app);
     app.finish();
     app.cleanup();
     let exits_within = |app: &mut App, wait: Duration| {

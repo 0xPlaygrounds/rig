@@ -174,7 +174,8 @@ touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
 /// them, such as on `SIGKILL`, are killed once it is gone; one it leaves
 /// for a reload is not, nor a listed one whose leader lacks the mark of a
 /// process the agent started (an id since given to another process).
-#[cfg(target_os = "linux")]
+/// Sessions start through Perl's `setsid`, which macOS has too.
+#[cfg(unix)]
 #[test]
 fn groups_the_agent_left_are_killed_after_it_dies_and_kept_across_a_reload() {
     let notes = std::env::temp_dir().join(format!("rig-left-groups-{}", std::process::id()));
@@ -185,9 +186,11 @@ fn groups_the_agent_left_are_killed_after_it_dies_and_kept_across_a_reload() {
 touch \"$RIG_RUN/ready\"
 cd '{}'
 if [ ! -e marked ]; then
-  {}=\"$RIG_RUN/groups\" setsid sleep 30 &
+  perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' env {}=\"$RIG_RUN/groups\" \\
+    sh -c 'sleep 30 & echo $! > child; wait' &
   echo $! > marked
-  setsid sleep 30 &
+  while [ ! -s child ]; do sleep 0.01; done
+  perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' sleep 30 &
   echo $! > unmarked
   cat marked unmarked > \"$RIG_RUN/groups\"
   exit 75
@@ -204,30 +207,66 @@ kill -KILL $$",
         let id = fs::read_to_string(notes.join(name)).ok();
         id.and_then(|id| id.trim().parse::<u32>().ok())
     };
-    let (marked, unmarked) = (id("marked"), id("unmarked"));
-    assert!(marked.is_some() && unmarked.is_some());
+    let (marked, started, unmarked) = (id("marked"), id("child"), id("unmarked"));
+    assert!(marked.is_some() && started.is_some() && unmarked.is_some());
     assert!(notes.join("kept").exists(), "killed on the reload");
     // Dead once it is gone or a zombie waiting for its new parent.
     let alive = |pid: u32| {
-        fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
-            !stat
-                .rsplit(')')
-                .next()
-                .unwrap_or_default()
-                .trim_start()
-                .starts_with('Z')
+        let state = child("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output();
+        state.is_ok_and(|state| {
+            let state = String::from_utf8_lossy(&state.stdout);
+            !state.trim().is_empty() && !state.trim_start().starts_with('Z')
         })
     };
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    while marked.is_some_and(alive) && std::time::Instant::now() < deadline {
+    // The whole group: the leader and the child it started.
+    let any_alive = || marked.is_some_and(alive) || started.is_some_and(alive);
+    while any_alive() && std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert!(!marked.is_some_and(alive));
+    assert!(!any_alive());
     assert!(unmarked.is_some_and(alive));
     if let Some(unmarked) = unmarked {
         child("kill").arg(unmarked.to_string()).status().ok();
     }
     fs::remove_dir_all(&notes).ok();
+}
+
+/// The launcher puts the terminal back only after a front that took its
+/// screen, even when the agent that took it reloaded into one that did
+/// not and failed; not after one that never took it, such as `--json`
+/// typed at a terminal.
+#[cfg(unix)]
+#[test]
+fn the_terminal_is_put_back_only_after_a_front_took_its_screen() {
+    let mark = "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
+touch \"$RIG_RUN/ready\" \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
+    let reloaded = format!(
+        "{mark}
+if [ ! -e \"$RIG_HOME/reloaded\" ]; then
+  touch \"$RIG_HOME/reloaded\" \"$RIG_RUN/screen\"
+  exit 75
+fi
+exit 2"
+    );
+    let restored = |test: &str, agent: &str| {
+        interactive(test, agent, false).map(|(ended, _)| (ended.code, ended.restore))
+    };
+    assert_eq!(
+        restored("screen-reloaded", &reloaded),
+        Some((ExitCode::from(2), true))
+    );
+    assert_eq!(
+        restored("screen-lines", mark),
+        Some((ExitCode::SUCCESS, false))
+    );
+    let quit = format!("{mark}\ntouch \"$RIG_RUN/screen\"");
+    assert_eq!(
+        restored("screen-quit", &quit),
+        Some((ExitCode::SUCCESS, true))
+    );
 }
 
 /// A home whose staged build is `trial` and whose good build is `good`:

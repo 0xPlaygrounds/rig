@@ -188,7 +188,11 @@ fn dropping_a_process_kills_its_group() {
 fn the_ledger_lists_each_group_until_it_is_reaped() {
     let path = std::env::temp_dir().join(format!("rig-groups-{}", std::process::id()));
     record_groups(&path);
-    let listed = || std::fs::read_to_string(&path).unwrap_or_default();
+    // Other tests of this process may list their own groups too.
+    let listed = |id: u32| {
+        let ids = std::fs::read_to_string(&path).unwrap_or_default();
+        ids.lines().any(|line| line == id.to_string())
+    };
     let marked = Launcher::default().command("true");
     let carried = marked.get_envs().find(|(name, _)| *name == LEDGER_VARIABLE);
     assert_eq!(
@@ -203,13 +207,12 @@ fn the_ledger_lists_each_group_until_it_is_reaped() {
     let Some((killed_id, ended_id)) = ids else {
         return;
     };
-    let (low, high) = (killed_id.min(ended_id), killed_id.max(ended_id));
-    assert_eq!(listed(), format!("{low}\n{high}\n"));
+    assert!(listed(killed_id) && listed(ended_id));
     let status = ended.and_then(|mut ended| ended.wait_for(Duration::from_secs(5)));
     assert!(status.is_ok_and(|status| status.is_some()));
-    assert_eq!(listed(), format!("{killed_id}\n"));
+    assert!(listed(killed_id) && !listed(ended_id));
     drop(killed);
-    assert_eq!(listed(), "");
+    assert!(!listed(killed_id));
     std::fs::remove_file(&path).ok();
 }
 

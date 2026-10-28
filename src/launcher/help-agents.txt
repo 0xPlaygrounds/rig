@@ -14,7 +14,9 @@ One task:
   no answer text), 2 no task, a refused /command, an unknown --tools name
   or a --model the catalog lacks, 130 interrupted: by a signal, the
   launcher's death, or nobody reading stdout any more (`| head -1`), which
-  plain -p says on stderr. The exit line's code is the agent's: a launcher
+  plain -p says on stderr. A reader that leaves while the final answer is
+  written read what it wanted; the run keeps its code. The exit line's
+  code is the agent's: a launcher
   killed by a signal itself ends as that signal says (143 for SIGTERM)
   while its agent's exit line says 130.
   A failed turn hands its unanswered task back: stderr says "rig: not

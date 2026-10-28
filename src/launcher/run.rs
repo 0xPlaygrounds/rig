@@ -148,6 +148,9 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         notice,
         build_failure,
     )?;
+    if ended.restore {
+        restore_terminal();
+    }
     if let Some(said) = ended.said {
         eprintln!("{said}");
     }
@@ -219,6 +222,10 @@ fn launch(
     // restart, so what the agent said before it took the terminal is gone
     // once the launcher takes the terminal back.
     let mut kept_screen = false;
+    // Whether an agent's front took the terminal's screen since the
+    // launcher last put it back: a view keeps it across a restart, so a
+    // later start that never takes it may still need it put back.
+    let mut screen = false;
     // The session the agent switched away from to start this one, which a
     // refused start goes back to.
     let mut switched_from: Option<SessionId> = None;
@@ -295,11 +302,12 @@ fn launch(
             }
         };
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
-        // Only a front that took the screen may have left it changed.
-        let screen = run.screen().exists();
+        screen |= run.screen().exists();
         // A reload may leave jobs running for the next build on purpose.
+        // Best effort: a list that cannot be read must not keep the
+        // terminal from being put back below.
         if !reload {
-            kill_left_groups(run)?;
+            kill_left_groups(run).ok();
         }
         promoted?;
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
@@ -365,19 +373,15 @@ fn launch(
             let said = resume.map(|resume| format!("To resume this session: {resume}"));
             // The agent left the terminal as it found it; the line needs
             // it out of the full screen in case it did not.
-            if said.is_some() && screen {
-                restore_terminal();
-            }
-            return Ok(Ended::new(status, said));
+            let restore = said.is_some() && screen;
+            return Ok(Ended::new(status, said).restoring(restore));
         }
-        if screen {
-            restore_terminal();
-        }
+        let restore = std::mem::take(&mut screen);
         if !rejected {
             let lost = refusal.filter(|_| kept_screen);
             let log = Some(log.as_path()).filter(|log| log.exists());
             let said = stopped(status, resume.as_deref(), lost.as_deref(), log);
-            return Ok(Ended::new(status, Some(said)));
+            return Ok(Ended::new(status, Some(said)).restoring(restore));
         }
         if !home.good().exists() {
             let said = format!(
@@ -385,7 +389,7 @@ fn launch(
                  build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
             );
-            return Ok(Ended::new(status, Some(said)));
+            return Ok(Ended::new(status, Some(said)).restoring(restore));
         }
         let message = format!(
             "The new build stopped during startup ({status}); rolled back to the previous \
@@ -395,7 +399,10 @@ fn launch(
         // A one-shot run is not run twice, its output already out, unless
         // its agent reloaded: the restart tells the agent of the rollback.
         if !again {
-            return Ok(Ended::new(status, Some(message)));
+            return Ok(Ended::new(status, Some(message)).restoring(restore));
+        }
+        if restore {
+            restore_terminal();
         }
         eprintln!("{message}");
         kept_screen = false;
@@ -453,18 +460,28 @@ fn marked(id: i32, ledger: &Path) -> bool {
             .args(["-E", "-ww", "-o", "command=", "-p", &id.to_string()])
             .stderr(Stdio::null())
             .output();
-        shown.is_ok_and(|shown| String::from_utf8_lossy(&shown.stdout).contains(&mark))
+        // `ps -E` appends each variable after a space.
+        let entry = format!(" {mark}");
+        shown.is_ok_and(|shown| {
+            let shown = String::from_utf8_lossy(&shown.stdout);
+            shown
+                .match_indices(&entry)
+                .filter_map(|(at, _)| shown.get(at + entry.len()..))
+                .any(|rest| rest.is_empty() || rest.starts_with([' ', '\n']))
+        })
     } else {
         false
     }
 }
 
-/// How the launcher's runs of a session ended: the exit code, and what the
-/// launcher says last, once the terminal is restored.
+/// How the launcher's runs of a session ended: the exit code, what the
+/// launcher says last, and whether it puts the terminal back first, after
+/// a front that took its screen.
 #[derive(Debug, PartialEq)]
 struct Ended {
     code: ExitCode,
     said: Option<String>,
+    restore: bool,
 }
 
 impl Ended {
@@ -473,12 +490,22 @@ impl Ended {
         Self {
             code: exit_code(status),
             said,
+            restore: false,
         }
     }
 
     /// An end with `code` and nothing said.
     fn quiet(code: ExitCode) -> Self {
-        Self { code, said: None }
+        Self {
+            code,
+            said: None,
+            restore: false,
+        }
+    }
+
+    /// The same end, putting the terminal back first when `restore`.
+    fn restoring(self, restore: bool) -> Self {
+        Self { restore, ..self }
     }
 }
 

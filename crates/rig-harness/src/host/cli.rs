@@ -231,7 +231,7 @@ impl Cli {
     }
 
     /// Whether the front of this run takes an interactive terminal.
-    pub fn terminal(&self) -> bool {
+    pub(crate) fn terminal(&self) -> bool {
         self.chosen().is_some_and(|front| front.terminal)
     }
 

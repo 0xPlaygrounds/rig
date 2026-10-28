@@ -502,8 +502,8 @@ impl RunDir {
 
     /// Written by the agent once its front takes the terminal's screen,
     /// as the terminal view does: only then does the launcher put the
-    /// terminal back after the agent, which a front that writes lines,
-    /// such as `--json` typed at a terminal, would have overwritten.
+    /// terminal back after the agent. Doing so after a front that writes
+    /// lines, such as `--json` typed at a terminal, would overwrite them.
     pub fn screen(&self) -> PathBuf {
         self.0.join("screen")
     }

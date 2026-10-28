@@ -101,8 +101,8 @@ impl Plugin for LauncherPlugin {
         {
             rig_tools::process::record_groups(run.groups());
             app.insert_resource(LauncherRun(run));
-            watch_launcher(app);
         }
+        watch_launcher(app);
         if !app.world().contains_resource::<Secrets>() {
             app.insert_resource(Secrets::from_env());
         }
@@ -125,12 +125,12 @@ impl Plugin for LauncherPlugin {
     fn cleanup(&self, app: &mut App) {
         if let Some(refusal) = cli::refusal(app) {
             refuse(app, refusal);
-            return;
         }
         let world = app.world();
-        let terminal = world
-            .get_resource::<Invoked>()
-            .is_some_and(|invoked| invoked.terminal)
+        let terminal = !world.contains_resource::<Refused>()
+            && world
+                .get_resource::<Invoked>()
+                .is_some_and(|invoked| invoked.terminal)
             && world
                 .get_resource::<cli::Cli>()
                 .is_some_and(cli::Cli::terminal);
@@ -230,9 +230,11 @@ fn exit_when_launcher_gone(
     }
 }
 
-/// Marks a run refused, until it exits.
-#[derive(Resource)]
-struct Refused;
+/// Marks a run refused ([`AppCliExt::refuse_run`](super::cli::AppCliExt::refuse_run))
+/// from `cleanup` until it exits at the end of its first frame: a front
+/// leaves the terminal alone meanwhile.
+#[derive(Resource, Debug)]
+pub struct Refused;
 
 /// Refuses this run, once the app is built: says `why` on stderr now,
 /// before any front takes the terminal, and in the launcher's

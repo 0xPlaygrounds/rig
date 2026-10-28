@@ -81,20 +81,28 @@ impl Plugin for ExitOnSignalPlugin {
                 WAKE.get_or_init(|| wake.clone());
             }
         })
-        .add_systems(First, exit_on_signal);
-        #[cfg(unix)]
-        app.add_systems(
+        .add_systems(
             First,
-            exit_when_unread.run_if(resource_exists::<ExitWhenUnread>),
+            (
+                exit_on_signal,
+                exit_when_unread.run_if(resource_exists::<ExitWhenUnread>),
+            ),
         );
     }
 }
 
-/// While it exists, the app exits, as for a signal, once nobody reads
-/// stdout any more ([`stdout_unread`]): a front whose output is the run's,
-/// such as `-p`, inserts it.
-#[derive(Resource, Clone, Copy, Debug, Default)]
-pub struct ExitWhenUnread;
+/// While it exists, the app exits, as for a signal, once its check says
+/// nobody reads the run's output any more: by default, stdout
+/// ([`stdout_unread`]). A front whose output is the run's, such as `-p`,
+/// inserts it.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct ExitWhenUnread(pub fn() -> bool);
+
+impl Default for ExitWhenUnread {
+    fn default() -> Self {
+        Self(stdout_unread)
+    }
+}
 
 /// Starts the thread that calls `heard` for each SIGTERM, and each SIGINT
 /// and SIGHUP the process did not start with ignored; the signals it hears.
@@ -157,23 +165,25 @@ fn exit_on_signal(mut commands: Commands) {
     }
 }
 
-/// Asks the app to exit once, as for a signal, when nobody reads stdout
-/// any more. The loop runs a frame at least every second, so a run whose
-/// reader left stops within about that.
-#[cfg(unix)]
-fn exit_when_unread(mut asked: Local<bool>, mut commands: Commands) {
-    if !*asked && stdout_unread() {
+/// Asks the app to exit once, as for a signal, when nobody reads the
+/// run's output any more. The loop runs a frame at least every second, so
+/// a run whose reader left stops within about that.
+fn exit_when_unread(unread: Res<ExitWhenUnread>, mut asked: Local<bool>, mut commands: Commands) {
+    if !*asked && (unread.0)() {
         *asked = true;
         commands.trigger(Exit(ExitReason::Signal));
     }
 }
 
-/// Whether nobody reads stdout any more: see [`ExitWhenUnread`]. Never
-/// elsewhere than unix.
+/// Whether nobody reads stdout any more: see [`ExitWhenUnread`].
+#[cfg(unix)]
 pub fn stdout_unread() -> bool {
-    #[cfg(unix)]
-    return reader_gone(libc::STDOUT_FILENO);
-    #[cfg(not(unix))]
+    reader_gone(libc::STDOUT_FILENO)
+}
+
+/// Whether nobody reads stdout any more: never known elsewhere than unix.
+#[cfg(not(unix))]
+pub fn stdout_unread() -> bool {
     false
 }
 

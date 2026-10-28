@@ -12,7 +12,7 @@
 use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write as _};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
@@ -722,7 +722,7 @@ fn record(id: u32, live: bool) {
 }
 
 /// Replaces the file at `path` with `groups`, one per line.
-fn write_ledger(path: &std::path::Path, groups: &BTreeSet<u32>) -> io::Result<()> {
+fn write_ledger(path: &Path, groups: &BTreeSet<u32>) -> io::Result<()> {
     let text: String = groups.iter().map(|id| format!("{id}\n")).collect();
     let written = path.with_extension("tmp");
     std::fs::write(&written, text)?;

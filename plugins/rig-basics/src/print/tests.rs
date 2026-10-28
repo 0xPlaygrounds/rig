@@ -724,16 +724,20 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
 #[test]
 fn a_long_recalled_text_is_shortened() {
     assert_eq!(excerpt("Fix it.\n\nshort"), "Fix it.\n\nshort");
+    // Ten lines and the newline that ends them leave nothing out.
+    let ten: String = (1..=10).map(|n| format!("{n}\n")).collect();
+    assert_eq!(excerpt(&ten), ten);
     let numbers: String = (1..=1000).map(|n| format!("{n}\n")).collect();
     let text = format!("Count:\n\n{numbers}");
     let kept = "Count:\n\n1\n2\n3\n4\n5\n6\n7\n8";
     let left = text.len() - kept.len();
     assert_eq!(excerpt(&text), format!("{kept}\n… ({left} more bytes)"));
-    // Never inside a character.
-    let wide = "é".repeat(600);
-    let shown = excerpt(&wide);
-    assert!(shown.starts_with(&"é".repeat(500)), "{shown}");
-    assert!(shown.ends_with("… (200 more bytes)"), "{shown}");
+    // Never inside a character: byte 1000 is the second of an `é`.
+    let wide = format!("a{}", "é".repeat(600));
+    assert_eq!(
+        excerpt(&wide),
+        format!("a{}\n… (202 more bytes)", "é".repeat(499))
+    );
 }
 
 /// The lines written, shared with the test.
@@ -1294,6 +1298,27 @@ fn a_signal_before_the_run_ends_gives_the_exit_its_code() {
         [json!(130), json!("hello"), json!("the run was interrupted")]
     );
     assert_eq!(lines.parsed().last(), Some(exit));
+}
+
+/// A run whose output nobody reads any more, as after `| head -1`, stops as
+/// on a signal before its model is asked.
+#[test]
+fn a_run_nobody_reads_stops_as_on_a_signal() {
+    fn gone() -> bool {
+        true
+    }
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.insert_resource(ExitWhenUnread(gone))
+            .add_plugins(rig_harness::host::signals::ExitOnSignalPlugin);
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
+    assert_eq!(model.request_count(), 0);
+    let exit = lines.parsed().last().cloned().unwrap_or_default();
+    assert_eq!(
+        (at(&exit, "type"), at(&exit, "code")),
+        (&json!("exit"), &json!(130))
+    );
 }
 
 /// A plain run cut off by a signal says so on stderr, once.

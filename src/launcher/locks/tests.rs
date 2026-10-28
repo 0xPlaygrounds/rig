@@ -34,21 +34,33 @@ fn the_sweep_removes_the_unsaved_sessions_of_gone_launchers() {
 #[test]
 fn a_short_wait_for_the_build_lock_is_quiet() {
     let path = std::env::temp_dir().join(format!("rig-build-lock-{}", std::process::id()));
-    let waits = |quiet: std::time::Duration| -> Result<bool> {
+    let held = || -> Result<File> {
         let held = lock_file(&path, true)?;
         held.lock()?;
+        Ok(held)
+    };
+    let quiet = std::time::Duration::from_secs(30);
+    let short = (|| -> Result<bool> {
+        let other = held()?;
         let release = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-            drop(held);
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            drop(other);
         });
-        let waiting = lock_file(&path, true)?;
         let mut said = false;
-        take(&waiting, quiet, || said = true)?;
+        take(&lock_file(&path, true)?, quiet, || said = true)?;
         release.join().ok();
         Ok(said)
-    };
-    let short = waits(std::time::Duration::from_secs(5));
-    let long = waits(std::time::Duration::ZERO);
+    })();
+    // Released only once the wait said so.
+    let long = (|| -> Result<bool> {
+        let other = held()?;
+        let mut said = false;
+        take(&lock_file(&path, true)?, std::time::Duration::ZERO, || {
+            said = true;
+            drop(other);
+        })?;
+        Ok(said)
+    })();
     fs::remove_file(&path).ok();
     assert_eq!((short.ok(), long.ok()), (Some(false), Some(true)));
 }
