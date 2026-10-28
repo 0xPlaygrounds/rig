@@ -658,8 +658,8 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         app.update();
         drop(app);
 
-        // Refusal must run neither a model nor a restored tool call, and
-        // the turn it cuts off says why.
+        // Refusal must run neither a model nor a restored tool call; the
+        // exit stopped the turn, so it has none to close.
         let second = answering(&["hello"]);
         let refused = |app: &mut App| {
             recording(app, &["read", "write"]);
@@ -675,14 +675,9 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         assert_eq!(second.request_count(), 0);
         assert!(app.world().resource::<Executed>().0.is_empty());
         let why = "--tools: unknown tool `bogus`; the tools are read, write";
-        let ends = lines.of("turn_end");
-        assert!(!ends.is_empty(), "{:?}", lines.parsed());
-        for end in ends {
-            assert_eq!(
-                (at(&end, "outcome"), at(&end, "error")),
-                (&json!("stopped"), &json!(why))
-            );
-        }
+        assert!(lines.of("turn_end").is_empty(), "{:?}", lines.parsed());
+        let exit = lines.of("exit").first().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "error"), &json!(why));
         drop(app);
 
         // So must a run someone sits at, which is refused before its view
@@ -707,8 +702,8 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         drop(app);
 
         // So must a run whose launcher is gone while it waits for its
-        // prompt on a stdin that stays open: it exits as on a signal, and
-        // closes the turn it restored.
+        // prompt on a stdin that stays open: it exits as on a signal, with
+        // no turn to close.
         let fifth = answering(&["hello"]);
         let Ok((silent, writer)) = std::io::pipe() else {
             return;
@@ -737,14 +732,7 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
             (at(&exit, "type"), at(&exit, "code")),
             (&json!("exit"), &json!(130))
         );
-        let ends = lines.of("turn_end");
-        assert!(!ends.is_empty(), "{:?}", lines.parsed());
-        for end in ends {
-            assert_eq!(
-                (at(&end, "outcome"), at(&end, "error")),
-                (&json!("stopped"), &json!("the run was interrupted"))
-            );
-        }
+        assert!(lines.of("turn_end").is_empty(), "{:?}", lines.parsed());
         drop(app);
 
         // A valid resume keeps the access and answers its own prompt; the
