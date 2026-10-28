@@ -71,6 +71,33 @@ fn encoded(
 
 // ── routing ─────────────────────────────────────────────────────────────
 
+/// Copilot endpoint metadata is route policy, so a synthetic model needs no reply cassette.
+#[test]
+fn advertised_responses_endpoint_routes_an_unknown_model() {
+    let model = ModelInfo {
+        supported_endpoints: Some(vec!["/responses".to_owned()]),
+        ..ModelInfo::from_id("future-model")
+    };
+    let request = encoded(
+        &copilot()
+            .with_route(super::route_for_model_info(&model).expect("Responses is advertised"))
+            .completion(model.id),
+    );
+    assert_eq!(request.uri().path(), "/responses");
+
+    let messages_only = ["/v1/messages".to_owned()];
+    assert_eq!(super::route_from_supported_endpoints(&messages_only), None);
+}
+
+/// The model-ID fallback covers the GPT-6.1 family when Copilot omits metadata.
+#[test]
+fn gpt_6_1_family_uses_responses_fallback() {
+    for model in [super::super::GPT_6_1_TERRA, "gpt-6.1-sol"] {
+        let request = encoded(&copilot().completion(model));
+        assert_eq!(request.uri().path(), "/responses", "{model}");
+    }
+}
+
 /// A session token naming its own endpoint.
 const TOKEN: &str = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
 
@@ -350,6 +377,20 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
         .expect("the recorded catalogue names claude-opus-4.7");
     assert_eq!(opus.name.as_deref(), Some("Claude Opus 4.7"));
     assert_eq!(opus.r#type.as_deref(), Some("chat"));
+
+    let gpt_5_5 = models
+        .iter()
+        .find(|model| model.id == "gpt-5.5")
+        .expect("the recorded catalogue names gpt-5.5");
+    let endpoints = gpt_5_5
+        .supported_endpoints
+        .as_deref()
+        .expect("the Copilot catalogue advertises endpoints")
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    assert_eq!(endpoints, ["/responses", "ws:/responses"]);
+    assert_eq!(super::route_for_model_info(gpt_5_5), Some(Route::Responses));
 }
 
 // ── the configuration is storable data ──────────────────────────────────
