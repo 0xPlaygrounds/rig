@@ -40,6 +40,7 @@ use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::rig_tools::Shell;
+use rig_harness::rig_tools::workspace::{Local, Workspace};
 use serde::Deserialize;
 
 /// The rules' file in `RIG_HOME`.
@@ -346,7 +347,7 @@ fn rewrite(
         // An agent's own working directory is where its commands run.
         let base = dirs.get(agent).map_or(&base, |WorkDir(dir)| dir);
         let place = Place {
-            dir: dir.map_or_else(|| base.clone(), |dir| base.join(dir)),
+            dir: dir.map_or_else(|| base.clone(), |dir| Local.join(base, Path::new(dir))),
             path: path.clone(),
         };
         let rewritten = rules.rewrite(command, &place);

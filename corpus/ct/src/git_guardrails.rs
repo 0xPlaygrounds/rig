@@ -19,7 +19,7 @@
 //! protected = ["main", "master", "release/*"]
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
@@ -305,10 +305,10 @@ fn inspect(
             (Err(_), Some(cwd)) => cwd.clone(),
             (Err(_), None) => root.0.clone(),
         };
-        let dir = args
-            .cwd
-            .as_ref()
-            .map_or_else(|| base.clone(), |cwd| base.join(cwd));
+        let dir = args.cwd.as_ref().map_or_else(
+            || base.clone(),
+            |cwd| workspace.0.join(&base, Path::new(cwd)),
+        );
         let git = shell::git_calls(&args.command, &dir);
         if !git.iter().any(rules::may_matter) {
             continue;

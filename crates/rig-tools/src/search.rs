@@ -13,7 +13,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::listed;
+use crate::fs::{listed, shown};
 use crate::workspace::{Listing, Local, Workspace};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
@@ -26,7 +26,8 @@ const MAX_LINE: usize = 300;
 /// Searches file contents with a regular expression, honouring
 /// `.gitignore`, or lists the files with a match, or every file. Shows each
 /// path as `read` takes it from the same base: below the base when the
-/// searched path is relative or not given, absolute when it is absolute.
+/// searched path is relative or not given, absolute when it is absolute or
+/// starts with `~`.
 /// Publishes what it found ([`SearchHits`]) and the files it found matches
 /// in ([`FilesRead`]), by their [resolved](Workspace) paths.
 #[derive(Clone, Debug)]
@@ -119,7 +120,8 @@ impl SearchArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hit {
     /// The file, as the walk from the searched path reached it, without a
-    /// leading `./`.
+    /// leading `./` unless it starts with `~`: `./~/notes.md` is a folder
+    /// named `~`, which `~/notes.md` is not.
     #[serde(serialize_with = "lossy")]
     pub path: PathBuf,
     /// The line's number, from 1.
@@ -148,7 +150,7 @@ pub struct Found {
     pub hits: Vec<Hit>,
     /// The files with a match, of a search for file names, in walk order,
     /// as the walk from the searched path reached them, without a leading
-    /// `./`.
+    /// `./` unless one starts with `~`, as [`Hit::path`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<PathBuf>,
     /// Whether it stopped at its [`MAX_MATCHES`] matches, or
@@ -184,7 +186,7 @@ impl Tool for Search {
              files, only the paths of the files with a match, one per line, at most \
              {MAX_FILES}, and with files and an empty pattern every file. Each path is one \
              `read` takes: relative to the current directory when path is relative or not \
-             given, absolute when path is absolute. Use it to find code, not `grep` or `rg` in \
+             given, absolute when path is absolute or starts with `~`. Use it to find code, not `grep` or `rg` in \
              `shell`, and with files and an empty pattern to list files, not `ls` or `find`."
         )
     }
@@ -214,18 +216,22 @@ impl Tool for Search {
         let path = args.path.as_deref().unwrap_or(".");
         self.workspace
             .place(self.base.as_deref(), self.confine, path)?;
-        let base = self.base.clone().filter(|_| Path::new(path).is_relative());
-        if let Some(base) = &base {
-            let joined = self.workspace.join(base, Path::new(path));
-            args.path = Some(joined.to_string_lossy().into_owned());
-        }
+        let joined = self.workspace.join(
+            self.base.as_deref().unwrap_or(Path::new("")),
+            Path::new(path),
+        );
+        let given = Path::new(path);
+        let base = (given.is_relative() && !given.starts_with("~"))
+            .then(|| self.base.clone())
+            .flatten();
+        args.path = Some(joined.to_string_lossy().into_owned());
         let workspace = self.workspace.clone();
         let mut found = blocking(move || find(&*workspace, &args)).await?;
         if let Some(base) = &base {
             let paths = found.hits.iter_mut().map(|hit| &mut hit.path);
             for path in paths.chain(&mut found.names) {
                 if let Ok(below) = path.strip_prefix(base) {
-                    *path = below.to_path_buf();
+                    *path = shown(below);
                 }
             }
         }
@@ -372,9 +378,13 @@ fn lone_cr(text: &str) -> bool {
     text.contains('\r') && text.matches('\r').count() != text.matches("\r\n").count()
 }
 
-/// `path` as the walk reached it, without a leading `./`.
+/// `path` as the walk reached it, without a leading `./` unless it is
+/// [`shown`] with one.
 fn walked(path: &Path) -> &Path {
-    path.strip_prefix("./").unwrap_or(path)
+    match path.strip_prefix("./") {
+        Ok(rest) if !rest.starts_with("~") => rest,
+        _ => path,
+    }
 }
 
 #[cfg(test)]

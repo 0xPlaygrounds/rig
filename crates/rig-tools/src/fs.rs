@@ -222,7 +222,8 @@ pub(crate) fn listed(
 }
 
 /// `path` as the file tools open it: made absolute against `base` (`None`:
-/// this process's working directory), with every symbolic link of its
+/// this process's working directory) or, when its first component is `~`,
+/// against the home directory, with every symbolic link of its
 /// longest existing part followed (the file's own too, when it exists) and
 /// `..` folded. Two spellings of one file resolve alike, so this is how the
 /// facts the tools publish ([`FilesRead`](rig_core::tool::FilesRead),
@@ -241,6 +242,16 @@ pub(crate) fn listed(
 /// ```
 pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
     local().resolve(base, path)
+}
+
+/// `path`, relative to where a tool looked, as the tool shows it: with `./`
+/// in front when its first component is `~`, so that a tool given the
+/// shown path back reaches this file and not one in the home directory.
+pub(crate) fn shown(path: &Path) -> PathBuf {
+    match path.starts_with("~") {
+        true => Path::new(".").join(path),
+        false => path.to_path_buf(),
+    }
 }
 
 /// `path` [`resolve`]d against `base`, as a file tool opens it; with

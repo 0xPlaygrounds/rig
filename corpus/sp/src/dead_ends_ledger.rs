@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
@@ -25,6 +25,7 @@ use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, ToolOutput};
 use rig_harness::rig_tools::Shell;
 use rig_harness::rig_tools::split_status;
+use rig_harness::rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -414,7 +415,7 @@ fn review_shell(
         let dir = line
             .cwd
             .as_deref()
-            .map_or_else(|| base.clone(), |cwd| base.join(cwd));
+            .map_or_else(|| base.clone(), |cwd| Local.join(base, Path::new(cwd)));
         let Ok(Answered::ToolResult { result }) = &mut outcome.0 else {
             continue;
         };

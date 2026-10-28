@@ -24,6 +24,7 @@ use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::rig_memory::summary_in;
 use rig_tools::fs::read_prefix;
+use rig_tools::workspace::{Local, Workspace};
 
 #[cfg(test)]
 mod tests;
@@ -118,7 +119,7 @@ fn place(arguments: &serde_json::Map<String, serde_json::Value>) -> Option<PathB
 /// with its path from `root`, its directory's path from `root`, and its
 /// text. None when `place` is not under `root`.
 fn nested_files(root: &Path, place: &Path) -> Vec<(String, String, String)> {
-    let (Some(root), Some(dir)) = (existing(root), existing(&root.join(place))) else {
+    let (Some(root), Some(dir)) = (existing(root), existing(&Local.join(root, place))) else {
         return Vec::new();
     };
     let Ok(below) = dir.strip_prefix(&root) else {

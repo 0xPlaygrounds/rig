@@ -12,7 +12,8 @@
 //!   ([`ExitStatus`](rig_core::tool::ExitStatus)).
 //! - Each acts on a [`Workspace`](workspace::Workspace): this machine
 //!   ([`Local`](workspace::Local), the default) or another. The file tools resolve paths from an
-//!   optional base directory they can be confined to.
+//!   optional base directory they can be confined to. A path whose first component is `~` is in
+//!   the home directory; `./~` is a folder named `~`.
 //! - `shell` reports its output as it comes to a [`Live`]. Arguments are plain data with public
 //!   fields.
 //!

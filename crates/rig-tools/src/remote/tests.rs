@@ -7,7 +7,8 @@ use super::{Hosts, Remote};
 use crate::process::Launcher;
 use crate::workspace::{Local, Workspace};
 use crate::{
-    Edit, EditArgs, Read, ReadArgs, Replacement, Search, SearchArgs, Shell, ShellArgs, split_status,
+    Edit, EditArgs, List, ListArgs, Read, ReadArgs, Replacement, Search, SearchArgs, Shell,
+    ShellArgs, split_status,
 };
 
 /// A fresh directory under the temporary one, with `local` (this
@@ -168,7 +169,8 @@ fn a_failed_transport_fails_the_call() {
 
 /// Paths fold without asking the host, a relative one under its home; a
 /// `HOST:` path is kept whole when joined onto a base, and an unknown
-/// host's is this machine's. A confined call refuses another host's path.
+/// host's is this machine's. A path starting with `~` is in the home of the
+/// host its base is on. A confined call refuses another host's path.
 #[test]
 fn host_paths_fold_and_join_as_scp_reads_them() {
     let bench = Remote::new("bench", ["true"], Launcher::default());
@@ -188,6 +190,14 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
     let remote_base = Path::new("bench:~/strata");
     let joined = hosts.resolve(Some(remote_base), "src/lib.rs");
     assert_eq!(joined, Path::new("bench:~/strata/src/lib.rs"));
+    let home = hosts.resolve(Some(remote_base), "~/notes");
+    assert_eq!(home, Path::new("bench:~/notes"));
+    let alone = Remote::new("solo", ["true"], Launcher::default()).map(|remote| {
+        let remote: &dyn Workspace = &remote;
+        remote.resolve(Some(Path::new("/srv")), "~/x")
+    });
+    assert_eq!(alone.ok().as_deref(), Some(Path::new("~/x")));
+    assert!(hosts.place(Some(remote_base), true, "~/x").is_err());
     let refused = hosts.place(Some(base), true, "bench:~/x").is_err();
     let kept = hosts
         .place(Some(remote_base), true, "src/../lib.rs")
@@ -703,4 +713,26 @@ fn a_command_there_stops_with_its_call() {
         "{ended:?}"
     );
     assert_eq!(left, [false, false]);
+}
+
+/// A file in a remote's home, listed alone, is shown as the remote names
+/// it, `~` and all, so a tool given it back reaches that file.
+#[test]
+fn a_remote_home_file_is_listed_as_named() {
+    let dir = scratch("list");
+    let home = dir.join("home");
+    std::fs::write(home.join("notes.txt"), "remote\n").ok();
+    let listed = Remote::new("solo", transport(&home), Launcher::default()).map(|remote| {
+        let list = List {
+            workspace: Arc::new(remote),
+            base: None,
+            confine: false,
+        };
+        call(&list, ListArgs::new("~/notes.txt")).0
+    });
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        listed.ok().and_then(Result::ok).as_deref(),
+        Some("~/notes.txt\n")
+    );
 }
