@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentSystems, TASK};
+use rig_core::json_utils::remove_preserving_order;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
@@ -266,7 +267,7 @@ fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<&mut ToolDef>) {
         return;
     };
     if profiles.0.is_empty() {
-        properties.shift_remove(PROFILE);
+        remove_preserving_order(properties, PROFILE);
         return;
     }
     let listed: Vec<String> = profiles

@@ -2,6 +2,8 @@ use super::*;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+use rig_harness::rig_core::json_utils::remove_preserving_order;
+
 #[derive(Clone, Copy)]
 enum ProbeOrder {
     BaselineFirst,
@@ -78,7 +80,7 @@ impl Variant {
             Self::ThinkingBindingAbsent => value
                 .get_mut("thinking")
                 .and_then(Value::as_object_mut)
-                .and_then(|thinking| thinking.shift_remove("block_binding"))
+                .and_then(|thinking| remove_preserving_order(thinking, "block_binding"))
                 .filter(|binding| !binding.is_null())
                 .map(|_| ())
                 .ok_or(Error::Body),
@@ -205,7 +207,7 @@ fn remove_final_error_cache(value: &mut Value) -> Result<(), Error> {
     }
     result
         .as_object_mut()
-        .and_then(|result| result.shift_remove("cache_control"))
+        .and_then(|result| remove_preserving_order(result, "cache_control"))
         .filter(|control| !control.is_null())
         .map(|_| ())
         .ok_or(Error::Body)

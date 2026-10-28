@@ -8,6 +8,8 @@
 
 use std::process::Command;
 
+use super::verification_checks;
+
 /// `(package, `cargo tree` feature arguments, forbidden dependency names,
 /// required dependency names)`. The three lists are space-separated; empty
 /// features select the package's defaults.
@@ -243,6 +245,91 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
                 names.contains(&name),
                 "{features} is missing {name}:\n{graph}"
             );
+        }
+        if matches!(features, "" | "agent") {
+            assert_minimal_json_features(&graph, features);
+        }
+    }
+}
+
+fn assert_minimal_json_features(graph: &str, selection: &str) {
+    let json: Vec<_> = graph
+        .lines()
+        .filter(|line| line.starts_with("serde_json "))
+        .collect();
+    assert!(!json.is_empty(), "{selection} must include serde_json");
+    for line in json {
+        let features = line.split_whitespace().nth(2).unwrap_or_default();
+        for forbidden in ["preserve_order", "float_roundtrip"] {
+            assert!(
+                !features.split(',').any(|feature| feature == forbidden),
+                "{selection} must not enable serde_json/{forbidden}: {line}"
+            );
+        }
+    }
+}
+
+/// Retain Cargo's package, feature and platform selectors, leaving test-runner
+/// options out of the dependency query. Dev and build edges participate in
+/// the feature graph of the compiled test targets.
+fn test_dependency_graph(step: &verification_checks::Step) -> String {
+    assert_eq!(step.program, "cargo");
+    let mut args = step.args.iter().map(String::as_str);
+    assert_eq!(args.next(), Some("nextest"));
+    assert_eq!(args.next(), Some("run"));
+    let mut tree = vec![
+        "tree",
+        "--locked",
+        "-e",
+        "normal,build,dev",
+        "--prefix",
+        "none",
+        "--format",
+        "{p} {f}",
+    ];
+    while let Some(arg) = args.next() {
+        match arg {
+            "-p" | "--package" | "--exclude" | "--features" | "-F" | "--target"
+            | "--manifest-path" => {
+                tree.push(arg);
+                tree.push(args.next().expect("Cargo selector value"));
+            }
+            "--workspace" | "--all-features" | "--no-default-features" => tree.push(arg),
+            "--locked" => {}
+            "--profile" | "--retries" | "-E" | "--filter-expr" | "--test" | "--bin"
+            | "--example" => {
+                args.next().expect("test option value");
+            }
+            "--lib" | "--tests" | "--bins" | "--examples" | "--all-targets" => {}
+            other => panic!("unhandled verification argument: {other}"),
+        }
+    }
+    cargo_stdout(&tree)
+}
+
+#[test]
+fn isolated_verification_preserves_minimal_json_features() {
+    let checks = verification_checks::all();
+    for id in ["core-all", "bus-verification"] {
+        let check = checks
+            .iter()
+            .find(|check| check.id == id)
+            .expect("CI check");
+        let steps: Vec<_> = check
+            .steps
+            .iter()
+            .filter(|step| {
+                id == "core-all"
+                    || step
+                        .args
+                        .iter()
+                        .any(|arg| matches!(arg.as_str(), "-p" | "--package"))
+            })
+            .collect();
+        assert!(!steps.is_empty(), "{id} must have an isolated execution");
+        for step in steps {
+            let selection = format!("{id}: {}", step.args.join(" "));
+            assert_minimal_json_features(&test_dependency_graph(step), &selection);
         }
     }
 }

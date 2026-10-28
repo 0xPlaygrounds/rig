@@ -4,6 +4,7 @@
 use serde_json::{Value, json};
 
 use crate::completion::{CompletionRequest, CompletionResponse, ToolDefinition};
+use crate::json_utils::remove_preserving_order;
 use crate::message::{AssistantContent, CallId, Message, ToolCall, ToolName, ToolResultContent};
 use crate::operation::Completion;
 use crate::providers::openai::OpenAIConfig;
@@ -118,7 +119,7 @@ fn a_done_call_keeps_what_was_announced_and_streamed() {
     for missing in ["arguments", "name", "call_id"] {
         let mut events = streamed_call();
         if let Some(item) = events[6]["item"].as_object_mut() {
-            item.shift_remove(missing);
+            remove_preserving_order(item, missing);
         }
         let response = streamed(&events);
         let calls: Vec<&ToolCall> = response.tool_calls().collect();
@@ -154,7 +155,7 @@ fn a_done_call_keeps_what_was_announced_and_streamed() {
 fn a_reply_cut_before_its_terminal_keeps_no_item_and_the_terminal_takes_the_ciphertext() {
     let mut events = streamed_call();
     if let Some(item) = events[2]["item"].as_object_mut() {
-        item.shift_remove("encrypted_content");
+        remove_preserving_order(item, "encrypted_content");
     }
     let partial = |cut: usize| {
         crate::test_utils::history_conformance::partial(

@@ -1,6 +1,7 @@
 use super::*;
 use crate::completion::CacheRetention;
 use crate::error::ProviderError;
+use crate::json_utils::remove_preserving_order;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::test_utils::json_body;
 use crate::wire::WireFrame;
@@ -2135,7 +2136,7 @@ fn a_wire_serialized_without_tool_input_streaming_reloads_eager() {
     let mut json = serde_json::to_value(&wire).expect("the wire serializes");
     assert_eq!(json["tool_input_streaming"], json!("off"));
     json.as_object_mut()
-        .map(|wire| wire.shift_remove("tool_input_streaming"));
+        .map(|wire| remove_preserving_order(wire, "tool_input_streaming"));
     let restored: Messages = serde_json::from_value(json).expect("the wire reloads");
     assert_eq!(restored.tool_input_streaming, ToolInputStreaming::Eager);
 }

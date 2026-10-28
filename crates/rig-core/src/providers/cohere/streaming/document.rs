@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 
 use super::ChatEvent;
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::wire::document::Reassemble;
 
 /// The native chat response a stream of events adds up to.
@@ -77,7 +78,8 @@ impl Reassemble<ChatEvent> for ChatResponse {
                     let mut message = message.clone();
                     // The skeleton states an empty plan; a unary reply with
                     // no plan states none.
-                    if let Some(Value::String(plan)) = message.shift_remove("tool_plan")
+                    if let Some(Value::String(plan)) =
+                        remove_preserving_order(&mut message, "tool_plan")
                         && !plan.is_empty()
                     {
                         self.tool_plan.get_or_insert_default().push_str(&plan);

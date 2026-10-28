@@ -981,20 +981,12 @@ impl ReplyFold {
     ) -> Result<(), ProviderError> {
         let content = match content {
             AssistantContent::ToolCall(mut call) => {
-                let native = call.native.take();
-                let slot = native.as_ref().and_then(|native| native.blob_slot.clone());
-                let item = native.map_or(serde_json::Value::Null, |native| native.item);
-                let (id, item) = self.distinct_call_id(Some(call.id), item);
+                let (id, _) = self.distinct_call_id(Some(call.id.clone()), serde_json::Value::Null);
+                if id != call.id {
+                    call.native = None;
+                }
                 call.id = id;
-                let mut content = AssistantContent::ToolCall(call);
-                if !item.is_null() {
-                    content = content.with_native(item);
-                }
-                // A restated call keeps the slot it was recorded with.
-                if let Some(Some(native)) = content.native_slot() {
-                    native.blob_slot = slot;
-                }
-                content
+                AssistantContent::ToolCall(call)
             }
             content => content,
         };

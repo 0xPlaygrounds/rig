@@ -29,6 +29,7 @@ use rig::completion::{CompletionRequest, CompletionResponse, Message, ToolDefini
 use rig::message::{ToolName, ToolResultContent, UserContent};
 use rig::providers::anthropic::completion::{CLAUDE_OPUS_5_5, CLAUDE_SONNET_5_5};
 use rig::wire::{Body, Mode, Operation, Wire};
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::operation::Completion;
 use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::{Value, json};
@@ -178,7 +179,7 @@ async fn send_without_binding(
 ) -> (u16, Value) {
     let (uri, headers, mut body) = encoded(models, model, request);
     if let Some(thinking) = body["thinking"].as_object_mut() {
-        thinking.shift_remove("block_binding");
+        remove_preserving_order(thinking, "block_binding");
     }
     send_raw(&uri, &without_beta(headers), &body).await
 }

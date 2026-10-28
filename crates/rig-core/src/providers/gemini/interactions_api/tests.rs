@@ -1,5 +1,6 @@
 use super::*;
 use crate::completion::{CompletionRequest, Message, ToolDefinition};
+use crate::json_utils::remove_preserving_order;
 use crate::message::{self, ToolChoice as MessageToolChoice};
 use serde_json::json;
 
@@ -311,7 +312,7 @@ fn encoded_steps(wire: &Interactions, history: Vec<Message>) -> Vec<Value> {
     )
     .expect("the request is valid");
     match json_of(wire, request, None).expect("the request builds") {
-        Value::Object(mut body) => match body.shift_remove("input") {
+        Value::Object(mut body) => match remove_preserving_order(&mut body, "input") {
             Some(Value::Array(steps)) => steps,
             other => panic!("the body's input is a list: {other:?}"),
         },

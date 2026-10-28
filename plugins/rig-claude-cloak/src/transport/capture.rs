@@ -8,6 +8,8 @@ use rig_harness::{
     },
 };
 use std::sync::{Arc, Mutex};
+
+use rig_harness::rig_core::json_utils::remove_preserving_order;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Clone)]
@@ -313,7 +315,7 @@ fn current_profile_projection(
             .pointer_mut("/system/1")
             .and_then(Value::as_object_mut)
             .ok_or("identity block")?;
-        if identity.shift_remove("cache_control") != Some(json!({"type":"ephemeral"})) {
+        if remove_preserving_order(identity, "cache_control") != Some(json!({"type":"ephemeral"})) {
             return Err("cache_none reference must retain the historical identity marker".into());
         }
     }

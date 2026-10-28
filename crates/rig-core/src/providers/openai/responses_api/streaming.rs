@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use crate::completion::{Cost, FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{Source, SourceLocation};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
@@ -709,7 +710,7 @@ impl ResponsesDecoder {
                 };
                 let item = frame
                     .as_object_mut()
-                    .and_then(|frame| frame.shift_remove("item"))
+                    .and_then(|frame| remove_preserving_order(frame, "item"))
                     .unwrap_or_default();
                 self.done(slot, item, out)
             }
@@ -980,7 +981,7 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                 "response.completed" | "response.incomplete" => {
                     let mut response = frame
                         .as_object_mut()
-                        .and_then(|frame| frame.shift_remove("response"))
+                        .and_then(|frame| remove_preserving_order(frame, "response"))
                         .filter(Value::is_object)
                         .unwrap_or_else(|| json!({}));
                     if let (true, Some(fields)) =

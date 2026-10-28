@@ -995,6 +995,34 @@ fn a_call_renamed_for_a_reused_id_keeps_its_item_where_the_item_holds_its_id() {
 }
 
 #[test]
+fn renaming_an_edited_call_back_to_its_original_id_keeps_it_stale() {
+    let mut edited = call("call_1").with_native(json!({"id": "call_1", "signature": "old"}));
+    if let AssistantContent::ToolCall(call) = &mut edited {
+        call.id = CallId::from_wire("call_2");
+    }
+    assert!(edited.native_item().is_none());
+    let adapted = adapt(
+        &[
+            Message::user("q"),
+            turn(Some(same()), vec![call("call_2"), edited]),
+        ],
+        &Slotted,
+    );
+    let block = adapted
+        .iter()
+        .find_map(|message| match message {
+            Message::Assistant(turn) => turn.content.get(1),
+            _ => None,
+        })
+        .expect("second call remains");
+    let AssistantContent::ToolCall(call) = block else {
+        panic!("a call stays a call");
+    };
+    assert_eq!(call.id.wire(), "call_1");
+    assert!(block.native_item().is_none());
+}
+
+#[test]
 fn a_leading_turn_goes_with_its_results_and_its_user_message_stays() {
     let call = crate::message::ToolCall::from_wire(
         "c1",

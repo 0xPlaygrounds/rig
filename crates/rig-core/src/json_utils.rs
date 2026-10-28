@@ -36,6 +36,25 @@ pub fn to_canonical_string(value: &serde_json::Value) -> String {
     canonical(value.clone()).to_string()
 }
 
+/// Removes `key` from `map`, returning its value or `None` if absent.
+/// Remaining entries keep their relative iteration order with or without
+/// serde_json's `preserve_order` feature.
+pub fn remove_preserving_order(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<serde_json::Value> {
+    let mut removed = None;
+    map.retain(|candidate, value| {
+        if candidate == key {
+            removed = Some(value.take());
+            false
+        } else {
+            true
+        }
+    });
+    removed
+}
+
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
         (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {

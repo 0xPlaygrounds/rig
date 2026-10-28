@@ -158,7 +158,9 @@ async fn a_venice_stream_reports_its_cost() {
     let response = streamed_and_refolded(wire(&VENICE, "qwen3-5-9b"), stream).await;
     assert_eq!(
         response.usage.cost,
-        Some(Cost::from_total(0.000_239_400_000_000_000_02))
+        Some(Cost::from_total(
+            serde_json::from_str("0.00023940000000000002").expect("the reported JSON cost")
+        ))
     );
     assert_eq!(citations(&response), vec![Vec::<Citation>::new()]);
 }

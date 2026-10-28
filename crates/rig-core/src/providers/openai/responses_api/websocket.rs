@@ -12,6 +12,7 @@ use crate::completion::options::FinalBody;
 use crate::driver::Model;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
+use crate::json_utils::remove_preserving_order;
 use crate::operation::{Completion, ReplyFold};
 use crate::providers::openai::responses_api::streaming::{
     ResponsesDecoder, ResponsesEvent, classify_responses_payload, document, is_lifecycle_event,
@@ -61,8 +62,6 @@ struct ResponsesWebSocketClientEvent {
     kind: ResponsesWebSocketClientEventKind,
     #[serde(flatten)]
     request: FinalBody,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    generate: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -374,6 +373,17 @@ impl ResponsesWebSocketSession {
         // session's chain, so the history is shaped as a stored
         // continuation's.
         let mut completion_request = completion_request;
+        if let Some(generate) = options.generate {
+            let params = completion_request
+                .additional_params
+                .get_or_insert_with(|| Value::Object(Map::new()));
+            if params.is_null() {
+                *params = Value::Object(Map::new());
+            }
+            if let Some(params) = params.as_object_mut() {
+                params.insert("generate".to_owned(), Value::Bool(generate));
+            }
+        }
         if let Some(previous) = &self.previous_response_id {
             let params = completion_request
                 .additional_params
@@ -400,7 +410,6 @@ impl ResponsesWebSocketSession {
         let payload = ResponsesWebSocketClientEvent {
             kind: ResponsesWebSocketClientEventKind::ResponseCreate,
             request: self.prepare_request(completion_request)?,
-            generate: options.generate,
         };
 
         crate::providers::internal::trace_json(
@@ -811,7 +820,7 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
                     if is_lifecycle_event(&kind) {
                         let response = frame
                             .as_object_mut()
-                            .and_then(|frame| frame.shift_remove("response"))
+                            .and_then(|frame| remove_preserving_order(frame, "response"))
                             .unwrap_or_else(|| Value::Object(Map::new()));
                         Some(ResponsesWebSocketEvent::Response { kind, response })
                     } else {

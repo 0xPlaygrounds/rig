@@ -29,6 +29,7 @@ use rig_bedrock::completion::{
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::Model;
 use rig_core::error::EncodeError;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::AssistantContent;
 use rig_core::wire::{Mode, Operation, Wire};
 use rig_history_conformance::{Ablation, CallShape, Ending, HistoryFixture, Rng, Shape, replies};
@@ -238,7 +239,7 @@ fn events(content: &[Value], stop_reason: &str) -> Vec<Value> {
             "toolUse" => {
                 let mut opened = body.clone();
                 if let Value::Object(fields) = &mut opened {
-                    fields.shift_remove("input");
+                    remove_preserving_order(fields, "input");
                 }
                 events.push(start(index, json!({ "toolUse": opened })));
                 events.push(delta(
@@ -249,7 +250,7 @@ fn events(content: &[Value], stop_reason: &str) -> Vec<Value> {
             "toolResult" => {
                 let mut opened = body.clone();
                 if let Value::Object(fields) = &mut opened {
-                    fields.shift_remove("content");
+                    remove_preserving_order(fields, "content");
                 }
                 events.push(start(index, json!({ "toolResult": opened })));
                 events.push(delta(index, json!({ "toolResult": body["content"] })));

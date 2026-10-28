@@ -58,7 +58,7 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value, options: SanitizeO
                     "exclusiveMaximum",
                     "multipleOf",
                 ] {
-                    obj.shift_remove(key);
+                    crate::json_utils::remove_preserving_order(obj, key);
                 }
             }
         }
@@ -85,7 +85,7 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value, options: SanitizeO
 
         // Neither provider supports oneOf; convert to anyOf, merging into an
         // existing anyOf array if present.
-        if let Some(one_of) = obj.shift_remove("oneOf") {
+        if let Some(one_of) = crate::json_utils::remove_preserving_order(obj, "oneOf") {
             match obj.get_mut("anyOf") {
                 Some(Value::Array(existing)) => {
                     if let Value::Array(mut incoming) = one_of {

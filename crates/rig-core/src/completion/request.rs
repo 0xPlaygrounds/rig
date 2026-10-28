@@ -17,6 +17,7 @@ use super::options::{
 };
 use super::provider_options::{ExtensionOptions, ProviderExtension, ProviderOptions, ReplyExtras};
 use crate::error::ProviderError;
+use crate::json_utils::remove_preserving_order;
 use crate::message::ToolChoice;
 use crate::{
     json_utils,
@@ -1449,7 +1450,7 @@ fn merge_provider_tools_into_additional_params(
         _ => serde_json::Map::new(),
     };
 
-    let mut merged_tools = match params_map.shift_remove("tools") {
+    let mut merged_tools = match remove_preserving_order(&mut params_map, "tools") {
         Some(serde_json::Value::Array(existing)) => existing,
         _ => Vec::new(),
     };

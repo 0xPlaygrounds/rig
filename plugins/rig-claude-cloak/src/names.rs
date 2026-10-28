@@ -23,6 +23,7 @@ fn decode_content(content: &mut AssistantContent) {
         return;
     }
     let original = content.fingerprint();
+    let current = content.native_item().is_some();
     if let AssistantContent::ToolCall(call) = content {
         decode_name(&mut call.function.name);
     }
@@ -31,17 +32,24 @@ fn decode_content(content: &mut AssistantContent) {
         && let AssistantContent::ToolCall(call) = content
         && let Some(native) = &mut call.native
     {
-        if native.fingerprint == original {
+        if current {
             // Native replay must use the canonical name before transport
             // adds its prefix, without losing provider-owned metadata.
             if let Some(name) = native.item.get_mut("name") {
                 *name = serde_json::Value::String(call.function.name.to_string());
             }
-            native.fingerprint = decoded;
+            let blob_slot = native.blob_slot.clone();
+            let item = native.item.clone();
+            *content = content.clone().with_native(item);
+            if let AssistantContent::ToolCall(call) = content
+                && let Some(native) = &mut call.native
+            {
+                native.blob_slot = blob_slot;
+            }
         } else {
             // A stale item must stay stale even if its old fingerprint
             // happens to match the decoded name.
-            native.fingerprint = original;
+            native.edited = true;
         }
     }
 }

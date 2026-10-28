@@ -23,6 +23,7 @@
 //! (`tests/cassette_utils.py` `check_cache_prefix_stability`); the plumbing is
 //! rig's.
 
+use rig_core::json_utils::remove_preserving_order;
 use serde_json::Value;
 
 /// One cache-ordered block of a request, tagged with the field it came from so a
@@ -122,14 +123,14 @@ pub fn splice_cached_content(body: &Value, cache: &Value) -> Option<Value> {
     body.get("cachedContent")?.as_str()?;
     let mut spliced = body.clone();
     let object = spliced.as_object_mut()?;
-    object.shift_remove("cachedContent");
+    remove_preserving_order(object, "cachedContent");
     for key in ["systemInstruction", "tools", "toolConfig"] {
         match cache.get(key) {
             Some(value) => {
                 object.insert(key.to_owned(), value.clone());
             }
             None => {
-                object.shift_remove(key);
+                remove_preserving_order(object, key);
             }
         }
     }
@@ -455,7 +456,7 @@ fn finished_turn_lost_its_signatures(
     let mut removed = false;
     for part in parts {
         if let Some(part) = part.as_object_mut() {
-            removed |= part.shift_remove("thoughtSignature").is_some();
+            removed |= remove_preserving_order(part, "thoughtSignature").is_some();
         }
     }
     let user_text_follows = later_blocks

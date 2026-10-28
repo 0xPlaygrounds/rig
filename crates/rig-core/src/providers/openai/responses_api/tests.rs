@@ -131,6 +131,52 @@ fn weather_tool_request() -> completion::CompletionRequest {
 }
 
 #[test]
+fn responses_http_serializes_input_and_output_cap_last() -> anyhow::Result<()> {
+    use crate::completion::{GenerationOptions, OnUnsupported};
+    use crate::wire::{Body, Mode, Wire};
+    use anyhow::Context;
+
+    for mode in [Mode::Unary, Mode::Streaming] {
+        for cap in [None, Some(73)] {
+            let mut request = completion::CompletionRequest::new("turn")
+                .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+            let mut raw = Map::from_iter([
+                ("zzz_order_sentinel".to_owned(), json!("stable")),
+                ("stream".to_owned(), json!(false)),
+            ]);
+            if let Some(cap) = cap {
+                request.max_tokens = Some(50);
+                raw.insert("max_output_tokens".to_owned(), json!(cap));
+            }
+            request.additional_params = Some(Value::Object(raw));
+            let encoded = openai_wire("gpt-4o").encode(request, mode)?;
+            let Body::Bytes(bytes) = encoded.request.into_body() else {
+                anyhow::bail!("Responses must send JSON bytes");
+            };
+            let text = std::str::from_utf8(&bytes)?;
+            let (stable, tail) = text.split_once("\"input\":").context("input field")?;
+            anyhow::ensure!(
+                stable.contains("\"zzz_order_sentinel\":\"stable\""),
+                "{text}"
+            );
+            anyhow::ensure!(stable.contains("\"model\":\"gpt-4o\""), "{text}");
+            let parsed: Value = serde_json::from_slice(&bytes)?;
+            let input = serde_json::to_string(parsed.get("input").context("input value")?)?;
+            let expected = match cap {
+                Some(cap) => format!("{input},\"max_output_tokens\":{cap}}}"),
+                None => format!("{input}}}"),
+            };
+            anyhow::ensure!(tail == expected, "unexpected tail: {text}");
+            anyhow::ensure!(
+                stable.contains("\"stream\":true") == (mode == Mode::Streaming),
+                "unexpected stream mode: {text}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn responses_tool_choice_modes_serialize_as_plain_strings() {
     for (choice, expected) in [
         (message::ToolChoice::Auto, json!("auto")),

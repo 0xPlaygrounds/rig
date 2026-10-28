@@ -17,6 +17,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::completion::{FinishReason, Usage};
 use rig_core::error::ProviderError;
 use rig_core::json_utils::Lenient;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::{
     DocumentRange, DocumentSourceKind, Image, ImageMediaType, Source, SourceLocation,
 };
@@ -335,7 +336,7 @@ impl StreamState {
             if let Some(field) = started {
                 let mut opened = body.clone();
                 if let Value::Object(fields) = &mut opened {
-                    fields.shift_remove(field);
+                    remove_preserving_order(fields, field);
                 }
                 self.start(&mut out, index, &json!({ kind: opened }))?;
             }

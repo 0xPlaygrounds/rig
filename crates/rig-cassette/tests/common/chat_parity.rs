@@ -16,6 +16,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use rig_core::json_utils::remove_preserving_order;
+
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -540,7 +542,8 @@ pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
             .filter(|delta| !delta.is_empty())
             .map(Value::Object),
     );
-    if let Some(Value::Array(details)) = message.shift_remove("reasoning_details") {
+    if let Some(Value::Array(details)) = remove_preserving_order(&mut message, "reasoning_details")
+    {
         deltas.extend(
             details
                 .into_iter()
@@ -551,7 +554,7 @@ pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
         deltas.extend(halves(text).map(|piece| json!({ "content": piece })));
         text.clear();
     }
-    if let Some(Value::Array(calls)) = message.shift_remove("tool_calls") {
+    if let Some(Value::Array(calls)) = remove_preserving_order(&mut message, "tool_calls") {
         for (index, call) in calls.into_iter().enumerate() {
             let mut opening = call.clone();
             opening["index"] = json!(index);

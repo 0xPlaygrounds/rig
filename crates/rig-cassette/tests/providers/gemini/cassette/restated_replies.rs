@@ -6,6 +6,7 @@
 use rig::providers::gemini::GeminiConfig;
 use rig::providers::gemini::completion::GenerateContent;
 use rig::wire::WireFrame;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::test_utils::history::{assert_restated_agrees, decode};
 use rig_core::wire::Mode;
 use serde_json::{Map, Value, json};
@@ -19,8 +20,7 @@ fn restated(reply: &Value) -> Vec<WireFrame> {
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    let parts = candidate
-        .shift_remove("content")
+    let parts = remove_preserving_order(&mut candidate, "content")
         .and_then(|content| content.get("parts").cloned())
         .and_then(|parts| parts.as_array().cloned())
         .unwrap_or_default();
@@ -48,7 +48,7 @@ fn restated(reply: &Value) -> Vec<WireFrame> {
     }
     let envelope = |candidate: Value| {
         let mut chunk = reply.as_object().cloned().unwrap_or_default();
-        chunk.shift_remove("usageMetadata");
+        remove_preserving_order(&mut chunk, "usageMetadata");
         chunk.insert("candidates".to_owned(), json!([candidate]));
         chunk
     };

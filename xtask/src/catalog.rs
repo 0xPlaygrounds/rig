@@ -508,9 +508,9 @@ fn pin(rows: &mut Rows, review: &Rows) {
             let facts = row.get_mut("rig").and_then(Value::as_object_mut);
             match (facts, pinned.is_empty()) {
                 (Some(facts), true) => {
-                    facts.shift_remove("pinned");
+                    facts.retain(|candidate, _| candidate != "pinned");
                     if facts.is_empty() {
-                        row.shift_remove("rig");
+                        row.retain(|candidate, _| candidate != "rig");
                     }
                 }
                 (None, true) => {}
@@ -627,7 +627,7 @@ fn apply(rows: &mut Rows, review: &Rows) -> Result<(), String> {
             let mut row = Value::Object(base);
             let mut over = reviewed.clone();
             for key in REVIEW_KEYS {
-                over.shift_remove(key);
+                over.retain(|candidate, _| candidate != key);
             }
             merge(&mut row, Value::Object(over));
             if let Value::Object(row) = row {

@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn remove_preserving_order_keeps_remaining_entries_in_original_order() {
+    let mut map: serde_json::Map<String, serde_json::Value> = [
+        ("z", serde_json::json!(1)),
+        ("m", serde_json::json!({"nested": [2, 3]})),
+        ("a", serde_json::Value::Null),
+        ("y", serde_json::json!(4)),
+    ]
+    .into_iter()
+    .map(|(key, value)| (key.to_owned(), value))
+    .collect();
+    let expected: Vec<_> = map
+        .iter()
+        .filter(|(key, _)| key.as_str() != "m")
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+
+    assert_eq!(
+        remove_preserving_order(&mut map, "m"),
+        Some(serde_json::json!({"nested": [2, 3]}))
+    );
+    assert_eq!(map.into_iter().collect::<Vec<_>>(), expected);
+}
+
+#[test]
+fn remove_preserving_order_distinguishes_missing_and_null_values() {
+    let mut map = serde_json::Map::new();
+    map.insert("z".to_owned(), serde_json::json!(1));
+    map.insert("a".to_owned(), serde_json::Value::Null);
+    let before: Vec<_> = map.clone().into_iter().collect();
+
+    assert_eq!(remove_preserving_order(&mut map, "missing"), None);
+    assert_eq!(map.clone().into_iter().collect::<Vec<_>>(), before);
+    assert_eq!(
+        remove_preserving_order(&mut map, "a"),
+        Some(serde_json::Value::Null)
+    );
+    assert_eq!(remove_preserving_order(&mut map, "a"), None);
+}
+
+#[test]
 fn test_merge_inplace() {
     let mut a = serde_json::json!({"key1": "value1"});
     let b = serde_json::json!({"key2": "value2"});

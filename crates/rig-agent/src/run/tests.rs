@@ -1,5 +1,6 @@
 use super::*;
 use rig_core::conversation::Author;
+use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
 use serde_json::json;
@@ -1061,11 +1062,13 @@ fn raw_round_trips_and_a_missing_key_is_refused() {
     assert_eq!(restored.raw, raw);
 
     let mut without_raw = value;
-    without_raw
-        .as_object_mut()
-        .expect("turn serializes as an object")
-        .shift_remove("raw")
-        .expect("the raw key was present");
+    remove_preserving_order(
+        without_raw
+            .as_object_mut()
+            .expect("turn serializes as an object"),
+        "raw",
+    )
+    .expect("the raw key was present");
     let error = serde_json::from_value::<ModelTurn>(without_raw)
         .expect_err("a turn without a raw key is refused");
     assert!(error.to_string().contains("raw"), "{error}");
@@ -1076,11 +1079,11 @@ fn raw_round_trips_and_a_missing_key_is_refused() {
     let restored: CompletionCall =
         serde_json::from_value(value.clone()).expect("call should deserialize");
     assert_eq!(restored, call);
-    value
-        .as_object_mut()
-        .expect("call serializes as an object")
-        .shift_remove("raw")
-        .expect("the raw key was present");
+    remove_preserving_order(
+        value.as_object_mut().expect("call serializes as an object"),
+        "raw",
+    )
+    .expect("the raw key was present");
     let error = serde_json::from_value::<CompletionCall>(value)
         .expect_err("a call without a raw key is refused");
     assert!(error.to_string().contains("raw"), "{error}");
@@ -2053,7 +2056,7 @@ fn forge_exec_call(step: &AgentRunStep) -> ExecCall {
     let mut value = serde_json::to_value(step).expect("the step serializes");
     let call = value["CallTools"]["calls"][0]
         .as_object_mut()
-        .and_then(|call| call.shift_remove("Malformed"))
+        .and_then(|call| remove_preserving_order(call, "Malformed"))
         .expect("the first call is malformed");
     value["CallTools"]["calls"][0] = json!({ "Execute": call });
     match serde_json::from_value(value).expect("the forged step deserializes") {

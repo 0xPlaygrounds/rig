@@ -78,17 +78,27 @@ fn problems_are_reported_at_their_pointers() {
     let value = json!({"limit": -1.5, "mode": "slow",
         "edits": [{"old_text": 3, "new_text": "b", "extra": true}],
         "first": "a"});
-    assert_eq!(
-        problems(&schema, &value),
-        [
-            "/limit: expected an integer, got a number with a fraction",
-            "/mode: expected one of \"fast\", \"careful\", got \"slow\"",
-            "/edits/0/old_text: expected a string, got a number",
-            "/edits/0/extra: not allowed; the keys are `old_text`, `new_text`",
-            "/first: expected an object, got a string",
-            "/path: missing",
-        ]
-    );
+    let edit = args_schema::<Edit>();
+    let allowed = edit
+        .get("properties")
+        .and_then(Value::as_object)
+        .expect("edit properties")
+        .keys()
+        .map(|key| format!("`{key}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut found = problems(&schema, &value);
+    found.sort();
+    let mut expected = vec![
+        "/limit: expected an integer, got a number with a fraction".to_owned(),
+        "/mode: expected one of \"fast\", \"careful\", got \"slow\"".to_owned(),
+        "/edits/0/old_text: expected a string, got a number".to_owned(),
+        format!("/edits/0/extra: not allowed; the keys are {allowed}"),
+        "/first: expected an object, got a string".to_owned(),
+        "/path: missing".to_owned(),
+    ];
+    expected.sort();
+    assert_eq!(found, expected,);
     let bounded = json!({"type": "array", "maxItems": 1,
         "items": {"type": "string", "minLength": 2}});
     assert_eq!(

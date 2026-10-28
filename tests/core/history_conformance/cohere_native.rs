@@ -3,6 +3,7 @@
 //! plan and each call are blocks whose items hold the citations that point
 //! at them.
 
+use rig::json_utils::remove_preserving_order;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::{AssistantContent, AssistantMessage};
@@ -250,7 +251,7 @@ impl HistoryFixture for CohereNativeHistory {
                 let mut part = item.clone();
                 let citations = part
                     .as_object_mut()
-                    .and_then(|part| part.shift_remove("citations"))
+                    .and_then(|part| remove_preserving_order(part, "citations"))
                     .unwrap_or_else(|| json!([]));
                 json!({"role": "assistant", "content": [part], "citations": citations})
             }
@@ -311,7 +312,7 @@ pub fn projection(turn: &AssistantMessage) -> Value {
             Some(Value::Object(item)) => item.clone(),
             _ => Map::new(),
         };
-        let cited = match item.shift_remove("citations") {
+        let cited = match remove_preserving_order(&mut item, "citations") {
             Some(Value::Array(cited)) => cited,
             _ => Vec::new(),
         };

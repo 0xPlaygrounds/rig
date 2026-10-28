@@ -16,6 +16,7 @@ use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
 use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, Replay};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{
     AssistantContent, AssistantMessage, DocumentData, DocumentMediaType,
     DocumentSourceKind as Source, Message, MimeType, ToolCall, ToolResult, ToolResultContent,
@@ -669,7 +670,7 @@ fn finalize_deepseek(map: &mut Map<String, Value>) {
         tracing::debug!(
             "dropping tool_choice: DeepSeek rejects a forced tool choice while thinking"
         );
-        map.shift_remove("tool_choice");
+        remove_preserving_order(map, "tool_choice");
     }
 }
 
@@ -1561,7 +1562,7 @@ impl ChatDecoder {
             if let (Value::Object(item), Some(fields)) = (item, call.as_object()) {
                 merge_fields(item, fields);
                 // The index orders the stream; the call it assembles has none.
-                item.shift_remove("index");
+                remove_preserving_order(item, "index");
             }
         })
     }

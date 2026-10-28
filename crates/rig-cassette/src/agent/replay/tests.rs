@@ -37,6 +37,57 @@ use rig_core::{
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
+async fn stored_float_calls_replay_with_their_native_items() {
+    use rig_core::message::{ToolCall, ToolFunction, ToolName};
+    use rig_core::test_utils::MockTurn;
+
+    let block = AssistantContent::ToolCall(ToolCall::from_wire(
+        "call_1",
+        ToolFunction::new(
+            ToolName::new("measure").expect("tool name"),
+            json!({"value": 2.003_039_774_426_776_2e-253}),
+        ),
+    ))
+    .with_native(json!({"id": "fc_1", "signature": "provider-state"}));
+    let handlers = Handlers::default();
+    handlers
+        .register(
+            "model",
+            ModelAdapter::new(
+                "mock",
+                MockCompletionModel::from_turns([MockTurn::from_content(block)]),
+            ),
+        )
+        .expect("register");
+    let recorder = EffectLogRecorder::new();
+    handlers.record_to(recorder.clone());
+    within(handlers.dispatch(&HandlerKey::from("model"), completion_kind(false)))
+        .await
+        .expect("record completion");
+    let mut log = recorder.take();
+    for _ in 0..4 {
+        log = serde_json::from_str(&serde_json::to_string(&log).expect("save log"))
+            .expect("load log");
+        let replay = Handlers::default();
+        super::register_all(&log, &replay).expect("register replay");
+        let answer = within(replay.dispatch(&HandlerKey::from("model"), completion_kind(false)))
+            .await
+            .expect("replay completion");
+        let Answered::Completion(response) = answer else {
+            panic!("replay returns a completion");
+        };
+        assert_eq!(
+            response
+                .choice
+                .first()
+                .and_then(AssistantContent::native_item)
+                .and_then(|item| item.get("signature")),
+            Some(&json!("provider-state")),
+        );
+    }
+}
+
+#[tokio::test]
 async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
     struct Items(Vec<Result<Relayed, ErrorReport>>);
     impl Serve for Items {

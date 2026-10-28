@@ -34,6 +34,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::completion::{CompletionRequest, ReplayTarget};
+use crate::json_utils::remove_preserving_order;
 use crate::message::Api;
 
 /// The section every route of a provider reads.
@@ -366,7 +367,7 @@ impl ProviderOptions {
         {
             for section in sections {
                 if let Some(Value::Object(fields)) = entry.get_mut(*section) {
-                    fields.shift_remove(field);
+                    remove_preserving_order(fields, field);
                 }
             }
         }

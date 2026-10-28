@@ -2,6 +2,7 @@
 //! interaction resource; a streamed one is its `step.*` events, ended by
 //! `interaction.completed`.
 
+use rig::json_utils::remove_preserving_order;
 use rig_core::completion::CompletionRequest;
 use rig_core::error::EncodeError;
 use rig_core::message::AssistantContent;
@@ -116,7 +117,7 @@ fn step_events(index: usize, step: &Value) -> Vec<Value> {
         "model_output" => {
             let mut opening = step.clone();
             if let Some(fields) = opening.as_object_mut() {
-                fields.shift_remove("content");
+                remove_preserving_order(fields, "content");
             }
             let mut events = vec![start(opening)];
             for item in step["content"].as_array().into_iter().flatten() {
@@ -241,7 +242,7 @@ impl HistoryFixture for InteractionsHistory {
             if status.is_empty()
                 && let Some(fields) = document.as_object_mut()
             {
-                fields.shift_remove("status");
+                remove_preserving_order(fields, "status");
             }
             vec![frame(document)]
         };

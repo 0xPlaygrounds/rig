@@ -72,6 +72,87 @@ fn assert_response_create(payload: &str) {
 }
 
 #[tokio::test]
+async fn websocket_serializes_input_and_output_cap_last() -> anyhow::Result<()> {
+    use anyhow::Context;
+    use rig_core::completion::{GenerationOptions, OnUnsupported};
+    use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketCreateOptions;
+
+    for generate in [None, Some(false)] {
+        for cap in [None, Some(73)] {
+            let script = Script::turn([]);
+            let client = test_client();
+            let mut session = session(&client, &script);
+            let mut request = CompletionRequest::new("turn")
+                .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+            let mut raw = serde_json::Map::from_iter([
+                ("zzz_order_sentinel".to_owned(), json!("stable")),
+                ("stream".to_owned(), json!(true)),
+                ("background".to_owned(), json!(true)),
+                ("generate".to_owned(), json!(true)),
+            ]);
+            if let Some(cap) = cap {
+                request.max_tokens = Some(50);
+                raw.insert("max_output_tokens".to_owned(), json!(cap));
+            }
+            request.additional_params = Some(serde_json::Value::Object(raw));
+            session
+                .send_with_options(request, ResponsesWebSocketCreateOptions { generate })
+                .await?;
+            let sent = script.sent();
+            let text = sent.first().context("response.create frame")?;
+            let (stable, tail) = text.split_once("\"input\":").context("input field")?;
+            anyhow::ensure!(stable.contains("\"type\":\"response.create\""), "{text}");
+            anyhow::ensure!(
+                stable.contains("\"zzz_order_sentinel\":\"stable\""),
+                "{text}"
+            );
+            anyhow::ensure!(
+                stable.contains("\"generate\":false") == generate.is_some(),
+                "unexpected generate option: {text}"
+            );
+            anyhow::ensure!(!text.contains("\"stream\":"), "{text}");
+            anyhow::ensure!(!text.contains("\"background\":"), "{text}");
+            let parsed: serde_json::Value = serde_json::from_str(text)?;
+            anyhow::ensure!(
+                parsed.get("generate") == Some(&json!(generate.unwrap_or(true))),
+                "unexpected generate precedence: {text}"
+            );
+            anyhow::ensure!(text.matches("\"generate\":").count() == 1, "{text}");
+            let input = serde_json::to_string(parsed.get("input").context("input value")?)?;
+            let expected = match cap {
+                Some(cap) => format!("{input},\"max_output_tokens\":{cap}}}"),
+                None => format!("{input}}}"),
+            };
+            anyhow::ensure!(tail == expected, "unexpected tail: {text}");
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_warmup_handles_empty_and_conflicting_raw_parameters() -> anyhow::Result<()> {
+    use anyhow::Context;
+    use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketCreateOptions;
+
+    for raw in [None, Some(json!(null)), Some(json!({"generate": true}))] {
+        let script = Script::turn([]);
+        let client = test_client();
+        let mut session = session(&client, &script);
+        let mut request = CompletionRequest::new("warmup");
+        request.additional_params = raw;
+        session
+            .send_with_options(request, ResponsesWebSocketCreateOptions::warmup())
+            .await?;
+        let sent = script.sent();
+        let text = sent.first().context("warmup frame")?;
+        let parsed: serde_json::Value = serde_json::from_str(text)?;
+        anyhow::ensure!(parsed.get("generate") == Some(&json!(false)), "{text}");
+        anyhow::ensure!(text.matches("\"generate\":").count() == 1, "{text}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn event_timeout_rejects_reuse_and_allows_close() {
     // A turn that is accepted and then goes quiet: only the event timeout ends
     // the wait.

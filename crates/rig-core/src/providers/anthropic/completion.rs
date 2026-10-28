@@ -27,6 +27,7 @@ use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_p
 use crate::completion::{self, CompletionRequest, Replay};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{
     self, AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind, ImageMediaType,
     Message, ToolResultContent, UserContent,
@@ -334,7 +335,10 @@ fn base(
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
         ("max_tokens", Some(json!(max_tokens))),
-        ("system", (!system.is_empty()).then(|| Value::Array(system))),
+        (
+            "system",
+            (!system.is_empty()).then_some(Value::Array(system)),
+        ),
         (
             "temperature",
             request.temperature.map(|temperature| json!(temperature)),
@@ -343,7 +347,7 @@ fn base(
             "tool_choice",
             request.tool_choice.clone().map(tool_choice).transpose()?,
         ),
-        ("tools", has_tools.then(|| Value::Array(tools))),
+        ("tools", has_tools.then_some(Value::Array(tools))),
         ("output_config", output_config),
         ("container", container.map(Value::String)),
     ]))
@@ -491,7 +495,7 @@ pub(super) fn assistant_part(
             {
                 // Token estimates are response metadata, not accepted thinking inputs.
                 // Keep the signed text and signature unchanged, including in saved history.
-                fields.shift_remove("estimated_tokens");
+                remove_preserving_order(fields, "estimated_tokens");
             }
             return Some(item);
         }
@@ -891,7 +895,7 @@ fn apply_cache_control(
 ) -> Result<(), EncodeError> {
     for tool in tools.iter_mut().filter_map(Value::as_object_mut) {
         if tool.get("cache_control").is_some_and(Value::is_null) {
-            tool.shift_remove("cache_control");
+            remove_preserving_order(tool, "cache_control");
         }
     }
     let budget = MAX_CACHE_CONTROL_MARKERS - usize::from(top.is_some());
@@ -1018,7 +1022,7 @@ pub(super) fn sanitize_strict_tool_schema(schema: &mut Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
     if let Value::Object(root) = &mut original {
-        if let Some(all_of) = root.shift_remove("allOf") {
+        if let Some(all_of) = remove_preserving_order(root, "allOf") {
             let mut conflicts = Map::new();
             merge_all_of(root, all_of, &mut conflicts);
             if !conflicts.is_empty() {
@@ -1072,10 +1076,13 @@ fn inline_local_root_reference(schema: &mut Value) {
         if !seen.insert(reference) {
             return;
         }
-        root.shift_remove("$ref");
+        remove_preserving_order(&mut root, "$ref");
         for keyword in DEFINITIONS {
-            if let Some(definitions) = root.shift_remove(keyword) {
-                let merged = merge_definitions(definitions, referenced.shift_remove(keyword));
+            if let Some(definitions) = remove_preserving_order(&mut root, keyword) {
+                let merged = merge_definitions(
+                    definitions,
+                    remove_preserving_order(&mut referenced, keyword),
+                );
                 referenced.insert(keyword.into(), merged);
             }
         }
@@ -1149,7 +1156,10 @@ fn merge_all_of(
         if branch.contains_key("$ref") {
             for keyword in DEFINITIONS {
                 if let Some(definitions) = schema.get(keyword).cloned() {
-                    let merged = merge_definitions(definitions, branch.shift_remove(keyword));
+                    let merged = merge_definitions(
+                        definitions,
+                        remove_preserving_order(&mut branch, keyword),
+                    );
                     branch.insert(keyword.into(), merged);
                 }
             }
@@ -1177,7 +1187,7 @@ fn merge_properties(schema: &mut Map<String, Value>, sibling: Value) {
         return;
     };
     for (name, sibling) in siblings {
-        let merged = match properties.shift_remove(&name) {
+        let merged = match remove_preserving_order(properties, &name) {
             None => sibling,
             Some(existing) if existing == sibling => existing,
             Some(existing) => json!({ "allOf": [existing, sibling] }),
@@ -1219,7 +1229,7 @@ fn strict_schema(schema: Value) -> Value {
     };
     let mut strict = Map::new();
     for keyword in DEFINITIONS {
-        match source.shift_remove(keyword) {
+        match remove_preserving_order(&mut source, keyword) {
             Some(Value::Object(definitions)) => {
                 strict.insert(keyword.into(), each(definitions));
             }
@@ -1229,20 +1239,20 @@ fn strict_schema(schema: Value) -> Value {
             None => {}
         }
     }
-    if let Some(reference) = source.shift_remove("$ref") {
+    if let Some(reference) = remove_preserving_order(&mut source, "$ref") {
         strict.insert("$ref".into(), reference);
         return Value::Object(strict);
     }
-    let kind = source.shift_remove("type");
+    let kind = remove_preserving_order(&mut source, "type");
     let is = |expected: &str| match &kind {
         Some(Value::String(kind)) => kind == expected,
         Some(Value::Array(kinds)) => kinds.iter().any(|kind| kind.as_str() == Some(expected)),
         _ => false,
     };
     let alternatives = match (
-        source.shift_remove("anyOf"),
-        source.shift_remove("oneOf"),
-        source.shift_remove("allOf"),
+        remove_preserving_order(&mut source, "anyOf"),
+        remove_preserving_order(&mut source, "oneOf"),
+        remove_preserving_order(&mut source, "allOf"),
     ) {
         (Some(Value::Array(variants)), _, _) | (_, Some(Value::Array(variants)), _) => {
             Some(("anyOf", variants))
@@ -1260,14 +1270,14 @@ fn strict_schema(schema: Value) -> Value {
         }
         (None, None) => {}
     }
-    if let Some(Value::Array(values)) = source.shift_remove("enum") {
+    if let Some(Value::Array(values)) = remove_preserving_order(&mut source, "enum") {
         strict.insert("enum".into(), Value::Array(values));
     }
-    if let Some(constant) = source.shift_remove("const") {
+    if let Some(constant) = remove_preserving_order(&mut source, "const") {
         strict.insert("const".into(), constant);
     }
     for keyword in ["description", "title"] {
-        if let Some(Value::String(value)) = source.shift_remove(keyword) {
+        if let Some(Value::String(value)) = remove_preserving_order(&mut source, keyword) {
             strict.insert(keyword.into(), Value::String(value));
         }
     }
@@ -1276,19 +1286,19 @@ fn strict_schema(schema: Value) -> Value {
         strict.insert("type".into(), json!("object"));
     }
     if is("object") || has_properties {
-        let properties = match source.shift_remove("properties") {
+        let properties = match remove_preserving_order(&mut source, "properties") {
             Some(Value::Object(properties)) => each(properties),
             _ => json!({}),
         };
         strict.insert("properties".into(), properties);
-        source.shift_remove("additionalProperties");
+        remove_preserving_order(&mut source, "additionalProperties");
         strict.insert("additionalProperties".into(), Value::Bool(false));
-        if let Some(Value::Array(required)) = source.shift_remove("required") {
+        if let Some(Value::Array(required)) = remove_preserving_order(&mut source, "required") {
             strict.insert("required".into(), Value::Array(required));
         }
     }
     if is("string")
-        && let Some(format) = source.shift_remove("format")
+        && let Some(format) = remove_preserving_order(&mut source, "format")
     {
         if format
             .as_str()
@@ -1300,10 +1310,10 @@ fn strict_schema(schema: Value) -> Value {
         }
     }
     if is("array") {
-        if let Some(items) = source.shift_remove("items") {
+        if let Some(items) = remove_preserving_order(&mut source, "items") {
             strict.insert("items".into(), strict_schema(items));
         }
-        if let Some(min_items) = source.shift_remove("minItems") {
+        if let Some(min_items) = remove_preserving_order(&mut source, "minItems") {
             if matches!(min_items.as_u64(), Some(0 | 1)) {
                 strict.insert("minItems".into(), min_items);
             } else {

@@ -13,9 +13,17 @@
 //! ```toml
 //! [dependencies]
 //! rig = { version = "*", features = ["lancedb", "fastembed"] }
+//! serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 //! ```
 //!
 //! Depend on `rig-core` directly to skip this facade's companion integrations.
+//! Core does not force serde_json's `preserve_order` or `float_roundtrip`; the
+//! application dependency above restores the previous configuration. Without
+//! those features, schema properties and JSON text in prompts, embeddings and
+//! tool results use sorted object keys, and parsed floats can differ in their
+//! low bits. Cargo unifies features: `rig-cassette` with `traffic` (including
+//! `rig-traffic`) enables both; `rig-claude-cloak` and `rig-mongodb` through BSON
+//! enable `preserve_order`. Rig has no forwarding feature for either setting.
 
 pub use rig_core::*;
 

@@ -10,6 +10,7 @@
 use serde_json::{Map, Value};
 
 use super::{CallKind, ChatEvent, REASONING_DETAILS, merge_details};
+use crate::json_utils::remove_preserving_order;
 use crate::wire::document::{Reassemble, keep};
 
 /// The unary document's tag.
@@ -350,7 +351,7 @@ fn finish_message(message: &mut Map<String, Value>) {
     let mut called = false;
     if let Some(Value::Array(calls)) = message.get_mut("tool_calls") {
         for call in calls.iter_mut().filter_map(Value::as_object_mut) {
-            call.shift_remove("index");
+            remove_preserving_order(call, "index");
         }
         called = !calls.is_empty();
     }

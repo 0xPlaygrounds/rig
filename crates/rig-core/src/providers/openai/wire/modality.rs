@@ -1253,7 +1253,7 @@ impl Wire for Speech {
             && let Some(serde_json::Value::Object(caller)) = params.get("voice_setting")
         {
             derived.extend(caller.clone());
-            params.shift_remove("voice_setting");
+            crate::json_utils::remove_preserving_order(params, "voice_setting");
         }
         // Caller parameters take precedence, including response format and instructions.
         if let Some(additional_params) = additional_params {

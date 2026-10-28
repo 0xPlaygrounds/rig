@@ -40,6 +40,7 @@ use std::io::{IsTerminal, Read, Write};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
+use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::edit_distance;
@@ -1577,8 +1578,8 @@ fn request(
 /// The request a line of this version holds, or why it is refused.
 fn versioned(mut value: Value) -> Result<Request, String> {
     let fields = value.as_object_mut().ok_or("a request is a JSON object")?;
-    let version = fields.shift_remove("v");
-    fields.shift_remove("id");
+    let version = remove_preserving_order(fields, "v");
+    remove_preserving_order(fields, "id");
     match version.as_ref().and_then(Value::as_u64) {
         Some(VERSION) => {}
         Some(newer) if newer > VERSION => {

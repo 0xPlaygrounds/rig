@@ -35,6 +35,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use rig_core::json_utils::remove_preserving_order;
+
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -685,7 +687,7 @@ fn replayed_call(call: &Value, text: bool, keep_index: bool) -> Value {
     if let Some(fields) = call.as_object_mut()
         && !keep_index
     {
-        fields.shift_remove("index");
+        remove_preserving_order(fields, "index");
     }
     if call.get("type").and_then(Value::as_str) != Some("custom") {
         let arguments = canonical_arguments(call.pointer("/function/arguments"), text);

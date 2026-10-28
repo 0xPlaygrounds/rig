@@ -1244,9 +1244,16 @@ fn assistant<'a>(
                             let id = id.into_owned();
                             let renamed = crate::message::ToolCall { id, ..call.clone() };
                             let mut renamed = AssistantContent::ToolCall(renamed);
-                            let fingerprint = renamed.fingerprint();
-                            if let Some(Some(native)) = renamed.native_slot().filter(|_| keep) {
-                                native.fingerprint = fingerprint;
+                            if keep
+                                && let Some(native) = renamed.native_slot().and_then(Option::take)
+                            {
+                                let blob_slot = native.blob_slot;
+                                renamed = renamed.with_native(native.item);
+                                if let Some(Some(native)) = renamed.native_slot() {
+                                    native.blob_slot = blob_slot;
+                                }
+                            } else if let Some(Some(native)) = renamed.native_slot() {
+                                native.edited = true;
                             }
                             Cow::Owned(renamed)
                         }

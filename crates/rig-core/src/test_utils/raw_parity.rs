@@ -22,6 +22,7 @@ use serde_json::Value;
 use crate::completion::CompletionRequest;
 use crate::driver::{Model, Transport};
 use crate::error::ProviderError;
+use crate::json_utils::remove_preserving_order;
 use crate::operation::Completion;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::Wire;
@@ -50,7 +51,7 @@ fn remove(document: &mut Value, pointer: &str) {
     let key = key.replace("~1", "/").replace("~0", "~");
     match document.pointer_mut(parent) {
         Some(Value::Object(map)) => {
-            map.shift_remove(&key);
+            remove_preserving_order(map, &key);
         }
         Some(Value::Array(items)) => {
             if let Ok(index) = key.parse::<usize>()

@@ -22,6 +22,7 @@ use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
 use crate::completion::{CompletionRequest, Document, ProviderCapabilities, Replay};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
+use crate::json_utils::remove_preserving_order;
 use crate::message::{
     AssistantContent, AssistantMessage, DocumentData, DocumentSourceKind as Source, Message,
     MimeType, ToolChoice, ToolResult, ToolResultContent, UserContent,
@@ -208,7 +209,7 @@ impl NativeChat {
                 },
                 Replay::Identity(_) | Replay::Rebuild => Map::new(),
             };
-            let cited = match item.shift_remove("citations") {
+            let cited = match remove_preserving_order(&mut item, "citations") {
                 Some(Value::Array(cited)) => cited,
                 _ => Vec::new(),
             };

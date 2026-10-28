@@ -5,6 +5,7 @@
 
 use super::{Interactions, create_request_body};
 use crate::completion::{CompletionRequest, CompletionResponse, ReplayTarget, ToolDefinition};
+use crate::json_utils::remove_preserving_order;
 use crate::message::{
     AssistantContent, CallId, Image, ImageMediaType, Message, StopReason, ToolName, ToolResult,
     ToolResultContent, UserContent,
@@ -92,7 +93,7 @@ fn input_of(target: &Interactions, request: CompletionRequest) -> Vec<Value> {
     .expect("the request is valid");
     let body = create_request_body(target, &request, None).expect("the request builds");
     match serde_json::to_value(body).expect("the body is JSON") {
-        Value::Object(mut body) => match body.shift_remove("input") {
+        Value::Object(mut body) => match remove_preserving_order(&mut body, "input") {
             Some(Value::Array(steps)) => steps,
             other => panic!("the body sends its steps as `input`: {other:?}"),
         },

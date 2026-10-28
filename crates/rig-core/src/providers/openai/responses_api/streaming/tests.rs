@@ -2,6 +2,7 @@ use super::{ResponsesDecoder, classify_responses_payload};
 use crate::completion::CompletionRequest;
 use crate::driver::{Decoded, feed_frames};
 use crate::error::{ErrorKind, ErrorReport};
+use crate::json_utils::remove_preserving_order;
 use crate::message::AssistantContent;
 use crate::operation::Completion;
 use crate::providers::openai::OpenAIConfig;
@@ -761,8 +762,8 @@ fn restated_body(body: &serde_json::Value) -> Vec<serde_json::Value> {
             Some("reasoning") => {
                 added["summary"] = json!([]);
                 if let Some(added) = added.as_object_mut() {
-                    added.shift_remove("content");
-                    added.shift_remove("encrypted_content");
+                    remove_preserving_order(added, "content");
+                    remove_preserving_order(added, "encrypted_content");
                 }
             }
             Some("function_call") => added["arguments"] = json!(""),
@@ -1380,7 +1381,7 @@ fn reasoning_message_and_call_ids_survive_an_edit_of_each_one() {
 fn without_indices(mut events: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
     for event in &mut events {
         if let Some(event) = event.as_object_mut() {
-            event.shift_remove("output_index");
+            remove_preserving_order(event, "output_index");
         }
     }
     events
@@ -1423,7 +1424,7 @@ fn a_stream_without_output_indices_agrees_with_its_whole_reply() {
 fn reasoning_done_without_ciphertext_keeps_its_item_in_a_stream_without_indices() {
     let mut thought = reasoning("rs_1", &["Plan."]);
     if let Some(fields) = thought.as_object_mut() {
-        fields.shift_remove("encrypted_content");
+        remove_preserving_order(fields, "encrypted_content");
     }
     let output = [thought.clone(), message("msg_1", "Hello")];
     let response = decode(Mode::Streaming, frames(&without_indices(restated(&output))));
@@ -1513,7 +1514,7 @@ fn response_incomplete_is_incomplete_whatever_its_status_says() {
             Some(status) => response["status"] = json!(status),
             None => {
                 if let Some(fields) = response.as_object_mut() {
-                    fields.shift_remove("status");
+                    remove_preserving_order(fields, "status");
                 }
             }
         }
