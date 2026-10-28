@@ -467,7 +467,7 @@ fn each_start_says_why_it_started() {
         let agent = format!(
             "#!/bin/sh
 echo \"$RIG_START\" >> \"$RIG_HOME/starts\"
-case $(wc -l < \"$RIG_HOME/starts\") in
+case $(( $(wc -l < \"$RIG_HOME/starts\") )) in
 1) touch \"$RIG_RUN/ready\"; exit 75 ;;
 2) touch \"$RIG_RUN/ready\"; cp \"$0\" {staged}; : > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"; exit 75 ;;
 3) exit 1 ;;
@@ -513,7 +513,7 @@ fn a_one_shot_run_that_reloads_carries_on_without_its_prompt() {
         let agent = format!(
             "#!/bin/sh
 echo \"$RIG_START $*\" >> \"$RIG_HOME/starts\"
-case $(wc -l < \"$RIG_HOME/starts\") in
+case $(( $(wc -l < \"$RIG_HOME/starts\") )) in
 1) touch \"$RIG_RUN/ready\"; cp \"$0\" {staged}; exit 75 ;;
 2) exit 1 ;;
 esac
