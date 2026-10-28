@@ -317,12 +317,20 @@ fn tilde_is_the_home_directory() {
     let mut everywhere = SearchArgs::new("home");
     everywhere.path = Some("~/notes".into());
     let (found, _) = call(&Search::default(), everywhere);
-    let found = found.unwrap_or_default();
+    // From a base the home is under, a `~` path is still shown whole.
+    let above = Search {
+        base: home.parent().map(Path::to_path_buf),
+        ..Search::default()
+    };
+    let mut from_above = SearchArgs::new("home");
+    from_above.path = Some("~/notes".into());
+    let (above, _) = call(&above, from_above);
+    let b = home.join("notes/b.txt").display().to_string();
     assert!(wrote.is_ok() && home.join("notes/b.txt").is_file());
-    assert!(
-        found.contains(&home.join("notes/b.txt").display().to_string()),
-        "{found}"
-    );
+    for found in [found, above] {
+        let found = found.unwrap_or_default();
+        assert!(found.lines().any(|line| line.starts_with(&b)), "{found}");
+    }
 
     let confined = Write {
         confine: true,

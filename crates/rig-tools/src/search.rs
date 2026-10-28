@@ -26,8 +26,8 @@ const MAX_LINE: usize = 300;
 /// Searches file contents with a regular expression, honouring
 /// `.gitignore`, or lists the files with a match, or every file. Shows each
 /// path as `read` takes it from the same base: below the base when the
-/// searched path is relative or not given and the file is under the base,
-/// absolute otherwise.
+/// searched path is relative or not given, absolute when it is absolute or
+/// starts with `~`.
 /// Publishes what it found ([`SearchHits`]) and the files it found matches
 /// in ([`FilesRead`]), by their [resolved](Workspace) paths.
 #[derive(Clone, Debug)]
@@ -36,7 +36,7 @@ pub struct Search {
     pub workspace: Arc<dyn Workspace>,
     /// The directory searched, and a relative path is searched from;
     /// `None` is the workspace's working directory. Hits of a relative
-    /// path under it are shown, and published, by their paths below it.
+    /// path are shown, and published, by their paths below it.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is searched.
@@ -186,7 +186,7 @@ impl Tool for Search {
              files, only the paths of the files with a match, one per line, at most \
              {MAX_FILES}, and with files and an empty pattern every file. Each path is one \
              `read` takes: relative to the current directory when path is relative or not \
-             given, absolute when path is absolute. Use it to find code, not `grep` or `rg` in \
+             given, absolute when path is absolute or starts with `~`. Use it to find code, not `grep` or `rg` in \
              `shell`, and with files and an empty pattern to list files, not `ls` or `find`."
         )
     }
@@ -220,7 +220,10 @@ impl Tool for Search {
             self.base.as_deref().unwrap_or(Path::new("")),
             Path::new(path),
         );
-        let base = self.base.clone().filter(|_| Path::new(path).is_relative());
+        let given = Path::new(path);
+        let base = (given.is_relative() && !given.starts_with("~"))
+            .then(|| self.base.clone())
+            .flatten();
         args.path = Some(joined.to_string_lossy().into_owned());
         let workspace = self.workspace.clone();
         let mut found = blocking(move || find(&*workspace, &args)).await?;
