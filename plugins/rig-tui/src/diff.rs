@@ -149,8 +149,9 @@ fn classify(text: &str) -> Vec<(Kind, String)> {
 /// Whether the line `raw`, with the lines `rest` after it, belongs to a
 /// hunk with `old` and `new` lines left: its sign fits what is left. A
 /// blank line is an empty context line, as `diff.suppressBlankEmpty`
-/// writes one, only when its hunk ends with it or the next line that
-/// isn't blank fits too, so a blank line after a hunk cut short is not.
+/// writes one, only when its hunk ends with it or the blank lines after it,
+/// or the next line that isn't blank fits what is left, so a blank line
+/// after a hunk cut short is not.
 fn fits(raw: &str, rest: &[&str], old: usize, new: usize) -> bool {
     match raw.chars().next() {
         Some('-') => old > 0,
@@ -158,12 +159,10 @@ fn fits(raw: &str, rest: &[&str], old: usize, new: usize) -> bool {
         Some(' ') => old > 0 && new > 0,
         None if old > 0 && new > 0 => {
             let blanks = rest.iter().take_while(|line| line.is_empty()).count();
-            let (old, new) = (old - 1, new - 1);
-            if old.min(new) <= blanks {
-                return old == new;
-            }
-            let next = rest.get(blanks);
-            next.is_some_and(|next| fits(next, &[], old - blanks, new - blanks))
+            let taken = blanks.min(old - 1).min(new - 1);
+            let (old, new) = (old - 1 - taken, new - 1 - taken);
+            let next = rest.get(blanks).filter(|_| taken == blanks);
+            old == 0 && new == 0 || next.is_some_and(|next| fits(next, &[], old, new))
         }
         // `\ No newline at end of file` can come between a hunk's removed
         // and added lines.
