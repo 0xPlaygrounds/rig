@@ -5,6 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
+use rig_harness::rig_tools::workspace::{Local, Workspace};
+
 /// How deep `sh -c`, `eval`, substitutions and shell aliases nest before
 /// the rest is left alone.
 const DEPTH: u8 = 4;
@@ -119,7 +121,7 @@ fn finish(command: &[Word], dir: &mut PathBuf, depth: u8, calls: &mut Vec<GitCal
     match name {
         "cd" | "pushd" => {
             let target = args.first().map_or("~", |word| word.text.as_str());
-            *dir = dir.join(target);
+            *dir = Local.join(dir, Path::new(target));
         }
         "git" => calls.push(GitCall {
             dir: dir.clone(),

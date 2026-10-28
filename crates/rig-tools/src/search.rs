@@ -119,7 +119,8 @@ impl SearchArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hit {
     /// The file, as the walk from the searched path reached it, without a
-    /// leading `./`.
+    /// leading `./` unless it starts with `~`: `./~/notes.md` is a folder
+    /// named `~`, which `~/notes.md` is not.
     #[serde(serialize_with = "lossy")]
     pub path: PathBuf,
     /// The line's number, from 1.

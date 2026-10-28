@@ -938,7 +938,8 @@ impl Job {
 
     /// `path` from the agent's directory when it is inside it.
     fn show_path(&self, path: &Path) -> String {
-        rig_tools::fs::shown(path.strip_prefix(&self.base).unwrap_or(path))
+        path.strip_prefix(&self.base)
+            .unwrap_or(path)
             .display()
             .to_string()
     }

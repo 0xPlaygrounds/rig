@@ -661,7 +661,7 @@ fn describe(hits: &[Hit<'_>]) -> String {
         let snippet: Vec<&str> = hit.chunk.text.lines().take(SNIPPET_LINES).collect();
         format!(
             "{}:{}-{} (score {:.2})\n{}",
-            rig_tools::fs::shown(Path::new(hit.path)).display(),
+            hit.path,
             hit.chunk.start,
             hit.chunk.end,
             hit.score,

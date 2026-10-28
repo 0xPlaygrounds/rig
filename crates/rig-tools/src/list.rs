@@ -100,7 +100,8 @@ pub struct FilesListed {
     /// The listed directory, [resolved](Workspace).
     pub root: String,
     /// The entries shown, below `root`, in order: files, and directories
-    /// deeper than the listing with a trailing `/`.
+    /// deeper than the listing with a trailing `/`. One starting with a
+    /// folder named `~` starts with `./~`.
     pub entries: Vec<String>,
 }
 

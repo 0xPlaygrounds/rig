@@ -247,15 +247,7 @@ pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
 /// `path`, relative to where a tool looked, as the tool shows it: with `./`
 /// in front when its first component is `~`, so that a tool given the
 /// shown path back reaches this file and not one in the home directory.
-///
-/// ```
-/// use std::path::Path;
-/// use rig_tools::fs::shown;
-///
-/// assert_eq!(shown(Path::new("src/lib.rs")), Path::new("src/lib.rs"));
-/// assert_eq!(shown(Path::new("~/notes.md")), Path::new(".").join("~/notes.md"));
-/// ```
-pub fn shown(path: &Path) -> PathBuf {
+pub(crate) fn shown(path: &Path) -> PathBuf {
     match path.starts_with("~") {
         true => Path::new(".").join(path),
         false => path.to_path_buf(),
