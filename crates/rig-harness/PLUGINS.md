@@ -972,7 +972,7 @@ A fixed part of the system prompt is a `PromptSection` entity,
 `SectionOf(agent)` in that agent's alone. The provider caches a conversation
 from its start, so a section whose text changes costs the whole conversation's
 cache once per change: rig's own prompt (rig-basics' `DEFAULT_SYSTEM_PROMPT`)
-never changes, and has no date, paths or instruction files in it. Put what
+never changes, and has no date, paths or instruction file contents in it. Put what
 changes in a message instead,
 `Deliver::new(agent, text, DeliveryMode::Inform)` with
 `.with_author(Author::plugin(name))` (a note without one is the user's, and
