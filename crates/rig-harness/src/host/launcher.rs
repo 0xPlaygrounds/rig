@@ -245,7 +245,11 @@ pub(crate) fn refuse(app: &mut App, why: String) {
         return;
     }
     leave_session(app.world_mut());
-    let stop = if why.ends_with('.') { "" } else { "." };
+    let stop = if why.ends_with(['.', '?', '!']) {
+        ""
+    } else {
+        "."
+    };
     let said = format!("rig: {why}{stop}\n");
     eprint!("{said}");
     if let Some(run) = app.world().get_resource::<LauncherRun>() {

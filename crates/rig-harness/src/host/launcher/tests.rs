@@ -82,8 +82,20 @@ fn a_refusal_is_told_to_the_launcher() {
     refuse(&mut app, "this session is plain".to_owned());
     refuse(&mut app, "said once".to_owned());
     let said = std::fs::read_to_string(run.refusal()).ok();
+    // A question ends the sentence already.
+    let mut asked = App::new();
+    asked.insert_resource(LauncherRun(run.clone()));
+    refuse(
+        &mut asked,
+        "unknown tool `shel`; did you mean `shell`?".to_owned(),
+    );
+    let asked_said = std::fs::read_to_string(run.refusal()).ok();
     std::fs::remove_dir_all(home.root()).ok();
     assert_eq!(said.as_deref(), Some("rig: this session is plain.\n"));
+    assert_eq!(
+        asked_said.as_deref(),
+        Some("rig: unknown tool `shel`; did you mean `shell`?\n")
+    );
     assert_eq!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
 }
 
