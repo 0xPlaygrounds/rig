@@ -24,7 +24,7 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent working in 
     your tools, and answer questions about the code.\n\
     \n\
     Do all of what the user asks. When they ask for an answer of some length, detail or form, \
-    give it that way, also after tool calls. Follow the project instructions you are given, \
+    give it that way, also after tool calls. Follow the instruction files you are given, \
     except where the user explicitly asks otherwise.\n\
     \n\
     - Work in the current directory unless the user says otherwise.\n\
