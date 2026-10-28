@@ -26,7 +26,8 @@ const MAX_LINE: usize = 300;
 /// Searches file contents with a regular expression, honouring
 /// `.gitignore`, or lists the files with a match, or every file. Shows each
 /// path as `read` takes it from the same base: below the base when the
-/// searched path is relative or not given, absolute when it is absolute.
+/// searched path is relative or not given and the file is under the base,
+/// absolute otherwise.
 /// Publishes what it found ([`SearchHits`]) and the files it found matches
 /// in ([`FilesRead`]), by their [resolved](Workspace) paths.
 #[derive(Clone, Debug)]
@@ -35,7 +36,7 @@ pub struct Search {
     pub workspace: Arc<dyn Workspace>,
     /// The directory searched, and a relative path is searched from;
     /// `None` is the workspace's working directory. Hits of a relative
-    /// path are shown, and published, by their paths below it.
+    /// path under it are shown, and published, by their paths below it.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is searched.

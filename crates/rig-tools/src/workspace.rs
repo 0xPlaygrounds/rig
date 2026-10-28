@@ -427,10 +427,10 @@ pub(crate) fn read_file<W: Workspace + ?Sized>(
 }
 
 /// `path` in this machine's home directory when its first component is
-/// `~`: `None` for any other path, and when the home is unknown.
+/// `~`: `None` for any other path, and when the home is unknown or empty.
 pub(crate) fn home_path(path: &Path) -> Option<PathBuf> {
     let rest = path.strip_prefix("~").ok()?;
-    let home = std::env::home_dir()?;
+    let home = std::env::home_dir().filter(|home| !home.as_os_str().is_empty())?;
     Some(match rest.as_os_str().is_empty() {
         true => home,
         false => home.join(rest),

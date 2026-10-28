@@ -232,6 +232,21 @@ fn every_file_tool_goes_through_its_workspace() {
     assert!(memory.files().is_empty());
 }
 
+/// Only a first component `~` is the home directory: `~bob`, a file whose
+/// name starts with `~` and a folder named `~` reached as `./~` or below
+/// another stay where they are.
+#[test]
+fn only_a_leading_tilde_is_the_home_directory() {
+    let base = Path::new("/project");
+    for path in ["~bob/x", "~$report.docx", "./~/x", "a/~/x"] {
+        assert_eq!(
+            super::Local.join(base, Path::new(path)),
+            base.join(path),
+            "{path}"
+        );
+    }
+}
+
 /// The home directory the copy of [`tilde_is_the_home_directory`] runs
 /// with.
 #[cfg(unix)]
