@@ -11,6 +11,7 @@ use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
     self as test_support, MemoryStore, app_on, calls, connect, first_agent, reply, scripted_models,
+    start_call,
 };
 
 use super::*;
@@ -456,10 +457,10 @@ fn the_prompt_goes_out_without_waiting_for_a_wake() {
     assert_eq!(messages, Some(vec![Message::user("hi")]));
 }
 
-/// `rig -r <id> -p` with no prompt, after a run that stopped mid-turn: the
-/// restored turn finishes, its answer is the run's, and the run ends.
+/// `rig -r <id> -p` with no prompt, after a run that exited mid-turn: the
+/// exit stopped that turn, so nothing runs and the run has no prompt.
 #[test]
-fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
+fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
     let (first, store) = (silent(), MemoryStore::default());
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(scripted_models([(MODEL, &first)]))
@@ -487,8 +488,14 @@ fn a_resumed_run_without_a_prompt_finishes_the_turn_it_restored() {
 
     let second = answering(&["hello"]);
     let (mut app, _) = scripted(&store, (&second, false), None, || {});
-    assert_eq!(ended(&mut app), answered("hello"));
-    assert_eq!((first.request_count(), second.request_count()), (0, 1));
+    assert_eq!(ended(&mut app), no_prompt());
+    assert_eq!((first.request_count(), second.request_count()), (0, 0));
+}
+
+/// How a run with no prompt and nothing to carry on ends.
+fn no_prompt() -> Vec<(Option<String>, u8, Option<String>)> {
+    let why = "no prompt: give one after --print, or pipe it in";
+    vec![(None, 2, Some(why.to_owned()))]
 }
 
 /// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any
@@ -516,16 +523,43 @@ fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
     first
 }
 
-/// `rig -m <model> -p hi` killed two frames in, before any reply: its
-/// session holds the prompt and the model, and `rig -r <id> -p` answers it.
+/// `rig -m <model> -p hi` killed two frames in, before any reply: the
+/// restart stops that turn, so `rig -r <id> -p` has no prompt, and
+/// `rig -r <id> -p again` answers the new prompt, the model told that
+/// `hi` was stopped.
 #[test]
-fn a_run_killed_two_frames_in_leaves_its_prompt_to_resume() {
+fn a_run_killed_two_frames_in_is_resumed_stopped() {
     let store = MemoryStore::default();
     let first = killed_two_frames_in(&store);
     let second = answering(&["hello"]);
     let (mut app, _) = scripted(&store, (&second, false), None, || {});
+    assert_eq!(ended(&mut app), no_prompt());
+    assert_eq!((first.request_count(), second.request_count()), (0, 0));
+    drop(app);
+    // Resumed with a prompt straight away, from a session of its own.
+    let store = MemoryStore::default();
+    let first = killed_two_frames_in(&store);
+    let (mut app, _) = scripted(&store, (&second, false), Some("again"), || {});
     assert_eq!(ended(&mut app), answered("hello"));
     assert_eq!((first.request_count(), second.request_count()), (0, 1));
+    let sent = serde_json::to_string(&second.requests()).unwrap_or_default();
+    let order = [
+        "\"hi\"",
+        "Do not carry it out unless asked again",
+        "\"again\"",
+    ]
+    .map(|text| sent.find(text));
+    assert!(
+        order.iter().all(Option::is_some) && order.is_sorted(),
+        "{sent}"
+    );
+}
+
+/// Lets each restored turn carry on, as a plugin that recovers it does.
+fn carry_on(turns: Query<Entity, (With<Restored>, Without<CarryOn>)>, mut commands: Commands) {
+    for turn in &turns {
+        commands.entity(turn).insert(CarryOn);
+    }
 }
 
 /// Answers each model call where it is asked for, with "hello", as a plugin
@@ -543,14 +577,15 @@ fn answer_in_place(mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, Wi
     }
 }
 
-/// The resumed turn ends inside the run's first frame, before the run
-/// looked at its agent: its answer is the run's all the same.
+/// The resumed turn a plugin carries on ends inside the run's first frame,
+/// before the run looked at its agent: its answer is the run's all the
+/// same.
 #[test]
 fn a_resumed_turn_that_ends_in_the_first_frame_answers_the_run() {
     let store = MemoryStore::default();
     killed_two_frames_in(&store);
     let model = silent();
-    let in_place = answer_in_place.in_set(Stage::Gate);
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
     let (mut app, wakes) = scripted(&store, (&model, false), None, in_place);
     // Only the frames the run asks for, as the host loop runs them.
     run_while_woken(&mut app, &wakes);
@@ -570,14 +605,14 @@ fn refuse_in_place(mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, Wi
     }
 }
 
-/// The resumed turn fails inside the run's first frame, with no prompt
-/// given: its failure is the run's.
+/// The resumed turn a plugin carries on fails inside the run's first
+/// frame, with no prompt given: its failure is the run's.
 #[test]
 fn a_resumed_turn_that_fails_in_the_first_frame_fails_the_run() {
     let store = MemoryStore::default();
     killed_two_frames_in(&store);
     let model = silent();
-    let in_place = refuse_in_place.in_set(Stage::Gate);
+    let in_place = (carry_on, refuse_in_place).in_set(Stage::Gate);
     let (mut app, wakes) = scripted(&store, (&model, false), None, in_place);
     run_while_woken(&mut app, &wakes);
     let ends = &app.world().resource::<Ends>().0;
@@ -1168,7 +1203,10 @@ enum Cut {
 
 #[test]
 fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
-    for cut in [Cut::Running, Cut::WithOutput, Cut::Answered] {
+    // A turn a plugin carries on across the exit is left for the restart,
+    // and closed all the same.
+    let cuts = [Cut::Running, Cut::WithOutput, Cut::Answered];
+    for (cut, carried) in cuts.into_iter().flat_map(|cut| [(cut, false), (cut, true)]) {
         let store = MemoryStore::default();
         let model = MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({}))]);
         let (app, lines) = one_shot_on(&store, "Wait.", Some(MODEL), &model, true, |app| {
@@ -1178,7 +1216,14 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 "wait",
                 "Wait.",
                 ToolOptions::default(),
-                move |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                move |called: On<ToolCalled<Value>>,
+                      turns: Query<&CallOf>,
+                      mut commands: Commands| {
+                    if let Ok(&CallOf(turn)) = turns.get(called.call)
+                        && carried
+                    {
+                        commands.entity(turn).insert(CarryOn);
+                    }
                     let result = |text: &str| rig_core::tool::ToolResult::success(text.into());
                     let mut call = commands.entity(called.call);
                     match cut {
@@ -1193,7 +1238,8 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 },
             );
         });
-        assert_eq!(app.should_exit(), Some(AppExit::from_code(130)), "{cut:?}");
+        let case = format!("{cut:?}, carried: {carried}");
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(130)), "{case}");
         let parsed = lines.parsed();
         let kinds: Vec<&str> = parsed
             .iter()
@@ -1203,7 +1249,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         assert_eq!(
             at_end,
             Some(&["tool_call", "tool_result", "turn_end", "exit"][..]),
-            "{cut:?} {kinds:?}"
+            "{case} {kinds:?}"
         );
         // The result the session keeps, once.
         let (ok, cancelled, output) = match cut {
@@ -1217,7 +1263,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         };
         let results = lines.of("tool_result");
         let [result] = results.as_slice() else {
-            return assert_eq!(results.len(), 1, "{cut:?} {results:?}");
+            return assert_eq!(results.len(), 1, "{case} {results:?}");
         };
         let fields =
             ["id", "ok", "refused", "cancelled", "output"].map(|key| at(result, key).clone());
@@ -1230,7 +1276,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 json!(cancelled),
                 json!(output)
             ],
-            "{cut:?}"
+            "{case}"
         );
         let why = "the run was interrupted";
         let end = lines.of("turn_end").first().cloned().unwrap_or_default();
@@ -1244,19 +1290,66 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
             (&json!(130), &json!(why))
         );
         drop(app);
+        if carried {
+            continue;
+        }
 
-        // The session still holds the turn, unended: a resumed run
-        // finishes it, its model reading the result the line had.
+        // The session keeps the turn stopped, with the result the line
+        // had: a resumed run runs nothing of it, and its model reads that
+        // result and that the request was stopped.
         let second = answering(&["done"]);
-        let (mut app, _) = scripted(&store, (&second, false), None, || {});
+        let (mut app, _) = scripted(&store, (&second, false), Some("go on"), || {});
         assert_eq!(ended(&mut app), answered("done"), "{cut:?}");
         let history = second
             .requests()
             .first()
-            .map(|r| format!("{:?}", r.chat_history));
-        let kept = matches!(cut, Cut::Running) || history.is_some_and(|h| h.contains(output));
-        assert!(kept, "{cut:?}");
+            .map(|r| format!("{:?}", r.chat_history))
+            .unwrap_or_default();
+        assert!(
+            history.contains(output) && history.contains("Do not carry it out"),
+            "{cut:?} {history}"
+        );
+        assert_eq!(second.request_count(), 1, "{cut:?}");
     }
+}
+
+#[test]
+fn a_tool_call_of_no_turn_cut_off_by_a_signal_is_closed_too() {
+    let store = MemoryStore::default();
+    let model = silent();
+    let (app, lines) = one_shot_on(&store, "Wait.", Some(MODEL), &model, true, |app| {
+        app.add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
+            // A plugin's own call, of no turn, that runs when the signal
+            // comes.
+            .add_open_tool(
+                "wait",
+                "Wait.",
+                ToolOptions::default(),
+                |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                    commands.entity(called.call).insert(Waiting);
+                    commands.trigger(Exit(ExitReason::Signal));
+                },
+            )
+            .add_systems(Update, |world: &mut World, mut done: Local<bool>| {
+                let agent = first_agent(world);
+                if let Some(agent) = agent.filter(|_| !*done) {
+                    *done = true;
+                    start_call(world, agent, ("wait", "s1"), json!({}));
+                }
+            });
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
+    let results = lines.of("tool_result");
+    let closed = results.iter().find(|line| at(line, "id") == "s1");
+    let fields = closed.map(|line| ["cancelled", "output"].map(|key| at(line, key).clone()));
+    let cut =
+        "Stopped: the run was interrupted. It may have partly run; check before running it again.";
+    assert_eq!(
+        fields,
+        Some([json!(true), json!(cut)]),
+        "{:?}",
+        lines.parsed()
+    );
 }
 
 /// Holds each exit asked for until the run's own end, as a plugin that

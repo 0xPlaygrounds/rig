@@ -136,15 +136,19 @@ Images are stored once in `files/blobs/`, and `files/meta.json` caches what
 `/resume` lists. An older session format is resumed and written on in its
 own; one from before `rig-session/2` is refused, unchanged.
 
+Quitting mid-turn (Ctrl+D, `/quit`, closing the terminal, or a signal to a
+headless run) stops the turn as Esc does: the reply so far is kept, each
+unfinished tool call says it was stopped, and the model is told the request
+was stopped. Resuming shows it so and runs nothing until you send a message;
+a message you had queued comes back in the input.
+
 A tool call that may change something starts only once the reply that asked
-for it, and a mark that it started, are on disk. After a crash, a closed
-terminal or a `/quit` mid-turn, resuming the session reads the logs back and
-settles what was left half done: a tool call that may change something and
-had started is answered as interrupted by the restart (or with its result, if
-it finished before the crash), and a plugin may answer it first; any other
-unfinished call, one still waiting for your approval included, goes through
-the permission checks again and runs; and a turn that waited on the model
-carries on.
+for it, and a mark that it started, are on disk. After a crash, resuming the
+session reads the logs back and stops the turn the crash cut short in the
+same way: a tool call that had finished keeps its result, one that had
+started is answered as cut short by the restart, and nothing runs again. The
+text the model was streaming is lost. A plugin may carry such a turn on
+instead, such as by asking you first.
 
 ## Context, compaction and retries
 

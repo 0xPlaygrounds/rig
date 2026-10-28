@@ -583,6 +583,26 @@ pub(crate) fn unsent_on_turn_end(
     }
 }
 
+/// Keeps each message still on its way to an agent at exit, such as a
+/// report a stopped turn sent, in that agent's inbox for the restart, as a
+/// busy agent keeps one it accepted.
+pub(crate) fn keep_on_the_way(
+    messages: Query<
+        (Entity, &Incoming, &ForAgent),
+        (Without<Started>, Without<Outcome>, Without<SupersededBy>),
+    >,
+    mut agents: Query<&mut Conversation>,
+    mut commands: Commands,
+) {
+    let at = SystemTime::now();
+    for (entity, message, &ForAgent(agent)) in &messages {
+        if let Ok(mut conversation) = agents.get_mut(agent) {
+            let mark = mark(&mut conversation, message);
+            commands.entity(entity).try_insert((Started { at }, mark));
+        }
+    }
+}
+
 /// Settles each [`Unsent`] message nothing kept, holds or decided, in
 /// [`GateSystems::Fallback`](super::stage::GateSystems::Fallback): an
 /// idle agent hands the user's back to the views, joined in one

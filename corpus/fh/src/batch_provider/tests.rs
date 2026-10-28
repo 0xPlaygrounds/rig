@@ -348,17 +348,29 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     assert!(polled(&read_result.batch) && polled(&resent.batch));
     assert_eq!(fake.items(), 4, "nothing was sent again");
 
-    // a's turn ends with its answer; b's item expires again and fails.
-    let answer = json!({"type": "text", "text": "deps upgraded"});
-    fake.release(read_result, succeeded(answer, "end_turn"));
+    // a's resumed turn goes on as any turn: its batch asks for `read`
+    // again, which runs, and the result goes in a new batch; b's item
+    // expires again and fails.
+    let call = json!({"type": "tool_use", "id": "c2", "name": "read", "input": {}});
+    fake.release(read_result, succeeded(call, "tool_use"));
     fake.release(resent, expired());
+    until(&mut app, &wakes, |_| fake.items() == 5);
+    assert!(app.world().resource::<ToolOutputs>().0.contains_key("c2"));
+    let read_again = fake.sent("contents of a.txt");
+    let Some(read_again) = read_again.last() else {
+        return;
+    };
+
+    // a's turn ends with its answer.
+    let answer = json!({"type": "text", "text": "deps upgraded"});
+    fake.release(read_again, succeeded(answer, "end_turn"));
     until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 2
     });
     let outcomes = ended(app.world());
     assert!(outcomes.contains("deps upgraded"), "{outcomes}");
     assert!(outcomes.contains("expired twice"), "{outcomes}");
-    assert_eq!(fake.items(), 4, "sent again only once");
+    assert_eq!(fake.items(), 5, "sent again only once");
 
     // Interrupting a waiting turn cancels its batch at the provider.
     let a = agents(&mut app)
@@ -367,7 +379,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
         .map_or(Entity::PLACEHOLDER, |(agent, _)| agent);
     let deliver = Deliver::new(a, "And the warnings.", DeliveryMode::Queue);
     app.world_mut().trigger(deliver);
-    until(&mut app, &wakes, |_| fake.items() == 5);
+    until(&mut app, &wakes, |_| fake.items() == 6);
     let last = fake.sent("And the warnings.");
     app.world_mut().trigger(StopTurn {
         entity: a,

@@ -1,39 +1,41 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
-//! pass that settles what a crash or a restart left half done, with
-//! ordinary records, so the next restore finds nothing left to fix. The
-//! session is read as [`open_session`] reads it: strictly, refused whole
-//! before anything is written when it cannot be read, a torn last line set
-//! aside; a retired agent and the agents it spawned are not restored.
+//! pass that settles what a crash left half done, with ordinary records, so
+//! the next restore finds nothing left to fix. The session is read as
+//! [`open_session`] reads it: strictly, refused whole before anything is
+//! written when it cannot be read, a torn last line set aside; a retired
+//! agent and the agents it spawned are not restored.
 //!
-//! The work an agent carries on is spawned as ordinary stage entities marked
-//! [`Restored`], gated like any: nothing held or approved before the restart
-//! is kept. A tool call that had started or settled when the session stopped
-//! carries [`Interrupted`], which says how the kernel answers it. The restore
-//! commits no answer. A plugin re-arms its own obligations from observers of
-//! the saved components the restore inserts (`On<Insert<MyWait>>`, before
-//! [`SessionRestored`] exists):
+//! An exit stops every running turn, so only a crash, or a turn a plugin
+//! lets [`CarryOn`], leaves one unfinished. Its work is spawned as ordinary
+//! stage entities marked [`Restored`], gated like any, and once every gate
+//! had its say the kernel stops it as the user's stop does: nothing of it
+//! runs and the model is told the request was stopped. A tool call that
+//! had started or settled carries [`Interrupted`], which says how it is
+//! answered. A plugin that carries the turn on, or asks someone first,
+//! puts [`CarryOn`] on it again; it re-arms its own obligations from
+//! observers of the saved components the restore inserts
+//! (`On<Insert<MyWait>>`, before [`SessionRestored`] exists):
 //!
 //! ```
 //! use rig_ecs::prelude::*;
 //!
 //! #[derive(Component)]
-//! struct Paused;
+//! struct Unattended;
 //!
-//! // A paused agent does not carry its work on after a restart.
-//! fn stay_paused(
-//!     turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
-//!     paused: Query<(), With<Paused>>,
+//! // An unattended agent carries its work on after a crash.
+//! fn carry_on(
+//!     turns: Query<(Entity, &TurnOf), (With<Restored>, Without<CarryOn>)>,
+//!     unattended: Query<(), With<Unattended>>,
 //!     mut commands: Commands,
 //! ) {
 //!     for (turn, &TurnOf(agent)) in &turns {
-//!         if paused.contains(agent) {
-//!             let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
-//!             commands.entity(turn).insert(stopped);
+//!         if unattended.contains(agent) {
+//!             commands.entity(turn).insert(CarryOn);
 //!         }
 //!     }
 //! }
 //!
-//! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
+//! App::new().add_systems(AgentPass, carry_on.in_set(Stage::Gate));
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -56,7 +58,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use web_time::SystemTime;
 
-use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
+use super::agent::{
+    Agent, AgentId, CallOf, Calls, Conversation, Notice, SpawnedBy, Turn, TurnOf, TurnOutcome,
+};
 use super::effects::Effects;
 use super::inbox::{Unsent, kept};
 use super::session_log::{
@@ -64,12 +68,12 @@ use super::session_log::{
 };
 use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
 use super::tools::{Footprint, ToolRequest};
-use super::turn::{TurnCall, not_finished};
+use super::turn::{Stopper, TurnCall, not_finished};
 
-/// Why a call that may change something and was running when the session
-/// stopped did not finish, as rig-core's
-/// [`not_finished`](rig_core::tool::feedback::not_finished) says it.
-pub(crate) const RESTART: &str = "the session restarted";
+/// Why a turn a crash left unfinished stopped, as its record and its
+/// calls' results say it (rig-core's
+/// [`not_finished`](rig_core::tool::feedback::not_finished)).
+pub const RESTARTED: &str = "the session restarted";
 
 /// The kind of the aside that marks a call that may change something from
 /// its start, and any call once it settled, until its reply's results are
@@ -176,15 +180,16 @@ pub(crate) fn commit_results(
 }
 
 /// On a restored call that had started, or had finished, when the session
-/// stopped: what its mark said. The kernel answers it after every gate,
-/// [`Started`](Self::Started) with an error saying a restart interrupted
-/// it and [`Settled`](Self::Settled) with its result, unless a plugin
-/// decided it first, in Gate, or removed this, in Prepare, to let it run
-/// again as ordinary work every gate sees. A plugin that must ask someone
-/// first holds it ([`HoldOf`](super::stage::HoldOf)) and answers it later;
-/// the kernel answers it once no hold is left and no plugin decided it.
-/// Not [`ReadyToStart`](super::stage::ReadyToStart): no gate that holds or asks
-/// for ordinary work sees it.
+/// stopped: what its mark said. A stop answers it with its result
+/// ([`Settled`](Self::Settled)) or as cut short after it started
+/// ([`Started`](Self::Started)). In a turn a plugin lets [`CarryOn`], the
+/// kernel answers it so after every gate, unless a plugin decided it
+/// first, in Gate, or removed this, in Prepare, to let it run again as
+/// ordinary work every gate sees. A plugin that must ask someone first
+/// holds it ([`HoldOf`](super::stage::HoldOf)) and answers it later; the
+/// kernel answers it once no hold is left and no plugin decided it. Not
+/// [`ReadyToStart`](super::stage::ReadyToStart): no gate that holds or
+/// asks for ordinary work sees it.
 ///
 /// ```
 /// use rig_ecs::prelude::*;
@@ -210,6 +215,49 @@ pub enum Interrupted {
     Settled(ToolResult),
 }
 
+/// On a turn that carries on across a restart, such as one whose model
+/// call waits on a batch for hours, or a [`Restored`] one a plugin decides
+/// about itself, such as by asking the user: an exit leaves it unended, for
+/// the restart to spawn again as [`Restored`] work, and the kernel does not
+/// stop it once restored. It is not saved: a plugin puts it on the
+/// restored turn again, in Gate at the latest, in the pass the turn's work
+/// is admitted. The kernel then takes it off, with [`Restored`], and the
+/// turn goes on as any other, which the next exit stops unless a plugin
+/// puts it on again.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct CarryOn;
+
+/// Decides each [`Restored`] turn in the pass its restored work is
+/// admitted, once every gate had its say, before
+/// [`GateSystems::After`](super::stage::GateSystems::After), so no one is
+/// asked to approve its calls: one a plugin lets [`CarryOn`] goes on as an
+/// ordinary turn, both taken off it; any other is stopped as the user's
+/// stop does, for [`RESTARTED`], but for its agent alone, so a turn a
+/// plugin carries on below it is left to that plugin. Nothing of a stopped
+/// turn runs and no model is called; each call keeps the result the
+/// session kept, if it settled, and is otherwise answered as not run or cut
+/// short.
+pub(crate) fn stop_restored(
+    turns: Query<(Entity, &TurnOf, &Calls, Has<CarryOn>), (With<Restored>, Without<TurnOutcome>)>,
+    admitted: Query<(), (With<Restored>, Added<Admitted>)>,
+    mut stopper: Stopper,
+    mut commands: Commands,
+) {
+    let mut stopping = Vec::new();
+    for (turn, &TurnOf(agent), calls, carried) in &turns {
+        if !calls.iter().any(|call| admitted.contains(call)) {
+            continue;
+        }
+        match carried {
+            true => {
+                commands.entity(turn).try_remove::<(Restored, CarryOn)>();
+            }
+            false => stopping.push(agent),
+        }
+    }
+    stopper.stop_each(stopping, RESTARTED);
+}
+
 /// Answers each restored call still [`Interrupted`], undecided and unheld,
 /// once every gate ran, as `rig-ecs`.
 pub(crate) fn answer_interrupted(
@@ -230,7 +278,7 @@ pub(crate) fn answer_interrupted(
         }
         let result = match interrupted {
             Interrupted::Settled(result) => result.clone(),
-            Interrupted::Started => not_finished(RESTART, true, footprint),
+            Interrupted::Started => not_finished(RESTARTED, true, footprint),
         };
         decision.decide(Decider::plugin("rig-ecs"), result);
     }
@@ -241,13 +289,13 @@ pub(crate) fn answer_interrupted(
 #[derive(Resource)]
 pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 
-/// On the work a restore carries on for an agent: its turn, the turn's
-/// calls left without a result and its model calls, and the messages in
-/// its inbox. Gate sees each call as it sees new work; a turn stopped there
-/// (`TurnOutcome::Stopped(Some("restart"))`) starts none of it, and its
-/// calls are answered as stopped. A message is accepted already
-/// ([`Started`]): it goes with the agent's next model call, or, to an idle
-/// agent, is [`Unsent`].
+/// On the work a restore spawns for an agent a crash left mid-turn: its
+/// turn, the turn's calls left without a result and its model calls, and
+/// the messages in its inbox. Gate sees each call as it sees new work; then
+/// the kernel stops the turn ([`stop_restored`]) unless a plugin opted in
+/// with [`CarryOn`], and takes this off a turn that goes on. A message is
+/// accepted already ([`Started`]): it goes with the agent's next model
+/// call, not a restored one, or, to an idle agent, is [`Unsent`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 pub struct Restored;
@@ -545,8 +593,8 @@ pub(crate) fn resource_entity<'w>(
         .map_err(|failure| failure.to_string())
 }
 
-/// Carries on what the restored agents left half done, parents before the
-/// agents they spawned, with [`Restored`] work: a turn whose reply is every
+/// Spawns what the restored agents left half done, parents before the
+/// agents they spawned, as [`Restored`] work: a turn whose reply is every
 /// tool call without a result, each marked [`Interrupted`] as its mark
 /// says, or that calls the model when the conversation ends in the user's
 /// message that was not halted, or in a full set of tool results.
@@ -562,7 +610,7 @@ pub(crate) fn reconcile(world: &mut World) {
     }
 }
 
-/// Carries on one restored agent, as [`reconcile`] says, removes the
+/// Spawns one restored agent's work, as [`reconcile`] says, removes the
 /// marks of calls that have a result, and puts back the messages its inbox
 /// kept. The calls are a reply of a fresh effect id, as the model call
 /// that asked for them is gone.

@@ -465,8 +465,8 @@ and the parsed `args`; the call ends when the plugin decides its
 `Decision`. A tool found while the agent runs, such as one an MCP server
 lists, is `world.spawn_tool(definition, handler, options)` from a queued
 command; despawning the entity removes it. Its annotations are hints: a
-call that only reads, and so runs again after a restart, is one that
-`options.footprint` declares so.
+call that only reads, and so is safe to run again once stopped, is one
+that `options.footprint` declares so.
 
 `rig-tui` runs ordinary presentation systems in `TranscriptRender`. Its
 `RenderBatch` holds owned inputs and mutable lines for items needing rendering,
@@ -550,13 +550,23 @@ text before and after (`after_text()`), and each side's `FileState`
 (`bytes`, `lines`, `hash`). A tool not [registered per call](#a-tool), or
 one that starts a process (`shell`), gets `Previewed(Err(..))`.
 
-**A restart's unfinished calls.** A restart restores every unanswered call as
-`Restored` work, gated again. One that had started or settled (the kernel
-marks such calls in the conversation, `rig.call`) carries `Interrupted`
-(`Started`, `Settled(result)`): no gate that holds or asks sees it, a Gate
-system may answer or hold it, removing `Interrupted` in Prepare (never in
-Gate) runs it again, and once nothing holds it the kernel answers it in
-`GateSystems::Fallback` (an error, or its result).
+**A crash's unfinished turn.** An exit (`/quit`, a signal, a closed
+terminal) stops every running turn as `StopTurn` does, so only a crash, or
+a turn a plugin carries across the exit (`CarryOn`, such as a call that
+waits on a batch for hours), leaves one unfinished. A restart restores its
+unanswered calls as `Restored` work that every gate sees; then, before
+`GateSystems::After`, the kernel stops the turn as the user's stop does
+("the session restarted"), and nothing of it runs. A plugin that carries
+the turn on, or asks the user first, puts `CarryOn` on the restored turn
+by Gate; the kernel then takes `CarryOn` and `Restored` off it, and it
+goes on as any turn, which the next exit stops. A call that had started
+or settled (the kernel marks such calls in the conversation, `rig.call`)
+carries `Interrupted` (`Started`, `Settled(result)`): a stop answers it
+as cut short, or with its result. In a turn that carries on, no gate that
+holds or asks sees it, a Gate system may answer or hold it, removing
+`Interrupted` in Prepare (never in Gate) runs it again, and once nothing
+holds it the kernel answers it in `GateSystems::Fallback` (an error, or
+its result).
 
 ```rust,no_run
 use rig_basics::{approval::NeedsApproval, preview::{Preview, Previewed}};
@@ -816,7 +826,9 @@ not text, such as an image or a file attached, does not come back, nor
 does a titled user's message, such as a chat bridge's or a skill's. A
 plugin that sends a task as `Author::user()` gets it back too. Nothing
 else keeps the text, so it does not outlive a restart unless sent
-again. An exit recalls nothing.
+again. An exit recalls nothing: it keeps what is in the inbox, and what
+is still on its way there, such as a stopped subagent's report, for the
+restart, which hands the user's back.
 
 **With the user's next message.** What a plugin wants the agent to read
 when the user next writes, such as a background check's failure, it keeps
@@ -956,7 +968,8 @@ caching), one it cannot take is left out.
   connected with rig-core's `ErasedHandler::unavailable(descriptor, why)`,
   and a system in `GateSystems::After` holds each call, submits what
   `Adapted::sent` gives, and keeps the batch's id in a saved component
-  by turn (a restart runs the call again, `Restored`, to hold again). A
+  by turn (after a crash the call comes back `Restored`: the plugin puts
+  `CarryOn` on its turn and holds it again). A
   `WakeAt` polls, and rig-core's `wire::decode_reply` turns the result's
   body into the reply it decides the call with.
 
@@ -1114,9 +1127,11 @@ something inserts a `TurnOutcome`.
 `TurnRecord` aside by rig (`TURN`), and `Turn` is filled from it, a
 restarted turn's too: its `index`, `start`, and how it ended,
 `TurnEnd::Answered { answer }`, `Failed { why }` or
-`Stopped { why, at, calls }`, or `None` while it runs or once a crash or an
-exit cut it short; `conversation.turns()` lists them, for a program without
-the app too. A stop mid-reply saves what streamed as an aborted reply
+`Stopped { why, at, calls }` (`calls` empty when the stop cut off no
+call, such as a crash during a model call), or `None` while it runs or once
+a crash cut it short (an exit stops it, unless a plugin carries it on);
+`conversation.turns()` lists them, for a program without the app too. A
+stop mid-reply saves what streamed as an aborted reply
 (`StopReason::Aborted`), which goes back to the model as its text alone, its
 request `halted()` `Stopped`, and the kernel's note after it by
 `Author::rig()` (`EntryRef::is_stop_marker`); a plugin-stopped turn's

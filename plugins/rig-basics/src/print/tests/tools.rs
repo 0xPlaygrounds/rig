@@ -607,9 +607,10 @@ fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
 }
 
 #[test]
-fn a_refused_tool_name_holds_back_a_restored_turn_too() {
+fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
     for pending_tool in [false, true] {
-        // A session left before its model call, or its write, started.
+        // A session that exited before its model call, or its write,
+        // started.
         let first = match pending_tool {
             true => MockCompletionModel::from_stream_turns([calls("c1", "write", json!({}))]),
             false => silent(),
@@ -746,9 +747,10 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
         }
         drop(app);
 
-        // A valid resume keeps the access and finishes the pending work.
+        // A valid resume keeps the access and answers its own prompt; the
+        // write the exit stopped does not run.
         let third = answering(&["hello"]);
-        let (mut app, lines) = one_shot_on(&store, "", Some(MODEL), &third, true, |app| {
+        let (mut app, lines) = one_shot_on(&store, "go on", Some(MODEL), &third, true, |app| {
             recording(app, &["read", "write"]);
         });
         let exit = lines.of("exit").first().cloned().unwrap_or_default();
@@ -756,8 +758,7 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
             (at(&exit, "code"), at(&exit, "answer")),
             (&json!(0), &json!("hello"))
         );
-        let executed: Vec<_> = pending_tool.then_some("write").into_iter().collect();
-        assert_eq!(app.world().resource::<Executed>().0, executed);
+        assert!(app.world().resource::<Executed>().0.is_empty());
         assert_eq!(third.request_count(), 1);
         let world = app.world_mut();
         let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);

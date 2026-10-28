@@ -66,7 +66,7 @@ use web_time::SystemTime;
 use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
-use super::restore::{Interrupted, answer_interrupted, mark_started};
+use super::restore::{Interrupted, answer_interrupted, mark_started, stop_restored};
 use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
 use super::tools::{
@@ -750,6 +750,7 @@ pub(crate) fn build(app: &mut App) {
                     .after(GateSystems::FromRecord)
                     .before(Stage::Gate)
                     .run_if(moved_since_quiet),
+                stop_restored.after(Stage::Gate).before(GateSystems::After),
                 (answer_interrupted, settle_unsent)
                     .chain()
                     .in_set(GateSystems::Fallback),
@@ -1038,6 +1039,24 @@ fn apply_decisions(
         effect.decided_by = Some(by.clone());
         commands.entity(entity).try_insert(outcome.clone());
     }
+}
+
+/// Applies `entity`'s decision as its [`Outcome`] at once, as Start
+/// would, unless it was answered or nobody decided it.
+pub(crate) fn apply_decision(world: &mut World, entity: Entity) {
+    let Ok(mut effect) = world.get_entity_mut(entity) else {
+        return;
+    };
+    let decided = effect
+        .get::<Decision>()
+        .and_then(|decision| decision.0.clone());
+    let Some((outcome, by)) = decided.filter(|_| !effect.contains::<Outcome>()) else {
+        return;
+    };
+    if let Some(mut record) = effect.get_mut::<Effect>() {
+        record.decided_by = Some(by);
+    }
+    effect.insert(outcome);
 }
 
 /// Admits every effect spawned since the last pass.

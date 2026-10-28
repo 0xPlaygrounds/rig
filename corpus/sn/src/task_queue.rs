@@ -33,9 +33,6 @@ mod looks;
 const HELP: &str = "Background tasks: /queue [--model m] <prompt>, /queue, /queue cancel N, \
     /queue up N, /queue retry N, /queue open N";
 
-/// Why a task's restored turn is stopped.
-const RESTART: &str = "restart";
-
 /// Adds `/queue`, the saved queue, the tasks' agents and, with the `tui`
 /// feature, the queue's panel and status-line item.
 #[derive(Default)]
@@ -63,14 +60,7 @@ impl Plugin for TaskQueuePlugin {
             .add_observer(adopt)
             .add_observer(finish)
             .configure_sets(AgentPass, QueueSystems::Label.in_set(PrepareSystems::Edit))
-            .configure_sets(AgentPass, QueueSystems::Restored.in_set(Stage::Gate))
-            .add_systems(
-                AgentPass,
-                (
-                    label_asks.in_set(QueueSystems::Label),
-                    stay_interrupted.in_set(QueueSystems::Restored),
-                ),
-            );
+            .add_systems(AgentPass, label_asks.in_set(QueueSystems::Label));
         #[cfg(feature = "tui")]
         looks::add(app);
     }
@@ -82,8 +72,6 @@ pub enum QueueSystems {
     /// In `PrepareSystems::Edit`: titles each question a task's agent asks
     /// with the task.
     Label,
-    /// In Gate: stops the restored turn of a task the restart interrupted.
-    Restored,
 }
 
 /// The `[queue]` settings table.
@@ -574,29 +562,6 @@ fn warn_shared_tree(settings: Res<QueueSettings>, mut notices: MessageWriter<Not
             settings.concurrency
         );
         notices.write(Notice::warn(None, text));
-    }
-}
-
-/// Stops the restored turn of a task the restart interrupted, before
-/// anything of it starts.
-fn stay_interrupted(
-    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
-    agents: Query<&QueuedTask>,
-    queue: Res<TaskQueue>,
-    mut commands: Commands,
-) {
-    for (turn, &TurnOf(agent)) in &turns {
-        let Ok(&QueuedTask(number)) = agents.get(agent) else {
-            continue;
-        };
-        let interrupted = queue
-            .tasks
-            .iter()
-            .any(|task| task.number == number && task.state == TaskState::Interrupted);
-        if interrupted {
-            let stopped = TurnOutcome::Stopped(Some(RESTART.to_owned()));
-            commands.entity(turn).insert(stopped);
-        }
     }
 }
 

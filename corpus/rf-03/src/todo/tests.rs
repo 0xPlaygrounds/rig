@@ -158,7 +158,7 @@ fn hold_todo_outcomes(
 }
 
 #[test]
-fn a_call_a_restart_cut_short_adds_its_item_once() {
+fn a_call_a_restart_cut_short_is_not_applied_again() {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.add_systems(AgentPass, hold_todo_outcomes.in_set(Stage::Review));
@@ -191,14 +191,18 @@ fn a_call_a_restart_cut_short_adds_its_item_once() {
     };
     run_until(&mut app, &wakes, settled);
     assert_eq!(items(app.world(), agent), [("parse".to_owned(), false)]);
-    // Run again, it answers with the list, not as cut short by the restart.
+    // The restart stops the turn: the call is answered as cut short, not
+    // run again.
     let world = app.world_mut();
     let mut outcomes = world.query_filtered::<&Outcome, (With<ToolRequest>, With<Settled>)>();
     let outputs: Vec<String> = outcomes
         .iter(world)
         .map(|outcome| outcome.tool_result().output().render())
         .collect();
-    assert_eq!(outputs, ["[ ] 1. parse"]);
+    assert_eq!(
+        outputs,
+        ["Stopped: the session restarted. It may have partly run; check before running it again."]
+    );
 }
 
 /// Each fork made, from and to.

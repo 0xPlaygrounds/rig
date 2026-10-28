@@ -251,7 +251,7 @@ fn a_held_edit_holds_back_only_what_depends_on_it_and_for_this_session_is_rememb
 }
 
 #[test]
-fn a_restart_while_a_call_waits_asks_again_and_keeps_only_this_sessions_approvals() {
+fn a_restart_while_a_call_waits_stops_it_and_keeps_only_this_sessions_approvals() {
     let dir = scratch("restart", &[("src/a.rs", "one\n")]);
     let file = dir.join("src/a.rs");
     let edit = json!({
@@ -277,11 +277,17 @@ fn a_restart_while_a_call_waits_asks_again_and_keeps_only_this_sessions_approval
     }
     assert_eq!(read(&file), "one\n");
 
+    // The restart stops the turn the crash cut short: nothing is asked and
+    // the edit does not run.
     let (mut app, wakes) = start(&store, &dir, "", Some(Vec::new()));
-    run_until(&mut app, &wakes, asked);
+    run_until(&mut app, &wakes, |world| output(world, "e1").is_some());
     let world = app.world();
-    assert_eq!(world.resource::<Answers>().asked, ["Policy: allow `edit`?"]);
-    assert_eq!(output(world, "e1"), None, "the restored call waits again");
+    assert!(world.resource::<Answers>().asked.is_empty());
+    let stopped = output(world, "e1").unwrap_or_default();
+    assert!(
+        stopped.starts_with("Not run: the session restarted"),
+        "{stopped}"
+    );
     assert_eq!(read(&file), "one\n");
     assert_eq!(world.resource::<SessionApprovals>().0, [remembered]);
 

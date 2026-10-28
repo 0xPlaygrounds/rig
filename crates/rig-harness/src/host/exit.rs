@@ -19,6 +19,7 @@ use rig_core::effect::{Decider, EffectKind};
 use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
 use rig_ecs::tasks::Wake;
+use rig_ecs::turn::Exiting;
 use rig_harness_protocol::{RELOAD_EXIT_CODE, SessionId};
 
 use super::session::SessionPaths;
@@ -51,6 +52,15 @@ impl ExitReason {
             AppExit::Error(code) if code.get() == RELOAD_EXIT_CODE => Self::Reload,
             AppExit::Error(code) if code.get() == SIGNAL_EXIT_CODE => Self::Signal,
             AppExit::Error(code) => Self::Failed(code.get()),
+        }
+    }
+
+    /// Why this exit stops what still runs, as the turns it stops and their
+    /// calls say it: a signal interrupted the run, anything else ended it.
+    pub fn stops_because(&self) -> &'static str {
+        match self {
+            Self::Signal => "the run was interrupted",
+            _ => "the run ended",
         }
     }
 
@@ -92,9 +102,10 @@ impl Plugin for ExitPlugin {
             .add_observer(exit_settled)
             .add_systems(
                 Last,
-                reason_from_exit
+                (reason_from_exit, name_exit_stop)
+                    .chain()
                     .before(OnAppExitSystems)
-                    .run_if(on_message::<AppExit>),
+                    .distributive_run_if(on_message::<AppExit>),
             );
     }
 }
@@ -184,6 +195,15 @@ pub(super) fn reason_from_exit(
     if let Some(exit) = first.filter(|_| reason.is_none()) {
         commands.insert_resource(ExitReason::of(exit));
     }
+}
+
+/// Tells the kernel why the exit stops the running turns
+/// ([`ExitReason::stops_because`]).
+fn name_exit_stop(reason: Option<Res<ExitReason>>, mut commands: Commands) {
+    let why = reason.map_or(ExitReason::Quit.stops_because(), |reason| {
+        reason.stops_because()
+    });
+    commands.insert_resource(Exiting(why.to_owned()));
 }
 
 #[cfg(test)]

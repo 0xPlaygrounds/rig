@@ -3,15 +3,17 @@
 //! The kernel keeps what a running turn's calls did: a call that may
 //! change something is marked on the conversation before it starts, any
 //! call that settles while its reply runs is marked with its result, and a
-//! restart carries every call left without a result on as [`Restored`]
-//! work, the marked ones [`Interrupted`], in the same turn. What the
+//! restart after a crash spawns every call left without a result as
+//! [`Restored`] work, the marked ones [`Interrupted`], in the same turn,
+//! which the kernel stops unless a plugin lets it [`CarryOn`]. What the
 //! kernel does not keep is the text a model call streamed; this plugin
 //! keeps it in its session data, `crash-resume/<agent>.json`, at least
 //! every second. A turn that ends removes the file.
 //!
 //! On resume, each agent with restored work is [`Recovering`]: its
-//! restored calls and model call are held, the "Interrupted turn" note goes
-//! in its transcript, and the user is asked:
+//! restored turn carries on as this plugin decides, its restored calls and
+//! model call are held, the "Interrupted turn" note goes in its
+//! transcript, and the user is asked:
 //!
 //! - **Continue**: each call gets its result, else "may or may not have
 //!   completed" (started) or "not run (interrupted)" (not run: it never
@@ -287,6 +289,7 @@ fn recover(
             lines.push("The model had not answered yet.".to_owned());
         }
         recovering.body = lines.join("\n");
+        commands.entity(turn).try_insert(CarryOn);
         commands.entity(agent).try_insert(Tracked::default());
         found.insert(agent, recovering);
     }

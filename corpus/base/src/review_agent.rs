@@ -175,8 +175,7 @@ impl Plugin for ReviewAgentPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (snapshot_before_changes, stop_restored_reviewers)
-                        .in_set(ReviewAgentSystems::Gate),
+                    snapshot_before_changes.in_set(ReviewAgentSystems::Gate),
                     review_proposed_end.in_set(ReviewAgentSystems::Review),
                 ),
             )
@@ -541,21 +540,6 @@ fn stop_reviewer(
             entity: reviewer,
             reason: Some("the review was cancelled".to_owned()),
         });
-    }
-}
-
-/// A restored reviewer's turn is stopped, so it retires: the review it was
-/// on is gone.
-fn stop_restored_reviewers(
-    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
-    reviewers: Query<(), With<Reviewer>>,
-    mut commands: Commands,
-) {
-    for (turn, &TurnOf(agent)) in &turns {
-        if reviewers.contains(agent) {
-            let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
-            commands.entity(turn).insert(stopped);
-        }
     }
 }
 
