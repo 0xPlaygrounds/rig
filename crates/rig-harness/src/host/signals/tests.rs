@@ -44,6 +44,36 @@ fn inherited_ignored_signals_stay_ignored_and_sigterm_is_still_handled() {
     assert!(kept && term_handled);
 }
 
+/// An app whose output nobody reads any more exits as on a signal, at its
+/// next frame, whatever it is doing.
+#[test]
+fn an_app_whose_output_is_unread_exits_as_on_a_signal() {
+    use bevy_app::TaskPoolPlugin;
+    use bevy_app::prelude::*;
+    use rig_ecs::AgentPlugin;
+
+    use super::{ExitOnSignalPlugin, ExitWhenUnread};
+    use crate::host::exit::{ExitPlugin, SIGNAL_EXIT_CODE};
+
+    fn gone() -> bool {
+        true
+    }
+    let mut app = App::new();
+    app.add_message::<AppExit>()
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_plugins((ExitPlugin, ExitOnSignalPlugin))
+        .insert_resource(ExitWhenUnread(gone));
+    app.finish();
+    app.cleanup();
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(
+        app.should_exit(),
+        Some(AppExit::from_code(SIGNAL_EXIT_CODE))
+    );
+}
+
 /// A pipe whose reader closed has nobody reading it; one still open does.
 #[cfg(unix)]
 #[test]

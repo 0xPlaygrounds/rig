@@ -1167,7 +1167,7 @@ fn excerpt(text: &str) -> String {
     }
     let (shown, left) = text.split_at(end);
     match left.trim_end().len() {
-        0 => text.to_owned(),
+        0 => text.trim_end().to_owned(),
         _ => format!("{}\n… ({} more bytes)", shown.trim_end(), left.len()),
     }
 }

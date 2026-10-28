@@ -724,9 +724,12 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
 #[test]
 fn a_long_recalled_text_is_shortened() {
     assert_eq!(excerpt("Fix it.\n\nshort"), "Fix it.\n\nshort");
-    // Ten lines and the newline that ends them leave nothing out.
+    // Ten lines and the blank ones after them leave nothing out.
     let ten: String = (1..=10).map(|n| format!("{n}\n")).collect();
-    assert_eq!(excerpt(&ten), ten);
+    assert_eq!(
+        excerpt(&format!("{ten}{}", "\n".repeat(5000))),
+        ten.trim_end()
+    );
     let numbers: String = (1..=1000).map(|n| format!("{n}\n")).collect();
     let text = format!("Count:\n\n{numbers}");
     let kept = "Count:\n\n1\n2\n3\n4\n5\n6\n7\n8";
@@ -1298,6 +1301,17 @@ fn a_signal_before_the_run_ends_gives_the_exit_its_code() {
         [json!(130), json!("hello"), json!("the run was interrupted")]
     );
     assert_eq!(lines.parsed().last(), Some(exit));
+}
+
+/// A run that writes to stdout stops once nobody reads it; one whose lines
+/// the app sends elsewhere does not watch stdout.
+#[test]
+fn a_run_on_stdout_watches_its_reader() {
+    let model = silent();
+    let (app, _) = one_shot("/help", None, &model, false, |_| {});
+    assert!(app.world().contains_resource::<ExitWhenUnread>());
+    let (app, _) = one_shot("/help", None, &model, true, |_| {});
+    assert!(!app.world().contains_resource::<ExitWhenUnread>());
 }
 
 /// A run whose output nobody reads any more, as after `| head -1`, stops as

@@ -736,6 +736,14 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
             (at(&exit, "type"), at(&exit, "code")),
             (&json!("exit"), &json!(130))
         );
+        let ends = lines.of("turn_end");
+        assert!(!ends.is_empty(), "{:?}", lines.parsed());
+        for end in ends {
+            assert_eq!(
+                (at(&end, "outcome"), at(&end, "error")),
+                (&json!("stopped"), &json!("the run was interrupted"))
+            );
+        }
         drop(app);
 
         // A valid resume keeps the access and finishes the pending work.
