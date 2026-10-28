@@ -149,7 +149,7 @@ pub struct Found {
     pub hits: Vec<Hit>,
     /// The files with a match, of a search for file names, in walk order,
     /// as the walk from the searched path reached them, without a leading
-    /// `./`.
+    /// `./` unless one starts with `~`, as [`Hit::path`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<PathBuf>,
     /// Whether it stopped at its [`MAX_MATCHES`] matches, or

@@ -11,8 +11,8 @@ use rig_core::tool::{
 use super::{Contents, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
 use crate::{
-    Delete, DeleteArgs, Edit, EditArgs, List, ListArgs, Move, MoveArgs, Read, ReadArgs,
-    Replacement, Search, SearchArgs, Write, WriteArgs,
+    Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Read, ReadArgs, Replacement, Search,
+    SearchArgs, Write, WriteArgs,
 };
 
 /// Files held in memory, by absolute path: a workspace that is not this
@@ -234,13 +234,17 @@ fn every_file_tool_goes_through_its_workspace() {
 
 /// The home directory the copy of [`tilde_is_the_home_directory`] runs
 /// with.
+#[cfg(unix)]
 const TEST_HOME: &str = "RIG_TOOLS_TEST_HOME";
 
 /// A path starting with `~` is in the home directory, for every file tool
 /// and the shell's directory; a confined tool refuses it as outside the
 /// project. The project's own `~` is reached as `./~`, and listed and found
 /// so that reading the shown path reads it. Runs again as a copy of itself
-/// with a home of its own, so the real one is never touched.
+/// with a home of its own, so the real one is never touched. Unix only:
+/// the shell part needs `sh`, and Windows spells a canonical path with a
+/// `\\?\` prefix that the joins here don't follow.
+#[cfg(unix)]
 #[test]
 fn tilde_is_the_home_directory() {
     let Some(home) = std::env::var_os(TEST_HOME).map(PathBuf::from) else {
@@ -257,7 +261,6 @@ fn tilde_is_the_home_directory() {
                 .current_dir(home.with_file_name("project"))
                 .env(TEST_HOME, &home)
                 .env("HOME", &home)
-                .env("USERPROFILE", &home)
                 .output()
         });
         std::fs::remove_dir_all(&dir).ok();
@@ -315,12 +318,12 @@ fn tilde_is_the_home_directory() {
 
     let (own, _) = call(&write, WriteArgs::new("./~/own.txt", "own\n"));
     assert!(own.is_ok() && project.join("~/own.txt").is_file());
-    let list = List {
+    let list = crate::List {
         workspace: Arc::new(super::Local),
         base: base.clone(),
         confine: true,
     };
-    let (listed, _) = call(&list, ListArgs::new("."));
+    let (listed, _) = call(&list, crate::ListArgs::new("."));
     let search = Search {
         base: base.clone(),
         ..Search::default()
@@ -345,14 +348,11 @@ fn tilde_is_the_home_directory() {
     let (again, _) = call(&read, ReadArgs::new("./~/own.txt"));
     assert!(again.map(text).unwrap_or_default().contains("own"));
 
-    #[cfg(unix)]
-    {
-        let shell = crate::Shell {
-            launcher: Launcher::default().in_dir(&project),
-            ..crate::Shell::default()
-        };
-        let (ran, _) = call(&shell, crate::ShellArgs::new("pwd -P").in_dir("~"));
-        let ran = ran.unwrap_or_default();
-        assert_eq!(ran.lines().next(), home.to_str(), "{ran}");
-    }
+    let shell = crate::Shell {
+        launcher: Launcher::default().in_dir(&project),
+        ..crate::Shell::default()
+    };
+    let (ran, _) = call(&shell, crate::ShellArgs::new("pwd -P").in_dir("~"));
+    let ran = ran.unwrap_or_default();
+    assert_eq!(ran.lines().next(), home.to_str(), "{ran}");
 }

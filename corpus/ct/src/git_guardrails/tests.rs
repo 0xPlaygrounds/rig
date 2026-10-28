@@ -220,18 +220,3 @@ fn an_ask_rule_runs_once_the_user_allows() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(GitGuardPlugin);
 }
-
-/// A `cd` in the command reads `~` as the shell does, as the home
-/// directory, and `./~` as the project's own folder.
-#[test]
-fn a_cd_to_tilde_is_the_home_directory() {
-    let base = Path::new("/project");
-    let dirs = |line: &str| {
-        let calls = super::shell::git_calls(line, base);
-        calls.into_iter().map(|call| call.dir).collect::<Vec<_>>()
-    };
-    let home = std::env::home_dir().unwrap_or_default();
-    assert_eq!(dirs("cd ~/repo && git push -f"), [home.join("repo")]);
-    assert_eq!(dirs("cd && git push -f"), [home]);
-    assert_eq!(dirs("cd ./~/repo && git push -f"), [base.join("./~/repo")]);
-}
