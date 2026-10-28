@@ -184,7 +184,7 @@ impl RepoMap {
                 text.push_str(&format!("({left} more files: call `repo_map`.)\n"));
                 break;
             }
-            text.push_str(path);
+            text.push_str(&rig_tools::fs::shown(Path::new(path)).to_string_lossy());
             text.push('\n');
         }
         if self.truncated {
@@ -195,7 +195,7 @@ impl RepoMap {
 
     /// `path` and up to `max` of its symbols, a line each.
     fn entry(&self, path: &str, max: usize) -> String {
-        let mut entry = format!("{path}\n");
+        let mut entry = format!("{}\n", rig_tools::fs::shown(Path::new(path)).display());
         let symbols = self.files.get(path).map(|file| file.symbols.as_slice());
         let symbols = symbols.unwrap_or_default();
         for symbol in symbols.iter().take(max) {
@@ -229,7 +229,10 @@ impl RepoMap {
                             true => s.name == symbol,
                             false => s.name.to_lowercase().contains(&lower),
                         })
-                        .map(|(path, s)| format!("{path}:{} {} {}", s.line, s.kind, s.name))
+                        .map(|(path, s)| {
+                            let path = rig_tools::fs::shown(Path::new(path));
+                            format!("{}:{} {} {}", path.display(), s.line, s.kind, s.name)
+                        })
                         .collect()
                 };
                 let exact = found(true);

@@ -134,10 +134,10 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// `path` relative to `base`, as `resolve` joins them:
     /// `base.join(path)`, so an absolute `path` stays as it is. A workspace
     /// whose paths can name another machine, such as
-    /// [`Hosts`](crate::remote::Hosts), keeps such a path whole too, and one
-    /// with a home directory reads a first component `~` as that home
-    /// ([`Local`]: `~`, `~/notes` and, on Windows, `~\notes`; not `~bob` or
-    /// `./~`).
+    /// [`Hosts`](crate::remote::Hosts), keeps such a path whole too. A
+    /// workspace with a home directory reads a first component `~` as that
+    /// home: [`Local`] does for `~`, `~/notes` and, on Windows, `~\notes`,
+    /// but not for `~bob` or `./~`.
     fn join(&self, base: &Path, path: &Path) -> PathBuf {
         base.join(path)
     }

@@ -245,13 +245,16 @@ const TEST_HOME: &str = "RIG_TOOLS_TEST_HOME";
 fn tilde_is_the_home_directory() {
     let Some(home) = std::env::var_os(TEST_HOME).map(PathBuf::from) else {
         let dir = std::env::temp_dir().join(format!("rig-tools-tilde-{}", std::process::id()));
-        let home = dir.join("home");
-        std::fs::create_dir_all(&home).ok();
+        std::fs::create_dir_all(dir.join("home")).ok();
         std::fs::create_dir_all(dir.join("project")).ok();
+        // Spelled as the tools will name it, temporary directories being
+        // links on some systems.
+        let home = std::fs::canonicalize(dir.join("home")).unwrap_or(dir.join("home"));
         let name = "workspace::tests::tilde_is_the_home_directory";
         let output = std::env::current_exe().and_then(|test| {
             std::process::Command::new(test)
                 .args(["--exact", name, "--test-threads", "1"])
+                .current_dir(home.with_file_name("project"))
                 .env(TEST_HOME, &home)
                 .env("HOME", &home)
                 .env("USERPROFILE", &home)
@@ -269,7 +272,6 @@ fn tilde_is_the_home_directory() {
         assert!(ran, "the run with a home of its own failed:\n{said}");
         return;
     };
-    let home = std::fs::canonicalize(&home).unwrap_or(home);
     let project = home.with_file_name("project");
     let base = Some(project.clone());
     let write = Write {
@@ -324,17 +326,22 @@ fn tilde_is_the_home_directory() {
         ..Search::default()
     };
     let (found, _) = call(&search, SearchArgs::new("own"));
+    // Without a base, from the project as this process's directory.
+    let (walked, _) = call(&Search::default(), SearchArgs::new("own"));
     let listed = listed.unwrap_or_default();
-    let found = found.unwrap_or_default();
     let own = Path::new("./~/own.txt");
-    let found_own = found
-        .lines()
-        .any(|line| line.split(':').next().map(Path::new) == Some(own));
+    let names_own = |found: &str| {
+        let first = |line: &str| line.split(':').next().map(Path::new) == Some(own);
+        found.lines().any(first)
+    };
     assert!(
         listed.lines().any(|line| Path::new(line) == own),
         "{listed}"
     );
-    assert!(found_own, "{found}");
+    for found in [found, walked] {
+        let found = found.unwrap_or_default();
+        assert!(names_own(&found), "{found}");
+    }
     let (again, _) = call(&read, ReadArgs::new("./~/own.txt"));
     assert!(again.map(text).unwrap_or_default().contains("own"));
 

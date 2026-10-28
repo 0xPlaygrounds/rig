@@ -268,10 +268,10 @@ impl Policy {
     /// and `.` taken out of the rest.
     fn resolve(&self, raw: &str) -> PathBuf {
         let home = self.home.as_deref().unwrap_or(Path::new("/"));
-        let path = match raw.strip_prefix('~') {
-            Some("") => home.to_path_buf(),
-            Some(rest) if rest.starts_with('/') => home.join(rest.trim_start_matches('/')),
-            _ => PathBuf::from(raw),
+        // The coding tools' rule: a first component `~`.
+        let path = match Path::new(raw).strip_prefix("~") {
+            Ok(rest) => home.join(rest),
+            Err(_) => PathBuf::from(raw),
         };
         real(&self.root.join(path))
     }

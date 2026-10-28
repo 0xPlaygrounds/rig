@@ -178,13 +178,12 @@ fn list(
             let parts: Vec<_> = below.iter().collect();
             Some(match parts.get(..depth) {
                 Some(kept) if kept.len() < parts.len() => {
-                    format!("{}/", kept.iter().collect::<PathBuf>().display())
+                    format!("{}/", shown(&kept.iter().collect::<PathBuf>()).display())
                 }
                 _ if below.as_os_str().is_empty() => file.to_string_lossy().into_owned(),
-                _ => below.to_string_lossy().into_owned(),
+                _ => shown(below).to_string_lossy().into_owned(),
             })
         })
-        .map(|entry| shown(Path::new(&entry)).to_string_lossy().into_owned())
         .collect();
     let total = entries.len();
     let mut text = String::new();
