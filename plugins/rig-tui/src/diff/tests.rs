@@ -110,3 +110,65 @@ fn a_changes_lines_are_its_hunks_in_its_files_colors() {
         "{same:?}"
     );
 }
+
+#[test]
+fn a_hunk_cut_short_ends_at_its_first_line_that_cannot_be_its() {
+    let ends = [
+        ("AFTER the diff", "    AFTER the diff"),
+        ("\tindented", "        indented"),
+        (
+            "[… 40 lines cut (lines 13-52) …]",
+            "    [… 40 lines cut (lines 13-52) …]",
+        ),
+        ("[exit code 0]", "    [exit code 0]"),
+        ("", "    "),
+    ];
+    for (end, drawn) in ends {
+        let output = format!(
+            "@@ -1,19 +1,57 @@\n use std::fs;\n{end}\n+literal\n@@ -30,1 +60,1 @@\n kept\n"
+        );
+        let lines = unified_lines(&output, &Theme::default()).unwrap_or_default();
+        let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
+        assert_eq!(
+            texts.get(2..).unwrap_or_default(),
+            [
+                drawn,
+                "    +literal",
+                "    @@ -30,1 +60,1 @@",
+                "    30 60   kept"
+            ],
+            "{end}"
+        );
+    }
+}
+
+#[test]
+fn a_line_fits_its_hunk_only_while_its_side_has_lines_left() {
+    let diff = "@@ -1,3 +1,2 @@\n-gone\n same\n+one\n+two\n";
+    let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+    let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        texts.get(1..).unwrap_or_default(),
+        [
+            "    1   - gone",
+            "    2 1   same",
+            "      2 + one",
+            "    +two"
+        ]
+    );
+}
+
+#[test]
+fn a_missing_newline_note_keeps_its_hunk_open() {
+    let diff = "@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n";
+    let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+    let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        texts.get(1..).unwrap_or_default(),
+        [
+            "    1   - old",
+            "    \\ No newline at end of file",
+            "      1 + new"
+        ]
+    );
+}

@@ -102,46 +102,55 @@ fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line
 }
 
 /// Each line of the diff `text` with what it is, tabs made spaces and
-/// the sign of a hunk's line taken off. A hunk's lines are counted by its
-/// header, so a removed line starting with `--` is not taken for a file.
+/// the sign of a hunk's line taken off. A hunk holds only the lines its
+/// header counts, so a removed line starting with `--` is not taken for a
+/// file. It ends early at a line whose sign doesn't fit what it has left,
+/// as after output cut off by `head`, and that line is read as one outside
+/// any hunk.
 fn classify(text: &str) -> Vec<(Kind, String)> {
     let (mut old, mut new) = (0, 0);
     let (mut old_left, mut new_left) = (0usize, 0usize);
     text.lines()
-        .map(|line| {
-            let line = line.replace('\t', "    ");
+        .map(|raw| {
+            let line = raw.replace('\t', "    ");
             let body = || line.get(1..).unwrap_or_default().to_owned();
-            if old_left + new_left > 0 {
-                let kind = match line.chars().next() {
-                    Some('-') => {
-                        old_left = old_left.saturating_sub(1);
-                        old += 1;
-                        Kind::Removed(old - 1)
-                    }
-                    Some('+') => {
-                        new_left = new_left.saturating_sub(1);
-                        new += 1;
-                        Kind::Added(new - 1)
-                    }
-                    Some('\\') => return (Kind::Other, line),
-                    _ => {
-                        old_left = old_left.saturating_sub(1);
-                        new_left = new_left.saturating_sub(1);
-                        (old, new) = (old + 1, new + 1);
-                        Kind::Same(old - 1, new - 1)
-                    }
-                };
-                return (kind, body());
-            }
-            match header(&line) {
-                Some(((old_start, old_count), (new_start, new_count))) => {
-                    (old, new) = (old_start, new_start);
-                    (old_left, new_left) = (old_count, new_count);
-                    (Kind::Hunk, line)
+            let kind = match raw.chars().next() {
+                Some('-') if old_left > 0 => {
+                    old_left -= 1;
+                    old += 1;
+                    Kind::Removed(old - 1)
                 }
-                None if line.starts_with("--- ") || line.starts_with("+++ ") => (Kind::File, line),
-                None => (Kind::Other, line),
-            }
+                Some('+') if new_left > 0 => {
+                    new_left -= 1;
+                    new += 1;
+                    Kind::Added(new - 1)
+                }
+                Some(' ') if old_left > 0 && new_left > 0 => {
+                    (old_left, new_left) = (old_left - 1, new_left - 1);
+                    (old, new) = (old + 1, new + 1);
+                    Kind::Same(old - 1, new - 1)
+                }
+                // `\ No newline at end of file` can come between a hunk's
+                // removed and added lines.
+                _ if raw.starts_with("\\ ") && old_left + new_left > 0 => {
+                    return (Kind::Other, line);
+                }
+                _ => {
+                    (old_left, new_left) = (0, 0);
+                    return match header(&line) {
+                        Some(((old_start, old_count), (new_start, new_count))) => {
+                            (old, new) = (old_start, new_start);
+                            (old_left, new_left) = (old_count, new_count);
+                            (Kind::Hunk, line)
+                        }
+                        None if line.starts_with("--- ") || line.starts_with("+++ ") => {
+                            (Kind::File, line)
+                        }
+                        None => (Kind::Other, line),
+                    };
+                }
+            };
+            (kind, body())
         })
         .collect()
 }
