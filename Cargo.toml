@@ -353,6 +353,7 @@ serde_yaml = "0.9"
 serde_json = "1.0.54"
 safetensors = "0.8"
 sha2 = "0.10"
+signal-hook = "0.3.18"
 similar = "2.7"
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 terminal-colorsaurus = "1.0"

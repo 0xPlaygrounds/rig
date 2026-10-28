@@ -122,6 +122,7 @@ pub mod prelude {
         AppStart, DeleteSession, Logged, LoggedQueue, Scratch, SessionDeleteFailed, SessionDeleted,
         SessionPaths, StoreOpener, edit_stopped, rewrite_stopped,
     };
+    pub use crate::host::signals::{self, ExitWhenUnread};
     pub use crate::main_agent::{MainAgentQuery, ShownAgent, main_agent};
     pub use crate::per_call::{
         AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,

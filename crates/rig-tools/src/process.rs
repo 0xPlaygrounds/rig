@@ -3,14 +3,20 @@
 //! the [`Launcher`] that says how every tool starts them. A [`Process`] it
 //! [spawns](Launcher::spawn) takes its input, hands its output over line
 //! by line, and is stopped gently or killed with its whole group.
+//!
+//! A process that dies without stopping its children, such as on
+//! `SIGKILL`, leaves their groups running. [`record_groups`] keeps the
+//! groups not reaped yet in a file, for a supervisor that outlives it to
+//! kill.
 
+use std::collections::BTreeSet;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write as _};
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Output, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -93,6 +99,9 @@ impl Launcher {
             command.env_remove(name);
         }
         command.envs(self.env.iter().map(|(name, value)| (name, value)));
+        if let Some(ledger) = ledger_path() {
+            command.env(LEDGER_VARIABLE, ledger);
+        }
         detach(&mut command);
         command
     }
@@ -155,6 +164,7 @@ impl Launcher {
         // reading never ends.
         drop(command);
         let child = spawned?;
+        record(child.id(), true);
         let group = Group(Arc::new(AtomicU32::new(child.id())));
         // From here on, an error drops the process, which kills it.
         let mut process = Process {
@@ -429,6 +439,7 @@ impl Process {
         if !matches!(status, Ok(None)) {
             // Reaped, or about to be: its id may be reused.
             self.group.0.store(0, Ordering::SeqCst);
+            record(self.child.id(), false);
         }
         status
     }
@@ -585,6 +596,8 @@ impl Process {
         if self.child.try_wait()?.is_none() {
             self.child.kill()?;
         }
+        // Off the ledger before the reap frees its id.
+        record(self.child.id(), false);
         self.child.wait()
     }
 }
@@ -664,6 +677,56 @@ impl Drop for KillOnDrop {
 enum Signal {
     Terminate,
     Kill,
+}
+
+/// The file [`record_groups`] keeps, and the groups it lists.
+static LEDGER: Mutex<Option<(PathBuf, BTreeSet<u32>)>> = Mutex::new(None);
+
+/// The variable every command a [`Launcher`] builds carries while
+/// [`record_groups`] keeps a ledger: the ledger's path.
+pub const LEDGER_VARIABLE: &str = "RIG_PROCESS_LEDGER";
+
+/// From now on keeps the id of each process group a [`Launcher`] spawned
+/// and this process has not reaped yet in the file at `path`, one per line,
+/// rewritten whole on each change, and marks every command a launcher
+/// builds with [`LEDGER_VARIABLE`] set to `path`. A supervisor that
+/// outlives this process, such as rig's launcher, kills the groups listed
+/// once it died without stopping them, each only while its leader still
+/// carries the mark: a listed id that names another process by then, its
+/// own reaped, is left alone. A file that cannot be written lists nothing
+/// new.
+pub fn record_groups(path: impl Into<PathBuf>) {
+    let mut ledger = LEDGER.lock().unwrap_or_else(PoisonError::into_inner);
+    let (path, groups) = ledger.insert((path.into(), BTreeSet::new()));
+    write_ledger(path, groups).ok();
+}
+
+/// The ledger's path, while [`record_groups`] keeps one.
+fn ledger_path() -> Option<PathBuf> {
+    let ledger = LEDGER.lock().unwrap_or_else(PoisonError::into_inner);
+    ledger.as_ref().map(|(path, _)| path.clone())
+}
+
+/// Lists the group `id` leads in the ledger, or takes it off once reaped.
+fn record(id: u32, live: bool) {
+    let mut ledger = LEDGER.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((path, groups)) = ledger.as_mut() {
+        let changed = match live {
+            true => groups.insert(id),
+            false => groups.remove(&id),
+        };
+        if changed {
+            write_ledger(path, groups).ok();
+        }
+    }
+}
+
+/// Replaces the file at `path` with `groups`, one per line.
+fn write_ledger(path: &std::path::Path, groups: &BTreeSet<u32>) -> io::Result<()> {
+    let text: String = groups.iter().map(|id| format!("{id}\n")).collect();
+    let written = path.with_extension("tmp");
+    std::fs::write(&written, text)?;
+    std::fs::rename(&written, path)
 }
 
 /// Starts `command` in a new session, which also makes it the leader of a

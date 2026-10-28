@@ -170,6 +170,66 @@ touch \"$RIG_HOME/sessions/$RIG_SESSION/saved\"";
     assert_eq!(offers("failed-never-started", ":"), Some((failed, false)));
 }
 
+/// The process groups an agent leaves running when it dies without stopping
+/// them, such as on `SIGKILL`, are killed once it is gone; one it leaves
+/// for a reload is not, nor a listed one whose leader lacks the mark of a
+/// process the agent started (an id since given to another process).
+#[cfg(target_os = "linux")]
+#[test]
+fn groups_the_agent_left_are_killed_after_it_dies_and_kept_across_a_reload() {
+    let notes = std::env::temp_dir().join(format!("rig-left-groups-{}", std::process::id()));
+    fs::remove_dir_all(&notes).ok();
+    fs::create_dir_all(&notes).ok();
+    let agent = format!(
+        "echo \"$RIG_SESSION\" > \"$RIG_HOME/last\"
+touch \"$RIG_RUN/ready\"
+cd '{}'
+if [ ! -e marked ]; then
+  {}=\"$RIG_RUN/groups\" setsid sleep 30 &
+  echo $! > marked
+  setsid sleep 30 &
+  echo $! > unmarked
+  cat marked unmarked > \"$RIG_RUN/groups\"
+  exit 75
+fi
+kill -0 \"$(cat marked)\" && touch kept
+cat marked unmarked > \"$RIG_RUN/groups\"
+kill -KILL $$",
+        notes.display(),
+        env::PROCESS_LEDGER,
+    );
+    let ended = interactive("left-groups", &agent, false);
+    assert!(ended.is_some());
+    let id = |name: &str| {
+        let id = fs::read_to_string(notes.join(name)).ok();
+        id.and_then(|id| id.trim().parse::<u32>().ok())
+    };
+    let (marked, unmarked) = (id("marked"), id("unmarked"));
+    assert!(marked.is_some() && unmarked.is_some());
+    assert!(notes.join("kept").exists(), "killed on the reload");
+    // Dead once it is gone or a zombie waiting for its new parent.
+    let alive = |pid: u32| {
+        fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while marked.is_some_and(alive) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!marked.is_some_and(alive));
+    assert!(unmarked.is_some_and(alive));
+    if let Some(unmarked) = unmarked {
+        child("kill").arg(unmarked.to_string()).status().ok();
+    }
+    fs::remove_dir_all(&notes).ok();
+}
+
 /// A home whose staged build is `trial` and whose good build is `good`:
 /// shell scripts that add their name to the home's `ran` file and then run
 /// their body, which may use the launcher's environment.

@@ -87,6 +87,46 @@ fn a_refusal_is_told_to_the_launcher() {
     assert_eq!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
 }
 
+/// The launcher is told when the run's front takes the terminal's screen,
+/// and only then puts the terminal back after the agent: not for a front
+/// that writes lines, such as `--json` typed at a terminal, nor for a
+/// refused run.
+#[test]
+fn the_launcher_hears_when_a_front_takes_the_screen() {
+    use crate::host::cli::{AppCliExt, Front};
+
+    let home = Home::at(std::env::temp_dir().join(format!("rig-screen-{}", std::process::id())));
+    let screen = |args: &[&str], refused: bool| {
+        let run = home.run(1);
+        std::fs::remove_dir_all(run.path()).ok();
+        std::fs::create_dir_all(run.path()).ok();
+        let mut app = App::new();
+        app.add_message::<AppExit>()
+            .insert_resource(Invoked {
+                args: Invocation::parse(args).unwrap_or_default(),
+                terminal: true,
+            })
+            .insert_resource(LauncherRun(run.clone()))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+            .add_plugins((LauncherPlugin, ExitPlugin))
+            .add_front(Front::new("view").on_terminal())
+            .add_front(Front::new("lines").on_flag("lines", "Write lines"));
+        app.finish();
+        app.cleanup();
+        if refused {
+            app.refuse_run("no".to_owned());
+        }
+        run.screen().exists()
+    };
+    let taken = [
+        screen(&[], false),
+        screen(&["--lines"], false),
+        screen(&[], true),
+    ];
+    std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(taken, [true, false, false]);
+}
+
 /// An agent whose launcher is gone, such as one killed alone by `kill` or
 /// `timeout`, exits as on a signal rather than run on its own.
 #[test]
@@ -122,4 +162,13 @@ fn an_agent_exits_once_its_launcher_is_gone() {
     let exit = exits_within(&mut app, Duration::from_secs(5));
     std::fs::remove_dir_all(home.root()).ok();
     assert_eq!(exit, Some(AppExit::from_code(SIGNAL_EXIT_CODE)));
+}
+
+/// The launcher finds the mark rig-tools puts on the agent's processes.
+#[test]
+fn the_processes_carry_the_mark_the_launcher_looks_for() {
+    assert_eq!(
+        rig_tools::process::LEDGER_VARIABLE,
+        rig_harness_protocol::env::PROCESS_LEDGER
+    );
 }

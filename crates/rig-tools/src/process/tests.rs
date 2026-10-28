@@ -1,7 +1,7 @@
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
-use super::{Ended, Launcher, OutputLine, Spawn, piece_end};
+use super::{Ended, LEDGER_VARIABLE, Launcher, OutputLine, Spawn, piece_end, record_groups};
 
 /// What a process reads on stdin reaches it, and its stdout and stderr
 /// lines arrive tagged, each with its `\n`.
@@ -178,6 +178,39 @@ fn dropping_a_process_kills_its_group() {
         std::thread::sleep(Duration::from_millis(20));
     }
     assert!(!grandchild.is_some_and(alive));
+}
+
+/// The ledger lists a spawned process's group while it runs and drops it
+/// once it is reaped, whether it ended or was killed; each process carries
+/// the ledger's path.
+#[cfg(unix)]
+#[test]
+fn the_ledger_lists_each_group_until_it_is_reaped() {
+    let path = std::env::temp_dir().join(format!("rig-groups-{}", std::process::id()));
+    record_groups(&path);
+    let listed = || std::fs::read_to_string(&path).unwrap_or_default();
+    let marked = Launcher::default().command("true");
+    let carried = marked.get_envs().find(|(name, _)| *name == LEDGER_VARIABLE);
+    assert_eq!(
+        carried,
+        Some((LEDGER_VARIABLE.as_ref(), Some(path.as_os_str())))
+    );
+    let killed = Launcher::default().spawn("sleep", ["30"], Spawn::default());
+    let ended = Launcher::default().spawn("true", [""; 0], Spawn::default());
+    let ids = killed.as_ref().ok().zip(ended.as_ref().ok());
+    let ids = ids.map(|(killed, ended)| (killed.id(), ended.id()));
+    assert!(ids.is_some());
+    let Some((killed_id, ended_id)) = ids else {
+        return;
+    };
+    let (low, high) = (killed_id.min(ended_id), killed_id.max(ended_id));
+    assert_eq!(listed(), format!("{low}\n{high}\n"));
+    let status = ended.and_then(|mut ended| ended.wait_for(Duration::from_secs(5)));
+    assert!(status.is_ok_and(|status| status.is_some()));
+    assert_eq!(listed(), format!("{killed_id}\n"));
+    drop(killed);
+    assert_eq!(listed(), "");
+    std::fs::remove_file(&path).ok();
 }
 
 /// A line ends after its `\n`; a line too long for one piece is cut, but

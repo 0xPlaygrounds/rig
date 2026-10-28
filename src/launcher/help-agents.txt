@@ -11,13 +11,16 @@ One task:
                           "answer":"…","error":null,"session":"…",
                           "usage":{…}}.
   Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
-  no answer text), 2 no task, a refused /command or an unknown --tools
-  name, 130 interrupted by a signal. The exit line's code is the agent's:
-  a launcher killed by a signal itself ends as that signal says (143 for
-  SIGTERM) while its agent's exit line says 130.
+  no answer text), 2 no task, a refused /command, an unknown --tools name
+  or a --model the catalog lacks, 130 interrupted: by a signal, the
+  launcher's death, or nobody reading stdout any more (`| head -1`), which
+  plain -p says on stderr. The exit line's code is the agent's: a launcher
+  killed by a signal itself ends as that signal says (143 for SIGTERM)
+  while its agent's exit line says 130.
   A failed turn hands its unanswered task back: stderr says "rig: not
-  answered: <task>" (with --json, a recalled event), and the session no
-  longer holds it; a turn that ended with no answer text keeps it.
+  answered: <task>", its first lines (with --json, a recalled event with
+  all of it), and the session no longer holds it; a turn that ended with
+  no answer text keeps it.
   Runs side by side in one directory see each other's edits: give each
   its own files, or its own directory (such as a git worktree).
   Nobody answers its questions: they are refused unless --answer=ID[,ID…]
@@ -33,8 +36,8 @@ name no tool has is refused, before any model or tool call) and -r
 works in its current directory. RIG_HOME (default ~/.rig) holds its
 builds, settings and sessions. The first start builds the agent, which
 takes minutes, and a start waits for another rig's build; stderr says
-so meanwhile, in one line, and is otherwise quiet about the build
-unless it fails.
+so in one line once the wait passes 3 seconds, and is otherwise quiet
+about the build unless it fails.
 
 Every line, both ways, is a JSON object with "v":1. A line of another
 version is refused with a reply saying whether rig or the driver needs
@@ -83,15 +86,19 @@ Events, each with "agent" when it is an agent's:
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.
 
-When rig exits mid-turn (a signal, the launcher killed, or stdin closed
-in a conversation), it still closes what it started: a tool_result
-("cancelled": true) for each running call, a turn_end ("stopped") for
-each turn, and with -p the exit line (code 130 for a signal). Read
-stdout to its end to get them. The session keeps those turns
-unfinished: `rig -r <id>` goes on with them once this rig has exited.
-Not covered: SIGKILL, a repeat signal two or more seconds after the
-first (which exits at once), and a reader killed by the same signal, as
-a Ctrl+C in a terminal kills `cat` too.
+When rig exits mid-turn (a signal, the launcher killed, stdout's reader
+gone, or stdin closed in a conversation), it still closes what it
+started: a tool_result ("cancelled": true) for each running call, a
+turn_end ("stopped") for each turn, and with -p the exit line (code 130
+for a signal). Read stdout to its end to get them. The session keeps
+those turns unfinished: `rig -r <id>` goes on with them once this rig
+has exited. SIGTERM always does this. SIGINT and SIGHUP do unless rig
+started with them ignored, as a script's `&` job ignores SIGINT and
+`nohup` SIGHUP: rig keeps them ignored. Not covered: SIGKILL and a
+repeat signal two or more seconds after the first (which exits at once)
+write no closing lines, though the launcher still kills the tool
+processes the agent left; nor does a reader killed by the same signal
+get them, as a Ctrl+C in a terminal kills `cat` too.
 
 In Python:
 

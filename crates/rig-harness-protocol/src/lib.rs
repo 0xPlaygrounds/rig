@@ -57,6 +57,11 @@ pub mod env {
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
     pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START];
+    /// On every process the agent starts for its tools: the path of the
+    /// launcher's [`RunDir::groups`](super::RunDir::groups), which the
+    /// launcher finds on a listed group's leader before it kills the
+    /// group. The name `rig_tools::process::LEDGER_VARIABLE` sets.
+    pub const PROCESS_LEDGER: &str = "RIG_PROCESS_LEDGER";
     /// Set by the launcher to a file's path: the agent builds its app,
     /// writes what its plugins add there ([`AgentDescription`](super::AgentDescription))
     /// and exits without running a frame.
@@ -495,9 +500,25 @@ impl RunDir {
         self.0.join("refusal")
     }
 
+    /// Written by the agent once its front takes the terminal's screen,
+    /// as the terminal view does: only then does the launcher put the
+    /// terminal back after the agent, which a front that writes lines,
+    /// such as `--json` typed at a terminal, would have overwritten.
+    pub fn screen(&self) -> PathBuf {
+        self.0.join("screen")
+    }
+
     /// Held by the launcher while it lives.
     pub fn lock(&self) -> PathBuf {
         self.0.join("lock")
+    }
+
+    /// The process groups the agent started and has not reaped yet, one
+    /// id per line: the launcher kills those left once the agent exits
+    /// for anything but a reload, such as after `SIGKILL`, each only while
+    /// its leader carries [`env::PROCESS_LEDGER`] naming this file.
+    pub fn groups(&self) -> PathBuf {
+        self.0.join("groups")
     }
 }
 

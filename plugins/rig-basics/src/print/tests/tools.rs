@@ -245,6 +245,7 @@ fn actual_tui_policy_compaction_and_persistence_have_no_stage_conflicts() {
         crate::compaction::CompactionPlugin,
         crate::subagents::SubagentsPlugin,
     ));
+    recording(&mut app, &["allowed"]);
     app.finish();
     app.cleanup();
     assert!(app.runs_front(rig_tui::FRONT));
@@ -628,9 +629,10 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
         app.update();
         drop(app);
 
-        // Refusal must run neither a model nor a restored tool call.
+        // Refusal must run neither a model nor a restored tool call, and
+        // the turn it cuts off says why.
         let second = answering(&["hello"]);
-        let (app, _) = one_shot_on(&store, "", Some(MODEL), &second, true, |app| {
+        let refused = |app: &mut App| {
             recording(app, &["read", "write"]);
             let flag = (TOOLS.to_owned(), Some("read,bogus".to_owned()));
             app.world_mut()
@@ -638,9 +640,40 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
                 .args
                 .flags
                 .push(flag);
-        });
+        };
+        let (app, lines) = one_shot_on(&store, "", Some(MODEL), &second, true, refused);
         assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
         assert_eq!(second.request_count(), 0);
+        assert!(app.world().resource::<Executed>().0.is_empty());
+        let why = "--tools: unknown tool `bogus`; the tools are read, write";
+        let ends = lines.of("turn_end");
+        assert!(!ends.is_empty(), "{:?}", lines.parsed());
+        for end in ends {
+            assert_eq!(
+                (at(&end, "outcome"), at(&end, "error")),
+                (&json!("stopped"), &json!(why))
+            );
+        }
+        drop(app);
+
+        // So must a run someone sits at, which is refused before its view
+        // starts.
+        let fourth = answering(&["hello"]);
+        let invoked = Invocation {
+            flags: vec![(TOOLS.to_owned(), Some("read,bogus".to_owned()))],
+            ..Invocation::default()
+        };
+        let (mut app, _) = noting(&store, invoked);
+        app.world_mut().resource_mut::<Invoked>().terminal = true;
+        app.insert_resource(scripted_models([(MODEL, &fourth)]))
+            .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
+            .add_front(Front::new("view").on_terminal());
+        recording(&mut app, &["read", "write"]);
+        app.finish();
+        app.cleanup();
+        run_until(&mut app, |_| false);
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+        assert_eq!(fourth.request_count(), 0);
         assert!(app.world().resource::<Executed>().0.is_empty());
         drop(app);
 

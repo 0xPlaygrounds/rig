@@ -690,15 +690,50 @@ fn sections_follow_the_answer_by_tag() {
 #[test]
 fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
     let wait = Duration::from_millis(50);
-    assert_eq!(with_piped("Review", &b"diff"[..], wait), "Review\n\ndiff");
-    assert_eq!(with_piped("", &b"diff"[..], wait), "diff");
+    let on = || false;
+    let piped = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, wait, on);
+    assert_eq!(piped("Review", b"diff").as_deref(), Some("Review\n\ndiff"));
+    assert_eq!(piped("", b"diff").as_deref(), Some("diff"));
     // A pipe whose writer stays open and silent, as an agent's shell may
     // leave stdin.
     let Ok((silent, writer)) = std::io::pipe() else {
         return;
     };
-    assert_eq!(with_piped("Review", silent, wait), "Review");
+    assert_eq!(
+        with_piped("Review", silent, wait, on).as_deref(),
+        Some("Review")
+    );
     drop(writer);
+}
+
+/// A run waiting for its whole prompt on stdin, which may never come, stops
+/// waiting once it is interrupted, as by a signal or its launcher's death.
+#[test]
+fn an_interrupted_run_stops_waiting_for_stdin() {
+    let Ok((silent, writer)) = std::io::pipe() else {
+        return;
+    };
+    let since = std::time::Instant::now();
+    let interrupted = move || since.elapsed() > Duration::from_millis(100);
+    assert_eq!(with_piped("", silent, Duration::MAX, interrupted), None);
+    drop(writer);
+}
+
+/// A long recalled text, such as a big input piped in after the prompt,
+/// shows its first lines on stderr and how much was left out.
+#[test]
+fn a_long_recalled_text_is_shortened() {
+    assert_eq!(excerpt("Fix it.\n\nshort"), "Fix it.\n\nshort");
+    let numbers: String = (1..=1000).map(|n| format!("{n}\n")).collect();
+    let text = format!("Count:\n\n{numbers}");
+    let kept = "Count:\n\n1\n2\n3\n4\n5\n6\n7\n8";
+    let left = text.len() - kept.len();
+    assert_eq!(excerpt(&text), format!("{kept}\n… ({left} more bytes)"));
+    // Never inside a character.
+    let wide = "é".repeat(600);
+    let shown = excerpt(&wide);
+    assert!(shown.starts_with(&"é".repeat(500)), "{shown}");
+    assert!(shown.ends_with("… (200 more bytes)"), "{shown}");
 }
 
 /// The lines written, shared with the test.
@@ -1002,12 +1037,16 @@ fn out_of_credit() -> MockCompletionModel {
 
 #[test]
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
-    // A provider refusal fails the turn; a refused `--model` fails before it.
-    for (named, model) in [(None, out_of_credit()), (Some("nobody/nothing"), silent())] {
+    // A provider refusal fails the turn; a `--model` the catalog lacks is
+    // refused before it, as a command line.
+    for (named, model, code) in [
+        (None, out_of_credit(), 1),
+        (Some("nobody/nothing"), silent(), 2),
+    ] {
         let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
-        assert_eq!(at(&exit, "code"), 1, "{exit}");
+        assert_eq!(at(&exit, "code"), code, "{exit}");
         let error = |line: &&Value| at(line, "type") == "notice" && at(line, "level") == "error";
         // The error notice, perhaps with advice after it, comes first.
         let notice = parsed
@@ -1255,6 +1294,21 @@ fn a_signal_before_the_run_ends_gives_the_exit_its_code() {
         [json!(130), json!("hello"), json!("the run was interrupted")]
     );
     assert_eq!(lines.parsed().last(), Some(exit));
+}
+
+/// A plain run cut off by a signal says so on stderr, once.
+#[test]
+fn a_plain_run_cut_off_by_a_signal_says_so() {
+    let model = answering(&["hello"]);
+    let stderr = Lines::default();
+    let (app, _) = one_shot("hi", Some(MODEL), &model, false, |app| {
+        app.insert_resource(Printed::to(stderr.clone()))
+            .add_observer(|_: On<Add<TurnOf>>, mut commands: Commands| {
+                commands.trigger(Exit(ExitReason::Signal));
+            });
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
+    assert_eq!(stderr.text(), ["rig: the run was interrupted"]);
 }
 
 #[test]

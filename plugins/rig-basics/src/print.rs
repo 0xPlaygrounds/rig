@@ -28,14 +28,17 @@
 //! may one whose restored session left a turn unfinished (`rig -r <id>
 //! -p`): that turn's answer is the run's; a run the launcher restarted on a
 //! reload with nothing left ends with 0. The exit code is 0 answered, 2
-//! for no prompt, a refused slash command or a `--tools` name no tool has,
-//! else 1, such as for a failed turn, a turn that ended with no answer, or
-//! an error notice about the agent and no answer; a run of several turns
-//! exits with the worst. A `--json` run that exits before its work ends,
-//! such as on a signal, still closes each tool call and turn it started,
+//! for no prompt, a refused slash command, a `--tools` name no tool has or
+//! a `--model` the catalog lacks, 130 when cut off, as by a signal or a
+//! reader of stdout gone, else 1, such as for a failed turn, a turn that
+//! ended with no answer, or an error notice about the agent and no answer;
+//! a run of several turns exits with the worst. A `--json` run that exits
+//! before its work ends still closes each tool call and turn it started,
 //! and a one-shot one writes its `exit` line.
 
 use std::io::{IsTerminal, Read, Write};
+use std::sync::mpsc::RecvTimeoutError;
+use std::time::Instant;
 
 use async_channel::{Receiver, Sender};
 use bevy_ecs::message::{MessageCursor, Messages};
@@ -64,12 +67,11 @@ pub const ORIGIN: &str = "print";
 pub const ANSWER: &str = "answer";
 
 /// The option that intersects every agent's tool access with the names given.
-/// Omission leaves access unchanged; an empty value permits no tools. A
-/// headless run refuses a name no registered tool has, with exit code 2,
-/// before any model or tool call. It checks once every plugin finished,
-/// so a tool registered later, such as an MCP server's, cannot be named.
-/// Elsewhere an unknown name grants nothing. Subagents retain inherited
-/// restrictions and this limit.
+/// Omission leaves access unchanged; an empty value permits no tools. A run
+/// refuses a name no registered tool has, with exit code 2, before any
+/// model or tool call, headless or at a terminal. It checks once every
+/// plugin finished, so a tool registered later, such as an MCP server's,
+/// cannot be named. Subagents retain inherited restrictions and this limit.
 pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
@@ -155,6 +157,12 @@ impl Plugin for PrintPlugin {
                 .collect()
         };
         let (answers, tools) = (list(ANSWER), list(TOOLS));
+        app.add_systems(
+            AgentPass,
+            hold_calls
+                .in_set(Stage::Gate)
+                .run_if(resource_exists::<HoldCalls>),
+        );
         if invoked.as_ref().is_some_and(|invoked| invoked.flag(TOOLS)) {
             app.insert_resource(Tools(tools)).add_systems(
                 AgentPass,
@@ -169,6 +177,7 @@ impl Plugin for PrintPlugin {
         if !json && !app.runs_front(FRONT) {
             return;
         }
+        app.insert_resource(ExitWhenUnread);
         let prompt = invoked.and_then(|invoked| invoked.args.print);
         if json {
             if !app.world().contains_resource::<JsonOut>() {
@@ -213,7 +222,13 @@ impl Plugin for PrintPlugin {
                     ),
                 )
                 .add_observer(print_answer)
-                .add_observer(print_ended);
+                .add_observer(print_ended)
+                .add_systems(
+                    Last,
+                    print_interrupted
+                        .in_set(OnAppExitSystems)
+                        .run_if(on_message::<AppExit>),
+                );
         }
         if json && prompt.is_none() {
             // A long-lived `--json` run: the driver answers questions, and
@@ -235,24 +250,32 @@ impl Plugin for PrintPlugin {
         if !answers.is_empty() {
             app.world_mut().spawn(Answerer::default());
         }
+        // Read before the first frame, so no work starts before the
+        // prompt is known; a signal or the launcher's death ends the wait,
+        // and the first frame exits.
+        let prompt = full_prompt(&prompt, signals::interruption(app.world()));
+        let interrupted = prompt.is_none();
+        if interrupted {
+            app.insert_resource(HoldCalls);
+        }
         app.insert_resource(Answers(answers))
             .configure_sets(
                 AgentPass,
                 PrintSystems.in_set(Stage::Gate).after(AskSystems),
             )
             .add_systems(AgentPass, answer.in_set(PrintSystems))
-            .run_headless(Some(full_prompt(&prompt)));
+            .run_headless(Some(prompt.unwrap_or_default()));
+        if let Some(mut run) = app.world_mut().get_resource_mut::<Run>() {
+            run.interrupted = interrupted;
+        }
     }
 
     /// Refuses unknown tools after every plugin finished, holding all
     /// model and tool calls, including restored work. The session keeps
-    /// every agent's tool access unchanged.
+    /// every agent's tool access unchanged. A headless run ends with its
+    /// lines; a run someone sits at is refused before its view starts.
     fn cleanup(&self, app: &mut App) {
         let world = app.world_mut();
-        // A run someone sits at keeps an unknown name as granting nothing.
-        if !world.contains_resource::<Run>() {
-            return;
-        }
         let mut tools = world.query::<&ToolDef>();
         let names: Vec<String> = tools
             .iter(world)
@@ -261,15 +284,26 @@ impl Plugin for PrintPlugin {
         let refused = world
             .get_resource::<Tools>()
             .and_then(|tools| tools.unknown(names.iter().map(String::as_str)));
-        if let (Some(why), Some(mut run)) = (refused, world.get_resource_mut::<Run>()) {
-            run.refused = Some(why);
-            world.remove_resource::<Tools>();
-            app.add_systems(AgentPass, hold_calls.in_set(Stage::Gate));
+        let Some(why) = refused else {
+            return;
+        };
+        world.remove_resource::<Tools>();
+        world.insert_resource(HoldCalls);
+        match world.get_resource_mut::<Run>() {
+            Some(mut run) => run.refused = Some(why),
+            None => {
+                app.refuse_run(why);
+            }
         }
     }
 }
 
-/// Holds model and tool calls for a run whose tool list was refused.
+/// While it exists, model and tool calls are held: for a run whose tool
+/// list was refused, or that was interrupted before its first frame.
+#[derive(Resource)]
+struct HoldCalls;
+
+/// Holds model and tool calls while [`HoldCalls`] exists.
 fn hold_calls(
     calls: Query<Entity, (ReadyToStart, Or<(ModelCalls, ToolCalls)>)>,
     mut commands: Commands,
@@ -414,18 +448,29 @@ fn answer(
 /// leave stdin, must not hold the run.
 const PIPED_WAIT: Duration = Duration::from_secs(1);
 
-/// The prompt with what was piped in on stdin after it.
-fn full_prompt(prompt: &str) -> String {
+/// The prompt with what was piped in on stdin after it; `None` once
+/// `interrupted` says the run is.
+fn full_prompt(prompt: &str, interrupted: impl Fn() -> bool) -> Option<String> {
     match std::io::stdin().is_terminal() {
-        true => prompt.to_owned(),
-        false => with_piped(prompt, std::io::stdin(), PIPED_WAIT),
+        true => Some(prompt.to_owned()),
+        false => with_piped(prompt, std::io::stdin(), PIPED_WAIT, interrupted),
     }
 }
 
+/// How often a wait for what is piped in looks whether the run was
+/// interrupted.
+const INTERRUPT_CHECK: Duration = Duration::from_millis(50);
+
 /// `prompt` with what `piped` holds after it. Without a prompt, `piped` is
 /// the prompt, read to its end; with one, it is read only when something
-/// comes within `wait`.
-fn with_piped(prompt: &str, mut piped: impl Read + Send + 'static, wait: Duration) -> String {
+/// comes within `wait`. `None` once `interrupted` says the run is, however
+/// long the wait was.
+fn with_piped(
+    prompt: &str,
+    mut piped: impl Read + Send + 'static,
+    wait: Duration,
+    interrupted: impl Fn() -> bool,
+) -> Option<String> {
     let (sender, read) = std::sync::mpsc::channel();
     let (first, rest) = (sender.clone(), sender);
     std::thread::spawn(move || {
@@ -440,23 +485,33 @@ fn with_piped(prompt: &str, mut piped: impl Read + Send + 'static, wait: Duratio
         rest.send(Some(String::from_utf8_lossy(&text).into_owned()))
             .ok();
     });
-    let wait = match prompt.trim().is_empty() {
-        true => Duration::MAX,
-        false => wait,
+    let deadline = (!prompt.trim().is_empty()).then(|| Instant::now() + wait);
+    let mut came = false;
+    let piped = loop {
+        if interrupted() {
+            return None;
+        }
+        match read.recv_timeout(INTERRUPT_CHECK) {
+            Ok(Some(piped)) => break piped,
+            Ok(None) => came = true,
+            Err(RecvTimeoutError::Disconnected) => break String::new(),
+            Err(RecvTimeoutError::Timeout) => {
+                if !came && deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    eprintln!(
+                        "rig: nothing came on stdin within {}s, so the prompt goes alone; give \
+                         -p stdin from /dev/null, or pipe in what goes with it",
+                        wait.as_secs_f32()
+                    );
+                    return Some(prompt.to_owned());
+                }
+            }
+        }
     };
-    if read.recv_timeout(wait).is_err() {
-        eprintln!(
-            "rig: nothing came on stdin within {}s, so the prompt goes alone; give -p stdin \
-             from /dev/null, or pipe in what goes with it",
-            wait.as_secs_f32()
-        );
-        return prompt.to_owned();
-    }
-    match read.recv().ok().flatten().unwrap_or_default() {
+    Some(match piped {
         piped if piped.trim().is_empty() => prompt.to_owned(),
         piped if prompt.trim().is_empty() => piped,
         piped => format!("{prompt}\n\n{piped}"),
-    }
+    })
 }
 
 /// Starts a run nobody sits at on an [`App`].
@@ -515,6 +570,9 @@ struct Run {
     refused: Option<String>,
     /// Whether the agent's last turn ended with no answer text.
     unanswered: bool,
+    /// Whether the run was interrupted before its first frame, which then
+    /// exits: nothing is sent.
+    interrupted: bool,
 }
 
 /// Why a run fails: its exit code, why, and whether a line already said so.
@@ -690,6 +748,9 @@ fn drive(
     (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
     mut commands: Commands,
 ) {
+    if run.interrupted {
+        return;
+    }
     for why in recalled.read().filter_map(|recalled| recalled.why.clone()) {
         run.fail(2, why, true);
     }
@@ -809,7 +870,14 @@ fn send(
         // failure before it.
         let refused = agents.refused.get(agent).ok();
         let reason = refused.map_or(Reason::Worst, |ModelRefused(why)| Reason::Told(why.clone()));
-        return Some((ended(Some(agent), 1), reason));
+        // `--model` named a model the catalog lacks, which leaves the agent
+        // with none: a command line refused, not a failed run.
+        let unknown = run.model
+            && agents
+                .choices
+                .get(agent)
+                .is_ok_and(|(chosen, _)| chosen.is_none());
+        return Some((ended(Some(agent), if unknown { 2 } else { 1 }), reason));
     }
     match run.prompt.clone() {
         Some(text) => {
@@ -914,6 +982,8 @@ fn end(run: &mut Run, (mut ended, reason): (HeadlessEnded, Reason), mut commands
         run.told = told;
     }
     let exit = match ended.code {
+        // Nobody reads the answer: the run was cut off, as by SIGPIPE.
+        _ if signals::stdout_unread() => ExitReason::Signal,
         0 => ExitReason::Quit,
         code => ExitReason::Failed(code),
     };
@@ -949,7 +1019,8 @@ impl Printed {
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
             let gap = if self.out { "\n" } else { "" };
-            println!("{gap}{block}");
+            // A reader gone ends the run on its own; nobody is left to tell.
+            let _ = writeln!(std::io::stdout(), "{gap}{block}");
             self.out = true;
         }
     }
@@ -1032,7 +1103,7 @@ fn print_notices(
                 Some(why) => printed.error(why),
                 None => {
                     let text = rig_harness::rig_core::redact::text(&recalled.text);
-                    printed.error(&format!("not answered: {text}"));
+                    printed.error(&format!("not answered: {}", excerpt(&text)));
                 }
             }
         }
@@ -1043,6 +1114,39 @@ fn print_notices(
                 _ => {}
             }
         }
+    }
+}
+
+/// The most of a recalled text stderr shows: its first lines, up to a
+/// number of bytes.
+const EXCERPT_LINES: usize = 10;
+const EXCERPT_BYTES: usize = 1000;
+
+/// `text` as stderr shows it: its first [`EXCERPT_LINES`] lines, at most
+/// [`EXCERPT_BYTES`] bytes, never cut inside a character, then how much was
+/// left out, so a long input piped in after the prompt does not flood the
+/// terminal.
+fn excerpt(text: &str) -> String {
+    let lines_end = text
+        .match_indices('\n')
+        .nth(EXCERPT_LINES - 1)
+        .map_or(text.len(), |(at, _)| at);
+    let mut end = lines_end.min(EXCERPT_BYTES);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let (shown, left) = text.split_at(end);
+    match left.len() {
+        0 => shown.to_owned(),
+        left => format!("{}\n… ({left} more bytes)", shown.trim_end()),
+    }
+}
+
+/// Plain `-p`: says on stderr that a signal, the launcher's death or a
+/// reader gone cut the run off, which no line said otherwise.
+fn print_interrupted(reason: Option<Res<ExitReason>>, mut printed: ResMut<Printed>) {
+    if reason.as_deref() == Some(&ExitReason::Signal) {
+        printed.error("the run was interrupted");
     }
 }
 
@@ -1236,6 +1340,15 @@ fn close_cut_off(
     let Some(why) = cut_off(reason.as_deref()) else {
         return;
     };
+    // A run that ended by itself, such as on a refused `--tools`, says
+    // why its turns stopped, unless something else, such as a signal,
+    // ended it first.
+    let code = match reason.as_deref().map(ExitReason::exit) {
+        Some(AppExit::Error(code)) => code.get(),
+        _ => 0,
+    };
+    let ended = out.out.ended.as_ref().filter(|ended| ended.code == code);
+    let turns_why = ended.and_then(|ended| ended.why.clone());
     out.flush();
     let mut closing = Vec::new();
     for (request, &ForAgent(agent), outcome, if_stopped, footprint) in &calls {
@@ -1258,7 +1371,8 @@ fn close_cut_off(
         closing.push((agent, "tool_result", fields));
     }
     for (&TurnOf(agent), used, first) in &turns {
-        let ended = TurnEnd::Stopped(Some(why.to_owned()));
+        let why = turns_why.clone().unwrap_or_else(|| why.to_owned());
+        let ended = TurnEnd::Stopped(Some(why));
         closing.push((agent, "turn_end", turn_end_fields(ended, used, first)));
     }
     out.out.closing = closing;

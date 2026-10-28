@@ -83,7 +83,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     };
     let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
-        let _lock = locks::hold_build_lock(home)?;
+        let _lock = locks::hold_build_lock(home, output)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
         locks::sweep(home)?;
@@ -114,7 +114,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
                 return Ok(refused(&why));
             }
         };
-        let _lock = locks::hold_build_lock(home)?;
+        let _lock = locks::hold_build_lock(home, output)?;
         let (next, notice) = claim(home, start, here.as_deref())?;
         absent(fs::rename(
             home.staged_for(&claimed.id),
@@ -253,6 +253,8 @@ fn launch(
         let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
         absent(fs::remove_file(run.refusal()))?;
+        absent(fs::remove_file(run.groups()))?;
+        absent(fs::remove_file(run.screen()))?;
         let mut command = Command::new(binary.path());
         command
             .args(invocation.to_args())
@@ -292,13 +294,19 @@ fn launch(
                 None => std::thread::sleep(POLL),
             }
         };
+        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
+        // Only a front that took the screen may have left it changed.
+        let screen = run.screen().exists();
+        // A reload may leave jobs running for the next build on purpose.
+        if !reload {
+            kill_left_groups(run)?;
+        }
         promoted?;
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
         if rejected {
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
         }
-        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
         let restart = !headless || (answers_prompt && !directory.switch().exists());
         if reload && restart {
             if headless {
@@ -357,12 +365,12 @@ fn launch(
             let said = resume.map(|resume| format!("To resume this session: {resume}"));
             // The agent left the terminal as it found it; the line needs
             // it out of the full screen in case it did not.
-            if said.is_some() {
+            if said.is_some() && screen {
                 restore_terminal();
             }
             return Ok(Ended::new(status, said));
         }
-        if !headless {
+        if screen {
             restore_terminal();
         }
         if !rejected {
@@ -393,6 +401,61 @@ fn launch(
         kept_screen = false;
         notice = Some(message);
         reason = StartReason::Restarted;
+    }
+}
+
+/// Kills the process groups the agent listed in `run` ([`RunDir::groups`])
+/// and left running, as it does when killed by `SIGKILL`; a clean exit
+/// lists none. A group is killed only while its leader carries the mark
+/// naming the list ([`marked`]), so an id the system gave another process
+/// since is left alone. `kill(1)` sends the signal, so the launcher keeps
+/// to std.
+fn kill_left_groups(run: &RunDir) -> Result<()> {
+    let ledger = run.groups();
+    let Some(listed) = absent(fs::read_to_string(&ledger))? else {
+        return Ok(());
+    };
+    // A group id of 0 or 1 would name the launcher's own group or every
+    // process.
+    let groups: Vec<String> = listed
+        .lines()
+        .filter_map(|id| id.trim().parse::<i32>().ok())
+        .filter(|&id| id > 1 && marked(id, &ledger))
+        .map(|id| format!("-{id}"))
+        .collect();
+    if !groups.is_empty() {
+        child("kill")
+            .args(["-s", "KILL", "--"])
+            .args(&groups)
+            .stderr(Stdio::null())
+            .status()
+            .ok();
+    }
+    absent(fs::remove_file(&ledger))?;
+    Ok(())
+}
+
+/// Whether the process `id` carries [`env::PROCESS_LEDGER`] set to
+/// `ledger`: it is a process the agent started, or one of its children.
+/// Linux reads its environment in `/proc`, macOS through `ps -E`;
+/// elsewhere no process is.
+fn marked(id: i32, ledger: &Path) -> bool {
+    let mark = format!("{}={}", env::PROCESS_LEDGER, ledger.display());
+    if cfg!(target_os = "linux") {
+        let environ = fs::read(format!("/proc/{id}/environ"));
+        environ.is_ok_and(|environ| {
+            environ
+                .split(|&byte| byte == 0)
+                .any(|entry| entry == mark.as_bytes())
+        })
+    } else if cfg!(target_os = "macos") {
+        let shown = child("ps")
+            .args(["-E", "-ww", "-o", "command=", "-p", &id.to_string()])
+            .stderr(Stdio::null())
+            .output();
+        shown.is_ok_and(|shown| String::from_utf8_lossy(&shown.stdout).contains(&mark))
+    } else {
+        false
     }
 }
 
@@ -500,7 +563,7 @@ fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
 /// A build `/reload` staged for it goes with the switch. When the target
 /// cannot be run, the current session carries on, told why.
 fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
-    let _lock = locks::hold_build_lock(home)?;
+    let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     let here = current.directory.clone();
     match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {
