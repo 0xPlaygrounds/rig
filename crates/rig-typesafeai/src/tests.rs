@@ -600,3 +600,42 @@ fn reads_openrouter_usage_cost() -> anyhow::Result<()> {
     ensure!(again.usage == response.usage);
     Ok(())
 }
+
+/// OpenRouter routing preferences travel beside the model, and only when set.
+#[test]
+fn sends_provider_preferences_only_when_set() -> anyhow::Result<()> {
+    use rig_core::providers::openrouter::extension::{DataCollection, ProviderPreferences};
+    use rig_core::wire::{Body, Mode, Wire};
+
+    let body = |config: JevConfig| -> anyhow::Result<Value> {
+        let request = serde_json::from_value(json!({"state": 1, "questions": {}}))?;
+        let encoded = config.encode(request, Mode::Unary)?;
+        let Body::Bytes(bytes) = encoded.request.body() else {
+            anyhow::bail!("the body must be JSON bytes");
+        };
+        Ok(serde_json::from_slice(bytes)?)
+    };
+    let routed = JevConfig::new("token").provider(
+        ProviderPreferences::new()
+            .zdr(true)
+            .data_collection(DataCollection::Deny),
+    );
+    ensure!(
+        body(routed)?.get("provider") == Some(&json!({"data_collection": "deny", "zdr": true}))
+    );
+    ensure!(body(JevConfig::new("token"))?.get("provider").is_none());
+    Ok(())
+}
+
+/// A reloaded configuration keeps its routing preferences. Only the
+/// credential must be supplied again.
+#[test]
+fn provider_preferences_survive_reloading_the_configuration() -> anyhow::Result<()> {
+    use rig_core::providers::openrouter::extension::ProviderPreferences;
+
+    let preferences = ProviderPreferences::new().zdr(true);
+    let config = JevConfig::new("token").provider(preferences.clone());
+    let reloaded: JevConfig = serde_json::from_value(serde_json::to_value(&config)?)?;
+    ensure!(reloaded == JevConfig::new("").provider(preferences));
+    Ok(())
+}
