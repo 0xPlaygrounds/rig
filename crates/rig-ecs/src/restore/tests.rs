@@ -1008,7 +1008,20 @@ fn a_plugin_answers_a_call_a_crash_interrupted_first() {
 /// A key a restored call's answer prints, which no one may read.
 const KEY: &str = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
 
-/// Answers a restored `wait` with what printed [`KEY`].
+/// Answers a restored `wait` with what printed [`KEY`], on the call.
+fn put_answer_with_key(
+    calls: Query<(Entity, &ToolRequest), (With<Interrupted>, Without<Outcome>)>,
+    mut commands: Commands,
+) {
+    for (call, request) in &calls {
+        if request.call.function.name.as_str() == "wait" {
+            let answer = rig_core::tool::ToolResult::success(format!("token {KEY}").into());
+            commands.entity(call).insert(Outcome::from(answer));
+        }
+    }
+}
+
+/// Answers a restored `wait` with what printed [`KEY`], by a decision.
 fn answer_with_key(mut calls: Query<(&ToolRequest, &mut Decision), With<Interrupted>>) {
     for (request, mut decision) in &mut calls {
         if request.call.function.name.as_str() == "wait" {
@@ -1024,10 +1037,10 @@ struct Answered(Vec<String>);
 
 #[test]
 fn a_stop_redacts_the_answers_it_settles() {
-    let (app, said, _) = restart_after_crash(|app| {
-        app.init_resource::<Answered>()
-            .add_systems(AgentPass, answer_with_key.in_set(Stage::Gate))
-            .add_observer(
+    // A plugin's answer by a decision, then one it put on the call itself.
+    for decided in [true, false] {
+        let (app, said, _) = restart_after_crash(|app| {
+            app.init_resource::<Answered>().add_observer(
                 |settled: On<Add<Settled>>,
                  calls: Query<&Outcome, With<ToolRequest>>,
                  mut answered: ResMut<Answered>| {
@@ -1037,18 +1050,23 @@ fn a_stop_redacts_the_answers_it_settles() {
                     }
                 },
             );
-    });
-    // Neither the conversation nor the call itself holds the key.
-    assert!(said.contains("token ") && !said.contains(KEY), "{said}");
-    let answered = &app.world().resource::<Answered>().0;
-    assert!(
-        answered.iter().any(|text| text.starts_with("token ")),
-        "{answered:?}"
-    );
-    assert!(
-        !answered.iter().any(|text| text.contains(KEY)),
-        "{answered:?}"
-    );
+            match decided {
+                true => app.add_systems(AgentPass, answer_with_key.in_set(Stage::Gate)),
+                false => app.add_systems(AgentPass, put_answer_with_key.in_set(Stage::Gate)),
+            };
+        });
+        // Neither the conversation nor the call itself holds the key.
+        assert!(said.contains("token ") && !said.contains(KEY), "{said}");
+        let answered = &app.world().resource::<Answered>().0;
+        assert!(
+            answered.iter().any(|text| text.starts_with("token ")),
+            "{answered:?}"
+        );
+        assert!(
+            !answered.iter().any(|text| text.contains(KEY)),
+            "{answered:?}"
+        );
+    }
 }
 
 #[test]

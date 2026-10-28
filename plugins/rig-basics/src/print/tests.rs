@@ -1229,7 +1229,8 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                     match cut {
                         Cut::Running => call.insert(Waiting),
                         Cut::WithOutput => {
-                            call.insert((Waiting, IfStopped(Outcome::from(result("half")))))
+                            let so_far = result("half ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+                            call.insert((Waiting, IfStopped(Outcome::from(so_far))))
                         }
                         Cut::Answered => call.insert(Outcome::from(result("Waited."))),
                     };
@@ -1258,7 +1259,8 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 true,
                 "Stopped: the run was interrupted. It may have partly run; check before running it again.",
             ),
-            Cut::WithOutput => (true, true, "half"),
+            // A key it printed is redacted, on the line and in the session.
+            Cut::WithOutput => (true, true, "half [REDACTED]"),
             Cut::Answered => (true, false, "Waited."),
         };
         let results = lines.of("tool_result");

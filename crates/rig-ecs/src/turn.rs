@@ -662,6 +662,10 @@ impl Stopper<'_, '_> {
                     }
                     None => apply_decision(world, call),
                 }
+            }
+            // An answer that came this pass, or that the stop gave, settles
+            // before Commit redacts it.
+            for &call in &calls {
                 if let Some(mut outcome) = world.get_mut::<Outcome>(call)
                     && let Some(redacted) = redacted(&outcome)
                 {
@@ -757,12 +761,15 @@ fn reply_results(
         .filter_map(|call| {
             let result = match call.outcome {
                 Some(outcome) => outcome.tool_result(),
-                // Not answered yet, so not redacted yet either.
                 None => {
                     let stopped = call.if_stopped.map(|stopped| stopped.0.tool_result());
-                    let result = stopped.or_else(|| missing(&call))?;
-                    redact::tool_result(&result).unwrap_or(result)
+                    stopped.or_else(|| missing(&call))?
                 }
+            };
+            // Only an answer that settled went through Commit's redaction.
+            let result = match call.settled && call.outcome.is_some() {
+                true => result,
+                false => redact::tool_result(&result).unwrap_or(result),
             };
             Some(call.request.call.answer(&result))
         })
