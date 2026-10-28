@@ -3,7 +3,7 @@
 //! [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own. It is the
 //! same on every request of every session, across turns, reloads and days,
 //! so the provider's prompt cache keeps it and the conversation behind it:
-//! no date, no paths, no instruction files and no tool rules in it.
+//! no date, no paths, no instruction file contents and no tool rules in it.
 //! [`AgentsMdPlugin`](crate::agents_md::AgentsMdPlugin) adds the project's
 //! `AGENTS.md` files, and each tool says in its description when to pick
 //! it. A plugin that wants a prompt that
