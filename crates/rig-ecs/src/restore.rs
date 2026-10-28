@@ -292,10 +292,10 @@ pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 /// On the work a restore spawns for an agent a crash left mid-turn: its
 /// turn, the turn's calls left without a result and its model calls, and
 /// the messages in its inbox. Gate sees each call as it sees new work; then
-/// the kernel stops the turn ([`stop_restored`]) unless a plugin opted in
-/// with [`CarryOn`], and takes this off a turn that goes on. A message is
-/// accepted already ([`Started`]): it goes with the agent's next model
-/// call, not a restored one, or, to an idle agent, is [`Unsent`].
+/// the kernel stops the turn unless a plugin opted in with [`CarryOn`], and
+/// takes this off a turn that goes on. A message is accepted already
+/// ([`Started`]): it goes with the agent's next model call, not a restored
+/// one, or, to an idle agent, is [`Unsent`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 pub struct Restored;
