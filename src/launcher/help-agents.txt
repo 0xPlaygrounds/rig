@@ -97,8 +97,8 @@ started, a turn_end ("stopped") for each turn, and with -p the exit line
 to get them. The session keeps those results and turns as stopped:
 `rig -r <id>` runs nothing of them and goes on with the next message. A
 plugin may carry a turn across the exit instead, such as one waiting on
-a batch API: its lines are written the same, and `rig -r <id>` goes on
-with it. SIGTERM always does this. SIGINT and SIGHUP do unless rig
+a batch API: its turn_end and its running calls' lines are written the
+same, and `rig -r <id>` goes on with it. SIGTERM always does this. SIGINT and SIGHUP do unless rig
 started with them ignored, as a script's `&` job ignores SIGINT and
 `nohup` SIGHUP: rig keeps them ignored. Not covered: SIGKILL and a
 repeat signal two or more seconds after the first (which exits at once)

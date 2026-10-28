@@ -50,6 +50,7 @@ use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::edit_distance;
+use rig_harness::rig_core::redact;
 use rig_harness::rig_core::tool::feedback::not_finished;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -1407,7 +1408,9 @@ fn note_cut_off(
             continue;
         }
         let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
-        let (ok, output) = match kept.map(Outcome::tool_result) {
+        let kept = kept.map(Outcome::tool_result);
+        let kept = kept.map(|result| redact::tool_result(&result).unwrap_or(result));
+        let (ok, output) = match kept {
             Some(result) => (result.is_success(), result.output().render()),
             None => {
                 let footprint = footprint.cloned().unwrap_or_default();

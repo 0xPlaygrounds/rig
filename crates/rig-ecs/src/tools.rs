@@ -583,14 +583,16 @@ pub(crate) fn redact_results(
     mut calls: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,
 ) {
     for mut outcome in &mut calls {
-        redact_outcome(&mut outcome);
+        if let Some(redacted) = redacted(&outcome) {
+            *outcome = redacted;
+        }
     }
 }
 
-/// Redacts every secret in a tool call's answer `outcome`, as
+/// A tool call's answer `outcome` with every secret redacted, as
 /// [`redact_results`] does, for an answer that settles before Commit, such
-/// as a stop's.
-pub(crate) fn redact_outcome(outcome: &mut Outcome) {
+/// as a stop's; `None` when it holds none.
+pub(crate) fn redacted(outcome: &Outcome) -> Option<Outcome> {
     let redacted = match &outcome.0 {
         Ok(Answered::ToolResult { result }) => {
             redact::tool_result(result).map(|result| Ok(Answered::ToolResult { result }))
@@ -604,7 +606,5 @@ pub(crate) fn redact_outcome(outcome: &mut Outcome) {
         },
         Ok(_) => None,
     };
-    if let Some(redacted) = redacted {
-        outcome.0 = redacted;
-    }
+    redacted.map(Outcome)
 }

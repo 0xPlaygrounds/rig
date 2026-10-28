@@ -69,7 +69,7 @@ use super::stage::{
     SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, ToolDef, ToolRequest, offered, redact_outcome};
+use super::tools::{Footprint, ToolDef, ToolRequest, offered, redacted};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -662,8 +662,10 @@ impl Stopper<'_, '_> {
                     }
                     None => apply_decision(world, call),
                 }
-                if let Some(mut outcome) = world.get_mut::<Outcome>(call) {
-                    redact_outcome(&mut outcome);
+                if let Some(mut outcome) = world.get_mut::<Outcome>(call)
+                    && let Some(redacted) = redacted(&outcome)
+                {
+                    *outcome = redacted;
                 }
             }
             for call in calls {

@@ -28,8 +28,8 @@ use crate::session_log::{
     ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
 };
 use crate::stage::{
-    AgentPass, Decision, ForAgent, HoldOf, Outcome, PrepareSystems, ReadyToSettle, ReadyToStart,
-    Settled, Stage, Started,
+    AgentPass, Decision, ForAgent, HoldOf, IfStopped, Outcome, PrepareSystems, ReadyToSettle,
+    ReadyToStart, Settled, Stage, Started,
 };
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
@@ -1049,6 +1049,74 @@ fn a_stop_redacts_the_answers_it_settles() {
         !answered.iter().any(|text| text.contains(KEY)),
         "{answered:?}"
     );
+}
+
+#[test]
+fn a_stop_redacts_what_a_running_call_printed_so_far() {
+    // By the user's stop, then by the app's exit.
+    for exit in [false, true] {
+        let store = MemoryStore::default();
+        let call = MockStreamEvent::tool_call("w1", "wait", serde_json::json!({}));
+        let model = MockCompletionModel::from_stream_turns([vec![
+            call,
+            MockStreamEvent::final_response_with_default_usage(),
+        ]]);
+        let mut app = tools_app(&store, &model, |app| {
+            app.add_tool(Wait)
+                .init_resource::<Answered>()
+                .add_observer(
+                    |started: On<Add<Started>>,
+                     calls: Query<(), With<ToolRequest>>,
+                     mut commands: Commands| {
+                        if calls.contains(started.entity) {
+                            let so_far =
+                                rig_core::tool::ToolResult::success(format!("token {KEY}").into());
+                            commands
+                                .entity(started.entity)
+                                .insert(IfStopped(Outcome::from(so_far)));
+                        }
+                    },
+                )
+                .add_observer(
+                    |settled: On<Add<Settled>>,
+                     calls: Query<&Outcome, With<ToolRequest>>,
+                     mut answered: ResMut<Answered>| {
+                        if let Ok(outcome) = calls.get(settled.entity) {
+                            answered.0.push(outcome.tool_result().output().render());
+                        }
+                    },
+                );
+        });
+        let Some(agent) = first_agent(&mut app) else {
+            return;
+        };
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+        let waiting = |world: &World| {
+            let mut started = world
+                .iter_entities()
+                .filter(|it| it.contains::<IfStopped>());
+            started.any(|it| it.contains::<ToolRequest>())
+        };
+        assert!(run_until(&mut app, waiting));
+        if exit {
+            app.world_mut().write_message(AppExit::Success);
+        } else {
+            app.world_mut().trigger(StopTurn::new(agent));
+        }
+        app.update();
+        let answered = app.world().resource::<Answered>().0.clone();
+        assert!(
+            answered.iter().any(|text| text.starts_with("token ")),
+            "{answered:?}"
+        );
+        assert!(
+            !answered.iter().any(|text| text.contains(KEY)),
+            "{answered:?}"
+        );
+        let said = said(&mut app);
+        assert!(said.contains("token ") && !said.contains(KEY), "{said}");
+    }
 }
 
 /// Lets a restored `touch` run again, its turn carried on.
