@@ -90,8 +90,10 @@ joins that turn, so one turn_end answers both.
 When rig exits mid-turn (a signal, the launcher killed, stdout's reader
 gone, or stdin closed in a conversation), it stops each turn as a stop
 request does and still closes what it started: a tool_result
-("cancelled": true) for each running call, a turn_end ("stopped") for
-each turn, and with -p the exit line (code 130). Read stdout to its end
+("cancelled": true) for each running call, a tool_call and a
+tool_result ("Not run: …") for each call of the cut reply that had not
+started, a turn_end ("stopped") for each turn, and with -p the exit line
+(code 130). Read stdout to its end
 to get them. The session keeps those results and turns as stopped:
 `rig -r <id>` runs nothing of them and goes on with the next message. A
 plugin may carry a turn across the exit instead, such as one waiting on

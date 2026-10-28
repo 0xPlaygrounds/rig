@@ -52,7 +52,7 @@ pub struct Dropped {
     pub failed: usize,
     /// The turns that were stopped.
     pub stopped: usize,
-    /// The turns an exit or a crash cut short.
+    /// The turns a crash cut short, or a plugin carried across an exit.
     pub cut_short: usize,
 }
 

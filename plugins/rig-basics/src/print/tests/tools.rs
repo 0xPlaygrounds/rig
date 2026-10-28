@@ -607,6 +607,47 @@ fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
 }
 
 #[test]
+fn a_refused_tool_name_names_itself_on_a_carried_turn_it_cuts_off() {
+    // A crash left a turn, which a plugin carries on after the restart.
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let second = answering(&["hello"]);
+    let refused = |app: &mut App| {
+        recording(app, &["read", "write"]);
+        app.add_systems(AgentPass, carry_on.in_set(Stage::Gate));
+        let flag = (TOOLS.to_owned(), Some("read,bogus".to_owned()));
+        app.world_mut()
+            .resource_mut::<Invoked>()
+            .args
+            .flags
+            .push(flag);
+    };
+    let (app, lines) = one_shot_on(&store, "", Some(MODEL), &second, true, refused);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    assert_eq!(second.request_count(), 0);
+    assert!(app.world().resource::<Executed>().0.is_empty());
+    // The turn the refusal cut off says why, on its line and in the session.
+    let why = "--tools: unknown tool `bogus`; the tools are read, write";
+    let ends = lines.of("turn_end");
+    let reasons: Vec<_> = ends.iter().map(|end| at(end, "error").clone()).collect();
+    assert_eq!(reasons, [json!(why)], "{:?}", lines.parsed());
+    drop(app);
+    let saved = rig_harness::rig_memory::Session::read(&store).ok();
+    let main = saved.as_ref().and_then(|saved| saved.main_agent());
+    let ended = main.and_then(|agent| {
+        agent
+            .conversation
+            .turns()
+            .last()
+            .and_then(|(_, record)| record.end)
+    });
+    assert!(
+        matches!(&ended, Some(rig_ecs::prelude::TurnEnd::Stopped { why: Some(said), .. }) if said == why),
+        "{ended:?}"
+    );
+}
+
+#[test]
 fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
     for pending_tool in [false, true] {
         // A session that exited before its model call, or its write,

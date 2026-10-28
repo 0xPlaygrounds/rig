@@ -140,7 +140,8 @@ Quitting mid-turn (Ctrl+D, `/quit`, closing the terminal, or a signal to a
 headless run) stops the turn as Esc does: the reply so far is kept, each
 unfinished tool call says it was stopped, and the model is told the request
 was stopped. Resuming shows it so and runs nothing until you send a message;
-a message you had queued comes back in the input.
+a message you had queued comes back in the input. A plugin may carry a turn
+across the quit instead, such as one waiting on a batch API.
 
 A tool call that may change something starts only once the reply that asked
 for it, and a mark that it started, are on disk. After a crash, resuming the
@@ -254,10 +255,11 @@ prompt: `rig` runs the terminal view only on an interactive terminal.
 `-r <id or name>` resumes a given session instead of starting a new one; it
 goes wherever an option goes, but not among a command's words or after `--`,
 and `rig -r <id or name> <command>` runs a plugin's command in that session.
-`rig -r <id or name> -p` with no prompt finishes the turn the session left
-unfinished, such as one a crash cut short, and prints its answer; with nothing
-to finish it exits 2. A plugin may keep such a run going, sending the agent
-work over time (`KeepRunning`); each answer is then printed as it comes.
+`rig -r <id or name> -p` with no prompt goes on only with a turn a plugin
+carries on (such as a batch that waits) and prints its answer; a turn a quit,
+a signal or a crash cut short is stopped, not finished, so with nothing carried
+on it exits 2. A plugin may keep such a run going, sending the agent work over
+time (`KeepRunning`); each answer is then printed as it comes.
 
 To drive rig from a script or another agent, over pipes and nothing else,
 `rig -p --json "task"` writes the run as JSON lines, ending with an `exit`

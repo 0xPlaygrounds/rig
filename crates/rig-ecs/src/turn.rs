@@ -44,6 +44,7 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
 };
 use rig_core::now_ms;
+use rig_core::redact;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
@@ -58,7 +59,7 @@ use super::agent::{
 use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver, keep_on_the_way};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf};
-use super::restore::{CarryOn, Interrupted, Restored, commit_results, mark_settled};
+use super::restore::{CarryOn, Interrupted, RESTARTED, Restored, commit_results, mark_settled};
 use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 #[cfg(doc)]
@@ -68,7 +69,7 @@ use super::stage::{
     SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, ToolDef, ToolRequest, offered};
+use super::tools::{Footprint, ToolDef, ToolRequest, offered, redact_outcome};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -593,22 +594,29 @@ impl Stopper<'_, '_> {
             .filter(|call| !matches!(call.interrupted, Some(Interrupted::Settled(_))))
             .map(|call| call.request.call.id.clone())
             .collect();
-        // A decided call is answered with its decision, as Start would, and
-        // a restored one that settled with its result, so what observes it
-        // settle reads what the conversation keeps; any other is cancelled
-        // with the same text.
+        // A decided call is answered with its decision, as Start would, a
+        // running one with what it says if stopped, and a restored one that
+        // settled with its result, each redacted as Commit would, so what
+        // observes it settle reads what the conversation keeps; any other is
+        // cancelled with the same text.
         let answers: Vec<(Entity, Option<Outcome>)> = reply
             .iter()
-            .filter(|call| call.outcome.is_none() && call.if_stopped.is_none())
-            .filter_map(
-                |call| match (call.decision.is_decided(), call.interrupted) {
-                    (true, _) => Some((call.entity, None)),
-                    (false, Some(Interrupted::Settled(result))) => {
-                        Some((call.entity, Some(result.clone().into())))
+            .filter(|call| call.outcome.is_none())
+            .filter_map(|call| {
+                let answer = match (
+                    call.if_stopped,
+                    call.decision.is_decided(),
+                    call.interrupted,
+                ) {
+                    (Some(IfStopped(outcome)), ..) => Some(outcome.clone()),
+                    (None, true, _) => None,
+                    (None, false, Some(Interrupted::Settled(result))) => {
+                        Some(result.clone().into())
                     }
-                    _ => None,
-                },
-            )
+                    (None, false, _) => return None,
+                };
+                Some((call.entity, answer))
+            })
             .collect();
         if let Some(results) = reply_results(reply, |call| Some(stopped_answer(&why, call))) {
             commit_results(&mut conversation, results);
@@ -630,6 +638,14 @@ impl Stopper<'_, '_> {
         let conversation = conversation.bypass_change_detection();
         let saved = save_conversation(&self.log, agent, id, conversation);
         self.committed.write_batch(saved);
+        let said = match reason.as_deref() {
+            _ if self.exiting.is_some() => None,
+            Some(RESTARTED) => Some("Stopped the turn left unfinished when the session ended."),
+            _ => Some("Stopped."),
+        };
+        if let Some(said) = said {
+            self.notices.write(Notice::info(agent, said));
+        }
         let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
         self.commands.queue(move |world: &mut World| {
             // The outcome goes on first, as `stop_calls` finds it, so what
@@ -645,6 +661,9 @@ impl Stopper<'_, '_> {
                         }
                     }
                     None => apply_decision(world, call),
+                }
+                if let Some(mut outcome) = world.get_mut::<Outcome>(call) {
+                    redact_outcome(&mut outcome);
                 }
             }
             for call in calls {
@@ -668,9 +687,6 @@ impl Stopper<'_, '_> {
                 turn.remove::<TurnOf>().insert(Settled);
             }
         });
-        if self.exiting.is_none() {
-            self.notices.write(Notice::info(agent, "Stopped."));
-        }
         true
     }
 }
@@ -737,10 +753,15 @@ fn reply_results(
     let results: Vec<_> = calls
         .into_iter()
         .filter_map(|call| {
-            let outcome = call.outcome.or(call.if_stopped.map(|stopped| &stopped.0));
-            let result = outcome
-                .map(Outcome::tool_result)
-                .or_else(|| missing(&call))?;
+            let result = match call.outcome {
+                Some(outcome) => outcome.tool_result(),
+                // Not answered yet, so not redacted yet either.
+                None => {
+                    let stopped = call.if_stopped.map(|stopped| stopped.0.tool_result());
+                    let result = stopped.or_else(|| missing(&call))?;
+                    redact::tool_result(&result).unwrap_or(result)
+                }
+            };
             Some(call.request.call.answer(&result))
         })
         .collect();

@@ -1005,6 +1005,52 @@ fn a_plugin_answers_a_call_a_crash_interrupted_first() {
     assert!(decided.contains(&("wait".to_owned(), by)), "{decided:?}");
 }
 
+/// A key a restored call's answer prints, which no one may read.
+const KEY: &str = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+
+/// Answers a restored `wait` with what printed [`KEY`].
+fn answer_with_key(mut calls: Query<(&ToolRequest, &mut Decision), With<Interrupted>>) {
+    for (request, mut decision) in &mut calls {
+        if request.call.function.name.as_str() == "wait" {
+            let answer = rig_core::tool::ToolResult::success(format!("token {KEY}").into());
+            decision.decide(Decider::plugin("crash-resume"), answer);
+        }
+    }
+}
+
+/// The text of each settled call's answer.
+#[derive(Resource, Default)]
+struct Answered(Vec<String>);
+
+#[test]
+fn a_stop_redacts_the_answers_it_settles() {
+    let (app, said, _) = restart_after_crash(|app| {
+        app.init_resource::<Answered>()
+            .add_systems(AgentPass, answer_with_key.in_set(Stage::Gate))
+            .add_observer(
+                |settled: On<Add<Settled>>,
+                 calls: Query<&Outcome, With<ToolRequest>>,
+                 mut answered: ResMut<Answered>| {
+                    if let Ok(outcome) = calls.get(settled.entity) {
+                        let text = outcome.tool_result().output().render();
+                        answered.0.push(text);
+                    }
+                },
+            );
+    });
+    // Neither the conversation nor the call itself holds the key.
+    assert!(said.contains("token ") && !said.contains(KEY), "{said}");
+    let answered = &app.world().resource::<Answered>().0;
+    assert!(
+        answered.iter().any(|text| text.starts_with("token ")),
+        "{answered:?}"
+    );
+    assert!(
+        !answered.iter().any(|text| text.contains(KEY)),
+        "{answered:?}"
+    );
+}
+
 /// Lets a restored `touch` run again, its turn carried on.
 fn rerun_touches(
     calls: Query<(Entity, &ToolRequest, &CallOf), With<Interrupted>>,
