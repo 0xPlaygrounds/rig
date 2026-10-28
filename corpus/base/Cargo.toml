@@ -38,15 +38,12 @@ rig-harness = { path = "../../crates/rig-harness" }
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
 rig-http = { path = "../../crates/rig-http", features = ["tokio"] }
 rig-reqwest = { workspace = true }
-rig-rmcp = { workspace = true }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../../plugins/rig-tui" }
-rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
-tokio = { workspace = true, features = ["rt", "process", "time"] }
 toml = { version = "1" }
 uuid = { workspace = true, features = ["v4"] }
 

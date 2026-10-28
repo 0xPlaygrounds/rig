@@ -50,8 +50,11 @@ In TUI, print and JSON runs, omitting `--tools` preserves each agent's tool acce
 existing access with those names before its first request and at execution.
 A run refuses a name no registered tool has, with exit code 2, before any
 model or tool call: a print or JSON run with its lines, a TUI run before its
-view opens. Names are checked once every plugin finished, so a tool
-registered later, such as an MCP server's, cannot be named.
+view opens. A print or JSON run checks once every plugin finished and no
+`print::Starting` entity is left: a plugin whose tools come in the
+background, such as rig-mcp-client's MCP servers, holds the start until they
+are in, and until then the run runs no turn, request or prompt. A TUI run
+checks once every plugin finished, so such a tool cannot be named there.
 This limit also applies to subagents, including their normally supplied
 `message` and `wait` tools: include those names when children need them.
 Subagents cannot use this flag to broaden their inherited restrictions.

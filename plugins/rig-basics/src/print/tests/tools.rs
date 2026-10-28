@@ -184,13 +184,15 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
         assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{tools}");
         assert_eq!(stderr.text(), [format!("rig: {why}")]);
         // A long-lived run whose driver sent a message at once: no model
-        // call either.
+        // call either. The run may have stopped reading already: it exits
+        // in its first frame.
         let configure = |app: &mut App| {
             app.add_plugins(LatePlugin);
         };
         let (mut app, wakes, lines, input) =
             restricted_run_with(&model, Some(tools), ToolAccess::All, configure);
-        send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+        let line = json!({"v": 1, "type": "send", "text": "Run it."});
+        input.try_send(line.to_string()).ok();
         test_support::run_until(&mut app, &wakes, |_| !lines.of("exit").is_empty());
         let exit = lines.of("exit").first().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "code"), &json!(2), "{tools}");

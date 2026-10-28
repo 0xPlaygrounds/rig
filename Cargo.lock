@@ -4419,15 +4419,12 @@ dependencies = [
  "rig-http",
  "rig-memory",
  "rig-reqwest",
- "rig-rmcp",
  "rig-tools",
  "rig-tui",
- "rmcp",
  "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_yaml",
- "tokio",
  "toml",
  "uuid",
 ]
@@ -14148,6 +14145,7 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-inspect",
+ "rig-mcp-client",
  "rig-traffic",
  "rig-tui",
  "serde_json",
@@ -14345,6 +14343,27 @@ dependencies = [
  "rig-core",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "rig-mcp-client"
+version = "0.46.0-rc.1"
+dependencies = [
+ "async-channel",
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "http",
+ "rig-basics",
+ "rig-core",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-rmcp",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
  "tokio",
 ]
 

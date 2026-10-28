@@ -457,12 +457,11 @@ fn the_prompt_goes_out_without_waiting_for_a_wake() {
     assert_eq!(messages, Some(vec![Message::user("hi")]));
 }
 
-/// `rig -r <id> -p` with no prompt, after a run that exited mid-turn: the
-/// exit stopped that turn, so nothing runs and the run has no prompt.
-#[test]
-fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
-    let (first, store) = (silent(), MemoryStore::default());
-    let (mut app, wakes) = app_on(&store);
+/// A session on `store` left by a run that exited mid-turn, before its
+/// model call; that run's model.
+fn left_mid_turn(store: &MemoryStore) -> MockCompletionModel {
+    let first = silent();
+    let (mut app, wakes) = app_on(store);
     app.insert_resource(scripted_models([(MODEL, &first)]))
         .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
@@ -484,8 +483,15 @@ fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
     });
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    drop(app);
+    first
+}
 
+/// `rig -r <id> -p` with no prompt, after a run that exited mid-turn: the
+/// exit stopped that turn, so nothing runs and the run has no prompt.
+#[test]
+fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
+    let store = MemoryStore::default();
+    let first = left_mid_turn(&store);
     let second = answering(&["hello"]);
     let (mut app, _) = scripted(&store, (&second, false), None, || {});
     assert_eq!(ended(&mut app), no_prompt());
@@ -496,6 +502,80 @@ fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
 fn no_prompt() -> Vec<(Option<String>, u8, Option<String>)> {
     let why = "no prompt: give one after --print, or pipe it in";
     vec![(None, 2, Some(why.to_owned()))]
+}
+
+/// A run asked to exit while a plugin holds the start exits without running
+/// anything, and the next run redoes nothing of the turn the first exit cut.
+#[test]
+fn an_exit_during_a_held_start_runs_nothing() {
+    // The exit comes while the start is held, and as its last hold goes.
+    for with_the_last in [false, true] {
+        let store = MemoryStore::default();
+        left_mid_turn(&store);
+        let (second, third) = (silent(), answering(&["hello"]));
+        let (mut app, _) = scripted(&store, (&second, false), Some("hi"), || {});
+        let starting = app.world_mut().spawn(Starting).id();
+        app.update();
+        app.world_mut().trigger(Exit(ExitReason::Signal));
+        if with_the_last {
+            app.world_mut().despawn(starting);
+        }
+        run_until(&mut app, |_| false);
+        assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+        assert_eq!(second.request_count(), 0);
+        drop(app);
+        let (mut app, _) = scripted(&store, (&third, false), None, || {});
+        assert_eq!(ended(&mut app), no_prompt(), "{with_the_last}");
+        assert_eq!(third.request_count(), 0);
+    }
+}
+
+/// A `/command` waits for the start as any prompt does: a skill's starts a
+/// turn, which must see the tools that come during it.
+#[test]
+fn a_skill_run_waits_for_the_start() {
+    let scratch = test_support::scratch_home("print-skill").root().to_owned();
+    let dir = scratch.join("repo");
+    let skill = dir.join(".agents/skills/haiku");
+    assert!(std::fs::create_dir_all(dir.join(".git")).is_ok());
+    assert!(std::fs::create_dir_all(&skill).is_ok());
+    let body = "---\nname: haiku\ndescription: Answer in a haiku.\n---\nWrite three lines.\n";
+    assert!(std::fs::write(skill.join("SKILL.md"), body).is_ok());
+    let model = answering(&["done"]);
+    let (mut app, _) = noting(&MemoryStore::default(), Invocation::default());
+    app.insert_resource(ProjectRoot(dir))
+        .insert_resource(RigHome(Home::at(scratch.join("home"))))
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, crate::skills::SkillsPlugin))
+        .run_headless(Some("/skill:haiku".to_owned()));
+    let starting = app.world_mut().spawn(Starting).id();
+    app.finish();
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 0);
+    app.world_mut().despawn(starting);
+    assert_eq!(ended(&mut app), answered("done"));
+    assert_eq!(model.request_count(), 1);
+}
+
+/// Nothing runs while a plugin holds the start: the prompt calls the model
+/// once the last [`Starting`] is gone, and the turn an exit cut stays stopped.
+#[test]
+fn a_held_start_holds_the_prompt() {
+    let store = MemoryStore::default();
+    left_mid_turn(&store);
+    let second = answering(&["prompted"]);
+    let (mut app, _) = scripted(&store, (&second, false), Some("hi"), || {});
+    let starting = app.world_mut().spawn(Starting).id();
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(second.request_count(), 0);
+    assert!(app.world().resource::<Ends>().0.is_empty());
+    app.world_mut().despawn(starting);
+    assert_eq!(ended(&mut app), answered("prompted"));
+    assert_eq!(second.request_count(), 1);
 }
 
 /// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any
@@ -886,6 +966,42 @@ fn waits(world: &World) -> bool {
     world
         .iter_entities()
         .any(|entity| entity.contains::<Waiting>())
+}
+
+/// A driver's request that comes while a plugin holds the start waits for
+/// it: no turn starts until the last [`Starting`] is gone.
+#[test]
+fn a_held_start_holds_a_drivers_first_request() {
+    let model = answering(&["hello"]);
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    let starting = app.world_mut().spawn(Starting).id();
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    if let (Some(agent), Some(connection)) = (first_agent(world), connect(&model)) {
+        world.entity_mut(agent).insert(connection);
+    }
+    send(
+        &input,
+        json!({ "v": 1, "type": "send", "id": 1, "text": "hi" }),
+    );
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 0);
+    assert!(lines.of("turn_start").is_empty());
+    app.world_mut().despawn(starting);
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    assert_eq!(model.request_count(), 1);
 }
 
 #[test]

@@ -24,7 +24,9 @@
 //! reachable; a `/command` needs none) and exits once no agent works, so
 //! the subagents it started have answered. A plugin that sends the agent
 //! work over time, such as a file watch, keeps the run going with a
-//! [`KeepRunning`] entity. Such a run may start without a prompt, and so
+//! [`KeepRunning`] entity, and one whose tools come in the background holds
+//! the start until they are in with a [`Starting`] entity. A kept run may
+//! start without a prompt, and so
 //! may one whose restored session has a turn a plugin carries on
 //! (`CarryOn`, `rig -r <id> -p`): that turn's answer is the run's. A turn
 //! an exit or a crash cut short is stopped, not finished, so without a
@@ -73,9 +75,12 @@ pub const ANSWER: &str = "answer";
 /// The option that intersects every agent's tool access with the names given.
 /// Omission leaves access unchanged; an empty value permits no tools. A run
 /// refuses a name no registered tool has, with exit code 2, before any
-/// model or tool call, headless or at a terminal. It checks once every
-/// plugin finished, so a tool registered later, such as an MCP server's,
-/// cannot be named. Subagents retain inherited restrictions and this limit.
+/// model or tool call, headless or at a terminal. A headless run checks
+/// once every plugin finished and no [`Starting`] is left, so a tool a
+/// plugin registers in the background, such as an MCP server's, can be
+/// named while its plugin holds the start; a run at a terminal checks once
+/// every plugin finished, so such a tool cannot be named there. Subagents
+/// retain inherited restrictions and this limit.
 pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
@@ -108,6 +113,14 @@ impl PrintSection {
 /// one, and despawns it to let the run end.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct KeepRunning;
+
+/// While any entity has it, a run nobody sits at waits before it checks
+/// `--tools` and sends its prompt: a plugin whose tools arrive in the
+/// background, such as an MCP client, spawns one for each source and
+/// removes it once their tools are in or it gave up, and bounds that wait
+/// itself.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Starting;
 
 /// Triggered each time the run's work settles (no agent works) after a
 /// turn of the agent its prompts go to ended.
@@ -285,12 +298,16 @@ impl Plugin for PrintPlugin {
         }
     }
 
-    /// Refuses unknown tools after every plugin finished, holding all
-    /// model and tool calls, including restored work. The session keeps
-    /// every agent's tool access unchanged. A headless run ends with its
-    /// lines; a run someone sits at is refused before its view starts.
+    /// Refuses unknown tools after every plugin finished in a run someone
+    /// sits at, before its view starts, holding all model and tool calls,
+    /// including restored work. The session keeps every agent's tool access
+    /// unchanged. A headless run checks once its start is over
+    /// ([`check_start`]).
     fn cleanup(&self, app: &mut App) {
         let world = app.world_mut();
+        if world.contains_resource::<Run>() {
+            return;
+        }
         let mut tools = world.query::<&ToolDef>();
         let names: Vec<String> = tools
             .iter(world)
@@ -304,12 +321,35 @@ impl Plugin for PrintPlugin {
         };
         world.remove_resource::<Tools>();
         world.insert_resource(HoldCalls);
-        match world.get_resource_mut::<Run>() {
-            Some(mut run) => run.refused = Some(why),
-            None => {
-                app.refuse_run(why);
-            }
+        app.refuse_run(why);
+    }
+}
+
+/// Once no [`Starting`] is left, checks the names `--tools` gives against
+/// the tools registered then: the agent loop runs from the frame they all
+/// are. A run they are not [`drive`] ends, keeping every agent's tool
+/// access as the session has it.
+fn check_start(
+    starting: Query<(), With<Starting>>,
+    tools: Option<Res<Tools>>,
+    defs: Query<&ToolDef>,
+    (mut run, exit): (ResMut<Run>, Option<Res<ExitReason>>),
+    mut commands: Commands,
+) {
+    // A run asked to exit never starts, though its last start ended in the
+    // same frame. A `/command` waits too: it may start a turn, as a skill's
+    // does.
+    let waiting = !starting.is_empty() || exit.is_some();
+    if run.checked || run.step != Step::Start || run.refused.is_some() || waiting {
+        return;
+    }
+    let names = defs.iter().map(|tool| tool.0.name.as_str());
+    match tools.and_then(|tools| tools.unknown(names)) {
+        Some(why) => {
+            run.refused = Some(why);
+            commands.remove_resource::<Tools>();
         }
+        None => run.checked = true,
     }
 }
 
@@ -325,6 +365,22 @@ fn hold_calls(
 ) {
     for call in &calls {
         commands.spawn(HoldOf(call));
+    }
+}
+
+/// Exits a run asked to exit before its start was checked, such as on a
+/// signal or a refused `--tools`, as its exit effect would, without the
+/// agent loop: restored work stays as the session has it, never answered
+/// for tools still coming.
+fn exit_unstarted(
+    run: Res<Run>,
+    reason: Option<Res<ExitReason>>,
+    mut exits: MessageWriter<AppExit>,
+    mut exited: Local<bool>,
+) {
+    if let Some(reason) = reason.filter(|_| !run.checked && !*exited) {
+        *exited = true;
+        exits.write(reason.exit());
     }
 }
 
@@ -564,9 +620,21 @@ impl AppHeadlessExt for App {
             kept,
             ..Run::default()
         })
-        .add_systems(Update, drive.after(AgentLoop))
+        .add_systems(
+            Update,
+            (
+                check_start.after(PollTasks).before(AgentLoop),
+                drive.after(AgentLoop),
+            ),
+        )
+        // Nothing runs before the start: no restored turn, request or
+        // prompt sees the tools still coming, or a refused `--tools`.
+        .configure_sets(Update, AgentLoop.run_if(|run: Res<Run>| run.checked))
+        .add_systems(Update, exit_unstarted.after(drive))
         .add_observer(keep_answer)
         .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
+        // The frame after the last start ended looks again.
+        .add_observer(|_: On<Remove<Starting>>, wake: Res<Wake>| wake.wake())
     }
 }
 
@@ -596,6 +664,9 @@ struct Run {
     told: bool,
     /// Why `--tools` is refused, which ends the run at once.
     refused: Option<String>,
+    /// Whether the start is over and `--tools` names only registered
+    /// tools: the agent loop runs from then on.
+    checked: bool,
     /// Whether the agent's last turn ended with no answer text.
     unanswered: bool,
     /// Whether the run was interrupted before its first frame, which then
@@ -773,8 +844,8 @@ impl Agents<'_, '_> {
     }
 }
 
-/// Ends a run whose `--tools` was refused, chooses the model, sends the
-/// prompt, and exits after the turn.
+/// Once [`check_start`] passed, ends a run whose `--tools` was refused,
+/// chooses the model, sends the prompt, and exits after the turn.
 fn drive(
     mut run: ResMut<Run>,
     agents: Agents,
@@ -808,6 +879,9 @@ fn drive(
         .is_some_and(|start| matches!(start.0, StartReason::Reloaded | StartReason::Restarted));
     let ended = match run.step {
         Step::Start => {
+            if !run.checked && run.refused.is_none() {
+                return;
+            }
             let Some(agent) = main_agent(&agents.primary) else {
                 return;
             };
@@ -834,8 +908,8 @@ fn drive(
                 },
             };
             // Connected already, as `--model` or the restored session
-            // leaves it: the prompt goes out in the first frame, so a kill
-            // soon after leaves it in the session to resume.
+            // leaves it: the prompt goes out in the first frame after the
+            // start, so a kill soon after leaves it in the session to resume.
             if model.is_none() && (connected || command) {
                 send(&mut run, agent, &agents, command, restarted, &mut commands)
             } else {
