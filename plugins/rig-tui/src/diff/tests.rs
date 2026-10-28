@@ -121,7 +121,6 @@ fn a_hunk_cut_short_ends_at_its_first_line_that_cannot_be_its() {
             "    [… 40 lines cut (lines 13-52) …]",
         ),
         ("[exit code 0]", "    [exit code 0]"),
-        ("", "    "),
     ];
     for (end, drawn) in ends {
         let output = format!(
@@ -144,18 +143,42 @@ fn a_hunk_cut_short_ends_at_its_first_line_that_cannot_be_its() {
 
 #[test]
 fn a_line_fits_its_hunk_only_while_its_side_has_lines_left() {
-    let diff = "@@ -1,3 +1,2 @@\n-gone\n same\n+one\n+two\n";
-    let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
-    let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
-    assert_eq!(
-        texts.get(1..).unwrap_or_default(),
-        [
-            "    1   - gone",
-            "    2 1   same",
-            "      2 + one",
-            "    +two"
-        ]
-    );
+    let hunks = [
+        ("@@ -1,3 +1,2 @@\n-gone\n same\n+one\n+two\n", "    +two"),
+        ("@@ -1,1 +1,2 @@\n-old\n-extra\n", "    -extra"),
+        ("@@ -1,1 +1,2 @@\n-old\n context\n", "     context"),
+    ];
+    for (hunk, last) in hunks {
+        let lines = unified_lines(hunk, &Theme::default()).unwrap_or_default();
+        let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
+        assert_eq!(texts.last().map(String::as_str), Some(last), "{hunk}");
+    }
+}
+
+#[test]
+fn a_blank_line_is_context_only_when_its_hunk_goes_on_after_it() {
+    // A blank line as `git -c diff.suppressBlankEmpty=true diff` writes it,
+    // and one echoed after a hunk cut short.
+    let diffs = [
+        (
+            "@@ -1,3 +1,3 @@\n first\n\n-old\n+new\n",
+            &[
+                "    1 1   first",
+                "    2 2   ",
+                "    3   - old",
+                "      3 + new",
+            ][..],
+        ),
+        (
+            "@@ -1,19 +1,57 @@\n first\n\nafter blank\n",
+            &["    1 1   first", "    ", "    after blank"][..],
+        ),
+    ];
+    for (diff, drawn) in diffs {
+        let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+        let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
+        assert_eq!(texts.get(1..).unwrap_or_default(), drawn, "{diff}");
+    }
 }
 
 #[test]
