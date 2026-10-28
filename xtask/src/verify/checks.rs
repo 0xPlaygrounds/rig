@@ -240,6 +240,7 @@ pub(super) fn all() -> Vec<Check> {
                 "rig",
                 "--lib",
                 "--bins",
+                "--no-fail-fast",
                 "--no-tests",
                 "fail",
                 "-E",

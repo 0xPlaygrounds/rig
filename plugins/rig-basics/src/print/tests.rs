@@ -1312,6 +1312,11 @@ fn a_run_on_stdout_watches_its_reader() {
     assert!(app.world().contains_resource::<ExitWhenUnread>());
     let (app, _) = one_shot("/help", None, &model, true, |_| {});
     assert!(!app.world().contains_resource::<ExitWhenUnread>());
+    // Its lines on stdout, which the test captures.
+    let (app, _) = one_shot("/help", None, &model, true, |app| {
+        app.world_mut().remove_resource::<JsonOut>();
+    });
+    assert!(app.world().contains_resource::<ExitWhenUnread>());
 }
 
 /// A run whose output nobody reads any more, as after `| head -1`, stops as
