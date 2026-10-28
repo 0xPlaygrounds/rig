@@ -102,38 +102,30 @@ fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line
 }
 
 /// Each line of the diff `text` with what it is, tabs made spaces and
-/// the sign of a hunk's line taken off. A hunk's lines are counted by its
-/// header, so a removed line starting with `--` is not taken for a file.
+/// the sign of a hunk's line taken off. A hunk holds only the lines that
+/// [`fits`] it, so a removed line starting with `--` is not taken for a
+/// file. It ends early at a line that doesn't fit, as after output cut off
+/// by `head`, and that line is read as one outside any hunk.
 fn classify(text: &str) -> Vec<(Kind, String)> {
     let (mut old, mut new) = (0, 0);
     let (mut old_left, mut new_left) = (0usize, 0usize);
-    text.lines()
-        .map(|line| {
-            let line = line.replace('\t', "    ");
-            let body = || line.get(1..).unwrap_or_default().to_owned();
-            if old_left + new_left > 0 {
-                let kind = match line.chars().next() {
-                    Some('-') => {
-                        old_left = old_left.saturating_sub(1);
-                        old += 1;
-                        Kind::Removed(old - 1)
-                    }
-                    Some('+') => {
-                        new_left = new_left.saturating_sub(1);
-                        new += 1;
-                        Kind::Added(new - 1)
-                    }
-                    Some('\\') => return (Kind::Other, line),
-                    _ => {
-                        old_left = old_left.saturating_sub(1);
-                        new_left = new_left.saturating_sub(1);
-                        (old, new) = (old + 1, new + 1);
-                        Kind::Same(old - 1, new - 1)
-                    }
-                };
-                return (kind, body());
-            }
-            match header(&line) {
+    let step = |at: &mut usize| std::mem::replace(at, at.saturating_add(1));
+    let raws: Vec<&str> = text.lines().collect();
+    let mut in_blanks = false;
+    let lines = raws.iter().enumerate().map(|(at, raw)| {
+        let line = raw.replace('\t', "    ");
+        let rest = raws.get(at + 1..).unwrap_or_default();
+        // A blank line after one that fit fits while both sides have lines
+        // left: [`fits`] looked past the whole run at its first.
+        let fit = if in_blanks && raw.is_empty() {
+            old_left > 0 && new_left > 0
+        } else {
+            fits(raw, rest, old_left, new_left)
+        };
+        in_blanks = fit && raw.is_empty();
+        if !fit {
+            (old_left, new_left) = (0, 0);
+            return match header(&line) {
                 Some(((old_start, old_count), (new_start, new_count))) => {
                     (old, new) = (old_start, new_start);
                     (old_left, new_left) = (old_count, new_count);
@@ -141,9 +133,50 @@ fn classify(text: &str) -> Vec<(Kind, String)> {
                 }
                 None if line.starts_with("--- ") || line.starts_with("+++ ") => (Kind::File, line),
                 None => (Kind::Other, line),
+            };
+        }
+        let kind = match raw.chars().next() {
+            Some('-') => {
+                old_left -= 1;
+                Kind::Removed(step(&mut old))
             }
-        })
-        .collect()
+            Some('+') => {
+                new_left -= 1;
+                Kind::Added(step(&mut new))
+            }
+            Some(' ') | None => {
+                (old_left, new_left) = (old_left - 1, new_left - 1);
+                Kind::Same(step(&mut old), step(&mut new))
+            }
+            _ => return (Kind::Other, line),
+        };
+        (kind, line.get(1..).unwrap_or_default().to_owned())
+    });
+    lines.collect()
+}
+
+/// Whether the line `raw`, with the lines `rest` after it, belongs to a
+/// hunk with `old` and `new` lines left: its sign fits what is left. A
+/// blank line is an empty context line, as `diff.suppressBlankEmpty`
+/// writes one, only when its hunk ends with it or the blank lines after it,
+/// or the next line that isn't blank fits what is left, so a blank line
+/// after a hunk cut short is not.
+fn fits(raw: &str, rest: &[&str], old: usize, new: usize) -> bool {
+    match raw.chars().next() {
+        Some('-') => old > 0,
+        Some('+') => new > 0,
+        Some(' ') => old > 0 && new > 0,
+        None if old > 0 && new > 0 => {
+            let blanks = rest.iter().take_while(|line| line.is_empty()).count();
+            let taken = blanks.min(old - 1).min(new - 1);
+            let (old, new) = (old - 1 - taken, new - 1 - taken);
+            let next = rest.get(blanks).filter(|_| taken == blanks);
+            old == 0 && new == 0 || next.is_some_and(|next| fits(next, &[], old, new))
+        }
+        // `\ No newline at end of file` can come between a hunk's removed
+        // and added lines.
+        _ => raw.starts_with("\\ ") && (old > 0 || new > 0),
+    }
 }
 
 /// A hunk header's start and count in the old file and in the new, as in
