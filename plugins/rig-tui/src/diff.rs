@@ -111,10 +111,19 @@ fn classify(text: &str) -> Vec<(Kind, String)> {
     let (mut old_left, mut new_left) = (0usize, 0usize);
     let step = |at: &mut usize| std::mem::replace(at, at.saturating_add(1));
     let raws: Vec<&str> = text.lines().collect();
+    let mut in_blanks = false;
     let lines = raws.iter().enumerate().map(|(at, raw)| {
         let line = raw.replace('\t', "    ");
         let rest = raws.get(at + 1..).unwrap_or_default();
-        if !fits(raw, rest, old_left, new_left) {
+        // A blank line after one that fit fits while both sides have lines
+        // left: [`fits`] looked past the whole run at its first.
+        let fit = if in_blanks && raw.is_empty() {
+            old_left > 0 && new_left > 0
+        } else {
+            fits(raw, rest, old_left, new_left)
+        };
+        in_blanks = fit && raw.is_empty();
+        if !fit {
             (old_left, new_left) = (0, 0);
             return match header(&line) {
                 Some(((old_start, old_count), (new_start, new_count))) => {

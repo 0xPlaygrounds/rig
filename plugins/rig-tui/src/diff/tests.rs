@@ -178,6 +178,14 @@ fn a_blank_line_is_context_only_when_its_hunk_goes_on_after_it() {
             &["    1 1   ", "    2   - gone"][..],
         ),
         (
+            "@@ -1,3 +1,3 @@\n\n\n\nafter\n",
+            &["    1 1   ", "    2 2   ", "    3 3   ", "    after"][..],
+        ),
+        (
+            "@@ -1,2 +1,2 @@\n first\n\n\nafter\n",
+            &["    1 1   first", "    2 2   ", "    ", "    after"][..],
+        ),
+        (
             "@@ -1,19 +1,57 @@\n first\n\nafter blank\n",
             &["    1 1   first", "    ", "    after blank"][..],
         ),
@@ -191,10 +199,11 @@ fn a_blank_line_is_context_only_when_its_hunk_goes_on_after_it() {
 
 #[test]
 fn a_line_number_past_the_largest_stays_there() {
-    let diff = "@@ -18446744073709551615,2 +1 @@\n-x\n-y\n";
-    let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+    let diff = format!("@@ -{},2 +1 @@\n-x\n-y\n", usize::MAX);
+    let lines = unified_lines(&diff, &Theme::default()).unwrap_or_default();
     let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
-    let gutter = format!("    {} {}", usize::MAX, " ".repeat(20));
+    let largest = usize::MAX.to_string();
+    let gutter = format!("    {largest} {}", " ".repeat(largest.len()));
     assert_eq!(
         texts.get(1..).unwrap_or_default(),
         [format!("{gutter} - x"), format!("{gutter} - y")]
