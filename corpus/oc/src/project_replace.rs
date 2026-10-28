@@ -26,7 +26,7 @@ use rig_harness::rig_core::tool::{
     ContentHash, ContextValue, FileRead, FilesChanged, FilesRead, ToolContext, content_hash,
 };
 use rig_harness::rig_ecs::effects::Handler;
-use rig_harness::rig_tools::fs::{file_change, io_error};
+use rig_harness::rig_tools::fs::{file_change, io_error, shown};
 use rig_harness::rig_tools::workspace::{Listing, Stat, Workspace};
 use rig_harness::rig_tools::{clip, workspace::Local};
 use schemars::JsonSchema;
@@ -342,9 +342,7 @@ fn plan(
             .collect();
         planned.push(Planned {
             path: workspace.canonical(&file).to_string_lossy().into_owned(),
-            shown: file
-                .strip_prefix(root)
-                .unwrap_or(&file)
+            shown: shown(file.strip_prefix(root).unwrap_or(&file))
                 .to_string_lossy()
                 .into_owned(),
             before,

@@ -13,7 +13,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::listed;
+use crate::fs::{listed, shown};
 use crate::workspace::{Listing, Local, Workspace};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
@@ -226,11 +226,7 @@ impl Tool for Search {
             let paths = found.hits.iter_mut().map(|hit| &mut hit.path);
             for path in paths.chain(&mut found.names) {
                 if let Ok(below) = path.strip_prefix(base) {
-                    // A tool reads a leading `~` as the home directory.
-                    *path = match below.starts_with("~") {
-                        true => Path::new(".").join(below),
-                        false => below.to_path_buf(),
-                    };
+                    *path = shown(below);
                 }
             }
         }
@@ -377,8 +373,8 @@ fn lone_cr(text: &str) -> bool {
     text.contains('\r') && text.matches('\r').count() != text.matches("\r\n").count()
 }
 
-/// `path` as the walk reached it, without a leading `./` unless the rest
-/// starts with `~`, which a tool reads as the home directory.
+/// `path` as the walk reached it, without a leading `./` unless it is
+/// [`shown`] with one.
 fn walked(path: &Path) -> &Path {
     match path.strip_prefix("./") {
         Ok(rest) if !rest.starts_with("~") => rest,

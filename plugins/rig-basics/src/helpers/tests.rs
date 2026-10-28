@@ -185,3 +185,24 @@ fn stopping_the_turn_kills_the_helpers() {
     let left: Vec<String> = pids(&running).into_iter().filter(alive).collect();
     assert!(left.is_empty(), "the helper still runs: {left:?}");
 }
+
+/// A helper's directory is joined as the file tools join a path: `~` is
+/// the home directory, which is outside the caller's.
+#[test]
+fn a_helper_in_tilde_is_in_the_home_directory() {
+    let lent = Lent {
+        model: None,
+        tools: Vec::new(),
+        base: std::env::temp_dir().join(format!("rig-helpers-tilde-{}", std::process::id())),
+    };
+    let job = Job {
+        task: "look around".into(),
+        dir: Some("~".into()),
+        tools: None,
+    };
+    let home = std::env::home_dir().and_then(|home| home.canonicalize().ok());
+    assert_eq!(
+        lent.child(&job).err(),
+        home.map(|home| format!("{} is outside your directory", home.display()))
+    );
+}

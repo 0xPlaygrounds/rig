@@ -282,13 +282,27 @@ fn tilde_is_the_home_directory() {
     };
     let text = |shown: ToolOutput| shown.as_text().unwrap_or_default().to_owned();
 
-    let (wrote, _) = call(&write, WriteArgs::new("~/notes/a.txt", "home\n"));
+    let (wrote, context) = call(&write, WriteArgs::new("~/notes/a.txt", "home\n"));
     let there = std::fs::read_to_string(home.join("notes/a.txt")).ok();
     let (read_back, _) = call(&read, ReadArgs::new("~/notes/a.txt"));
     assert_eq!(wrote.ok().as_deref(), Some("Created ~/notes/a.txt."));
+    let file = home.join("notes/a.txt").to_string_lossy().into_owned();
+    assert_eq!(changes(&context), [(file, ChangeKind::Created)]);
     assert_eq!(there.as_deref(), Some("home\n"));
     assert!(read_back.map(text).unwrap_or_default().contains("home"));
     assert!(!project.join("~/notes").exists());
+
+    // Without a base, as from this process's working directory.
+    let (wrote, _) = call(&Write::default(), WriteArgs::new("~/notes/b.txt", "home\n"));
+    let mut everywhere = SearchArgs::new("home");
+    everywhere.path = Some("~/notes".into());
+    let (found, _) = call(&Search::default(), everywhere);
+    let found = found.unwrap_or_default();
+    assert!(wrote.is_ok() && home.join("notes/b.txt").is_file());
+    assert!(
+        found.contains(&home.join("notes/b.txt").display().to_string()),
+        "{found}"
+    );
 
     let confined = Write {
         confine: true,
@@ -312,8 +326,15 @@ fn tilde_is_the_home_directory() {
     let (found, _) = call(&search, SearchArgs::new("own"));
     let listed = listed.unwrap_or_default();
     let found = found.unwrap_or_default();
-    assert!(listed.lines().any(|line| line == "./~/own.txt"), "{listed}");
-    assert!(found.starts_with("./~/own.txt:"), "{found}");
+    let own = Path::new("./~/own.txt");
+    let found_own = found
+        .lines()
+        .any(|line| line.split(':').next().map(Path::new) == Some(own));
+    assert!(
+        listed.lines().any(|line| Path::new(line) == own),
+        "{listed}"
+    );
+    assert!(found_own, "{found}");
     let (again, _) = call(&read, ReadArgs::new("./~/own.txt"));
     assert!(again.map(text).unwrap_or_default().contains("own"));
 

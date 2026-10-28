@@ -22,6 +22,7 @@ use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_harness::rig_tools::Read;
+use rig_harness::rig_tools::workspace::{Local, Workspace};
 use serde::Deserialize;
 
 /// Summarizes big tool outputs with a cheap model.
@@ -154,7 +155,7 @@ fn reads_saved(call: &ToolCall, root: &Path, dir: &Path) -> bool {
     call.function.name.as_str() == Read::NAME
         && path
             .and_then(|path| path.as_str())
-            .is_some_and(|path| root.join(path).starts_with(dir))
+            .is_some_and(|path| Local.join(root, Path::new(path)).starts_with(dir))
 }
 
 /// Takes each big tool result as it is reviewed: saves it whole, then
