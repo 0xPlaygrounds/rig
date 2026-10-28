@@ -302,7 +302,7 @@ impl Plugin for PrintPlugin {
     /// sits at, before its view starts, holding all model and tool calls,
     /// including restored work. The session keeps every agent's tool access
     /// unchanged. A headless run checks once its start is over
-    /// ([`check_start`]).
+    /// (`check_start`).
     fn cleanup(&self, app: &mut App) {
         let world = app.world_mut();
         if world.contains_resource::<Run>() {
