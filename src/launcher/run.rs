@@ -83,7 +83,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     };
     let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
-        let _lock = locks::hold_build_lock(home)?;
+        let _lock = locks::hold_build_lock(home, output)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
         locks::sweep(home)?;
@@ -114,7 +114,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
                 return Ok(refused(&why));
             }
         };
-        let _lock = locks::hold_build_lock(home)?;
+        let _lock = locks::hold_build_lock(home, output)?;
         let (next, notice) = claim(home, start, here.as_deref())?;
         absent(fs::rename(
             home.staged_for(&claimed.id),
@@ -148,6 +148,9 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         notice,
         build_failure,
     )?;
+    if ended.restore {
+        restore_terminal();
+    }
     if let Some(said) = ended.said {
         eprintln!("{said}");
     }
@@ -219,6 +222,10 @@ fn launch(
     // restart, so what the agent said before it took the terminal is gone
     // once the launcher takes the terminal back.
     let mut kept_screen = false;
+    // Whether an agent's front took the terminal's screen since the
+    // launcher last put it back: a view keeps it across a restart, so a
+    // later start that never takes it may still need it put back.
+    let mut screen = false;
     // The session the agent switched away from to start this one, which a
     // refused start goes back to.
     let mut switched_from: Option<SessionId> = None;
@@ -253,6 +260,8 @@ fn launch(
         let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
         absent(fs::remove_file(run.refusal()))?;
+        absent(fs::remove_file(run.groups()))?;
+        absent(fs::remove_file(run.screen()))?;
         let mut command = Command::new(binary.path());
         command
             .args(invocation.to_args())
@@ -292,13 +301,20 @@ fn launch(
                 None => std::thread::sleep(POLL),
             }
         };
+        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
+        screen |= run.screen().exists();
+        // A reload may leave jobs running for the next build on purpose.
+        // Best effort: a list that cannot be read must not keep the
+        // terminal from being put back below.
+        if !reload {
+            kill_left_groups(run).ok();
+        }
         promoted?;
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
         if rejected {
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
         }
-        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
         let restart = !headless || (answers_prompt && !directory.switch().exists());
         if reload && restart {
             if headless {
@@ -357,19 +373,15 @@ fn launch(
             let said = resume.map(|resume| format!("To resume this session: {resume}"));
             // The agent left the terminal as it found it; the line needs
             // it out of the full screen in case it did not.
-            if said.is_some() {
-                restore_terminal();
-            }
-            return Ok(Ended::new(status, said));
+            let restore = said.is_some() && screen;
+            return Ok(Ended::new(status, said).restoring(restore));
         }
-        if !headless {
-            restore_terminal();
-        }
+        let restore = std::mem::take(&mut screen);
         if !rejected {
             let lost = refusal.filter(|_| kept_screen);
             let log = Some(log.as_path()).filter(|log| log.exists());
             let said = stopped(status, resume.as_deref(), lost.as_deref(), log);
-            return Ok(Ended::new(status, Some(said)));
+            return Ok(Ended::new(status, Some(said)).restoring(restore));
         }
         if !home.good().exists() {
             let said = format!(
@@ -377,7 +389,7 @@ fn launch(
                  build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
             );
-            return Ok(Ended::new(status, Some(said)));
+            return Ok(Ended::new(status, Some(said)).restoring(restore));
         }
         let message = format!(
             "The new build stopped during startup ({status}); rolled back to the previous \
@@ -387,7 +399,10 @@ fn launch(
         // A one-shot run is not run twice, its output already out, unless
         // its agent reloaded: the restart tells the agent of the rollback.
         if !again {
-            return Ok(Ended::new(status, Some(message)));
+            return Ok(Ended::new(status, Some(message)).restoring(restore));
+        }
+        if restore {
+            restore_terminal();
         }
         eprintln!("{message}");
         kept_screen = false;
@@ -396,12 +411,77 @@ fn launch(
     }
 }
 
-/// How the launcher's runs of a session ended: the exit code, and what the
-/// launcher says last, once the terminal is restored.
+/// Kills the process groups the agent listed in `run` ([`RunDir::groups`])
+/// and left running, as it does when killed by `SIGKILL`; a clean exit
+/// lists none. A group is killed only while its leader carries the mark
+/// naming the list ([`marked`]), so an id the system gave another process
+/// since is left alone. `kill(1)` sends the signal, so the launcher keeps
+/// to std.
+fn kill_left_groups(run: &RunDir) -> Result<()> {
+    let ledger = run.groups();
+    let Some(listed) = absent(fs::read_to_string(&ledger))? else {
+        return Ok(());
+    };
+    // A group id of 0 or 1 would name the launcher's own group or every
+    // process.
+    let groups: Vec<String> = listed
+        .lines()
+        .filter_map(|id| id.trim().parse::<i32>().ok())
+        .filter(|&id| id > 1 && marked(id, &ledger))
+        .map(|id| format!("-{id}"))
+        .collect();
+    if !groups.is_empty() {
+        child("kill")
+            .args(["-s", "KILL", "--"])
+            .args(&groups)
+            .stderr(Stdio::null())
+            .status()
+            .ok();
+    }
+    absent(fs::remove_file(&ledger))?;
+    Ok(())
+}
+
+/// Whether the process `id` carries [`env::PROCESS_LEDGER`] set to
+/// `ledger`: it is a process the agent started, or one of its children.
+/// Linux reads its environment in `/proc`, macOS through `ps -E`;
+/// elsewhere no process is.
+fn marked(id: i32, ledger: &Path) -> bool {
+    let mark = format!("{}={}", env::PROCESS_LEDGER, ledger.display());
+    if cfg!(target_os = "linux") {
+        let environ = fs::read(format!("/proc/{id}/environ"));
+        environ.is_ok_and(|environ| {
+            environ
+                .split(|&byte| byte == 0)
+                .any(|entry| entry == mark.as_bytes())
+        })
+    } else if cfg!(target_os = "macos") {
+        let shown = child("ps")
+            .args(["-E", "-ww", "-o", "command=", "-p", &id.to_string()])
+            .stderr(Stdio::null())
+            .output();
+        // `ps -E` appends each variable after a space.
+        let entry = format!(" {mark}");
+        shown.is_ok_and(|shown| {
+            let shown = String::from_utf8_lossy(&shown.stdout);
+            shown
+                .match_indices(&entry)
+                .filter_map(|(at, _)| shown.get(at + entry.len()..))
+                .any(|rest| rest.is_empty() || rest.starts_with([' ', '\n']))
+        })
+    } else {
+        false
+    }
+}
+
+/// How the launcher's runs of a session ended: the exit code, what the
+/// launcher says last, and whether it puts the terminal back first, after
+/// a front that took its screen.
 #[derive(Debug, PartialEq)]
 struct Ended {
     code: ExitCode,
     said: Option<String>,
+    restore: bool,
 }
 
 impl Ended {
@@ -410,12 +490,22 @@ impl Ended {
         Self {
             code: exit_code(status),
             said,
+            restore: false,
         }
     }
 
     /// An end with `code` and nothing said.
     fn quiet(code: ExitCode) -> Self {
-        Self { code, said: None }
+        Self {
+            code,
+            said: None,
+            restore: false,
+        }
+    }
+
+    /// The same end, putting the terminal back first when `restore`.
+    fn restoring(self, restore: bool) -> Self {
+        Self { restore, ..self }
     }
 }
 
@@ -500,7 +590,7 @@ fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
 /// A build `/reload` staged for it goes with the switch. When the target
 /// cannot be run, the current session carries on, told why.
 fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
-    let _lock = locks::hold_build_lock(home)?;
+    let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     let here = current.directory.clone();
     match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {

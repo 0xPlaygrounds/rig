@@ -230,6 +230,11 @@ impl Cli {
         self.chosen().is_some_and(|front| front.sessionless)
     }
 
+    /// Whether the front of this run takes an interactive terminal.
+    pub(crate) fn terminal(&self) -> bool {
+        self.chosen().is_some_and(|front| front.terminal)
+    }
+
     /// The front of this run, once chosen.
     pub(crate) fn chosen(&self) -> Option<&Front> {
         self.chosen.as_ref()?.as_ref().ok()?.as_ref()
@@ -410,6 +415,14 @@ pub trait AppCliExt {
     /// `cleanup`, once every plugin offered its fronts: the first answer
     /// chooses the run's front.
     fn runs_front(&mut self, name: &str) -> bool;
+
+    /// Refuses this run, such as for an option value no plugin can take:
+    /// says `why` on stderr at once, before any front takes the terminal,
+    /// keeps the run out of its session's directory, and exits with code 2
+    /// at the end of the first frame. Only the first refusal is said. Work
+    /// the restored session left may start in that frame unless the
+    /// plugin holds it.
+    fn refuse_run(&mut self, why: String) -> &mut Self;
 }
 
 /// Spawns the declaration `what` as an entity named `name`, after every
@@ -438,6 +451,11 @@ impl AppCliExt for App {
 
     fn runs_front(&mut self, name: &str) -> bool {
         choose(self.world_mut()) == Some(name)
+    }
+
+    fn refuse_run(&mut self, why: String) -> &mut Self {
+        super::launcher::refuse(self, why);
+        self
     }
 }
 

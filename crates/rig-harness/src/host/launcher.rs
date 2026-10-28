@@ -19,8 +19,8 @@
 
 use std::io::{ErrorKind, IsTerminal};
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -85,9 +85,10 @@ impl Invoked {
 #[derive(Resource, Clone, Debug)]
 pub struct LauncherRun(pub RunDir);
 
-/// Inserts [`Invoked`], [`LauncherRun`] and [`Secrets`], shows the
-/// launcher's startup notice, hands a failed build to the primary agent,
-/// and writes the ready file.
+/// Inserts [`Invoked`], [`LauncherRun`] and [`Secrets`], lists the
+/// process groups the agent starts for the launcher to kill should the
+/// agent die without stopping them, shows the launcher's startup notice,
+/// hands a failed build to the primary agent, and writes the ready file.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
@@ -98,9 +99,10 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
+            rig_tools::process::record_groups(run.groups());
             app.insert_resource(LauncherRun(run));
-            watch_launcher(app);
         }
+        watch_launcher(app);
         if !app.world().contains_resource::<Secrets>() {
             app.insert_resource(Secrets::from_env());
         }
@@ -117,10 +119,25 @@ impl Plugin for LauncherPlugin {
             .add_systems(Last, signal_ready.before(reason_from_exit));
     }
 
-    /// Refuses a run the build cannot take: see [`cli`].
+    /// Refuses a run the build cannot take: see [`cli`]. Else tells the
+    /// launcher when the run's front takes the terminal's screen
+    /// ([`RunDir::screen`]).
     fn cleanup(&self, app: &mut App) {
         if let Some(refusal) = cli::refusal(app) {
             refuse(app, refusal);
+        }
+        let world = app.world();
+        let terminal = !world.contains_resource::<Refused>()
+            && world
+                .get_resource::<Invoked>()
+                .is_some_and(|invoked| invoked.terminal)
+            && world
+                .get_resource::<cli::Cli>()
+                .is_some_and(cli::Cli::terminal);
+        if let (true, Some(run)) = (terminal, world.get_resource::<LauncherRun>())
+            && let Err(failure) = std::fs::write(run.0.screen(), b"")
+        {
+            warn!("the launcher will not put the terminal back after the agent: {failure}");
         }
     }
 }
@@ -128,39 +145,60 @@ impl Plugin for LauncherPlugin {
 /// Exits the app, as a signal to it does, once the launcher in
 /// [`LauncherRun`] is gone. A launcher signalled alone, as `kill` and
 /// `timeout` do, leaves its agent behind, which would otherwise run on by
-/// itself, even editing files under `--watch`. A thread waits for the run's
-/// lock, which the launcher holds while it lives and the system frees when
-/// it dies however it died; the std-only launcher needs no signal handling.
+/// itself, even editing files under `--watch`. A thread, started as the
+/// plugins are built so it also sees a launcher gone before the first
+/// frame, waits for the run's lock, which the launcher holds while it
+/// lives and the system frees when it dies however it died; the std-only
+/// launcher needs no signal handling.
 pub(crate) fn watch_launcher(app: &mut App) {
-    app.add_systems(PostStartup, start_watching)
-        .add_systems(First, exit_when_launcher_gone);
-}
-
-/// Set by the watching thread once the launcher is gone.
-#[derive(Resource)]
-struct LauncherGone(Arc<AtomicBool>);
-
-/// Starts the thread that waits for the launcher's run lock, and wakes the
-/// loop once it has it.
-fn start_watching(run: Option<Res<LauncherRun>>, wake: Option<Res<Wake>>, mut commands: Commands) {
-    let Some(run) = run else {
+    let Some(run) = app.world().get_resource::<LauncherRun>() else {
         return;
     };
-    let gone = Arc::new(AtomicBool::new(false));
-    let (lock, set, wake) = (run.0.lock(), gone.clone(), wake.map(|wake| wake.clone()));
+    let gone = LauncherGone::default();
+    let (lock, watched) = (run.0.lock(), gone.clone());
     let watching = std::thread::Builder::new()
         .name("rig-launcher-watch".to_owned())
         .spawn(move || {
             if launcher_left(&lock) {
-                set.store(true, Ordering::Release);
-                if let Some(wake) = wake {
+                watched.gone.store(true, Ordering::Release);
+                if let Some(wake) = watched.wake.get() {
                     wake.wake();
                 }
             }
         });
     match watching {
-        Ok(_) => commands.insert_resource(LauncherGone(gone)),
+        Ok(_) => {
+            app.insert_resource(gone)
+                .add_systems(PostStartup, wake_when_launcher_gone)
+                .add_systems(First, exit_when_launcher_gone);
+        }
         Err(failure) => warn!("the agent will not exit with its launcher: {failure}"),
+    }
+}
+
+/// Set by the watching thread once the launcher is gone, which then wakes
+/// the loop once the loop's wake is in place.
+#[derive(Resource, Clone, Default)]
+pub(crate) struct LauncherGone {
+    gone: Arc<AtomicBool>,
+    wake: Arc<OnceLock<Wake>>,
+}
+
+impl LauncherGone {
+    /// Whether the launcher is gone.
+    pub(crate) fn is_gone(&self) -> bool {
+        self.gone.load(Ordering::Acquire)
+    }
+}
+
+/// Gives the watching thread the loop's wake, and wakes the loop for a
+/// launcher already gone.
+fn wake_when_launcher_gone(gone: Res<LauncherGone>, wake: Option<Res<Wake>>) {
+    if let Some(wake) = wake {
+        gone.wake.get_or_init(|| wake.clone());
+        if gone.is_gone() {
+            wake.wake();
+        }
     }
 }
 
@@ -182,19 +220,21 @@ fn launcher_left(lock: &Path) -> bool {
 
 /// Asks the app to exit once, as for a signal, when the launcher is gone.
 fn exit_when_launcher_gone(
-    gone: Option<Res<LauncherGone>>,
+    gone: Res<LauncherGone>,
     mut asked: Local<bool>,
     mut commands: Commands,
 ) {
-    if !*asked && gone.is_some_and(|gone| gone.0.load(Ordering::Acquire)) {
+    if !*asked && gone.is_gone() {
         *asked = true;
         commands.trigger(Exit(ExitReason::Signal));
     }
 }
 
-/// Marks a run refused, until it exits.
-#[derive(Resource)]
-struct Refused;
+/// Marks a run refused ([`AppCliExt::refuse_run`](super::cli::AppCliExt::refuse_run))
+/// from `cleanup` until it exits at the end of its first frame: a front
+/// leaves the terminal alone meanwhile.
+#[derive(Resource, Debug)]
+pub struct Refused;
 
 /// Refuses this run, once the app is built: says `why` on stderr now,
 /// before any front takes the terminal, and in the launcher's
@@ -207,13 +247,19 @@ pub(crate) fn refuse(app: &mut App, why: String) {
         return;
     }
     leave_session(app.world_mut());
-    let stop = if why.ends_with('.') { "" } else { "." };
+    let stop = if why.ends_with(['.', '?', '!']) {
+        ""
+    } else {
+        "."
+    };
     let said = format!("rig: {why}{stop}\n");
     eprint!("{said}");
-    if let Some(run) = app.world().get_resource::<LauncherRun>()
-        && let Err(failure) = std::fs::write(run.0.refusal(), said)
-    {
-        error!("could not tell the launcher why the run is refused: {failure}");
+    if let Some(run) = app.world().get_resource::<LauncherRun>() {
+        if let Err(failure) = std::fs::write(run.0.refusal(), said) {
+            error!("could not tell the launcher why the run is refused: {failure}");
+        }
+        // No front takes the screen.
+        std::fs::remove_file(run.0.screen()).ok();
     }
     app.insert_resource(Refused).add_systems(
         Last,

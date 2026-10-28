@@ -223,6 +223,31 @@ pub(super) fn all() -> Vec<Check> {
                 ]),
             ],
         ),
+        // The agent's signals, closed-pipe check and process groups, and the
+        // launcher's cleanup of what a killed agent left, which use each
+        // platform's own calls and commands.
+        check(
+            "process-tests",
+            vec![cargo(&[
+                "nextest",
+                "run",
+                "--locked",
+                "-p",
+                "rig-tools",
+                "-p",
+                "rig-harness",
+                "-p",
+                "rig",
+                "--lib",
+                "--bins",
+                "--no-fail-fast",
+                "--no-tests",
+                "fail",
+                "-E",
+                "test(/^process::tests::/) | test(/^host::(signals|launcher)::tests::/) \
+                 | test(/^launcher::(run|locks)::tests::/)",
+            ])],
+        ),
         check(
             "rig-claude-cloak-tests",
             vec![cargo(&[

@@ -245,12 +245,41 @@ fn actual_tui_policy_compaction_and_persistence_have_no_stage_conflicts() {
         crate::compaction::CompactionPlugin,
         crate::subagents::SubagentsPlugin,
     ));
+    recording(&mut app, &["allowed"]);
     app.finish();
     app.cleanup();
     assert!(app.runs_front(rig_tui::FRONT));
     assert!(app.world().contains_resource::<Tools>());
     let conflicts = rig_harness::stage_conflicts(app.world_mut());
     assert!(conflicts.is_empty(), "{conflicts:#?}");
+}
+
+/// The terminal view leaves the terminal alone for a run refused on an
+/// unknown `--tools` name: it exits 2 at the end of its first frame, its
+/// refusal on stderr. Here, with no terminal to open, a view that tried
+/// would exit 1 first.
+#[cfg(feature = "tui")]
+#[test]
+fn a_refused_terminal_run_never_opens_the_view() {
+    let (mut app, _) = noting(
+        &MemoryStore::default(),
+        Invocation {
+            flags: vec![(TOOLS.to_owned(), Some("shel".to_owned()))],
+            ..Invocation::default()
+        },
+    );
+    app.world_mut().resource_mut::<Invoked>().terminal = true;
+    app.add_plugins((
+        SessionLogPlugin,
+        ExitPlugin,
+        rig_tui::TuiPlugin,
+        PrintPlugin,
+    ));
+    recording(&mut app, &["shell"]);
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
 }
 
 #[test]
@@ -628,9 +657,10 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
         app.update();
         drop(app);
 
-        // Refusal must run neither a model nor a restored tool call.
+        // Refusal must run neither a model nor a restored tool call, and
+        // the turn it cuts off says why.
         let second = answering(&["hello"]);
-        let (app, _) = one_shot_on(&store, "", Some(MODEL), &second, true, |app| {
+        let refused = |app: &mut App| {
             recording(app, &["read", "write"]);
             let flag = (TOOLS.to_owned(), Some("read,bogus".to_owned()));
             app.world_mut()
@@ -638,10 +668,82 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
                 .args
                 .flags
                 .push(flag);
-        });
+        };
+        let (app, lines) = one_shot_on(&store, "", Some(MODEL), &second, true, refused);
         assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
         assert_eq!(second.request_count(), 0);
         assert!(app.world().resource::<Executed>().0.is_empty());
+        let why = "--tools: unknown tool `bogus`; the tools are read, write";
+        let ends = lines.of("turn_end");
+        assert!(!ends.is_empty(), "{:?}", lines.parsed());
+        for end in ends {
+            assert_eq!(
+                (at(&end, "outcome"), at(&end, "error")),
+                (&json!("stopped"), &json!(why))
+            );
+        }
+        drop(app);
+
+        // So must a run someone sits at, which is refused before its view
+        // starts.
+        let fourth = answering(&["hello"]);
+        let invoked = Invocation {
+            flags: vec![(TOOLS.to_owned(), Some("read,bogus".to_owned()))],
+            ..Invocation::default()
+        };
+        let (mut app, _) = noting(&store, invoked);
+        app.world_mut().resource_mut::<Invoked>().terminal = true;
+        app.insert_resource(scripted_models([(MODEL, &fourth)]))
+            .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
+            .add_front(Front::new("view").on_terminal());
+        recording(&mut app, &["read", "write"]);
+        app.finish();
+        app.cleanup();
+        run_until(&mut app, |_| false);
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+        assert_eq!(fourth.request_count(), 0);
+        assert!(app.world().resource::<Executed>().0.is_empty());
+        drop(app);
+
+        // So must a run whose launcher is gone while it waits for its
+        // prompt on a stdin that stays open: it exits as on a signal, and
+        // closes the turn it restored.
+        let fifth = answering(&["hello"]);
+        let Ok((silent, writer)) = std::io::pipe() else {
+            return;
+        };
+        let home = rig_harness::harness_protocol::Home::at(std::env::temp_dir().join(format!(
+            "rig-gone-launcher-{}-{pending_tool}",
+            std::process::id()
+        )));
+        // A run directory whose launcher holds no lock: it is gone.
+        let run = home.run(1);
+        std::fs::create_dir_all(run.path()).ok();
+        let gone = |app: &mut App| {
+            recording(app, &["read", "write"]);
+            app.insert_resource(PipedIn(Box::new(silent)))
+                .insert_resource(launcher::LauncherRun(run))
+                .add_plugins(launcher::LauncherPlugin);
+        };
+        let (app, lines) = one_shot_on(&store, "", Some(MODEL), &fifth, true, gone);
+        drop(writer);
+        std::fs::remove_dir_all(home.root()).ok();
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
+        assert_eq!(fifth.request_count(), 0);
+        assert!(app.world().resource::<Executed>().0.is_empty());
+        let exit = lines.parsed().last().cloned().unwrap_or_default();
+        assert_eq!(
+            (at(&exit, "type"), at(&exit, "code")),
+            (&json!("exit"), &json!(130))
+        );
+        let ends = lines.of("turn_end");
+        assert!(!ends.is_empty(), "{:?}", lines.parsed());
+        for end in ends {
+            assert_eq!(
+                (at(&end, "outcome"), at(&end, "error")),
+                (&json!("stopped"), &json!("the run was interrupted"))
+            );
+        }
         drop(app);
 
         // A valid resume keeps the access and finishes the pending work.

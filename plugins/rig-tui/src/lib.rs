@@ -66,7 +66,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
-use rig_harness::prelude::launcher::BUILD_ORIGIN;
+use rig_harness::prelude::launcher::{BUILD_ORIGIN, Refused};
 use rig_harness::prelude::{
     Answerer, AppCliExt, AppKeepsExt, AppSettingsExt, Front, RigHome, ShownAgent,
 };
@@ -204,7 +204,12 @@ impl Plugin for TuiViewPlugin {
         }
         add_view(app);
         app.add_systems(PreStartup, history::load)
-            .add_systems(Startup, terminal::open_terminal)
+            // A refused run exits after its first frame, its refusal on
+            // stderr, which the full screen would hide.
+            .add_systems(
+                Startup,
+                terminal::open_terminal.run_if(not(resource_exists::<Refused>)),
+            )
             .add_systems(
                 Last,
                 terminal::keep_screen_on_reload.in_set(bevy_app::OnAppExitSystems),

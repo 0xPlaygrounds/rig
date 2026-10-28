@@ -14240,6 +14240,7 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "ctrlc",
+ "libc",
  "rig-basics",
  "rig-core",
  "rig-ecs",
@@ -14252,6 +14253,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "signal-hook",
  "tokio",
  "toml",
 ]

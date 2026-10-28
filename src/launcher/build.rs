@@ -171,7 +171,7 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
 /// retries a build that was rolled back. Run by an agent's `/reload`
 /// (`RIG_SESSION` set), it stages for that agent's launcher alone.
 pub fn build(home: &Home) -> Result<()> {
-    let _lock = locks::hold_build_lock(home)?;
+    let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     let staged = match SessionId::from_env()? {
         Some(session) => home.staged_for(&session),
         None => home.staged(),
@@ -182,7 +182,7 @@ pub fn build(home: &Home) -> Result<()> {
 /// `rig plugin check --build`, holding the root's build lock: builds the
 /// agent like [`build`] but stages nothing, and returns its report.
 pub fn check(home: &Home) -> Result<AgentDescription> {
-    let _lock = locks::hold_build_lock(home)?;
+    let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     compile(home, &home.staged(), Staging::Never, BuildOutput::Live)?;
     described(home, &artifact(home))
 }

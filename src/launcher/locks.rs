@@ -2,10 +2,12 @@
 //! session's launcher lock, and each launcher's run directory.
 
 use std::fs::{self, File, TryLockError};
+use std::time::{Duration, Instant};
 
 use rig_harness_protocol::{Home, RunDir, SessionDir, is_free, lock_file};
 
 use super::Result;
+use super::build::BuildOutput;
 
 /// This launcher's [`RunDir`], held locked while it lives. Dropping it
 /// removes the directory, unless it keeps the log of a run that failed.
@@ -81,24 +83,54 @@ pub fn sweep(home: &Home) -> Result<()> {
     Ok(())
 }
 
+/// How long a headless start waits for the build lock before it says so:
+/// another rig's build with nothing to do holds it for a fraction of a
+/// second, so runs started together stay quiet, while a real build still
+/// says why the start waits.
+const QUIET_WAIT: Duration = Duration::from_secs(3);
+
+/// How often a quiet wait tries the lock.
+const LOCK_POLL: Duration = Duration::from_millis(50);
+
 /// Waits for, then holds, the lock on generating, building and staging the
 /// agent, which every launcher on the root shares. It is released when the
-/// returned file is dropped.
-pub fn hold_build_lock(home: &Home) -> Result<File> {
+/// returned file is dropped. A wait says so on stderr, at once with
+/// [`BuildOutput::Live`], after [`QUIET_WAIT`] with
+/// [`BuildOutput::LogOnly`].
+pub fn hold_build_lock(home: &Home, output: BuildOutput) -> Result<File> {
     fs::create_dir_all(home.bin())?;
     let file = lock_file(&home.build_lock(), true)?;
-    match file.try_lock() {
-        Ok(()) => {}
-        Err(TryLockError::WouldBlock) => {
-            eprintln!(
-                "Waiting for another rig on {} to finish building…",
-                home.root().display()
-            );
-            file.lock()?;
-        }
-        Err(TryLockError::Error(failure)) => return Err(failure.into()),
-    }
+    let quiet = match output {
+        BuildOutput::Live => Duration::ZERO,
+        BuildOutput::LogOnly => QUIET_WAIT,
+    };
+    take(&file, quiet, || {
+        eprintln!(
+            "Waiting for another rig on {} to finish building…",
+            home.root().display()
+        );
+    })?;
     Ok(file)
+}
+
+/// Takes `lock`, waiting as long as it takes; once the wait outlasted
+/// `quiet`, calls `say`.
+fn take(lock: &File, quiet: Duration, say: impl FnOnce()) -> Result<()> {
+    let deadline = Instant::now() + quiet;
+    loop {
+        match lock.try_lock() {
+            Ok(()) => return Ok(()),
+            Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(LOCK_POLL);
+            }
+            Err(TryLockError::WouldBlock) => {
+                say();
+                lock.lock()?;
+                return Ok(());
+            }
+            Err(TryLockError::Error(failure)) => return Err(failure.into()),
+        }
+    }
 }
 
 #[cfg(test)]

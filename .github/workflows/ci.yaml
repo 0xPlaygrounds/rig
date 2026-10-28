@@ -157,8 +157,9 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check derive
 
-  # Native macOS coverage for the subscription plugin, without the workspace
-  # feature sweep or credentials for ignored live tests.
+  # Native macOS coverage for the subscription plugin, and for the agent's
+  # signal and process handling, without the workspace feature sweep or
+  # credentials for ignored live tests.
   rig-claude-cloak-macos:
     name: stable / rig-claude-cloak macOS
     runs-on: macos-latest
@@ -171,6 +172,8 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check rig-claude-cloak-tests
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check process-tests
 
   # nextest does not run doctests. All features, so feature-gated examples
   # compile; the `all-features` entry it saves is the same dependency graph

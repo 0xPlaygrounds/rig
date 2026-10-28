@@ -26,8 +26,6 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
-# `termination` also catches SIGTERM and SIGHUP (a closed terminal).
-ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol, shared with the `rig` binary.
 rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0-rc.1" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
@@ -45,6 +43,16 @@ tokio = { workspace = true, features = ["rt"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = "1"
+
+# SIGINT, SIGTERM and SIGHUP, each heard on its own, and whether one was
+# ignored from the start; whether stdout's reader is gone.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+signal-hook = { workspace = true }
+
+# Ctrl+C elsewhere.
+[target.'cfg(not(unix))'.dependencies]
+ctrlc = { workspace = true }
 
 [dev-dependencies]
 # The synthetic session format and its migration, for the session tests.
