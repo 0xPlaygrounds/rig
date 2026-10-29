@@ -38,7 +38,7 @@ const MOST_LINES: usize = 10;
 /// the history. Text of the person's that the editor drops unsent goes to
 /// the history, so Up brings it back: the draft behind a prompt shown when
 /// another text replaces it, and what [`clear`](Self::clear) empties; a
-/// question's answer never does. In a panel placed at the top, the bottom
+/// question's answer never does, and Up in it stays in it. In a panel placed at the top, the bottom
 /// or below the input, it is as tall as its text, up to ten lines.
 ///
 /// ```no_run
@@ -454,8 +454,13 @@ impl Editor {
         self.up_from(history, false);
     }
 
-    /// Up, going first to the start of the first line if `to_start`.
+    /// Up, going first to the start of the first line if `to_start`. A
+    /// question's answer is not a prompt, so Up stays in it.
     fn up_from(&mut self, history: &[String], to_start: bool) {
+        let history = match self.answering {
+            Some(_) => &[],
+            None => history,
+        };
         let start = self.line_start();
         if self.walking() || (start == 0 && (self.cursor == 0 || !to_start)) {
             self.history_back(history);
