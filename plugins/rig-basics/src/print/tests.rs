@@ -576,6 +576,45 @@ fn a_held_start_holds_the_restored_turn_and_the_prompt() {
     app.world_mut().despawn(starting);
     assert_eq!(ended(&mut app), answered("prompted"));
     assert_eq!(second.request_count(), 1);
+    let world = app.world_mut();
+    let restored = turns.iter(world).count();
+    assert_eq!(restored, 0);
+}
+
+/// `rig -r <id> -p --json` signalled while a plugin holds the start: the
+/// turn it restored, which it leaves to the next run, still gets its
+/// `turn_end` before the `exit` line.
+#[test]
+fn a_json_exit_during_a_held_start_closes_the_restored_turn_it_leaves() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let second = silent();
+    let held = |app: &mut App| {
+        app.world_mut().spawn(Starting);
+        let signal = |mut frames: Local<u8>, mut commands: Commands| {
+            *frames += 1;
+            if *frames == 2 {
+                commands.trigger(Exit(ExitReason::Signal));
+            }
+        };
+        app.add_systems(Update, signal);
+    };
+    let (app, lines) = one_shot_on(&store, "again", None, &second, true, held);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+    assert_eq!(second.request_count(), 0);
+    let closing = ["turn_start", "turn_end", "exit"].map(Value::from);
+    let parsed = lines.parsed();
+    let kinds = parsed.iter().map(|line| at(line, "type"));
+    let kinds: Vec<_> = kinds.filter(|kind| closing.contains(kind)).collect();
+    assert_eq!(kinds, closing.iter().collect::<Vec<_>>(), "{parsed:?}");
+    let ends = lines.of("turn_end");
+    let outcome = ends.first().map(|end| at(end, "outcome").clone());
+    assert_eq!(outcome, Some(json!("stopped")));
+    drop(app);
+    let third = silent();
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+    let (mut app, _) = scripted(&store, (&third, false), None, in_place);
+    assert_eq!(ended(&mut app), answered("hello"));
 }
 
 /// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any

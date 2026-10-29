@@ -221,7 +221,7 @@ impl Plugin for PrintPlugin {
                 .add_systems(
                     Last,
                     (
-                        note_cut_off.before(StopTurnsOnExit),
+                        note_cut_off.after(keep_restored).before(StopTurnsOnExit),
                         json_exit.after(WriteLogs),
                     )
                         .in_set(OnAppExitSystems)
