@@ -195,6 +195,59 @@ fn local() -> Answer {
     Box::new(move |_| (200, stream.clone()))
 }
 
+/// A Chat Completions stream of `deltas`, ending for `finish`.
+fn chat_stream(deltas: &[Value], finish: &str) -> String {
+    let chunk = |delta: &Value, finish: Value| {
+        json!({"id": "c1", "object": "chat.completion.chunk", "created": 1, "model": "think",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]})
+    };
+    let mut frames: Vec<Value> = deltas
+        .iter()
+        .map(|delta| chunk(delta, Value::Null))
+        .collect();
+    frames.push(chunk(&json!({}), json!(finish)));
+    frames
+        .iter()
+        .map(|frame| format!("data: {frame}\n\n"))
+        .chain(["data: [DONE]\n\n".to_owned()])
+        .collect()
+}
+
+/// Thinking `summary` as a Chat gateway in front of Anthropic's API
+/// streams it, closed by `signature`.
+fn gateway_thinking(summary: &str, signature: &str) -> [Value; 2] {
+    [
+        json!({"role": "assistant", "reasoning_content": summary,
+            "thinking_blocks": [{"type": "thinking", "thinking": summary}]}),
+        json!({"reasoning_content": "", "thinking_blocks": [{"type": "thinking",
+            "thinking": "", "signature": signature}]}),
+    ]
+}
+
+/// The reasoning model behind a Chat gateway: rejects any request that
+/// carries [`B2`], and answers the others in order.
+fn gateway() -> Answer {
+    let [summary, signed] = gateway_thinking(SUMMARY, &B1.concat());
+    let read = json!({"tool_calls": [{"index": 0, "id": "toolu_1", "type": "function",
+        "function": {"name": "read", "arguments": "{\"path\":\"notes.txt\"}"}}]});
+    let [second, resigned] = gateway_thinking("second thought", B2);
+    let mut replies: VecDeque<String> = [
+        chat_stream(&[summary, signed, read], "tool_calls"),
+        chat_stream(&[json!({"content": "It says hello."})], "stop"),
+        chat_stream(&[second, resigned, json!({"content": "Second."})], "stop"),
+        chat_stream(&[json!({"content": "Recovered."})], "stop"),
+    ]
+    .into();
+    Box::new(move |body| {
+        if body.contains(B2) {
+            let error = json!({"error": {"type": "invalid_request_error", "code": "400",
+                "message": "messages.5.content.0: Invalid `signature` in `thinking` block"}});
+            return (400, error.to_string());
+        }
+        (200, replies.pop_front().unwrap_or_default())
+    })
+}
+
 /// The plugin's table: the reasoning provider and the local model.
 fn settings(thinker: &Fake, local: &Fake) -> String {
     format!(
@@ -393,6 +446,78 @@ fn reasoning_blobs_go_back_to_their_model_alone_and_never_stale() {
     let logged = serde_json::to_string(&records).unwrap_or_default();
     assert!(records.len() > 6 && logged.contains("[encrypted reasoning"));
     assert!(!logged.contains(B1[0]) && !logged.contains(B2));
+}
+
+/// On a Chat gateway, signed thinking goes back with the call's result,
+/// is left out once an earlier message is edited, and a request the model
+/// rejects over a signature goes again without it.
+#[test]
+fn chat_thinking_blocks_are_left_out_once_stale_or_rejected() {
+    let gateway = Fake::start(gateway());
+    assert!(gateway.is_some(), "the fake gateway needs a local port");
+    let Some(gateway) = gateway else {
+        return;
+    };
+    let settings = format!(
+        r#"
+        [[opaque_reasoning.provider]]
+        name = "gateway"
+        base_url = "http://{}/v1"
+        api = "openai-chat"
+        models = ["think"]
+        reasoning_field = "reasoning_content"
+        "#,
+        gateway.address
+    );
+    let blob = B1.concat();
+    let store = MemoryStore::default();
+    let (mut app, wakes, agent) = start(&store, &settings);
+    switch(&mut app, agent, "gateway/think");
+
+    assert_eq!(
+        ask(&mut app, &wakes, agent, "What do the notes say?"),
+        "It says hello."
+    );
+    let with_result = gateway.last();
+    assert!(
+        with_result.contains(&blob) && with_result.contains(r#""role":"tool""#),
+        "{with_result}"
+    );
+
+    // An edit of the question before the signed message leaves its
+    // thinking out.
+    let edited = app
+        .world_mut()
+        .get_mut::<Conversation>(agent)
+        .and_then(|mut conversation| {
+            let at = conversation
+                .entries()
+                .find(|entry| matches!(entry.message, ChatMessage::User { .. }))
+                .map(|entry| entry.index)?;
+            let mut entry = conversation.entry(at)?;
+            entry.message = std::sync::Arc::new(ChatMessage::user("What does the file say?"));
+            conversation.splice(at..=at, [entry], Author::plugin("history-edit"));
+            Some(at)
+        });
+    assert!(edited.is_some());
+    assert_eq!(ask(&mut app, &wakes, agent, "And now?"), "Second.");
+    let after_edit = gateway.last();
+    assert!(
+        !after_edit.contains(&blob) && after_edit.contains("What does the file say?"),
+        "{after_edit}"
+    );
+
+    assert_eq!(ask(&mut app, &wakes, agent, "Last one."), "Recovered.");
+    let bodies = gateway.bodies();
+    let carried_b2 = bodies.iter().filter(|body| body.contains(B2)).count();
+    assert_eq!((bodies.len(), carried_b2), (5, 1));
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    assert!(
+        notices
+            .iter()
+            .any(|notice| notice.text.contains("sent again without blobs")),
+        "{notices:?}"
+    );
 }
 
 #[test]

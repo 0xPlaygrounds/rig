@@ -3,13 +3,13 @@
 //!
 //! Each choice's `delta` folds into its `message`: text fields append, tool
 //! calls merge by `index` with their `arguments` appended, `reasoning_details`
-//! merge as the decoder merges them, and list fields append. Every other
-//! field keeps its last non-null value, and a field that only ever arrived
-//! as `null` stays `null`, as the unary body states it.
+//! and `thinking_blocks` merge as the decoder merges them, and list fields
+//! append. Every other field keeps its last non-null value, and a field that
+//! only ever arrived as `null` stays `null`, as the unary body states it.
 
 use serde_json::{Map, Value};
 
-use super::{CallKind, ChatEvent, REASONING_DETAILS, merge_details};
+use super::{CallKind, ChatEvent, REASONING_DETAIL_KEYS, merge_details};
 use crate::json_utils::remove_preserving_order;
 use crate::wire::document::{Reassemble, keep};
 
@@ -197,8 +197,8 @@ fn merge_delta(message: &mut Map<String, Value>, delta: &Map<String, Value>) {
                     merge_call(message, call);
                 }
             }
-            (REASONING_DETAILS, Value::Array(details)) => {
-                merge_details(message, details.clone());
+            (reasoning, Value::Array(details)) if REASONING_DETAIL_KEYS.contains(&reasoning) => {
+                merge_details(message, reasoning, details.clone());
             }
             (list, Value::Array(entries)) if APPENDED_LISTS.contains(&list) => {
                 match message.get_mut(key) {

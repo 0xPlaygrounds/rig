@@ -765,6 +765,272 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
     }
 }
 
+/// A signed thinking block as a LiteLLM proxy returns it for Claude.
+fn signed(thinking: &str, signature: &str) -> Value {
+    json!({"type": "thinking", "thinking": thinking, "signature": signature})
+}
+
+/// The `check_answer` call every LiteLLM reply below makes.
+fn check_answer() -> Value {
+    json!({"id": "toolu_01", "type": "function",
+        "function": {"name": "check_answer", "arguments": "{\"answer\":\"4\"}"}})
+}
+
+/// A whole reply from a LiteLLM proxy in front of Anthropic's API: its
+/// text, `reasoning`, the `check_answer` call, and `blocks` as
+/// `thinking_blocks` when given, repeated in `provider_specific_fields`.
+fn litellm_reply(reasoning: &str, blocks: Option<&Value>) -> WireFrame {
+    let mut message = json!({"role": "assistant", "content": "The answer is 4.",
+        "reasoning_content": reasoning, "provider_specific_fields": {"citations": null},
+        "tool_calls": [check_answer()]});
+    if let Some(blocks) = blocks {
+        message["thinking_blocks"] = blocks.clone();
+        message["provider_specific_fields"]["thinking_blocks"] = blocks.clone();
+    }
+    whole(message, "tool_calls")
+}
+
+/// The history that answers `reply`'s `check_answer` call.
+fn answered(reply: &crate::completion::CompletionResponse) -> Vec<Message> {
+    vec![
+        Message::user("q"),
+        Message::Assistant(turn_of(reply)),
+        Message::tool_result(
+            CallId::from_wire("toolu_01"),
+            name("check_answer"),
+            "correct",
+        ),
+    ]
+}
+
+/// Each reply's `reasoning_content` and `thinking_blocks`: the thinking
+/// display omitted, so only the signature carries the block; a summary
+/// under both keys; and a signed block beside a redacted one.
+fn thinking_cases() -> [(&'static str, Value); 3] {
+    let summary = "Two plus two is four.";
+    let redacted = json!({"type": "redacted_thinking", "data": "cmVkYWN0ZWQ="});
+    [
+        ("", json!([signed("", "c2lnbmVk")])),
+        (summary, json!([signed(summary, "c2lnbmVk")])),
+        ("", json!([signed("", "c2lnbmVk"), redacted])),
+    ]
+}
+
+/// A whole reply's `thinking_blocks` are kept on its reasoning block as
+/// they came, and an empty `reasoning_content` adds nothing to it. Not a
+/// cassette test: rig has no LiteLLM target, and recording one needs a
+/// proxy and an Anthropic key.
+#[test]
+fn a_whole_reply_keeps_its_thinking_blocks_on_the_reasoning_block() {
+    let chat = wire(&OPENAI, "claude-sonnet");
+    for (reasoning, blocks) in thinking_cases() {
+        let reply = decode(
+            &chat,
+            Mode::Unary,
+            vec![litellm_reply(reasoning, Some(&blocks))],
+        )
+        .expect("the reply decodes");
+        let Some(AssistantContent::Reasoning(block)) = reply.choice.first() else {
+            panic!("the thinking leads: {:?}", reply.choice);
+        };
+        assert_eq!(block.text, reasoning);
+        let mut item = json!({"thinking_blocks": blocks});
+        if !reasoning.is_empty() {
+            item["reasoning_content"] = json!(reasoning);
+        }
+        assert_eq!(
+            block.native.as_ref().map(|native| &native.item),
+            Some(&item),
+            "{reasoning:?}"
+        );
+    }
+}
+
+/// The next request sends the turn's `thinking_blocks` on its assistant
+/// message as they arrived, beside its text and call, and nothing of an
+/// empty `reasoning_content` or `provider_specific_fields`. Not a cassette
+/// test, for the reason above.
+#[test]
+fn thinking_blocks_go_back_on_the_assistant_message_as_they_arrived() {
+    let chat = wire(&OPENAI, "claude-sonnet");
+    for (reasoning, blocks) in thinking_cases() {
+        let reply = decode(
+            &chat,
+            Mode::Unary,
+            vec![litellm_reply(reasoning, Some(&blocks))],
+        )
+        .expect("the reply decodes");
+        let body = sent(&chat, answered(&reply));
+        let mut expected = json!({"role": "assistant", "content": "The answer is 4.",
+            "thinking_blocks": blocks, "tool_calls": [check_answer()]});
+        if !reasoning.is_empty() {
+            expected["reasoning_content"] = json!(reasoning);
+        }
+        assert_eq!(body["messages"][1], expected, "{body}");
+    }
+}
+
+/// A reply without `thinking_blocks` sends the request it always has: its
+/// empty `reasoning_content` and `provider_specific_fields` stay behind.
+/// Not a cassette test, for the reason above.
+#[test]
+fn a_reply_without_thinking_blocks_goes_back_as_it_did() {
+    let chat = wire(&OPENAI, "claude-sonnet");
+    let reply =
+        decode(&chat, Mode::Unary, vec![litellm_reply("", None)]).expect("the reply decodes");
+    let body = sent(&chat, answered(&reply));
+    assert_eq!(
+        body.get("messages"),
+        Some(&json!([
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "The answer is 4.", "tool_calls": [check_answer()]},
+            {"role": "tool", "tool_call_id": "toolu_01", "content": "correct"},
+            {"role": "user", "content": "next"},
+        ])),
+        "{body}"
+    );
+}
+
+/// A stream sends a block's thinking in pieces and then its signature,
+/// which closes the block, and a redacted block whole; they join into the
+/// blocks a whole reply carries and go back as they joined. Some proxies
+/// send the signature with the block's whole text again, which adds no
+/// text. Recent proxies number each piece with its block's `index`, which
+/// is kept; without one the stream folds to its whole reply. Not a
+/// cassette test, for the reason above.
+#[test]
+fn streamed_thinking_blocks_close_at_their_signature_and_go_back() {
+    let chat = wire(&OPENAI, "claude-sonnet");
+    let piece = |text: &str, signature: Option<&str>, index: Option<u64>| {
+        let mut block = json!({"type": "thinking", "thinking": text});
+        if let Some(signature) = signature {
+            block["signature"] = json!(signature);
+        }
+        if let Some(index) = index {
+            block["index"] = json!(index);
+        }
+        json!({"reasoning_content": text, "thinking_blocks": [block]})
+    };
+    let redacted = json!({"type": "redacted_thinking", "data": "cmVkYWN0ZWQ="});
+    let answer = [
+        json!({"content": "The answer is 4."}),
+        json!({"tool_calls": [{"index": 0, "id": "toolu_01", "type": "function",
+            "function": {"name": "check_answer", "arguments": ""}}]}),
+        json!({"tool_calls": [{"index": 0,
+            "function": {"arguments": "{\"answer\":\"4\"}"}}]}),
+    ];
+    let cases = [
+        (
+            vec![
+                piece("Weigh", None, Some(0)),
+                piece("ing it", None, Some(0)),
+                piece("", Some("c2lnbmVk"), Some(0)),
+            ],
+            "Weighing it",
+            json!([{"type": "thinking", "thinking": "Weighing it", "index": 0,
+                "signature": "c2lnbmVk"}]),
+        ),
+        (
+            vec![
+                piece("a", None, None),
+                piece("", Some("c2lnLWE="), None),
+                json!({"thinking_blocks": [redacted]}),
+                piece("b", None, None),
+                piece("", Some("c2lnLWI="), None),
+            ],
+            "ab",
+            json!([signed("a", "c2lnLWE="), redacted, signed("b", "c2lnLWI=")]),
+        ),
+        (
+            vec![
+                piece("Weigh", None, None),
+                piece("ing it", None, None),
+                json!({"reasoning_content": "",
+                    "thinking_blocks": [signed("Weighing it", "c2lnbmVk")]}),
+            ],
+            "Weighing it",
+            json!([signed("Weighing it", "c2lnbmVk")]),
+        ),
+    ];
+    for (thinking, reasoning, blocks) in cases {
+        let mut frames: Vec<WireFrame> = thinking
+            .into_iter()
+            .chain(answer.clone())
+            .map(|delta| chunk(delta, None))
+            .collect();
+        frames.push(chunk(json!({}), Some("tool_calls")));
+        frames.push(WireFrame::Text("[DONE]".to_owned()));
+        let reply = decode(&chat, Mode::Streaming, frames.clone()).expect("the stream decodes");
+        let Some(AssistantContent::Reasoning(block)) = reply.choice.first() else {
+            panic!("the thinking leads: {:?}", reply.choice);
+        };
+        assert_eq!(block.text, reasoning);
+        assert_eq!(
+            block
+                .native
+                .as_ref()
+                .map(|native| &native.item["thinking_blocks"]),
+            Some(&blocks),
+            "{reasoning}"
+        );
+        let body = sent(&chat, answered(&reply));
+        assert_eq!(body["messages"][1]["thinking_blocks"], blocks, "{body}");
+        if blocks.pointer("/0/index").is_none() {
+            let message = json!({"role": "assistant", "content": "The answer is 4.",
+                "reasoning_content": reasoning, "thinking_blocks": blocks,
+                "tool_calls": [check_answer()]});
+            crate::test_utils::history::assert_restated_agrees(
+                &chat,
+                vec![whole(message, "tool_calls")],
+                frames,
+            );
+        }
+    }
+}
+
+/// A reply's reasoning blob is the first signature, then the first
+/// redacted data, among its `thinking_blocks`, however late in the list;
+/// reasoning text alone has none. Not a cassette test, for the reason
+/// above.
+#[test]
+fn thinking_blocks_hold_the_reasoning_blob_wherever_it_sits() {
+    let chat = wire(&OPENAI, "claude-sonnet");
+    let redacted = json!({"type": "redacted_thinking", "data": "cmVkYWN0ZWQ="});
+    let cases = [
+        (
+            json!({"thinking_blocks": [signed("", "c2lnbmVk")]}),
+            Some(("/thinking_blocks/0/signature", "c2lnbmVk")),
+        ),
+        (
+            json!({"thinking_blocks": [redacted.clone(), signed("", "c2lnbmVk")]}),
+            Some(("/thinking_blocks/1/signature", "c2lnbmVk")),
+        ),
+        (
+            json!({"thinking_blocks": [redacted]}),
+            Some(("/thinking_blocks/0/data", "cmVkYWN0ZWQ=")),
+        ),
+        (json!({"reasoning_content": "plan"}), None),
+    ];
+    for (reasoning, blob) in cases {
+        let mut message = reasoning.clone();
+        message["role"] = json!("assistant");
+        message["content"] = json!("ok");
+        let reply =
+            decode(&chat, Mode::Unary, vec![whole(message, "stop")]).expect("the reply decodes");
+        let found = reply.choice.iter().find_map(|block| match block {
+            AssistantContent::Reasoning(block) => block.native.as_ref(),
+            _ => None,
+        });
+        assert_eq!(
+            found
+                .and_then(crate::message::Native::reasoning_blob)
+                .map(|blob| (blob.key, blob.value)),
+            blob,
+            "{reasoning}"
+        );
+    }
+}
+
 /// A stopped reply goes back as the text it had sent, without its call or
 /// the result answering the call.
 #[test]

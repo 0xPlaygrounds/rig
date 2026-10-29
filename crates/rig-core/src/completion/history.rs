@@ -265,7 +265,8 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 
     /// Where this wire's items keep a reasoning blob (a signature or an
     /// encrypted copy of the reasoning), as JSON pointers tried in order.
-    /// The reply fold records the first that holds one on the block's
+    /// A `*` step stands for each index of an array. The reply fold
+    /// records the first that holds one on the block's
     /// [`Native`](crate::message::Native). By default there are none.
     fn blob_slots(&self) -> &'static [&'static str] {
         &[]

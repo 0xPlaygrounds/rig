@@ -975,6 +975,11 @@ impl crate::completion::ReplayTarget for Chat {
         Some("/id")
     }
 
+    /// A `thinking_blocks` entry's signature, or a redacted entry's data.
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &["/thinking_blocks/*/signature", "/thinking_blocks/*/data"]
+    }
+
     fn later_system(&self, _model: &str) -> crate::completion::LaterSystem {
         self.provider.dialect.quirks.later_system
     }
@@ -1072,8 +1077,10 @@ pub enum ChatEvent {
 /// text under each, so the first that carries text is the one replayed.
 const REASONING_TEXT_KEYS: [&str; 3] = ["reasoning_content", "reasoning", "reasoning_text"];
 
-/// The structured reasoning key, kept verbatim with the reasoning text.
-const REASONING_DETAILS: &str = "reasoning_details";
+/// The keys an assistant message carries structured reasoning under, each
+/// kept verbatim with the reasoning text: `reasoning_details`, and the
+/// signed `thinking_blocks` a LiteLLM proxy returns for Claude.
+const REASONING_DETAIL_KEYS: [&str; 2] = ["reasoning_details", "thinking_blocks"];
 
 /// What one content part of a Chat message is. Every part becomes a block.
 #[derive(Debug, PartialEq)]
@@ -1169,7 +1176,7 @@ pub struct ChatDecoder {
     thinking_text: String,
     /// The writer index of the message's reasoning block while it is open,
     /// and its item as it will hold it: the field its text arrived in, its
-    /// text, and every `reasoning_details` entry in order.
+    /// text, and every structured reasoning entry in order, by key.
     reasoning: Option<usize>,
     reasoning_field: Option<&'static str>,
     reasoning_text: String,
@@ -1254,7 +1261,7 @@ impl ChatDecoder {
     }
 
     /// One delta of the assistant message: its reasoning text and
-    /// `reasoning_details` into the reasoning block, then the content,
+    /// structured reasoning into the reasoning block, then the content,
     /// images and calls.
     fn delta(
         &mut self,
@@ -1272,11 +1279,13 @@ impl ChatDecoder {
             self.reason(text, out)?;
             self.reasoning_field.get_or_insert(key);
         }
-        if let Some(Value::Array(details)) = delta.get(REASONING_DETAILS)
-            && !details.is_empty()
-        {
-            self.reason("", out)?;
-            merge_details(&mut self.reasoning_details, details.clone());
+        for key in REASONING_DETAIL_KEYS {
+            if let Some(Value::Array(details)) = delta.get(key)
+                && !details.is_empty()
+            {
+                self.reason("", out)?;
+                merge_details(&mut self.reasoning_details, key, details.clone());
+            }
         }
         let audio = delta.get("audio");
         if let Some(id) = audio.and_then(|audio| audio.at("/id")) {
@@ -1717,10 +1726,6 @@ impl ChatDecoder {
     }
 }
 
-/// Append streamed reasoning details to the block's: a
-/// text or summary fragment continues the last entry of its type and
-/// index, appending its text and filling the fields that entry lacks, and an
-/// encrypted entry stays whole.
 /// `slot` holding `text` when it is given, allocating only when it changed.
 fn keep_text(slot: &mut Option<String>, text: Option<&str>) {
     if let Some(text) = text
@@ -1730,33 +1735,50 @@ fn keep_text(slot: &mut Option<String>, text: Option<&str>) {
     }
 }
 
-fn merge_details(block: &mut Map<String, Value>, details: Vec<Value>) {
-    let Value::Array(merged) = block
-        .entry(REASONING_DETAILS)
-        .or_insert_with(|| Value::Array(Vec::new()))
-    else {
+/// Append streamed structured reasoning under `key` to the block's. A text
+/// or summary fragment continues the last entry of its type and index, and
+/// a `thinking` fragment the last `thinking` entry not yet signed, so a
+/// signature closes its block; either appends its text and fills the
+/// fields that entry lacks. A signature that restates its block's joined
+/// text adds only its other fields. Any other entry, encrypted or
+/// redacted, stays whole.
+fn merge_details(block: &mut Map<String, Value>, key: &str, details: Vec<Value>) {
+    let Value::Array(merged) = block.entry(key).or_insert_with(|| Value::Array(Vec::new())) else {
         return;
     };
     for detail in details {
         let kind = detail.str("type");
-        let continues = matches!(kind, Some("reasoning.text" | "reasoning.summary"))
-            && merged.last().is_some_and(|last| {
-                last.str("type") == kind && last.get("index") == detail.get("index")
-            });
+        let continues = merged.last().is_some_and(|last| {
+            last.str("type") == kind
+                && match kind {
+                    Some("reasoning.text" | "reasoning.summary") => {
+                        last.get("index") == detail.get("index")
+                    }
+                    Some("thinking") => last.str("signature").is_none_or(str::is_empty),
+                    _ => false,
+                }
+        });
+        let restates = continues
+            && kind == Some("thinking")
+            && detail
+                .str("signature")
+                .is_some_and(|signature| !signature.is_empty())
+            && merged.last().and_then(|last| last.str("thinking")) == detail.str("thinking");
         match (continues, merged.last_mut(), detail) {
             (true, Some(Value::Object(last)), Value::Object(fields)) => {
-                for (key, value) in fields {
+                for (field, value) in fields {
                     let missing = last
-                        .get(&key)
+                        .get(&field)
                         .is_none_or(|existing| existing.is_null() || existing.as_str() == Some(""));
-                    match (last.get_mut(&key), value) {
+                    match (last.get_mut(&field), value) {
                         (Some(Value::String(text)), Value::String(more))
-                            if matches!(key.as_str(), "text" | "summary") =>
+                            if matches!(field.as_str(), "text" | "summary" | "thinking")
+                                && !restates =>
                         {
                             text.push_str(&more);
                         }
                         (_, value) if missing => {
-                            last.insert(key, value);
+                            last.insert(field, value);
                         }
                         _ => {}
                     }
