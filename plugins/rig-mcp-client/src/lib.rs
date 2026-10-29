@@ -127,9 +127,10 @@ pub struct McpSettings {
     /// The servers of `RIG_HOME/mcp.json` trusted to say which of their
     /// tools only read; a project's server never is. A tool
     /// of one whose `readOnlyHint` says so only reads: its calls run beside
-    /// others and again after a restart. Another server's word is a hint: a
-    /// call it says only reads still runs beside the reply's other readers,
-    /// but a restart never runs it again.
+    /// others, and again after a restart in a restored turn a plugin carries
+    /// on. Another server's word is a hint: a call it says only reads still
+    /// runs beside the reply's other readers, but a restart never runs it
+    /// again.
     pub trust_read_only: Vec<String>,
 }
 

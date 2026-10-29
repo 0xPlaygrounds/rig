@@ -26,14 +26,13 @@
 //! work over time, such as a file watch, keeps the run going with a
 //! [`KeepRunning`] entity, and one whose tools come in the background holds
 //! the start until they are in with a [`Starting`] entity. A kept run may
-//! start without a prompt, and so
-//! may one whose restored session has a turn a plugin carries on
-//! (`CarryOn`, `rig -r <id> -p`): that turn's answer is the run's. A turn
-//! an exit or a crash cut short is stopped, not finished, so without a
-//! prompt such a run has none; a run the launcher restarted on a reload
-//! with nothing left ends with 0. The exit code is 0 answered, 2 for no
-//! prompt, a refused slash command, a `--tools` name no tool has or a
-//! `--model` the catalog lacks, 130 when cut off, as by a signal or a
+//! start without a prompt, and so may one whose restored session has a turn
+//! a plugin carries on (`CarryOn`, `rig -r <id> -p`): that turn's answer is
+//! the run's. A turn an exit or a crash cut short is stopped, not finished,
+//! so without a prompt such a run has none; a run the launcher restarted on
+//! a reload with nothing left ends with 0. The exit code is 0 answered, 2
+//! for no prompt, a refused slash command, a `--tools` name no tool has or
+//! a `--model` the catalog lacks, 130 when cut off, as by a signal or a
 //! reader of stdout gone, else 1, such as for a failed turn, a turn that
 //! ended with no answer, or an error notice about the agent and no answer;
 //! a run of several turns exits with the worst. A `--json` run that exits
@@ -384,6 +383,24 @@ fn exit_unstarted(
     }
 }
 
+/// On a signal before the start was checked, lets each restored turn
+/// carry on ([`CarryOn`]): no plugin had its say about it yet, so the exit
+/// leaves it as the session has it, for the next run to decide. A run that
+/// ends itself first, as on a refused `--tools`, stops it as any exit does.
+fn keep_restored(
+    run: Res<Run>,
+    reason: Option<Res<ExitReason>>,
+    turns: Query<Entity, (With<Restored>, With<TurnOf>, Without<CarryOn>)>,
+    mut commands: Commands,
+) {
+    if run.checked || !matches!(reason.as_deref(), Some(ExitReason::Signal)) {
+        return;
+    }
+    for turn in &turns {
+        commands.entity(turn).insert(CarryOn);
+    }
+}
+
 /// The Gate system that answers each question of a one-shot run, after
 /// [`AskSystems`], so a line the user typed wins.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -631,6 +648,13 @@ impl AppHeadlessExt for App {
         // prompt sees the tools still coming, or a refused `--tools`.
         .configure_sets(Update, AgentLoop.run_if(|run: Res<Run>| run.checked))
         .add_systems(Update, exit_unstarted.after(drive))
+        .add_systems(
+            Last,
+            keep_restored
+                .in_set(OnAppExitSystems)
+                .before(StopTurnsOnExit)
+                .run_if(on_message::<AppExit>),
+        )
         .add_observer(keep_answer)
         .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
         // The frame after the last start ended looks again.

@@ -457,11 +457,12 @@ fn the_prompt_goes_out_without_waiting_for_a_wake() {
     assert_eq!(messages, Some(vec![Message::user("hi")]));
 }
 
-/// A session on `store` left by a run that exited mid-turn, before its
-/// model call; that run's model.
-fn left_mid_turn(store: &MemoryStore) -> MockCompletionModel {
-    let first = silent();
-    let (mut app, wakes) = app_on(store);
+/// `rig -r <id> -p` with no prompt, after a run that exited mid-turn: the
+/// exit stopped that turn, so nothing runs and the run has no prompt.
+#[test]
+fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
+    let (first, store) = (silent(), MemoryStore::default());
+    let (mut app, wakes) = app_on(&store);
     app.insert_resource(scripted_models([(MODEL, &first)]))
         .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
@@ -483,15 +484,8 @@ fn left_mid_turn(store: &MemoryStore) -> MockCompletionModel {
     });
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    first
-}
+    drop(app);
 
-/// `rig -r <id> -p` with no prompt, after a run that exited mid-turn: the
-/// exit stopped that turn, so nothing runs and the run has no prompt.
-#[test]
-fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
-    let store = MemoryStore::default();
-    let first = left_mid_turn(&store);
     let second = answering(&["hello"]);
     let (mut app, _) = scripted(&store, (&second, false), None, || {});
     assert_eq!(ended(&mut app), no_prompt());
@@ -505,15 +499,16 @@ fn no_prompt() -> Vec<(Option<String>, u8, Option<String>)> {
 }
 
 /// A run asked to exit while a plugin holds the start exits without running
-/// anything, and the next run redoes nothing of the turn the first exit cut.
+/// anything, and leaves the turn it restored as the session has it: the
+/// next run's plugin carries it on.
 #[test]
-fn an_exit_during_a_held_start_runs_nothing() {
+fn an_exit_during_a_held_start_leaves_the_restored_turn() {
     // The exit comes while the start is held, and as its last hold goes.
     for with_the_last in [false, true] {
         let store = MemoryStore::default();
-        left_mid_turn(&store);
-        let (second, third) = (silent(), answering(&["hello"]));
-        let (mut app, _) = scripted(&store, (&second, false), Some("hi"), || {});
+        killed_two_frames_in(&store);
+        let (second, third) = (silent(), silent());
+        let (mut app, _) = scripted(&store, (&second, false), Some("again"), || {});
         let starting = app.world_mut().spawn(Starting).id();
         app.update();
         app.world_mut().trigger(Exit(ExitReason::Signal));
@@ -524,8 +519,9 @@ fn an_exit_during_a_held_start_runs_nothing() {
         assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
         assert_eq!(second.request_count(), 0);
         drop(app);
-        let (mut app, _) = scripted(&store, (&third, false), None, || {});
-        assert_eq!(ended(&mut app), no_prompt(), "{with_the_last}");
+        let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+        let (mut app, _) = scripted(&store, (&third, false), None, in_place);
+        assert_eq!(ended(&mut app), answered("hello"), "{with_the_last}");
         assert_eq!(third.request_count(), 0);
     }
 }
@@ -559,19 +555,23 @@ fn a_skill_run_waits_for_the_start() {
     assert_eq!(model.request_count(), 1);
 }
 
-/// Nothing runs while a plugin holds the start: the prompt calls the model
-/// once the last [`Starting`] is gone, and the turn an exit cut stays stopped.
+/// Nothing runs while a plugin holds the start: the turn the session
+/// restored is decided, here stopped, and the prompt calls the model, only
+/// once the last [`Starting`] is gone.
 #[test]
-fn a_held_start_holds_the_prompt() {
+fn a_held_start_holds_the_restored_turn_and_the_prompt() {
     let store = MemoryStore::default();
-    left_mid_turn(&store);
+    killed_two_frames_in(&store);
     let second = answering(&["prompted"]);
-    let (mut app, _) = scripted(&store, (&second, false), Some("hi"), || {});
+    let (mut app, _) = scripted(&store, (&second, false), Some("again"), || {});
     let starting = app.world_mut().spawn(Starting).id();
     for _ in 0..20 {
         app.update();
     }
-    assert_eq!(second.request_count(), 0);
+    let world = app.world_mut();
+    let mut turns = world.query_filtered::<(), (With<Restored>, With<TurnOf>)>();
+    let restored = turns.iter(world).count();
+    assert_eq!((restored, second.request_count()), (1, 0));
     assert!(app.world().resource::<Ends>().0.is_empty());
     app.world_mut().despawn(starting);
     assert_eq!(ended(&mut app), answered("prompted"));

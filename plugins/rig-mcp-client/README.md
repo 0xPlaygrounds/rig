@@ -146,7 +146,8 @@ trust_read_only = ["files"]
 
 A tool whose `readOnlyHint` says it only reads, of a server in
 `trust_read_only`, only reads for rig: its calls run beside others, and again
-after a restart. Another server's word is a hint: such a call still runs
+after a restart in a turn a plugin carries on (a restart stops any other
+unfinished turn). Another server's word is a hint: such a call still runs
 beside the reply's other readers, but a restart never runs it again. A
 project's server is never trusted this way.
 
