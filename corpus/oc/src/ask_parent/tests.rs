@@ -6,7 +6,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
     AnswerAsks, Answers, MemoryStore, ToolOutputs, app_on, calls, log_tool_outputs,
-    pass_wall_clock, reply, run_until, scripted_models,
+    pass_wall_clock, reply, run_until, scripted_models, start_call,
 };
 use serde_json::json;
 
@@ -397,6 +397,36 @@ fn a_question_open_when_the_session_stopped_is_asked_again_on_resume() {
     assert_eq!(asked.matches("prod or dev?").count(), 2, "{asked}");
     assert_eq!(session.output("a1"), "prod");
     assert!(read_by(&child, 0).contains("prod"));
+}
+
+#[test]
+fn a_question_asked_outside_a_turn_reaches_the_parent_too() {
+    let parent = MockCompletionModel::from_stream_turns([
+        vec![
+            task("t1", "Update the config", CHILD),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Waiting."),
+    ]);
+    let child = MockCompletionModel::from_stream_turns([reply("Done.")]);
+    let mut session = Session::new(
+        &MemoryStore::default(),
+        &[(PARENT, &parent), (CHILD, &child)],
+        600,
+    );
+    session.ask("Update the config.", |_| child.request_count() >= 1);
+    let world = session.app.world_mut();
+    let mut children = world.query_filtered::<Entity, (With<Agent>, With<SpawnedBy>)>();
+    let found = children.iter(world).next();
+    assert!(found.is_some(), "the subagent");
+    let Some(child) = found else {
+        return;
+    };
+    // As a program's call does (Steel's `call_tool`): of no turn.
+    let question = json!({ "question": "prod or dev?" });
+    start_call(world, child, (ASK_PARENT, "q1"), question);
+    session.run(|world| open(world) == 1);
+    assert_eq!(open(session.app.world()), 1);
 }
 
 #[test]

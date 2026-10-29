@@ -117,7 +117,7 @@ fn choose_invoked_model(
     }
     if busy.get(agent).unwrap_or_default() {
         if !*told {
-            let text = format!("--model {model} applies once the continued turn ends.");
+            let text = format!("--model {model} applies once the current turn ends.");
             notices.write(Notice::info(agent, text));
             *told = true;
         }

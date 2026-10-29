@@ -25,17 +25,20 @@
 //! the subagents it started have answered. A plugin that sends the agent
 //! work over time, such as a file watch, keeps the run going with a
 //! [`KeepRunning`] entity. Such a run may start without a prompt, and so
-//! may one whose restored session left a turn unfinished (`rig -r <id>
-//! -p`): that turn's answer is the run's; a run the launcher restarted on a
-//! reload with nothing left ends with 0. The exit code is 0 answered, 2
-//! for no prompt, a refused slash command, a `--tools` name no tool has or
-//! a `--model` the catalog lacks, 130 when cut off, as by a signal or a
+//! may one whose restored session has a turn a plugin carries on
+//! (`CarryOn`, `rig -r <id> -p`): that turn's answer is the run's. A turn
+//! an exit or a crash cut short is stopped, not finished, so without a
+//! prompt such a run has none; a run the launcher restarted on a reload
+//! with nothing left ends with 0. The exit code is 0 answered, 2 for no
+//! prompt, a refused slash command, a `--tools` name no tool has or a
+//! `--model` the catalog lacks, 130 when cut off, as by a signal or a
 //! reader of stdout gone, else 1, such as for a failed turn, a turn that
 //! ended with no answer, or an error notice about the agent and no answer;
 //! a run of several turns exits with the worst. A `--json` run that exits
 //! before its work ends still closes each tool call and turn it started,
 //! and a one-shot one writes its `exit` line.
 
+use std::collections::HashSet;
 use std::io::{IsTerminal, Read, Write};
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::Instant;
@@ -47,6 +50,7 @@ use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::edit_distance;
+use rig_harness::rig_core::redact;
 use rig_harness::rig_core::tool::feedback::not_finished;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -205,7 +209,7 @@ impl Plugin for PrintPlugin {
                 .add_systems(
                     Last,
                     (
-                        close_cut_off.before(StopTurnsOnExit),
+                        note_cut_off.before(StopTurnsOnExit),
                         json_exit.after(WriteLogs),
                     )
                         .in_set(OnAppExitSystems)
@@ -541,8 +545,9 @@ fn with_piped(
 pub trait AppHeadlessExt {
     /// Sends `prompt` to the main agent once it has a model, and exits when
     /// no agent works any more and no [`KeepRunning`] exists. Without a
-    /// prompt, the run finishes the turns its restored session left
-    /// unfinished, and waits for the work a `KeepRunning` plugin sends.
+    /// prompt, the run finishes the turns a plugin carries on from its
+    /// restored session (`CarryOn`), and waits for the work a `KeepRunning`
+    /// plugin sends.
     /// Call it once, from the front's `finish`.
     fn run_headless(&mut self, prompt: Option<String>) -> &mut Self;
 }
@@ -730,14 +735,17 @@ struct Agents<'w, 's> {
     choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
     /// Why an agent's model was refused, as its notice said.
     refused: Query<'w, 's, &'static ModelRefused>,
-    turns: Query<'w, 's, (), With<TurnOf>>,
+    /// Running turns; a restored one the kernel stops is none (one that goes
+    /// on is no longer `Restored`).
+    turns: Query<'w, 's, (), (With<TurnOf>, Without<Restored>)>,
     /// Work in progress, such as a sign-in; not a long-lived stream, such
     /// as a file watch.
     running: Query<'w, 's, &'static Running>,
     /// Messages on their way to an agent, such as the prompt itself.
     messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
     /// Effects not started yet, such as one held at Gate, or answered and
-    /// not settled, such as one held for review; not an exit.
+    /// not settled, such as one held for review; not an exit, nor a
+    /// restored call, which is its turn's.
     held: Query<
         'w,
         's,
@@ -746,6 +754,7 @@ struct Agents<'w, 's> {
             With<Effect>,
             Without<Settled>,
             Without<ExitRequest>,
+            Without<Restored>,
             Or<(Without<Started>, With<Outcome>)>,
         ),
     >,
@@ -920,8 +929,9 @@ fn send(
         None if !agents.keep.is_empty() || run.turned || run.kept => {
             run.step = Step::Waiting { agent }
         }
-        // Work the restored session left runs, such as an unfinished turn:
-        // it finishes, and its answer is the run's.
+        // Work the restored session left runs, such as a turn a plugin
+        // carries on after a crash: it finishes, and its answer is the
+        // run's.
         None if !agents.idle() => run.step = Step::Sent { agent },
         // The run restarted on a reload with nothing left to do.
         None if restarted => return Some((ended(Some(agent), 0), Reason::Worst)),
@@ -956,10 +966,11 @@ enum Reason<'a> {
 
 /// Notes each turn of the agent the prompts go to that ended, with its
 /// answer when it answered, whatever its conversation looks like now, such
-/// as after a compaction.
+/// as after a compaction; not a restored turn the kernel stopped, which was
+/// no work of this run.
 fn keep_answer(
     settled: On<Add<Settled>>,
-    turns: Query<(&TurnOutcome, &ForAgent)>,
+    turns: Query<(&TurnOutcome, &ForAgent), Without<Restored>>,
     primary: MainAgentQuery,
     wake: Res<Wake>,
     mut run: ResMut<Run>,
@@ -1193,7 +1204,11 @@ struct JsonOut {
     one_shot: bool,
     /// How the run ended, for its `exit` line.
     ended: Option<HeadlessEnded>,
-    /// The lines that close what the exit cut off, each with its agent.
+    /// The running calls the exit cut off before they answered: their
+    /// `tool_result` says `cancelled`.
+    cancelled: HashSet<Entity>,
+    /// The lines that close the turns the exit leaves for the restart, each
+    /// with its agent.
     closing: Vec<(Entity, &'static str, Value)>,
 }
 
@@ -1205,6 +1220,7 @@ impl JsonOut {
             closed: false,
             one_shot: false,
             ended: None,
+            cancelled: HashSet::new(),
             closing: Vec::new(),
         }
     }
@@ -1338,56 +1354,67 @@ fn json_ended(ended: On<HeadlessEnded>, mut out: ResMut<JsonOut>) {
 fn cut_off(reason: Option<&ExitReason>) -> Option<&'static str> {
     match reason {
         Some(ExitReason::Reload) => None,
-        Some(ExitReason::Signal) => Some("the run was interrupted"),
-        _ => Some("the run ended"),
+        reason => Some(reason.map_or(ExitReason::Quit.stops_because(), ExitReason::stops_because)),
     }
 }
 
-/// On the exit frame, before the exit stops the running turns and despawns
-/// them unended, for the session to carry them on: writes what streamed,
-/// and keeps a `tool_result` for each tool call that started and a
-/// `turn_end` for each turn the exit cuts off, which [`json_exit`] writes
-/// once they are stopped. The work settled before has its lines already.
-/// Each call has the result the session keeps: its answer, when it came and
-/// did not settle yet, else what it says if stopped ([`IfStopped`]), such
-/// as its output so far; else, keeping none, what a stop says of a call
-/// that ran. A call not answered is `cancelled`.
-fn close_cut_off(
+/// On the exit frame, before the exit stops the running turns as a stop
+/// does: writes what streamed, and notes each tool call that started and
+/// has no answer, whose `tool_result` says `cancelled`. The stop settles
+/// every call and turn it cuts off, which writes their lines with the
+/// results the session keeps. A run that ended by itself, such as on a
+/// refused `--tools`, gives its own reason as the stop's ([`Exiting`]),
+/// unless something else, such as a signal, ended it first. A turn a
+/// plugin carries on across the exit (`CarryOn`), and a call of no turn,
+/// are left unended: this keeps their closing lines, a started call's with
+/// what a stop says of it, which [`json_exit`] writes.
+fn note_cut_off(
     reason: Option<Res<ExitReason>>,
+    exiting: Option<ResMut<Exiting>>,
     calls: Query<
         (
-            &ToolRequest,
-            &ForAgent,
+            Entity,
+            (&ToolRequest, &ForAgent, Option<&CallOf>),
             Option<&Outcome>,
             Option<&IfStopped>,
             Option<&Footprint>,
         ),
         (With<Started>, Without<Settled>),
     >,
-    turns: Query<(&TurnOf, Option<&TurnUsage>, Option<&FirstStreamed>), Without<Settled>>,
+    left: Query<(&TurnOf, Option<&TurnUsage>, Option<&FirstStreamed>), With<CarryOn>>,
     mut out: Out,
 ) {
     let Some(why) = cut_off(reason.as_deref()) else {
         return;
     };
-    // A run that ended by itself, such as on a refused `--tools`, says
-    // why its turns stopped, unless something else, such as a signal,
-    // ended it first.
     let code = match reason.as_deref().map(ExitReason::exit) {
         Some(AppExit::Error(code)) => code.get(),
         _ => 0,
     };
     let ended = out.out.ended.as_ref().filter(|ended| ended.code == code);
-    let turns_why = ended.and_then(|ended| ended.why.clone());
+    let why = ended
+        .and_then(|ended| ended.why.clone())
+        .unwrap_or_else(|| why.to_owned());
+    if let Some(mut exiting) = exiting {
+        exiting.0.clone_from(&why);
+    }
     out.flush();
     let mut closing = Vec::new();
-    for (request, &ForAgent(agent), outcome, if_stopped, footprint) in &calls {
+    for (call, (request, &ForAgent(agent), turn), outcome, if_stopped, footprint) in &calls {
+        if outcome.is_none() {
+            out.out.cancelled.insert(call);
+        }
+        if turn.is_some_and(|&CallOf(turn)| !left.contains(turn)) {
+            continue;
+        }
         let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
-        let (ok, output) = match kept.map(Outcome::tool_result) {
+        let kept = kept.map(Outcome::tool_result);
+        let kept = kept.map(|result| redact::tool_result(&result).unwrap_or(result));
+        let (ok, output) = match kept {
             Some(result) => (result.is_success(), result.output().render()),
             None => {
                 let footprint = footprint.cloned().unwrap_or_default();
-                (false, not_finished(why, true, &footprint.0))
+                (false, not_finished(&why, true, &footprint.0))
             }
         };
         let fields = json!({
@@ -1400,16 +1427,15 @@ fn close_cut_off(
         });
         closing.push((agent, "tool_result", fields));
     }
-    for (&TurnOf(agent), used, first) in &turns {
-        let why = turns_why.clone().unwrap_or_else(|| why.to_owned());
-        let ended = TurnEnd::Stopped(Some(why));
+    for (&TurnOf(agent), used, first) in &left {
+        let ended = TurnEnd::Stopped(Some(why.clone()));
         closing.push((agent, "turn_end", turn_end_fields(ended, used, first)));
     }
     out.out.closing = closing;
 }
 
 /// On the exit frame, once the turns are stopped and the session log is
-/// written: the lines [`close_cut_off`] kept, then the `exit` line of a run
+/// written: the lines [`note_cut_off`] kept, then the `exit` line of a run
 /// that ended ([`HeadlessEnded`]) or of a one-shot run cut off, with the
 /// agent's exit code.
 fn json_exit(
@@ -1517,6 +1543,7 @@ fn settled(
             out.emit(Some(agent), "tool_call", call_fields(&request.call));
         }
         let result = outcome.tool_result();
+        let cancelled = out.out.cancelled.contains(&settled.entity);
         let fields = json!({
             "id": request.call.id.wire(),
             "name": request.call.function.name.as_str(),
@@ -1524,7 +1551,7 @@ fn settled(
             // Refused before it ran: the agent may not use it, or a gate
             // refused it, as its report says.
             "refused": !started && outcome.0.as_ref().err().is_some_and(|report| report.refusal),
-            "cancelled": false,
+            "cancelled": cancelled,
             "output": result.output().render(),
         });
         out.emit(Some(agent), "tool_result", fields);

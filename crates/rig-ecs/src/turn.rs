@@ -44,6 +44,7 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
 };
 use rig_core::now_ms;
+use rig_core::redact;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
@@ -55,20 +56,20 @@ use super::agent::{
     LastUsage, Notice, Partial, Spawned, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
     TurnOutcome,
 };
-use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver};
+use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver, keep_on_the_way};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf};
-use super::restore::{Restored, commit_results, mark_settled};
+use super::restore::{CarryOn, Interrupted, RESTARTED, Restored, commit_results, mark_settled};
 use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 #[cfg(doc)]
 use super::stage::Stage;
 use super::stage::{
-    Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Started, SupersededBy,
-    Waiting, cancel, release,
+    Admitted, Decision, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Started,
+    SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, ToolDef, ToolRequest, offered};
+use super::tools::{Footprint, ToolDef, ToolRequest, offered, redacted};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -484,48 +485,90 @@ const STOPPED_BY_USER: &str = "the user stopped the turn";
 /// Stops the agent's running turn at once, and the running turns of every
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is
-/// spawned without [`SpawnedBy`](super::agent::SpawnedBy). What a streaming
-/// reply had sent is kept as the model's message, aborted, so the model
-/// reads its text as no answer, and the user's request is halted as
-/// stopped, unless its call was superseded; every tool call of the last
-/// reply gets a result, real, its [`IfStopped`] or what
-/// [`not_finished`](feedback::not_finished) says, and every call of the
-/// turn that has not settled is answered so and settled, whatever held it
-/// gone. Each turn ends [`TurnOutcome::Stopped`], in its record too, set
-/// before its calls settle, so a call's owner sees it stopped them; the
-/// record names the last entry and the calls the stop answered. The
-/// conversations are saved and written to the log at once, in one flush,
-/// so a log that ends mid-turn means a crash, a restart or a log that
-/// stopped (shown once, as every log failure is); a stop never waits on
-/// the log.
+/// spawned without [`SpawnedBy`](super::agent::SpawnedBy). Each agent's turn
+/// stops as [`Stopper::stop`] says; the conversations are written to the
+/// log at once, in one flush, so a log that ends mid-turn means a crash, a
+/// turn a plugin carries on ([`CarryOn`]) or a log that stopped (shown
+/// once, as every log failure is); a stop never waits on the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     spawned: Query<&Spawned>,
-    mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
-    mut turns: Query<(&mut Turn, Option<&Calls>)>,
-    replies: Query<ReplyCall>,
-    partials: Query<&Partial, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
-    log: Res<SessionLog>,
-    mut committed: MessageWriter<ConversationChanged>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
+    mut stopper: Stopper,
 ) {
     let root = interrupt.entity;
-    let reason = interrupt.reason.clone();
-    let why = reason.clone().unwrap_or_else(|| STOPPED_BY_USER.to_owned());
     let below = spawned.iter_descendants::<Spawned>(root);
-    let stopping: Vec<Entity> = std::iter::once(root).chain(below).collect();
     let mut stopped = false;
-    for agent in stopping {
-        let Ok((id, mut conversation, active)) = agents.get_mut(agent) else {
-            continue;
+    for agent in std::iter::once(root).chain(below) {
+        stopped |= stopper.stop(agent, interrupt.reason.clone());
+    }
+    // A failed write stops the logging, which the frame's log write shows;
+    // the turns stop all the same, and nothing more starts unsaved.
+    if stopped {
+        let _ = stopper.log.flush();
+    }
+}
+
+/// What stopping a turn reads and writes ([`Stopper::stop`]).
+#[derive(SystemParam)]
+pub(crate) struct Stopper<'w, 's> {
+    agents: Query<
+        'w,
+        's,
+        (
+            &'static AgentId,
+            &'static mut Conversation,
+            &'static ActiveTurn,
+        ),
+    >,
+    turns: Query<'w, 's, (&'static mut Turn, Option<&'static Calls>)>,
+    replies: Query<'w, 's, ReplyCall>,
+    partials:
+        Query<'w, 's, &'static Partial, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
+    log: Res<'w, SessionLog>,
+    committed: MessageWriter<'w, ConversationChanged>,
+    commands: Commands<'w, 's>,
+    notices: MessageWriter<'w, Notice>,
+    exiting: Option<Res<'w, Exiting>>,
+}
+
+impl Stopper<'_, '_> {
+    /// Stops each of `agents`' running turn for `why`, alone, as
+    /// [`stop`](Self::stop) does, and writes the log once.
+    pub(crate) fn stop_each(&mut self, agents: Vec<Entity>, why: &str) {
+        let mut stopped = false;
+        for agent in agents {
+            stopped |= self.stop(agent, Some(why.to_owned()));
+        }
+        if stopped {
+            let _ = self.log.flush();
+        }
+    }
+
+    /// Stops `agent`'s running turn, for `reason` (`None`: the user
+    /// stopped it); whether it had one. What a streaming reply had sent is
+    /// kept as the model's message, aborted, so the model reads its text as
+    /// no answer, and the user's request is halted as stopped, unless its
+    /// call was superseded; every tool call of the last reply gets a result
+    /// ([`stopped_answer`]), and every call of the turn that has not
+    /// settled is answered so and settled, whatever held it gone. The turn
+    /// ends [`TurnOutcome::Stopped`], in its record too, set before its
+    /// calls settle, so a call's owner sees it stopped them; the record
+    /// names the last entry and the calls the stop answered. The
+    /// conversation is saved at once, and the views told, unless the app
+    /// exits.
+    pub(crate) fn stop(&mut self, agent: Entity, reason: Option<String>) -> bool {
+        let Ok((id, mut conversation, active)) = self.agents.get_mut(agent) else {
+            return false;
         };
+        let why = reason.clone().unwrap_or_else(|| STOPPED_BY_USER.to_owned());
         let turn = active.turn();
-        let (reply, calls) = match turns.get_mut(turn) {
+        let (reply, calls) = match self.turns.get_mut(turn) {
             Ok((mut state, calls)) => (state.reply.take(), calls),
             Err(_) => (None, None),
         };
-        let streamed = partials.iter_many(calls.into_iter().flat_map(Calls::iter));
+        let streamed = self
+            .partials
+            .iter_many(calls.into_iter().flat_map(Calls::iter));
         let (mut reasoning, mut text) = (String::new(), String::new());
         for partial in streamed.flatten() {
             reasoning.push_str(&partial.reasoning);
@@ -541,16 +584,41 @@ pub(crate) fn on_stop_turn(
         }
         let reply = reply
             .zip(calls)
-            .map(|(reply, calls)| reply_calls(reply, calls, &replies))
+            .map(|(reply, calls)| reply_calls(reply, calls, &self.replies))
             .unwrap_or_default();
+        // The calls the stop cut short: not one a gate decided, nor a
+        // restored one that had finished.
         let answered = reply
             .iter()
-            .filter(|call| call.outcome.is_none())
+            .filter(|call| call.outcome.is_none() && !call.decision.is_decided())
+            .filter(|call| !matches!(call.interrupted, Some(Interrupted::Settled(_))))
             .map(|call| call.request.call.id.clone())
             .collect();
-        let stopped_call =
-            |call: &ReplyCallItem| Some(not_finished(&why, call.started, call.footprint));
-        if let Some(results) = reply_results(reply, stopped_call) {
+        // A decided call is answered with its decision, as Start would, a
+        // running one with what it says if stopped, and a restored one that
+        // settled with its result, each redacted as Commit would, so what
+        // observes it settle reads what the conversation keeps; any other is
+        // cancelled with the same text.
+        let answers: Vec<(Entity, Option<Outcome>)> = reply
+            .iter()
+            .filter(|call| call.outcome.is_none())
+            .filter_map(|call| {
+                let answer = match (
+                    call.if_stopped,
+                    call.decision.is_decided(),
+                    call.interrupted,
+                ) {
+                    (Some(IfStopped(outcome)), ..) => Some(outcome.clone()),
+                    (None, true, _) => None,
+                    (None, false, Some(Interrupted::Settled(result))) => {
+                        Some(result.clone().into())
+                    }
+                    (None, false, _) => return None,
+                };
+                Some((call.entity, answer))
+            })
+            .collect();
+        if let Some(results) = reply_results(reply, |call| Some(stopped_answer(&why, call))) {
             commit_results(&mut conversation, results);
         }
         conversation.halt(Halt::Stopped);
@@ -568,20 +636,53 @@ pub(crate) fn on_stop_turn(
             calls: answered,
         });
         let conversation = conversation.bypass_change_detection();
-        committed.write_batch(save_conversation(&log, agent, id, conversation));
+        let saved = save_conversation(&self.log, agent, id, conversation);
+        self.committed.write_batch(saved);
+        let said = match reason.as_deref() {
+            _ if self.exiting.is_some() => None,
+            Some(RESTARTED) => Some("Stopped the turn left unfinished when the session ended."),
+            _ => Some("Stopped."),
+        };
+        if let Some(said) = said {
+            self.notices.write(Notice::info(agent, said));
+        }
         let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
-        let (why, reason) = (why.clone(), reason.clone());
-        commands.queue(move |world: &mut World| {
+        self.commands.queue(move |world: &mut World| {
             // The outcome goes on first, as `stop_calls` finds it, so what
             // observes a call settling sees that its turn stopped.
             if let Ok(mut turn) = world.get_entity_mut(turn) {
                 turn.insert(TurnOutcome::Stopped(reason));
             }
+            for (call, answer) in answers {
+                match answer {
+                    Some(answer) => {
+                        if let Ok(mut call) = world.get_entity_mut(call) {
+                            call.insert_if_new(answer);
+                        }
+                    }
+                    None => apply_decision(world, call),
+                }
+            }
+            // An answer that came this pass, or that the stop gave, settles
+            // before Commit redacts it.
+            for &call in &calls {
+                if let Some(mut outcome) = world.get_mut::<Outcome>(call)
+                    && let Some(redacted) = redacted(&outcome)
+                {
+                    *outcome = redacted;
+                }
+            }
             for call in calls {
                 let said = world.get_entity(call).ok().and_then(|call| {
                     let footprint = call.get::<Footprint>();
+                    let ran = may_have_run(
+                        call.contains::<Started>(),
+                        call.contains::<Interrupted>(),
+                        call.contains::<Restored>(),
+                        footprint,
+                    );
                     call.contains::<ToolRequest>()
-                        .then(|| not_finished_text(&why, call.contains::<Started>(), footprint))
+                        .then(|| not_finished_text(&why, ran, footprint))
                 });
                 cancel(world, call, said.as_deref().unwrap_or(&why));
             }
@@ -592,17 +693,47 @@ pub(crate) fn on_stop_turn(
                 turn.remove::<TurnOf>().insert(Settled);
             }
         });
-        notices.write(Notice::info(agent, "Stopped."));
-        stopped = true;
-    }
-    // A failed write stops the logging, which the frame's log write shows;
-    // the turns stop all the same, and nothing more starts unsaved.
-    if stopped {
-        let _ = log.flush();
+        true
     }
 }
 
-/// What the model reads of a tool call that did not finish, for `why`
+/// What a stop for `why` answers a call of the reply with that has no
+/// answer and no [`IfStopped`]: what a gate decided, else, for a call a
+/// restore carried over ([`Interrupted`]), the result it settled with
+/// before the session stopped, else what
+/// [`not_finished`](feedback::not_finished) says.
+fn stopped_answer(why: &str, call: &ReplyCallItem) -> ToolResult {
+    if let Some(decided) = call.decision.get() {
+        return decided.tool_result();
+    }
+    match call.interrupted {
+        Some(Interrupted::Settled(result)) => result.clone(),
+        interrupted => {
+            let ran = may_have_run(
+                call.started,
+                interrupted.is_some(),
+                call.restored,
+                call.footprint,
+            );
+            not_finished(why, ran, call.footprint)
+        }
+    }
+}
+
+/// Whether a call a stop cuts short may have run: it started, a restore
+/// found it marked started, or it is a restored call that only reads,
+/// whose start the log does not mark.
+fn may_have_run(
+    started: bool,
+    interrupted: bool,
+    restored: bool,
+    footprint: Option<&Footprint>,
+) -> bool {
+    let reads = footprint.is_some_and(|footprint| footprint.0.reads_only());
+    started || interrupted || (restored && reads)
+}
+
+/// What a tool call that did not finish, for `why`, the model reads
 /// ([`feedback::not_finished`]); a call with no [`Footprint`] yet may
 /// change anything.
 fn not_finished_text(why: &str, started: bool, footprint: Option<&Footprint>) -> String {
@@ -628,10 +759,18 @@ fn reply_results(
     let results: Vec<_> = calls
         .into_iter()
         .filter_map(|call| {
-            let outcome = call.outcome.or(call.if_stopped.map(|stopped| &stopped.0));
-            let result = outcome
-                .map(Outcome::tool_result)
-                .or_else(|| missing(&call))?;
+            let result = match call.outcome {
+                Some(outcome) => outcome.tool_result(),
+                None => {
+                    let stopped = call.if_stopped.map(|stopped| stopped.0.tool_result());
+                    stopped.or_else(|| missing(&call))?
+                }
+            };
+            // Only an answer that settled went through Commit's redaction.
+            let result = match call.settled && call.outcome.is_some() {
+                true => result,
+                false => redact::tool_result(&result).unwrap_or(result),
+            };
             Some(call.request.call.answer(&result))
         })
         .collect();
@@ -640,26 +779,45 @@ fn reply_results(
 
 /// How long exit waits for running calls to be cancelled. A cancellation
 /// waits for a pool thread to drop the call's future, which records its
-/// effect as cancelled before the last flush; a plugin tool that blocks in
-/// `poll` must not stall the exit, so whatever misses this is dropped.
+/// effect as cancelled before the last flush and ends what it started,
+/// such as a command's processes; a plugin tool that blocks in `poll` must
+/// not stall the exit, so whatever misses this is dropped.
 const EXIT_GRACE: Duration = Duration::from_secs(1);
 
 type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 
-/// Inserted when the app exits: the turns it stops are left for the
-/// restart to carry on, so they end without a [`TurnOutcome`] and are not
-/// logged as halted.
-#[derive(Resource, Clone, Copy, Debug, Default)]
-pub(crate) struct Exiting;
+/// Inserted when the app exits, before its turns stop: why they stop, as
+/// their records and their calls' results say it, such as "the run was
+/// interrupted". The harness inserts it from its exit reason; without it,
+/// the exit inserts the default, "the run ended". A message still on its
+/// way is kept for the restart rather than handed back.
+#[derive(Resource, Clone, Debug, PartialEq, Eq)]
+pub struct Exiting(pub String);
+
+impl Default for Exiting {
+    fn default() -> Self {
+        Self("the run ended".to_owned())
+    }
+}
 
 /// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
-/// idle agents) leaves the running turns for the restart to carry on, as
-/// after a crash: every [`Running`] task, a plugin's too, is cancelled, the
-/// tool results that came in are logged, and the restart answers the rest.
+/// idle agents) stops every running turn as the user's stop does, for the
+/// [`Exiting`] reason, so a restart finds nothing to carry on; a turn a
+/// plugin lets [`CarryOn`] is left unended for the restart, the results its
+/// reply's calls got logged. Every [`Running`] task, a plugin's too, is
+/// taken first and cancelled within [`EXIT_GRACE`], and each message still
+/// on its way to an agent is kept in its inbox.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
-    world.insert_resource(Exiting);
+    let why = world.get_resource_or_init::<Exiting>().0.clone();
     let mut cancelling = Cancelling::new();
     take_running(world, &mut cancelling);
+    if let Err(error) = world.run_system_cached_with(stop_for_exit, why) {
+        warn!("could not stop the running turns at exit: {error}");
+    }
+    world.flush();
+    if let Err(error) = world.run_system_cached(keep_on_the_way) {
+        warn!("could not keep the messages on their way at exit: {error}");
+    }
     let deadline = Instant::now() + EXIT_GRACE;
     loop {
         cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
@@ -671,20 +829,30 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
         std::thread::sleep(Duration::from_millis(2));
     }
     if let Err(error) = world.run_system_cached(log_answered_results) {
-        warn!("could not log the results of stopped turns: {error}");
+        warn!("could not log the results of the turns left for the restart: {error}");
     }
-    let turns: Vec<Entity> = world
+    let left: Vec<Entity> = world
         .query_filtered::<Entity, With<TurnOf>>()
         .iter(world)
         .collect();
-    for turn in turns {
+    for turn in left {
         world.despawn(turn);
     }
     world.flush();
 }
 
-/// Logs the results the running replies' calls got so far, in call order,
-/// for the restart, which answers the rest.
+/// Stops each running turn no plugin lets [`CarryOn`], for `why`.
+fn stop_for_exit(
+    In(why): In<String>,
+    turns: Query<&TurnOf, Without<CarryOn>>,
+    mut stopper: Stopper,
+) {
+    let agents: Vec<Entity> = turns.iter().map(|&TurnOf(agent)| agent).collect();
+    stopper.stop_each(agents, &why);
+}
+
+/// Logs the results the calls of the replies left for the restart got so
+/// far, in call order; the restart answers the rest.
 fn log_answered_results(
     turns: Query<(&TurnOf, &Turn, &Calls)>,
     replies: Query<ReplyCall>,
@@ -741,6 +909,7 @@ pub(crate) struct Unbuilt {
     effect: &'static mut Effect,
     from: Option<&'static SideCall>,
     turn_call: Has<TurnCall>,
+    restored: Has<Restored>,
     of: Option<&'static CallOf>,
     agent: Option<&'static ForAgent>,
 }
@@ -758,8 +927,8 @@ pub(crate) struct Parts<'w, 's> {
 /// prompt with its prompt sections, its conversation, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
 /// with its reasoning setting. A turn's call first delivers the steering
-/// and Inform messages its agent accepted meanwhile. A call the kernel
-/// cannot build is answered with why.
+/// and Inform messages its agent accepted meanwhile, unless it is
+/// [`Restored`]. A call the kernel cannot build is answered with why.
 pub(crate) fn build_requests(
     mut unbuilt: Query<
         Unbuilt,
@@ -801,8 +970,12 @@ pub(crate) fn build_requests(
             effect.parent = builder.parent.map(|parent| parent.0);
         }
         let spec = builder.connection.map(|connection| &*connection.spec);
+        // A restored call delivers none: a restart that stops its turn
+        // hands them back, and one that carries it on sends them next.
         if call.turn_call {
             effect.purpose.get_or_insert(PURPOSE.into());
+        }
+        if call.turn_call && !call.restored {
             let waiting = inboxes.of(agent).into_iter();
             let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;
@@ -1407,6 +1580,9 @@ pub(crate) struct ReplyCall {
     if_stopped: Option<&'static IfStopped>,
     successor: Option<&'static SupersededBy>,
     footprint: Option<&'static Footprint>,
+    decision: &'static Decision,
+    interrupted: Option<&'static Interrupted>,
+    restored: Has<Restored>,
     settled: Has<Settled>,
     started: Has<Started>,
     waiting: Has<Waiting>,

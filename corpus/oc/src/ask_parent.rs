@@ -13,9 +13,9 @@
 //! plugin ends its waits for any other agent ([`Awaits`]), so the question
 //! goes with the parent's next model call.
 //!
-//! After a restart the subagent's unanswered call is restored and gated
-//! again, so the question is asked again, and its hold claims the restored
-//! turn, which `rig_basics::subagents` would otherwise stop. Stopping the parent stops
+//! After a crash the subagent's unanswered call is restored and gated
+//! again, so the question is asked again, and its turn carries on
+//! ([`CarryOn`]), which the kernel would otherwise stop. Stopping the parent stops
 //! the subagents waiting on its answers, as the kernel stops every agent
 //! below a stopped one, and `rig_basics::subagents` keeps their reports for the
 //! parent's next turn instead of starting one.
@@ -216,17 +216,24 @@ fn offer_where_useful(
 
 /// Holds each `ask_parent` call about to run with its [`Question`], and
 /// sends the question to the caller's parent; refuses one from an agent
-/// that has none. A restored call is asked again.
+/// that has none. A restored call is asked again, its turn carried on.
 fn ask(
     mut calls: Query<
-        (Entity, &ToolRequest, &ForAgent, &mut Decision),
+        (
+            Entity,
+            &ToolRequest,
+            &ForAgent,
+            &mut Decision,
+            Option<&CallOf>,
+            Has<Restored>,
+        ),
         (ReadyToStart, ToolCalls, Without<Asked>),
     >,
     agents: Query<(&AgentId, Option<&SpawnedBy>, Option<&AgentTitle>)>,
     settings: Res<AskParentSettings>,
     mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(child), mut decision) in &mut calls {
+    for (call, request, &ForAgent(child), mut decision, turn, restored) in &mut calls {
         if request.call.function.name.as_str() != ASK_PARENT || decision.is_decided() {
             continue;
         }
@@ -280,6 +287,9 @@ fn ask(
         ));
         commands.entity(call).insert(Asked);
         commands.spawn((question, HoldOf(call), wait, name));
+        if let Some(&CallOf(turn)) = turn.filter(|_| restored) {
+            commands.entity(turn).try_insert(CarryOn);
+        }
     }
 }
 

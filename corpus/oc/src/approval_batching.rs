@@ -37,7 +37,6 @@
 //! ```
 
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, Approved, NeedsApproval};
-use rig_basics::subagents::SubagentSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
 use serde::Deserialize;
@@ -259,7 +258,6 @@ impl Plugin for ApprovalBatchingPlugin {
                 AgentPass,
                 BatchSystems
                     .after(GateSystems::After)
-                    .after(SubagentSystems::StopRestored)
                     .before(ApprovalSystems),
             )
             .add_systems(Startup, load_rules)

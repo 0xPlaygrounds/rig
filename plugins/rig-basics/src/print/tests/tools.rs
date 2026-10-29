@@ -607,9 +607,51 @@ fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
 }
 
 #[test]
-fn a_refused_tool_name_holds_back_a_restored_turn_too() {
+fn a_refused_tool_name_names_itself_on_a_carried_turn_it_cuts_off() {
+    // A crash left a turn, which a plugin carries on after the restart.
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let second = answering(&["hello"]);
+    let refused = |app: &mut App| {
+        recording(app, &["read", "write"]);
+        app.add_systems(AgentPass, carry_on.in_set(Stage::Gate));
+        let flag = (TOOLS.to_owned(), Some("read,bogus".to_owned()));
+        app.world_mut()
+            .resource_mut::<Invoked>()
+            .args
+            .flags
+            .push(flag);
+    };
+    let (app, lines) = one_shot_on(&store, "", Some(MODEL), &second, true, refused);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    assert_eq!(second.request_count(), 0);
+    assert!(app.world().resource::<Executed>().0.is_empty());
+    // The turn the refusal cut off says why, on its line and in the session.
+    let why = "--tools: unknown tool `bogus`; the tools are read, write";
+    let ends = lines.of("turn_end");
+    let reasons: Vec<_> = ends.iter().map(|end| at(end, "error").clone()).collect();
+    assert_eq!(reasons, [json!(why)], "{:?}", lines.parsed());
+    drop(app);
+    let saved = rig_harness::rig_memory::Session::read(&store).ok();
+    let main = saved.as_ref().and_then(|saved| saved.main_agent());
+    let ended = main.and_then(|agent| {
+        agent
+            .conversation
+            .turns()
+            .last()
+            .and_then(|(_, record)| record.end)
+    });
+    assert!(
+        matches!(&ended, Some(rig_ecs::prelude::TurnEnd::Stopped { why: Some(said), .. }) if said == why),
+        "{ended:?}"
+    );
+}
+
+#[test]
+fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
     for pending_tool in [false, true] {
-        // A session left before its model call, or its write, started.
+        // A session that exited before its model call, or its write,
+        // started.
         let first = match pending_tool {
             true => MockCompletionModel::from_stream_turns([calls("c1", "write", json!({}))]),
             false => silent(),
@@ -657,8 +699,8 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
         app.update();
         drop(app);
 
-        // Refusal must run neither a model nor a restored tool call, and
-        // the turn it cuts off says why.
+        // Refusal must run neither a model nor a restored tool call; the
+        // exit stopped the turn, so it has none to close.
         let second = answering(&["hello"]);
         let refused = |app: &mut App| {
             recording(app, &["read", "write"]);
@@ -674,14 +716,9 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
         assert_eq!(second.request_count(), 0);
         assert!(app.world().resource::<Executed>().0.is_empty());
         let why = "--tools: unknown tool `bogus`; the tools are read, write";
-        let ends = lines.of("turn_end");
-        assert!(!ends.is_empty(), "{:?}", lines.parsed());
-        for end in ends {
-            assert_eq!(
-                (at(&end, "outcome"), at(&end, "error")),
-                (&json!("stopped"), &json!(why))
-            );
-        }
+        assert!(lines.of("turn_end").is_empty(), "{:?}", lines.parsed());
+        let exit = lines.of("exit").first().cloned().unwrap_or_default();
+        assert_eq!(at(&exit, "error"), &json!(why));
         drop(app);
 
         // So must a run someone sits at, which is refused before its view
@@ -706,8 +743,8 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
         drop(app);
 
         // So must a run whose launcher is gone while it waits for its
-        // prompt on a stdin that stays open: it exits as on a signal, and
-        // closes the turn it restored.
+        // prompt on a stdin that stays open: it exits as on a signal, with
+        // no turn to close.
         let fifth = answering(&["hello"]);
         let Ok((silent, writer)) = std::io::pipe() else {
             return;
@@ -736,19 +773,13 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
             (at(&exit, "type"), at(&exit, "code")),
             (&json!("exit"), &json!(130))
         );
-        let ends = lines.of("turn_end");
-        assert!(!ends.is_empty(), "{:?}", lines.parsed());
-        for end in ends {
-            assert_eq!(
-                (at(&end, "outcome"), at(&end, "error")),
-                (&json!("stopped"), &json!("the run was interrupted"))
-            );
-        }
+        assert!(lines.of("turn_end").is_empty(), "{:?}", lines.parsed());
         drop(app);
 
-        // A valid resume keeps the access and finishes the pending work.
+        // A valid resume keeps the access and answers its own prompt; the
+        // write the exit stopped does not run.
         let third = answering(&["hello"]);
-        let (mut app, lines) = one_shot_on(&store, "", Some(MODEL), &third, true, |app| {
+        let (mut app, lines) = one_shot_on(&store, "go on", Some(MODEL), &third, true, |app| {
             recording(app, &["read", "write"]);
         });
         let exit = lines.of("exit").first().cloned().unwrap_or_default();
@@ -756,8 +787,7 @@ fn a_refused_tool_name_holds_back_a_restored_turn_too() {
             (at(&exit, "code"), at(&exit, "answer")),
             (&json!(0), &json!("hello"))
         );
-        let executed: Vec<_> = pending_tool.then_some("write").into_iter().collect();
-        assert_eq!(app.world().resource::<Executed>().0, executed);
+        assert!(app.world().resource::<Executed>().0.is_empty());
         assert_eq!(third.request_count(), 1);
         let world = app.world_mut();
         let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);

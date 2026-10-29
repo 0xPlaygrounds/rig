@@ -88,18 +88,26 @@ A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.
 
 When rig exits mid-turn (a signal, the launcher killed, stdout's reader
-gone, or stdin closed in a conversation), it still closes what it
-started: a tool_result ("cancelled": true) for each running call, a
-turn_end ("stopped") for each turn, and with -p the exit line (code
-130). Read stdout to its end to get them. The session keeps
-those turns unfinished: `rig -r <id>` goes on with them once this rig
-has exited. SIGTERM always does this. SIGINT and SIGHUP do unless rig
+gone, or stdin closed in a conversation), it stops each turn as a stop
+request does and still closes what it started: a tool_result
+("cancelled": true) for each running call, a tool_call and a
+tool_result ("Not run: …") for each call of the cut reply that had not
+started, a turn_end ("stopped") for each turn, and with -p the exit line
+(code 130). Read stdout to its end
+to get them. The session keeps those results and turns as stopped:
+`rig -r <id>` runs nothing of them and goes on with the next message. A
+plugin may carry a turn across the exit instead, such as one waiting on
+a batch API: its turn_end and its running calls' lines are written the
+same, and `rig -r <id>` goes on with it. SIGTERM always does this. SIGINT and SIGHUP do unless rig
 started with them ignored, as a script's `&` job ignores SIGINT and
 `nohup` SIGHUP: rig keeps them ignored. Not covered: SIGKILL and a
 repeat signal two or more seconds after the first (which exits at once)
 write no closing lines, though the launcher still kills the tool
 processes the agent left; nor does a reader killed by the same signal
-get them, as a Ctrl+C in a terminal kills `cat` too.
+get them, as a Ctrl+C in a terminal kills `cat` too. After a SIGKILL,
+`rig -r <id>` stops the turn it cut off and writes its lines first: a
+turn_start, a tool_call and tool_result for each call it had left, and a
+turn_end ("stopped", "the session restarted"); nothing of it runs.
 
 In Python:
 

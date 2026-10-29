@@ -590,6 +590,13 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
         }),
         "{records:?}"
     );
+    // The answer of the call that fits, which no one edited, is recorded as
+    // it came, not as reviewed.
+    let answered = records.iter().find(|record| record.id == effect);
+    assert!(
+        answered.is_some_and(|record| record.reviewed.is_none()),
+        "{records:?}"
+    );
 }
 
 /// A gate that refuses every tool call.

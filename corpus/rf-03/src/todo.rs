@@ -39,11 +39,6 @@ const DESCRIPTION: &str = "Keep your checklist for the current work. `add` appen
 #[derive(Default)]
 pub struct TodoPlugin;
 
-/// The plugin's stage system, in [`PrepareSystems::Input`]: a `todo` call
-/// a restart interrupted runs again, which applies it at most once.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TodoSystems;
-
 impl Plugin for TodoPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
@@ -58,8 +53,6 @@ impl Plugin for TodoPlugin {
                  `/todo clear`, `/todo goal <text>`",
                 todo_command,
             )
-            .configure_sets(AgentPass, TodoSystems.in_set(PrepareSystems::Input))
-            .add_systems(AgentPass, run_interrupted_again.in_set(TodoSystems))
             .add_systems(Update, arm_reminders)
             .add_observer(remind);
         // Both under stable keys, so a renamed type keeps its values and a
@@ -93,9 +86,6 @@ pub struct Item {
     pub text: String,
     /// Whether it is done.
     pub done: bool,
-    /// The id of the tool call that added it, so that call adds it once
-    /// however often it runs; `None` for one the user added.
-    pub call: Option<String>,
 }
 
 /// The session's goal: one line, empty when none was set. Saved under
@@ -126,23 +116,18 @@ impl Checklist {
         lines.join("\n")
     }
 
-    /// Adds an item of `text`, unless the call `call` added one already.
-    fn add(&mut self, text: &str, call: Option<&str>) -> Result<(), String> {
+    /// Adds an item of `text`.
+    fn add(&mut self, text: &str) -> Result<(), String> {
         let text = text.trim();
         if text.is_empty() {
             return Err("`add` needs a `text`".to_owned());
         }
-        let added = |item: &Item| call.is_some() && item.call.as_deref() == call;
-        if !self.items.iter().any(added) {
-            let id = self.items.iter().map(|item| item.id).max().unwrap_or(0) + 1;
-            let call = call.map(str::to_owned);
-            self.items.push(Item {
-                id,
-                text: text.to_owned(),
-                done: false,
-                call,
-            });
-        }
+        let id = self.items.iter().map(|item| item.id).max().unwrap_or(0) + 1;
+        self.items.push(Item {
+            id,
+            text: text.to_owned(),
+            done: false,
+        });
         Ok(())
     }
 
@@ -191,14 +176,11 @@ fn on_todo(
     mut lists: Query<&mut Checklist>,
     mut decisions: Query<&mut Decision, ToolCalls>,
 ) {
-    let call = called.tool_call.id.to_string();
     let result = match lists.get_mut(called.agent) {
         Ok(mut list) => {
             let mut changed = list.clone();
             let applied = match called.args.action {
-                Action::Add => {
-                    changed.add(called.args.text.as_deref().unwrap_or_default(), Some(&call))
-                }
+                Action::Add => changed.add(called.args.text.as_deref().unwrap_or_default()),
                 Action::Done => match called.args.id {
                     Some(id) => changed.done(id),
                     None => Err("`done` needs an `id`".to_owned()),
@@ -226,20 +208,6 @@ fn on_todo(
     }
 }
 
-/// A `todo` call a restart interrupted runs again rather than being
-/// answered as cut short: an `add` it applied already is not applied
-/// twice ([`Item::call`]), and the rest set what they set again.
-fn run_interrupted_again(
-    calls: Query<(Entity, &ToolRequest), (Added<Admitted>, With<Interrupted>, ToolCalls)>,
-    mut commands: Commands,
-) {
-    for (call, request) in &calls {
-        if request.call.function.name.as_str() == TODO_TOOL {
-            commands.entity(call).remove::<Interrupted>();
-        }
-    }
-}
-
 /// `/todo`, `/todo add <text>`, `/todo done <id>`, `/todo clear` and
 /// `/todo goal <text>` (an empty text clears the goal).
 fn todo_command(
@@ -260,7 +228,7 @@ fn todo_command(
     let mut changed = list.clone();
     let applied = match word {
         "" => Ok(()),
-        "add" => changed.add(rest, None),
+        "add" => changed.add(rest),
         "done" => rest
             .trim()
             .parse()

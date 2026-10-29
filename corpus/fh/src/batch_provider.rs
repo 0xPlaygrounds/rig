@@ -14,9 +14,10 @@
 //! (`wire::decode_reply`) and priced at the batch price, or the provider's
 //! error. An expired item is sent once more in a new batch.
 //!
-//! A turn's pending item is saved on its agent ([`BatchWait`]): after a
-//! restart, the turn's call the kernel runs again is held for the saved
-//! item and polling goes on; nothing is sent again. Interrupting the turn
+//! A turn's pending item is saved on its agent ([`BatchWait`]), and the
+//! turn carries on across a restart ([`CarryOn`]): a quit leaves it for the
+//! restart, whose restored call is held for the saved item, and polling
+//! goes on; nothing is sent again. Interrupting the turn
 //! cancels its batch at the provider when no other call waits for it.
 //! Requests go through the app's HTTP client, so `wrap_http` wrappers see
 //! them, with the key of [`BatchAccount`].
@@ -189,6 +190,7 @@ impl Plugin for BatchProviderPlugin {
             .init_resource::<Polled>()
             .configure_sets(AgentPass, BatchSystems.in_set(GateSystems::After))
             .add_systems(AgentPass, take_over.in_set(BatchSystems))
+            .add_systems(AgentPass, carry_on_waits.in_set(Stage::Gate))
             .add_observer(submit)
             .add_observer(submitted)
             .add_observer(poll)
@@ -304,6 +306,7 @@ fn take_over(
             &mut Decision,
             Option<&ForAgent>,
             Has<TurnCall>,
+            Option<&CallOf>,
         ),
         (ReadyToStart, ModelCalls, Without<Batched>),
     >,
@@ -319,7 +322,7 @@ fn take_over(
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    for (call, model, adapted, effect, mut decision, agent, turn_call) in &mut calls {
+    for (call, model, adapted, effect, mut decision, agent, turn_call, turn) in &mut calls {
         let agent = agent.map(|agent| agent.0);
         if decision.is_decided() {
             continue;
@@ -384,12 +387,29 @@ fn take_over(
             enqueue(&mut queue, &settings, call, &mut commands);
         }
         commands.entity(call).insert(batched);
+        if let Some(&CallOf(turn)) = turn.filter(|_| turn_call) {
+            commands.entity(turn).try_insert(CarryOn);
+        }
         commands.spawn((
             Name::new("batch: queued"),
             BatchHold,
             HoldOf(call),
             KeepAwake(Duration::from_secs(60)),
         ));
+    }
+}
+
+/// Lets each restored turn whose agent waits on a saved item carry on, so
+/// [`take_over`] holds its call for that item again.
+fn carry_on_waits(
+    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<CarryOn>)>,
+    agents: Query<&BatchWait>,
+    mut commands: Commands,
+) {
+    for (turn, &TurnOf(agent)) in &turns {
+        if agents.get(agent).is_ok_and(|wait| wait.0.is_some()) {
+            commands.entity(turn).insert(CarryOn);
+        }
     }
 }
 
@@ -714,20 +734,28 @@ fn polled(
     commands.entity(done.entity).despawn();
 }
 
-/// Once a batched call settles: its agent waits no more, and a call
-/// stopped before its batch answered (an interrupt) cancels the batch at
-/// the provider when no other call waits for it; one stopped while its
-/// batch is being submitted, once the batch has its id. A restart does not settle
-/// the call, so its item stays saved.
+/// Once a batched call settles: its agent waits no more, its turn no
+/// longer outlives an exit, and a call stopped before its batch answered
+/// (an interrupt) cancels the batch at the provider when no other call
+/// waits for it; one stopped while its batch is being submitted, once the
+/// batch has its id. A restart does not settle the call, so its item stays
+/// saved.
 fn settled(
     settled: On<Add<Settled>>,
-    calls: Query<(&Batched, &Decision, Option<&ForAgent>, Has<TurnCall>)>,
+    calls: Query<(
+        &Batched,
+        &Decision,
+        Option<&ForAgent>,
+        Option<&CallOf>,
+        Has<TurnCall>,
+    )>,
     others: Query<(Entity, &Batched), Without<Settled>>,
     mut agents: Query<&mut BatchWait>,
     models: Res<Models>,
     mut queue: ResMut<Queue>,
+    mut commands: Commands,
 ) {
-    let Ok((batched, decision, agent, turn_call)) = calls.get(settled.entity) else {
+    let Ok((batched, decision, agent, turn, turn_call)) = calls.get(settled.entity) else {
         return;
     };
     queue.0.retain(|&call| call != settled.entity);
@@ -735,6 +763,9 @@ fn settled(
         && let Ok(mut wait) = agents.get_mut(agent.0)
     {
         wait.0 = None;
+    }
+    if let Some(&CallOf(turn)) = turn.filter(|_| turn_call) {
+        commands.entity(turn).try_remove::<CarryOn>();
     }
     let Some(batch) = batched.batch.as_ref().filter(|_| !decision.is_decided()) else {
         return;

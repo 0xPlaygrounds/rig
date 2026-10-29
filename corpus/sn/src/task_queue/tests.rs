@@ -255,7 +255,7 @@ fn tasks_run_one_after_another_in_agents_of_their_own() {
 }
 
 #[test]
-fn a_restart_interrupts_the_running_task_and_runs_the_pending_ones() {
+fn a_quit_interrupts_the_running_task_and_the_restart_runs_the_pending_ones() {
     let store = MemoryStore::default();
     let main = MockCompletionModel::from_stream_turns([reply("unused")]);
     let tasks = MockCompletionModel::from_stream_turns([calls(
@@ -292,10 +292,10 @@ fn a_restart_interrupts_the_running_task_and_runs_the_pending_ones() {
         "{:?}",
         notices(&app)
     );
-    // T4's restored turn was stopped before it asked the model.
+    // The quit stopped T4's turn: the restart does not run it.
     assert_eq!(tasks.request_count(), 2);
     assert!(
-        at(&app, "end:task 1").is_some(),
+        at(&app, "request:task 1").is_none(),
         "{:?}",
         app.world().resource::<Log>().0
     );

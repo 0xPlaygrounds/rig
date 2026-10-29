@@ -159,10 +159,6 @@ impl Debate {
     }
 }
 
-/// The Gate system that stops a debater's restored turn, to order against.
-#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct DebateSystems;
-
 /// Adds `/debate`; see the [crate](self) docs.
 #[derive(Default)]
 pub struct DebatePlugin;
@@ -184,8 +180,6 @@ impl Plugin for DebatePlugin {
             .add_observer(add_spent_column)
             .add_observer(step)
             .add_observer(stop_on_interrupt)
-            .configure_sets(AgentPass, DebateSystems.in_set(Stage::Gate))
-            .add_systems(AgentPass, keep_idle.in_set(DebateSystems))
             .add_systems(Update, show_spent);
     }
 }
@@ -367,21 +361,6 @@ fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
 fn stop_on_interrupt(interrupt: On<StopTurn>, debates: Query<&Debate>, mut commands: Commands) {
     if let Ok(debate) = debates.get(interrupt.entity) {
         stop(&mut commands, interrupt.entity, debate);
-    }
-}
-
-/// A restart ends the debate: a debater's restored turn stops before
-/// anything of it starts.
-fn keep_idle(
-    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
-    debaters: Query<(), With<Debater>>,
-    mut commands: Commands,
-) {
-    for (turn, &TurnOf(agent)) in &turns {
-        if debaters.contains(agent) {
-            let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
-            commands.entity(turn).insert(stopped);
-        }
     }
 }
 

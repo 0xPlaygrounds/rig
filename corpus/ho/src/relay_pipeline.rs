@@ -313,17 +313,6 @@ fn quote(answer: &str) -> String {
 #[derive(Component)]
 struct StageRequest;
 
-/// On a stage's agent; saved, so a restart stops its turn, as the stage
-/// starts over with a fresh agent.
-#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct PipelineStage;
-
-/// The Gate system that stops a restored stage's turn, for others to order
-/// against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RelayPipelineSystems;
-
 /// Adds `/pipe`; see the [crate](self) docs.
 #[derive(Default)]
 pub struct RelayPipelinePlugin;
@@ -342,9 +331,7 @@ impl Plugin for RelayPipelinePlugin {
             )
             .add_observer(start_stage)
             .add_observer(seat)
-            .add_observer(step)
-            .configure_sets(AgentPass, RelayPipelineSystems.in_set(Stage::Gate))
-            .add_systems(AgentPass, stop_restored.in_set(RelayPipelineSystems));
+            .add_observer(step);
     }
 }
 
@@ -472,10 +459,7 @@ fn seat(
         return;
     };
     match (spawned, &outcome.0) {
-        (Some(&SpawnedAgent(agent)), Ok(_)) => {
-            commands.entity(agent).insert(PipelineStage);
-            run.agent = Some(agent);
-        }
+        (Some(&SpawnedAgent(agent)), Ok(_)) => run.agent = Some(agent),
         (_, failed) => {
             let why = failed.as_ref().err().map(|why| why.message.clone());
             let why = why.unwrap_or_else(|| "no agent was spawned".to_owned());
@@ -522,21 +506,6 @@ fn go_on(commands: &mut Commands, host: Entity, run: &mut PipelineRun, next: Nex
             let report = Deliver::new(host, run.report(passed), DeliveryMode::Queue);
             commands.trigger(report.with_author(Author::plugin("pipe")));
             commands.entity(host).remove::<PipelineRun>();
-        }
-    }
-}
-
-/// A stage's agent that a restart restored stops its turn before anything
-/// of it starts, so it retires: the stage starts over with a fresh agent.
-fn stop_restored(
-    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
-    stages: Query<(), With<PipelineStage>>,
-    mut commands: Commands,
-) {
-    for (turn, &TurnOf(agent)) in &turns {
-        if stages.contains(agent) {
-            let stopped = TurnOutcome::Stopped(Some("the session restarted".to_owned()));
-            commands.entity(turn).insert(stopped);
         }
     }
 }

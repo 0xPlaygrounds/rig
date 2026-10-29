@@ -81,7 +81,7 @@ fn model_waits_for_the_turn_a_resumed_session_continues() {
     let told = &app.world().resource::<Told>().0;
     assert_eq!(
         told,
-        &["--model deepseek/deepseek-flash applies once the continued turn ends."]
+        &["--model deepseek/deepseek-flash applies once the current turn ends."]
     );
     assert_eq!(app.world().get::<ModelChoice>(agent), None);
     app.world_mut().entity_mut(turn).despawn();

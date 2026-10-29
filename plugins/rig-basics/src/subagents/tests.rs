@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 
 use rig_core::catalog::{Catalog, Connector};
-use rig_core::completion::Message;
+use rig_core::completion::{CompletionResponse, Message, Usage};
+use rig_core::message::{AssistantContent, Origin, Text};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -388,14 +389,22 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     session.app.update();
     drop(session);
 
-    let session = Session::new(&store, None);
+    // Each report is a note that starts no turn of the parent, which gets
+    // a model only now and calls it for nothing.
+    let mut session = Session::new(&store, None);
+    let unused = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    session.answer_by(session.parent, &unused);
+    for _ in 0..5 {
+        session.app.update();
+    }
     let reports = session.to(session.parent);
     let interrupted = reports.iter().filter(|(_, mode, text)| {
-        *mode == DeliveryMode::Steer && text.starts_with("Stopped: the session restarted")
+        *mode == DeliveryMode::Inform && text.starts_with("Stopped: the session restarted")
     });
     let mut requests: Vec<&str> = interrupted.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["ta", "tb", "tc"], "{reports:?}");
+    assert_eq!(unused.request_count(), 0);
     // The restored subagents have their roles again.
     let world = session.app.world();
     let spawned = world.get::<Spawned>(session.parent);
@@ -873,7 +882,179 @@ fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
 }
 
 #[test]
-fn a_restored_subagent_whose_work_a_plugin_claims_is_not_stopped() {
+fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&store, Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let asked = commit_message(
+        session.app.world_mut(),
+        session.parent,
+        Message::user("Find a name."),
+    );
+    assert!(asked.is_ok(), "{asked:?}");
+    let (a, b) = (session.task("ta"), session.task("tb"));
+    // `a` asks `b` and waits on it, so `b` owes `a` a report as the app
+    // quits.
+    let ask = json!({ "agent": session.short(b), "text": "Hi." });
+    let said = session.call(a, MESSAGE, "m1", ask);
+    assert!(said.contains("in the background"), "{said}");
+    let wait = json!({ "agent": session.short(b) });
+    start_call(session.app.world_mut(), a, (WAIT, "w1"), wait);
+    session.app.update();
+    session.app.world_mut().write_message(AppExit::Success);
+    session.app.update();
+    drop(session);
+
+    // Each stopped as the user's stop would: a note to the parent, kept
+    // for the restart, whatever order the exit stopped them in.
+    let session = Session::new(&store, None);
+    let reports = session.to(session.parent);
+    let stopped = reports.iter().filter(|(_, mode, text)| {
+        *mode == DeliveryMode::Inform && text.starts_with("Stopped: the run ended")
+    });
+    let mut requests: Vec<&str> = stopped.map(|(request, ..)| *request).collect();
+    requests.sort_unstable();
+    assert_eq!(requests, ["ta", "tb"], "{reports:?}");
+}
+
+#[test]
+fn a_restored_subagent_turn_a_plugin_stops_reports_as_a_note() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&store, Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let asked = commit_message(
+        session.app.world_mut(),
+        session.parent,
+        Message::user("Find a name."),
+    );
+    assert!(asked.is_ok(), "{asked:?}");
+    session.task("ta");
+    session.app.update();
+    drop(session);
+
+    // After a crash, a plugin stops the restored turn its own way, such as
+    // for a budget: the report is a note all the same, and the parent's
+    // model is not called.
+    let mut session = Session::with(&store, None, |app| {
+        let over_budget = |turns: Query<Entity, (With<Restored>, Without<TurnOutcome>)>,
+                           mut commands: Commands| {
+            for turn in &turns {
+                let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
+                commands.entity(turn).insert(stopped);
+            }
+        };
+        app.add_systems(AgentPass, over_budget.in_set(Stage::Gate));
+    });
+    let unused = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    session.answer_by(session.parent, &unused);
+    for _ in 0..5 {
+        session.app.update();
+    }
+    let reports = session.to(session.parent);
+    let noted = reports.iter().any(|(request, mode, text)| {
+        *request == "ta" && *mode == DeliveryMode::Inform && text.contains("over budget")
+    });
+    assert!(noted, "{reports:?}");
+    assert_eq!(unused.request_count(), 0);
+}
+
+/// The agent whose model calls [`hold_or_answer`] answers in place.
+#[derive(Resource, Default)]
+struct AnswerInPlace(Option<Entity>);
+
+/// Holds every model call of a turn, but answers those of the agent
+/// [`AnswerInPlace`] names with "Waiting.", as a plugin standing in for the
+/// model does.
+fn hold_or_answer(
+    mut calls: Query<(Entity, &ForAgent, &mut Decision), (ReadyToStart, With<TurnCall>)>,
+    answer: Res<AnswerInPlace>,
+    mut commands: Commands,
+) {
+    for (call, &ForAgent(agent), mut decision) in &mut calls {
+        if answer.0 != Some(agent) {
+            commands.spawn(HoldOf(call));
+            continue;
+        }
+        let said = vec![AssistantContent::Text(Text::new("Waiting.".to_owned()))];
+        let made = Origin::new("plugin", "test", "answer");
+        let reply = CompletionResponse::new(said, Usage::default(), made, json!(null));
+        let reply = Outcome(Ok(rig_core::effect::Answered::Completion(reply.into())));
+        decision.decide(Decider::plugin("test"), reply);
+    }
+}
+
+#[test]
+fn a_subagent_that_waits_on_a_stopped_one_reports_as_stopped_after_a_quit_or_a_crash() {
+    for crash in [false, true] {
+        let store = MemoryStore::default();
+        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+        let mut session = Session::with(&store, Some(&model), |app| {
+            app.init_resource::<AnswerInPlace>()
+                .add_systems(AgentPass, hold_or_answer.in_set(Stage::Gate));
+        });
+        let asked = commit_message(
+            session.app.world_mut(),
+            session.parent,
+            Message::user("Find a name."),
+        );
+        assert!(asked.is_ok(), "{asked:?}");
+        let b = session.task("tb");
+        // `a` asks `b`, then its turn ends: it waits on `b`, idle.
+        let a = session.task("ta");
+        let ask = json!({ "agent": session.short(b), "text": "Hi." });
+        let said = session.call(a, MESSAGE, "m1", ask);
+        assert!(said.contains("in the background"), "{said}");
+        let world = session.app.world_mut();
+        world.resource_mut::<AnswerInPlace>().0 = Some(a);
+        let holds: Vec<(Entity, Entity)> = world
+            .query::<(Entity, &HoldOf)>()
+            .iter(world)
+            .map(|(hold, &HoldOf(call))| (hold, call))
+            .collect();
+        for (hold, call) in holds {
+            if world
+                .get::<ForAgent>(call)
+                .is_some_and(|&ForAgent(of)| of == a)
+            {
+                world.despawn(hold);
+            }
+        }
+        let wakes = &session.wakes;
+        run_until(
+            &mut session.app,
+            wakes,
+            |world| matches!(world.get::<Lifecycle>(a), Some(Lifecycle::WaitingOn(on)) if *on == b),
+        );
+        let waiting = session.app.world().get::<Lifecycle>(a);
+        assert!(
+            matches!(waiting, Some(Lifecycle::WaitingOn(_))),
+            "{waiting:?}"
+        );
+        if !crash {
+            session.app.world_mut().write_message(AppExit::Success);
+            session.app.update();
+        }
+        drop(session);
+
+        // Each owed report comes as a note: `b`'s to `a`, and `a`'s, as
+        // stopped with it, to the parent.
+        let session = Session::new(&store, None);
+        let reports = session.to(session.parent);
+        let from_a = reports.iter().any(|(request, mode, text)| {
+            *request == "ta" && *mode == DeliveryMode::Inform && text.starts_with("Stopped:")
+        });
+        assert!(from_a, "crash: {crash} {reports:?}");
+    }
+}
+
+#[test]
+fn a_restored_subagent_whose_work_a_plugin_carries_on_is_not_stopped() {
     for claimed in [false, true] {
         let store = MemoryStore::default();
         let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
@@ -902,10 +1083,17 @@ fn a_restored_subagent_whose_work_a_plugin_claims_is_not_stopped() {
         let sub = saved.and_then(|saved| saved.agents.iter().find(|agent| agent.parent.is_some()));
         assert_eq!(sub.and_then(|sub| sub.title()).as_deref(), Some("ta"));
 
-        // A plugin that asks the person first holds the restored calls.
+        // A plugin that asks the person first lets the restored turns
+        // carry on and holds their calls.
         let session = Session::with(&store, None, |app| {
             if claimed {
-                app.add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+                let carry_on = |turns: Query<Entity, (With<Restored>, Without<CarryOn>)>,
+                                mut commands: Commands| {
+                    for turn in &turns {
+                        commands.entity(turn).insert(CarryOn);
+                    }
+                };
+                app.add_systems(AgentPass, (carry_on, hold_turn_calls).in_set(Stage::Gate));
             }
         });
         let reports = session.to(session.parent);

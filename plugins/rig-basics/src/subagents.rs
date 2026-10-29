@@ -111,12 +111,6 @@ pub const ORIGIN: &str = "subagents";
 pub enum SubagentSystems {
     /// In Gate: refuses a request deeper than [`SubagentPolicy`] allows.
     Gate,
-    /// After every gate, before approvals and [`GateSystems::Fallback`]:
-    /// after a restart, stops the restored turn of an agent that owed
-    /// reports, so they report as stopped. To let that work carry on, a
-    /// plugin claims it in Gate (hold, decide, supersede, or end the turn);
-    /// removing `Interrupted` alone is not enough.
-    StopRestored,
 }
 
 /// Adds the `task`, `message` and `wait` tools, spawning the agents

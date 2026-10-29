@@ -64,7 +64,7 @@ pub mod prelude {
         Connection, ModelChoice, ModelRefused, Models, ReasoningSetting, SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
-    pub use crate::restore::{Interrupted, Restored, SavedKeys};
+    pub use crate::restore::{CarryOn, Interrupted, RESTARTED, Restored, SavedKeys};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
         ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,
@@ -82,8 +82,8 @@ pub mod prelude {
         ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapted, Backoff, DroppedOptions, FirstStreamed, ModelRequest, Recovery, RetryVerdict,
-        SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
+        Adapted, Backoff, DroppedOptions, Exiting, FirstStreamed, ModelRequest, Recovery,
+        RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, Change, ChangeRecord, Entry, EntryRef, Halt, MessageId,
@@ -113,9 +113,9 @@ use agent::{Agent, Notice};
 use session_log::{SaveConversations, SavedOne, SessionLog, save_conversations, save_now};
 use tasks::{PollTasks, Wake, poll_tasks, run_settle_frames};
 
-/// The system in `Last`, on exit, that stops the running turns and leaves
-/// them for the restart, unended; before [`WriteLogs`], both in Bevy's
-/// `OnAppExitSystems`.
+/// The system in `Last`, on exit, that stops the running turns as the
+/// user's stop does, for the [`Exiting`](turn::Exiting) reason; before
+/// [`WriteLogs`], both in Bevy's `OnAppExitSystems`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurnsOnExit;
 

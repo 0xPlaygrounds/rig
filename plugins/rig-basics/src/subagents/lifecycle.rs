@@ -8,13 +8,9 @@ use rig_core::tool::feedback::not_finished;
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
     AwaitedBy, Awaits, Environment, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request,
-    SubagentSystems, Subtask, answered,
+    Subtask, answered,
 };
-use crate::approval::ApprovalSystems;
 use rig_harness::prelude::*;
-
-/// Why a restored subagent's turn is stopped.
-const RESTARTED: &str = "restart";
 
 /// What every report that holds no answer ends with.
 const NO_ANSWER: &str = "No answer will come for this request; send a `message` to carry it on.";
@@ -31,18 +27,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(note_stops)
         .init_resource::<Stopping>()
         .add_systems(Last, forget_stops)
-        .add_observer(end_waits_on_turn_end)
-        .configure_sets(
-            AgentPass,
-            SubagentSystems::StopRestored
-                .after(GateSystems::After)
-                .before(ApprovalSystems)
-                .before(GateSystems::Fallback),
-        )
-        .add_systems(
-            AgentPass,
-            stop_restored.in_set(SubagentSystems::StopRestored),
-        );
+        .add_observer(end_waits_on_turn_end);
 }
 
 /// An agent as the subagent tools see it.
@@ -286,20 +271,22 @@ pub(super) struct StoppedEarly;
 
 /// A subagent whose turn ended, and that has not started another, is
 /// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
-/// restart or a [`StopTurn`] stopped it, else [`Lifecycle::Finished`] with
-/// its answer, or why there is none and what it said last. A stopped turn
-/// reports as rig-core's [`not_finished`] says a stopped call that may
-/// have partly run does: a turn a plugin stops, such as for a budget,
-/// reports `Stopped: <reason>. It may have partly run; …`, and one a
-/// `StopTurn` stopped is [`StoppedEarly`].
+/// [`StopTurn`], the app's exit or a restart stopped it, else
+/// [`Lifecycle::Finished`] with its answer, or why there is none and what
+/// it said last. A stopped turn reports as rig-core's [`not_finished`] says
+/// a stopped call that may have partly run does: a turn a plugin stops,
+/// such as for a budget, reports `Stopped: <reason>. It may have partly
+/// run; …`, and one the user, the exit or a restart stopped is
+/// [`StoppedEarly`].
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
-    turns: Query<(&TurnOutcome, &ForAgent)>,
+    turns: Query<(&TurnOutcome, &ForAgent, Has<Restored>)>,
     idle: Query<&Conversation, (With<Subtask>, Without<ActiveTurn>)>,
     stopping: Res<Stopping>,
+    exiting: Option<Res<Exiting>>,
     mut agents: Agents,
 ) {
-    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+    let Ok((outcome, &ForAgent(agent), restored)) = turns.get(settled.entity) else {
         return;
     };
     let Ok(conversation) = idle.get(agent) else {
@@ -310,13 +297,12 @@ fn step_on_turn_end(
     let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
     let stopped = |why: &str| failed(&not_finished(why, true, &Touches::Independent));
     // A restart or a stop ends it for good: it waits on no one.
-    let early = matches!(outcome, TurnOutcome::Stopped(_)) && stopping.0.contains(&agent);
+    // A restored turn that ends stopped, by the kernel or a plugin, ended
+    // with the restart.
     let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
-    let step = match agents
-        .awaited(agent, true)
-        .first()
-        .filter(|_| !restarted && !early)
-    {
+    let early = matches!(outcome, TurnOutcome::Stopped(_))
+        && (stopping.0.contains(&agent) || exiting.is_some() || restarted || restored);
+    let step = match agents.awaited(agent, true).first().filter(|_| !early) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
             TurnOutcome::Answered(message) => message
@@ -340,7 +326,9 @@ fn step_on_turn_end(
 }
 
 /// Reports a [`Lifecycle::Finished`] agent's answer on every request it
-/// owes.
+/// owes. An idle subagent that waited on a stopped one, its lifecycle
+/// [`Lifecycle::WaitingOn`] it or lost to a restart, is stopped with it:
+/// it reports so as a note too, and no turn of it starts.
 fn report_when_finished(
     inserted: On<Insert<Lifecycle>>,
     early: Query<(), With<StoppedEarly>>,
@@ -356,7 +344,39 @@ fn report_when_finished(
         Ok(mut open) => std::mem::take(&mut open.0),
         Err(_) => Vec::new(),
     };
+    let mut waiting: Vec<Entity> = requests
+        .iter()
+        .filter_map(|request| agents.find(&request.asker))
+        .filter(|&asker| note && waits_on(&agents, asker, agent))
+        .collect();
+    waiting.sort_unstable();
+    waiting.dedup();
     agents.report(agent, requests, &text, note);
+    let why = "the agent it waited on stopped before it answered";
+    let stopped = format!(
+        "{} {NO_ANSWER}",
+        not_finished(why, true, &Touches::Independent)
+    );
+    for asker in waiting {
+        let finished = Lifecycle::Finished(stopped.clone());
+        agents
+            .commands
+            .entity(asker)
+            .insert((finished, StoppedEarly));
+    }
+}
+
+/// Whether `asker` is an idle subagent waiting on `agent`: its lifecycle
+/// says so, or a restart took it.
+fn waits_on(agents: &Agents, asker: Entity, agent: Entity) -> bool {
+    agents.agents.get(asker).is_ok_and(|asker| {
+        let waits = match asker.lifecycle {
+            Some(Lifecycle::WaitingOn(on)) => *on == agent,
+            Some(_) => false,
+            None => true,
+        };
+        asker.subtask && !asker.busy && waits
+    })
 }
 
 /// Ends the `wait` calls for an agent whose turn ended of the agents it
@@ -424,42 +444,6 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
         ));
         agents.commands.entity(call).remove::<Awaits>();
         agents.answer(call, output);
-    }
-}
-
-/// On a restored turn [`stop_restored`] looked at.
-#[derive(Component)]
-pub(super) struct Considered;
-
-/// After a restart, a restored agent that owed reports stays idle: its
-/// restored turn is stopped before anything of it starts, and its end
-/// reports each request as stopped, unless a plugin claimed any of the
-/// turn's restored work in Gate: held, decided or superseded one of its
-/// calls, or ended the turn. It looks at each restored turn once, after
-/// every gate of the pass its calls are admitted in, before the user is
-/// asked to approve any of them and the kernel's own answers.
-pub(super) fn stop_restored(
-    turns: Query<
-        (Entity, &TurnOf, &Calls),
-        (With<Restored>, Without<TurnOutcome>, Without<Considered>),
-    >,
-    calls: Query<(Has<Admitted>, Has<Holds>, Has<SupersededBy>, &Decision)>,
-    open: Query<&OpenRequests>,
-    mut commands: Commands,
-) {
-    for (turn, &TurnOf(agent), of) in &turns {
-        let calls: Vec<_> = calls.iter_many(of.iter()).flatten().collect();
-        if !calls.iter().any(|&(admitted, ..)| admitted) {
-            continue;
-        }
-        commands.entity(turn).insert(Considered);
-        let claimed = calls
-            .iter()
-            .any(|&(_, held, superseded, decision)| held || superseded || decision.is_decided());
-        if !claimed && open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
-            let stopped = TurnOutcome::Stopped(Some(RESTARTED.to_owned()));
-            commands.entity(turn).insert(stopped);
-        }
     }
 }
 
