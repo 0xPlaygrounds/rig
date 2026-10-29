@@ -65,6 +65,8 @@ pub struct Editor {
     /// The person's text the editor dropped unsent, which the history
     /// records.
     kept: Vec<String>,
+    /// Whether it holds a question's answer, which is not a prompt to keep.
+    answering: bool,
 }
 
 /// Marks the editor the keys type into while no panel has the
@@ -157,12 +159,22 @@ impl Editor {
         std::mem::take(&mut self.text)
     }
 
+    /// Gives the input to a question answered in it, with its `initial`
+    /// answer, and returns the text taken out. Until
+    /// [`take_answer`](Self::take_answer), nothing it drops is kept.
+    pub(crate) fn answer(&mut self, initial: impl Into<String>) -> String {
+        let draft = self.take();
+        self.set(initial);
+        self.answering = true;
+        draft
+    }
+
     /// Takes a question's answer out, leaving the input empty, and drops
-    /// the history's place and the draft behind it: an answer is not a
-    /// prompt to keep.
+    /// the history's place and the draft behind it.
     pub(crate) fn take_answer(&mut self) -> String {
         self.browsing = None;
         self.draft.clear();
+        self.answering = false;
         self.cursor = 0;
         std::mem::take(&mut self.text)
     }
@@ -207,9 +219,9 @@ impl Editor {
         }
     }
 
-    /// Keeps `text` for the history, unless it is blank.
+    /// Keeps `text` for the history, unless it is blank or an answer.
     fn keep(&mut self, text: String) {
-        if !text.trim().is_empty() && !self.kept.contains(&text) {
+        if !self.answering && !text.trim().is_empty() && !self.kept.contains(&text) {
             self.kept.push(text);
         }
     }
@@ -650,7 +662,7 @@ pub(crate) fn draw_editors(
                 }
                 None => hint(busy, elsewhere),
             };
-            if editor.recalled() {
+            if editor.recalled() && answering.is_none() {
                 keys = match editor.draft.trim().is_empty() {
                     true => " An earlier prompt · Down back to an empty input ",
                     false => " An earlier prompt · Down back to your draft ",

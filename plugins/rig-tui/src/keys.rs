@@ -494,15 +494,16 @@ pub enum InputAction {
     DeleteToLineStart,
     /// Deletes to the end of the line, or the newline after it.
     DeleteToLineEnd,
-    /// The line above, or an earlier prompt of the history: Ctrl+P.
+    /// The line above, else an earlier prompt of the history, without the
+    /// completion: Ctrl+P.
     LineUp,
-    /// The line below, or a later prompt of the history: Ctrl+N.
+    /// As [`Down`](Self::Down), without the completion: Ctrl+N.
     LineDown,
     /// The completion's previous item, else the line above, else the start
     /// of the first line, else an earlier prompt.
     Up,
-    /// The completion's next item, else the line below, else a later
-    /// prompt.
+    /// The completion's next item, else a later prompt while an earlier
+    /// one is shown, else the line below, else the end of the last line.
     Down,
     /// Scrolls the transcript a row up.
     ScrollUp,

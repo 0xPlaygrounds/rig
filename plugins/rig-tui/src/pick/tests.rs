@@ -464,12 +464,15 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     type_text(&mut app, "lexer");
     press(&mut app, "enter");
     // The next one takes the input; Shift+Enter adds a line, Esc refuses,
-    // also over a prompt of the history: the answer is not kept as one.
+    // also over a prompt of the history taken and edited: the answer is
+    // not kept as a prompt.
     assert_eq!(crate::tests::typed(&app), "It loops.");
     press(&mut app, "shift+enter");
     type_text(&mut app, "Fixed.");
     press(&mut app, "up up up");
     assert_eq!(crate::tests::typed(&app), "older");
+    press(&mut app, "tab");
+    type_text(&mut app, "!");
     press(&mut app, "esc");
     assert_eq!(crate::tests::typed(&app), "half a thought");
     let history = &app.world().resource::<crate::PromptHistory>().entries;

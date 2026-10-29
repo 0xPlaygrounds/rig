@@ -496,11 +496,7 @@ pub(crate) fn show_first(
     }
     let first = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
-        let draft = shown.edit.map(|initial| {
-            let draft = input.take();
-            input.set(initial);
-            draft
-        });
+        let draft = shown.edit.map(|initial| input.answer(initial));
         let items = shown.items.iter().enumerate();
         let ticked: Vec<usize> = items
             .filter(|(_, item)| shown.multiple && item.checked)
