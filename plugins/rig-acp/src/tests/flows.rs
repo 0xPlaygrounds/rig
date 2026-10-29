@@ -17,24 +17,6 @@ fn told(driven: &Driven, session: &acp::SessionId) -> String {
     driven.said(session) + &notices.collect::<String>()
 }
 
-/// The tool updates of `session`: each call's id and status, in order.
-fn tool_steps(driven: &Driven, session: &acp::SessionId) -> Vec<(String, acp::ToolCallStatus)> {
-    let steps = driven
-        .updates(session)
-        .into_iter()
-        .filter_map(|update| match update {
-            acp::SessionUpdate::ToolCall(call) => {
-                Some((call.tool_call_id.to_string(), call.status))
-            }
-            acp::SessionUpdate::ToolCallUpdate(update) => {
-                let status = update.fields.status?;
-                Some((update.tool_call_id.to_string(), status))
-            }
-            _ => None,
-        });
-    steps.collect()
-}
-
 #[test]
 fn the_agent_speaks_v1_to_a_client_that_offers_2_and_says_what_it_takes() {
     let place = Place::new("negotiation");
@@ -303,6 +285,38 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
         let cancelled = open.cancellation();
         let told = tokio::time::timeout(Duration::from_secs(10), cancelled.cancelled()).await;
         assert!(told.is_ok(), "the open question was not cancelled");
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_subagents_call_asked_about_has_an_id_of_its_own_and_ends() {
+    let place = Place::new("subagent");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        driven.answering(Answering::Allow);
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/delegate").await);
+        assert!(driven.prompt(&id, "Delegate the read.").await.is_ok());
+        assert!(driven.until(|seen| !seen.asked.is_empty()).await);
+        let asked = driven
+            .seen()
+            .asked
+            .first()
+            .map(|call| call.tool_call_id.to_string());
+        let asked = asked.unwrap_or_default();
+        // Apart from the main agent's ids, which its history gives again.
+        assert!(asked.ends_with("/g1") && asked != "g1", "{asked}");
+        let ended = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(_, acp::SessionUpdate::ToolCallUpdate(update))
+                    if update.tool_call_id.to_string() == asked
+                        && update.fields.status == Some(acp::ToolCallStatus::Completed))
+            })
+        };
+        assert!(driven.until(ended).await, "{:?}", tool_steps(driven, &id));
     });
     assert!(router.is_some());
 }

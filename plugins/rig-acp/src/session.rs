@@ -32,7 +32,7 @@ use rig_harness::rig_memory::summarized_in_log;
 use rig_harness::services::WorkDir;
 use rig_mcp_client::{AddMcpServer, ServerSpec};
 
-use rig_harness::rig_core::completion::message::{Message as Said, StopReason as Stop};
+use rig_harness::rig_core::completion::message::{CallId, Message as Said, StopReason as Stop};
 
 use crate::{Reply, translate};
 
@@ -128,6 +128,8 @@ pub(crate) struct Session {
     /// those running, by the call's entity.
     call_ids: translate::CallIds,
     calls: HashMap<Entity, String>,
+    /// The main agent's calls restored with the session, until it opens.
+    restored: Vec<(Entity, CallId)>,
     requests: Receiver<Request>,
     sender: Sender<Request>,
     runtime: tokio::runtime::Handle,
@@ -268,6 +270,7 @@ pub(crate) fn install(app: &mut App) {
         asking: HashMap::new(),
         call_ids: translate::CallIds::default(),
         calls: HashMap::new(),
+        restored: Vec::new(),
         requests,
         sender,
         runtime,
@@ -542,7 +545,7 @@ impl Requested<'_, '_> {
                  new session here",
                 |ModelRefused(why)| why.as_str(),
             );
-            return reply.send(Err(crate::error(Error::internal_error(), why.to_owned())));
+            return reply.send(Err(crate::error(Error::auth_required(), why.to_owned())));
         }
         for note in std::mem::take(&mut self.session.notes) {
             let chunk = acp::ContentChunk::new(acp::ContentBlock::from(in_reply(&note)));
@@ -635,6 +638,10 @@ fn open(mut opened: Opened) {
     let mut replay = translate::replay(conversation, &replaced, &cwd, &mut opened.session.call_ids);
     if !matches!(opened.session.opening, Some(Opening::Load(..))) {
         replay.clear();
+    }
+    let session = &mut *opened.session;
+    for (entity, call) in std::mem::take(&mut session.restored) {
+        session.calls.insert(entity, session.call_ids.last(&call));
     }
     let config = opened.options.of(agent);
     let mut listed: Vec<_> = opened

@@ -86,6 +86,22 @@ fn agent() {
         calls("r1", "read", json!({ "path": "missing.txt" })),
         reply("not there"),
     ]);
+    // The main agent hands the guarded read to a subagent on `test/sub`.
+    let task = json!({
+        "description": "Read the guarded file",
+        "prompt": "Read guarded.txt.",
+        "model": "test/sub",
+    });
+    let delegate = script(vec![
+        calls("d1", "task", task),
+        reply("delegated"),
+        reply("noted"),
+        reply("noted"),
+    ]);
+    let sub = script(vec![
+        calls("g1", "read", json!({ "path": "guarded.txt" })),
+        reply("read it for you"),
+    ]);
     let guarded = script(vec![
         calls("g1", "read", json!({ "path": "guarded.txt" })),
         reply("guarded done"),
@@ -102,6 +118,8 @@ fn agent() {
         ("test/reply", &replies),
         ("test/read", &read),
         ("test/again", &again),
+        ("test/delegate", &delegate),
+        ("test/sub", &sub),
         ("test/guarded", &guarded),
         ("test/wait", &wait),
         ("test/mcp", &mcp),
@@ -131,6 +149,7 @@ fn agent() {
         rig_basics::coding_tools::ShellTool,
         rig_basics::BasicCommandsPlugin,
         rig_basics::compaction::CompactionPlugin,
+        rig_basics::subagents::SubagentsPlugin,
     ))
     .add_command("ask", "Ask a question", ask)
     .add_command("hold", "Wait until stopped", hold)
@@ -479,6 +498,24 @@ impl Driven {
             answer.map(|answer| answer.stop_reason)
         }
     }
+}
+
+/// The tool updates of `session`: each call's id and status, in order.
+fn tool_steps(driven: &Driven, session: &acp::SessionId) -> Vec<(String, acp::ToolCallStatus)> {
+    let steps = driven
+        .updates(session)
+        .into_iter()
+        .filter_map(|update| match update {
+            acp::SessionUpdate::ToolCall(call) => {
+                Some((call.tool_call_id.to_string(), call.status))
+            }
+            acp::SessionUpdate::ToolCallUpdate(update) => {
+                let status = update.fields.status?;
+                Some((update.tool_call_id.to_string(), status))
+            }
+            _ => None,
+        });
+    steps.collect()
 }
 
 /// The text of a content block.

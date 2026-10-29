@@ -173,6 +173,42 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
 }
 
 #[test]
+fn a_call_id_used_again_or_like_one_issued_gets_an_id_of_its_own() {
+    let mut messages = Vec::new();
+    for (id, said) in [("c1", "one"), ("c1#2", "two"), ("c1", "three")] {
+        let Some(pair) = read(id, "a.txt", said) else {
+            return;
+        };
+        messages.extend(pair);
+    }
+    let conversation = Conversation::from_messages(messages);
+    let mut ids = CallIds::default();
+    let updates = replay(&conversation, &BTreeMap::new(), Path::new("/p"), &mut ids);
+    let done: Vec<_> = updates
+        .into_iter()
+        .filter_map(|update| match update {
+            acp::SessionUpdate::ToolCallUpdate(update) => {
+                let said = update.fields.raw_output.unwrap_or_default();
+                Some(format!("{} {said}", update.tool_call_id))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(done, ["c1 \"one\"", "c1#2 \"two\"", "c1#3 \"three\""]);
+}
+
+#[test]
+fn an_embedded_resource_is_fenced_longer_than_its_own_fences() {
+    let fence = "`".repeat(3);
+    let text = format!("# Notes\n{fence}sh\nls\n{fence}");
+    let longer = "`".repeat(4);
+    assert_eq!(
+        fenced("file:///p/notes.md", &text),
+        format!("file:///p/notes.md:\n{longer}\n{text}\n{longer}")
+    );
+}
+
+#[test]
 fn a_location_is_a_local_file_made_absolute_and_none_for_another_host_or_home() {
     let at = |path: &str| {
         let located = locations(&json!({ "path": path }), Path::new("/p"));

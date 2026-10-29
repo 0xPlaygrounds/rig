@@ -63,6 +63,41 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
         let gone = driven.cx.send_request(prompt).block_task().await;
         let code = gone.err().map(|error| i32::from(error.code));
         assert_eq!(code, Some(-32002), "a session not open is not found");
+        // Loaded again, the call it was killed in shows once, failed.
+        let before = driven.updates(&first).len();
+        let load = acp::LoadSessionRequest::new(first.clone(), &driven.project);
+        assert!(driven.cx.send_request(load).block_task().await.is_ok());
+        let ended = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCallUpdate(update))
+                    if *of == first && update.tool_call_id.to_string() == "w1"
+                        && update.fields.status == Some(acp::ToolCallStatus::Failed))
+            })
+        };
+        assert!(
+            driven.until(ended).await,
+            "{:?}",
+            tool_steps(driven, &first)
+        );
+        // The new process's model may call `w1` again, as `w1#2`.
+        let announced: Vec<_> = driven
+            .updates(&first)
+            .into_iter()
+            .skip(before)
+            .filter_map(|update| match update {
+                acp::SessionUpdate::ToolCall(call) => Some(call.tool_call_id.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            announced.first().map(String::as_str),
+            Some("w1"),
+            "{announced:?}"
+        );
+        let again = announced.iter().filter(|id| *id == "w1").count();
+        assert_eq!(again, 1, "{announced:?}");
+        let close = acp::CloseSessionRequest::new(first.clone());
+        assert!(driven.cx.send_request(close).block_task().await.is_ok());
         // The client leaves while a session's tool and MCP server run.
         let stays = vec![acp::EnvVariable::new(STAYS, "1")];
         let third = driven.new_session(vec![stub_with("files", stays)]).await;
@@ -176,6 +211,28 @@ fn a_close_sent_while_its_session_loads_closes_it() {
         let (loaded, closed) = tokio::join!(load(), close());
         assert!(loaded.is_ok() && closed.is_ok());
         assert!(process_of(place, &id).is_none());
+        // A second load while the first opens is refused; the close still
+        // waits for the first.
+        let (first, second, closed) = tokio::join!(load(), load(), close());
+        assert!(first.is_ok() && second.is_err() && closed.is_ok());
+        assert!(process_of(place, &id).is_none());
+        // A process stopped while it opens never answers: the close ends it
+        // after its graces.
+        let slow = stub_with("files", vec![acp::EnvVariable::new(SLOW, "10000")]);
+        let load_slowly =
+            acp::LoadSessionRequest::new(id.clone(), &driven.project).mcp_servers(vec![slow]);
+        let loading = driven.cx.send_request(load_slowly);
+        assert!(driven.until(|_| process_of(place, &id).is_some()).await);
+        let pid = process_of(place, &id).unwrap_or_default();
+        let stopped = std::process::Command::new("kill")
+            .args(["-STOP", &pid.to_string()])
+            .status();
+        assert!(stopped.is_ok_and(|stopped| stopped.success()));
+        let bound = crate::router::GRACE * 4;
+        let closed = tokio::time::timeout(bound, close()).await;
+        assert!(closed.is_ok_and(|closed| closed.is_ok()));
+        assert!(loading.block_task().await.is_err());
+        assert!(eventually(|| process_of(place, &id).is_none()));
         assert!(load().await.is_ok());
     });
     assert!(router.is_some());

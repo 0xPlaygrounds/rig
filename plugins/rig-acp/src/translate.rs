@@ -1,6 +1,7 @@
 //! Rig's conversation and tool calls as ACP updates, and ACP prompts as rig
 //! messages. The same functions build a turn's live updates and a loaded
-//! session's replay, so a replayed tool call has the id and look it had live.
+//! session's replay, and both take a call's id from [`CallIds`], so a
+//! replayed tool call has the id and look it had live.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -68,28 +69,36 @@ fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
         .collect()
 }
 
-/// The ACP ids of a session's tool calls: a call's own id the first time
-/// the session has it, then with `#2`, `#3` and on, as a provider may use
-/// an id again in a later turn and a client knows a call by its id.
+/// The ACP ids of a session's tool calls, each issued once: a call's own
+/// id, else that id with the first of `#2`, `#3` and on not issued yet, as
+/// a provider may use an id again in a later turn and a client knows a call
+/// by its id. Issued in history order, so a session's history gives its
+/// calls the ids they had live.
 #[derive(Default)]
-pub(crate) struct CallIds(HashMap<String, usize>);
+pub(crate) struct CallIds {
+    issued: HashSet<String>,
+    /// The id last issued for each call id.
+    last: HashMap<String, String>,
+}
 
 impl CallIds {
     /// The id of a new call with the id `call`.
     pub(crate) fn next(&mut self, call: &CallId) -> String {
         let wire = call.wire().into_owned();
-        let count = self.0.entry(wire).or_default();
-        *count += 1;
-        self.last(call)
+        let (mut id, mut n) = (wire.clone(), 1);
+        while self.issued.contains(&id) {
+            n += 1;
+            id = format!("{wire}#{n}");
+        }
+        self.issued.insert(id.clone());
+        self.last.insert(wire, id.clone());
+        id
     }
 
     /// The id of the last call with the id `call`.
     pub(crate) fn last(&self, call: &CallId) -> String {
         let wire = call.wire().into_owned();
-        match self.0.get(&wire) {
-            Some(&count) if count > 1 => format!("{wire}#{count}"),
-            _ => wire,
-        }
+        self.last.get(&wire).cloned().unwrap_or(wire)
     }
 }
 
@@ -307,6 +316,18 @@ fn expand(
     }
 }
 
+/// The resource `uri`'s `text` in a fence longer than any run of backticks
+/// in it, so its own fences stay inside.
+fn fenced(uri: &str, text: &str) -> String {
+    let longest = text
+        .split(|c| c != '`')
+        .map(str::len)
+        .max()
+        .unwrap_or_default();
+    let fence = "`".repeat(longest.max(2) + 1);
+    format!("{uri}:\n{fence}\n{text}\n{fence}")
+}
+
 /// Why a prompt cannot go to rig as it is.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Refused {
@@ -336,12 +357,12 @@ pub(crate) fn prompt(blocks: &[acp::ContentBlock]) -> Result<Vec<MessagePart>, R
             )?,
             acp::ContentBlock::Resource(embedded) => match &embedded.resource {
                 acp::EmbeddedResourceResource::TextResourceContents(text) => {
-                    MessagePart::Text(format!("{}:\n```\n{}\n```", text.uri, text.text))
+                    MessagePart::Text(fenced(&text.uri, &text.text))
                 }
                 acp::EmbeddedResourceResource::BlobResourceContents(blob) => {
                     let mime = blob.mime_type.clone().unwrap_or_default();
                     match text_blob(&blob.blob, &mime) {
-                        Some(text) => MessagePart::Text(format!("{}:\n```\n{text}\n```", blob.uri)),
+                        Some(text) => MessagePart::Text(fenced(&blob.uri, &text)),
                         None if mime.starts_with("image/") => {
                             attachment(&blob.blob, &mime, &blob.uri)?
                         }

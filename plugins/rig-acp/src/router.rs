@@ -526,11 +526,12 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                 let router = close.clone();
                 cx.spawn(async move {
                     let closed = async {
-                        // One being opened is closed once open.
+                        // One being opened is closed once open, or once its
+                        // grace ran out, as a stopped process never answers.
                         let key = request.session_id.0.as_ref();
                         let opening = locked(&router.opening).get(key).cloned();
                         if let Some(opening) = opening {
-                            opening.await;
+                            tokio::time::timeout(GRACE, opening).await.ok();
                         }
                         let Ok(child) = router.child(&request.session_id) else {
                             return Ok(acp::CloseSessionResponse::new());
@@ -571,9 +572,13 @@ where
     Request: agent_client_protocol::JsonRpcRequest + Send + 'static,
 {
     let (done, answered) = oneshot::channel::<()>();
-    let answered = answered.map(drop).boxed().shared();
     if let Some(key) = &saved {
-        locked(&router.opening).insert(key.to_string(), answered.clone());
+        let mut opening = locked(&router.opening);
+        if opening.contains_key(key.0.as_ref()) {
+            let why = format!("session {key} is already being opened");
+            return responder.respond_with_error(invalid(why));
+        }
+        opening.insert(key.to_string(), answered.map(drop).boxed().shared());
     }
     let reason = match saved {
         Some(_) => StartReason::Resumed,
@@ -594,13 +599,7 @@ where
             reply.send(Err(error));
         }
         if let Some(key) = saved {
-            let mut opening = locked(&router.opening);
-            if opening
-                .get(key.0.as_ref())
-                .is_some_and(|it| it.ptr_eq(&answered))
-            {
-                opening.remove(key.0.as_ref());
-            }
+            locked(&router.opening).remove(key.0.as_ref());
         }
         Ok(())
     })
@@ -731,7 +730,9 @@ fn runs(home: &Home) -> std::io::Result<Runs> {
 /// client's options and the session, not from `rig acp`'s.
 fn own_command(runs: &Runs) -> std::io::Result<SessionCommand> {
     let exe = std::env::current_exe()?;
-    let program = runs.path.join("rig-agent");
+    let program = runs
+        .path
+        .join(format!("rig-agent{}", std::env::consts::EXE_SUFFIX));
     std::fs::remove_file(&program).ok();
     // A copy where a link cannot be made, such as on another file system.
     if std::fs::hard_link(&exe, &program).is_err() {

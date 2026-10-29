@@ -71,17 +71,23 @@ pub(super) fn stream(mut out: Out) {
     out.stream();
 }
 
-/// A call of the main agent's model asked for: pending.
+/// A call of the main agent's model asked for: pending. One the session
+/// restored is in its history, which gives it its id when it opens.
 pub(super) fn call_asked(
     asked: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent)>,
+    calls: Query<(&ToolRequest, &ForAgent, Has<Restored>)>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
     mut out: Out,
 ) {
-    if let Ok((request, &ForAgent(agent))) = calls.get(asked.entity)
+    if let Ok((request, &ForAgent(agent), restored)) = calls.get(asked.entity)
         && out.main(agent)
     {
+        if restored {
+            let call = (asked.entity, request.call.id.clone());
+            out.session.restored.push(call);
+            return;
+        }
         let cwd = translate::cwd_of(dirs.get(agent).ok(), &root);
         let id = out.session.call_ids.next(&request.call.id);
         out.session.calls.insert(asked.entity, id.clone());
@@ -117,6 +123,10 @@ pub(super) fn settled(
     if let Some(task) = out.session.asking.remove(&settled.entity) {
         task.abort();
     }
+    let entity = settled.entity;
+    out.session
+        .restored
+        .retain(|(restored, _)| *restored != entity);
     if let Ok(outcome) = calls.get(settled.entity)
         && let Some(id) = out.session.calls.remove(&settled.entity)
     {
