@@ -66,6 +66,9 @@ fn up_and_down_browse_the_history_a_plugin_supplies() {
     press(&mut app, "down down");
     assert_eq!(typed(&app), "first line\ndraft");
     assert_eq!(entries(&app), ["one", "two"]);
+    // Ctrl+P goes to the history from anywhere on the first line.
+    press(&mut app, "up ctrl+p");
+    assert_eq!(typed(&app), "two");
 }
 
 /// A recalled slash command opens no list, so Up and Down walk past it both
@@ -114,6 +117,13 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
         entries(&app).last().map(String::as_str),
         Some("key [REDACTED]")
     );
+    // Cleared while a prompt is recalled: the draft behind it.
+    type_text(&mut app, "draft cleared");
+    press(&mut app, "ctrl+a up ctrl+c");
+    assert_eq!(
+        entries(&app).last().map(String::as_str),
+        Some("draft cleared")
+    );
     // Replaced by a plugin while a prompt is recalled.
     type_text(&mut app, "draft two");
     press(&mut app, "ctrl+a up");
@@ -136,6 +146,7 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
         "draft one",
         "old",
         "key [REDACTED]",
+        "draft cleared",
         "draft two",
         "draft three",
         "draft two!",

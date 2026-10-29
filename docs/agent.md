@@ -86,8 +86,8 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab. Text you drop without sending (Ctrl+C, sending an earlier
 prompt in its place) goes into the history, secrets redacted, so Up brings
-it back. Ctrl+P and Ctrl+N do what Up and Down do, even with a completion
-list open. The usual emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C
+it back. Ctrl+P and Ctrl+N move the same way, even with a completion list
+open, but Ctrl+P goes to the history from anywhere on the first line. The usual emacs keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C
 clears the input, and Ctrl+D on an empty input quits. A
 leading `/` completes command names and `@` completes the project's paths
 (skipping what `.gitignore` leaves out); Tab or Enter takes the selected one.

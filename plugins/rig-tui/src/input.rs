@@ -668,7 +668,7 @@ fn act(
     let editing = editing.map(|(entity, _)| entity);
     match (action, editing) {
         (Do::Send, Some(ask)) if view.completion.as_ref().is_none_or(|c| c.is_exact()) => {
-            let answer = Chosen::text(input.take());
+            let answer = Chosen::text(input.take_answer());
             return close(ask, Some(answer), target, (context, showing), commands);
         }
         (Do::Stop, Some(ask)) if view.completion.is_none() => {
@@ -678,7 +678,7 @@ fn act(
     }
     match action {
         // An answer is not a prompt for the history to keep.
-        Do::Clear if editing.is_some() => drop(input.take()),
+        Do::Clear if editing.is_some() => drop(input.take_answer()),
         Do::Clear => input.clear(),
         Do::Exit if input.is_empty() => commands.trigger(Exit(ExitReason::Quit)),
         Do::Exit => {}
@@ -695,7 +695,7 @@ fn act(
         Do::DeleteWordAfter => input.delete_word_after(),
         Do::DeleteToLineStart => input.delete_to_line_start(),
         Do::DeleteToLineEnd => input.delete_to_line_end(),
-        Do::LineUp => input.up(context.history),
+        Do::LineUp => input.line_up(context.history),
         Do::LineDown => input.down(context.history),
         Do::Up => match &mut view.completion {
             Some(completion) => completion.select(-1),

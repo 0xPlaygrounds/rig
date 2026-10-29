@@ -32,7 +32,8 @@ const MOST_LINES: usize = 10;
 /// main one through [`MainInput`]; `is_changed` on it says the draft was
 /// edited. Up and Down move between lines; Up on the first line goes to
 /// its start, and from there to the [`PromptHistory`](crate::PromptHistory),
-/// keeping the draft, which Down past the newest prompt brings back. While
+/// keeping the draft, which Down past the newest prompt brings back; Ctrl+P
+/// goes there from anywhere on the first line. While
 /// a prompt of it is shown unchanged with the cursor at its start or end,
 /// Up and Down walk the history. Text of the person's that the editor
 /// drops unsent goes to the history, so Up brings it back: the draft
@@ -153,6 +154,16 @@ impl Editor {
     pub fn take(&mut self) -> String {
         self.cursor = 0;
         self.stop_browsing();
+        std::mem::take(&mut self.text)
+    }
+
+    /// Takes a question's answer out, leaving the input empty, and drops
+    /// the history's place and the draft behind it: an answer is not a
+    /// prompt to keep.
+    pub(crate) fn take_answer(&mut self) -> String {
+        self.browsing = None;
+        self.draft.clear();
+        self.cursor = 0;
         std::mem::take(&mut self.text)
     }
 
@@ -404,8 +415,19 @@ impl Editor {
     /// it, else the line above, else the start of the first line, else
     /// the newest prompt, keeping the text as the draft.
     pub fn up(&mut self, history: &[String]) {
+        self.up_from(history, true);
+    }
+
+    /// Ctrl+P: as [`up`](Self::up), but from anywhere on the first line
+    /// straight to the history.
+    pub(crate) fn line_up(&mut self, history: &[String]) {
+        self.up_from(history, false);
+    }
+
+    /// Up, going first to the start of the first line if `to_start`.
+    fn up_from(&mut self, history: &[String], to_start: bool) {
         let start = self.line_start();
-        if self.walking() || (start == 0 && self.cursor == 0) {
+        if self.walking() || (start == 0 && (self.cursor == 0 || !to_start)) {
             self.history_back(history);
             return;
         }

@@ -145,9 +145,14 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
-    // A key in it, as in a message that came back, never reaches the disk.
+    // A key in it, as in a message that came back, never reaches the disk;
+    // and the draft, not the earlier prompt shown over it, is kept.
     let typed = "/tools OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234";
-    crate::tests::edit(&mut app, |input| input.set(typed));
+    crate::tests::edit(&mut app, |input| {
+        input.set(typed);
+        input.set_cursor(0);
+        input.up(&["an earlier prompt".to_owned()]);
+    });
     assert!(app.world_mut().run_system_once(keep_draft).is_ok());
     drop(app);
     let (mut app, _) = view_app();

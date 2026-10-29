@@ -446,6 +446,9 @@ fn a_whole_detail_offers_nothing_more() {
 fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_back() {
     let (mut app, agent) = view_app();
     app.init_resource::<Answered>().add_observer(record_answers);
+    app.world_mut()
+        .resource_mut::<crate::PromptHistory>()
+        .entries = vec!["older".into()];
     type_text(&mut app, "half a thought");
     let title = Ask::new("PR title").initial("Fix the parser");
     app.world_mut().spawn((title, ForAgent(agent)));
@@ -460,12 +463,17 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     );
     type_text(&mut app, "lexer");
     press(&mut app, "enter");
-    // The next one takes the input; Shift+Enter adds a line, Esc refuses.
+    // The next one takes the input; Shift+Enter adds a line, Esc refuses,
+    // also over a prompt of the history: the answer is not kept as one.
     assert_eq!(crate::tests::typed(&app), "It loops.");
     press(&mut app, "shift+enter");
     type_text(&mut app, "Fixed.");
+    press(&mut app, "up up up");
+    assert_eq!(crate::tests::typed(&app), "older");
     press(&mut app, "esc");
     assert_eq!(crate::tests::typed(&app), "half a thought");
+    let history = &app.world().resource::<crate::PromptHistory>().entries;
+    assert_eq!(history, &["older"]);
     let answered = |title: &str, answer: Option<Answer>| (title.to_owned(), answer);
     assert_eq!(
         app.world().resource::<Answered>().0,

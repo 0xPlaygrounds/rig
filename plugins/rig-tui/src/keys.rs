@@ -498,8 +498,8 @@ pub enum InputAction {
     LineUp,
     /// The line below, or a later prompt of the history: Ctrl+N.
     LineDown,
-    /// The completion's previous item, else the line above, else an earlier
-    /// prompt.
+    /// The completion's previous item, else the line above, else the start
+    /// of the first line, else an earlier prompt.
     Up,
     /// The completion's next item, else the line below, else a later
     /// prompt.

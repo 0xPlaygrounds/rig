@@ -486,9 +486,8 @@ pub(crate) fn show_first(
     commands: &mut Commands,
 ) {
     for (entity, shown) in showing {
-        // The answer typed is not a prompt to keep.
         if let Some(draft) = &shown.draft {
-            input.take();
+            input.take_answer();
             input.set(draft.clone());
         }
         commands
