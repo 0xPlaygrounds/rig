@@ -677,8 +677,6 @@ fn act(
         _ => {}
     }
     match action {
-        // An answer is not a prompt for the history to keep.
-        Do::Clear if editing.is_some() => drop(input.take_answer()),
         Do::Clear => input.clear(),
         Do::Exit if input.is_empty() => commands.trigger(Exit(ExitReason::Quit)),
         Do::Exit => {}

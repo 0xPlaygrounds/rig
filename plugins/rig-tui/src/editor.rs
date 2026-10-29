@@ -33,12 +33,12 @@ const MOST_LINES: usize = 10;
 /// edited. Up and Down move between lines; Up on the first line goes to
 /// its start, and from there to the [`PromptHistory`](crate::PromptHistory),
 /// keeping the draft, which Down past the newest prompt brings back; Ctrl+P
-/// goes there from anywhere on the first line. While
-/// a prompt of it is shown unchanged with the cursor at its start or end,
-/// Up and Down walk the history. Text of the person's that the editor
-/// drops unsent goes to the history, so Up brings it back: the draft
-/// behind a prompt shown when another text replaces it, and what
-/// [`clear`](Self::clear) empties. In a panel placed at the top, the bottom
+/// goes there from anywhere on the first line. While a prompt of it is
+/// shown unchanged with the cursor at its start or end, Up and Down walk
+/// the history. Text of the person's that the editor drops unsent goes to
+/// the history, so Up brings it back: the draft behind a prompt shown when
+/// another text replaces it, and what [`clear`](Self::clear) empties; a
+/// question's answer never does. In a panel placed at the top, the bottom
 /// or below the input, it is as tall as its text, up to ten lines.
 ///
 /// ```no_run
@@ -169,8 +169,8 @@ impl Editor {
         draft
     }
 
-    /// Takes a question's answer out, leaving the input empty, and drops
-    /// the history's place and the draft behind it.
+    /// Takes a question's answer out when the question closes, leaving the
+    /// input empty, and drops the history's place and the draft behind it.
     pub(crate) fn take_answer(&mut self) -> String {
         self.browsing = None;
         self.draft.clear();
@@ -193,12 +193,6 @@ impl Editor {
             true => &self.draft,
             false => &self.text,
         }
-    }
-
-    /// Whether it dropped text the history has not taken yet, or shows an
-    /// edited prompt of the history, whose draft it drops.
-    pub(crate) fn dropped(&self) -> bool {
-        !self.kept.is_empty() || (self.browsing.is_some() && !self.recalled())
     }
 
     /// The texts dropped since the last call, for the history. An edited

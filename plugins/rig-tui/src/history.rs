@@ -161,8 +161,9 @@ pub enum HistorySystems {
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct Sent(pub String);
 
-/// Adds the text each [`Editor`] dropped unsent, with secrets redacted, then
-/// each prompt sent, to the history as the newest.
+/// Adds the text each [`Editor`] dropped unsent (a panel's too, as its Up
+/// browses this history), with secrets redacted, then each prompt sent, to
+/// the history as the newest.
 pub(crate) fn record(
     mut sent: MessageReader<Sent>,
     mut editors: Query<&mut Editor>,
@@ -170,9 +171,7 @@ pub(crate) fn record(
 ) {
     let mut kept = Vec::new();
     for mut editor in &mut editors {
-        if editor.dropped() {
-            kept.extend(editor.bypass_change_detection().take_dropped());
-        }
+        kept.extend(editor.bypass_change_detection().take_dropped());
     }
     let kept = kept.iter().map(|text| redact::text(text));
     for text in kept.chain(sent.read().map(|Sent(text)| text.into())) {
