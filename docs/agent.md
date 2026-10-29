@@ -90,18 +90,19 @@ the history, secrets redacted, so Up brings it back. Ctrl+P and Ctrl+N move
 the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
-empty input quits. A
-leading `/` completes command names and `@` completes the project's paths
-(skipping what `.gitignore` leaves out); Tab or Enter takes the selected one.
-A command that is unknown or refused comes back in the input with the reason,
-and Enter then sends it to the model as it is. `/help` lists the commands.
+empty input quits. A leading `/` completes command names and `@` completes
+the project's paths (skipping what `.gitignore` leaves out); Tab or Enter
+takes the selected one. A command that is unknown or refused comes back in
+the input with the reason, and Enter then sends it to the model as it is.
+`/help` lists the commands.
 
-While nothing is typed, the input's top row shows the keys and its bottom row
-the status line: the model, the reasoning setting, what the agent is doing,
-the session's tokens (uncached input, output, cache reads and writes), its
-cost (the provider's figure, else the catalog's list price; `+` when some
-calls had no price) and the context in use against the model's window.
-`/usage` breaks them down.
+While an earlier prompt is shown, the input's top row says "An earlier
+prompt · Down back to your draft". While nothing is typed, the top row shows
+the keys and the bottom row the status line: the model, the reasoning
+setting, what the agent is doing, the session's tokens (uncached input,
+output, cache reads and writes), its cost (the provider's figure, else the
+catalog's list price; `+` when some calls had no price) and the context in
+use against the model's window. `/usage` breaks them down.
 
 Typing while the agent works is fine. Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits

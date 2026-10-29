@@ -680,7 +680,8 @@ pub(crate) fn draw_editors(
                 }
                 None => hint(busy, elsewhere),
             };
-            if editor.recalled() && answering.is_none() {
+            let keyed = !elsewhere && state.picking().is_none();
+            if editor.recalled() && answering.is_none() && keyed {
                 keys = match editor.draft.trim().is_empty() {
                     true => " An earlier prompt · Down back to an empty input ",
                     false => " An earlier prompt · Down back to your draft ",

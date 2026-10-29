@@ -514,6 +514,26 @@ fn a_question_gone_from_the_input_gives_back_the_draft() {
     assert_eq!(history, &["my draft"]);
 }
 
+/// A question asked while an earlier prompt is shown over the draft holds
+/// the draft, which comes back when the question is refused.
+#[test]
+fn a_question_over_a_recalled_prompt_gives_back_the_draft() {
+    let (mut app, agent) = view_app();
+    app.world_mut()
+        .resource_mut::<crate::PromptHistory>()
+        .entries = vec!["older".into()];
+    type_text(&mut app, "my draft");
+    press(&mut app, "ctrl+a up");
+    assert_eq!(crate::tests::typed(&app), "older");
+    let title = Ask::new("PR title").initial("Fix the parser");
+    app.world_mut().spawn((title, ForAgent(agent)));
+    app.update();
+    press(&mut app, "esc");
+    assert_eq!(crate::tests::typed(&app), "my draft");
+    let history = &app.world().resource::<crate::PromptHistory>().entries;
+    assert_eq!(history, &["older"]);
+}
+
 /// A message that comes back while a question is answered in the input
 /// waits for the question, then goes before the draft.
 #[test]
