@@ -191,3 +191,8 @@ plugin = "rig_tui::TuiPlugin"
 # [[plugin]]
 # crate = "rig-claude-cloak"
 # plugin = "rig_claude_cloak::ClaudeCloakPlugin"
+
+# ACP v2 and v1 over stdio, with isolated sessions and client-provided MCP servers.
+# [[plugin]]
+# crate = "rig-acp"
+# plugin = "rig_acp::AcpPlugin"

@@ -1,0 +1,32 @@
+[package]
+name = "rig-acp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "An ACP v1 and v2 front for the Rig coding agent."
+repository = "https://github.com/0xPlaygrounds/rig"
+exclude = ["examples/", "tests/"]
+
+[lints]
+workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+agent-client-protocol = { version = "3.5", features = ["stdio", "unstable_protocol_v2"] }
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0-rc.1" }
+rig-basics = { path = "../rig-basics", version = "0.46.0-rc.1", default-features = false }
+rig-rmcp = { path = "../../crates/rig-rmcp", version = "0.46.0-rc.1" }
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+async-channel.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["full"] }
+rmcp = { workspace = true, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
+http.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

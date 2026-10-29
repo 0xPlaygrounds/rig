@@ -1,6 +1,6 @@
-# The PR gate. Every job runs one check from xtask/src/verify/checks.rs, the
-# same definitions `cargo xtask verify` selects from locally; the slow lanes
-# (all-features run with the Docker suites, dependency floors) live in
+# The PR gate. Most jobs run checks from xtask/src/verify/checks.rs, the
+# same definitions `cargo xtask verify` selects from locally. The ACP job
+# also exercises an independent protocol client. The slow lanes live in
 # slow.yaml. Each job that has a warm entry restores it and saves only on a
 # trusted push (cd.yaml on main), so fork PRs never write shared caches.
 name: Lint & Test
@@ -174,6 +174,30 @@ jobs:
       - run: cargo xtask verify --check rig-claude-cloak-tests
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check process-tests
+
+  # ACP is a native front outside default-members. Its independent client
+  # checks protocol framing, MCP, permissions and child-process cleanup.
+  rig-acp:
+    name: stable / rig-acp / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo nextest run --locked --profile local -p rig-acp
+      - run: cargo clippy --locked -p rig-acp --all-targets -- -D warnings
+      - run: cargo test --locked -p rig-acp --doc
+      - run: cargo build --locked -p rig-acp --example scripted
+      - run: python3 plugins/rig-acp/tests/stdio.py target/debug/examples/scripted
 
   # nextest does not run doctests. All features, so feature-gated examples
   # compile; the `all-features` entry it saves is the same dependency graph

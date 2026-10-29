@@ -62,7 +62,8 @@ answers one prompt without the terminal view.
   changes and restarts it in the same session, and keeps the old build running
   if the new one does not compile.
 - **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
-  `rig help-agents` is the protocol.
+  `rig help-agents` is the protocol. The optional [ACP plugin](plugins/rig-acp)
+  adds `rig acp` for ACP v2 and v1 clients.
 - **More when you want it.** Subagents and checkpoints of what `shell`
   changed are optional plugins, and the tools work on remote hosts over ssh
   or any command.
