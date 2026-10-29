@@ -2,17 +2,17 @@
 //! messages. The same functions build a turn's live updates and a loaded
 //! session's replay, so a replayed tool call has the id and look it had live.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use agent_client_protocol::schema::v1 as acp;
 use base64::Engine;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::message::{
-    self, AssistantContent, DocumentSourceKind, Image, ImageMediaType, MimeType, ToolCall,
+    self, AssistantContent, CallId, DocumentSourceKind, Image, ImageMediaType, MimeType, ToolCall,
     ToolResult as SavedResult, ToolResultContent, UserContent,
 };
-use rig_harness::rig_core::conversation::{Conversation, Entry, MessageId};
+use rig_harness::rig_core::conversation::{Author, AuthorKind, Conversation, Entry, MessageId};
 use rig_harness::services::WorkDir;
 use serde_json::Value;
 
@@ -43,7 +43,8 @@ fn title(name: &str, args: &Value) -> String {
     }
 }
 
-/// The files a call names, made absolute against `cwd`; none for a
+/// The files a call names, made absolute against `cwd` as rig's file tools
+/// make them (a drive-relative `C:a.txt` too); none for a
 /// path on another host (`host:path`), which is not on this machine, or in
 /// the home directory (`~`), which rig's tools resolve and ACP has no word
 /// for. A drive letter (`C:`) is no host.
@@ -60,24 +61,57 @@ fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
             });
             !remote && !path.starts_with('~')
         })
-        .map(|path| acp::ToolCallLocation::new(cwd.join(path)))
+        .map(|path| {
+            let joined = cwd.join(path);
+            acp::ToolCallLocation::new(std::path::absolute(&joined).unwrap_or(joined))
+        })
         .collect()
 }
 
-/// A call the model asked for, as ACP announces it: pending.
-pub(crate) fn tool_call(call: &ToolCall, cwd: &Path) -> acp::ToolCall {
+/// The ACP ids of a session's tool calls: a call's own id the first time
+/// the session has it, then with `#2`, `#3` and on, as a provider may use
+/// an id again in a later turn and a client knows a call by its id.
+#[derive(Default)]
+pub(crate) struct CallIds(HashMap<String, usize>);
+
+impl CallIds {
+    /// The id of a new call with the id `call`.
+    pub(crate) fn next(&mut self, call: &CallId) -> String {
+        let wire = call.wire().into_owned();
+        let count = self.0.entry(wire).or_default();
+        *count += 1;
+        self.last(call)
+    }
+
+    /// The id of the last call with the id `call`.
+    pub(crate) fn last(&self, call: &CallId) -> String {
+        let wire = call.wire().into_owned();
+        match self.0.get(&wire) {
+            Some(&count) if count > 1 => format!("{wire}#{count}"),
+            _ => wire,
+        }
+    }
+}
+
+/// A call the model asked for, as ACP announces it under `id`: pending.
+pub(crate) fn tool_call(call: &ToolCall, id: String, cwd: &Path) -> acp::ToolCall {
     let name = call.function.name.as_str();
     let args = call.function.arguments_value();
-    acp::ToolCall::new(call.id.wire().into_owned(), title(name, &args))
+    acp::ToolCall::new(id, title(name, &args))
         .kind(kind(name))
         .status(acp::ToolCallStatus::Pending)
         .locations(locations(&args, cwd))
         .raw_input(args)
 }
 
-/// A call as a question about it shows it: all it is, still pending, and
-/// `why` it is asked about.
-pub(crate) fn tool_asked(call: &ToolCall, cwd: &Path, why: &str) -> acp::ToolCallUpdate {
+/// A call as a question about it shows it under `id`: all it is, still
+/// pending, and `why` it is asked about.
+pub(crate) fn tool_asked(
+    call: &ToolCall,
+    id: String,
+    cwd: &Path,
+    why: &str,
+) -> acp::ToolCallUpdate {
     let name = call.function.name.as_str();
     let args = call.function.arguments_value();
     let block = acp::ContentBlock::from(why.to_owned());
@@ -89,7 +123,7 @@ pub(crate) fn tool_asked(call: &ToolCall, cwd: &Path, why: &str) -> acp::ToolCal
         .locations(locations(&args, cwd))
         .content((!why.is_empty()).then(|| vec![reasons]))
         .raw_input(args);
-    acp::ToolCallUpdate::new(call.id.wire().into_owned(), fields)
+    acp::ToolCallUpdate::new(id, fields)
 }
 
 /// The directory an agent's relative paths start from: its [`WorkDir`],
@@ -98,10 +132,10 @@ pub(crate) fn cwd_of(work: Option<&WorkDir>, root: &ProjectRoot) -> std::path::P
     work.map_or_else(|| root.0.clone(), |WorkDir(dir)| dir.clone())
 }
 
-/// A call's update to `status`.
-pub(crate) fn tool_status(call: &ToolCall, status: acp::ToolCallStatus) -> acp::ToolCallUpdate {
+/// The call `id`'s update to `status`.
+pub(crate) fn tool_status(id: String, status: acp::ToolCallStatus) -> acp::ToolCallUpdate {
     let fields = acp::ToolCallUpdateFields::new().status(status);
-    acp::ToolCallUpdate::new(call.id.wire().into_owned(), fields)
+    acp::ToolCallUpdate::new(id, fields)
 }
 
 /// A call's last update: done, or failed when `failed`, with what it
@@ -155,32 +189,44 @@ fn chunk(content: acp::ContentBlock, id: Option<MessageId>) -> acp::ContentChunk
 /// its client saw it, with what each compaction summary replaced (rig's own
 /// log keeps it, read into `replaced`) in place of the summary. Text the
 /// user typed, the model's text and readable reasoning, and each tool call
-/// with its result; messages rig wrote for the model itself (an author
-/// other than the user and the model) are left out.
+/// with its result, its id given by `ids`; messages rig wrote for the model
+/// itself (an author other than the user and the model) are left out.
 pub(crate) fn replay(
     conversation: &Conversation,
     replaced: &BTreeMap<MessageId, Vec<Entry>>,
     cwd: &Path,
+    ids: &mut CallIds,
 ) -> Vec<acp::SessionUpdate> {
     let mut entries = Vec::new();
     let mut expanded = HashSet::new();
     for entry in conversation.entries() {
         expand(entry.id, replaced, &mut expanded, &mut entries);
-        if !replaced.contains_key(&entry.id) && entry.author.is_none() {
+        if !replaced.contains_key(&entry.id) && shown(entry.author) {
             entries.push((Some(entry.id), std::sync::Arc::new(entry.message.clone())));
         }
     }
-    let results: BTreeMap<String, &SavedResult> = entries
-        .iter()
-        .flat_map(|(_, message)| match &**message {
-            message::Message::User { content } => content.iter().collect(),
-            _ => Vec::new(),
-        })
-        .filter_map(|content| match content {
-            UserContent::ToolResult(result) => Some((result.call.wire().into_owned(), result)),
-            _ => None,
-        })
-        .collect();
+    // A result answers the last call before it with its id.
+    let (mut calls, mut results) = (Vec::new(), HashMap::new());
+    for (_, message) in &entries {
+        match &**message {
+            message::Message::Assistant(reply) => {
+                for part in &reply.content {
+                    if let AssistantContent::ToolCall(call) = part {
+                        calls.push(ids.next(&call.id));
+                    }
+                }
+            }
+            message::Message::User { content } => {
+                for part in content.iter() {
+                    if let UserContent::ToolResult(result) = part {
+                        results.insert(ids.last(&result.call), result);
+                    }
+                }
+            }
+            message::Message::System { .. } => {}
+        }
+    }
+    let mut calls = calls.into_iter();
     let mut updates = Vec::new();
     for (id, message) in &entries {
         match &**message {
@@ -210,8 +256,9 @@ pub(crate) fn replay(
                             updates.push(acp::SessionUpdate::AgentThoughtChunk(chunk));
                         }
                         AssistantContent::ToolCall(call) => {
-                            updates.push(acp::SessionUpdate::ToolCall(tool_call(call, cwd)));
-                            let id = call.id.wire().into_owned();
+                            let Some(id) = calls.next() else { continue };
+                            let announced = tool_call(call, id.clone(), cwd);
+                            updates.push(acp::SessionUpdate::ToolCall(announced));
                             if let Some(result) = results.get(&id) {
                                 let done = tool_done(&id, result.is_error, saved_output(result));
                                 updates.push(acp::SessionUpdate::ToolCallUpdate(done));
@@ -225,6 +272,12 @@ pub(crate) fn replay(
         }
     }
     updates
+}
+
+/// Whether a message of `author` is shown again: one the user typed or
+/// sent, such as a skill with the user's text, or the model's.
+fn shown(author: Option<&Author>) -> bool {
+    author.is_none_or(|author| author.kind == AuthorKind::User)
 }
 
 /// Adds the entries the summary `id` replaced, each after those it replaced
@@ -248,7 +301,7 @@ fn expand(
                 continue;
             }
         }
-        if entry.author.is_none() {
+        if shown(entry.author.as_ref()) {
             out.push((entry.id, entry.message.clone()));
         }
     }

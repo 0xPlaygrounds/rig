@@ -48,5 +48,5 @@ fn a_picker_the_client_cannot_show_says_what_to_type_instead() {
     assert!(!note.contains("/model m10"), "{note}");
     let mut key = Picker::new("OpenAI API key");
     key.secret = true;
-    assert!(unshown(&key).contains("in rig in a terminal, where it is hidden"));
+    assert!(unshown(&key).contains("then open a new session here"));
 }

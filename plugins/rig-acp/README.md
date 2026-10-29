@@ -54,8 +54,8 @@ to use a new one.
 
 - **Protocol:** ACP v1. A client that offers v2 gets v1, which is the
   fallback ACP defines.
-- **Sessions:** new, load (the history is shown again, from rig's own
-  session), resume, list, close, cancel. Sessions are rig's: `rig -r <id>`
+- **Sessions:** new, load (the conversation is shown again, from rig's own
+  session, without the commands' output and notices), resume, list, close, cancel. Sessions are rig's: `rig -r <id>`
   opens one in the terminal, and an ACP session is not open in two places at
   once. A session belongs to its directory: loading it from another one is
   refused.
@@ -73,7 +73,8 @@ to use a new one.
   forms; else it is closed with a note the model reads, so the turn goes on.
   A list to pick from, such as `/model` with no name, is closed with a note
   that names the commands to type instead; a secret to type, such as an API
-  key for `/login`, is typed in rig in a terminal, which hides it.
+  key for `/login`, is typed in rig in a terminal, which hides it, and a
+  session opened after it has it.
 - **Slash commands:** the editor offers rig's commands, but `/new`,
   `/resume`, `/reload`, `/plugins` and `/quit`, which a session from an
   editor does not need (rig refuses them there; the editor closes the

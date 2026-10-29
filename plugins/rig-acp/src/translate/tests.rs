@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rig_harness::rig_core::completion::message::{
     AssistantMessage, ToolFunction, ToolResultContent,
@@ -74,30 +74,57 @@ fn a_prompt_takes_text_links_text_resources_and_images_and_refuses_the_rest_whol
     assert!(prompt(&[text("   ")]).is_err());
 }
 
-#[test]
-fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_summary() {
-    let read = ToolName::new("read").ok();
-    let Some(read) = read else { return };
-    let call = ToolCall::from_wire("c1", ToolFunction::new(read, json!({ "path": "a.txt" })));
-    let result = call.result(vec![ToolResultContent::text("a text")]);
-    let asked = AssistantContent::ToolCall(call);
-    let mut conversation = Conversation::from_messages([
-        message::Message::user("Read a.txt."),
-        message::Message::Assistant(AssistantMessage::new(vec![asked])),
+/// `path` made absolute, as a location names it.
+fn absolute(path: impl AsRef<Path>) -> PathBuf {
+    std::path::absolute(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_owned())
+}
+
+/// A read of `path` under the call id `id`, and its result `said`.
+fn read(id: &str, path: &str, said: &str) -> Option<[message::Message; 2]> {
+    let read = ToolName::new("read").ok()?;
+    let call = ToolCall::from_wire(id, ToolFunction::new(read, json!({ "path": path })));
+    let result = call.result(vec![ToolResultContent::text(said)]);
+    Some([
+        message::Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call,
+        )])),
         message::Message::User {
             content: vec![UserContent::ToolResult(result)],
         },
+    ])
+}
+
+#[test]
+fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_summary() {
+    let (Some([asked, answered]), Some(again)) =
+        (read("c1", "a.txt", "a text"), read("c1", "b.txt", "b text"))
+    else {
+        return;
+    };
+    let mut conversation = Conversation::from_messages([
+        message::Message::user("Read a.txt."),
+        asked,
+        answered,
         message::Message::assistant("It says a text."),
     ]);
     let originals: Vec<Entry> = (0..4).filter_map(|at| conversation.entry(at)).collect();
     let summary = Entry::new(message::Message::user("Summary.")).by(Author::plugin("compact"));
     let spliced = conversation.splice(0..4, [summary], Author::plugin("compact"));
     conversation.push(message::Message::assistant("After it."));
+    let skill = Entry::new(message::Message::user("<skill>Read b.txt.</skill>"))
+        .by(Author::user().titled("skill b"));
+    conversation.push(skill);
+    conversation.push(Entry::new(message::Message::user("Rig's own note.")).by(Author::rig()));
+    // A provider may use a call's id again in a later turn.
+    for message in again {
+        conversation.push(message);
+    }
     let Some(&summary) = spliced.changed.first() else {
         return;
     };
     let replaced = BTreeMap::from([(summary, originals)]);
-    let updates = replay(&conversation, &replaced, Path::new("/p"));
+    let mut ids = CallIds::default();
+    let updates = replay(&conversation, &replaced, Path::new("/p"), &mut ids);
     let shown: Vec<String> = updates
         .iter()
         .map(|update| match update {
@@ -110,24 +137,39 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
                 )
             }
             acp::SessionUpdate::ToolCallUpdate(update) => {
-                format!("done {} {:?}", update.tool_call_id, update.fields.status)
+                let said = update.fields.raw_output.clone().unwrap_or_default();
+                format!("done {} {said}", update.tool_call_id)
             }
             other => format!("{other:?}"),
         })
         .collect();
     let user = |said: &str| format!("user {:?}", text(said));
     let agent = |said: &str| format!("agent {:?}", text(said));
-    let location = vec![acp::ToolCallLocation::new(Path::new("/p").join("a.txt"))];
+    let location = |path| {
+        vec![acp::ToolCallLocation::new(absolute(
+            Path::new("/p").join(path),
+        ))]
+    };
     assert_eq!(
         shown,
         [
             user("Read a.txt."),
-            format!("call c1 {:?} {location:?}", acp::ToolKind::Read),
-            format!("done c1 {:?}", Some(acp::ToolCallStatus::Completed)),
+            format!("call c1 {:?} {:?}", acp::ToolKind::Read, location("a.txt")),
+            "done c1 \"a text\"".to_owned(),
             agent("It says a text."),
             agent("After it."),
+            user("<skill>Read b.txt.</skill>"),
+            format!(
+                "call c1#2 {:?} {:?}",
+                acp::ToolKind::Read,
+                location("b.txt")
+            ),
+            "done c1#2 \"b text\"".to_owned(),
         ]
     );
+    // A live call after them has an id of its own.
+    let call = CallId::from_wire("c1");
+    assert_eq!(ids.next(&call), "c1#3");
 }
 
 #[test]
@@ -139,9 +181,18 @@ fn a_location_is_a_local_file_made_absolute_and_none_for_another_host_or_home() 
             .map(|location| location.path)
             .collect::<Vec<_>>()
     };
-    assert_eq!(at("src/lib.rs"), [Path::new("/p").join("src/lib.rs")]);
-    assert_eq!(at("/etc/hosts"), [Path::new("/etc/hosts")]);
+    assert_eq!(
+        at("src/lib.rs"),
+        [absolute(Path::new("/p").join("src/lib.rs"))]
+    );
+    assert_eq!(at("/etc/hosts"), [absolute("/etc/hosts")]);
     assert_eq!(at("C:\\repo\\a.rs").len(), 1);
+    // Drive-relative on Windows, a file name elsewhere.
+    let drive = at("C:fixture.txt");
+    assert!(
+        drive.len() == 1 && drive.iter().all(|path| path.is_absolute()),
+        "{drive:?}"
+    );
     assert!(at("bench:~/note.txt").is_empty());
     assert!(at("~/note.txt").is_empty());
 }
@@ -169,8 +220,8 @@ fn rigs_file_tools_have_their_acp_kinds_and_a_move_both_its_files() {
     assert_eq!(
         moved,
         [
-            Path::new("/p").join("a.txt"),
-            Path::new("/q/b.txt").to_owned()
+            absolute(Path::new("/p").join("a.txt")),
+            absolute("/q/b.txt")
         ]
     );
 }

@@ -35,7 +35,7 @@ use crate::{Reply, session};
 
 /// How long a session process may take to end once asked, before it is
 /// killed.
-const GRACE: Duration = Duration::from_secs(5);
+pub(crate) const GRACE: Duration = Duration::from_secs(5);
 
 /// How the router starts a session's process: the program, and the
 /// arguments before `acp-session`'s. The tests point it at their binary.
@@ -57,6 +57,9 @@ struct Router {
     /// The client's `initialize`, which each session process gets too.
     client: Mutex<Option<acp::InitializeRequest>>,
     sessions: Mutex<HashMap<String, Arc<Child>>>,
+    /// The saved sessions a load or resume is opening, each done once that
+    /// request was answered.
+    opening: Mutex<HashMap<String, Shared<BoxFuture<'static, ()>>>>,
 }
 
 /// A session's process, as the router runs it.
@@ -149,17 +152,20 @@ impl Router {
             tokio::pin!(connection);
             // Asked to end, the connection has its grace to close, as a
             // stopped process never drains what was written to it.
-            let ended = tokio::select! {
-                ended = &mut connection => ended,
+            let (ended, late) = tokio::select! {
+                ended = &mut connection => (ended, false),
                 () = asked(stopping) => {
-                    let closed = tokio::time::timeout(GRACE, &mut connection).await;
-                    closed.unwrap_or_else(|_| Err(internal("it did not close in time")))
+                    match tokio::time::timeout(GRACE, &mut connection).await {
+                        Ok(ended) => (ended, false),
+                        Err(_) => (Err(internal("it did not close in time")), true),
+                    }
                 }
             };
             if let Err(error) = ended {
                 eprintln!("rig acp: session {key}: {error}");
             }
-            if tokio::time::timeout(GRACE, process.wait()).await.is_err() {
+            // One that did not close in time had its grace.
+            if late || tokio::time::timeout(GRACE, process.wait()).await.is_err() {
                 process.kill().await.ok();
             }
             run.kill_left_groups().ok();
@@ -455,10 +461,8 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
         .on_receive_request(
             async move |request: acp::NewSessionRequest, responder, cx| {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
-                let (reason, found) = (StartReason::New, |router: &Router, cwd: &Path| {
-                    router.new_session(cwd)
-                });
-                opening(new.clone(), cx, request, responder, at, reason, found)
+                let found = |router: &Router, cwd: &Path| router.new_session(cwd);
+                opening(new.clone(), cx, request, responder, at, None, found)
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -467,15 +471,8 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
                 let id = request.session_id.clone();
                 let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
-                opening(
-                    load.clone(),
-                    cx,
-                    request,
-                    responder,
-                    at,
-                    StartReason::Resumed,
-                    found,
-                )
+                let key = Some(request.session_id.clone());
+                opening(load.clone(), cx, request, responder, at, key, found)
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -484,15 +481,8 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                 let at = (request.cwd.clone(), request.additional_directories.clone());
                 let id = request.session_id.clone();
                 let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
-                opening(
-                    resume.clone(),
-                    cx,
-                    request,
-                    responder,
-                    at,
-                    StartReason::Resumed,
-                    found,
-                )
+                let key = Some(request.session_id.clone());
+                opening(resume.clone(), cx, request, responder, at, key, found)
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -536,6 +526,12 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                 let router = close.clone();
                 cx.spawn(async move {
                     let closed = async {
+                        // One being opened is closed once open.
+                        let key = request.session_id.0.as_ref();
+                        let opening = locked(&router.opening).get(key).cloned();
+                        if let Some(opening) = opening {
+                            opening.await;
+                        }
                         let Ok(child) = router.child(&request.session_id) else {
                             return Ok(acp::CloseSessionResponse::new());
                         };
@@ -559,20 +555,32 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
 
 /// Answers a request that opens a session in a task of its own: in the
 /// client's directory `at` (the session's, and any others, which rig does
-/// not take), the session `found` finds there and locks.
+/// not take), the session `found` finds there and locks: the `saved` one,
+/// listed as opening from before any later request is read until the
+/// answer, or a new one.
 fn opening<Request>(
     router: Arc<Router>,
     cx: ConnectionTo<Client>,
     request: Request,
     responder: Responder<Request::Response>,
     (cwd, others): (PathBuf, Vec<PathBuf>),
-    reason: StartReason,
+    saved: Option<acp::SessionId>,
     found: impl FnOnce(&Router, &Path) -> Result<(SessionId, File), Error> + Send + 'static,
 ) -> Result<(), Error>
 where
     Request: agent_client_protocol::JsonRpcRequest + Send + 'static,
 {
+    let (done, answered) = oneshot::channel::<()>();
+    let answered = answered.map(drop).boxed().shared();
+    if let Some(key) = &saved {
+        locked(&router.opening).insert(key.to_string(), answered.clone());
+    }
+    let reason = match saved {
+        Some(_) => StartReason::Resumed,
+        None => StartReason::New,
+    };
     cx.clone().spawn(async move {
+        let _done = done;
         let reply = Arc::new(Reply::new(responder));
         let opened = async {
             refuse_directories(&others)?;
@@ -584,6 +592,15 @@ where
         };
         if let Err(error) = opened.await {
             reply.send(Err(error));
+        }
+        if let Some(key) = saved {
+            let mut opening = locked(&router.opening);
+            if opening
+                .get(key.0.as_ref())
+                .is_some_and(|it| it.ptr_eq(&answered))
+            {
+                opening.remove(key.0.as_ref());
+            }
         }
         Ok(())
     })
@@ -647,6 +664,7 @@ pub(crate) fn install(app: &mut App) {
         next: AtomicU64::new(1),
         client: Mutex::new(None),
         sessions: Mutex::new(HashMap::new()),
+        opening: Mutex::new(HashMap::new()),
     });
     let (stop, stopped) = oneshot::channel();
     let (done, finished) = async_channel::bounded(1);

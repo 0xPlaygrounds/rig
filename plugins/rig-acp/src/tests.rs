@@ -40,6 +40,10 @@ const STUB: &str = "RIG_ACP_TEST_MCP";
 /// ignores the end of its input does.
 const STAYS: &str = "RIG_ACP_TEST_MCP_STAYS";
 
+/// Set for the MCP stub to answer `initialize` only after this many
+/// milliseconds.
+const SLOW: &str = "RIG_ACP_TEST_MCP_SLOW";
+
 /// The arguments that run this binary's ignored test `name` alone.
 fn libtest(name: &str) -> Vec<OsString> {
     let module = module_path!().split_once("::").map_or("", |(_, path)| path);
@@ -77,6 +81,11 @@ fn agent() {
         calls("r1", "read", json!({ "path": "fixture.txt" })),
         reply("read it"),
     ]);
+    // The id `read`'s call has, as a provider may use an id again.
+    let again = script(vec![
+        calls("r1", "read", json!({ "path": "missing.txt" })),
+        reply("not there"),
+    ]);
     let guarded = script(vec![
         calls("g1", "read", json!({ "path": "guarded.txt" })),
         reply("guarded done"),
@@ -92,6 +101,7 @@ fn agent() {
     let mut models = scripted_models([
         ("test/reply", &replies),
         ("test/read", &read),
+        ("test/again", &again),
         ("test/guarded", &guarded),
         ("test/wait", &wait),
         ("test/mcp", &mcp),
@@ -235,11 +245,15 @@ fn mcp_stub() {
                 .unwrap_or_default()
         };
         let result = match request.get("method").and_then(Value::as_str) {
-            Some("initialize") => json!({
+            Some("initialize") => {
+                let slow = std::env::var(SLOW).ok().and_then(|ms| ms.parse().ok());
+                std::thread::sleep(Duration::from_millis(slow.unwrap_or_default()));
+                json!({
                 "protocolVersion": request.pointer("/params/protocolVersion"),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "stub", "version": "0" },
-            }),
+                })
+            }
             Some("tools/list") => json!({ "tools": [{
                 "name": "add",
                 "inputSchema": {
@@ -264,11 +278,6 @@ fn mcp_stub() {
     if std::env::var_os(STAYS).is_some() {
         std::thread::sleep(Duration::from_secs(120));
     }
-}
-
-/// The stub as a client declares it.
-fn stub_server(name: &str) -> acp::McpServer {
-    stub_with(name, Vec::new())
 }
 
 /// The stub as a client declares it, with `env` added to its environment.
@@ -332,7 +341,6 @@ enum Answering {
 struct Seen {
     /// Every update, and every response to a prompt, in order.
     events: Vec<Event>,
-    permissions: usize,
     /// The call each permission request was about.
     asked: Vec<acp::ToolCallUpdate>,
     /// The questions kept to answer later.
@@ -344,7 +352,6 @@ struct Seen {
 #[derive(Clone, Debug)]
 enum Event {
     Update(acp::SessionId, acp::SessionUpdate),
-    Asked,
     /// The answer to `session/new`, where it came among the updates.
     Opened(acp::SessionId),
     /// The answer to a prompt of the session, where it came among them.
@@ -558,9 +565,7 @@ fn drive(
                     let mut seen = permissions
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    seen.permissions += 1;
                     seen.asked.push(request.tool_call.clone());
-                    seen.events.push(Event::Asked);
                     let answering = seen.answering;
                     if answering == Some(Answering::Later) {
                         seen.later.push(responder);

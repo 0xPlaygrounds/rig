@@ -124,6 +124,10 @@ pub(crate) struct Session {
     closing: Vec<Reply<acp::CloseSessionResponse>>,
     /// The tasks asking the client a question, by the question's entity.
     asking: HashMap<Entity, tokio::task::AbortHandle>,
+    /// The ACP ids of the main agent's calls, history's included, and of
+    /// those running, by the call's entity.
+    call_ids: translate::CallIds,
+    calls: HashMap<Entity, String>,
     requests: Receiver<Request>,
     sender: Sender<Request>,
     runtime: tokio::runtime::Handle,
@@ -163,7 +167,7 @@ impl Session {
     /// notice, else in the next reply.
     fn note(&mut self, text: String, level: NoticeLevel) {
         if self.prompt.is_some() {
-            let chunk = acp::ContentChunk::new(acp::ContentBlock::from(format!("{text}\n\n")));
+            let chunk = acp::ContentChunk::new(acp::ContentBlock::from(in_reply(&text)));
             self.send(acp::SessionUpdate::AgentMessageChunk(chunk));
         } else if self.shows_notices() {
             let severity = match level {
@@ -181,6 +185,15 @@ impl Session {
     fn post(sender: &Sender<Request>, wake: &Wake, request: Request) {
         sender.try_send(request).ok();
         wake.wake();
+    }
+}
+
+/// A note as a paragraph of the reply, which clients show as Markdown: one
+/// of several lines, such as `/help`'s, as preformatted text.
+fn in_reply(text: &str) -> String {
+    match text.contains('\n') {
+        true => format!("\n\n```text\n{text}\n```\n\n"),
+        false => format!("\n\n{text}\n\n"),
     }
 }
 
@@ -253,6 +266,8 @@ pub(crate) fn install(app: &mut App) {
         early,
         closing: Vec::new(),
         asking: HashMap::new(),
+        call_ids: translate::CallIds::default(),
+        calls: HashMap::new(),
         requests,
         sender,
         runtime,
@@ -523,13 +538,14 @@ impl Requested<'_, '_> {
         let (connected, refused) = self.agents.get(agent).unwrap_or((false, None));
         if command.is_none() && !connected {
             let why = refused.map_or(
-                "no model can be reached: sign in with `rig` (`/login`), or choose a model",
+                "no model can be reached: sign in with `rig` in a terminal (`/login`), then open a \
+                 new session here",
                 |ModelRefused(why)| why.as_str(),
             );
             return reply.send(Err(crate::error(Error::internal_error(), why.to_owned())));
         }
         for note in std::mem::take(&mut self.session.notes) {
-            let chunk = acp::ContentChunk::new(acp::ContentBlock::from(format!("{note}\n\n")));
+            let chunk = acp::ContentChunk::new(acp::ContentBlock::from(in_reply(&note)));
             self.session
                 .send(acp::SessionUpdate::AgentMessageChunk(chunk));
         }
@@ -607,19 +623,19 @@ fn open(mut opened: Opened) {
             return;
         }
     }
-    let replay = match &opened.session.opening {
-        Some(Opening::Load(..)) => {
-            let replaced = opened
-                .store
-                .as_ref()
-                .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
-                .map(|summarized| summarized.replaced)
-                .unwrap_or_default();
-            let cwd = translate::cwd_of(work, &opened.root);
-            translate::replay(conversation, &replaced, &cwd)
-        }
-        _ => Vec::new(),
-    };
+    // A resumed session's history is not shown again, but its calls' ids
+    // are taken, as its client may have shown them.
+    let replaced = opened
+        .store
+        .as_ref()
+        .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
+        .map(|summarized| summarized.replaced)
+        .unwrap_or_default();
+    let cwd = translate::cwd_of(work, &opened.root);
+    let mut replay = translate::replay(conversation, &replaced, &cwd, &mut opened.session.call_ids);
+    if !matches!(opened.session.opening, Some(Opening::Load(..))) {
+        replay.clear();
+    }
     let config = opened.options.of(agent);
     let mut listed: Vec<_> = opened
         .slash

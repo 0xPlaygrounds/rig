@@ -142,10 +142,41 @@ fn a_stopped_session_process_closes_within_its_grace() {
         let close = driven
             .cx
             .send_request(acp::CloseSessionRequest::new(id.clone()));
-        let closed = tokio::time::timeout(Duration::from_secs(20), close.block_task()).await;
+        // Its answer's grace, then its connection's, then it is killed.
+        let bound = crate::router::GRACE * 3;
+        let closed = tokio::time::timeout(bound, close.block_task()).await;
         assert!(closed.is_ok_and(|closed| closed.is_ok()));
         assert!(eventually(|| process_of(place, &id).is_none()));
         drop(filling);
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_close_sent_while_its_session_loads_closes_it() {
+    let place = Place::new("closing");
+    let place = &place;
+    let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/reply").await);
+        assert!(driven.prompt(&id, "Hello.").await.is_ok());
+        let close = || {
+            let close = acp::CloseSessionRequest::new(id.clone());
+            driven.cx.send_request(close).block_task()
+        };
+        let load = || {
+            let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+            driven.cx.send_request(load).block_task()
+        };
+        assert!(close().await.is_ok());
+        // Sent together: the close comes before the session's process runs.
+        let (loaded, closed) = tokio::join!(load(), close());
+        assert!(loaded.is_ok() && closed.is_ok());
+        assert!(process_of(place, &id).is_none());
+        assert!(load().await.is_ok());
     });
     assert!(router.is_some());
 }

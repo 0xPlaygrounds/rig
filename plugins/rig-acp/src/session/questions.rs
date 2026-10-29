@@ -48,17 +48,23 @@ impl Asking<'_, '_> {
         let approval = held.and_then(|effect| self.approvals.get(effect).ok());
         let call = held
             .filter(|_| approval.is_some())
-            .and_then(|effect| self.calls.get(effect).ok());
+            .and_then(|effect| Some((effect, self.calls.get(effect).ok()?)));
         out.stream();
         let session = &mut *out.session;
         let (id, cx) = (session.id.clone(), session.cx.clone());
         let (sender, wake) = (session.sender.clone(), session.wake.clone());
-        let task = if let Some((request, &ForAgent(agent))) = call {
+        let task = if let Some((effect, (request, &ForAgent(agent)))) = call {
             // The call in full: a subagent's was never shown.
             let cwd = translate::cwd_of(self.dirs.get(agent).ok(), &self.root);
             let reasons = approval.into_iter().flat_map(|needs| &needs.reasons);
             let reasons: Vec<_> = reasons.map(|reason| reason.text.as_str()).collect();
-            let tool = translate::tool_asked(&request.call, &cwd, &reasons.join("\n"));
+            // A subagent's call has an id of its own, never shown.
+            let call_id = match session.calls.get(&effect) {
+                Some(call_id) => call_id.clone(),
+                None => session.call_ids.next(&request.call.id),
+            };
+            let why = reasons.join("\n");
+            let tool = translate::tool_asked(&request.call, call_id, &cwd, &why);
             let options = vec![
                 acp::PermissionOption::new(ALLOW, "Allow", acp::PermissionOptionKind::AllowOnce),
                 acp::PermissionOption::new(DENY, "Deny", acp::PermissionOptionKind::RejectOnce),
@@ -207,14 +213,16 @@ pub(super) fn picker(
 }
 
 /// What to do instead of picking from `picker` here: type a secret, such as
-/// an API key, in rig in a terminal, which hides it; else type one of the
+/// an API key, in rig in a terminal, which hides it, and open a new session,
+/// as a running one reads no key saved elsewhere; else type one of the
 /// commands of its items.
 fn unshown(picker: &Picker) -> String {
     let title = &picker.title;
     match (picker.secret, picker.items.as_slice()) {
         (true, _) => format!(
-            "{title}: type it in rig in a terminal, where it is hidden as you type; this client \
-             would show it."
+            "{title}: this client would show it as you type. Type it in `rig` in a terminal, \
+             with this agent's RIG_HOME, then open a new session here: this one does not read \
+             what is saved meanwhile."
         ),
         (false, []) => {
             format!(

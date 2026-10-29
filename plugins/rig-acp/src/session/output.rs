@@ -83,7 +83,9 @@ pub(super) fn call_asked(
         && out.main(agent)
     {
         let cwd = translate::cwd_of(dirs.get(agent).ok(), &root);
-        let call = translate::tool_call(&request.call, &cwd);
+        let id = out.session.call_ids.next(&request.call.id);
+        out.session.calls.insert(asked.entity, id.clone());
+        let call = translate::tool_call(&request.call, id, &cwd);
         out.send(acp::SessionUpdate::ToolCall(call));
     }
 }
@@ -91,13 +93,13 @@ pub(super) fn call_asked(
 /// A call of the main agent starts: in progress. A question starts: asked.
 pub(super) fn started(
     started: On<Add<Started>>,
-    calls: Query<(&ToolRequest, &ForAgent)>,
+    calls: Query<(), With<ToolRequest>>,
     asking: questions::Asking,
     mut out: Out,
 ) {
-    if let Ok((request, &ForAgent(agent))) = calls.get(started.entity) {
-        if out.main(agent) {
-            let update = translate::tool_status(&request.call, acp::ToolCallStatus::InProgress);
+    if calls.contains(started.entity) {
+        if let Some(id) = out.session.calls.get(&started.entity).cloned() {
+            let update = translate::tool_status(id, acp::ToolCallStatus::InProgress);
             out.send(acp::SessionUpdate::ToolCallUpdate(update));
         }
         return;
@@ -109,17 +111,16 @@ pub(super) fn started(
 /// answered. A question settles: no longer asked.
 pub(super) fn settled(
     settled: On<Add<Settled>>,
-    calls: Query<(&ToolRequest, &ForAgent, &Outcome)>,
+    calls: Query<&Outcome, With<ToolRequest>>,
     mut out: Out,
 ) {
     if let Some(task) = out.session.asking.remove(&settled.entity) {
         task.abort();
     }
-    if let Ok((request, &ForAgent(agent), outcome)) = calls.get(settled.entity)
-        && out.main(agent)
+    if let Ok(outcome) = calls.get(settled.entity)
+        && let Some(id) = out.session.calls.remove(&settled.entity)
     {
         let result = outcome.tool_result();
-        let id = request.call.id.wire();
         let done = translate::tool_done(&id, !result.is_success(), result.output().render());
         out.send(acp::SessionUpdate::ToolCallUpdate(done));
     }

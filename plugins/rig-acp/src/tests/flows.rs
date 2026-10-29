@@ -53,14 +53,20 @@ fn the_agent_speaks_v1_to_a_client_that_offers_2_and_says_what_it_takes() {
     let (Some(mut input), Some(output)) = (router.stdin.take(), router.stdout.take()) else {
         return;
     };
-    let mut answers = BufReader::new(output)
-        .lines()
-        .map_while(Result::ok)
-        .filter_map(|line| serde_json::from_str::<Value>(&line).ok());
+    let mut lines = BufReader::new(output).lines().map_while(Result::ok);
+    // stdout carries only ACP, but for libtest's lines about the test.
+    let mut stray = Vec::new();
     let mut ask = |request: Value| {
         writeln!(input, "{request}").ok();
         let id = request.get("id").cloned();
-        answers.find(|answer| answer.get("id") == id.as_ref())
+        for line in lines.by_ref() {
+            match serde_json::from_str::<Value>(&line) {
+                Ok(answer) if answer.get("id") == id.as_ref() => return Some(answer),
+                Ok(_) => {}
+                Err(_) => stray.push(line),
+            }
+        }
+        None
     };
     // As a client that speaks 2 first, such as Zed with its beta flag on.
     let offered = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
@@ -107,6 +113,12 @@ fn the_agent_speaks_v1_to_a_client_that_offers_2_and_says_what_it_takes() {
         .collect();
     assert_eq!(ids, [&json!("model"), &json!("reasoning")], "{answer}");
     drop(input);
+    stray.extend(lines.filter(|line| serde_json::from_str::<Value>(line).is_err()));
+    stray.retain(|line| {
+        let line = line.trim();
+        !line.is_empty() && line != "running 1 test" && !line.starts_with("test tests::agent")
+    });
+    assert!(stray.is_empty(), "{stray:?}");
     assert!(router.wait().is_ok_and(|status| status.success()));
 }
 
@@ -391,7 +403,25 @@ fn a_loaded_session_replays_its_history_as_it_went_and_a_resumed_one_does_not() 
         let id = new.session_id;
         assert!(driven.model(&id, "test/read").await);
         assert!(driven.prompt(&id, "Read the fixture.").await.is_ok());
+        assert!(driven.model(&id, "test/again").await);
+        assert!(driven.prompt(&id, "Read the missing file.").await.is_ok());
         let live = tool_steps(driven, &id);
+        let last = |steps: &[(String, acp::ToolCallStatus)]| {
+            let done = steps.iter().filter(|(_, status)| {
+                matches!(
+                    status,
+                    acp::ToolCallStatus::Completed | acp::ToolCallStatus::Failed
+                )
+            });
+            done.cloned().collect::<Vec<_>>()
+        };
+        assert_eq!(
+            last(&live),
+            [
+                ("r1".to_owned(), acp::ToolCallStatus::Completed),
+                ("r1#2".to_owned(), acp::ToolCallStatus::Failed),
+            ]
+        );
         let close = acp::CloseSessionRequest::new(id.clone());
         assert!(driven.cx.send_request(close).block_task().await.is_ok());
         let before = driven.updates(&id).len();
@@ -448,11 +478,23 @@ fn a_loaded_session_replays_its_history_as_it_went_and_a_resumed_one_does_not() 
 fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_session_opens() {
     let place = Place::new("mcp");
     let broken = acp::McpServer::Stdio(acp::McpServerStdio::new("broken", "/no/such/mcp-server"));
+    // Slow to start: the session opens only once it connected.
+    let files = stub_with("files", vec![acp::EnvVariable::new(SLOW, "1500")]);
     let router = drive(&place, full_client(), async |driven| {
-        let new = driven.new_session(vec![stub_server("files"), broken]).await;
+        let new = driven.new_session(vec![files, broken]).await;
         assert!(new.is_some(), "no session");
         let Some(new) = new else { return };
         let id = new.session_id;
+        assert!(driven.model(&id, "test/mcp").await);
+        assert_eq!(
+            driven.prompt(&id, "Add.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+        let last = tool_steps(driven, &id).last().cloned();
+        assert_eq!(
+            last,
+            Some(("m1".to_owned(), acp::ToolCallStatus::Completed))
+        );
         let failed = |seen: &Seen| {
             seen.events.iter().any(|event| {
                 matches!(event, Event::Update(_, acp::SessionUpdate::Notice(notice))
@@ -470,16 +512,6 @@ fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_sess
             .iter()
             .position(|event| matches!(event, Event::Update(of, _) if *of == id));
         assert!(opened.is_some() && first > opened, "{opened:?} {first:?}");
-        assert!(driven.model(&id, "test/mcp").await);
-        assert_eq!(
-            driven.prompt(&id, "Add.").await.ok(),
-            Some(acp::StopReason::EndTurn)
-        );
-        let last = tool_steps(driven, &id).last().cloned();
-        assert_eq!(
-            last,
-            Some(("m1".to_owned(), acp::ToolCallStatus::Completed))
-        );
         assert!(driven.prompt(&id, "/mcp").await.is_ok());
         let said = driven.said(&id);
         assert!(said.contains("files (client): connected, 1 tool"), "{said}");
@@ -552,6 +584,22 @@ fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
             driven.prompt(&id, "Hello.").await.ok(),
             Some(acp::StopReason::EndTurn)
         );
+        // `/model` changes it too, and the options show it.
+        assert!(driven.prompt(&id, "/model test/read").await.is_ok());
+        let chosen = |seen: &Seen| {
+            seen.events.iter().any(|event| match event {
+                Event::Update(of, acp::SessionUpdate::ConfigOptionUpdate(update)) => {
+                    *of == id
+                        && update.config_options.iter().any(|option| {
+                            matches!(&option.kind, acp::SessionConfigKind::Select(select)
+                                if option.id.to_string() == "model"
+                                    && select.current_value.to_string() == "test/read")
+                        })
+                }
+                _ => false,
+            })
+        };
+        assert!(driven.until(chosen).await, "{}", driven.said(&id));
     });
     assert!(router.is_some());
 }
