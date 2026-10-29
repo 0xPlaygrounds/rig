@@ -6,6 +6,7 @@ use ratatui::layout::Position;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding, Paragraph};
+use rig_core::redact;
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -38,8 +39,9 @@ const MOST_LINES: usize = 10;
 /// the history. Text of the person's that the editor drops unsent goes to
 /// the history, so Up brings it back: the draft behind a prompt shown when
 /// another text replaces it, and what [`clear`](Self::clear) empties; a
-/// question's answer never does, and Up in it stays in it. In a panel placed at the top, the bottom
-/// or below the input, it is as tall as its text, up to ten lines.
+/// question's answer never does, and Up in it stays in it. In a panel
+/// placed at the top, the bottom or below the input, it is as tall as its
+/// text, up to ten lines.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
@@ -62,9 +64,9 @@ pub struct Editor {
     browsing: Option<(usize, String)>,
     /// What was typed before browsing started; empty while not browsing.
     draft: String,
-    /// The person's text the editor dropped unsent, which the history
-    /// records.
-    kept: Vec<String>,
+    /// The texts for the history, in the order the editor gave them up:
+    /// the person's dropped unsent, redacted, and those sent (`true`).
+    kept: Vec<(String, bool)>,
     /// While it holds a question's answer, which is not a prompt to keep,
     /// the person's text taken out for it.
     answering: Option<String>,
@@ -184,13 +186,10 @@ impl Editor {
     }
 
     /// Takes a question's answer out when the question closes, leaving the
-    /// input empty, and drops the history's place and the draft behind it.
+    /// input empty.
     pub(crate) fn take_answer(&mut self) -> String {
-        self.browsing = None;
-        self.draft.clear();
         self.answering = None;
-        self.cursor = 0;
-        std::mem::take(&mut self.text)
+        self.take()
     }
 
     /// For a question gone without closing: drops its answer and puts back
@@ -217,9 +216,16 @@ impl Editor {
         }
     }
 
-    /// The texts dropped since the last call, for the history. An edited
-    /// prompt of the history is the person's own text from now on.
-    pub(crate) fn take_dropped(&mut self) -> Vec<String> {
+    /// Records `text`, which the caller sent, for the history, after what
+    /// the editor dropped before it.
+    pub(crate) fn sent(&mut self, text: String) {
+        self.kept.push((text, true));
+    }
+
+    /// The texts dropped or sent (`true`) since the last call, in order,
+    /// for the history. An edited prompt of the history is the person's own text
+    /// from now on.
+    pub(crate) fn take_dropped(&mut self) -> Vec<(String, bool)> {
         if !self.recalled() {
             self.stop_browsing();
         }
@@ -235,12 +241,11 @@ impl Editor {
         }
     }
 
-    /// Keeps `text` for the history as the newest, unless it is blank or an
-    /// answer.
+    /// Keeps `text`, redacted, for the history as the newest, unless it is
+    /// blank or an answer.
     fn keep(&mut self, text: String) {
         if self.answering.is_none() && !text.trim().is_empty() {
-            self.kept.retain(|kept| *kept != text);
-            self.kept.push(text);
+            self.kept.push((redact::text(&text).into_owned(), false));
         }
     }
 
@@ -694,7 +699,7 @@ pub(crate) fn draw_editors(
             } else if !editor.is_empty() {
                 keys = "";
             }
-            if state.picking().is_none() && !elsewhere {
+            if keyed {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
                 let row = u16::try_from(layout.cursor_row - top).unwrap_or(0);
                 let x = area.x.saturating_add(1).saturating_add(column);

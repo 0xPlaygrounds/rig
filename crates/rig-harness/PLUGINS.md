@@ -2410,9 +2410,10 @@ any run and inert without the view:
   without keeping it, as edits do; `clear` keeps the person's text in the
   history, so a plugin that replaces it calls `clear` before `set`.
   `PromptHistory` is the prompts Up and Down browse, each text once, kept
-  in `PluginData.project`: the view puts the text an editor dropped unsent
-  (redacted) and each prompt sent (`Sent`, which a plugin writes too) as
-  the newest in `HistorySystems::Record` and saves in `HistorySystems::Save`;
+  in `PluginData.project`: the view puts each prompt sent (`Sent`, which
+  a plugin writes too) and the text an editor dropped unsent (redacted),
+  in the order they happened, as the newest in `HistorySystems::Record`
+  and saves in `HistorySystems::Save`;
   a system between the two filters what is kept. After another agent is
   shown, `HistorySystems::Seed` puts its conversation's typed prompts as
   the newest, unsaved, in `TuiKeys` before the next key; a filter that

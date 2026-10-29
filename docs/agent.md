@@ -97,7 +97,7 @@ the input with the reason, and Enter then sends it to the model as it is.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier
-prompt · Down back to your draft". While nothing is typed, the top row shows
+prompt · Down back to your draft" (or "to an empty input"). While nothing is typed, the top row shows
 the keys and the bottom row the status line: the model, the reasoning
 setting, what the agent is doing, the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the

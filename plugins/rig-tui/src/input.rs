@@ -881,6 +881,7 @@ pub(crate) fn send(
         return;
     }
     let text = input.take();
+    input.sent(text.clone());
     commands.write_message(Sent(text.clone()));
     if let Some(pane) = pane {
         pane.scroll.follow();

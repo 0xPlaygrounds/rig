@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use rig_core::redact;
 use rig_ecs::agent::{Agent, Conversation};
 use rig_harness::prelude::{Files, PluginData, ShownAgent};
 use rig_tools::attach::typed_prompts;
@@ -21,9 +20,10 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// (`file: None` saves nothing). Prompts are kept as typed, slash commands
 /// included.
 ///
-/// The view loads it in `PreStartup`, puts each prompt [`Sent`] as the
-/// newest in [`HistorySystems::Record`], after the text an [`Editor`]
-/// dropped unsent (its secrets redacted), and in [`HistorySystems::Save`]
+/// The view loads it in `PreStartup`, puts each prompt [`Sent`] and the
+/// text an [`Editor`] dropped unsent (its secrets redacted), in the order
+/// they happened, as the newest in [`HistorySystems::Record`], and in
+/// [`HistorySystems::Save`]
 /// adds to the file those recorded since that are still in `entries`,
 /// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
 /// the two, such as to keep secrets out. After another agent is shown,
@@ -161,9 +161,9 @@ pub enum HistorySystems {
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct Sent(pub String);
 
-/// Adds the text each [`Editor`] dropped unsent (a panel's too, as its Up
-/// browses this history), with secrets redacted, then each prompt sent, to
-/// the history as the newest.
+/// Adds what each [`Editor`] sent and dropped unsent (a panel's too, as its
+/// Up browses this history), in its order, then each other prompt
+/// [`Sent`], to the history as the newest.
 pub(crate) fn record(
     mut sent: MessageReader<Sent>,
     mut editors: Query<&mut Editor>,
@@ -173,8 +173,19 @@ pub(crate) fn record(
     for mut editor in &mut editors {
         kept.extend(editor.bypass_change_detection().take_dropped());
     }
-    let kept = kept.iter().map(|text| redact::text(text));
-    for text in kept.chain(sent.read().map(|Sent(text)| text.into())) {
+    // An editor's sends are among the messages too: each is recorded once,
+    // in its place among what the editor dropped.
+    let mut by_editors: Vec<&String> = kept
+        .iter()
+        .filter(|(_, sent)| *sent)
+        .map(|(text, _)| text)
+        .collect();
+    let others = sent.read().filter(|Sent(text)| {
+        let at = by_editors.iter().position(|sent| *sent == text);
+        at.map(|at| by_editors.swap_remove(at)).is_none()
+    });
+    let others: Vec<&String> = others.map(|Sent(text)| text).collect();
+    for text in kept.iter().map(|(text, _)| text).chain(others) {
         let text = text.trim();
         if text.is_empty() {
             continue;

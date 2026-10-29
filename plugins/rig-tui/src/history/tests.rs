@@ -151,6 +151,9 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
     type_text(&mut app, "draft four");
     press(&mut app, "ctrl+a up");
     press(&mut app, "! ctrl+c");
+    // A prompt sent, then another cleared, in one frame: in that order.
+    press(&mut app, "x enter y ctrl+c");
+    edit(&mut app, |input| drop(input.take()));
     let kept = [
         "draft one",
         "old",
@@ -163,6 +166,8 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
         "a",
         "draft four",
         "a!",
+        "x",
+        "y",
     ];
     assert_eq!(entries(&app), kept);
 }
