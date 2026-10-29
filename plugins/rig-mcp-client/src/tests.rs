@@ -1008,6 +1008,10 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
         project.join("user-started"),
         project.join("project-started"),
     );
+    let (first, second) = (
+        project.join("first-started"),
+        project.join("second-started"),
+    );
     let approved = stub_server(json!({ MARKER: ours }));
     write_servers(
         &user,
@@ -1022,8 +1026,8 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
     name_clients(
         &mut app,
         vec![
-            client_stub("files", json!({})),
-            client_stub("files", json!({})),
+            client_stub("files", json!({ MARKER: first })),
+            client_stub("files", json!({ MARKER: second })),
         ],
     );
     app.finish();
@@ -1035,6 +1039,7 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
     mcp(&mut app, agent, "remove --user files");
     mcp(&mut app, agent, "");
     assert!(!mine.exists() && !ours.exists());
+    assert!(first.exists() && !second.exists());
     assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
     // The approved project's server stands for the user's, and gives way.
     let told = notices(app.world());
@@ -1099,5 +1104,69 @@ fn a_client_server_that_fails_holds_the_start_no_longer_than_its_attempt() {
         told.iter().any(|text| text.starts_with(&start))
     };
     assert!(failed("broken") && failed("silent"), "{told:?}");
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_client_server_that_fails_or_is_refused_still_keeps_the_users_from_its_name() {
+    let project = project("client-fails-name");
+    let mine = project.join("user-started");
+    let user = project.join("home/mcp.json");
+    write_servers(
+        &user,
+        json!({ "files": stub_server(json!({ MARKER: mine })) }),
+    );
+    let mut broken = client_stub("files", json!({}));
+    if let Ok(ServerSpec::Stdio { command, .. }) = &mut broken.spec {
+        "/no/such/mcp-server".clone_into(command);
+    }
+    let refused = AddMcpServer {
+        name: "files".to_owned(),
+        spec: Err("not a transport rig speaks".to_owned()),
+    };
+    for client in [broken, refused] {
+        let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+        name_clients(&mut app, vec![client]);
+        app.finish();
+        run_until(&mut app, &wakes, |world| {
+            let servers = world.try_query::<(&McpServer, &McpStatus)>();
+            servers.is_some_and(|mut servers| {
+                servers.iter(world).any(|(server, status)| {
+                    let failed = matches!(status.state, McpState::Retrying | McpState::Invalid);
+                    server.name == "files" && failed
+                })
+            })
+        });
+        assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
+        assert!(!mine.exists());
+    }
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_run_with_no_session_starts_no_server_of_the_files() {
+    let project = project("sessionless");
+    let mine = project.join("user-started");
+    let user = project.join("home/mcp.json");
+    write_servers(
+        &user,
+        json!({ "files": stub_server(json!({ MARKER: mine })) }),
+    );
+    let invoked = Invocation {
+        command: Some("stats".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _wakes) = app_in(&project, "", Some(invoked));
+    let front = Front::new("stats")
+        .sessionless()
+        .on_command("stats", "", "Count");
+    app.add_front(front);
+    assert!(app.runs_front("stats"));
+    app.finish();
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(status(app.world_mut(), "files").is_none());
+    assert!(!mine.exists());
     std::fs::remove_dir_all(project).ok();
 }

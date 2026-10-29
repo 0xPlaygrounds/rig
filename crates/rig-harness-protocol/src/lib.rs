@@ -765,6 +765,20 @@ impl SessionDir {
         }
     }
 
+    /// Writes `directory` as the one the session runs in
+    /// ([`Self::directory`]), beside the file and renamed over it, so a
+    /// reader sees the old one or the new one, never a part.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    pub fn set_working_directory(&self, directory: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(&self.0)?;
+        let part = self.0.join("directory.part");
+        std::fs::write(&part, directory.to_string_lossy().as_bytes())?;
+        std::fs::rename(part, self.directory())
+    }
+
     /// The plain-text file of [`Self::name`].
     fn name_file(&self) -> PathBuf {
         self.0.join("name")

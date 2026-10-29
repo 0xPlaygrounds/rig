@@ -5,6 +5,7 @@ use agent_client_protocol::schema::v1 as acp;
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
+use rig_harness::services::WorkDir;
 
 use super::{Session, questions};
 use crate::translate;
@@ -74,13 +75,15 @@ pub(super) fn stream(mut out: Out) {
 pub(super) fn call_asked(
     asked: On<Add<ToolRequest>>,
     calls: Query<(&ToolRequest, &ForAgent)>,
+    dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
     mut out: Out,
 ) {
     if let Ok((request, &ForAgent(agent))) = calls.get(asked.entity)
         && out.main(agent)
     {
-        let call = translate::tool_call(&request.call, &root.0);
+        let cwd = translate::cwd_of(dirs.get(agent).ok(), &root);
+        let call = translate::tool_call(&request.call, &cwd);
         out.send(acp::SessionUpdate::ToolCall(call));
     }
 }

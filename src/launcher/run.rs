@@ -624,7 +624,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
         Some(directory) => Some(directory),
         None => {
             if let Some(here) = here {
-                write_atomic(&session.directory(), &here.to_string_lossy())?;
+                session.set_working_directory(here)?;
             }
             here.map(Path::to_path_buf)
         }
@@ -638,18 +638,6 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
         },
         notice,
     ))
-}
-
-/// Writes `text` to `path` through a temporary file, creating its
-/// directory.
-fn write_atomic(path: &Path, text: &str) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let written = path.with_extension("tmp");
-    fs::write(&written, text)?;
-    fs::rename(&written, path)?;
-    Ok(())
 }
 
 /// Puts the terminal back after an agent that could not restore it: leaves

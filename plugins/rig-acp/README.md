@@ -69,11 +69,15 @@ to use a new one.
 - **Questions:** a tool call a plugin wants approved asks for permission
   (allow or deny, once). Another question is a form, when the editor shows
   forms; else it is closed with a note the model reads, so the turn goes on.
-  A list to pick from, such as `/model` with no name, is closed with a note:
-  type the command with what you pick.
+  A list to pick from, such as `/model` with no name, is closed with a note
+  that names the commands to type instead; a secret to type, such as an API
+  key for `/login`, is typed in rig in a terminal, which hides it.
 - **Slash commands:** the editor offers rig's commands, but `/new`,
   `/resume`, `/reload`, `/plugins` and `/quit`, which a session from an
-  editor does not need: rig refuses the first four there.
+  editor does not need: rig refuses them there; the editor closes the
+  session instead of `/quit`. With rig-acp on, `/mcp` is in every rig run,
+  the terminal view's too, as rig-acp brings rig-mcp-client's core: it lists
+  an editor's servers, and the files' ones only with `McpPlugin` on.
 - **MCP servers:** those the editor names for a session (stdio, and
   streamable HTTP with its headers) connect through rig-mcp-client for that
   session only: never saved, no approval, values taken as they are. The
@@ -97,5 +101,8 @@ stderr instead. `rig acp` ends when the editor closes its connection, or on
 SIGTERM, SIGINT or SIGHUP: it closes each session, which stops its turn and
 its tools, and kills what a session that does not end in five seconds left.
 A session's process that dies (a crash, or `kill -9`) fails its open prompt;
-its tools' processes and MCP servers are killed with it, and the editor can
-load the session again.
+its tools' processes and MCP servers are killed with it on Linux and macOS,
+as the launcher kills what a crashed agent left (on Windows only the
+processes that end with their pipes go), and the editor can load the
+session again. Closing a session cancels its prompt first, which then
+answers `cancelled`.

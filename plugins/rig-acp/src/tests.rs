@@ -22,6 +22,7 @@ use crate::AcpPlugin;
 use crate::router::{SessionCommand, lines};
 
 mod flows;
+#[cfg(target_os = "linux")]
 mod lifecycle;
 
 /// Set in the environment of the agent this test binary runs as.
@@ -29,6 +30,10 @@ const AGENT: &str = "RIG_ACP_TEST_AGENT";
 
 /// Set in the environment of the MCP server this test binary runs as.
 const STUB: &str = "RIG_ACP_TEST_MCP";
+
+/// When set, the MCP server stays once its stdin closed, as a server that
+/// ignores the end of its input does.
+const STAYS: &str = "RIG_ACP_TEST_MCP_STAYS";
 
 /// The arguments that run this binary's ignored test `name` alone.
 fn libtest(name: &str) -> Vec<OsString> {
@@ -212,20 +217,29 @@ fn mcp_stub() {
             .and_then(|()| out.flush())
             .is_err()
         {
-            return;
+            break;
         }
+    }
+    if std::env::var_os(STAYS).is_some() {
+        std::thread::sleep(Duration::from_secs(120));
     }
 }
 
 /// The stub as a client declares it.
 fn stub_server(name: &str) -> acp::McpServer {
+    stub_with(name, Vec::new())
+}
+
+/// The stub as a client declares it, with `env` added to its environment.
+fn stub_with(name: &str, mut env: Vec<acp::EnvVariable>) -> acp::McpServer {
     let program = std::env::current_exe().unwrap_or_default();
     let args = libtest("mcp_stub")
         .into_iter()
         .map(|arg| arg.to_string_lossy().into_owned());
+    env.push(acp::EnvVariable::new(STUB, "1"));
     let stdio = acp::McpServerStdio::new(name, program)
         .args(args.collect())
-        .env(vec![acp::EnvVariable::new(STUB, "1")]);
+        .env(env);
     acp::McpServer::Stdio(stdio)
 }
 
@@ -290,6 +304,8 @@ enum Event {
     Asked,
     /// The answer to `session/new`, where it came among the updates.
     Opened(acp::SessionId),
+    /// The answer to a prompt of the session, where it came among them.
+    Answered(acp::SessionId),
 }
 
 /// A client connected to `rig acp`.
@@ -381,9 +397,37 @@ impl Driven {
         session: &acp::SessionId,
         text: &str,
     ) -> Result<acp::StopReason, agent_client_protocol::Error> {
+        self.send(session, text).await
+    }
+
+    /// Sends `text` to `session`; the answer, once it comes, noted where it
+    /// came among the updates.
+    fn send(
+        &self,
+        session: &acp::SessionId,
+        text: &str,
+    ) -> impl Future<Output = Result<acp::StopReason, agent_client_protocol::Error>> + use<> {
         let request = acp::PromptRequest::new(session.clone(), vec![text.into()]);
-        let answer = self.cx.send_request(request).block_task().await;
-        answer.map(|answer| answer.stop_reason)
+        let (answered, answer) = tokio::sync::oneshot::channel();
+        let (seen, id) = (self.seen.clone(), session.clone());
+        let ordered = self
+            .cx
+            .prepare_request(request)
+            .on_receiving_result(async move |result| {
+                let mut seen = seen
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                seen.events.push(Event::Answered(id));
+                answered.send(result).ok();
+                Ok(())
+            });
+        async move {
+            ordered?;
+            let answer = answer
+                .await
+                .map_err(|_| agent_client_protocol::Error::internal_error())?;
+            answer.map(|answer| answer.stop_reason)
+        }
     }
 }
 
@@ -529,6 +573,7 @@ fn drive(
 }
 
 /// Whether the process `pid` still runs (a zombie counts as gone).
+#[cfg(target_os = "linux")]
 fn alive(pid: u32) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
         !stat
@@ -539,6 +584,7 @@ fn alive(pid: u32) -> bool {
 }
 
 /// Waits until `gone` holds, at most 20 seconds.
+#[cfg(target_os = "linux")]
 fn eventually(gone: impl Fn() -> bool) -> bool {
     let deadline = Instant::now() + Duration::from_secs(20);
     while Instant::now() < deadline {
@@ -562,4 +608,30 @@ fn full_client() -> acp::ClientCapabilities {
 /// The project directory of `place`, for paths in assertions.
 fn project(place: &Place) -> &Path {
     &place.project
+}
+
+/// The live processes of `place`: the sessions, and the tools they started.
+#[cfg(target_os = "linux")]
+fn processes_of(place: &Place) -> Vec<u32> {
+    let root = place.root.to_string_lossy().into_owned();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
+        .filter(|pid| {
+            std::fs::read(format!("/proc/{pid}/environ"))
+                .is_ok_and(|environ| String::from_utf8_lossy(&environ).contains(&root))
+        })
+        .filter(|pid| alive(*pid))
+        .collect()
+}
+
+/// Whether a tool's `sleep` of `place` runs.
+#[cfg(target_os = "linux")]
+fn sleeping(place: &Place) -> bool {
+    processes_of(place).into_iter().any(|pid| {
+        std::fs::read(format!("/proc/{pid}/cmdline"))
+            .is_ok_and(|line| String::from_utf8_lossy(&line).contains("sleep"))
+    })
 }

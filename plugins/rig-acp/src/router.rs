@@ -21,8 +21,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use agent_client_protocol::schema::v1 as acp;
-use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Lines};
-use futures::StreamExt;
+use agent_client_protocol::{Agent, Client, ConnectionTo, Error, Lines, Responder};
+use futures::future::{BoxFuture, Shared};
+use futures::{FutureExt, StreamExt};
 use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
 use rig_harness::host::session::StoreOpener;
@@ -37,13 +38,13 @@ use crate::{Reply, session};
 const GRACE: Duration = Duration::from_secs(5);
 
 /// How the router starts a session's process: the program, and the
-/// arguments before `acp-session`'s. A test points it at its own binary.
+/// arguments before `acp-session`'s. The tests point it at their binary.
 #[derive(Resource, Clone, Debug)]
-pub struct SessionCommand {
+pub(crate) struct SessionCommand {
     /// The program.
-    pub program: PathBuf,
+    pub(crate) program: PathBuf,
     /// Its arguments.
-    pub args: Vec<OsString>,
+    pub(crate) args: Vec<OsString>,
 }
 
 /// The router's state, shared by its handlers.
@@ -63,10 +64,13 @@ struct Router {
 /// A session's process, as the router runs it.
 struct Child {
     cx: ConnectionTo<Agent>,
+    /// The number of its run directory, which tells this process from a
+    /// later one of the same session.
+    run: u64,
     /// Ends the connection, which closes the process's stdin.
     stop: Mutex<Option<oneshot::Sender<()>>>,
-    /// Answers once the process ended and was cleaned up.
-    gone: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Done once the process ended and was cleaned up, for every waiter.
+    gone: Shared<BoxFuture<'static, ()>>,
 }
 
 /// Locks `mutex`, whatever a panicking holder left.
@@ -80,11 +84,13 @@ impl Child {
         if let Some(stop) = locked(&self.stop).take() {
             stop.send(()).ok();
         }
-        let gone = locked(&self.gone).take();
-        if let Some(gone) = gone {
-            gone.await.ok();
-        }
+        self.gone.clone().await;
     }
+}
+
+/// `path` with its links resolved, else as it is.
+fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned())
 }
 
 /// An error the client gets for a request it made wrong.
@@ -153,17 +159,28 @@ impl Router {
             run.kill_left_groups().ok();
             std::fs::remove_dir_all(run.path()).ok();
             drop((run_lock, lock));
-            locked(&router.sessions).remove(&key);
+            let mut sessions = locked(&router.sessions);
+            if sessions.get(&key).is_some_and(|child| child.run == number) {
+                sessions.remove(&key);
+            }
         });
+        let gone = gone.map(drop).boxed().shared();
         let cx = connected
             .await
             .map_err(|_| internal("the session process did not start"))?;
         let child = Arc::new(Child {
             cx,
+            run: number,
             stop: Mutex::new(Some(stop)),
-            gone: Mutex::new(Some(gone)),
+            gone,
         });
-        locked(&self.sessions).insert(id.as_str().to_owned(), child.clone());
+        let mut sessions = locked(&self.sessions);
+        sessions.insert(id.as_str().to_owned(), child.clone());
+        // A process that ended before it was listed is no session.
+        if child.gone.clone().now_or_never().is_some() {
+            sessions.remove(id.as_str());
+        }
+        drop(sessions);
         Ok(child)
     }
 
@@ -171,7 +188,6 @@ impl Router {
     /// the client's `initialize` and then `request`, whose answer goes to
     /// the client in order with the process's updates: a loaded session's
     /// history before it, and what the session says once open after it.
-    #[expect(clippy::too_many_arguments, reason = "one request's parts")]
     async fn open<Request>(
         self: &Arc<Self>,
         id: SessionId,
@@ -223,7 +239,7 @@ impl Router {
                 cwd.display()
             )));
         }
-        Ok(std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_owned()))
+        Ok(canonical(cwd))
     }
 
     /// A new session in `cwd`, locked, with its directory written.
@@ -231,7 +247,7 @@ impl Router {
         let (id, dir) = self.home.new_session().map_err(internal)?;
         let lock = dir.hold().map_err(internal)?;
         let lock = lock.ok_or_else(|| internal(format!("session {id} is already running")))?;
-        std::fs::write(dir.directory(), cwd.to_string_lossy().as_bytes()).map_err(internal)?;
+        dir.set_working_directory(cwd).map_err(internal)?;
         Ok((id, lock))
     }
 
@@ -249,7 +265,7 @@ impl Router {
         let lock = lock.ok_or_else(|| invalid(format!("session {id} is open in another rig")))?;
         match dir.working_directory() {
             Some(directory) => {
-                let directory = std::fs::canonicalize(&directory).unwrap_or(directory);
+                let directory = canonical(&directory);
                 if directory != cwd {
                     return Err(invalid(format!(
                         "session {id} runs in {}, not {}",
@@ -259,8 +275,7 @@ impl Router {
                 }
             }
             None => {
-                std::fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())
-                    .map_err(internal)?;
+                dir.set_working_directory(cwd).map_err(internal)?;
             }
         }
         Ok((id, lock))
@@ -268,7 +283,7 @@ impl Router {
 
     /// The saved sessions, newest first, of `cwd` when given.
     fn list(&self, cwd: Option<&Path>) -> Vec<acp::SessionInfo> {
-        let cwd = cwd.map(|cwd| std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_owned()));
+        let cwd = cwd.map(canonical);
         let mut entries: Vec<SessionEntry> = self
             .home
             .saved_sessions()
@@ -276,8 +291,7 @@ impl Router {
             .filter_map(|(_, dir)| SessionEntry::read(dir, &self.stores))
             .filter(|entry| {
                 let directory = entry.directory.as_ref();
-                let directory =
-                    directory.map(|it| std::fs::canonicalize(it).unwrap_or_else(|_| it.clone()));
+                let directory = directory.map(|it| canonical(it));
                 cwd.is_none() || directory == cwd
             })
             .collect();
@@ -416,67 +430,45 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
         )
         .on_receive_request(
             async move |request: acp::NewSessionRequest, responder, cx| {
-                let router = new.clone();
-                cx.clone().spawn(async move {
-                    let reply = Arc::new(Reply::new(responder));
-                    let opened = async {
-                        refuse_directories(&request.additional_directories)?;
-                        let cwd = Router::cwd(&request.cwd)?;
-                        let (id, lock) = router.new_session(&cwd)?;
-                        let answer = reply.clone();
-                        router
-                            .open(id, &cwd, StartReason::New, lock, cx, request, answer)
-                            .await
-                    };
-                    if let Err(error) = opened.await {
-                        reply.send(Err(error));
-                    }
-                    Ok(())
-                })
+                let at = (request.cwd.clone(), request.additional_directories.clone());
+                let (reason, found) = (StartReason::New, |router: &Router, cwd: &Path| {
+                    router.new_session(cwd)
+                });
+                opening(new.clone(), cx, request, responder, at, reason, found)
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async move |request: acp::LoadSessionRequest, responder, cx| {
-                let router = load.clone();
-                cx.clone().spawn(async move {
-                    let reply = Arc::new(Reply::new(responder));
-                    let opened = async {
-                        refuse_directories(&request.additional_directories)?;
-                        let cwd = Router::cwd(&request.cwd)?;
-                        let (id, lock) = router.saved(&request.session_id, &cwd)?;
-                        let answer = reply.clone();
-                        router
-                            .open(id, &cwd, StartReason::Resumed, lock, cx, request, answer)
-                            .await
-                    };
-                    if let Err(error) = opened.await {
-                        reply.send(Err(error));
-                    }
-                    Ok(())
-                })
+                let at = (request.cwd.clone(), request.additional_directories.clone());
+                let id = request.session_id.clone();
+                let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
+                opening(
+                    load.clone(),
+                    cx,
+                    request,
+                    responder,
+                    at,
+                    StartReason::Resumed,
+                    found,
+                )
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async move |request: acp::ResumeSessionRequest, responder, cx| {
-                let router = resume.clone();
-                cx.clone().spawn(async move {
-                    let reply = Arc::new(Reply::new(responder));
-                    let opened = async {
-                        refuse_directories(&request.additional_directories)?;
-                        let cwd = Router::cwd(&request.cwd)?;
-                        let (id, lock) = router.saved(&request.session_id, &cwd)?;
-                        let answer = reply.clone();
-                        router
-                            .open(id, &cwd, StartReason::Resumed, lock, cx, request, answer)
-                            .await
-                    };
-                    if let Err(error) = opened.await {
-                        reply.send(Err(error));
-                    }
-                    Ok(())
-                })
+                let at = (request.cwd.clone(), request.additional_directories.clone());
+                let id = request.session_id.clone();
+                let found = move |router: &Router, cwd: &Path| router.saved(&id, cwd);
+                opening(
+                    resume.clone(),
+                    cx,
+                    request,
+                    responder,
+                    at,
+                    StartReason::Resumed,
+                    found,
+                )
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -538,6 +530,38 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
         .await;
     router.end().await;
     served
+}
+
+/// Answers a request that opens a session in a task of its own: in the
+/// client's directory `at` (the session's, and any others, which rig does
+/// not take), the session `found` finds there and locks.
+fn opening<Request>(
+    router: Arc<Router>,
+    cx: ConnectionTo<Client>,
+    request: Request,
+    responder: Responder<Request::Response>,
+    (cwd, others): (PathBuf, Vec<PathBuf>),
+    reason: StartReason,
+    found: impl FnOnce(&Router, &Path) -> Result<(SessionId, File), Error> + Send + 'static,
+) -> Result<(), Error>
+where
+    Request: agent_client_protocol::JsonRpcRequest + Send + 'static,
+{
+    cx.clone().spawn(async move {
+        let reply = Arc::new(Reply::new(responder));
+        let opened = async {
+            refuse_directories(&others)?;
+            let cwd = Router::cwd(&cwd)?;
+            let (id, lock) = found(&router, &cwd)?;
+            router
+                .open(id, &cwd, reason, lock, cx, request, reply.clone())
+                .await
+        };
+        if let Err(error) = opened.await {
+            reply.send(Err(error));
+        }
+        Ok(())
+    })
 }
 
 /// Refuses directories besides the session's, which rig does not take.
@@ -659,16 +683,17 @@ fn runs(home: &Home) -> std::io::Result<Runs> {
     })
 }
 
-/// This program, linked into `runs` so a build that replaces it leaves one
-/// to start, with the router's options and without its command.
+/// This program, linked (else copied) into `runs` so a build that replaces
+/// it leaves one to start, with the router's options and without its
+/// command.
 fn own_command(world: &World, runs: &Runs) -> std::io::Result<SessionCommand> {
     let exe = std::env::current_exe()?;
-    let linked = runs.path.join("rig-agent");
-    std::fs::remove_file(&linked).ok();
-    let program = match std::fs::hard_link(&exe, &linked) {
-        Ok(()) => linked,
-        Err(_) => exe,
-    };
+    let program = runs.path.join("rig-agent");
+    std::fs::remove_file(&program).ok();
+    // A copy where a link cannot be made, such as on another file system.
+    if std::fs::hard_link(&exe, &program).is_err() {
+        std::fs::copy(&exe, &program)?;
+    }
     let args = world
         .get_resource::<Invoked>()
         .map(|invoked| {

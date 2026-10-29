@@ -8,14 +8,21 @@ use bevy_ecs::system::SystemParam;
 use rig_basics::approval::{ALLOW, DENY, NeedsApproval};
 use rig_harness::pick::{Pick, Picker};
 use rig_harness::prelude::*;
+use rig_harness::services::WorkDir;
 
 use super::output::Out;
 use super::{Request, Session};
 use crate::translate;
 
+#[cfg(test)]
+mod tests;
+
 /// Why a question the client cannot show is closed, for the model.
 const UNSHOWN: &str = "The client cannot show this question. Go on without an answer: make \
                        reasonable assumptions and say what you assumed.";
+
+/// How many of a picker's commands a note lists.
+const PICKS: usize = 10;
 
 /// The form field of a question's choices, and of its typed answer.
 const CHOICE: &str = "choice";
@@ -25,8 +32,10 @@ const TEXT: &str = "text";
 #[derive(SystemParam)]
 pub(crate) struct Asking<'w, 's> {
     asks: Query<'w, 's, (&'static Ask, Option<&'static HoldOf>, &'static mut Decision)>,
-    approvals: Query<'w, 's, (), With<NeedsApproval>>,
-    calls: Query<'w, 's, &'static ToolRequest>,
+    approvals: Query<'w, 's, &'static NeedsApproval>,
+    calls: Query<'w, 's, (&'static ToolRequest, &'static ForAgent)>,
+    dirs: Query<'w, 's, &'static WorkDir>,
+    root: Res<'w, ProjectRoot>,
 }
 
 impl Asking<'_, '_> {
@@ -36,15 +45,20 @@ impl Asking<'_, '_> {
             return;
         };
         let held = hold.map(|&HoldOf(effect)| effect);
+        let approval = held.and_then(|effect| self.approvals.get(effect).ok());
         let call = held
-            .filter(|effect| self.approvals.contains(*effect))
+            .filter(|_| approval.is_some())
             .and_then(|effect| self.calls.get(effect).ok());
         out.stream();
         let session = &mut *out.session;
         let (id, cx) = (session.id.clone(), session.cx.clone());
         let (sender, wake) = (session.sender.clone(), session.wake.clone());
-        let task = if let Some(request) = call {
-            let tool = translate::tool_status(&request.call, acp::ToolCallStatus::Pending);
+        let task = if let Some((request, &ForAgent(agent))) = call {
+            // The call in full: a subagent's was never shown.
+            let cwd = translate::cwd_of(self.dirs.get(agent).ok(), &self.root);
+            let reasons = approval.into_iter().flat_map(|needs| &needs.reasons);
+            let reasons: Vec<_> = reasons.map(|reason| reason.text.as_str()).collect();
+            let tool = translate::tool_asked(&request.call, &cwd, &reasons.join("\n"));
             let options = vec![
                 acp::PermissionOption::new(ALLOW, "Allow", acp::PermissionOptionKind::AllowOnce),
                 acp::PermissionOption::new(DENY, "Deny", acp::PermissionOptionKind::RejectOnce),
@@ -135,20 +149,27 @@ fn answer(ask: &Ask, action: acp::ElicitationAction) -> Option<Answer> {
         return None;
     };
     let content = accepted.content.unwrap_or_default();
+    // Several choices may be none of them.
     let choices = match content.get(CHOICE) {
-        Some(acp::ElicitationContentValue::String(choice)) => vec![choice.clone()],
-        Some(acp::ElicitationContentValue::StringArray(choices)) => choices.clone(),
-        _ => Vec::new(),
+        Some(acp::ElicitationContentValue::String(choice)) => Some(vec![choice.clone()]),
+        Some(acp::ElicitationContentValue::StringArray(choices)) if ask.multiple => {
+            Some(choices.clone())
+        }
+        _ => None,
     };
     let offered = |choice: &String| ask.choices.iter().any(|offered| &offered.id == choice);
-    if !choices.iter().all(offered) {
+    if !choices.iter().flatten().all(offered) {
         return None;
     }
     let text = match content.get(TEXT) {
         Some(acp::ElicitationContentValue::String(text)) if ask.free_text => Some(text.clone()),
         _ => None,
     };
-    (!choices.is_empty() || text.is_some()).then_some(Answer { choices, text })
+    let answered = choices.is_some() || text.is_some();
+    answered.then(|| Answer {
+        choices: choices.unwrap_or_default(),
+        text,
+    })
 }
 
 /// Answers the question on `ask` as the client did, or closes it; a
@@ -182,11 +203,31 @@ pub(super) fn picker(
     let Ok(picker) = pickers.get(added.entity) else {
         return;
     };
-    let text = format!(
-        "{}: this client cannot show a list to pick from; type the command with what you pick, \
-         such as /model <name>.",
-        picker.title
-    );
+    // A secret, such as an API key, is typed only where rig hides it.
+    let text = match (picker.secret, picker.items.as_slice()) {
+        (true, _) => format!(
+            "{}: type it in rig in a terminal, where it is hidden as you type; this client \
+             would show it.",
+            picker.title
+        ),
+        (false, []) => format!(
+            "{}: this client cannot show this question; answer it in rig in a terminal.",
+            picker.title
+        ),
+        (false, items) => {
+            let shown: Vec<_> = items
+                .iter()
+                .take(PICKS)
+                .map(|item| item.command.as_str())
+                .collect();
+            let more = if items.len() > PICKS { ", …" } else { "" };
+            format!(
+                "{}: this client cannot show a list to pick from; type one of: {}{more}",
+                picker.title,
+                shown.join(", ")
+            )
+        }
+    };
     session.note(text, NoticeLevel::Warn);
     commands.trigger(Pick::person(added.entity, None));
 }

@@ -5,22 +5,6 @@
 
 use super::*;
 
-/// The live processes of `place`: the sessions, and the tools they started.
-fn processes_of(place: &Place) -> Vec<u32> {
-    let root = place.root.to_string_lossy().into_owned();
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
-        .filter(|pid| {
-            std::fs::read(format!("/proc/{pid}/environ"))
-                .is_ok_and(|environ| String::from_utf8_lossy(&environ).contains(&root))
-        })
-        .filter(|pid| alive(*pid))
-        .collect()
-}
-
 /// The process running `session`.
 fn process_of(place: &Place, session: &acp::SessionId) -> Option<u32> {
     let mark = format!("RIG_SESSION={session}");
@@ -33,22 +17,23 @@ fn process_of(place: &Place, session: &acp::SessionId) -> Option<u32> {
     })
 }
 
-/// Whether a tool's `sleep` of `place` runs.
-fn sleeping(place: &Place) -> bool {
+/// Whether an MCP server of `place` runs.
+fn serving(place: &Place) -> bool {
     processes_of(place).into_iter().any(|pid| {
         std::fs::read(format!("/proc/{pid}/cmdline"))
-            .is_ok_and(|line| String::from_utf8_lossy(&line).contains("sleep"))
+            .is_ok_and(|line| String::from_utf8_lossy(&line).contains("mcp_stub"))
     })
 }
 
-#[cfg(target_os = "linux")]
 #[test]
 fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves() {
     let place = Place::new("killed");
     let place = &place;
     let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        // The first's MCP server outlives the end of its input.
+        let stays = vec![acp::EnvVariable::new(STAYS, "1")];
         let (first, second) = (
-            driven.new_session(Vec::new()).await,
+            driven.new_session(vec![stub_with("files", stays)]).await,
             driven.new_session(Vec::new()).await,
         );
         assert!(first.is_some() && second.is_some(), "no sessions");
@@ -59,7 +44,7 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
         assert!(driven.model(&first, "test/wait").await);
         let request = acp::PromptRequest::new(first.clone(), vec!["Wait.".into()]);
         let prompt = driven.cx.send_request(request);
-        assert!(driven.until(|_| sleeping(place)).await);
+        assert!(driven.until(|_| sleeping(place) && serving(place)).await);
         let pid = process_of(place, &first);
         assert!(pid.is_some(), "no process runs {first}");
         let Some(pid) = pid else { return };
@@ -68,7 +53,7 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
             .status()
             .ok();
         assert!(prompt.block_task().await.is_err());
-        assert!(eventually(|| !sleeping(place)));
+        assert!(eventually(|| !sleeping(place) && !serving(place)));
         assert!(driven.model(&second, "test/reply").await);
         assert_eq!(
             driven.prompt(&second, "Hello.").await.ok(),
@@ -89,21 +74,21 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
     assert!(eventually(|| processes_of(place).is_empty()));
 }
 
-#[cfg(target_os = "linux")]
 #[test]
 fn sigterm_ends_the_router_its_sessions_and_their_tools() {
     let place = Place::new("sigterm");
     let place = &place;
     let mut pid = None;
     let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
-        let new = driven.new_session(Vec::new()).await;
+        let stays = vec![acp::EnvVariable::new(STAYS, "1")];
+        let new = driven.new_session(vec![stub_with("files", stays)]).await;
         assert!(new.is_some(), "no session");
         let Some(new) = new else { return };
         let id = new.session_id;
         assert!(driven.model(&id, "test/wait").await);
         let request = acp::PromptRequest::new(id.clone(), vec!["Wait.".into()]);
         let prompt = driven.cx.send_request(request);
-        assert!(driven.until(|_| sleeping(place)).await);
+        assert!(driven.until(|_| sleeping(place) && serving(place)).await);
         pid = driven.router;
         if let Some(pid) = pid {
             std::process::Command::new("kill")

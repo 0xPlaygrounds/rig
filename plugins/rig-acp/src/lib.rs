@@ -22,9 +22,6 @@ mod session;
 #[cfg(not(target_family = "wasm"))]
 mod translate;
 
-#[cfg(not(target_family = "wasm"))]
-pub use router::SessionCommand;
-
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests;
 

@@ -16,7 +16,7 @@ mod options;
 mod output;
 mod questions;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
 use agent_client_protocol::schema::v1 as acp;
@@ -29,15 +29,22 @@ use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
 use rig_harness::rig_memory::summarized_in_log;
+use rig_harness::services::WorkDir;
 use rig_mcp_client::{AddMcpServer, ServerSpec};
 
 use crate::{Reply, translate};
+
+#[cfg(test)]
+mod tests;
 
 /// The command that runs a session, which `rig acp` starts.
 pub(crate) const FRONT: &str = "acp-session";
 
 /// How long the process waits for the request that opens its session.
 const OPENING: Duration = Duration::from_secs(60);
+
+/// How often that wait looks for the request, and for a signal.
+const WAIT: Duration = Duration::from_millis(5);
 
 /// What the ACP connection hands the app.
 pub(crate) enum Request {
@@ -107,6 +114,8 @@ pub(crate) struct Session {
     /// prompt's reply: some clients show agent text only during a prompt.
     notes: Vec<String>,
     prompt: Option<Pending>,
+    /// The client's close, answered once the prompt it cancelled is.
+    closing: Option<Reply<acp::CloseSessionResponse>>,
     /// The tasks asking the client a question, by the question's entity.
     asking: HashMap<Entity, tokio::task::AbortHandle>,
     requests: Receiver<Request>,
@@ -118,7 +127,7 @@ pub(crate) struct Session {
 /// The prompt the app works on.
 struct Pending {
     reply: Reply<acp::PromptResponse>,
-    /// How the main agent's last turn since it ended.
+    /// How the main agent's last turn ended.
     ended: Option<TurnOutcome>,
     cancelled: bool,
 }
@@ -197,11 +206,13 @@ pub(crate) fn install(app: &mut App) {
     let deadline = Instant::now() + OPENING;
     let (mut init, mut opening) = (None, None);
     while (init.is_none() || opening.is_none()) && Instant::now() < deadline && !signalled() {
-        match requests.recv_blocking_timeout(Duration::from_millis(100)) {
+        // `finish` runs within rig's runtime, which it cannot block on.
+        match requests.try_recv() {
             Ok(Request::Init(client, cx)) => init = Some((client, cx)),
             Ok(Request::Open(open)) => opening = Some(open),
-            Ok(Request::Ended) | Err(RecvTimeout::Closed) => break,
-            Ok(_) | Err(RecvTimeout::Timeout) => {}
+            Ok(Request::Ended) | Err(async_channel::TryRecvError::Closed) => break,
+            Ok(_) => {}
+            Err(async_channel::TryRecvError::Empty) => std::thread::sleep(WAIT),
         }
     }
     let (Some((client, cx)), Some(opening)) = (init, opening) else {
@@ -220,6 +231,7 @@ pub(crate) fn install(app: &mut App) {
         held: Vec::new(),
         notes: Vec::new(),
         prompt: None,
+        closing: None,
         asking: HashMap::new(),
         requests,
         sender,
@@ -253,48 +265,17 @@ pub(crate) fn install(app: &mut App) {
     app.world_mut().spawn(Answerer::default());
 }
 
-/// Why a blocking receive ended without a request.
-enum RecvTimeout {
-    Timeout,
-    Closed,
-}
-
-/// Receiving with a timeout, which async-channel lacks.
-trait RecvTimeoutExt<T> {
-    fn recv_blocking_timeout(&self, wait: Duration) -> Result<T, RecvTimeout>;
-}
-
-impl<T> RecvTimeoutExt<T> for Receiver<T> {
-    fn recv_blocking_timeout(&self, wait: Duration) -> Result<T, RecvTimeout> {
-        let deadline = Instant::now() + wait;
-        loop {
-            match self.try_recv() {
-                Ok(item) => return Ok(item),
-                Err(async_channel::TryRecvError::Closed) => return Err(RecvTimeout::Closed),
-                Err(async_channel::TryRecvError::Empty) if Instant::now() >= deadline => {
-                    return Err(RecvTimeout::Timeout);
-                }
-                Err(async_channel::TryRecvError::Empty) => {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-            }
-        }
-    }
-}
-
 /// One of the client's MCP servers as rig-mcp-client takes it; `None` for
 /// one of a kind ACP may add later.
 fn mcp_server(server: &acp::McpServer) -> Option<AddMcpServer> {
     let (name, spec) = match server {
         acp::McpServer::Stdio(stdio) => {
-            let env = stdio
-                .env
-                .iter()
-                .map(|var| (var.name.clone(), var.value.clone()));
+            // An environment's names are alike in any case on Windows.
+            let env = stdio.env.iter().map(|var| (&var.name, &var.value));
             let spec = ServerSpec::Stdio {
                 command: stdio.command.to_string_lossy().into_owned(),
                 args: stdio.args.clone(),
-                env: env.collect(),
+                env: last_of(env, cfg!(windows)),
                 cwd: None,
             };
             (stdio.name.clone(), Ok(spec))
@@ -303,10 +284,10 @@ fn mcp_server(server: &acp::McpServer) -> Option<AddMcpServer> {
             let headers = http
                 .headers
                 .iter()
-                .map(|header| (header.name.clone(), header.value.clone()));
+                .map(|header| (&header.name, &header.value));
             let spec = ServerSpec::Http {
                 url: http.url.clone(),
-                headers: headers.collect(),
+                headers: last_of(headers, true),
             };
             (http.name.clone(), Ok(spec))
         }
@@ -317,6 +298,20 @@ fn mcp_server(server: &acp::McpServer) -> Option<AddMcpServer> {
         _ => return None,
     };
     Some(AddMcpServer { name, spec })
+}
+
+/// `pairs` as a map, a later pair of a name replacing an earlier one, names
+/// alike in any case when `any_case`.
+fn last_of<'a>(
+    pairs: impl Iterator<Item = (&'a String, &'a String)>,
+    any_case: bool,
+) -> BTreeMap<String, String> {
+    let mut kept: Vec<(String, String)> = Vec::new();
+    for (name, value) in pairs {
+        kept.retain(|(had, _)| had != name && !(any_case && had.eq_ignore_ascii_case(name)));
+        kept.push((name.clone(), value.clone()));
+    }
+    kept.into_iter().collect()
 }
 
 /// Serves ACP on stdio until the connection ends, handing each request to
@@ -403,20 +398,41 @@ struct Requested<'w, 's> {
     commands: Commands<'w, 's>,
 }
 
-/// Carries out what the client asked since the last frame.
-fn requests_in(mut requested: Requested, mut options: options::Options) {
-    while let Ok(request) = requested.session.requests.try_recv() {
+/// Carries out what the client asked since the last frame. While a change
+/// of an option waits for its answer, the requests after it wait too, so
+/// they see it.
+fn requests_in(
+    mut requested: Requested,
+    mut options: options::Options,
+    changing: Option<Res<options::Changing>>,
+) {
+    let mut changing = changing.is_some();
+    while !changing && let Ok(request) = requested.session.requests.try_recv() {
         match request {
             Request::Prompt(prompt, reply) => requested.prompt(prompt, reply),
             Request::Cancel => requested.cancel(),
             Request::Config(change, reply) => match options.set(&change) {
-                Ok(()) => requested.commands.insert_resource(options::Changing(reply)),
+                Ok((option, value)) => {
+                    let asked = options::Changing {
+                        reply,
+                        option,
+                        value,
+                    };
+                    requested.commands.insert_resource(asked);
+                    changing = true;
+                }
                 Err(why) => reply.send(Err(why)),
             },
             Request::Close(reply) => {
                 requested.cancel();
-                reply.send(Ok(acp::CloseSessionResponse::new()));
-                requested.commands.trigger(Exit(ExitReason::Quit));
+                // The prompt it cancels is answered first ([`settle`]).
+                match requested.session.prompt.is_some() {
+                    true => requested.session.closing = Some(reply),
+                    false => {
+                        reply.send(Ok(acp::CloseSessionResponse::new()));
+                        requested.commands.trigger(Exit(ExitReason::Quit));
+                    }
+                }
             }
             Request::Answered(ask, answer) => {
                 questions::answer_with(&mut requested.commands, ask, answer);
@@ -447,6 +463,12 @@ impl Requested<'_, '_> {
             }
             _ => None,
         });
+        if let Some(MessagePart::Text(text)) = parts.first()
+            && text.trim() == "/quit"
+        {
+            let why = "an editor's session ends when the editor closes it, not with /quit";
+            return reply.send(Err(Error::invalid_request().data(why)));
+        }
         let (connected, refused) = self.agents.get(agent).unwrap_or((false, None));
         if command != Some(true) && !connected {
             let why = refused.map_or(
@@ -492,6 +514,7 @@ struct Opened<'w, 's> {
             &'static AgentId,
             &'static Conversation,
             Option<&'static ModelChoice>,
+            Option<&'static WorkDir>,
         ),
     >,
     store: Option<Res<'w, SessionStore>>,
@@ -511,7 +534,7 @@ fn open(mut opened: Opened) {
     let (Some(agent), true) = (agent, ready && opened.session.opening.is_some()) else {
         return;
     };
-    let Ok((id, conversation, chosen)) = opened.agents.get(agent) else {
+    let Ok((id, conversation, chosen, work)) = opened.agents.get(agent) else {
         return;
     };
     // A new session's agent gets the first model it can reach, as a
@@ -537,7 +560,8 @@ fn open(mut opened: Opened) {
                 .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
                 .map(|summarized| summarized.replaced)
                 .unwrap_or_default();
-            translate::replay(conversation, &replaced, &opened.root.0)
+            let cwd = translate::cwd_of(work, &opened.root);
+            translate::replay(conversation, &replaced, &cwd)
         }
         _ => Vec::new(),
     };
@@ -574,12 +598,11 @@ fn open(mut opened: Opened) {
 const LEFT_OUT: [&str; 5] = ["new", "resume", "reload", "plugins", "quit"];
 
 /// Stops a cancelled prompt's work: its message, declined if no turn took
-/// it yet, and as they run, the main agent's turn and those of the agents
-/// it started.
+/// it yet, and while any turn runs, the main agent's and those below it.
 fn stop_cancelled(
     session: Res<Session>,
     primary: MainAgentQuery,
-    working: Query<(Entity, Option<&SpawnedBy>), With<ActiveTurn>>,
+    working: Query<(), With<ActiveTurn>>,
     mut messages: Query<&mut Decision, (With<Prompted>, Without<Started>)>,
     mut commands: Commands,
 ) {
@@ -593,10 +616,9 @@ fn stop_cancelled(
     for mut decision in &mut messages {
         decision.decide(Decider::plugin("rig-acp"), Outcome::custom("cancelled"));
     }
-    for (working, by) in &working {
-        if working == agent || by.is_some_and(|&SpawnedBy(parent)| parent == agent) {
-            commands.trigger(StopTurn::new(working));
-        }
+    // Stopping the main agent stops the agents below it, idle or not.
+    if !working.is_empty() {
+        commands.trigger(StopTurn::new(agent));
     }
 }
 
@@ -618,7 +640,7 @@ fn ended(
 }
 
 /// Answers the prompt once the work it started settled.
-fn settle(work: Work, mut out: output::Out) {
+fn settle(work: Work, mut out: output::Out, mut commands: Commands) {
     if !work.idle() || out.session.prompt.is_none() {
         return;
     }
@@ -635,4 +657,8 @@ fn settle(work: Work, mut out: output::Out) {
         (false, _) => Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)),
     };
     prompt.reply.send(answer);
+    if let Some(closing) = out.session.closing.take() {
+        closing.send(Ok(acp::CloseSessionResponse::new()));
+        commands.trigger(Exit(ExitReason::Quit));
+    }
 }

@@ -118,10 +118,34 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
         assert!(new.is_some(), "no session");
         let Some(new) = new else { return };
         let id = new.session_id;
-        assert!(driven.model(&id, "test/read").await);
+        // Two changes sent at once are both answered, the second after the
+        // first took effect.
+        let change = |config: &str, value: &str| {
+            let value = acp::SessionConfigOptionValue::value_id(value.to_owned());
+            let request =
+                acp::SetSessionConfigOptionRequest::new(id.clone(), config.to_owned(), value);
+            driven.cx.send_request(request)
+        };
+        let (model, reasoning) = (change("model", "test/read"), change("reasoning", "default"));
+        let (model, reasoning) = (model.block_task().await, reasoning.block_task().await);
+        assert!(
+            model.is_ok() && reasoning.is_ok(),
+            "{model:?} {reasoning:?}"
+        );
         let answer = driven.prompt(&id, "Read the fixture.").await;
-        let before = driven.updates(&id).len();
         assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
+        // Every update of the turn came before its answer.
+        let events = driven.seen().events.clone();
+        let answered = events
+            .iter()
+            .position(|event| matches!(event, Event::Answered(of) if *of == id));
+        let last = events
+            .iter()
+            .rposition(|event| matches!(event, Event::Update(of, _) if *of == id));
+        assert!(
+            answered.is_some() && last < answered,
+            "{answered:?} {last:?}"
+        );
         let steps = tool_steps(driven, &id);
         let expected = [
             acp::ToolCallStatus::Pending,
@@ -158,8 +182,6 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
         let output = driven.updates(&id).into_iter().any(|update| matches!(update,
             acp::SessionUpdate::ToolCallUpdate(update) if format!("{:?}", update.fields.content).contains("fixture text")));
         assert!(output);
-        // Nothing of the turn came after its answer.
-        assert_eq!(driven.updates(&id).len(), before);
         assert_eq!(
             driven.prompt(&id, "/mcp").await.ok(),
             Some(acp::StopReason::EndTurn)
@@ -241,12 +263,36 @@ fn cancel_stops_a_running_tool_and_one_sent_with_the_prompt() {
             })
         };
         assert!(driven.until(running).await);
+        #[cfg(target_os = "linux")]
+        assert!(driven.until(|_| sleeping(&place)).await);
         driven
             .cx
             .send_notification(acp::CancelNotification::new(id.clone()))
             .ok();
         let answer = prompt.block_task().await.map(|answer| answer.stop_reason);
         assert_eq!(answer.ok(), Some(acp::StopReason::Cancelled));
+        #[cfg(target_os = "linux")]
+        assert!(eventually(|| !sleeping(&place)));
+        // Closing a session cancels its prompt first, and frees it to load.
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/wait").await);
+        let prompt = tokio::spawn(driven.send(&id, "Wait."));
+        let running = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCallUpdate(update))
+                if *of == id && update.fields.status == Some(acp::ToolCallStatus::InProgress))
+            })
+        };
+        assert!(driven.until(running).await);
+        let close = acp::CloseSessionRequest::new(id.clone());
+        assert!(driven.cx.send_request(close).block_task().await.is_ok());
+        let answer = prompt.await.ok().and_then(Result::ok);
+        assert_eq!(answer, Some(acp::StopReason::Cancelled));
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.cx.send_request(load).block_task().await.is_ok());
         // A prompt cancelled as it is sent is cancelled too.
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");

@@ -13,7 +13,11 @@ use rig_harness::rig_core::completion::message::{
     ToolResult as SavedResult, ToolResultContent, UserContent,
 };
 use rig_harness::rig_core::conversation::{Conversation, Entry, MessageId};
+use rig_harness::services::WorkDir;
 use serde_json::Value;
+
+#[cfg(test)]
+mod tests;
 
 /// The ACP kind of rig's tool `name`.
 fn kind(name: &str) -> acp::ToolKind {
@@ -37,15 +41,18 @@ fn title(name: &str, args: &Value) -> String {
 }
 
 /// The file a call's `path` names, made absolute against `cwd`; none for a
-/// path on another host (`host:path`), which is not on this machine.
+/// path on another host (`host:path`), which is not on this machine, or in
+/// the home directory (`~`), which rig's tools resolve and ACP has no word
+/// for. A drive letter (`C:`) is no host.
 fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return Vec::new();
     };
-    let remote = path
-        .split_once(':')
-        .is_some_and(|(host, _)| !host.is_empty() && !host.contains('/'));
-    if remote {
+    let remote = path.split_once(':').is_some_and(|(host, _)| {
+        let drive = host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic());
+        !host.is_empty() && !host.contains(['/', '\\']) && !drive
+    });
+    if remote || path.starts_with('~') {
         return Vec::new();
     }
     vec![acp::ToolCallLocation::new(cwd.join(path))]
@@ -60,6 +67,29 @@ pub(crate) fn tool_call(call: &ToolCall, cwd: &Path) -> acp::ToolCall {
         .status(acp::ToolCallStatus::Pending)
         .locations(locations(&args, cwd))
         .raw_input(args)
+}
+
+/// A call as a question about it shows it: all it is, still pending, and
+/// `why` it is asked about.
+pub(crate) fn tool_asked(call: &ToolCall, cwd: &Path, why: &str) -> acp::ToolCallUpdate {
+    let name = call.function.name.as_str();
+    let args = call.function.arguments_value();
+    let block = acp::ContentBlock::from(why.to_owned());
+    let reasons = acp::ToolCallContent::Content(acp::Content::new(block));
+    let fields = acp::ToolCallUpdateFields::new()
+        .title(title(name, &args))
+        .kind(kind(name))
+        .status(acp::ToolCallStatus::Pending)
+        .locations(locations(&args, cwd))
+        .content((!why.is_empty()).then(|| vec![reasons]))
+        .raw_input(args);
+    acp::ToolCallUpdate::new(call.id.wire().into_owned(), fields)
+}
+
+/// The directory an agent's relative paths start from: its [`WorkDir`],
+/// else the project's.
+pub(crate) fn cwd_of(work: Option<&WorkDir>, root: &ProjectRoot) -> std::path::PathBuf {
+    work.map_or_else(|| root.0.clone(), |WorkDir(dir)| dir.clone())
 }
 
 /// A call's update to `status`.
@@ -284,7 +314,8 @@ fn attachment(data: &str, mime: &str, label: &str) -> Result<MessagePart, Refuse
     }))
 }
 
-/// A blob's text, when its type is text: `text/*`, JSON, XML or YAML.
+/// A blob's text, when its type is text: `text/*`, JSON, XML, YAML or
+/// JavaScript.
 fn text_blob(blob: &str, mime: &str) -> Option<String> {
     let textual = mime.starts_with("text/")
         || ["json", "xml", "yaml", "javascript"]

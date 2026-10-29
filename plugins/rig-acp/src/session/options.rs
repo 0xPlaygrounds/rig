@@ -81,7 +81,10 @@ impl Options<'_, '_> {
     /// Changes the option `change` names, if the value is one it offers and
     /// no turn runs; the answer follows once the model connected or was
     /// refused ([`changed`]).
-    pub(super) fn set(&mut self, change: &acp::SetSessionConfigOptionRequest) -> Result<(), Error> {
+    pub(super) fn set(
+        &mut self,
+        change: &acp::SetSessionConfigOptionRequest,
+    ) -> Result<(String, String), Error> {
         let invalid = |why: String| Error::invalid_params().data(why);
         let agent = main_agent(&self.primary).ok_or_else(|| invalid("no agent".to_owned()))?;
         let (chosen, _, busy) = self
@@ -127,27 +130,34 @@ impl Options<'_, '_> {
             }
             other => return Err(invalid(format!("no option `{other}`"))),
         }
-        Ok(())
+        Ok((change.config_id.to_string(), value))
     }
 }
 
-/// A change the client asked for, answered once it took effect.
+/// A change the client asked for, answered once it took effect: the
+/// option and the value it asked for.
 #[derive(Resource)]
-pub(super) struct Changing(pub(super) Reply<acp::SetSessionConfigOptionResponse>);
+pub(super) struct Changing {
+    pub(super) reply: Reply<acp::SetSessionConfigOptionResponse>,
+    pub(super) option: String,
+    pub(super) value: String,
+}
 
 /// Answers a change the client asked for, with the options as they are
-/// now, or the refusal of the model it chose; and tells the client the
-/// options changed when anything else changed them, such as `/model`.
+/// now, or why it did not take effect, such as the refusal of the model it
+/// chose; and tells the client the options changed when anything else
+/// changed them, such as `/model`.
 pub(super) fn changed(
     changing: Option<Res<Changing>>,
-    agents: Query<
-        (Entity, Option<&ModelRefused>),
+    changes: Query<
+        (),
         Or<(
             Changed<ModelChoice>,
             Changed<ReasoningSetting>,
             Added<ModelRefused>,
         )>,
     >,
+    refusals: Query<&ModelRefused>,
     options: Options,
     mut session: ResMut<Session>,
     mut commands: Commands,
@@ -155,24 +165,31 @@ pub(super) fn changed(
     let Some(agent) = main_agent(&options.primary) else {
         return;
     };
-    let current = || options.of(agent);
+    let current = options.of(agent);
     if let Some(changing) = changing {
         commands.remove_resource::<Changing>();
-        let refused = agents.get(agent).ok().and_then(|(_, refused)| refused);
-        match refused {
-            Some(ModelRefused(why)) => {
-                changing
-                    .0
-                    .send(Err(Error::invalid_params().data(why.clone())));
+        // The requests that waited for it go on.
+        session.wake.wake();
+        let took = current.iter().any(|option| {
+            let value = match &option.kind {
+                acp::SessionConfigKind::Select(select) => Some(select.current_value.to_string()),
+                _ => None,
+            };
+            option.id.to_string() == changing.option && value.as_ref() == Some(&changing.value)
+        });
+        let answer = match (took, refusals.get(agent)) {
+            (_, Ok(ModelRefused(why))) => Err(Error::invalid_params().data(why.clone())),
+            (true, Err(_)) => Ok(acp::SetSessionConfigOptionResponse::new(current)),
+            (false, Err(_)) => {
+                let why = "rig did not change it: its notice says why";
+                Err(Error::invalid_params().data(why))
             }
-            None => changing
-                .0
-                .send(Ok(acp::SetSessionConfigOptionResponse::new(current()))),
-        }
+        };
+        changing.reply.send(answer);
         return;
     }
-    if session.opening.is_none() && agents.contains(agent) {
-        let update = acp::ConfigOptionUpdate::new(current());
+    if session.opening.is_none() && changes.contains(agent) {
+        let update = acp::ConfigOptionUpdate::new(current);
         session.send(acp::SessionUpdate::ConfigOptionUpdate(update));
     }
 }
