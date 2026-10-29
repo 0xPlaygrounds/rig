@@ -130,7 +130,8 @@ fn a_focused_panel_takes_its_keys_and_esc_gives_them_back() {
     app.world_mut().entity_mut(panel).remove::<TuiPanel>();
     // At once, so nothing drawn before the next key says a panel has them.
     assert_eq!(app.world().resource::<KeyFocus>().0, None);
-    press(&mut app, "y");
+    // Up in the input went to the start of its line.
+    press(&mut app, "end y");
     assert_eq!(typed(&app), "xy");
     // Only a panel takes the keys.
     let other = app.world_mut().spawn_empty().id();

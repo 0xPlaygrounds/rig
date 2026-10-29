@@ -677,6 +677,8 @@ fn act(
         _ => {}
     }
     match action {
+        // An answer is not a prompt for the history to keep.
+        Do::Clear if editing.is_some() => drop(input.take()),
         Do::Clear => input.clear(),
         Do::Exit if input.is_empty() => commands.trigger(Exit(ExitReason::Quit)),
         Do::Exit => {}
@@ -718,6 +720,8 @@ fn act(
             let state = pane.as_mut().map(|(_, state)| &mut **state);
             send(view, input, state, context.agent, commands, true);
         }
+        // Tab on a prompt of the history makes it the person's to complete.
+        Do::Tab if view.completion.is_none() => input.stop_browsing(),
         Do::Tab => accept_completion(view, input),
         Do::Send => {
             // Enter completes a partly typed command or path first.

@@ -464,6 +464,7 @@ fn send_to_agent(
         chat.last_answer().filter(|answer| !answer.is_empty()),
         input,
     ) {
+        input.clear();
         input.set(answer.to_owned());
     }
     close(&mut chat, &mut commands);

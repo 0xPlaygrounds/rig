@@ -5,10 +5,12 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
+use rig_core::redact;
 use rig_ecs::agent::{Agent, Conversation};
 use rig_harness::prelude::{Files, PluginData, ShownAgent};
 use rig_tools::attach::typed_prompts;
 
+use super::editor::Editor;
 use super::jsonl::{self, Kept};
 
 /// The file of the history in its [`PromptHistory::file`].
@@ -20,7 +22,8 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// included.
 ///
 /// The view loads it in `PreStartup`, puts each prompt [`Sent`] as the
-/// newest in [`HistorySystems::Record`], and in [`HistorySystems::Save`]
+/// newest in [`HistorySystems::Record`], after the text an [`Editor`]
+/// dropped unsent (its secrets redacted), and in [`HistorySystems::Save`]
 /// adds to the file those recorded since that are still in `entries`,
 /// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
 /// the two, such as to keep secrets out. After another agent is shown,
@@ -137,8 +140,8 @@ pub(crate) fn seed_shown(
 /// `Update`, in this order, and seeds them in [`TuiKeys`](crate::TuiKeys).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HistorySystems {
-    /// Puts the prompts sent this frame as the newest of
-    /// [`PromptHistory::entries`], moving any already there.
+    /// Puts the text editors dropped and the prompts sent this frame as
+    /// the newest of [`PromptHistory::entries`], moving any already there.
     Record,
     /// Saves the prompts recorded that are still there.
     Save,
@@ -158,9 +161,21 @@ pub enum HistorySystems {
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct Sent(pub String);
 
-/// Adds each prompt sent to the history as the newest.
-pub(crate) fn record(mut sent: MessageReader<Sent>, mut history: ResMut<PromptHistory>) {
-    for Sent(text) in sent.read() {
+/// Adds the text each [`Editor`] dropped unsent, with secrets redacted, then
+/// each prompt sent, to the history as the newest.
+pub(crate) fn record(
+    mut sent: MessageReader<Sent>,
+    mut editors: Query<&mut Editor>,
+    mut history: ResMut<PromptHistory>,
+) {
+    let mut kept = Vec::new();
+    for mut editor in &mut editors {
+        if editor.dropped() {
+            kept.extend(editor.bypass_change_detection().take_dropped());
+        }
+    }
+    let kept = kept.iter().map(|text| redact::text(text));
+    for text in kept.chain(sent.read().map(|Sent(text)| text.into())) {
         let text = text.trim();
         if text.is_empty() {
             continue;

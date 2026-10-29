@@ -115,6 +115,8 @@ fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
     rig_tui::add_view(&mut app);
     app.world_mut().run_schedule(rig_tui::TuiKeys);
     assert_eq!(app.world().resource::<PromptHistory>().entries, ["a"]);
+    // The first Up goes to the start of the draft, the next to the history.
+    browse(&mut app, true);
     browse(&mut app, true);
     assert_eq!(input(&app).0, "a");
     browse(&mut app, false);

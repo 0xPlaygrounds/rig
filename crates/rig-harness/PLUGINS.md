@@ -2406,10 +2406,13 @@ any run and inert without the view:
   `InputContext::typed()`, and is inserted again: an open list follows.
 - **The input.** An `Editor` holds a draft (`text()`, `set`, `insert`,
   `take`, …), the main one's read as `MainInput`; the keys type into a
-  panel's own while it has the `KeyFocus`. `PromptHistory` is the prompts
-  Up and Down browse, each text once, kept in `PluginData.project`: the
-  view puts each one sent (`Sent`, which a plugin writes too) as the
-  newest in `HistorySystems::Record` and saves in `HistorySystems::Save`;
+  panel's own while it has the `KeyFocus`. `set` replaces the text
+  without keeping it, as edits do; `clear` keeps the person's text in the
+  history, so a plugin that replaces it calls `clear` before `set`.
+  `PromptHistory` is the prompts Up and Down browse, each text once, kept
+  in `PluginData.project`: the view puts the text an editor dropped unsent
+  (redacted) and each prompt sent (`Sent`, which a plugin writes too) as
+  the newest in `HistorySystems::Record` and saves in `HistorySystems::Save`;
   a system between the two filters what is kept. After another agent is
   shown, `HistorySystems::Seed` puts its conversation's typed prompts as
   the newest, unsaved, in `TuiKeys` before the next key; a filter that
