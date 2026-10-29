@@ -140,8 +140,9 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
     assert_eq!(typed(&app), "draft three");
     press(&mut app, "down");
     assert_eq!(typed(&app), "draft two!");
-    // Blank text is not kept, and nothing twice.
-    press(&mut app, "ctrl+c space ctrl+c");
+    // Blank text is not kept, and nothing twice: the last cleared is the
+    // newest, also within a frame.
+    press(&mut app, "ctrl+c space ctrl+c a ctrl+c b ctrl+c a ctrl+c");
     let kept = [
         "draft one",
         "old",
@@ -150,6 +151,8 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
         "draft two",
         "draft three",
         "draft two!",
+        "b",
+        "a",
     ];
     assert_eq!(entries(&app), kept);
 }

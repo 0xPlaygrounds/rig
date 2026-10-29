@@ -213,9 +213,11 @@ impl Editor {
         }
     }
 
-    /// Keeps `text` for the history, unless it is blank or an answer.
+    /// Keeps `text` for the history as the newest, unless it is blank or an
+    /// answer.
     fn keep(&mut self, text: String) {
-        if !self.answering && !text.trim().is_empty() && !self.kept.contains(&text) {
+        if !self.answering && !text.trim().is_empty() {
+            self.kept.retain(|kept| *kept != text);
             self.kept.push(text);
         }
     }

@@ -84,7 +84,7 @@ the first line of your own text goes to its start, and only Up again from
 there shows an earlier prompt; Down past the newest brings your text back.
 While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
-type or press Tab. Text you drop without sending (Ctrl+C, sending an earlier
+type or press Tab (while a turn runs, Tab queues it). Text you drop without sending (Ctrl+C, sending an earlier
 prompt in its place) goes into the history, secrets redacted, so Up brings
 it back. Ctrl+P and Ctrl+N move the same way, even with a completion list
 open, but Ctrl+P goes to the history from anywhere on the first line. The
