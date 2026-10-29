@@ -13958,6 +13958,7 @@ dependencies = [
  "base64 0.22.1",
  "bevy_app",
  "bevy_ecs",
+ "bevy_tasks",
  "chrono",
  "futures",
  "rig-basics",

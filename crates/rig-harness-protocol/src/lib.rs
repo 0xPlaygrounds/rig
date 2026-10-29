@@ -529,7 +529,8 @@ impl RunDir {
 
     /// Kills the process groups the agent listed in [`Self::groups`] and
     /// left running, as it does when killed by `SIGKILL`; a clean exit
-    /// lists none. A group is killed only while its leader carries
+    /// lists none. A group is killed only while one of its processes, its
+    /// leader or one the leader left behind as it exited, carries
     /// [`env::PROCESS_LEDGER`] naming the list, so an id the system gave
     /// another process since is left alone. `kill(1)` sends the signal,
     /// so this keeps to std.
@@ -549,7 +550,7 @@ impl RunDir {
         let groups: Vec<String> = listed
             .lines()
             .filter_map(|id| id.trim().parse::<i32>().ok())
-            .filter(|&id| id > 1 && marked(id, &ledger))
+            .filter(|&id| id > 1 && members(id).into_iter().any(|pid| marked(pid, &ledger)))
             .map(|id| format!("-{id}"))
             .collect();
         if !groups.is_empty() {
@@ -565,6 +566,32 @@ impl RunDir {
             _ => Ok(()),
         }
     }
+}
+
+/// The processes of the group `group`, its leader first: Linux reads each
+/// process's group in `/proc`, macOS through `ps`; elsewhere only the
+/// leader.
+fn members(group: i32) -> Vec<i32> {
+    let mut members = vec![group];
+    let of_group = |pid: i32, pgid: i32| (pgid == group && pid != group).then_some(pid);
+    if cfg!(target_os = "linux") {
+        let entries = std::fs::read_dir("/proc").into_iter().flatten().flatten();
+        members.extend(entries.filter_map(|entry| {
+            let pid = entry.file_name().to_str()?.parse().ok()?;
+            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            // After the command's closing parenthesis: state, parent, group.
+            let (_, fields) = stat.rsplit_once(')')?;
+            of_group(pid, fields.split_whitespace().nth(2)?.parse().ok()?)
+        }));
+    } else if cfg!(target_os = "macos") {
+        let listed = child("ps").args(["-A", "-o", "pid=,pgid="]).output();
+        let listed = listed.map(|listed| String::from_utf8_lossy(&listed.stdout).into_owned());
+        members.extend(listed.unwrap_or_default().lines().filter_map(|line| {
+            let mut ids = line.split_whitespace().map(str::parse::<i32>);
+            of_group(ids.next()?.ok()?, ids.next()?.ok()?)
+        }));
+    }
+    members
 }
 
 /// Whether the process `id` carries [`env::PROCESS_LEDGER`] set to

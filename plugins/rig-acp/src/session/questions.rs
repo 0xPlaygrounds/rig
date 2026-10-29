@@ -193,27 +193,34 @@ pub(super) fn answer_with(commands: &mut Commands, ask: Entity, answer: Option<A
 }
 
 /// Closes a picker, which the client cannot show, saying how to do it
-/// with a command instead.
+/// instead.
 pub(super) fn picker(
     added: On<Add<Picker>>,
     pickers: Query<&Picker>,
     mut session: ResMut<Session>,
     mut commands: Commands,
 ) {
-    let Ok(picker) = pickers.get(added.entity) else {
-        return;
-    };
-    // A secret, such as an API key, is typed only where rig hides it.
-    let text = match (picker.secret, picker.items.as_slice()) {
+    if let Ok(picker) = pickers.get(added.entity) {
+        session.note(unshown(picker), NoticeLevel::Warn);
+        commands.trigger(Pick::person(added.entity, None));
+    }
+}
+
+/// What to do instead of picking from `picker` here: type a secret, such as
+/// an API key, in rig in a terminal, which hides it; else type one of the
+/// commands of its items.
+fn unshown(picker: &Picker) -> String {
+    let title = &picker.title;
+    match (picker.secret, picker.items.as_slice()) {
         (true, _) => format!(
-            "{}: type it in rig in a terminal, where it is hidden as you type; this client \
-             would show it.",
-            picker.title
+            "{title}: type it in rig in a terminal, where it is hidden as you type; this client \
+             would show it."
         ),
-        (false, []) => format!(
-            "{}: this client cannot show this question; answer it in rig in a terminal.",
-            picker.title
-        ),
+        (false, []) => {
+            format!(
+                "{title}: this client cannot show this question; answer it in rig in a terminal."
+            )
+        }
         (false, items) => {
             let shown: Vec<_> = items
                 .iter()
@@ -222,12 +229,17 @@ pub(super) fn picker(
                 .collect();
             let more = if items.len() > PICKS { ", …" } else { "" };
             format!(
-                "{}: this client cannot show a list to pick from; type one of: {}{more}",
-                picker.title,
+                "{title}: this client cannot show a list to pick from; type one of: {}{more}",
                 shown.join(", ")
             )
         }
-    };
-    session.note(text, NoticeLevel::Warn);
-    commands.trigger(Pick::person(added.entity, None));
+    }
+}
+
+/// Stops asking the client about a question that ended before it answered,
+/// as one a stopped turn takes away.
+pub(super) fn forgotten(gone: On<Remove<Ask>>, mut session: ResMut<Session>) {
+    if let Some(task) = session.asking.remove(&gone.entity) {
+        task.abort();
+    }
 }

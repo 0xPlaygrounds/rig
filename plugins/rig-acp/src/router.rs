@@ -29,7 +29,7 @@ use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, l
 use rig_harness::host::session::StoreOpener;
 use rig_harness::prelude::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 use crate::{Reply, session};
 
@@ -68,7 +68,7 @@ struct Child {
     /// later one of the same session.
     run: u64,
     /// Ends the connection, which closes the process's stdin.
-    stop: Mutex<Option<oneshot::Sender<()>>>,
+    stop: watch::Sender<bool>,
     /// Done once the process ended and was cleaned up, for every waiter.
     gone: Shared<BoxFuture<'static, ()>>,
 }
@@ -81,9 +81,7 @@ fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 impl Child {
     /// Ends the process and waits until it was cleaned up.
     async fn end(&self) {
-        if let Some(stop) = locked(&self.stop).take() {
-            stop.send(()).ok();
-        }
+        self.stop.send(true).ok();
         self.gone.clone().await;
     }
 }
@@ -95,19 +93,19 @@ fn canonical(path: &Path) -> PathBuf {
 
 /// An error the client gets for a request it made wrong.
 fn invalid(why: impl ToString) -> Error {
-    Error::invalid_params().data(why.to_string())
+    crate::error(Error::invalid_params(), why)
 }
 
 /// An error the client gets for one of the router's own failures.
 fn internal(why: impl ToString) -> Error {
-    Error::internal_error().data(why.to_string())
+    crate::error(Error::internal_error(), why)
 }
 
 impl Router {
     fn child(&self, id: &acp::SessionId) -> Result<Arc<Child>, Error> {
         let sessions = locked(&self.sessions);
         let child = sessions.get(id.0.as_ref()).cloned();
-        child.ok_or_else(|| invalid(format!("session {id} is not open: load it again")))
+        child.ok_or_else(|| Error::session_not_found(id.clone()))
     }
 
     /// Starts `id`'s process in `cwd`, with `lock` held for it, and connects
@@ -146,10 +144,20 @@ impl Router {
             return Err(internal("the session process has no pipes"));
         };
         let (ready, connected) = oneshot::channel();
-        let (stop, stopped) = oneshot::channel();
+        let (stop, stopping) = watch::channel(false);
         let (router, key) = (self.clone(), id.as_str().to_owned());
         let gone = tokio::spawn(async move {
-            let ended = forward(client, lines(input, output), ready, stopped).await;
+            let connection = forward(client, lines(input, output), ready, stopping.clone());
+            tokio::pin!(connection);
+            // Asked to end, the connection has its grace to close, as a
+            // stopped process never drains what was written to it.
+            let ended = tokio::select! {
+                ended = &mut connection => ended,
+                () = asked(stopping) => {
+                    let closed = tokio::time::timeout(GRACE, &mut connection).await;
+                    closed.unwrap_or_else(|_| Err(internal("it did not close in time")))
+                }
+            };
             if let Err(error) = ended {
                 eprintln!("rig acp: session {key}: {error}");
             }
@@ -171,7 +179,7 @@ impl Router {
         let child = Arc::new(Child {
             cx,
             run: number,
-            stop: Mutex::new(Some(stop)),
+            stop,
             gone,
         });
         let mut sessions = locked(&self.sessions);
@@ -203,7 +211,7 @@ impl Router {
     {
         let initialize = locked(&self.client).clone();
         let initialize =
-            initialize.ok_or_else(|| Error::invalid_request().data("initialize first"))?;
+            initialize.ok_or_else(|| crate::error(Error::invalid_request(), "initialize first"))?;
         let child = self.start(&id, cwd, reason, lock, client).await?;
         if let Err(error) = child.cx.send_request(initialize).block_task().await {
             child.end().await;
@@ -259,7 +267,7 @@ impl Router {
         }
         let dir = self.home.session(&id);
         if !dir.is_saved() {
-            return Err(invalid(format!("session {id} has no saved conversation")));
+            return Err(Error::session_not_found(id.as_str().to_owned()));
         }
         let lock = dir.hold().map_err(internal)?;
         let lock = lock.ok_or_else(|| invalid(format!("session {id} is open in another rig")))?;
@@ -330,7 +338,7 @@ async fn forward(
     client: ConnectionTo<Client>,
     transport: impl agent_client_protocol::ConnectTo<Client> + 'static,
     ready: oneshot::Sender<ConnectionTo<Agent>>,
-    stopped: oneshot::Receiver<()>,
+    stopping: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     let (updates, permissions, forms) = (client.clone(), client.clone(), client);
     Client
@@ -359,12 +367,19 @@ async fn forward(
         .connect_with(transport, async move |cx| {
             ready.send(cx.clone()).ok();
             tokio::select! {
-                _ = stopped => {}
+                () = asked(stopping) => {}
                 () = cx.incoming_closed() => {}
             }
             Ok(())
         })
         .await
+}
+
+/// Done once `stopping` says to end; never when nothing will say so.
+async fn asked(mut stopping: watch::Receiver<bool>) {
+    if stopping.wait_for(|stop| *stop).await.is_err() {
+        std::future::pending::<()>().await;
+    }
 }
 
 /// A session process's stdin and stdout as ACP lines. A line it writes that
@@ -515,11 +530,15 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                         let Ok(child) = router.child(&request.session_id) else {
                             return Ok(acp::CloseSessionResponse::new());
                         };
-                        let answered = child.cx.send_request(request).block_task().await;
-                        // The answer waits until the process ended and its
-                        // lock is free, so the session can be loaded again.
+                        // The session cancels its prompt and answers; one
+                        // that does not in time is ended anyway. The close
+                        // is done once the process ended and its lock is
+                        // free, so the session can be loaded again, whatever
+                        // another close of it did meanwhile.
+                        let asked = child.cx.send_request(request).block_task();
+                        tokio::time::timeout(GRACE, asked).await.ok();
                         child.end().await;
-                        answered
+                        Ok(acp::CloseSessionResponse::new())
                     };
                     responder.respond_with_result(closed.await)
                 })
@@ -606,7 +625,7 @@ pub(crate) fn install(app: &mut App) {
     };
     let command = match world.get_resource::<SessionCommand>() {
         Some(command) => command.clone(),
-        None => match own_command(world, &base) {
+        None => match own_command(&base) {
             Ok(command) => command,
             Err(why) => {
                 app.refuse_run(format!("rig acp could not find its own program: {why}"));
@@ -684,9 +703,9 @@ fn runs(home: &Home) -> std::io::Result<Runs> {
 }
 
 /// This program, linked (else copied) into `runs` so a build that replaces
-/// it leaves one to start, with the router's options and without its
-/// command.
-fn own_command(world: &World, runs: &Runs) -> std::io::Result<SessionCommand> {
+/// it leaves one to start. A session takes its model and tools from the
+/// client's options and the session, not from `rig acp`'s.
+fn own_command(runs: &Runs) -> std::io::Result<SessionCommand> {
     let exe = std::env::current_exe()?;
     let program = runs.path.join("rig-agent");
     std::fs::remove_file(&program).ok();
@@ -694,16 +713,10 @@ fn own_command(world: &World, runs: &Runs) -> std::io::Result<SessionCommand> {
     if std::fs::hard_link(&exe, &program).is_err() {
         std::fs::copy(&exe, &program)?;
     }
-    let args = world
-        .get_resource::<Invoked>()
-        .map(|invoked| {
-            let mut args = invoked.args.clone();
-            args.command = None;
-            args.arguments.clear();
-            args.to_args()
-        })
-        .unwrap_or_default();
-    Ok(SessionCommand { program, args })
+    Ok(SessionCommand {
+        program,
+        args: Vec::new(),
+    })
 }
 
 /// Exits once the router stopped serving.

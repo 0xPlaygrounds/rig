@@ -114,8 +114,8 @@ pub(crate) struct Session {
     /// prompt's reply: some clients show agent text only during a prompt.
     notes: Vec<String>,
     prompt: Option<Pending>,
-    /// The client's close, answered once the prompt it cancelled is.
-    closing: Option<Reply<acp::CloseSessionResponse>>,
+    /// The client's closes, answered once the prompt they cancelled is.
+    closing: Vec<Reply<acp::CloseSessionResponse>>,
     /// The tasks asking the client a question, by the question's entity.
     asking: HashMap<Entity, tokio::task::AbortHandle>,
     requests: Receiver<Request>,
@@ -231,7 +231,7 @@ pub(crate) fn install(app: &mut App) {
         held: Vec::new(),
         notes: Vec::new(),
         prompt: None,
-        closing: None,
+        closing: Vec::new(),
         asking: HashMap::new(),
         requests,
         sender,
@@ -261,7 +261,8 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(output::started)
     .add_observer(output::settled)
     .add_observer(questions::picker)
-    .add_observer(ended);
+    .add_observer(ended)
+    .add_observer(questions::forgotten);
     app.world_mut().spawn(Answerer::default());
 }
 
@@ -412,12 +413,8 @@ fn requests_in(
             Request::Prompt(prompt, reply) => requested.prompt(prompt, reply),
             Request::Cancel => requested.cancel(),
             Request::Config(change, reply) => match options.set(&change) {
-                Ok((option, value)) => {
-                    let asked = options::Changing {
-                        reply,
-                        option,
-                        value,
-                    };
+                Ok(asked) => {
+                    let asked = options::Changing { reply, asked };
                     requested.commands.insert_resource(asked);
                     changing = true;
                 }
@@ -427,7 +424,7 @@ fn requests_in(
                 requested.cancel();
                 // The prompt it cancels is answered first ([`settle`]).
                 match requested.session.prompt.is_some() {
-                    true => requested.session.closing = Some(reply),
+                    true => requested.session.closing.push(reply),
                     false => {
                         reply.send(Ok(acp::CloseSessionResponse::new()));
                         requested.commands.trigger(Exit(ExitReason::Quit));
@@ -448,42 +445,41 @@ impl Requested<'_, '_> {
     fn prompt(&mut self, prompt: acp::PromptRequest, reply: Reply<acp::PromptResponse>) {
         if self.session.opening.is_some() || self.session.prompt.is_some() {
             let why = "the session is busy: one prompt runs at a time";
-            return reply.send(Err(Error::invalid_request().data(why)));
+            return reply.send(Err(crate::error(Error::invalid_request(), why)));
         }
         let parts = match translate::prompt(&prompt.prompt) {
             Ok(parts) => parts,
-            Err(why) => return reply.send(Err(Error::invalid_params().data(why.to_string()))),
+            Err(why) => {
+                return reply.send(Err(crate::error(Error::invalid_params(), why.to_string())));
+            }
         };
         let Some(agent) = main_agent(&self.primary) else {
-            return reply.send(Err(Error::internal_error().data("the session has no agent")));
+            return reply.send(Err(crate::error(
+                Error::internal_error(),
+                "the session has no agent",
+            )));
         };
-        let command = parts.iter().find_map(|part| match part {
-            MessagePart::Text(text) if !text.trim().is_empty() => {
-                Some(text.trim_start().starts_with('/'))
-            }
-            _ => None,
-        });
-        if let Some(MessagePart::Text(text)) = parts.first()
-            && text.trim() == "/quit"
-        {
+        let mut message = Incoming::new("", DeliveryMode::Steer);
+        message.parts = parts;
+        // The command as rig reads it: the line's first word after `/`.
+        let command = message.command().map(|line| line.split_whitespace().next());
+        if command == Some(Some("quit")) {
             let why = "an editor's session ends when the editor closes it, not with /quit";
-            return reply.send(Err(Error::invalid_request().data(why)));
+            return reply.send(Err(crate::error(Error::invalid_request(), why)));
         }
         let (connected, refused) = self.agents.get(agent).unwrap_or((false, None));
-        if command != Some(true) && !connected {
+        if command.is_none() && !connected {
             let why = refused.map_or(
                 "no model can be reached: sign in with `rig` (`/login`), or choose a model",
                 |ModelRefused(why)| why.as_str(),
             );
-            return reply.send(Err(Error::internal_error().data(why.to_owned())));
+            return reply.send(Err(crate::error(Error::internal_error(), why.to_owned())));
         }
         for note in std::mem::take(&mut self.session.notes) {
             let chunk = acp::ContentChunk::new(acp::ContentBlock::from(format!("{note}\n\n")));
             self.session
                 .send(acp::SessionUpdate::AgentMessageChunk(chunk));
         }
-        let mut message = Incoming::new("", DeliveryMode::Steer);
-        message.parts = parts;
         self.commands.spawn((message, ForAgent(agent), Prompted));
         self.session.prompt = Some(Pending {
             reply,
@@ -492,10 +488,16 @@ impl Requested<'_, '_> {
         });
     }
 
-    /// Marks the prompt cancelled, which stops its work ([`stop_cancelled`]).
+    /// Marks the prompt cancelled, which stops its work ([`stop_cancelled`]),
+    /// and stops the main agent at once, which also ends work that is no
+    /// turn, such as a sign-in.
     fn cancel(&mut self) {
-        if let Some(prompt) = self.session.prompt.as_mut() {
-            prompt.cancelled = true;
+        let Some(prompt) = self.session.prompt.as_mut() else {
+            return;
+        };
+        prompt.cancelled = true;
+        if let Some(agent) = main_agent(&self.primary) {
+            self.commands.trigger(StopTurn::new(agent));
         }
     }
 }
@@ -594,15 +596,18 @@ fn open(mut opened: Opened) {
 }
 
 /// The commands the client is not offered: they start another session,
-/// reload rig or end it, which an ACP session does not do.
-const LEFT_OUT: [&str; 5] = ["new", "resume", "reload", "plugins", "quit"];
+/// reload rig or end it, which an ACP session does not do, or show another
+/// agent, while ACP shows the main one.
+const LEFT_OUT: [&str; 7] = [
+    "new", "resume", "reload", "plugins", "quit", "fork", "agents",
+];
 
 /// Stops a cancelled prompt's work: its message, declined if no turn took
-/// it yet, and while any turn runs, the main agent's and those below it.
+/// it yet, and while any work goes on, the main agent and those below it.
 fn stop_cancelled(
     session: Res<Session>,
     primary: MainAgentQuery,
-    working: Query<(), With<ActiveTurn>>,
+    work: Work,
     mut messages: Query<&mut Decision, (With<Prompted>, Without<Started>)>,
     mut commands: Commands,
 ) {
@@ -616,8 +621,9 @@ fn stop_cancelled(
     for mut decision in &mut messages {
         decision.decide(Decider::plugin("rig-acp"), Outcome::custom("cancelled"));
     }
-    // Stopping the main agent stops the agents below it, idle or not.
-    if !working.is_empty() {
+    // Stopping the main agent stops the agents below it, idle or not, and
+    // work that is no turn, such as a sign-in, however late it started.
+    if !work.idle() {
         commands.trigger(StopTurn::new(agent));
     }
 }
@@ -653,12 +659,15 @@ fn settle(work: Work, mut out: output::Out, mut commands: Commands) {
         (true, _) | (false, Some(TurnOutcome::Stopped(_))) => {
             Ok(acp::PromptResponse::new(acp::StopReason::Cancelled))
         }
-        (false, Some(TurnOutcome::Failed(why))) => Err(Error::internal_error().data(why)),
+        (false, Some(TurnOutcome::Failed(why))) => Err(crate::error(Error::internal_error(), why)),
         (false, _) => Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)),
     };
     prompt.reply.send(answer);
-    if let Some(closing) = out.session.closing.take() {
-        closing.send(Ok(acp::CloseSessionResponse::new()));
+    let closing = std::mem::take(&mut out.session.closing);
+    for close in &closing {
+        close.send(Ok(acp::CloseSessionResponse::new()));
+    }
+    if !closing.is_empty() {
         commands.trigger(Exit(ExitReason::Quit));
     }
 }

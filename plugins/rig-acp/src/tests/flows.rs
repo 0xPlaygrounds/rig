@@ -134,18 +134,6 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
         );
         let answer = driven.prompt(&id, "Read the fixture.").await;
         assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
-        // Every update of the turn came before its answer.
-        let events = driven.seen().events.clone();
-        let answered = events
-            .iter()
-            .position(|event| matches!(event, Event::Answered(of) if *of == id));
-        let last = events
-            .iter()
-            .rposition(|event| matches!(event, Event::Update(of, _) if *of == id));
-        assert!(
-            answered.is_some() && last < answered,
-            "{answered:?} {last:?}"
-        );
         let steps = tool_steps(driven, &id);
         let expected = [
             acp::ToolCallStatus::Pending,
@@ -200,6 +188,31 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
             "{}",
             driven.said(&id)
         );
+        // Every update of the first turn came before its answer, which the
+        // later answers show it did not just outrun.
+        let events = driven.seen().events.clone();
+        let answered = events
+            .iter()
+            .position(|event| matches!(event, Event::Answered(of) if *of == id));
+        let last = events.iter().rposition(|event| match event {
+            Event::Update(of, acp::SessionUpdate::AgentMessageChunk(chunk)) => {
+                *of == id && text(&chunk.content).is_some_and(|said| said.contains("read it"))
+            }
+            Event::Update(of, acp::SessionUpdate::ToolCallUpdate(_)) => *of == id,
+            _ => false,
+        });
+        assert!(
+            answered.is_some() && last < answered,
+            "{answered:?} {last:?}"
+        );
+        // `/quit` is the terminal's: the editor closes a session.
+        for quit in ["/quit", "/quit now"] {
+            assert!(driven.prompt(&id, quit).await.is_err(), "{quit}");
+        }
+        assert_eq!(
+            driven.prompt(&id, "/mcp").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
     });
     assert!(router.is_some());
 }
@@ -225,6 +238,28 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
             let last = tool_steps(driven, &id).last().map(|(_, status)| *status);
             assert_eq!(last, Some(status), "{answering:?}");
         }
+        // The question shows the call whole, and why it is asked.
+        let asked = driven.seen().asked.last().cloned();
+        assert!(asked.is_some(), "no permission asked");
+        let Some(asked) = asked else { return };
+        let fields = asked.fields;
+        assert_eq!(asked.tool_call_id.to_string(), "g1");
+        assert_eq!(fields.title.as_deref(), Some("read guarded.txt"));
+        assert_eq!(fields.kind, Some(acp::ToolKind::Read));
+        let path = fields
+            .raw_input
+            .as_ref()
+            .and_then(|input| input.get("path").cloned());
+        assert_eq!(path, Some(json!("guarded.txt")));
+        let at: Vec<_> = fields
+            .locations
+            .into_iter()
+            .flatten()
+            .map(|at| at.path)
+            .collect();
+        assert_eq!(at, [project(&place).join("guarded.txt")]);
+        let why = format!("{:?}", fields.content);
+        assert!(why.contains("It reads the guarded file."), "{why}");
         driven.answering(Answering::Never);
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");
@@ -287,12 +322,31 @@ fn cancel_stops_a_running_tool_and_one_sent_with_the_prompt() {
             })
         };
         assert!(driven.until(running).await);
-        let close = acp::CloseSessionRequest::new(id.clone());
-        assert!(driven.cx.send_request(close).block_task().await.is_ok());
+        // Two closes at once are both answered.
+        let close = || {
+            driven
+                .cx
+                .send_request(acp::CloseSessionRequest::new(id.clone()))
+        };
+        let (first, second) = (close(), close());
+        let (first, second) = (first.block_task().await, second.block_task().await);
+        assert!(first.is_ok() && second.is_ok(), "{first:?} {second:?}");
         let answer = prompt.await.ok().and_then(Result::ok);
         assert_eq!(answer, Some(acp::StopReason::Cancelled));
+        #[cfg(target_os = "linux")]
+        assert!(eventually(|| !sleeping(&place)));
         let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
         assert!(driven.cx.send_request(load).block_task().await.is_ok());
+        // Cancel stops work that is no turn too, such as a sign-in.
+        let prompt = tokio::spawn(driven.send(&id, "/hold"));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        driven
+            .cx
+            .send_notification(acp::CancelNotification::new(id.clone()))
+            .ok();
+        let answer = tokio::time::timeout(Duration::from_secs(10), prompt).await;
+        let answer = answer.ok().and_then(Result::ok).and_then(Result::ok);
+        assert_eq!(answer, Some(acp::StopReason::Cancelled));
         // A prompt cancelled as it is sent is cancelled too.
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");

@@ -42,3 +42,10 @@ pub(crate) fn initialized() -> acp::InitializeResponse {
         .agent_capabilities(capabilities)
         .agent_info(acp::Implementation::new("rig", env!("CARGO_PKG_VERSION")))
 }
+
+/// An error of `kind` that says `why` as its message, which a client shows
+/// as it is.
+pub(crate) fn error(mut kind: Error, why: impl ToString) -> Error {
+    kind.message = why.to_string();
+    kind
+}

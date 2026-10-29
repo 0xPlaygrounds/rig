@@ -26,7 +26,7 @@ mod translate;
 mod tests;
 
 #[cfg(not(target_family = "wasm"))]
-use reply::{Reply, initialized};
+use reply::{Reply, error, initialized};
 #[cfg(not(target_family = "wasm"))]
 use rig_harness::prelude::*;
 #[cfg(not(target_family = "wasm"))]

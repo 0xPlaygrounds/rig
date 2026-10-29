@@ -34,3 +34,19 @@ fn a_form_answers_with_what_its_question_offers_and_several_may_be_none() {
     assert_eq!(chosen(&one, accepted(&[(CHOICE, other)])), None);
     assert_eq!(chosen(&one, accepted(&[])), None);
 }
+
+#[test]
+fn a_picker_the_client_cannot_show_says_what_to_type_instead() {
+    let models = (0..12).fold(Picker::new("Model"), |picker, n| {
+        picker.item(format!("model {n}"), format!("/model m{n}"))
+    });
+    let note = unshown(&models);
+    assert!(
+        note.contains("/model m0, ") && note.contains("/model m9, …"),
+        "{note}"
+    );
+    assert!(!note.contains("/model m10"), "{note}");
+    let mut key = Picker::new("OpenAI API key");
+    key.secret = true;
+    assert!(unshown(&key).contains("in rig in a terminal, where it is hidden"));
+}

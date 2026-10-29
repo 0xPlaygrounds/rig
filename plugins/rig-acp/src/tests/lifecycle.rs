@@ -60,7 +60,9 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
             Some(acp::StopReason::EndTurn)
         );
         let prompt = acp::PromptRequest::new(first.clone(), vec!["Hello.".into()]);
-        assert!(driven.cx.send_request(prompt).block_task().await.is_err());
+        let gone = driven.cx.send_request(prompt).block_task().await;
+        let code = gone.err().map(|error| i32::from(error.code));
+        assert_eq!(code, Some(-32002), "a session not open is not found");
     });
     assert!(router.is_some(), "rig acp did not run");
     let Some(mut router) = router else { return };
@@ -101,4 +103,31 @@ fn sigterm_ends_the_router_its_sessions_and_their_tools() {
     });
     assert!(pid.is_some() && router.is_some());
     assert!(eventually(|| processes_of(place).is_empty()));
+}
+
+#[test]
+fn a_stopped_session_process_closes_within_its_grace() {
+    let place = Place::new("stopped");
+    let place = &place;
+    let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        let pid = process_of(place, &id);
+        assert!(pid.is_some(), "no process runs {id}");
+        let Some(pid) = pid else { return };
+        // A process stopped by a signal reads and answers nothing.
+        std::process::Command::new("kill")
+            .args(["-STOP", &pid.to_string()])
+            .status()
+            .ok();
+        let close = driven
+            .cx
+            .send_request(acp::CloseSessionRequest::new(id.clone()));
+        let closed = tokio::time::timeout(Duration::from_secs(20), close.block_task()).await;
+        assert!(closed.is_ok_and(|closed| closed.is_ok()));
+        assert!(eventually(|| process_of(place, &id).is_none()));
+    });
+    assert!(router.is_some());
 }

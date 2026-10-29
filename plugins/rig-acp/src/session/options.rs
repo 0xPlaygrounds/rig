@@ -50,7 +50,16 @@ impl Options<'_, '_> {
             return Vec::new();
         };
         let entries = models.iter().map(|spec| {
-            acp::SessionConfigSelectOption::new(spec.reference(), spec.display_name.clone())
+            // Its provider too: the same model can come from several.
+            let provider = spec
+                .reference()
+                .split_once('/')
+                .map(|(vendor, _)| vendor.to_owned());
+            let name = match provider {
+                Some(vendor) => format!("{} ({vendor})", spec.display_name),
+                None => spec.display_name.clone(),
+            };
+            acp::SessionConfigSelectOption::new(spec.reference(), name)
         });
         let model = acp::SessionConfigOption::select(
             MODEL,
@@ -84,8 +93,8 @@ impl Options<'_, '_> {
     pub(super) fn set(
         &mut self,
         change: &acp::SetSessionConfigOptionRequest,
-    ) -> Result<(String, String), Error> {
-        let invalid = |why: String| Error::invalid_params().data(why);
+    ) -> Result<Asked, Error> {
+        let invalid = |why: String| crate::error(Error::invalid_params(), why);
         let agent = main_agent(&self.primary).ok_or_else(|| invalid("no agent".to_owned()))?;
         let (chosen, _, busy) = self
             .agents
@@ -109,8 +118,9 @@ impl Options<'_, '_> {
                 let model = found.spec.reference();
                 self.commands.trigger(SetModel {
                     entity: agent,
-                    model,
+                    model: model.clone(),
                 });
+                Ok(Asked::Model(model))
             }
             REASONING => {
                 let model = chosen.ok_or_else(|| invalid("choose a model first".to_owned()))?;
@@ -127,20 +137,27 @@ impl Options<'_, '_> {
                     entity: agent,
                     effort,
                 });
+                Ok(Asked::Reasoning(effort))
             }
-            other => return Err(invalid(format!("no option `{other}`"))),
+            other => Err(invalid(format!("no option `{other}`"))),
         }
-        Ok((change.config_id.to_string(), value))
     }
 }
 
-/// A change the client asked for, answered once it took effect: the
-/// option and the value it asked for.
+/// What a change the client asked for sets: the model, by its reference,
+/// or the reasoning setting a level means for the model, which two levels
+/// may share.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Asked {
+    Model(String),
+    Reasoning(ReasoningSetting),
+}
+
+/// A change the client asked for, answered once it took effect.
 #[derive(Resource)]
 pub(super) struct Changing {
     pub(super) reply: Reply<acp::SetSessionConfigOptionResponse>,
-    pub(super) option: String,
-    pub(super) value: String,
+    pub(super) asked: Asked,
 }
 
 /// Answers a change the client asked for, with the options as they are
@@ -170,19 +187,20 @@ pub(super) fn changed(
         commands.remove_resource::<Changing>();
         // The requests that waited for it go on.
         session.wake.wake();
-        let took = current.iter().any(|option| {
-            let value = match &option.kind {
-                acp::SessionConfigKind::Select(select) => Some(select.current_value.to_string()),
-                _ => None,
-            };
-            option.id.to_string() == changing.option && value.as_ref() == Some(&changing.value)
-        });
+        let now = options.agents.get(agent).ok();
+        let took = match (&changing.asked, now) {
+            (Asked::Model(model), Some((Some(ModelChoice(chosen)), ..))) => chosen == model,
+            (Asked::Reasoning(asked), Some((_, setting, _))) => {
+                setting.copied().unwrap_or_default() == *asked
+            }
+            _ => false,
+        };
         let answer = match (took, refusals.get(agent)) {
-            (_, Ok(ModelRefused(why))) => Err(Error::invalid_params().data(why.clone())),
+            (_, Ok(ModelRefused(why))) => Err(crate::error(Error::invalid_params(), why.clone())),
             (true, Err(_)) => Ok(acp::SetSessionConfigOptionResponse::new(current)),
             (false, Err(_)) => {
                 let why = "rig did not change it: its notice says why";
-                Err(Error::invalid_params().data(why))
+                Err(crate::error(Error::invalid_params(), why))
             }
         };
         changing.reply.send(answer);

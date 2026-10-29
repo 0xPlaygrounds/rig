@@ -109,9 +109,12 @@ fn agent() {
         rig_basics::sessions::SessionsPlugin,
         rig_basics::coding_tools::ReadTool,
         rig_basics::coding_tools::ShellTool,
+        rig_basics::BasicCommandsPlugin,
     ))
     .add_command("ask", "Ask a question", ask)
+    .add_command("hold", "Wait until stopped", hold)
     .add_observer(asked)
+    .add_observer(release)
     .add_systems(AgentPass, guard.in_set(Stage::Gate).before(ApprovalSystems));
     if !session {
         let program = std::env::current_exe().unwrap_or_default();
@@ -132,6 +135,26 @@ struct Asked;
 fn ask(In(args): In<CommandArgs>, mut commands: Commands) {
     let question = Ask::new("Which one?").choice("a", "A").choice("b", "B");
     commands.spawn((question, Asked, ForAgent(args.agent)));
+}
+
+/// Work that is no turn, as a sign-in waiting for its browser: `/hold`
+/// waits until its agent is stopped.
+#[derive(Component)]
+struct Held(Entity);
+
+fn hold(In(args): In<CommandArgs>, wake: Res<Wake>, mut commands: Commands) {
+    let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let waiting = Running::spawn(pool, &wake, std::future::pending::<()>());
+    commands.spawn((Held(args.agent), waiting));
+}
+
+/// Ends `/hold`'s work as its agent is stopped.
+fn release(stop: On<StopTurn>, held: Query<(Entity, &Held)>, mut commands: Commands) {
+    for (work, Held(agent)) in &held {
+        if *agent == stop.entity {
+            commands.entity(work).despawn();
+        }
+    }
 }
 
 /// Says how `/ask`'s question ended.
@@ -254,9 +277,7 @@ struct Place {
 impl Place {
     fn new(name: &str) -> Self {
         let exe = std::env::current_exe().unwrap_or_default();
-        let root = exe
-            .with_file_name(format!("rig-acp-{}", std::process::id()))
-            .join(name);
+        let root = exe.with_file_name(format!("rig-acp-{}-{name}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         let (home, project) = (root.join("home"), root.join("project"));
         for dir in [&home, &project] {
@@ -294,6 +315,8 @@ struct Seen {
     /// Every update, and every response to a prompt, in order.
     events: Vec<Event>,
     permissions: usize,
+    /// The call each permission request was about.
+    asked: Vec<acp::ToolCallUpdate>,
     answering: Option<Answering>,
 }
 
@@ -517,6 +540,7 @@ fn drive(
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner);
                         seen.permissions += 1;
+                        seen.asked.push(request.tool_call.clone());
                         seen.events.push(Event::Asked);
                         seen.answering
                     };

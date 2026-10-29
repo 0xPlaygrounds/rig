@@ -270,9 +270,11 @@ pub(crate) fn prompt(blocks: &[acp::ContentBlock]) -> Result<Vec<MessagePart>, R
             acp::ContentBlock::ResourceLink(link) => {
                 MessagePart::Text(format!("[{}]({})", link.name, link.uri))
             }
-            acp::ContentBlock::Image(picture) => {
-                attachment(&picture.data, &picture.mime_type, "image")?
-            }
+            acp::ContentBlock::Image(picture) => attachment(
+                &picture.data,
+                &picture.mime_type,
+                picture.uri.as_deref().unwrap_or("the image"),
+            )?,
             acp::ContentBlock::Resource(embedded) => match &embedded.resource {
                 acp::EmbeddedResourceResource::TextResourceContents(text) => {
                     MessagePart::Text(format!("{}:\n```\n{}\n```", text.uri, text.text))

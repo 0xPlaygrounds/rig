@@ -62,8 +62,10 @@ to use a new one.
 - **Prompts:** text, links to resources, embedded text resources, images
   (for models that take them; rig tells you when one does not), and embedded
   images.
-- **Options:** the model, from the models you can reach, and its reasoning
-  level. `/model` and `/effort` change them too.
+- **Options:** the model, from the models you can reach, each named with
+  its provider (one model can come from several), and its reasoning level.
+  `/model` and `/effort` change them too. `rig acp`'s own options, such as
+  `--model`, do not reach the sessions: the editor's options choose.
 - **Tool calls:** each of the main agent's calls, as it is asked for, runs,
   and ends, with its arguments, output and the file it names.
 - **Questions:** a tool call a plugin wants approved asks for permission
@@ -74,8 +76,9 @@ to use a new one.
   key for `/login`, is typed in rig in a terminal, which hides it.
 - **Slash commands:** the editor offers rig's commands, but `/new`,
   `/resume`, `/reload`, `/plugins` and `/quit`, which a session from an
-  editor does not need: rig refuses them there; the editor closes the
-  session instead of `/quit`. With rig-acp on, `/mcp` is in every rig run,
+  editor does not need (rig refuses them there; the editor closes the
+  session instead of `/quit`), and `/fork` and `/agents`, which show another
+  agent, while the editor shows the main one. With rig-acp on, `/mcp` is in every rig run,
   the terminal view's too, as rig-acp brings rig-mcp-client's core: it lists
   an editor's servers, and the files' ones only with `McpPlugin` on.
 - **MCP servers:** those the editor names for a session (stdio, and

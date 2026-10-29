@@ -1185,8 +1185,7 @@ impl Servers<'_, '_> {
         if self.files.is_none() {
             lines.sort();
             return match lines.is_empty() {
-                true => "No MCP servers: the client named none, and rig reads no mcp.json with \
-                         rig_mcp_client::McpPlugin off."
+                true => "No MCP servers: rig reads no mcp.json with rig_mcp_client::McpPlugin off."
                     .to_owned(),
                 false => lines.join("\n"),
             };
