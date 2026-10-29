@@ -15,6 +15,8 @@ use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::ModelSpec;
+use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness_test_support::{calls, reply, scripted_models};
 use serde_json::{Value, json};
 
@@ -24,6 +26,9 @@ use crate::router::{SessionCommand, lines};
 mod flows;
 #[cfg(target_os = "linux")]
 mod lifecycle;
+
+/// A model the test agent's catalog has and no key reaches.
+const UNREACHABLE: &str = "acp-unreachable/model";
 
 /// Set in the environment of the agent this test binary runs as.
 const AGENT: &str = "RIG_ACP_TEST_AGENT";
@@ -84,13 +89,18 @@ fn agent() {
         calls("m1", "files__add", json!({ "a": 2, "b": 3 })),
         reply("added"),
     ]);
-    let models = scripted_models([
+    let mut models = scripted_models([
         ("test/reply", &replies),
         ("test/read", &read),
         ("test/guarded", &guarded),
         ("test/wait", &wait),
         ("test/mcp", &mcp),
     ]);
+    // A model of the catalog no key reaches.
+    if let Ok(nowhere) = ProviderId::declare("acp-unreachable") {
+        let spec = ModelSpec::new(nowhere, "model").with_tools(true);
+        models.0.catalog_mut().insert(spec);
+    }
     let invoked = Invocation {
         command: Some(command.to_owned()),
         ..Invocation::default()
@@ -313,8 +323,6 @@ impl Drop for Place {
 enum Answering {
     Allow,
     Deny,
-    /// Answers nothing, so the question stays open.
-    Never,
     /// Keeps the question, for the test to answer ([`Seen::later`]).
     Later,
 }

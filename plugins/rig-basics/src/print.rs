@@ -834,13 +834,6 @@ struct Agents<'w, 's> {
     keep: Query<'w, 's, (), With<KeepRunning>>,
 }
 
-impl Agents<'_, '_> {
-    /// Whether no agent works ([`Work::idle`]).
-    fn idle(&self) -> bool {
-        self.work.idle()
-    }
-}
-
 /// The agents' work in progress, for a front nobody sits at that waits for
 /// the work it sent to settle, as a headless run does.
 #[derive(SystemParam)]
@@ -972,7 +965,7 @@ fn drive(
             // it; a command may start none, or other work, such as a
             // sign-in. A subagent's answer starts another turn of the agent
             // that started it.
-            if !agents.idle() {
+            if !agents.work.idle() {
                 run.step = Step::Sent { agent };
                 return;
             }
@@ -1044,7 +1037,7 @@ fn send(
         // Work the restored session left runs, such as a turn a plugin
         // carries on after a crash: it finishes, and its answer is the
         // run's.
-        None if !agents.idle() => run.step = Step::Sent { agent },
+        None if !agents.work.idle() => run.step = Step::Sent { agent },
         // The run restarted on a reload with nothing left to do.
         None if restarted => return Some((ended(Some(agent), 0), Reason::Worst)),
         None => {

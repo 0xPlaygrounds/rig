@@ -270,22 +270,27 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
         assert_eq!(at, [project(&place).join("guarded.txt")]);
         let why = format!("{:?}", fields.content);
         assert!(why.contains("It reads the guarded file."), "{why}");
-        driven.answering(Answering::Never);
+        driven.answering(Answering::Later);
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");
         let Some(new) = new else { return };
         let id = new.session_id;
         assert!(driven.model(&id, "test/guarded").await);
-        let asked = driven.seen().permissions;
         let request = acp::PromptRequest::new(id.clone(), vec!["Read it.".into()]);
         let prompt = driven.cx.send_request(request);
-        assert!(driven.until(|seen| seen.permissions > asked).await);
+        assert!(driven.until(|seen| !seen.later.is_empty()).await);
+        let open = driven.seen().later.pop();
+        let Some(open) = open else { return };
         driven
             .cx
             .send_notification(acp::CancelNotification::new(id.clone()))
             .ok();
         let answer = prompt.block_task().await.map(|answer| answer.stop_reason);
         assert_eq!(answer.ok(), Some(acp::StopReason::Cancelled));
+        // The question the cancel took away is cancelled at the client too.
+        let cancelled = open.cancellation();
+        let told = tokio::time::timeout(Duration::from_secs(10), cancelled.cancelled()).await;
+        assert!(told.is_ok(), "the open question was not cancelled");
     });
     assert!(router.is_some());
 }
@@ -512,4 +517,41 @@ fn a_question_is_a_form_or_closed_with_why_for_a_client_without_forms() {
         });
         assert!(router.is_some());
     }
+}
+
+#[test]
+fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
+    let place = Place::new("refused");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        let value = acp::SessionConfigOptionValue::value_id(UNREACHABLE.to_owned());
+        let change = acp::SetSessionConfigOptionRequest::new(id.clone(), "model", value);
+        let refused = driven.cx.send_request(change).block_task().await;
+        let why = refused.err().map(|error| error.message);
+        assert!(
+            why.as_ref()
+                .is_some_and(|why| !why.is_empty() && why != "rig did not change it"),
+            "{why:?}"
+        );
+        // The options the client is told after it show the model rig has.
+        let told = |seen: &Seen| {
+            seen.events.iter().any(|event| match event {
+                Event::Update(of, acp::SessionUpdate::ConfigOptionUpdate(update)) => {
+                    *of == id && format!("{:?}", update.config_options).contains(UNREACHABLE)
+                }
+                _ => false,
+            })
+        };
+        assert!(driven.until(told).await);
+        // A model that can be reached takes its place.
+        assert!(driven.model(&id, "test/reply").await);
+        assert_eq!(
+            driven.prompt(&id, "Hello.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+    });
+    assert!(router.is_some());
 }

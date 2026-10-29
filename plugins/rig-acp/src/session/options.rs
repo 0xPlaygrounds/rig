@@ -166,6 +166,15 @@ pub(super) struct Changing {
 /// from those it was last told of.
 pub(super) fn changed(
     changing: Option<Res<Changing>>,
+    moved: Query<
+        (),
+        Or<(
+            Changed<ModelChoice>,
+            Changed<ReasoningSetting>,
+            Changed<Connection>,
+            Changed<ModelRefused>,
+        )>,
+    >,
     refusals: Query<&ModelRefused>,
     mut notices: MessageReader<Notice>,
     options: Options,
@@ -175,13 +184,18 @@ pub(super) fn changed(
     let Some(agent) = main_agent(&options.primary) else {
         return;
     };
-    let current = options.of(agent);
     // What rig said against the change, such as a level the model lacks.
     let said = notices
         .read()
         .filter(|notice| notice.level == NoticeLevel::Error && notice.agent == Some(agent))
         .last()
         .map(|notice| notice.text.clone());
+    // The options change with the main agent's model and level, and with
+    // what can be reached, such as after a sign-in.
+    if changing.is_none() && !moved.contains(agent) && !options.models.is_changed() {
+        return;
+    }
+    let current = options.of(agent);
     if let Some(changing) = changing {
         commands.remove_resource::<Changing>();
         // The requests that waited for it go on.
@@ -203,15 +217,16 @@ pub(super) fn changed(
             }
         };
         // A refused change leaves the options as they are now, which the
-        // client then shows.
-        if answer.is_err() && current != session.advertised {
+        // client is told after the refusal, so it shows them last.
+        let refused = answer.is_err();
+        changing.reply.send(answer);
+        if refused && current != session.advertised {
             session.advertised = current.clone();
             let update = acp::ConfigOptionUpdate::new(current);
             session.send(acp::SessionUpdate::ConfigOptionUpdate(update));
         } else {
             session.advertised = current;
         }
-        changing.reply.send(answer);
         return;
     }
     // Whatever changed them: `/model`, `/effort`, or a sign-in that made

@@ -41,9 +41,7 @@ const GRACE: Duration = Duration::from_secs(5);
 /// arguments before `acp-session`'s. The tests point it at their binary.
 #[derive(Resource, Clone, Debug)]
 pub(crate) struct SessionCommand {
-    /// The program.
     pub(crate) program: PathBuf,
-    /// Its arguments.
     pub(crate) args: Vec<OsString>,
 }
 
@@ -378,6 +376,8 @@ fn answer_later<T: agent_client_protocol::JsonRpcResponse>(
     asked: agent_client_protocol::PreparedRequest<T>,
     responder: Responder<T>,
 ) -> Result<(), Error> {
+    // The session dropping its question cancels the client's.
+    let asked = asked.forward_cancellation_from(responder.cancellation());
     asked.on_receiving_result(async move |answer| {
         responder.respond_with_result(answer).ok();
         Ok(())
@@ -539,11 +539,8 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                         let Ok(child) = router.child(&request.session_id) else {
                             return Ok(acp::CloseSessionResponse::new());
                         };
-                        // The session cancels its prompt and answers; one
-                        // that does not in time is ended anyway. The close
-                        // is done once the process ended and its lock is
-                        // free, so the session can be loaded again, whatever
-                        // another close of it did meanwhile.
+                        // Done once the process ended and its lock is free,
+                        // whatever another close of it did meanwhile.
                         let asked = child.cx.send_request(request).block_task();
                         tokio::time::timeout(GRACE, asked).await.ok();
                         child.end().await;

@@ -67,7 +67,7 @@ to use a new one.
   `/model` and `/effort` change them too. `rig acp`'s own options, such as
   `--model`, do not reach the sessions: the editor's options choose.
 - **Tool calls:** each of the main agent's calls, as it is asked for, runs,
-  and ends, with its arguments, output and the file it names.
+  and ends, with its arguments, output and the files it names.
 - **Questions:** a tool call a plugin wants approved asks for permission
   (allow or deny, once). Another question is a form, when the editor shows
   forms; else it is closed with a note the model reads, so the turn goes on.

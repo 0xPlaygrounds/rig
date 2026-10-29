@@ -63,6 +63,15 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
         let gone = driven.cx.send_request(prompt).block_task().await;
         let code = gone.err().map(|error| i32::from(error.code));
         assert_eq!(code, Some(-32002), "a session not open is not found");
+        // The client leaves while a session's tool and MCP server run.
+        let stays = vec![acp::EnvVariable::new(STAYS, "1")];
+        let third = driven.new_session(vec![stub_with("files", stays)]).await;
+        assert!(third.is_some(), "no session");
+        let Some(third) = third else { return };
+        assert!(driven.model(&third.session_id, "test/wait").await);
+        let working = tokio::spawn(driven.send(&third.session_id, "Wait."));
+        assert!(driven.until(|_| sleeping(place) && serving(place)).await);
+        drop(working);
     });
     assert!(router.is_some(), "rig acp did not run");
     let Some(mut router) = router else { return };
@@ -122,17 +131,21 @@ fn a_stopped_session_process_closes_within_its_grace() {
         let pid = process_of(place, &id);
         assert!(pid.is_some(), "no process runs {id}");
         let Some(pid) = pid else { return };
-        // A process stopped by a signal reads and answers nothing.
-        std::process::Command::new("kill")
+        // A process stopped by a signal reads and answers nothing, and a
+        // prompt larger than its pipe holds fills it.
+        let stopped = std::process::Command::new("kill")
             .args(["-STOP", &pid.to_string()])
-            .status()
-            .ok();
+            .status();
+        assert!(stopped.is_ok_and(|stopped| stopped.success()));
+        let large = "x".repeat(1 << 20);
+        let filling = tokio::spawn(driven.send(&id, &large));
         let close = driven
             .cx
             .send_request(acp::CloseSessionRequest::new(id.clone()));
         let closed = tokio::time::timeout(Duration::from_secs(20), close.block_task()).await;
         assert!(closed.is_ok_and(|closed| closed.is_ok()));
         assert!(eventually(|| process_of(place, &id).is_none()));
+        drop(filling);
     });
     assert!(router.is_some());
 }

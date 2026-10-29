@@ -16,7 +16,7 @@ mod options;
 mod output;
 mod questions;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use agent_client_protocol::schema::v1 as acp;
@@ -31,6 +31,8 @@ use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
 use rig_harness::rig_memory::summarized_in_log;
 use rig_harness::services::WorkDir;
 use rig_mcp_client::{AddMcpServer, ServerSpec};
+
+use rig_harness::rig_core::completion::message::{Message as Said, StopReason as Stop};
 
 use crate::{Reply, translate};
 
@@ -116,6 +118,8 @@ pub(crate) struct Session {
     /// prompt's reply: some clients show agent text only during a prompt.
     notes: Vec<String>,
     prompt: Option<Pending>,
+    /// Requests that came before the session opened, carried out first.
+    early: VecDeque<Request>,
     /// The client's closes, answered once the prompt they cancelled is.
     closing: Vec<Reply<acp::CloseSessionResponse>>,
     /// The tasks asking the client a question, by the question's entity.
@@ -206,14 +210,16 @@ pub(crate) fn install(app: &mut App) {
     // A signal or the router gone ends the wait; the first frame then exits.
     let signalled = signals::interruption(app.world());
     let deadline = Instant::now() + OPENING;
-    let (mut init, mut opening) = (None, None);
+    let (mut init, mut opening, mut early) = (None, None, VecDeque::new());
     while (init.is_none() || opening.is_none()) && Instant::now() < deadline && !signalled() {
         // `finish` runs within rig's runtime, which it cannot block on.
         match requests.try_recv() {
             Ok(Request::Init(client, cx)) => init = Some((client, cx)),
             Ok(Request::Open(open)) => opening = Some(open),
             Ok(Request::Ended) | Err(async_channel::TryRecvError::Closed) => break,
-            Ok(_) => {}
+            // Such as a close sent before the session opened: kept for when
+            // it has.
+            Ok(request) => early.push_back(request),
             Err(async_channel::TryRecvError::Empty) => std::thread::sleep(WAIT),
         }
     }
@@ -244,6 +250,7 @@ pub(crate) fn install(app: &mut App) {
         held: Vec::new(),
         notes: Vec::new(),
         prompt: None,
+        early,
         closing: Vec::new(),
         asking: HashMap::new(),
         requests,
@@ -260,6 +267,7 @@ pub(crate) fn install(app: &mut App) {
         Update,
         (requests_in, open, stop_cancelled)
             .chain()
+            .after(PollTasks)
             .before(AgentLoop),
     )
     .add_systems(
@@ -449,7 +457,11 @@ fn requests_in(
     changing: Option<Res<options::Changing>>,
 ) {
     let mut changing = changing.is_some();
-    while !changing && let Ok(request) = requested.session.requests.try_recv() {
+    while !changing {
+        let early = requested.session.early.pop_front();
+        let Some(request) = early.or_else(|| requested.session.requests.try_recv().ok()) else {
+            break;
+        };
         match request {
             Request::Prompt(prompt, reply) => requested.prompt(prompt, reply),
             Request::Cancel => requested.cancel(),
@@ -687,6 +699,24 @@ fn ended(
     }
 }
 
+/// How a prompt ended, from how the main agent's last turn since it did:
+/// cancelled by the client, or by a stop that gave no reason; a failure as
+/// an error; else the end of the answer, `max_tokens` when the output limit
+/// cut it. A turn a plugin stopped for a reason, as `/compact` does, is no
+/// cancel.
+fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::StopReason, Error> {
+    match (cancelled, ended) {
+        (true, _) | (false, Some(TurnOutcome::Stopped(None))) => Ok(acp::StopReason::Cancelled),
+        (false, Some(TurnOutcome::Failed(why))) => Err(crate::error(Error::internal_error(), why)),
+        (false, Some(TurnOutcome::Answered(Said::Assistant(reply))))
+            if reply.stop == Some(Stop::Length) =>
+        {
+            Ok(acp::StopReason::MaxTokens)
+        }
+        (false, _) => Ok(acp::StopReason::EndTurn),
+    }
+}
+
 /// Answers the prompt once the work it started settled.
 fn settle(work: Work, mut out: output::Out, mut commands: Commands) {
     if !work.idle() || out.session.prompt.is_none() {
@@ -697,16 +727,8 @@ fn settle(work: Work, mut out: output::Out, mut commands: Commands) {
     let Some(prompt) = out.session.prompt.take() else {
         return;
     };
-    let answer = match (prompt.cancelled, prompt.ended) {
-        // A turn a plugin stopped for a reason, as `/compact` does, was no
-        // cancel.
-        (true, _) | (false, Some(TurnOutcome::Stopped(None))) => {
-            Ok(acp::PromptResponse::new(acp::StopReason::Cancelled))
-        }
-        (false, Some(TurnOutcome::Failed(why))) => Err(crate::error(Error::internal_error(), why)),
-        (false, _) => Ok(acp::PromptResponse::new(acp::StopReason::EndTurn)),
-    };
-    prompt.reply.send(answer);
+    let answer = stop_reason(prompt.cancelled, prompt.ended.as_ref());
+    prompt.reply.send(answer.map(acp::PromptResponse::new));
     let closing = std::mem::take(&mut out.session.closing);
     for close in &closing {
         close.send(Ok(acp::CloseSessionResponse::new()));
