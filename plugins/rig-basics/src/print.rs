@@ -830,6 +830,21 @@ struct Agents<'w, 's> {
     choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
     /// Why an agent's model was refused, as its notice said.
     refused: Query<'w, 's, &'static ModelRefused>,
+    work: Work<'w, 's>,
+    keep: Query<'w, 's, (), With<KeepRunning>>,
+}
+
+impl Agents<'_, '_> {
+    /// Whether no agent works ([`Work::idle`]).
+    fn idle(&self) -> bool {
+        self.work.idle()
+    }
+}
+
+/// The agents' work in progress, for a front nobody sits at that waits for
+/// the work it sent to settle, as a headless run does.
+#[derive(SystemParam)]
+pub struct Work<'w, 's> {
     /// Running turns; a restored one the kernel stops is none (one that goes
     /// on is no longer `Restored`).
     turns: Query<'w, 's, (), (With<TurnOf>, Without<Restored>)>,
@@ -853,14 +868,13 @@ struct Agents<'w, 's> {
             Or<(Without<Started>, With<Outcome>)>,
         ),
     >,
-    keep: Query<'w, 's, (), With<KeepRunning>>,
 }
 
-impl Agents<'_, '_> {
+impl Work<'_, '_> {
     /// Whether no agent works: no turn, task, held effect or message on its
     /// way. An open effect that started and waits on the world outside,
     /// such as a question nobody answers, is no work.
-    fn idle(&self) -> bool {
+    pub fn idle(&self) -> bool {
         self.turns.is_empty()
             && self.messages.is_empty()
             && self.held.is_empty()

@@ -371,6 +371,11 @@ and, once you approve each, in the project's `.rig/mcp.json`: `rig plugin
 enable rig_mcp_client::McpPlugin`. Its README covers the file format, approval,
 `/mcp` and headless `--tools`.
 
+The optional [`rig-acp`](../plugins/rig-acp) plugin adds `rig acp`, which
+serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
+uses rig's models, tools, sessions and slash commands: `rig plugin enable
+rig_acp::AcpPlugin`. Its README has the editor's settings.
+
 The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
 `claude-cloak/*` models signed in with a Claude subscription instead of an API
 key, on Linux and macOS: `rig plugin add rig_claude_cloak::ClaudeCloakPlugin`.

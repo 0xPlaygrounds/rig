@@ -36,6 +36,7 @@ fn the_default_plugins_come_from_the_checkout_and_only_what_they_use_is_patched(
         "rig-inspect",
         "rig-steel",
         "rig-mcp-client",
+        "rig-acp",
         "rig-claude-cloak",
         "rig-agent",
     ] {

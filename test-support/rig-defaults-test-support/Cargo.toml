@@ -30,6 +30,7 @@ rig-harness-test-support = { path = "../rig-harness-test-support" }
 rig-inspect = { path = "../../plugins/rig-inspect" }
 rig-claude-cloak = { path = "../../plugins/rig-claude-cloak" }
 rig-mcp-client = { path = "../../plugins/rig-mcp-client" }
+rig-acp = { path = "../../plugins/rig-acp" }
 serde_json = { workspace = true }
 # Named by the derives of the plugin `rig plugin new` writes.
 bevy_reflect = { workspace = true }

@@ -141,6 +141,7 @@ crate behind a feature.
 | [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
 | [`rig-traffic`](plugins/rig-traffic) | Opt-in provider HTTP recording in the session store, using the cassette engine |
 | [`rig-mcp-client`](plugins/rig-mcp-client) | The coding agent's MCP client, off by default: MCP servers' tools, with project servers only once approved |
+| [`rig-acp`](plugins/rig-acp) | `rig acp`, off by default: the coding agent for ACP clients (editors such as Zed) |
 
 ### Integrations
 

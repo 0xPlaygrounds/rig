@@ -20,7 +20,8 @@ mod tests;
 /// The key of an `mcp.json` that holds its servers.
 const SERVERS: &str = "mcpServers";
 
-/// Which `mcp.json` a server is in.
+/// Where a server is named: which `mcp.json`, or the client's
+/// [`AddMcpServer`](crate::AddMcpServer).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Scope {
     /// `RIG_HOME/mcp.json`, the user's in every project.
@@ -28,6 +29,8 @@ pub enum Scope {
     /// `<project>/.rig/mcp.json`, which starts nothing the user did not
     /// approve.
     Project,
+    /// A client of rig's, such as an editor, for this run only: in no file.
+    Client,
 }
 
 impl fmt::Display for Scope {
@@ -35,11 +38,13 @@ impl fmt::Display for Scope {
         f.write_str(match self {
             Self::User => "user",
             Self::Project => "project",
+            Self::Client => "client",
         })
     }
 }
 
-/// How a server is reached, its `${VAR}`s expanded.
+/// How a server is reached: as a file names it, its `${VAR}`s expanded, or
+/// as a client gives it, taken as it is.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ServerSpec {
     /// A child process speaking MCP on its stdin and stdout.
@@ -86,7 +91,7 @@ impl ServerSpec {
     /// Why it does not describe one, naming the field: an unknown field,
     /// a field of the other transport, an unsupported `type` such as
     /// `sse`, or a `${VAR}` that is not set.
-    pub fn parse(written: &Value) -> Result<Option<Self>, String> {
+    pub(crate) fn parse(written: &Value) -> Result<Option<Self>, String> {
         let written: Written = serde_path_to_error::deserialize(written).map_err(|error| {
             match error.path().to_string().as_str() {
                 "." => error.inner().to_string(),
@@ -361,7 +366,7 @@ impl McpFile {
     fn write(&self, bytes: &[u8]) -> Result<(), String> {
         let path = match self.scope {
             Scope::User => followed(self.path()),
-            Scope::Project => self.path(),
+            Scope::Project | Scope::Client => self.path(),
         };
         let failed = |error: std::io::Error| format!("could not write {}: {error}", path.display());
         let dir = path.parent().unwrap_or(&self.dir);

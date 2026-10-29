@@ -307,7 +307,7 @@ fn launch(
         // Best effort: a list that cannot be read must not keep the
         // terminal from being put back below.
         if !reload {
-            kill_left_groups(run).ok();
+            run.kill_left_groups().ok();
         }
         promoted?;
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
@@ -408,69 +408,6 @@ fn launch(
         kept_screen = false;
         notice = Some(message);
         reason = StartReason::Restarted;
-    }
-}
-
-/// Kills the process groups the agent listed in `run` ([`RunDir::groups`])
-/// and left running, as it does when killed by `SIGKILL`; a clean exit
-/// lists none. A group is killed only while its leader carries the mark
-/// naming the list ([`marked`]), so an id the system gave another process
-/// since is left alone. `kill(1)` sends the signal, so the launcher keeps
-/// to std.
-fn kill_left_groups(run: &RunDir) -> Result<()> {
-    let ledger = run.groups();
-    let Some(listed) = absent(fs::read_to_string(&ledger))? else {
-        return Ok(());
-    };
-    // A group id of 0 or 1 would name the launcher's own group or every
-    // process.
-    let groups: Vec<String> = listed
-        .lines()
-        .filter_map(|id| id.trim().parse::<i32>().ok())
-        .filter(|&id| id > 1 && marked(id, &ledger))
-        .map(|id| format!("-{id}"))
-        .collect();
-    if !groups.is_empty() {
-        child("kill")
-            .args(["-s", "KILL", "--"])
-            .args(&groups)
-            .stderr(Stdio::null())
-            .status()
-            .ok();
-    }
-    absent(fs::remove_file(&ledger))?;
-    Ok(())
-}
-
-/// Whether the process `id` carries [`env::PROCESS_LEDGER`] set to
-/// `ledger`: it is a process the agent started, or one of its children.
-/// Linux reads its environment in `/proc`, macOS through `ps -E`;
-/// elsewhere no process is.
-fn marked(id: i32, ledger: &Path) -> bool {
-    let mark = format!("{}={}", env::PROCESS_LEDGER, ledger.display());
-    if cfg!(target_os = "linux") {
-        let environ = fs::read(format!("/proc/{id}/environ"));
-        environ.is_ok_and(|environ| {
-            environ
-                .split(|&byte| byte == 0)
-                .any(|entry| entry == mark.as_bytes())
-        })
-    } else if cfg!(target_os = "macos") {
-        let shown = child("ps")
-            .args(["-E", "-ww", "-o", "command=", "-p", &id.to_string()])
-            .stderr(Stdio::null())
-            .output();
-        // `ps -E` appends each variable after a space.
-        let entry = format!(" {mark}");
-        shown.is_ok_and(|shown| {
-            let shown = String::from_utf8_lossy(&shown.stdout);
-            shown
-                .match_indices(&entry)
-                .filter_map(|(at, _)| shown.get(at + entry.len()..))
-                .any(|rest| rest.is_empty() || rest.starts_with([' ', '\n']))
-        })
-    } else {
-        false
     }
 }
 

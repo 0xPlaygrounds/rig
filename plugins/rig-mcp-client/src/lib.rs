@@ -1,19 +1,22 @@
 //! MCP servers' tools for the rig agent. The servers of `RIG_HOME/mcp.json`
 //! and the approved ones of `<project>/.rig/mcp.json` (the common
-//! `mcpServers` format, stdio or streamable HTTP) connect in
-//! the background on rig's tokio runtime, each server's tools registered
-//! as `<server>__<tool>` as the server lists them, with its annotations,
-//! and removed when it disconnects; a lost server is connected again with
-//! backoff. A server of the project starts only once the user approved it
-//! as it is written, in every front.
+//! `mcpServers` format, stdio or streamable HTTP), and those a client of
+//! rig's names for the run ([`AddMcpServer`]), connect in the background on
+//! rig's tokio runtime, each server's tools registered as `<server>__<tool>`
+//! as the server lists them, with its annotations, and removed when it
+//! disconnects; a lost server is connected again with backoff. A server of
+//! the project starts only once the user approved it as it is written, in
+//! every front.
 //!
 //! A server is an entity with an [`McpStatus`]; its tools are entities
 //! [`McpToolOf`] it. Each new server holds a headless run's start
 //! ([`Starting`]) until its first attempt connected or failed, which
 //! `connect_timeout_secs` bounds, so `rig -p --tools <server>__<tool>`
 //! can name its tools. `/mcp` shows the servers; `/mcp add`, `/mcp
-//! remove`, `/mcp approve` and `/mcp deny` change them and save it. The
-//! `[mcp]` table of `settings.toml` is [`McpSettings`].
+//! remove`, `/mcp approve` and `/mcp deny` change the files and save it.
+//! The `[mcp]` table of `settings.toml` is [`McpSettings`]. [`McpPlugin`]
+//! reads the files; a front that hands rig its client's servers adds
+//! [`McpCorePlugin`], which reads none.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -41,8 +44,10 @@ use rig_core::error::ErrorReport;
 use rig_core::message::ToolName;
 use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
 use rig_core::tool::{DynamicTool, Touches};
+use rig_harness::host::cli::Cli;
 use rig_harness::plugin_data::PluginData;
 use rig_harness::prelude::*;
+use rig_harness::rig_tools::process;
 use rig_rmcp::{McpConnection, McpTool};
 use rmcp::model::{ClientCapabilities, ClientConfig, Implementation, Tool as McpDefinition};
 use rmcp::service::{NotificationContext, RoleClient};
@@ -53,8 +58,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use approval::Approvals;
-pub use config::Scope;
-use config::{McpFile, ServerSpec};
+use config::McpFile;
+pub use config::{Scope, ServerSpec};
 
 #[cfg(test)]
 mod tests;
@@ -67,11 +72,28 @@ const GRACE_LISTS: usize = 3;
 /// The longest wait between two attempts to reach a lost server.
 const MAX_RETRY: Duration = Duration::from_secs(60);
 
-/// Connects the configured MCP servers and offers their tools.
+/// Connects the MCP servers of the `mcp.json` files and those code adds
+/// ([`AddMcpServer`]), and offers their tools.
 #[derive(Default)]
 pub struct McpPlugin;
 
 impl Plugin for McpPlugin {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<McpCorePlugin>() {
+            app.add_plugins(McpCorePlugin);
+        }
+        app.insert_resource(Files);
+    }
+}
+
+/// Connects the MCP servers code adds ([`AddMcpServer`]) and offers their
+/// tools, with `/mcp`, and reads no `mcp.json`: what a front adds for the
+/// servers its client names, so the user's own join only with [`McpPlugin`]
+/// on. Add it unless `app.is_plugin_added::<McpCorePlugin>()`.
+#[derive(Default)]
+pub struct McpCorePlugin;
+
+impl Plugin for McpCorePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<McpSettings>("mcp")
             .init_resource::<RigHome>()
@@ -80,7 +102,15 @@ impl Plugin for McpPlugin {
             .init_resource::<Approvals>()
             .init_resource::<Groups>()
             .register_type::<McpStatus>()
-            .add_systems(Startup, connect_configured)
+            // A run that keeps no session, such as `rig acp`'s, runs no
+            // agent to use them.
+            .add_systems(
+                Startup,
+                connect_configured
+                    .run_if(resource_exists::<Files>)
+                    .run_if(|cli: Option<Res<Cli>>| !cli.is_some_and(|cli| cli.sessionless())),
+            )
+            .add_observer(add_server)
             .add_observer(apply_event)
             .add_observer(close_link)
             .add_systems(
@@ -103,6 +133,28 @@ impl Plugin for McpPlugin {
             )
             .add_command("mcp", USAGE, mcp_command);
     }
+}
+
+/// That [`McpPlugin`] is on: the `mcp.json` files are read, and `/mcp`
+/// changes them.
+#[derive(Resource)]
+struct Files;
+
+/// Connects the server `name` for this run, as a client of rig's names it:
+/// in no file, with no approval, its values taken as they are (no
+/// `${VAR}`), shown by `/mcp` as `(client)`. It takes the name over a
+/// server of a file, which then does not run (a notice says so), even
+/// when this one fails or is refused. A second server of a name a client
+/// gave is refused with a notice. Trigger it before `Startup`, as in
+/// `PreStartup`: the files' servers start then. Its entity holds
+/// [`Starting`] until its first attempt connected or failed.
+#[derive(Event, Clone, Debug)]
+pub struct AddMcpServer {
+    /// The name its tools are prefixed with, as [`McpServer::name`].
+    pub name: String,
+    /// How it is reached, or why the client's declaration names no way rig
+    /// can: the server is then listed invalid, holding its name.
+    pub spec: Result<ServerSpec, String>,
 }
 
 /// `/mcp`'s line of help.
@@ -241,7 +293,7 @@ impl Configured {
             Err(why) => (McpState::Invalid, Some(why.clone())),
             Ok(None) => (McpState::Disabled, None),
             Ok(Some(_)) => match (self.scope, self.answer) {
-                (Scope::User, _) | (Scope::Project, Some(true)) => return None,
+                (Scope::User | Scope::Client, _) | (Scope::Project, Some(true)) => return None,
                 (Scope::Project, Some(false)) => (McpState::Denied, None),
                 (Scope::Project, None) => (McpState::NotApproved, None),
             },
@@ -264,6 +316,23 @@ struct Read {
 }
 
 impl Read {
+    /// Takes out the servers of the names a client gave, which do not
+    /// start: each name and the file it is in.
+    fn give_way(&mut self, clients: &HashSet<String>) -> Vec<(String, Scope)> {
+        let mut gone = Vec::new();
+        for map in [&mut self.servers, &mut self.shadowed] {
+            map.retain(|name, configured| {
+                let kept = !clients.contains(name);
+                if !kept {
+                    gone.push((name.clone(), configured.scope));
+                }
+                kept
+            });
+        }
+        gone.sort();
+        gone
+    }
+
     /// Each project server that waits for an answer, as a line: its name
     /// and its object as written.
     fn waiting(&self) -> Vec<String> {
@@ -367,7 +436,7 @@ impl Connect<'_> {
                     problems.push(format!("{}: server `{name}`: {why}", path.display()));
                 }
                 let answer = match file.scope {
-                    Scope::User => None,
+                    Scope::User | Scope::Client => None,
                     Scope::Project => approvals.answer(&name, &written),
                 };
                 let configured = Configured {
@@ -458,15 +527,19 @@ impl Connect<'_> {
 fn connect_configured(
     connect: Connect,
     data: Option<Res<PluginData>>,
+    servers: Query<&McpServer>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let lock = config::lock_path(connect.home.0.root());
     let approvals = Approvals::read(data.as_deref(), connect.project(), lock);
-    let read = connect.configured(&approvals);
+    let mut read = connect.configured(&approvals);
     commands.insert_resource(approvals);
     for why in &read.problems {
         notices.write(Notice::error(None, why.clone()));
+    }
+    for (name, scope) in read.give_way(&clients(servers.iter())) {
+        notices.write(Notice::warn(None, gives_way(&name, scope)));
     }
     let waiting = read.waiting();
     for (name, configured) in read.servers {
@@ -484,6 +557,61 @@ fn connect_configured(
         );
         notices.write(Notice::warn(None, text));
     }
+}
+
+/// The names of the servers a client gave.
+fn clients<'a>(servers: impl Iterator<Item = &'a McpServer>) -> HashSet<String> {
+    let clients = servers.filter(|server| server.scope == Scope::Client);
+    clients.map(|server| server.name.clone()).collect()
+}
+
+/// Connects the server a client gave for this run ([`AddMcpServer`]),
+/// stopping a server of a file of that name, or says why it does not.
+fn add_server(
+    add: On<AddMcpServer>,
+    connect: Connect,
+    servers: Query<(Entity, &McpServer)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let AddMcpServer { name, spec } = add.event();
+    let taken = || servers.iter().filter(|(_, server)| &server.name == name);
+    if taken().any(|(_, server)| server.scope == Scope::Client) {
+        let text = format!("MCP server `{name}`: the client named two; the first stays.");
+        notices.write(Notice::warn(None, text));
+        return;
+    }
+    let server = McpServer {
+        name: name.clone(),
+        scope: Scope::Client,
+        written: Value::Null,
+    };
+    let label = Name::new(format!("mcp:{name}"));
+    for (entity, file) in taken() {
+        commands.entity(entity).despawn();
+        notices.write(Notice::warn(None, gives_way(name, file.scope)));
+    }
+    let connected = config::check_name(name)
+        .and(spec.clone())
+        .and_then(|spec| connect.connect(&mut commands, server.clone(), label.clone(), spec));
+    if let Err(why) = connected {
+        let text = format!("MCP server `{name}` could not connect: {why}.");
+        notices.write(Notice::warn(None, text));
+        let status = McpStatus {
+            state: McpState::Invalid,
+            last_error: Some(why),
+            ..McpStatus::default()
+        };
+        commands.spawn((label, server, status));
+    }
+}
+
+/// Why the server `name` of the `scope` file does not run.
+fn gives_way(name: &str, scope: Scope) -> String {
+    format!(
+        "MCP server `{name}` of the {scope} mcp.json does not run: the client named one of that \
+         name for this session."
+    )
 }
 
 /// How one server's process or endpoint is reached.
@@ -542,6 +670,7 @@ impl Groups {
         let child = command.spawn()?;
         if let Some(leader) = child.id() {
             live.leaders.insert(leader);
+            process::list_group(leader);
         }
         Ok(Group {
             child,
@@ -553,7 +682,10 @@ impl Groups {
     fn close(&self) {
         let mut live = self.live();
         live.closed = true;
-        live.leaders.drain().for_each(kill_group);
+        live.leaders.drain().for_each(|leader| {
+            kill_group(leader);
+            process::unlist_group(leader);
+        });
     }
 }
 
@@ -561,7 +693,7 @@ impl Groups {
 /// as a process is killed as it is dropped there.
 fn kill_group(leader: u32) {
     #[cfg(unix)]
-    rig_harness::rig_tools::process::kill_group_of(leader);
+    process::kill_group_of(leader);
     #[cfg(not(unix))]
     let _ = leader;
 }
@@ -579,7 +711,9 @@ impl Drop for Group {
         if let Some(leader) = self.child.id() {
             let mut live = self.groups.live();
             kill_group(leader);
-            live.leaders.remove(&leader);
+            if live.leaders.remove(&leader) {
+                process::unlist_group(leader);
+            }
         }
     }
 }
@@ -957,14 +1091,24 @@ struct Servers<'w, 's> {
     servers: Query<'w, 's, (Entity, &'static McpServer, &'static McpStatus)>,
     connect: Connect<'w>,
     approvals: ResMut<'w, Approvals>,
+    files: Option<Res<'w, Files>>,
     commands: Commands<'w, 's>,
 }
 
 impl Servers<'_, '_> {
+    /// The names of the servers a client gave.
+    fn clients(&self) -> HashSet<String> {
+        clients(self.servers.iter().map(|(_, server, _)| server))
+    }
+
     /// Spawns `name` again as the files name it now, if they do; a server
     /// that is as it was keeps running. What became of it: its state, and
     /// whether it was spawned again.
     fn settle(&mut self, name: &str) -> Result<Option<(McpState, bool)>, String> {
+        // The client's server of that name runs, whatever the files say.
+        if self.clients().contains(name) {
+            return Ok(None);
+        }
         let configured = self
             .connect
             .configured(&self.approvals)
@@ -1038,8 +1182,21 @@ impl Servers<'_, '_> {
                 format!("{name} ({}): {state}", server.scope)
             })
             .collect();
-        let shadowed = self.connect.configured(&self.approvals).shadowed;
-        lines.extend(shadowed.iter().map(|(name, configured)| {
+        if self.files.is_none() {
+            lines.sort();
+            return match lines.is_empty() {
+                true => "No MCP servers: the client named none, and rig reads no mcp.json with \
+                         rig_mcp_client::McpPlugin off."
+                    .to_owned(),
+                false => lines.join("\n"),
+            };
+        }
+        let mut read = self.connect.configured(&self.approvals);
+        let given = read.give_way(&self.clients());
+        lines.extend(given.iter().map(|(name, scope)| {
+            format!("{name} ({scope}): does not run; the client's of that name does")
+        }));
+        lines.extend(read.shadowed.iter().map(|(name, configured)| {
             let written = config::describe(&configured.written);
             let idle = configured.idle();
             let error = idle.as_ref().and_then(|it| it.last_error.clone());
@@ -1138,8 +1295,15 @@ impl Servers<'_, '_> {
             .iter()
             .find(|(_, server, _)| server.name == name)
             .map(|(_, server, _)| server.scope);
-        let Some(scope) = scope.or(shown) else {
-            return Err(format!("No MCP server `{name}`."));
+        let scope = match scope.or(shown) {
+            None => return Err(format!("No MCP server `{name}`.")),
+            Some(Scope::Client) => {
+                return Err(format!(
+                    "MCP server `{name}` is the client's, for this session, in no mcp.json; /mcp \
+                     remove --user {name} or --project {name} removes a file's."
+                ));
+            }
+            Some(scope) => scope,
         };
         let file = self.connect.file(scope)?;
         let path = file.path();
@@ -1151,7 +1315,7 @@ impl Servers<'_, '_> {
             Some((state, true)) => {
                 let other = self.connect.file(match scope {
                     Scope::User => Scope::Project,
-                    Scope::Project => Scope::User,
+                    Scope::Project | Scope::Client => Scope::User,
                 })?;
                 let other = other.path();
                 let other = other.display();
@@ -1218,6 +1382,10 @@ fn mcp_command(
     let mut words = args.args.split_whitespace();
     let done = match (words.next(), words.clone().next()) {
         (None, _) => Ok(servers.list()),
+        (Some(verb), _) if servers.files.is_none() => Err(format!(
+            "/mcp {verb} changes an mcp.json, which rig reads only with rig_mcp_client::McpPlugin \
+             on: rig plugin enable rig_mcp_client::McpPlugin"
+        )),
         (Some("add"), _) => servers.add(words),
         (Some("remove"), _) => servers.remove(words),
         (Some("approve"), Some(name)) if words.clone().count() == 1 => servers.answer(name, true),

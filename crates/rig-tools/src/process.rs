@@ -707,6 +707,19 @@ fn ledger_path() -> Option<PathBuf> {
     ledger.as_ref().map(|(path, _)| path.clone())
 }
 
+/// Lists the group `leader` leads in the ledger [`record_groups`] keeps,
+/// for a process started outside [`Launcher::spawn`], such as an MCP
+/// server's: the supervisor then kills it should this process die without
+/// stopping it. [`unlist_group`] takes it off once it is killed.
+pub fn list_group(leader: u32) {
+    record(leader, true);
+}
+
+/// Takes the group `leader` leads off the ledger ([`list_group`]).
+pub fn unlist_group(leader: u32) {
+    record(leader, false);
+}
+
 /// Lists the group `id` leads in the ledger, or takes it off once reaped.
 fn record(id: u32, live: bool) {
     let mut ledger = LEDGER.lock().unwrap_or_else(PoisonError::into_inner);
