@@ -355,6 +355,12 @@ with the separately enabled effect log.
 The optional [`rig-inspect`](../plugins/rig-inspect) plugin adds the `inspect`
 tool, with which the agent reads its own Bevy world, read-only.
 
+The optional [`rig-mcp-client`](../plugins/rig-mcp-client) plugin offers the
+tools of MCP servers, stdio or streamable HTTP, named in `$RIG_HOME/mcp.json`
+and, once you approve each, in the project's `.rig/mcp.json`: `rig plugin
+enable rig_mcp_client::McpPlugin`. Its README covers the file format, approval,
+`/mcp` and headless `--tools`.
+
 The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
 `claude-cloak/*` models signed in with a Claude subscription instead of an API
 key, on Linux and macOS: `rig plugin add rig_claude_cloak::ClaudeCloakPlugin`.
@@ -392,6 +398,7 @@ processes can share one:
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |
+| `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project. |
 | `defaults.json` | The last chosen model and reasoning, which a new session starts with. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |

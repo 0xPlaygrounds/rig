@@ -34,7 +34,7 @@ const TOP: usize = 5;
 
 /// Which tools are deferred, offered only once an agent activated them:
 /// the `[tool_search]` table of the settings, such as
-/// `tools = ["jira_*"]` and `plugins = ["rig-mcp"]`.
+/// `tools = ["jira_*"]` and `plugins = ["rig-mcp-client"]`.
 #[derive(Resource, Deserialize, Clone, Debug, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct DeferredTools {

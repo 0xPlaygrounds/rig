@@ -50,8 +50,8 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 ```
 
 Cargo unifies features across dependencies. `rig-cassette` with `traffic`
-(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`
-and `rig-mongodb` through BSON still enable `preserve_order`. These are
+(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`,
+`rig-mcp-client` and `rig-mongodb` through BSON still enable `preserve_order`. These are
 application-level serde_json choices; Rig has no forwarding feature.
 
 Native calls with float arguments store a projection baseline beside their

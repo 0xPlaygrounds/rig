@@ -28,7 +28,6 @@ pub mod local_models;
 pub mod long_term_memory;
 pub mod loop_breaker;
 pub mod map_reduce;
-pub mod mcp_client;
 pub mod model_fallback;
 pub mod model_router;
 pub mod nested_context;

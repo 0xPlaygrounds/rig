@@ -23,8 +23,8 @@
 //! `serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }`.
 //!
 //! Cargo unifies these features: `rig-cassette` with `traffic` (including
-//! `rig-traffic`) enables both; `rig-claude-cloak` and `rig-mongodb` through BSON
-//! enable `preserve_order`. Rig has no forwarding feature for either setting.
+//! `rig-traffic`) enables both; `rig-claude-cloak`, `rig-mcp-client` and
+//! `rig-mongodb` through BSON enable `preserve_order`. Rig has no forwarding feature for either setting.
 //!
 //! ```no_run
 //! use rig_core::DynModel;

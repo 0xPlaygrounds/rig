@@ -1,0 +1,38 @@
+[package]
+name = "rig-mcp-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "MCP servers' tools for the Rig coding agent: stdio and streamable HTTP servers from mcp.json, project servers only once approved, and /mcp."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+# A server's events, as a stream its entity reads.
+async-channel = { workspace = true }
+bevy_ecs = { workspace = true }
+# Named by Bevy's derives.
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+# A streamable HTTP server's headers.
+http = { workspace = true }
+# `Starting`, which holds a headless run until the servers answered.
+rig-basics = { path = "../rig-basics", version = "0.46.0-rc.1", default-features = false }
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0-rc.1" }
+rig-rmcp = { workspace = true }
+rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
+serde = { workspace = true, features = ["derive"] }
+# Which field of a server object does not read.
+serde_path_to_error = { workspace = true }
+# `preserve_order`: an mcp.json keeps its keys' order when /mcp writes it.
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio = { workspace = true, features = ["rt", "process", "time"] }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

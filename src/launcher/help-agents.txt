@@ -32,7 +32,11 @@ A conversation:
                           events on stdout. Closing stdin ends rig at once.
 
 Both take --model vendor/model, --tools read,shell (only those tools; a
-name no tool has is refused, before any model or tool call) and -r
+name no tool has is refused, before any model or tool call; with the MCP
+plugin on, an MCP server's tool is <server>__<tool>, and the run first
+waits for its servers, each at most [mcp] connect_timeout_secs; with
+--json, notice lines say which connected or failed, and plain -p prints
+the failures, or every notice for a /command) and -r
 <session id or name> (go on with a session; the id is in the `ready` line). rig
 works in its current directory. RIG_HOME (default ~/.rig) holds its
 builds, settings and sessions. The first start builds the agent, which

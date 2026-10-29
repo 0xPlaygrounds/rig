@@ -498,6 +498,125 @@ fn no_prompt() -> Vec<(Option<String>, u8, Option<String>)> {
     vec![(None, 2, Some(why.to_owned()))]
 }
 
+/// A run asked to exit while a plugin holds the start exits without running
+/// anything, and leaves the turn it restored as the session has it: the
+/// next run's plugin carries it on.
+#[test]
+fn an_exit_during_a_held_start_leaves_the_restored_turn() {
+    // The exit comes while the start is held, and as its last hold goes.
+    for with_the_last in [false, true] {
+        let store = MemoryStore::default();
+        killed_two_frames_in(&store);
+        let (second, third) = (silent(), silent());
+        let (mut app, _) = scripted(&store, (&second, false), Some("again"), || {});
+        let starting = app.world_mut().spawn(Starting).id();
+        app.update();
+        app.world_mut().trigger(Exit(ExitReason::Signal));
+        if with_the_last {
+            app.world_mut().despawn(starting);
+        }
+        run_until(&mut app, |_| false);
+        assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+        assert_eq!(second.request_count(), 0);
+        drop(app);
+        let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+        let (mut app, _) = scripted(&store, (&third, false), None, in_place);
+        assert_eq!(ended(&mut app), answered("hello"), "{with_the_last}");
+        assert_eq!(third.request_count(), 0);
+    }
+}
+
+/// A `/command` waits for the start as any prompt does: a skill's starts a
+/// turn, which must see the tools that come during it.
+#[test]
+fn a_skill_run_waits_for_the_start() {
+    let scratch = test_support::scratch_home("print-skill").root().to_owned();
+    let dir = scratch.join("repo");
+    let skill = dir.join(".agents/skills/haiku");
+    assert!(std::fs::create_dir_all(dir.join(".git")).is_ok());
+    assert!(std::fs::create_dir_all(&skill).is_ok());
+    let body = "---\nname: haiku\ndescription: Answer in a haiku.\n---\nWrite three lines.\n";
+    assert!(std::fs::write(skill.join("SKILL.md"), body).is_ok());
+    let model = answering(&["done"]);
+    let (mut app, _) = noting(&MemoryStore::default(), Invocation::default());
+    app.insert_resource(ProjectRoot(dir))
+        .insert_resource(RigHome(Home::at(scratch.join("home"))))
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, crate::skills::SkillsPlugin))
+        .run_headless(Some("/skill:haiku".to_owned()));
+    let starting = app.world_mut().spawn(Starting).id();
+    app.finish();
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 0);
+    app.world_mut().despawn(starting);
+    assert_eq!(ended(&mut app), answered("done"));
+    assert_eq!(model.request_count(), 1);
+}
+
+/// Nothing runs while a plugin holds the start: the turn the session
+/// restored is decided, here stopped, and the prompt calls the model, only
+/// once the last [`Starting`] is gone.
+#[test]
+fn a_held_start_holds_the_restored_turn_and_the_prompt() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let second = answering(&["prompted"]);
+    let (mut app, _) = scripted(&store, (&second, false), Some("again"), || {});
+    let starting = app.world_mut().spawn(Starting).id();
+    for _ in 0..20 {
+        app.update();
+    }
+    let world = app.world_mut();
+    let mut turns = world.query_filtered::<(), (With<Restored>, With<TurnOf>)>();
+    let restored = turns.iter(world).count();
+    assert_eq!((restored, second.request_count()), (1, 0));
+    assert!(app.world().resource::<Ends>().0.is_empty());
+    app.world_mut().despawn(starting);
+    assert_eq!(ended(&mut app), answered("prompted"));
+    assert_eq!(second.request_count(), 1);
+    let world = app.world_mut();
+    let restored = turns.iter(world).count();
+    assert_eq!(restored, 0);
+}
+
+/// `rig -r <id> -p --json` signalled while a plugin holds the start: the
+/// turn it restored, which it leaves to the next run, still gets its
+/// `turn_end` before the `exit` line.
+#[test]
+fn a_json_exit_during_a_held_start_closes_the_restored_turn_it_leaves() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let second = silent();
+    let held = |app: &mut App| {
+        app.world_mut().spawn(Starting);
+        let signal = |mut frames: Local<u8>, mut commands: Commands| {
+            *frames += 1;
+            if *frames == 2 {
+                commands.trigger(Exit(ExitReason::Signal));
+            }
+        };
+        app.add_systems(Update, signal);
+    };
+    let (app, lines) = one_shot_on(&store, "again", None, &second, true, held);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+    assert_eq!(second.request_count(), 0);
+    let closing = ["turn_start", "turn_end", "exit"].map(Value::from);
+    let parsed = lines.parsed();
+    let kinds = parsed.iter().map(|line| at(line, "type"));
+    let kinds: Vec<_> = kinds.filter(|kind| closing.contains(kind)).collect();
+    assert_eq!(kinds, closing.iter().collect::<Vec<_>>(), "{parsed:?}");
+    let ends = lines.of("turn_end");
+    let outcome = ends.first().map(|end| at(end, "outcome").clone());
+    assert_eq!(outcome, Some(json!("stopped")));
+    drop(app);
+    let third = silent();
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+    let (mut app, _) = scripted(&store, (&third, false), None, in_place);
+    assert_eq!(ended(&mut app), answered("hello"));
+}
+
 /// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any
 /// reply; its model, which got no request.
 fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
@@ -886,6 +1005,42 @@ fn waits(world: &World) -> bool {
     world
         .iter_entities()
         .any(|entity| entity.contains::<Waiting>())
+}
+
+/// A driver's request that comes while a plugin holds the start waits for
+/// it: no turn starts until the last [`Starting`] is gone.
+#[test]
+fn a_held_start_holds_a_drivers_first_request() {
+    let model = answering(&["hello"]);
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    let starting = app.world_mut().spawn(Starting).id();
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    if let (Some(agent), Some(connection)) = (first_agent(world), connect(&model)) {
+        world.entity_mut(agent).insert(connection);
+    }
+    send(
+        &input,
+        json!({ "v": 1, "type": "send", "id": 1, "text": "hi" }),
+    );
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 0);
+    assert!(lines.of("turn_start").is_empty());
+    app.world_mut().despawn(starting);
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    assert_eq!(model.request_count(), 1);
 }
 
 #[test]

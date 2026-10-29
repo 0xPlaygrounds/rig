@@ -121,8 +121,8 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 ```
 
 Cargo unifies features across dependencies. `rig-cassette` with `traffic`
-(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`
-and `rig-mongodb` through BSON still enable `preserve_order`. These are
+(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`,
+`rig-mcp-client` and `rig-mongodb` through BSON still enable `preserve_order`. These are
 application-level serde_json choices; Rig has no forwarding feature.
 
 ## Crates
@@ -140,6 +140,7 @@ crate behind a feature.
 | [`rig-ecs`](crates/rig-ecs), [`rig-harness`](crates/rig-harness) | The agent kernel on Bevy's ECS, and the harness the coding agent's plugins build on |
 | [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
 | [`rig-traffic`](plugins/rig-traffic) | Opt-in provider HTTP recording in the session store, using the cassette engine |
+| [`rig-mcp-client`](plugins/rig-mcp-client) | The coding agent's MCP client, off by default: MCP servers' tools, with project servers only once approved |
 
 ### Integrations
 

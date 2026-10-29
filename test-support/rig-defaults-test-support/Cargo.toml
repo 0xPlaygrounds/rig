@@ -29,6 +29,7 @@ rig-harness-test-support = { path = "../rig-harness-test-support" }
 # The optional plugins added on top of the defaults in `tests/removal.rs`.
 rig-inspect = { path = "../../plugins/rig-inspect" }
 rig-claude-cloak = { path = "../../plugins/rig-claude-cloak" }
+rig-mcp-client = { path = "../../plugins/rig-mcp-client" }
 serde_json = { workspace = true }
 # Named by the derives of the plugin `rig plugin new` writes.
 bevy_reflect = { workspace = true }

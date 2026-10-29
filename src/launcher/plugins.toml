@@ -187,6 +187,11 @@ plugin = "rig_tui::TuiPlugin"
 # crate = "rig-basics"
 # plugin = "rig_basics::telemetry::diagnostics::DiagnosticsPlugin"
 
+# MCP servers: those of RIG_HOME/mcp.json and the approved ones of the project's .rig/mcp.json, their tools as <server>__<tool>, and /mcp.
+# [[plugin]]
+# crate = "rig-mcp-client"
+# plugin = "rig_mcp_client::McpPlugin"
+
 # Claude Cloak: `claude-cloak/*` models signed in with a Claude subscription (OAuth) instead of an API key, and /claude-cloak login and logout; Linux and macOS.
 # [[plugin]]
 # crate = "rig-claude-cloak"
