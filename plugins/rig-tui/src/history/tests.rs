@@ -2,12 +2,13 @@ use bevy_app::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{Picked, Picker};
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
-use crate::tests::{edit, press, type_text, typed, view_app};
-use crate::view::ShowAgent;
+use crate::tests::{edit, input, press, type_text, typed, view_app};
+use crate::view::{ShowAgent, TuiView};
 use crate::{InputSystems, TuiKeys};
 
 /// Sends `prompt`, which comes back to the input with no model to answer
@@ -34,17 +35,141 @@ fn conversation(prompts: &[&str]) -> Conversation {
     Conversation(conversation)
 }
 
+/// The history's entries.
+fn entries(app: &App) -> Vec<String> {
+    app.world().resource::<PromptHistory>().entries.clone()
+}
+
+/// Whether a completion list is open.
+fn listing(app: &App) -> bool {
+    app.world().resource::<TuiView>().completion.is_some()
+}
+
+/// A first Up on typed text goes to its start, and only the next leaves it
+/// for the history, which Down past the newest brings it back from.
 #[test]
 fn up_and_down_browse_the_history_a_plugin_supplies() {
     let (mut app, _) = view_app();
     app.world_mut().resource_mut::<PromptHistory>().entries = vec!["one".into(), "two".into()];
+    type_text(&mut app, "first line");
+    press(&mut app, "shift+enter");
     type_text(&mut app, "draft");
+    press(&mut app, "up up");
+    assert_eq!(
+        (typed(&app).as_str(), input(&app).cursor()),
+        ("first line\ndraft", 0)
+    );
     press(&mut app, "up");
     assert_eq!(typed(&app), "two");
     press(&mut app, "up up");
     assert_eq!(typed(&app), "one");
     press(&mut app, "down down");
+    assert_eq!(typed(&app), "first line\ndraft");
+    assert_eq!(entries(&app), ["one", "two"]);
+    // Down on the last line goes to the end of the text.
+    press(&mut app, "ctrl+a down !");
+    assert_eq!(typed(&app), "first line\ndraft!");
+    // Ctrl+P goes to the history from anywhere on the first line.
+    press(&mut app, "up ctrl+p");
+    assert_eq!(typed(&app), "two");
+}
+
+/// A recalled slash command opens no list, so Up and Down walk past it both
+/// ways; Tab makes it the person's to complete, and typing opens the list
+/// as ever, which Up and Down then move in.
+#[test]
+fn up_and_down_walk_past_a_recalled_command_and_typing_still_completes() {
+    let (mut app, _) = view_app();
+    app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
+    app.add_command("more", "Show more", |_: In<CommandArgs>| {});
+    app.world_mut().resource_mut::<PromptHistory>().entries =
+        vec!["older".into(), "/mo".into(), "newer".into()];
+    type_text(&mut app, "draft");
+    press(&mut app, "up up up");
+    assert_eq!((typed(&app).as_str(), listing(&app)), ("/mo", false));
+    press(&mut app, "up");
+    assert_eq!(typed(&app), "older");
+    press(&mut app, "down");
+    assert_eq!((typed(&app).as_str(), listing(&app)), ("/mo", false));
+    press(&mut app, "down down");
     assert_eq!(typed(&app), "draft");
+    press(&mut app, "up up up tab");
+    assert_eq!((typed(&app).as_str(), listing(&app)), ("/mo", true));
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "/mo");
+    assert!(listing(&app));
+    press(&mut app, "down tab");
+    assert_eq!(typed(&app), "/more ");
+}
+
+/// What the person typed and did not send goes to the history whenever
+/// the input drops it, once, with secrets redacted, and blank text never.
+#[test]
+fn text_the_input_drops_unsent_goes_to_the_history() {
+    let (mut app, _) = view_app();
+    app.world_mut().resource_mut::<PromptHistory>().entries = vec!["old".into()];
+    // A recalled prompt sent in place of the draft.
+    type_text(&mut app, "draft one");
+    press(&mut app, "ctrl+a up enter");
+    edit(&mut app, |input| drop(input.take()));
+    assert_eq!(entries(&app), ["draft one", "old"]);
+    // Cleared.
+    type_text(&mut app, "key sk-proj-abcdefghijklmnop1234");
+    press(&mut app, "ctrl+c");
+    assert_eq!(
+        entries(&app).last().map(String::as_str),
+        Some("key [REDACTED]")
+    );
+    // Cleared while a prompt is recalled: the draft behind it.
+    type_text(&mut app, "draft cleared");
+    press(&mut app, "ctrl+a up ctrl+c");
+    assert_eq!(
+        entries(&app).last().map(String::as_str),
+        Some("draft cleared")
+    );
+    // Replaced by a plugin while a prompt is recalled.
+    type_text(&mut app, "draft two");
+    press(&mut app, "ctrl+a up");
+    edit(&mut app, |input| input.set("a template"));
+    app.update();
+    assert_eq!(entries(&app).last().map(String::as_str), Some("draft two"));
+    // A recalled prompt edited is the person's: the draft before it is
+    // kept, and Up keeps the edit as the draft.
+    edit(&mut app, |input| drop(input.take()));
+    type_text(&mut app, "draft three");
+    press(&mut app, "ctrl+a up");
+    type_text(&mut app, "!");
+    press(&mut app, "ctrl+a up");
+    assert_eq!(typed(&app), "draft three");
+    press(&mut app, "down");
+    assert_eq!(typed(&app), "draft two!");
+    // Blank text is not kept, and nothing twice: the last cleared is the
+    // newest, also within a frame.
+    press(&mut app, "ctrl+c space ctrl+c a ctrl+c b ctrl+c a ctrl+c");
+    // A recalled prompt edited and cleared in one frame: the edit is the
+    // newest, after the draft behind it.
+    type_text(&mut app, "draft four");
+    press(&mut app, "ctrl+a up");
+    press(&mut app, "! ctrl+c");
+    // A prompt sent, then another cleared, in one frame: in that order.
+    press(&mut app, "x enter y ctrl+c");
+    edit(&mut app, |input| drop(input.take()));
+    let kept = [
+        "draft one",
+        "old",
+        "key [REDACTED]",
+        "draft cleared",
+        "draft two",
+        "draft three",
+        "draft two!",
+        "b",
+        "a",
+        "draft four",
+        "a!",
+        "x",
+        "y",
+    ];
+    assert_eq!(entries(&app), kept);
 }
 
 #[test]
@@ -174,7 +299,7 @@ fn showing_another_agent_seeds_its_prompts_and_keeps_the_draft() {
     app.world_mut()
         .spawn(Picker::new("Agents").item("other", ""));
     app.update();
-    press(&mut app, "enter up");
+    press(&mut app, "enter ctrl+a up");
     assert_eq!(typed(&app), "review the diff");
     press(&mut app, "up");
     assert_eq!(typed(&app), "older");
@@ -188,7 +313,7 @@ fn browsing_follows_the_prompt_shown_when_the_history_moves() {
     app.world_mut().resource_mut::<PromptHistory>().entries =
         vec!["one".into(), "two".into(), "three".into()];
     type_text(&mut app, "draft");
-    press(&mut app, "up up");
+    press(&mut app, "ctrl+a up up");
     assert_eq!(typed(&app), "two");
     app.world_mut()
         .resource_mut::<PromptHistory>()

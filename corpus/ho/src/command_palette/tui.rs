@@ -182,6 +182,7 @@ fn activate(
         }
         Action::Prefill(name) => {
             if let Some(input) = input.as_deref_mut() {
+                input.clear();
                 input.set(format!("{name} "));
             }
         }

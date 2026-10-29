@@ -6,6 +6,7 @@ use ratatui::layout::Position;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding, Paragraph};
+use rig_core::redact;
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -30,11 +31,17 @@ const MOST_LINES: usize = 10;
 /// one's text to the shown agent. A plugin reads and edits a draft as the
 /// keys do (a template, a dictated message, the text an editor wrote), the
 /// main one through [`MainInput`]; `is_changed` on it says the draft was
-/// edited. Up and Down move between lines and, from the first or last
-/// line, through the [`PromptHistory`](crate::PromptHistory), keeping the
-/// draft, which Down past the newest prompt brings back. In a panel placed
-/// at the top, the bottom or below the input, it is as tall as its text, up
-/// to ten lines.
+/// edited. Up and Down move between lines; Up on the first line goes to
+/// its start, and from there to the [`PromptHistory`](crate::PromptHistory),
+/// keeping the draft, which Down past the newest prompt brings back; Ctrl+P
+/// goes there from anywhere on the first line. While a prompt of it is
+/// shown unchanged with the cursor at its start or end, Up and Down walk
+/// the history. Text of the person's that the editor drops unsent goes to
+/// the history, so Up brings it back: the draft behind a prompt shown when
+/// another text replaces it, and what [`clear`](Self::clear) empties; a
+/// question's answer never does, and Up in it stays in it. In a panel
+/// placed at the top, the bottom or below the input, it is as tall as its
+/// text, up to ten lines.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
@@ -55,8 +62,14 @@ pub struct Editor {
     /// The history entry shown, while browsing it: its index, and its
     /// text, which finds it again when the entries move.
     browsing: Option<(usize, String)>,
-    /// What was typed before browsing started.
+    /// What was typed before browsing started; empty while not browsing.
     draft: String,
+    /// The texts for the history, in the order the editor gave them up:
+    /// the person's dropped unsent, redacted, and those sent (`true`).
+    kept: Vec<(String, bool)>,
+    /// While it holds a question's answer, which is not a prompt to keep,
+    /// the person's text taken out for it.
+    answering: Option<String>,
 }
 
 /// Marks the editor the keys type into while no panel has the
@@ -99,10 +112,16 @@ impl Editor {
         self.text.is_empty()
     }
 
-    /// Replaces the text, with the cursor at its end.
+    /// Replaces the text, with the cursor at its end. The text replaced is
+    /// not kept, as a plugin edits with it too: one that discards the
+    /// person's text calls [`clear`](Self::clear) first. Another text ends
+    /// browsing the history, keeping the draft behind it there.
     pub fn set(&mut self, text: impl Into<String>) {
-        self.browsing = None;
-        self.show(text.into());
+        let text = text.into();
+        if text != self.text {
+            self.stop_browsing();
+        }
+        self.show(text);
     }
 
     /// Puts the cursor at byte `offset`, or the nearest character boundary
@@ -122,18 +141,112 @@ impl Editor {
         self.cursor = self.text.len();
     }
 
-    /// Empties the editor and stops browsing the history.
+    /// Empties the editor and stops browsing the history. The person's
+    /// text, and the draft behind a prompt of the history shown, go to
+    /// the history.
     pub fn clear(&mut self) {
-        self.text.clear();
+        let recalled = self.recalled();
+        self.stop_browsing();
+        let text = std::mem::take(&mut self.text);
+        if !recalled {
+            self.keep(text);
+        }
         self.cursor = 0;
-        self.browsing = None;
     }
 
-    /// Takes the text out, leaving the input empty.
+    /// Takes the text out, leaving the input empty, for the caller to send
+    /// or keep. The draft behind a prompt of the history shown goes to the
+    /// history.
     pub fn take(&mut self) -> String {
         self.cursor = 0;
-        self.browsing = None;
+        self.stop_browsing();
         std::mem::take(&mut self.text)
+    }
+
+    /// Gives the input to a question answered in it, with its `initial`
+    /// answer, and returns the person's text taken out: the draft behind a
+    /// prompt of the history shown, else the text. Until
+    /// [`take_answer`](Self::take_answer), nothing it drops is kept.
+    pub(crate) fn answer(&mut self, initial: impl Into<String>) -> String {
+        let draft = match self.recalled() {
+            true => {
+                self.browsing = None;
+                std::mem::take(&mut self.draft)
+            }
+            false => self.take(),
+        };
+        self.set(initial);
+        self.answering = Some(draft.clone());
+        draft
+    }
+
+    /// Whether it holds a question's answer.
+    pub(crate) fn answering(&self) -> bool {
+        self.answering.is_some()
+    }
+
+    /// Takes a question's answer out when the question closes, leaving the
+    /// input empty.
+    pub(crate) fn take_answer(&mut self) -> String {
+        self.answering = None;
+        self.take()
+    }
+
+    /// For a question gone without closing: drops its answer and puts back
+    /// the person's text taken out for it.
+    pub(crate) fn drop_question(&mut self) {
+        let draft = self.answering.take().unwrap_or_default();
+        self.take_answer();
+        self.set(draft);
+    }
+
+    /// Whether a prompt of the history is shown unchanged.
+    pub(crate) fn recalled(&self) -> bool {
+        self.browsing
+            .as_ref()
+            .is_some_and(|(_, entry)| *entry == self.text)
+    }
+
+    /// The person's own text: the draft behind a prompt of the history
+    /// shown unchanged, else the text.
+    pub(crate) fn unsent(&self) -> &str {
+        match self.recalled() {
+            true => &self.draft,
+            false => &self.text,
+        }
+    }
+
+    /// Records `text`, which the caller sent, for the history, after what
+    /// the editor dropped before it.
+    pub(crate) fn sent(&mut self, text: String) {
+        self.kept.push((text, true));
+    }
+
+    /// The texts dropped or sent (`true`) since the last call, in order,
+    /// for the history. An edited prompt of the history is the person's own text
+    /// from now on.
+    pub(crate) fn take_dropped(&mut self) -> Vec<(String, bool)> {
+        if !self.recalled() {
+            self.stop_browsing();
+        }
+        std::mem::take(&mut self.kept)
+    }
+
+    /// Stops browsing the history, keeping the draft there: a prompt of it
+    /// shown is the person's own text from now on, as if typed.
+    pub(crate) fn stop_browsing(&mut self) {
+        if self.browsing.take().is_some() {
+            let draft = std::mem::take(&mut self.draft);
+            self.keep(draft);
+        }
+    }
+
+    /// Keeps `text`, redacted, for the history as the newest, unless it is
+    /// blank or an answer.
+    fn keep(&mut self, text: String) {
+        if self.answering.is_none() && !text.trim().is_empty() {
+            self.kept.push((redact::text(&text).into_owned(), false));
+        }
     }
 
     /// Types `text` at the cursor, which ends up after it.
@@ -327,12 +440,39 @@ impl Editor {
                 .map_or(line.len(), |(index, _)| index);
     }
 
-    /// Up: the line above, else the previous prompt of `history` (oldest
-    /// first).
+    /// Whether Up and Down walk the history: a prompt of it is shown
+    /// unchanged, the cursor at its start or end.
+    fn walking(&self) -> bool {
+        self.recalled() && (self.cursor == 0 || self.cursor == self.text.len())
+    }
+
+    /// Up: the previous prompt of `history` (oldest first) while walking
+    /// it, else the line above, else the start of the first line, else
+    /// the newest prompt, keeping the text as the draft.
     pub fn up(&mut self, history: &[String]) {
+        self.up_from(history, true);
+    }
+
+    /// Ctrl+P: as [`up`](Self::up), but from anywhere on the first line
+    /// straight to the history.
+    pub(crate) fn line_up(&mut self, history: &[String]) {
+        self.up_from(history, false);
+    }
+
+    /// Up, going first to the start of the first line if `to_start`. A
+    /// question's answer is not a prompt, so Up stays in it.
+    fn up_from(&mut self, history: &[String], to_start: bool) {
+        let history = match self.answering {
+            Some(_) => &[],
+            None => history,
+        };
         let start = self.line_start();
-        if start == 0 {
+        if self.walking() || (start == 0 && (self.cursor == 0 || !to_start)) {
             self.history_back(history);
+            return;
+        }
+        if start == 0 {
+            self.cursor = 0;
             return;
         }
         let column = self.column();
@@ -344,12 +484,17 @@ impl Editor {
         self.move_to_column(above, column);
     }
 
-    /// Down: the line below, else the next prompt of `history`, or the
-    /// draft after the newest.
+    /// Down: the next prompt of `history`, or the draft after the newest,
+    /// while walking it, else the line below, else the end of the last
+    /// line.
     pub fn down(&mut self, history: &[String]) {
+        if self.walking() {
+            self.history_forward(history);
+            return;
+        }
         let end = self.line_end();
         if end == self.text.len() {
-            self.history_forward(history);
+            self.cursor = end;
             return;
         }
         let column = self.column();
@@ -357,6 +502,9 @@ impl Editor {
     }
 
     fn history_back(&mut self, history: &[String]) {
+        if !self.recalled() {
+            self.stop_browsing();
+        }
         let index = match &self.browsing {
             Some(shown) => match place(shown, history) {
                 0 => return,
@@ -505,7 +653,8 @@ fn fit_keys(keys: &str, width: usize) -> String {
 /// row above and below and a cell each side, scrolled to
 /// keep its cursor in sight. The one the keys type into is titled by the
 /// question it answers, if any, and while nothing is typed says over its
-/// text what the keys do; it places the caret, unless a picker or a panel
+/// text what the keys do, or while it shows a prompt of the history, that
+/// Down goes back; it places the caret, unless a picker or a panel
 /// without an editor has the keys. An editor with a [`StatusLine`] draws
 /// it in its bottom row while nothing is typed.
 pub(crate) fn draw_editors(
@@ -541,10 +690,16 @@ pub(crate) fn draw_editors(
                 }
                 None => hint(busy, elsewhere),
             };
-            if !editor.is_empty() {
+            let keyed = !elsewhere && state.picking().is_none();
+            if editor.recalled() && answering.is_none() && keyed {
+                keys = match editor.draft.trim().is_empty() {
+                    true => " An earlier prompt · Down back to an empty input ",
+                    false => " An earlier prompt · Down back to your draft ",
+                };
+            } else if !editor.is_empty() {
                 keys = "";
             }
-            if state.picking().is_none() && !elsewhere {
+            if keyed {
                 let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
                 let row = u16::try_from(layout.cursor_row - top).unwrap_or(0);
                 let x = area.x.saturating_add(1).saturating_add(column);

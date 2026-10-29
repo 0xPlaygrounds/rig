@@ -782,7 +782,7 @@ pub(crate) fn keep_draft(
     let draft = showing
         .iter()
         .find_map(|choosing| choosing.draft.as_deref());
-    let typed = input.single().ok().map(Editor::text);
+    let typed = input.single().ok().map(Editor::unsent);
     let text = draft.or(typed).unwrap_or_default();
     if *reason != ExitReason::Reload || text.is_empty() {
         return;

@@ -387,6 +387,14 @@ pub(crate) fn queue_choices(
     choices: Choices,
     mut commands: Commands,
 ) {
+    // A question taken away while in the input, never closed, takes its
+    // answer with it and gives back the draft, as one refused does.
+    if showing.iter().all(|(_, shown)| shown.draft.is_none())
+        && let Ok(mut main) = input.single_mut()
+        && main.answering()
+    {
+        main.drop_question();
+    }
     let state = view.bypass_change_detection();
     // A changed question takes its place in the queue, and in front.
     let successor = |entity: &Entity| superseded.get(*entity).ok().map(|(_, by)| by.0);
@@ -487,6 +495,7 @@ pub(crate) fn show_first(
 ) {
     for (entity, shown) in showing {
         if let Some(draft) = &shown.draft {
+            input.take_answer();
             input.set(draft.clone());
         }
         commands
@@ -495,11 +504,7 @@ pub(crate) fn show_first(
     }
     let first = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
-        let draft = shown.edit.map(|initial| {
-            let draft = input.take();
-            input.set(initial);
-            draft
-        });
+        let draft = shown.edit.map(|initial| input.answer(initial));
         let items = shown.items.iter().enumerate();
         let ticked: Vec<usize> = items
             .filter(|(_, item)| shown.multiple && item.checked)

@@ -476,6 +476,7 @@ fn type_search(
                 if let (Some(prompt), Some(input)) =
                     (search.matches().get(search.selected), input.as_mut())
                 {
+                    input.clear();
                     input.set(*prompt);
                 }
                 commands.entity(panel).despawn();

@@ -668,7 +668,7 @@ fn act(
     let editing = editing.map(|(entity, _)| entity);
     match (action, editing) {
         (Do::Send, Some(ask)) if view.completion.as_ref().is_none_or(|c| c.is_exact()) => {
-            let answer = Chosen::text(input.take());
+            let answer = Chosen::text(input.take_answer());
             return close(ask, Some(answer), target, (context, showing), commands);
         }
         (Do::Stop, Some(ask)) if view.completion.is_none() => {
@@ -693,7 +693,7 @@ fn act(
         Do::DeleteWordAfter => input.delete_word_after(),
         Do::DeleteToLineStart => input.delete_to_line_start(),
         Do::DeleteToLineEnd => input.delete_to_line_end(),
-        Do::LineUp => input.up(context.history),
+        Do::LineUp => input.line_up(context.history),
         Do::LineDown => input.down(context.history),
         Do::Up => match &mut view.completion {
             Some(completion) => completion.select(-1),
@@ -718,6 +718,8 @@ fn act(
             let state = pane.as_mut().map(|(_, state)| &mut **state);
             send(view, input, state, context.agent, commands, true);
         }
+        // Tab on a prompt of the history makes it the person's to complete.
+        Do::Tab if view.completion.is_none() => input.stop_browsing(),
         Do::Tab => accept_completion(view, input),
         Do::Send => {
             // Enter completes a partly typed command or path first.
@@ -879,6 +881,7 @@ pub(crate) fn send(
         return;
     }
     let text = input.take();
+    input.sent(text.clone());
     commands.write_message(Sent(text.clone()));
     if let Some(pane) = pane {
         pane.scroll.follow();

@@ -387,7 +387,8 @@ pub(crate) fn typed(
 
 /// Opens, updates or closes the completion after the input, the paths or
 /// the sources changed (`renewed`: an open list is listed again). A list
-/// closed with Esc stays closed until the token moves.
+/// closed with Esc stays closed until the token moves, and a prompt of the
+/// history shown unchanged opens none, so Up and Down walk past it.
 pub(crate) fn update(
     view: &mut TuiView,
     input: &Editor,
@@ -396,6 +397,11 @@ pub(crate) fn update(
     wake: &Wake,
     commands: &mut Commands,
 ) {
+    if input.recalled() {
+        view.completion = None;
+        view.dismissed = None;
+        return;
+    }
     let found = token(input.text(), input.cursor(), &markers(&sources.added));
     let Some((kind, start, query, command)) = found else {
         view.completion = None;

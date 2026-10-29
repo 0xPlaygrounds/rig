@@ -446,6 +446,9 @@ fn a_whole_detail_offers_nothing_more() {
 fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_back() {
     let (mut app, agent) = view_app();
     app.init_resource::<Answered>().add_observer(record_answers);
+    app.world_mut()
+        .resource_mut::<crate::PromptHistory>()
+        .entries = vec!["older".into()];
     type_text(&mut app, "half a thought");
     let title = Ask::new("PR title").initial("Fix the parser");
     app.world_mut().spawn((title, ForAgent(agent)));
@@ -460,12 +463,22 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     );
     type_text(&mut app, "lexer");
     press(&mut app, "enter");
-    // The next one takes the input; Shift+Enter adds a line, Esc refuses.
+    // The next one takes the input; Shift+Enter adds a line, Up and Ctrl+P
+    // stay in the answer, which is not a prompt, and Esc refuses: no
+    // answer, nor one cleared, is kept as a prompt.
     assert_eq!(crate::tests::typed(&app), "It loops.");
     press(&mut app, "shift+enter");
     type_text(&mut app, "Fixed.");
+    press(&mut app, "up up up ctrl+p");
+    assert_eq!(crate::tests::typed(&app), "It loops.\nFixed.");
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "Fixed.");
+    press(&mut app, "tab");
+    type_text(&mut app, "!");
     press(&mut app, "esc");
     assert_eq!(crate::tests::typed(&app), "half a thought");
+    let history = &app.world().resource::<crate::PromptHistory>().entries;
+    assert_eq!(history, &["older"]);
     let answered = |title: &str, answer: Option<Answer>| (title.to_owned(), answer);
     assert_eq!(
         app.world().resource::<Answered>().0,
@@ -481,6 +494,44 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
             .0
             .is_empty()
     );
+}
+
+/// A question taken away while answered in the input, never closed, takes
+/// its answer with it and gives back the draft, which Ctrl+C keeps again.
+#[test]
+fn a_question_gone_from_the_input_gives_back_the_draft() {
+    let (mut app, agent) = view_app();
+    type_text(&mut app, "my draft");
+    let title = Ask::new("PR title").initial("Fix the parser");
+    let ask = app.world_mut().spawn((title, ForAgent(agent))).id();
+    app.update();
+    assert_eq!(crate::tests::typed(&app), "Fix the parser");
+    app.world_mut().despawn(ask);
+    app.update();
+    assert_eq!(crate::tests::typed(&app), "my draft");
+    press(&mut app, "ctrl+c");
+    let history = &app.world().resource::<crate::PromptHistory>().entries;
+    assert_eq!(history, &["my draft"]);
+}
+
+/// A question asked while an earlier prompt is shown over the draft holds
+/// the draft, which comes back when the question is refused.
+#[test]
+fn a_question_over_a_recalled_prompt_gives_back_the_draft() {
+    let (mut app, agent) = view_app();
+    app.world_mut()
+        .resource_mut::<crate::PromptHistory>()
+        .entries = vec!["older".into()];
+    type_text(&mut app, "my draft");
+    press(&mut app, "ctrl+a up");
+    assert_eq!(crate::tests::typed(&app), "older");
+    let title = Ask::new("PR title").initial("Fix the parser");
+    app.world_mut().spawn((title, ForAgent(agent)));
+    app.update();
+    press(&mut app, "esc");
+    assert_eq!(crate::tests::typed(&app), "my draft");
+    let history = &app.world().resource::<crate::PromptHistory>().entries;
+    assert_eq!(history, &["older"]);
 }
 
 /// A message that comes back while a question is answered in the input

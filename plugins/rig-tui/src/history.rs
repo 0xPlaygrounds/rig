@@ -9,6 +9,7 @@ use rig_ecs::agent::{Agent, Conversation};
 use rig_harness::prelude::{Files, PluginData, ShownAgent};
 use rig_tools::attach::typed_prompts;
 
+use super::editor::Editor;
 use super::jsonl::{self, Kept};
 
 /// The file of the history in its [`PromptHistory::file`].
@@ -19,8 +20,10 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// (`file: None` saves nothing). Prompts are kept as typed, slash commands
 /// included.
 ///
-/// The view loads it in `PreStartup`, puts each prompt [`Sent`] as the
-/// newest in [`HistorySystems::Record`], and in [`HistorySystems::Save`]
+/// The view loads it in `PreStartup`, puts each prompt [`Sent`] and the
+/// text an [`Editor`] dropped unsent (its secrets redacted), in the order
+/// they happened, as the newest in [`HistorySystems::Record`], and in
+/// [`HistorySystems::Save`]
 /// adds to the file those recorded since that are still in `entries`,
 /// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
 /// the two, such as to keep secrets out. After another agent is shown,
@@ -137,8 +140,8 @@ pub(crate) fn seed_shown(
 /// `Update`, in this order, and seeds them in [`TuiKeys`](crate::TuiKeys).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HistorySystems {
-    /// Puts the prompts sent this frame as the newest of
-    /// [`PromptHistory::entries`], moving any already there.
+    /// Puts the text editors dropped and the prompts sent this frame as
+    /// the newest of [`PromptHistory::entries`], moving any already there.
     Record,
     /// Saves the prompts recorded that are still there.
     Save,
@@ -158,9 +161,31 @@ pub enum HistorySystems {
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct Sent(pub String);
 
-/// Adds each prompt sent to the history as the newest.
-pub(crate) fn record(mut sent: MessageReader<Sent>, mut history: ResMut<PromptHistory>) {
-    for Sent(text) in sent.read() {
+/// Adds what each [`Editor`] sent and dropped unsent (a panel's too, as its
+/// Up browses this history), in its order, then each other prompt
+/// [`Sent`], to the history as the newest.
+pub(crate) fn record(
+    mut sent: MessageReader<Sent>,
+    mut editors: Query<&mut Editor>,
+    mut history: ResMut<PromptHistory>,
+) {
+    let mut kept = Vec::new();
+    for mut editor in &mut editors {
+        kept.extend(editor.bypass_change_detection().take_dropped());
+    }
+    // An editor's sends are among the messages too: each is recorded once,
+    // in its place among what the editor dropped.
+    let mut by_editors: Vec<&String> = kept
+        .iter()
+        .filter(|(_, sent)| *sent)
+        .map(|(text, _)| text)
+        .collect();
+    let others = sent.read().filter(|Sent(text)| {
+        let at = by_editors.iter().position(|sent| *sent == text);
+        at.map(|at| by_editors.swap_remove(at)).is_none()
+    });
+    let others: Vec<&String> = others.map(|Sent(text)| text).collect();
+    for text in kept.iter().map(|(text, _)| text).chain(others) {
         let text = text.trim();
         if text.is_empty() {
             continue;

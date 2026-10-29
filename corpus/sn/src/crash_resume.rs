@@ -508,6 +508,7 @@ fn resolve(
                     .find_map(|entry| typed(&conversation, entry.index));
                 conversation.splice(at.., [], Author::plugin(ORIGIN));
                 if let (None, Some(text), Some(input)) = (parent, typed, input.as_mut()) {
+                    input.clear();
                     input.set(text);
                 }
                 "Interrupted turn (discarded)"

@@ -248,7 +248,10 @@ fn take_brief(
     }
     let successor = successor.id();
     match input.filter(|_| editable.0 && !briefing.now) {
-        Some(mut input) => input.set(brief),
+        Some(mut input) => {
+            input.clear();
+            input.set(brief);
+        }
         None => {
             let author = Author::agent(id.0.clone(), None).titled(briefing.goal.clone());
             let brief = Deliver::new(successor, brief, DeliveryMode::Queue).with_author(author);
