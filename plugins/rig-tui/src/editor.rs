@@ -65,8 +65,9 @@ pub struct Editor {
     /// The person's text the editor dropped unsent, which the history
     /// records.
     kept: Vec<String>,
-    /// Whether it holds a question's answer, which is not a prompt to keep.
-    answering: bool,
+    /// While it holds a question's answer, which is not a prompt to keep,
+    /// the person's text taken out for it.
+    answering: Option<String>,
 }
 
 /// Marks the editor the keys type into while no panel has the
@@ -161,18 +162,25 @@ impl Editor {
     }
 
     /// Gives the input to a question answered in it, with its `initial`
-    /// answer, and returns the text taken out. Until
+    /// answer, and returns the person's text taken out: the draft behind a
+    /// prompt of the history shown, else the text. Until
     /// [`take_answer`](Self::take_answer), nothing it drops is kept.
     pub(crate) fn answer(&mut self, initial: impl Into<String>) -> String {
-        let draft = self.take();
+        let draft = match self.recalled() {
+            true => {
+                self.browsing = None;
+                std::mem::take(&mut self.draft)
+            }
+            false => self.take(),
+        };
         self.set(initial);
-        self.answering = true;
+        self.answering = Some(draft.clone());
         draft
     }
 
     /// Whether it holds a question's answer.
     pub(crate) fn answering(&self) -> bool {
-        self.answering
+        self.answering.is_some()
     }
 
     /// Takes a question's answer out when the question closes, leaving the
@@ -180,9 +188,17 @@ impl Editor {
     pub(crate) fn take_answer(&mut self) -> String {
         self.browsing = None;
         self.draft.clear();
-        self.answering = false;
+        self.answering = None;
         self.cursor = 0;
         std::mem::take(&mut self.text)
+    }
+
+    /// For a question gone without closing: drops its answer and puts back
+    /// the person's text taken out for it.
+    pub(crate) fn drop_question(&mut self) {
+        let draft = self.answering.take().unwrap_or_default();
+        self.take_answer();
+        self.set(draft);
     }
 
     /// Whether a prompt of the history is shown unchanged.
@@ -222,7 +238,7 @@ impl Editor {
     /// Keeps `text` for the history as the newest, unless it is blank or an
     /// answer.
     fn keep(&mut self, text: String) {
-        if !self.answering && !text.trim().is_empty() {
+        if self.answering.is_none() && !text.trim().is_empty() {
             self.kept.retain(|kept| *kept != text);
             self.kept.push(text);
         }

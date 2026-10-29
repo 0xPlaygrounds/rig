@@ -497,18 +497,18 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
 }
 
 /// A question taken away while answered in the input, never closed, takes
-/// its answer with it, and the input keeps what is cleared again.
+/// its answer with it and gives back the draft, which Ctrl+C keeps again.
 #[test]
-fn a_question_gone_from_the_input_leaves_it_keeping_drafts() {
+fn a_question_gone_from_the_input_gives_back_the_draft() {
     let (mut app, agent) = view_app();
+    type_text(&mut app, "my draft");
     let title = Ask::new("PR title").initial("Fix the parser");
     let ask = app.world_mut().spawn((title, ForAgent(agent))).id();
     app.update();
     assert_eq!(crate::tests::typed(&app), "Fix the parser");
     app.world_mut().despawn(ask);
     app.update();
-    assert!(crate::tests::typed(&app).is_empty());
-    type_text(&mut app, "my draft");
+    assert_eq!(crate::tests::typed(&app), "my draft");
     press(&mut app, "ctrl+c");
     let history = &app.world().resource::<crate::PromptHistory>().entries;
     assert_eq!(history, &["my draft"]);

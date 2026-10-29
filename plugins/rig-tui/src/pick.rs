@@ -388,12 +388,12 @@ pub(crate) fn queue_choices(
     mut commands: Commands,
 ) {
     // A question taken away while in the input, never closed, takes its
-    // answer with it, as one refused does.
+    // answer with it and gives back the draft, as one refused does.
     if showing.iter().all(|(_, shown)| shown.draft.is_none())
         && let Ok(mut main) = input.single_mut()
         && main.answering()
     {
-        main.take_answer();
+        main.drop_question();
     }
     let state = view.bypass_change_detection();
     // A changed question takes its place in the queue, and in front.
