@@ -175,12 +175,6 @@ impl Editor {
         self.answering
     }
 
-    /// Holds no question's answer any more, for a question gone without
-    /// closing.
-    pub(crate) fn stop_answering(&mut self) {
-        self.answering = false;
-    }
-
     /// Takes a question's answer out when the question closes, leaving the
     /// input empty, and drops the history's place and the draft behind it.
     pub(crate) fn take_answer(&mut self) -> String {

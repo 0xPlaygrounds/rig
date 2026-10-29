@@ -66,6 +66,9 @@ fn up_and_down_browse_the_history_a_plugin_supplies() {
     press(&mut app, "down down");
     assert_eq!(typed(&app), "first line\ndraft");
     assert_eq!(entries(&app), ["one", "two"]);
+    // Down on the last line goes to the end of the text.
+    press(&mut app, "ctrl+a down !");
+    assert_eq!(typed(&app), "first line\ndraft!");
     // Ctrl+P goes to the history from anywhere on the first line.
     press(&mut app, "up ctrl+p");
     assert_eq!(typed(&app), "two");

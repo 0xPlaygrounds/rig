@@ -496,8 +496,8 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     );
 }
 
-/// A question taken away while answered in the input, never closed, leaves
-/// the input keeping what is cleared.
+/// A question taken away while answered in the input, never closed, takes
+/// its answer with it, and the input keeps what is cleared again.
 #[test]
 fn a_question_gone_from_the_input_leaves_it_keeping_drafts() {
     let (mut app, agent) = view_app();
@@ -507,11 +507,11 @@ fn a_question_gone_from_the_input_leaves_it_keeping_drafts() {
     assert_eq!(crate::tests::typed(&app), "Fix the parser");
     app.world_mut().despawn(ask);
     app.update();
-    press(&mut app, "ctrl+c");
+    assert!(crate::tests::typed(&app).is_empty());
     type_text(&mut app, "my draft");
     press(&mut app, "ctrl+c");
     let history = &app.world().resource::<crate::PromptHistory>().entries;
-    assert_eq!(history.last().map(String::as_str), Some("my draft"));
+    assert_eq!(history, &["my draft"]);
 }
 
 /// A message that comes back while a question is answered in the input

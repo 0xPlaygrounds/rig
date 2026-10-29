@@ -387,13 +387,13 @@ pub(crate) fn queue_choices(
     choices: Choices,
     mut commands: Commands,
 ) {
-    // A question taken away while in the input, never closed, leaves no
-    // answer for the editor to keep out of the history.
+    // A question taken away while in the input, never closed, takes its
+    // answer with it, as one refused does.
     if showing.iter().all(|(_, shown)| shown.draft.is_none())
         && let Ok(mut main) = input.single_mut()
         && main.answering()
     {
-        main.bypass_change_detection().stop_answering();
+        main.take_answer();
     }
     let state = view.bypass_change_detection();
     // A changed question takes its place in the queue, and in front.
