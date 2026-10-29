@@ -142,12 +142,13 @@ impl Editor {
     /// text, and the draft behind a prompt of the history shown, go to
     /// the history.
     pub fn clear(&mut self) {
-        if !self.recalled() {
-            self.keep(self.text.clone());
-        }
-        self.text.clear();
-        self.cursor = 0;
+        let recalled = self.recalled();
         self.stop_browsing();
+        let text = std::mem::take(&mut self.text);
+        if !recalled {
+            self.keep(text);
+        }
+        self.cursor = 0;
     }
 
     /// Takes the text out, leaving the input empty, for the caller to send
@@ -167,6 +168,17 @@ impl Editor {
         self.set(initial);
         self.answering = true;
         draft
+    }
+
+    /// Whether it holds a question's answer.
+    pub(crate) fn answering(&self) -> bool {
+        self.answering
+    }
+
+    /// Holds no question's answer any more, for a question gone without
+    /// closing.
+    pub(crate) fn stop_answering(&mut self) {
+        self.answering = false;
     }
 
     /// Takes a question's answer out when the question closes, leaving the

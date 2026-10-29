@@ -496,6 +496,24 @@ fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_bac
     );
 }
 
+/// A question taken away while answered in the input, never closed, leaves
+/// the input keeping what is cleared.
+#[test]
+fn a_question_gone_from_the_input_leaves_it_keeping_drafts() {
+    let (mut app, agent) = view_app();
+    let title = Ask::new("PR title").initial("Fix the parser");
+    let ask = app.world_mut().spawn((title, ForAgent(agent))).id();
+    app.update();
+    assert_eq!(crate::tests::typed(&app), "Fix the parser");
+    app.world_mut().despawn(ask);
+    app.update();
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "my draft");
+    press(&mut app, "ctrl+c");
+    let history = &app.world().resource::<crate::PromptHistory>().entries;
+    assert_eq!(history.last().map(String::as_str), Some("my draft"));
+}
+
 /// A message that comes back while a question is answered in the input
 /// waits for the question, then goes before the draft.
 #[test]

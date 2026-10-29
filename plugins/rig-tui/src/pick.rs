@@ -387,6 +387,14 @@ pub(crate) fn queue_choices(
     choices: Choices,
     mut commands: Commands,
 ) {
+    // A question taken away while in the input, never closed, leaves no
+    // answer for the editor to keep out of the history.
+    if showing.iter().all(|(_, shown)| shown.draft.is_none())
+        && let Ok(mut main) = input.single_mut()
+        && main.answering()
+    {
+        main.bypass_change_detection().stop_answering();
+    }
     let state = view.bypass_change_detection();
     // A changed question takes its place in the queue, and in front.
     let successor = |entity: &Entity| superseded.get(*entity).ok().map(|(_, by)| by.0);
