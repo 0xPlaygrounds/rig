@@ -162,19 +162,12 @@ pub(super) struct Changing {
 
 /// Answers a change the client asked for, with the options as they are
 /// now, or why it did not take effect, such as the refusal of the model it
-/// chose; and tells the client the options changed when anything else
-/// changed them, such as `/model`.
+/// chose; and tells the client the options changed whenever they differ
+/// from those it was last told of.
 pub(super) fn changed(
     changing: Option<Res<Changing>>,
-    changes: Query<
-        (),
-        Or<(
-            Changed<ModelChoice>,
-            Changed<ReasoningSetting>,
-            Added<ModelRefused>,
-        )>,
-    >,
     refusals: Query<&ModelRefused>,
+    mut notices: MessageReader<Notice>,
     options: Options,
     mut session: ResMut<Session>,
     mut commands: Commands,
@@ -183,6 +176,12 @@ pub(super) fn changed(
         return;
     };
     let current = options.of(agent);
+    // What rig said against the change, such as a level the model lacks.
+    let said = notices
+        .read()
+        .filter(|notice| notice.level == NoticeLevel::Error && notice.agent == Some(agent))
+        .last()
+        .map(|notice| notice.text.clone());
     if let Some(changing) = changing {
         commands.remove_resource::<Changing>();
         // The requests that waited for it go on.
@@ -197,16 +196,28 @@ pub(super) fn changed(
         };
         let answer = match (took, refusals.get(agent)) {
             (_, Ok(ModelRefused(why))) => Err(crate::error(Error::invalid_params(), why.clone())),
-            (true, Err(_)) => Ok(acp::SetSessionConfigOptionResponse::new(current)),
+            (true, Err(_)) => Ok(acp::SetSessionConfigOptionResponse::new(current.clone())),
             (false, Err(_)) => {
-                let why = "rig did not change it: its notice says why";
+                let why = said.unwrap_or_else(|| "rig did not change it".to_owned());
                 Err(crate::error(Error::invalid_params(), why))
             }
         };
+        // A refused change leaves the options as they are now, which the
+        // client then shows.
+        if answer.is_err() && current != session.advertised {
+            session.advertised = current.clone();
+            let update = acp::ConfigOptionUpdate::new(current);
+            session.send(acp::SessionUpdate::ConfigOptionUpdate(update));
+        } else {
+            session.advertised = current;
+        }
         changing.reply.send(answer);
         return;
     }
-    if session.opening.is_none() && changes.contains(agent) {
+    // Whatever changed them: `/model`, `/effort`, or a sign-in that made
+    // models reachable or not.
+    if session.opening.is_none() && current != session.advertised {
+        session.advertised = current.clone();
         let update = acp::ConfigOptionUpdate::new(current);
         session.send(acp::SessionUpdate::ConfigOptionUpdate(update));
     }

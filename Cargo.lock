@@ -13956,7 +13956,6 @@ dependencies = [
  "agent-client-protocol",
  "async-channel",
  "base64 0.22.1",
- "bevy_app",
  "bevy_ecs",
  "bevy_tasks",
  "chrono",

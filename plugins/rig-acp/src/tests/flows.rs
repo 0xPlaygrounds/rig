@@ -205,6 +205,16 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
             answered.is_some() && last < answered,
             "{answered:?} {last:?}"
         );
+        // A turn a plugin stops for a reason, as `/compact`'s, is no cancel.
+        assert!(driven.model(&id, "test/reply").await);
+        assert_eq!(
+            driven.prompt(&id, "Hello.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+        assert_eq!(
+            driven.prompt(&id, "/compact").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
         // `/quit` is the terminal's: the editor closes a session.
         for quit in ["/quit", "/quit now"] {
             assert!(driven.prompt(&id, quit).await.is_err(), "{quit}");
@@ -339,7 +349,8 @@ fn cancel_stops_a_running_tool_and_one_sent_with_the_prompt() {
         assert!(driven.cx.send_request(load).block_task().await.is_ok());
         // Cancel stops work that is no turn too, such as a sign-in.
         let prompt = tokio::spawn(driven.send(&id, "/hold"));
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        let held = driven.project.join("held");
+        assert!(driven.until(|_| held.exists()).await);
         driven
             .cx
             .send_notification(acp::CancelNotification::new(id.clone()))

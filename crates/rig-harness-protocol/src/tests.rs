@@ -367,7 +367,7 @@ fn resume_goes_wherever_an_option_goes() {
 
 /// A group whose leader exited is killed while a process it left carries
 /// the ledger's mark: an MCP server a wrapper started, say.
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 #[test]
 fn a_group_whose_leader_left_is_killed_for_the_process_it_left() {
     use std::os::unix::process::CommandExt;
@@ -387,7 +387,16 @@ fn a_group_whose_leader_left_is_killed_for_the_process_it_left() {
     assert!(leader.is_ok());
     let Ok(leader) = leader else { return };
     let sleeper = std::fs::read_to_string(&left).unwrap_or_default();
-    let alive = || std::path::Path::new(&format!("/proc/{}", sleeper.trim())).exists();
+    // Gone once killed, even before whoever adopted it reaps it.
+    let alive = || {
+        let state = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", sleeper.trim()])
+            .output();
+        state.is_ok_and(|state| {
+            let state = String::from_utf8_lossy(&state.stdout);
+            !state.trim().is_empty() && !state.trim_start().starts_with('Z')
+        })
+    };
     assert!(!sleeper.trim().is_empty() && alive());
     std::fs::write(run.groups(), format!("{leader}\n")).ok();
     assert!(run.kill_left_groups().is_ok());

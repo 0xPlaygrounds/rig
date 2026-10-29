@@ -350,17 +350,13 @@ async fn forward(
         )
         .on_receive_request(
             async move |request: acp::RequestPermissionRequest, responder, _| {
-                permissions
-                    .prepare_request(request)
-                    .forward_response_to(responder)
+                answer_later(permissions.prepare_request(request), responder)
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async move |request: acp::CreateElicitationRequest, responder, _| {
-                forms
-                    .prepare_request(request)
-                    .forward_response_to(responder)
+                answer_later(forms.prepare_request(request), responder)
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -373,6 +369,19 @@ async fn forward(
             Ok(())
         })
         .await
+}
+
+/// Hands the client's answer to `asked` to the session that asked, in
+/// order; one for a session that ended meanwhile goes nowhere, and never
+/// harms the client's connection, which the other sessions share.
+fn answer_later<T: agent_client_protocol::JsonRpcResponse>(
+    asked: agent_client_protocol::PreparedRequest<T>,
+    responder: Responder<T>,
+) -> Result<(), Error> {
+    asked.on_receiving_result(async move |answer| {
+        responder.respond_with_result(answer).ok();
+        Ok(())
+    })
 }
 
 /// Done once `stopping` says to end; never when nothing will say so.

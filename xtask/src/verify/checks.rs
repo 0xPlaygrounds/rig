@@ -226,8 +226,9 @@ pub(super) fn all() -> Vec<Check> {
             ],
         ),
         // The agent's signals, closed-pipe check and process groups, and the
-        // launcher's cleanup of what a killed agent left, which use each
-        // platform's own calls and commands.
+        // launcher's cleanup of what a killed agent left (its groups' members
+        // read in rig-harness-protocol), which use each platform's own calls
+        // and commands.
         check(
             "process-tests",
             vec![cargo(&[
@@ -240,6 +241,8 @@ pub(super) fn all() -> Vec<Check> {
                 "rig-harness",
                 "-p",
                 "rig",
+                "-p",
+                "rig-harness-protocol",
                 "--lib",
                 "--bins",
                 "--no-fail-fast",
@@ -247,7 +250,8 @@ pub(super) fn all() -> Vec<Check> {
                 "fail",
                 "-E",
                 "test(/^process::tests::/) | test(/^host::(signals|launcher)::tests::/) \
-                 | test(/^launcher::(run|locks)::tests::/)",
+                 | test(/^launcher::(run|locks)::tests::/) \
+                 | test(/^tests::a_group_whose_leader_left/)",
             ])],
         ),
         check(
@@ -602,6 +606,10 @@ pub(super) fn all() -> Vec<Check> {
         (
             "rig-tungstenite",
             "rig-tungstenite is a native websocket backend",
+        ),
+        (
+            "rig-acp",
+            "rig-acp runs sessions as processes: it needs a native target",
         ),
     ] {
         checks.push(check(

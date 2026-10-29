@@ -15,7 +15,6 @@ workspace = true
 agent-client-protocol = { version = "3.6", features = ["stdio"] }
 async-channel = { workspace = true }
 base64 = { workspace = true }
-bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 # A session's `updatedAt`, as RFC 3339.
 chrono = { workspace = true, features = ["std"] }

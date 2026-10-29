@@ -92,13 +92,18 @@ fn sigterm_ends_the_router_its_sessions_and_their_tools() {
         let prompt = driven.cx.send_request(request);
         assert!(driven.until(|_| sleeping(place) && serving(place)).await);
         pid = driven.router;
-        if let Some(pid) = pid {
-            std::process::Command::new("kill")
-                .args(["-TERM", &pid.to_string()])
-                .status()
-                .ok();
+        let Some(router) = pid else { return };
+        let sent = std::process::Command::new("kill")
+            .args(["-TERM", &router.to_string()])
+            .status();
+        assert!(sent.is_ok_and(|sent| sent.success()));
+        // It ends, its session and their work with it, while the client
+        // still holds its connection.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while (alive(router) || !processes_of(place).is_empty()) && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        // The router ends the session, which answers the prompt or closes.
+        assert!(!alive(router) && processes_of(place).is_empty());
         prompt.block_task().await.ok();
     });
     assert!(pid.is_some() && router.is_some());
@@ -128,6 +133,47 @@ fn a_stopped_session_process_closes_within_its_grace() {
         let closed = tokio::time::timeout(Duration::from_secs(20), close.block_task()).await;
         assert!(closed.is_ok_and(|closed| closed.is_ok()));
         assert!(eventually(|| process_of(place, &id).is_none()));
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_late_answer_for_a_killed_session_leaves_the_others_working() {
+    let place = Place::new("late");
+    let place = &place;
+    let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        let (first, second) = (
+            driven.new_session(Vec::new()).await,
+            driven.new_session(Vec::new()).await,
+        );
+        assert!(first.is_some() && second.is_some(), "no sessions");
+        let (Some(first), Some(second)) = (first, second) else {
+            return;
+        };
+        let (first, second) = (first.session_id, second.session_id);
+        driven.answering(Answering::Later);
+        assert!(driven.model(&first, "test/guarded").await);
+        let asking = tokio::spawn(driven.send(&first, "Read it."));
+        assert!(driven.until(|seen| !seen.later.is_empty()).await);
+        let pid = process_of(place, &first);
+        assert!(pid.is_some(), "no process runs {first}");
+        let Some(pid) = pid else { return };
+        std::process::Command::new("kill")
+            .args(["-KILL", &pid.to_string()])
+            .status()
+            .ok();
+        assert!(asking.await.ok().is_some_and(|answer| answer.is_err()));
+        // The editor answers the dead session's question anyway.
+        let late = driven.seen().later.pop();
+        let allow = acp::SelectedPermissionOutcome::new(rig_basics::approval::ALLOW);
+        let answer =
+            acp::RequestPermissionResponse::new(acp::RequestPermissionOutcome::Selected(allow));
+        late.map(|late| late.respond(answer));
+        assert!(driven.model(&second, "test/reply").await);
+        assert_eq!(
+            driven.prompt(&second, "Hello.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
     });
     assert!(router.is_some());
 }

@@ -22,8 +22,11 @@ mod tests;
 /// The ACP kind of rig's tool `name`.
 fn kind(name: &str) -> acp::ToolKind {
     match name {
-        "read" => acp::ToolKind::Read,
+        "read" | "list" => acp::ToolKind::Read,
         "edit" | "write" => acp::ToolKind::Edit,
+        "delete" => acp::ToolKind::Delete,
+        "move" => acp::ToolKind::Move,
+        "search" => acp::ToolKind::Search,
         "shell" => acp::ToolKind::Execute,
         _ => acp::ToolKind::Other,
     }
@@ -40,22 +43,25 @@ fn title(name: &str, args: &Value) -> String {
     }
 }
 
-/// The file a call's `path` names, made absolute against `cwd`; none for a
+/// The files a call names, made absolute against `cwd`; none for a
 /// path on another host (`host:path`), which is not on this machine, or in
 /// the home directory (`~`), which rig's tools resolve and ACP has no word
 /// for. A drive letter (`C:`) is no host.
 fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
-    let Some(path) = args.get("path").and_then(Value::as_str) else {
-        return Vec::new();
-    };
-    let remote = path.split_once(':').is_some_and(|(host, _)| {
-        let drive = host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic());
-        !host.is_empty() && !host.contains(['/', '\\']) && !drive
-    });
-    if remote || path.starts_with('~') {
-        return Vec::new();
-    }
-    vec![acp::ToolCallLocation::new(cwd.join(path))]
+    // A file tool's `path`; `move`'s `from` and `to`.
+    let paths = ["path", "from", "to"].map(|key| args.get(key).and_then(Value::as_str));
+    paths
+        .into_iter()
+        .flatten()
+        .filter(|path| {
+            let remote = path.split_once(':').is_some_and(|(host, _)| {
+                let drive = host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic());
+                !host.is_empty() && !host.contains(['/', '\\']) && !drive
+            });
+            !remote && !path.starts_with('~')
+        })
+        .map(|path| acp::ToolCallLocation::new(cwd.join(path)))
+        .collect()
 }
 
 /// A call the model asked for, as ACP announces it: pending.

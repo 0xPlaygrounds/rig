@@ -225,7 +225,7 @@ fn unshown(picker: &Picker) -> String {
             let shown: Vec<_> = items
                 .iter()
                 .take(PICKS)
-                .map(|item| item.command.as_str())
+                .map(|item| format!("/{}", item.command))
                 .collect();
             let more = if items.len() > PICKS { ", …" } else { "" };
             format!(

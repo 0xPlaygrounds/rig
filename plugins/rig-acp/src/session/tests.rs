@@ -19,7 +19,11 @@ fn a_clients_mcp_servers_go_to_rig_as_written_and_an_sse_one_holds_its_name_refu
         acp::McpServer::Http(http),
         acp::McpServer::Sse(sse),
     ];
-    let added: Vec<_> = servers.iter().filter_map(mcp_server).collect();
+    let added: Vec<_> = servers
+        .iter()
+        .filter_map(mcp_server)
+        .map(|(_, server)| server)
+        .collect();
     let named: Vec<_> = added.iter().map(|server| server.name.as_str()).collect();
     assert_eq!(named, ["files", "web", "old"]);
     let specs: Vec<_> = added.into_iter().map(|server| server.spec).collect();
@@ -41,4 +45,18 @@ fn a_clients_mcp_servers_go_to_rig_as_written_and_an_sse_one_holds_its_name_refu
             .get(2)
             .is_some_and(|spec| spec.as_ref().is_err_and(|why| why.contains("SSE")))
     );
+}
+
+#[test]
+fn a_server_name_for_people_becomes_one_for_tools() {
+    for (given, name) in [
+        ("files", "files"),
+        ("GitHub MCP", "GitHub-MCP"),
+        ("files.local", "files-local"),
+        ("a__b_", "a_b"),
+        ("2fa", "_2fa"),
+        ("", "server"),
+    ] {
+        assert_eq!(server_name(given), name, "{given}");
+    }
 }

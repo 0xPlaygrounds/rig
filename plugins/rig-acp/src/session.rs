@@ -108,6 +108,8 @@ pub(crate) struct Session {
     opening: Option<Opening>,
     /// Whether the main agent was given a model once, before the answer.
     chose: bool,
+    /// The options the client was last told of.
+    advertised: Vec<acp::SessionConfigOption>,
     /// Updates made before the answer, sent after it.
     held: Vec<acp::SessionUpdate>,
     /// Notes for a client that shows no notices, which open the next
@@ -221,13 +223,24 @@ pub(crate) fn install(app: &mut App) {
         });
         return;
     };
-    let servers: Vec<AddMcpServer> = opening.servers().iter().filter_map(mcp_server).collect();
+    let declared: Vec<(String, AddMcpServer)> =
+        opening.servers().iter().filter_map(mcp_server).collect();
+    let renamed: Vec<String> = declared
+        .iter()
+        .filter(|(asked, server)| *asked != server.name)
+        .map(|(asked, server)| {
+            let name = &server.name;
+            format!("MCP server \"{asked}\" is `{name}` in rig: its tools are `{name}__<tool>`.")
+        })
+        .collect();
+    let servers: Vec<AddMcpServer> = declared.into_iter().map(|(_, server)| server).collect();
     app.insert_resource(Session {
         id,
         cx,
         client: *client,
         opening: Some(opening),
         chose: false,
+        advertised: Vec::new(),
         held: Vec::new(),
         notes: Vec::new(),
         prompt: None,
@@ -263,12 +276,16 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(questions::picker)
     .add_observer(ended)
     .add_observer(questions::forgotten);
+    let mut session = app.world_mut().resource_mut::<Session>();
+    for note in renamed {
+        session.note(note, NoticeLevel::Info);
+    }
     app.world_mut().spawn(Answerer::default());
 }
 
-/// One of the client's MCP servers as rig-mcp-client takes it; `None` for
-/// one of a kind ACP may add later.
-fn mcp_server(server: &acp::McpServer) -> Option<AddMcpServer> {
+/// One of the client's MCP servers as rig-mcp-client takes it, with the
+/// name the client gave it; `None` for one of a kind ACP may add later.
+fn mcp_server(server: &acp::McpServer) -> Option<(String, AddMcpServer)> {
     let (name, spec) = match server {
         acp::McpServer::Stdio(stdio) => {
             // An environment's names are alike in any case on Windows.
@@ -298,7 +315,31 @@ fn mcp_server(server: &acp::McpServer) -> Option<AddMcpServer> {
         }
         _ => return None,
     };
-    Some(AddMcpServer { name, spec })
+    let server = AddMcpServer {
+        name: server_name(&name),
+        spec,
+    };
+    Some((name, server))
+}
+
+/// A name the client gave a server, for people ("GitHub MCP"), as a name
+/// rig gives its tools: letters, digits, `_` and `-`, the rest `-`, no
+/// `__`, no `_` at its end, starting with a letter or `_`.
+fn server_name(given: &str) -> String {
+    let allowed = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    let mut name: String = given
+        .chars()
+        .map(|c| if allowed(c) { c } else { '-' })
+        .collect();
+    while name.contains("__") {
+        name = name.replace("__", "_");
+    }
+    let name = name.trim_end_matches('_');
+    match name.chars().next() {
+        Some(first) if first.is_ascii_alphabetic() || first == '_' => name.to_owned(),
+        Some(_) => format!("_{name}"),
+        None => "server".to_owned(),
+    }
 }
 
 /// `pairs` as a map, a later pair of a name replacing an earlier one, names
@@ -587,6 +628,7 @@ fn open(mut opened: Opened) {
         session.cx.send_notification(notification).ok();
     }
     let id = session.id.clone();
+    session.advertised = config.clone();
     opening.answer(&id, config);
     for update in std::mem::take(&mut session.held) {
         session.send(update);
@@ -656,7 +698,9 @@ fn settle(work: Work, mut out: output::Out, mut commands: Commands) {
         return;
     };
     let answer = match (prompt.cancelled, prompt.ended) {
-        (true, _) | (false, Some(TurnOutcome::Stopped(_))) => {
+        // A turn a plugin stopped for a reason, as `/compact` does, was no
+        // cancel.
+        (true, _) | (false, Some(TurnOutcome::Stopped(None))) => {
             Ok(acp::PromptResponse::new(acp::StopReason::Cancelled))
         }
         (false, Some(TurnOutcome::Failed(why))) => Err(crate::error(Error::internal_error(), why)),

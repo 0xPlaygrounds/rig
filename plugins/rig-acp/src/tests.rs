@@ -110,6 +110,7 @@ fn agent() {
         rig_basics::coding_tools::ReadTool,
         rig_basics::coding_tools::ShellTool,
         rig_basics::BasicCommandsPlugin,
+        rig_basics::compaction::CompactionPlugin,
     ))
     .add_command("ask", "Ask a question", ask)
     .add_command("hold", "Wait until stopped", hold)
@@ -142,10 +143,17 @@ fn ask(In(args): In<CommandArgs>, mut commands: Commands) {
 #[derive(Component)]
 struct Held(Entity);
 
-fn hold(In(args): In<CommandArgs>, wake: Res<Wake>, mut commands: Commands) {
+fn hold(
+    In(args): In<CommandArgs>,
+    wake: Res<Wake>,
+    root: Res<ProjectRoot>,
+    mut commands: Commands,
+) {
     let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     let waiting = Running::spawn(pool, &wake, std::future::pending::<()>());
     commands.spawn((Held(args.agent), waiting));
+    // Tells the test the work is there.
+    std::fs::write(root.0.join("held"), "").ok();
 }
 
 /// Ends `/hold`'s work as its agent is stopped.
@@ -307,6 +315,8 @@ enum Answering {
     Deny,
     /// Answers nothing, so the question stays open.
     Never,
+    /// Keeps the question, for the test to answer ([`Seen::later`]).
+    Later,
 }
 
 /// What the client saw and how it answers.
@@ -317,6 +327,8 @@ struct Seen {
     permissions: usize,
     /// The call each permission request was about.
     asked: Vec<acp::ToolCallUpdate>,
+    /// The questions kept to answer later.
+    later: Vec<agent_client_protocol::Responder<acp::RequestPermissionResponse>>,
     answering: Option<Answering>,
 }
 
@@ -535,15 +547,18 @@ fn drive(
             )
             .on_receive_request(
                 async move |request: acp::RequestPermissionRequest, responder, _| {
-                    let answering = {
-                        let mut seen = permissions
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        seen.permissions += 1;
-                        seen.asked.push(request.tool_call.clone());
-                        seen.events.push(Event::Asked);
-                        seen.answering
-                    };
+                    let mut seen = permissions
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    seen.permissions += 1;
+                    seen.asked.push(request.tool_call.clone());
+                    seen.events.push(Event::Asked);
+                    let answering = seen.answering;
+                    if answering == Some(Answering::Later) {
+                        seen.later.push(responder);
+                        return Ok(());
+                    }
+                    drop(seen);
                     let chosen = |kind| {
                         let option = request.options.iter().find(|option| option.kind == kind);
                         option.map(|option| option.option_id.clone())

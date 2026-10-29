@@ -38,7 +38,7 @@ fn a_form_answers_with_what_its_question_offers_and_several_may_be_none() {
 #[test]
 fn a_picker_the_client_cannot_show_says_what_to_type_instead() {
     let models = (0..12).fold(Picker::new("Model"), |picker, n| {
-        picker.item(format!("model {n}"), format!("/model m{n}"))
+        picker.item(format!("model {n}"), format!("model m{n}"))
     });
     let note = unshown(&models);
     assert!(
