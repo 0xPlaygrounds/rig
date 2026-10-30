@@ -86,7 +86,7 @@ fn draw(mut batch: ResMut<rig_tui::RenderBatch>) {
     for (call, output) in batch.tools_mut("ask_user") {
         let call = call.view();
         let question = call.argument("question").unwrap_or_default();
-        let mut lines = vec![call.header("Ask", question)];
+        let mut lines = vec![call.header("Ask", question).into()];
         lines.extend(call.result_lines());
         output.lines = lines;
     }

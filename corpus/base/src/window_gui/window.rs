@@ -370,7 +370,7 @@ fn draw_tool(tool: &ToolBlock, panel: Entity, commands: &mut Commands) {
 /// a span per styled run.
 fn markdown(source: &str, panel: Entity, commands: &mut Commands) {
     for line in rig_tui::markdown::render(source, &rig_tui::Theme::default(), None) {
-        draw_line(&line, panel, commands);
+        draw_line(&line.colored(), panel, commands);
     }
 }
 

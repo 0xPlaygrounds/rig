@@ -5,6 +5,7 @@
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::RowWrap;
@@ -17,13 +18,13 @@ const HANGING_MARKERS: [&str; 5] = ["•", "-", "*", "›", ">"];
 /// wide, each with how it continues the row before it (`None` for the
 /// first). A word wider than a row is broken. Continuation rows are
 /// indented like the text after the line's leading spaces and list marker.
-/// Every row keeps the line's style, so a background fills each.
+/// Every row keeps the line's style, so a background fills each. Where it
+/// breaks depends on its text alone, not on its styles, so a line of code
+/// wraps the same plain as colored.
 pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap>)> {
     let width = width.max(1);
-    let cells: Vec<(&str, Style)> = line
-        .styled_graphemes(Style::default())
-        .map(|grapheme| (grapheme.symbol, grapheme.style))
-        .collect();
+    let text: String = line.spans.iter().map(|span| &*span.content).collect();
+    let cells = cells(line, &text);
     let total: usize = cells.iter().map(|(symbol, _)| symbol.width()).sum();
     if total <= width {
         return vec![(join(&cells).style(line.style), None)];
@@ -94,6 +95,29 @@ pub fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<RowWrap
 pub fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
     let rows = lines.iter().flat_map(|line| wrap(line, width));
     rows.map(|(row, _)| row).collect()
+}
+
+/// The graphemes of `text`, `line`'s text, each in the style of the span
+/// its first byte is in, over the line's: found in the whole text, so a
+/// grapheme whose spans split it is one cell. Those with a control
+/// character are left out, as ratatui draws a line.
+fn cells<'a>(line: &Line<'_>, text: &'a str) -> Vec<(&'a str, Style)> {
+    let mut spans = line.spans.iter().scan(0, |end, span| {
+        *end += span.content.len();
+        Some((*end, line.style.patch(span.style)))
+    });
+    let mut span = spans.next();
+    let graphemes = text.grapheme_indices(true);
+    let graphemes = graphemes.filter(|(_, grapheme)| !grapheme.contains(char::is_control));
+    let cells = graphemes.map(|(at, grapheme)| {
+        while let Some((end, _)) = span
+            && end <= at
+        {
+            span = spans.next();
+        }
+        (grapheme, span.map_or(line.style, |(_, style)| style))
+    });
+    cells.collect()
 }
 
 /// The cells split into words, each with the spaces that follow it.

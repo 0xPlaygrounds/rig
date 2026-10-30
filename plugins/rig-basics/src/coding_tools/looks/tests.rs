@@ -4,14 +4,13 @@ use rig_harness::rig_core::tool::{
     ContentHash, FileChange, FileRead, FilesChanged, FilesRead, Hunk, HunkLine, Lines, LinesShown,
     ToolContext, ToolResult, ToolResultContext,
 };
-use rig_tui::ratatui::text::Line;
-use rig_tui::{CallState, ToolCallView};
+use rig_tui::{CallState, LookLine, ToolCallView};
 
 use super::{edit, read, shell, write};
 
 /// What `look` draws for a `tool` call with `args` that answered `output`.
 fn drawn(
-    look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>,
+    look: fn(&ToolCallView<'_>) -> Vec<LookLine>,
     tool: &str,
     args: Value,
     output: &str,
@@ -21,7 +20,7 @@ fn drawn(
 
 /// [`drawn`], for a call that published `facts`.
 fn drawn_with(
-    look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>,
+    look: fn(&ToolCallView<'_>) -> Vec<LookLine>,
     tool: &str,
     args: Value,
     output: &str,
@@ -110,7 +109,7 @@ fn a_read_file_is_drawn_in_its_languages_colors() {
     let lines = read(&view);
     let code = lines
         .get(1)
-        .map(|line| line.spans.clone())
+        .map(|line| line.colored().spans)
         .unwrap_or_default();
     assert!(
         code.iter().skip(1).any(|span| span.style.fg.is_some()),

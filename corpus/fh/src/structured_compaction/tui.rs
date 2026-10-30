@@ -22,7 +22,7 @@ fn draw(mut batch: ResMut<RenderBatch>) {
         return;
     };
     for (entry, output) in batch.entries_mut(&origin) {
-        output.lines = summary(&entry.view());
+        output.lines = summary(&entry.view()).into_iter().map(Into::into).collect();
     }
 }
 

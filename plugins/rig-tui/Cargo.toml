@@ -23,6 +23,7 @@ crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
 # Markdown in replies and the width of wrapped text.
 pulldown-cmark = { workspace = true }
+unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 ratatui = { workspace = true }
 rig-core = { workspace = true }

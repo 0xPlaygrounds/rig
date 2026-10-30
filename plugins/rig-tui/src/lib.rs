@@ -89,7 +89,7 @@ pub use ratatui;
 pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
     AsideRender, AsideView, CallState, ChildCall, ContentBlock, ContentKind, ContentRender,
-    ContentView, DecoratedMessage, EntryRender, EntryView, MessageRender, MessageView,
+    ContentView, DecoratedMessage, EntryRender, EntryView, LookLine, MessageRender, MessageView,
     OUTPUT_INDENT, RenderBatch, RenderContent, RenderInput, RenderKey, RenderOutput, RenderRequest,
     RenderRevision, RenderSystems, Role, ToolCallView, ToolRender, TranscriptRender, text_rows,
 };
@@ -380,7 +380,10 @@ fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
 /// Draws the notes of failed builds.
 fn render_build_failed(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(BUILD_ORIGIN) {
-        output.lines = build_failed(&entry.view());
+        output.lines = build_failed(&entry.view())
+            .into_iter()
+            .map(LookLine::from)
+            .collect();
     }
 }
 

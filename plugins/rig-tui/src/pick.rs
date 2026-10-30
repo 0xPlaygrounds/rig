@@ -1,10 +1,15 @@
 //! Pickers and questions over the transcript.
 
+use std::io;
+
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
+use rig_core::conversation::pairing::safe_start;
+use rig_core::conversation::{self, Aside, Author, MessageId, TURN, TurnEnd, TurnRecord};
+use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
 use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker};
@@ -17,10 +22,14 @@ use super::editor::{Editor, MainEditor};
 use super::pane::{TranscriptPane, TranscriptSource};
 use super::panel::{PanelCanvas, Placement, TuiPanel};
 use super::view::TuiView;
-use super::view::{ItemRow, ScrollTo, TranscriptItem};
+use super::view::{ItemRow, ScrollTo, TranscriptItem, TranscriptSlot};
 
 /// Lines a page key moves.
 const PAGE: usize = 10;
+
+/// About how much of a conversation a preview lays out, in bytes of what
+/// its messages draw: a few screens, laid out in tens of milliseconds.
+const PREVIEW_BYTES: usize = 64 * 1024;
 
 /// On a [`Picker`] or an [`Ask`]: keys of its own in the view's choice
 /// list, found before the view's own. A plain character's binding works
@@ -711,7 +720,7 @@ pub(crate) fn follow_previews(
         if previewing(picker).is_none() || pane.is_some() && !preview.is_changed() {
             continue;
         }
-        let source = TranscriptSource::Value(conversation.clone());
+        let source = TranscriptSource::Value(window(conversation, *at));
         let shown = TranscriptPane::new(source).titled("preview");
         let pane = match pane {
             Some((pane, _)) => commands.entity(pane).insert(shown).id(),
@@ -732,6 +741,144 @@ pub(crate) fn follow_previews(
             row: ItemRow::Top(0),
         });
     }
+}
+
+/// The part of `conversation` a preview lays out, its entries keeping
+/// their ids: `at`'s entry, else the last, then the entries after it, then
+/// those before it, until they pass [`PREVIEW_BYTES`]. Its edges may take in
+/// more, so no call is parted from its results, and no stopped call from
+/// the entry its stop is drawn under. Turn records stay; other asides stay
+/// when drawn within it.
+fn window(
+    conversation: &conversation::Conversation,
+    at: Option<MessageId>,
+) -> conversation::Conversation {
+    let messages = conversation.messages();
+    let at = at.and_then(|at| conversation.index_of(at));
+    let first = at.unwrap_or(messages.len().saturating_sub(1));
+    let mut size = messages.get(first).map_or(0, |message| drawn_size(message));
+    let mut within = |message: &Message| {
+        let fits = size < PREVIEW_BYTES;
+        if fits {
+            size += drawn_size(message);
+        }
+        fits
+    };
+    let after = messages.iter().skip(first.saturating_add(1));
+    let after = after.take_while(|message| within(message)).count();
+    let before = messages.iter().take(first).rev();
+    let before = before.take_while(|message| within(message)).count();
+    let mut start = first - before;
+    let mut end = (first + 1 + after).min(messages.len());
+    while start > 0 && safe_start(messages, start) != start {
+        start -= 1;
+    }
+    end = safe_start(messages, end);
+    // A stop past the end takes the window to it when the reply whose
+    // calls it answered, the last of its turn asking for one, is in it.
+    let stopped = |turn: TurnRecord, end: usize| {
+        let Some(TurnEnd::Stopped {
+            at: Some(stop),
+            calls,
+            ..
+        }) = turn.end
+        else {
+            return None;
+        };
+        let stop = conversation.index_of(stop).filter(|stop| *stop >= end)?;
+        let from = conversation.start_of(turn.start).min(stop);
+        let asked =
+            (from..=stop)
+                .rev()
+                .find(|at| match messages.get(*at).map(|message| &**message) {
+                    Some(Message::Assistant(reply)) => {
+                        reply.tool_calls().any(|call| calls.contains(&call.id))
+                    }
+                    _ => false,
+                })?;
+        (start..end).contains(&asked).then_some(stop)
+    };
+    while let Some(stop) = conversation
+        .turns()
+        .find_map(|(_, turn)| stopped(turn, end))
+    {
+        end = safe_start(messages, stop.saturating_add(1));
+    }
+    let mut shown = conversation.view();
+    shown.splice(end.., [], Author::rig());
+    shown.splice(..start, [], Author::rig());
+    for (id, aside) in conversation.asides() {
+        if aside.kind == TURN {
+            continue;
+        }
+        match TranscriptSlot::of_aside(aside, conversation) {
+            TranscriptSlot::Top if start == 0 => {}
+            TranscriptSlot::After(index) if index.saturating_add(1) == start => {
+                let top = Aside {
+                    after: None,
+                    ..aside.clone()
+                };
+                shown.replace_aside(id, top);
+            }
+            TranscriptSlot::After(index) | TranscriptSlot::Inside(index, _)
+                if (start..end).contains(&index) => {}
+            _ => {
+                shown.remove_aside(id);
+            }
+        }
+    }
+    shown
+}
+
+/// About how much of `message` is drawn, in bytes: its text, reasoning,
+/// calls' arguments and text or JSON results. Media, a provider's own
+/// data and system messages draw a row or nothing.
+fn drawn_size(message: &Message) -> usize {
+    match message {
+        Message::System { .. } => 0,
+        Message::User { content } => content
+            .iter()
+            .map(|item| match item {
+                UserContent::Text(text) => text.text.len(),
+                UserContent::ToolResult(result) => result
+                    .content
+                    .iter()
+                    .map(|part| match part {
+                        ToolResultContent::Text(text) => text.text.len(),
+                        ToolResultContent::Json { value } => json_size(value),
+                        _ => 0,
+                    })
+                    .sum(),
+                _ => 0,
+            })
+            .sum(),
+        Message::Assistant(reply) => reply
+            .content
+            .iter()
+            .map(|item| match item {
+                AssistantContent::Text(text) => text.text.len(),
+                AssistantContent::Reasoning(reasoning) => reasoning.text.len(),
+                AssistantContent::ToolCall(call) => json_size(&call.function.arguments),
+                _ => 0,
+            })
+            .sum(),
+    }
+}
+
+/// How many bytes `value` takes as JSON, counted without writing it.
+fn json_size(value: &impl serde::Serialize) -> usize {
+    struct Count(usize);
+    impl io::Write for Count {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut count = Count(0);
+    serde_json::to_writer(&mut count, value).map_or(0, |()| count.0)
 }
 
 /// The strip that shows the question asked beside the work, if any

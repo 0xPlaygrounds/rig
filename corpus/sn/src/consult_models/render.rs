@@ -4,7 +4,7 @@
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{CallState, ChildCall, RenderBatch, ToolCallView};
+use rig_tui::{CallState, ChildCall, LookLine, RenderBatch, ToolCallView};
 
 use super::CONSULT;
 
@@ -16,10 +16,10 @@ pub(crate) fn draw(mut batch: ResMut<RenderBatch>) {
 }
 
 /// A `consult` call.
-pub(crate) fn consult(view: &ToolCallView) -> Vec<Line<'static>> {
+pub(crate) fn consult(view: &ToolCallView) -> Vec<LookLine> {
     let question = view.argument("question").unwrap_or_default();
-    let mut lines = vec![view.header("Consult", question)];
-    lines.extend(view.children.iter().flat_map(child));
+    let mut lines = vec![LookLine::from(view.header("Consult", question))];
+    lines.extend(view.children.iter().flat_map(child).map(LookLine::from));
     lines.extend(view.result_lines());
     lines
 }

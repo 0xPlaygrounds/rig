@@ -4,8 +4,14 @@ use unicode_width::UnicodeWidthStr;
 use crate::Theme;
 use crate::markdown::render;
 
+/// `text` rendered and drawn, colored.
+fn rendered(text: &str, theme: &Theme, width: Option<usize>) -> Vec<ratatui::text::Line<'static>> {
+    let lines = render(text, theme, width);
+    lines.iter().map(crate::LookLine::colored).collect()
+}
+
 fn text(markdown: &str, width: usize) -> Vec<String> {
-    let lines = render(markdown, &Theme::default(), Some(width));
+    let lines = rendered(markdown, &Theme::default(), Some(width));
     lines
         .iter()
         .map(|line| line.to_string().trim_end().to_owned())
@@ -23,7 +29,7 @@ const WIDE: &str = "\
 fn a_table_that_fits_is_drawn_at_its_widest_cells_with_a_bold_header() {
     let markdown = "| a | bb |\n| - | - |\n| ccc | d |\n";
     assert_eq!(text(markdown, 80), ["a     bb", "ccc   d"]);
-    let lines = render(markdown, &Theme::default(), Some(80));
+    let lines = rendered(markdown, &Theme::default(), Some(80));
     let header = lines
         .first()
         .and_then(|line| line.spans.iter().find(|span| span.content == "a"));

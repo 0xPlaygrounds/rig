@@ -73,7 +73,7 @@ fn drawn(world: &mut World, view: &ToolCallView<'_>) -> Vec<String> {
 /// Another plugin's look, of its `probe` tool.
 fn draw_probe(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut("probe") {
-        output.lines = vec![call.view().header("probe says hi", "")];
+        output.lines = vec![call.view().header("probe says hi", "").into()];
     }
 }
 

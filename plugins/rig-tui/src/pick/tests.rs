@@ -829,3 +829,193 @@ fn a_narrow_keys_row_leaves_out_its_first_keys() {
         "{rows:#?}"
     );
 }
+
+#[test]
+fn a_long_conversations_preview_lays_out_its_end_or_from_its_entry() {
+    use rig_core::completion::Message;
+    use rig_core::conversation::Conversation;
+    use rig_harness::pick::PickPreview;
+
+    use crate::TuiTestScreen;
+
+    let said = |n: usize| format!("start {n} {}end {n}.", "word ".repeat(800));
+    let whole = Conversation::from_messages((0..40).map(|n| match n % 2 {
+        0 => Message::user(said(n)),
+        _ => Message::assistant(said(n)),
+    }));
+    let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
+    let last = ids.last().copied();
+    for (at, seen) in [
+        (None, "end 39."),
+        (ids.get(3).copied(), "start 3 "),
+        (last, "start 39 "),
+    ] {
+        let (mut app, _) = view_app();
+        app.insert_resource(TuiTestScreen::new(100, 30));
+        let picker = Picker::new("Sessions").item("a long session", "resume it");
+        let preview = PickPreview::Conversation {
+            conversation: whole.clone(),
+            at,
+        };
+        app.world_mut().spawn((picker, preview));
+        app.update();
+        app.update();
+        let world = app.world_mut();
+        let mut panes = world.query_filtered::<&TranscriptPane, With<PreviewPane>>();
+        let kept: Vec<_> = panes
+            .single(world)
+            .iter()
+            .filter_map(|pane| match &pane.source {
+                TranscriptSource::Value(shown) => Some(shown.entries().map(|entry| entry.id)),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        // A run of the whole's entries, with their ids, and far from all.
+        assert!(!kept.is_empty() && kept.len() < ids.len() / 2, "{kept:?}");
+        assert!(ids.windows(kept.len()).any(|run| run == kept), "{kept:?}");
+        // From an early entry the budget goes to the entries below it;
+        // from the last, to those above it, which the pane shows too.
+        match at {
+            Some(at) if Some(at) == last => {
+                assert_eq!(kept.last(), Some(&at));
+                assert!(kept.len() > 1, "{kept:?}");
+            }
+            Some(at) => assert_eq!(kept.first(), Some(&at)),
+            None => assert_eq!(kept.last(), last.as_ref()),
+        }
+        let drawn = app.world().resource::<TuiTestScreen>().rows().join("\n");
+        assert!(drawn.contains(seen), "{drawn}");
+    }
+}
+
+#[test]
+fn a_previews_edges_keep_calls_with_their_results_and_stops() {
+    use rig_core::completion::{AssistantContent, Message};
+    use rig_core::conversation::{Aside, Author, Conversation, TurnEnd};
+    use rig_core::message::{AssistantMessage, CallId, ToolName};
+
+    let big = "word ".repeat(PREVIEW_BYTES / 4);
+    let shell = ToolName::new("shell").ok();
+    let call = |id: &str, args: &str| {
+        let call = shell.clone().map(|shell| {
+            AssistantContent::tool_call(id, shell, serde_json::json!({ "command": args }))
+        });
+        Message::Assistant(AssistantMessage::new(call.into_iter().collect()))
+    };
+    let result = |id: &str, text: &str| {
+        let result = shell
+            .clone()
+            .map(|shell| Message::tool_result(CallId::from_wire(id), shell, text));
+        result.unwrap_or_else(|| Message::user(text))
+    };
+    // An answered turn calls `c2` too, before the turn that is stopped.
+    let mut whole = Conversation::from_messages([
+        Message::user("earlier"),
+        call("c2", &big),
+        result("c2", "listed"),
+        Message::assistant("an earlier answer"),
+        Message::user("go"),
+    ]);
+    whole.open_turn();
+    whole.extend([
+        call("c1", &big),
+        result("c1", "listed"),
+        call("c2", "ls"),
+        result("c2", &big),
+        Message::user("the stop's own entry"),
+    ]);
+    let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
+    let id = |at: usize| ids.get(at).copied();
+    let shown = |whole: &Conversation, at| {
+        let shown = window(whole, at);
+        let ids: Vec<_> = shown.entries().map(|entry| entry.id).collect();
+        (ids, shown)
+    };
+
+    // From a big call, the window ends past its result.
+    let (from_call, _) = shown(&whole, id(5));
+    assert_eq!(from_call, ids.get(5..7).unwrap_or_default());
+
+    // Once a stop drawn under a later entry answered the stopped turn's
+    // `c2`, a window holding that call ends past the stop; one without
+    // it does not, nor one holding the earlier turn's `c2`.
+    let stopped = TurnEnd::Stopped {
+        why: None,
+        at: id(9),
+        calls: vec![CallId::from_wire("c2")],
+    };
+    assert!(whole.end_turn(stopped));
+    let (from_second, _) = shown(&whole, id(7));
+    assert_eq!(from_second, ids.get(7..10).unwrap_or_default());
+    let (from_call, _) = shown(&whole, id(5));
+    assert_eq!(from_call, ids.get(5..7).unwrap_or_default());
+    let (from_earlier, _) = shown(&whole, id(1));
+    assert_eq!(from_earlier, ids.get(1..3).unwrap_or_default());
+
+    // Back from the end, the big result takes the budget and its call
+    // comes with it. The mark above that call moves to the top, one
+    // further up is left out, and the turn's record stays.
+    let mark = |after| Aside::new("test.mark", Author::rig(), serde_json::Value::Null).after(after);
+    let gone = whole.add_aside(mark(id(0)));
+    let above = whole.add_aside(mark(id(6)));
+    let kept = whole.add_aside(mark(id(8)));
+    let (from_end, end) = shown(&whole, None);
+    assert_eq!(from_end, ids.get(7..).unwrap_or_default());
+    assert!(end.aside(gone).is_none());
+    assert_eq!(end.aside(above).map(|aside| aside.after), Some(None));
+    assert!(end.aside(kept).is_some());
+    assert_eq!(end.turns().count(), 1);
+
+    // An image and a system message draw a row or nothing, so their bytes
+    // leave the budget to what is drawn.
+    let image =
+        rig_core::message::UserContent::image_base64("A".repeat(4 * PREVIEW_BYTES), None, None);
+    let drawn = Conversation::from_messages([
+        Message::user("look at this"),
+        Message::User {
+            content: vec![image],
+        },
+        Message::assistant("a cat"),
+        Message::System { content: big },
+    ]);
+    let (all, _) = shown(&drawn, None);
+    assert_eq!(all.len(), 4, "{all:?}");
+}
+
+#[test]
+fn a_preview_counts_what_its_messages_draw() {
+    use rig_core::completion::{AssistantContent, Message};
+    use rig_core::message::{AssistantMessage, CallId, ToolName, ToolResultContent, UserContent};
+
+    let shell = ToolName::new("shell").ok();
+    let json = serde_json::json!({ "lines": ["one", "two"] });
+    let result = shell.clone().map(|shell| Message::User {
+        content: vec![UserContent::tool_result(
+            CallId::from_wire("c1"),
+            shell,
+            vec![
+                ToolResultContent::json(json.clone()),
+                ToolResultContent::text("done"),
+            ],
+        )],
+    });
+    let reply = Message::Assistant(AssistantMessage::new(vec![
+        AssistantContent::reasoning("why"),
+        AssistantContent::text("an answer"),
+    ]));
+    let image = Message::User {
+        content: vec![UserContent::image_base64("A".repeat(1000), None, None)],
+    };
+    let system = Message::System {
+        content: "a system prompt".into(),
+    };
+    let json_size = serde_json::to_string(&json).map_or(0, |json| json.len());
+    assert_eq!(
+        result.as_ref().map(drawn_size),
+        Some(json_size + "done".len())
+    );
+    assert_eq!(drawn_size(&reply), "why".len() + "an answer".len());
+    assert_eq!(drawn_size(&image), 0);
+    assert_eq!(drawn_size(&system), 0);
+}

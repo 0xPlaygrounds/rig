@@ -153,7 +153,7 @@ fn bind_keys(app: &mut App) {
 /// Draws the ratings' notes as markers.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut(AUTHOR) {
-        output.lines = marker(&entry.view());
+        output.lines = marker(&entry.view()).into_iter().map(Into::into).collect();
     }
 }
 

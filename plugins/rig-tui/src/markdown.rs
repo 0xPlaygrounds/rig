@@ -11,8 +11,10 @@ use pulldown_cmark::{
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::{Line, Span};
 
+use crate::LookLine;
 use crate::Theme;
-use crate::highlight::{Language, highlight};
+use crate::highlight::{Code, Language};
+use crate::renderers::CodeLine;
 
 use table::Table;
 
@@ -29,7 +31,7 @@ fn options() -> Options {
 
 /// `text` as markdown in `theme`'s tints, in lines not yet wrapped, its
 /// tables fit to `width` (at their widest cells with `None`).
-pub fn render(text: &str, theme: &Theme, width: Option<usize>) -> Vec<Line<'static>> {
+pub fn render(text: &str, theme: &Theme, width: Option<usize>) -> Vec<LookLine> {
     let mut writer = Writer {
         width,
         theme: *theme,
@@ -63,7 +65,7 @@ pub fn render_marked(
     marks: &[(usize, Span<'static>)],
     theme: &Theme,
     width: Option<usize>,
-) -> Vec<Line<'static>> {
+) -> Vec<LookLine> {
     if marks.is_empty() {
         return render(text, theme, width);
     }
@@ -117,11 +119,21 @@ pub fn render_marked(
         }
         spans
     };
+    let marked_in = |line: &Line<'_>| {
+        let mut chars = line.spans.iter().flat_map(|span| span.content.chars());
+        chars.any(|ch| mark_of(ch).is_some())
+    };
     render(&marked, theme, width)
         .into_iter()
-        .map(|line| {
+        .map(|look| {
+            // A mark in a line of code is swapped into its colored spans.
+            let (line, code) = match look.code {
+                Some(_) if marked_in(&look.line) => (look.colored(), None),
+                code => (look.line, code),
+            };
             let spans = line.spans.into_iter().flat_map(swap).collect::<Vec<_>>();
-            Line { spans, ..line }
+            let line = Line { spans, ..line };
+            LookLine { line, code }
         })
         .collect()
 }
@@ -134,6 +146,8 @@ struct List {
 #[derive(Default)]
 struct Writer {
     lines: Vec<Line<'static>>,
+    /// The lines of `lines` that are lines of code, by their place.
+    code_lines: Vec<(usize, CodeLine)>,
     /// The line being written.
     line: Vec<Span<'static>>,
     /// Inline styles open, innermost last.
@@ -224,33 +238,35 @@ impl Writer {
 
     /// Writes a code block's `code` on the code tint, each line kept, empty
     /// ones too. When its fence's `language` has a grammar, the code is in
-    /// that language's colors under the language's name; otherwise it is
-    /// plain and unlabelled.
+    /// that language's colors under the language's name, once drawn;
+    /// otherwise it is plain and unlabelled.
     fn code_block(&mut self, language: &str, code: &str) {
         let code = code.strip_suffix('\n').unwrap_or(code);
-        let plain = || {
-            let lines = code.split('\n');
-            lines
-                .map(|line| vec![Span::from(line.replace('\t', "    "))])
-                .collect()
-        };
-        let highlighted = match language {
-            "" => None,
-            language => highlight(code, Language::Named(language)),
-        };
-        let named = highlighted.is_some();
-        let lines = highlighted.unwrap_or_else(plain);
         let tint = self.theme.code;
-        if named {
-            let mut spans = self.prefix();
-            spans.push(Span::from(format!("  {language}")).dim().italic());
-            self.lines.push(Line::from(spans).bg(tint));
-        }
-        for line in lines {
-            let mut spans = self.prefix();
-            spans.push(Span::from("  "));
-            spans.extend(line);
-            self.lines.push(Line::from(spans).bg(tint));
+        let colored = match language {
+            "" => None,
+            language => Some(Code::new(code, Language::Named(language))),
+        };
+        let Some(colored) = colored.filter(Code::has_grammar) else {
+            for line in code.split('\n') {
+                let mut spans = self.prefix();
+                spans.push(Span::from("  "));
+                spans.push(Span::from(line.replace('\t', "    ")));
+                self.lines.push(Line::from(spans).bg(tint));
+            }
+            return;
+        };
+        let mut spans = self.prefix();
+        spans.push(Span::from(format!("  {language}")).dim().italic());
+        self.lines.push(Line::from(spans).bg(tint));
+        for index in 0..colored.len() {
+            let mut prefix = self.prefix();
+            prefix.push(Span::from("  "));
+            let look = colored.line(index, prefix);
+            if let Some(code) = look.code {
+                self.code_lines.push((self.lines.len(), code));
+            }
+            self.lines.push(look.line.bg(tint));
         }
     }
 
@@ -483,9 +499,14 @@ impl Writer {
         }
     }
 
-    fn finish(mut self) -> Vec<Line<'static>> {
+    fn finish(mut self) -> Vec<LookLine> {
         self.flush();
-        self.lines
+        let mut code = self.code_lines.into_iter().peekable();
+        let lines = self.lines.into_iter().enumerate().map(|(at, line)| {
+            let code = code.next_if(|(line, _)| *line == at).map(|(_, code)| code);
+            LookLine { line, code }
+        });
+        lines.collect()
     }
 }
 

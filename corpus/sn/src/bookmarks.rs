@@ -85,7 +85,7 @@ struct HistoryPane;
 /// Draws the bookmarks' asides.
 fn draw(mut batch: ResMut<RenderBatch>) {
     for (aside, output) in batch.asides_mut(KIND) {
-        output.lines = marker(&aside.view());
+        output.lines = marker(&aside.view()).into_iter().map(Into::into).collect();
     }
 }
 

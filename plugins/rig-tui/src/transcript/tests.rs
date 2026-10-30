@@ -34,8 +34,8 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn,
-    PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout, TranscriptView,
+    CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, LookLine,
+    MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout, TranscriptView,
 };
 
 use crate::{RenderBatch, RenderSystems, TranscriptRender};
@@ -61,7 +61,9 @@ fn a_view_scrolled_up_stays_put_while_rows_arrive() {
 
 #[test]
 fn a_view_scrolled_up_leaves_its_last_row_to_the_marker() {
-    let lines: Vec<Line<'static>> = (1..=30).map(|n| Line::from(format!("row-{n}"))).collect();
+    let lines: Vec<LookLine> = (1..=30)
+        .map(|n| Line::from(format!("row-{n}")).into())
+        .collect();
     let parts = [Part::rows(&lines, &[], usize::from(WIDTH))];
     let transcript = Transcript::default();
     let shown = |scroll: &mut Scroll, height| {
@@ -272,7 +274,7 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
                     .as_deref()
                     .unwrap_or("no output")
                     .lines()
-                    .map(|line| Line::from(format!("> {line}")))
+                    .map(|line| Line::from(format!("> {line}")).into())
                     .collect();
             }
         })
@@ -345,7 +347,7 @@ fn an_aside_and_a_message_are_drawn_by_their_looks() {
                 let view = input.view();
                 output.lines = {
                     let text = view.aside.value.as_str().unwrap_or_default();
-                    vec![Line::from(format!("↳ {text}"))]
+                    vec![Line::from(format!("↳ {text}")).into()]
                 };
             }
         })
@@ -410,8 +412,8 @@ fn a_plugin_note_is_drawn_after_its_message_by_its_plugins_look() {
                 let entry = input.view();
                 output.lines = {
                     vec![
-                        Line::from(format!("btw: {}", entry.title)),
-                        Line::from(format!("btw: {}", entry.text)),
+                        Line::from(format!("btw: {}", entry.title)).into(),
+                        Line::from(format!("btw: {}", entry.text)).into(),
                     ]
                 };
             }
@@ -461,8 +463,8 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
                 output.lines = {
                     let by = if view.assistant { "model" } else { "user" };
                     vec![
-                        Line::from(format!("img {} by {by}", view.index)),
-                        Line::default(),
+                        Line::from(format!("img {} by {by}", view.index)).into(),
+                        Line::default().into(),
                     ]
                 };
             }
@@ -474,7 +476,7 @@ fn content_renderers_draw_both_sides_blocks_and_decorators_every_call() {
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("shell") {
                 let call = input.view();
-                output.lines = vec![call.header("shell", "")];
+                output.lines = vec![call.header("shell", "").into()];
             }
         })
         .in_set(RenderSystems::Render),
@@ -1011,8 +1013,10 @@ fn a_highlight_lights_a_renderers_text_and_draws_again() {
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("shell") {
                 let call = input.view();
-                output.lines =
-                    vec![call.header("shell", call.argument("command").unwrap_or_default())];
+                output.lines = vec![
+                    call.header("shell", call.argument("command").unwrap_or_default())
+                        .into(),
+                ];
             }
         })
         .in_set(RenderSystems::Render),
@@ -1063,7 +1067,7 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
                 let call = input.view();
                 output.lines = {
                     let path = call.argument("path").unwrap_or("…");
-                    vec![Line::from(format!("{:?} write {path}", call.state))]
+                    vec![Line::from(format!("{:?} write {path}", call.state)).into()]
                 };
             }
         })
@@ -1240,7 +1244,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
                             let (depth, name, state) = (child.depth, &child.name, &child.state);
                             Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
                         });
-                        children.collect()
+                        children.map(LookLine::from).collect()
                     };
                 }
             })
@@ -1383,7 +1387,7 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
         (|mut batch: ResMut<RenderBatch>| {
             for (input, output) in batch.tools_mut("shell") {
                 let call = input.view();
-                output.lines = vec![call.header("shell", "")];
+                output.lines = vec![call.header("shell", "").into()];
             }
         })
         .in_set(RenderSystems::Render),

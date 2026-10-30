@@ -479,7 +479,7 @@ without `rig-tui` puts it behind a default `tui = ["dep:rig-tui"]` feature.
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_tui::ratatui::text::Line;
-use rig_tui::{RenderBatch, RenderSystems, TranscriptRender};
+use rig_tui::{LookLine, RenderBatch, RenderSystems, TranscriptRender};
 
 fn build(app: &mut App) {
     app.add_systems(TranscriptRender, draw_count.in_set(RenderSystems::Render));
@@ -488,11 +488,12 @@ fn build(app: &mut App) {
 fn draw_count(mut batch: ResMut<RenderBatch>) {
     for (input, output) in batch.tools_mut("word_count") {
         let call = input.view();
-        let mut lines = vec![call.header("Count", call.argument("path").unwrap_or_default())];
+        let header = call.header("Count", call.argument("path").unwrap_or_default());
+        let mut lines = vec![LookLine::from(header)];
         lines.extend(call.result_lines());
         for child in call.children {
             let indent = "  ".repeat(child.depth + 1);
-            lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)));
+            lines.push(Line::from(format!("{indent}↳ {} {:?}", child.name, child.state)).into());
         }
         output.lines = lines;
     }
@@ -2146,9 +2147,16 @@ a user message on `user`, a tool call and what a plugin added on `tool`, a
 reply on none; a look's line with a background of its own keeps it, as a
 diff's `added` and `removed` lines do
 (`rig_tui::diff::unified_lines(text, &theme)`, also `ToolCallView::theme`). A
-look draws code in the terminal's palette with
-`rig_tui::highlight::code_rows(code, Language::File(path))` (or `highlight`
-for the spans of each line; `Language::Named("rust")` for a language by name).
+look's lines are `LookLine`s: a ratatui `Line`, or a line of code, which is
+laid out plain and colored in the terminal's palette when its rows are
+drawn, so a long history costs only the code on screen. A look draws code
+with `rig_tui::highlight::code_rows(code, Language::File(path))`, or a
+`Code::new(code, language)` and `code.line(index, prefix)` for each line
+after a prefix of its own, such as a line number
+(`ToolCallView::header_code` for a header's; `Language::Named("rust")` for a
+language by name). Lines drawn outside the transcript, such as markdown or
+a diff in a panel of a plugin's own, are drawn as `LookLine::colored()`
+gives them.
 The transcript is a `TranscriptPane`
 ([another](#what-agents-do-and-say-in-a-terminal-panel)), the default screen's
 marked `MainPane`. Plugins read and set a pane's `TranscriptView` component
@@ -2182,7 +2190,7 @@ use rig_tui::ratatui::layout::Rect;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    RenderBatch, RenderSystems, TranscriptRender, ContentKind, DrawnTranscript, Highlight, ItemRow, MainPane, MainTranscript,
+    RenderBatch, RenderSystems, TranscriptRender, ContentKind, DrawnTranscript, Highlight, ItemRow, LookLine, MainPane, MainTranscript,
     ScrollTo, TerminalWrite, TranscriptItem, TuiFrame, TuiSystems,
 };
 
@@ -2199,10 +2207,11 @@ fn draw_marks(mut batch: ResMut<RenderBatch>) {
     for (entry, output) in batch.entries_mut("mark") {
         let mut lines = vec![Line::from(format!("★ {}", entry.title)).yellow()];
         lines.extend(entry.text.lines().map(|line| Line::from(line.to_owned())));
-        output.lines = lines;
+        output.lines = lines.into_iter().map(LookLine::from).collect();
     }
     for (image, output) in batch.contents_mut(ContentKind::Image) {
-        output.lines = [image.view().default_lines(), vec![Line::default(); 3]].concat();
+        let lines = [image.view().default_lines(), vec![Line::default(); 3]].concat();
+        output.lines = lines.into_iter().map(LookLine::from).collect();
     }
 }
 

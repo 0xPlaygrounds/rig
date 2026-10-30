@@ -27,8 +27,8 @@ use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, RenderBatch, ToolCallView, run_command,
-    text_rows,
+    AppKeyBindingsExt, CallState, KeyBinding, KeyPress, LookLine, RenderBatch, ToolCallView,
+    run_command, text_rows,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -391,13 +391,14 @@ fn draw(mut batch: ResMut<RenderBatch>) {
 
 /// The terminal view's look of a `run` call: the command, then its output
 /// while it runs, or its result.
-fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+fn look(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let command = view.argument("command").unwrap_or_default();
-    let mut lines = vec![view.header(RUN, command)];
+    let mut lines = vec![view.header(RUN, command).into()];
     match &view.state {
         CallState::Running(Some(progress)) if view.result.is_none() => {
-            lines.extend(text_rows(progress, Style::new().dim()));
-            lines.push(Line::from("    ctrl+k cancels").yellow());
+            let rows = text_rows(progress, Style::new().dim());
+            lines.extend(rows.into_iter().map(LookLine::from));
+            lines.push(Line::from("    ctrl+k cancels").yellow().into());
         }
         _ => lines.extend(view.result_lines()),
     }
