@@ -982,3 +982,40 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
     let (all, _) = shown(&drawn, None);
     assert_eq!(all.len(), 4, "{all:?}");
 }
+
+#[test]
+fn a_preview_counts_what_its_messages_draw() {
+    use rig_core::completion::{AssistantContent, Message};
+    use rig_core::message::{AssistantMessage, CallId, ToolName, ToolResultContent, UserContent};
+
+    let shell = ToolName::new("shell").ok();
+    let json = serde_json::json!({ "lines": ["one", "two"] });
+    let result = shell.clone().map(|shell| Message::User {
+        content: vec![UserContent::tool_result(
+            CallId::from_wire("c1"),
+            shell,
+            vec![
+                ToolResultContent::json(json.clone()),
+                ToolResultContent::text("done"),
+            ],
+        )],
+    });
+    let reply = Message::Assistant(AssistantMessage::new(vec![
+        AssistantContent::reasoning("why"),
+        AssistantContent::text("an answer"),
+    ]));
+    let image = Message::User {
+        content: vec![UserContent::image_base64("A".repeat(1000), None, None)],
+    };
+    let system = Message::System {
+        content: "a system prompt".into(),
+    };
+    let json_size = serde_json::to_string(&json).map_or(0, |json| json.len());
+    assert_eq!(
+        result.as_ref().map(drawn_size),
+        Some(json_size + "done".len())
+    );
+    assert_eq!(drawn_size(&reply), "why".len() + "an answer".len());
+    assert_eq!(drawn_size(&image), 0);
+    assert_eq!(drawn_size(&system), 0);
+}

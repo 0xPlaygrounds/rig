@@ -38,7 +38,7 @@ similar = { workspace = true }
 # The terminal's background, which the transcript's colors are mixed from.
 terminal-colorsaurus = { workspace = true }
 # Code highlighted in the terminal's own colors: bat's grammars and its
-# `ansi` theme.
+# `ansi` theme, on Oniguruma, a C library built with the system C compiler.
 syntect = { workspace = true }
 two-face = { workspace = true }
 
