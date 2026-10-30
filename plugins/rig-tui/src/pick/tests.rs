@@ -909,8 +909,11 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
             .map(|shell| Message::tool_result(CallId::from_wire(id), shell, text));
         result.unwrap_or_else(|| Message::user(text))
     };
+    // An answered turn calls `c2` too, before the turn that is stopped.
     let mut whole = Conversation::from_messages([
         Message::user("earlier"),
+        call("c2", &big),
+        result("c2", "listed"),
         Message::assistant("an earlier answer"),
         Message::user("go"),
     ]);
@@ -931,34 +934,51 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
     };
 
     // From a big call, the window ends past its result.
-    let (from_call, _) = shown(&whole, id(3));
-    assert_eq!(from_call, ids.get(3..5).unwrap_or_default());
+    let (from_call, _) = shown(&whole, id(5));
+    assert_eq!(from_call, ids.get(5..7).unwrap_or_default());
 
-    // Once a stop drawn under a later entry answered the second call, a
-    // window holding that call ends past the stop; one without it does
-    // not.
+    // Once a stop drawn under a later entry answered the stopped turn's
+    // `c2`, a window holding that call ends past the stop; one without
+    // it does not, nor one holding the earlier turn's `c2`.
     let stopped = TurnEnd::Stopped {
         why: None,
-        at: id(7),
+        at: id(9),
         calls: vec![CallId::from_wire("c2")],
     };
     assert!(whole.end_turn(stopped));
-    let (from_second, _) = shown(&whole, id(5));
-    assert_eq!(from_second, ids.get(5..8).unwrap_or_default());
-    let (from_call, _) = shown(&whole, id(3));
-    assert_eq!(from_call, ids.get(3..5).unwrap_or_default());
+    let (from_second, _) = shown(&whole, id(7));
+    assert_eq!(from_second, ids.get(7..10).unwrap_or_default());
+    let (from_call, _) = shown(&whole, id(5));
+    assert_eq!(from_call, ids.get(5..7).unwrap_or_default());
+    let (from_earlier, _) = shown(&whole, id(1));
+    assert_eq!(from_earlier, ids.get(1..3).unwrap_or_default());
 
     // Back from the end, the big result takes the budget and its call
     // comes with it. The mark above that call moves to the top, one
     // further up is left out, and the turn's record stays.
     let mark = |after| Aside::new("test.mark", Author::rig(), serde_json::Value::Null).after(after);
     let gone = whole.add_aside(mark(id(0)));
-    let above = whole.add_aside(mark(id(4)));
-    let kept = whole.add_aside(mark(id(6)));
+    let above = whole.add_aside(mark(id(6)));
+    let kept = whole.add_aside(mark(id(8)));
     let (from_end, end) = shown(&whole, None);
-    assert_eq!(from_end, ids.get(5..).unwrap_or_default());
+    assert_eq!(from_end, ids.get(7..).unwrap_or_default());
     assert!(end.aside(gone).is_none());
     assert_eq!(end.aside(above).map(|aside| aside.after), Some(None));
     assert!(end.aside(kept).is_some());
     assert_eq!(end.turns().count(), 1);
+
+    // An image and a system message draw a row or nothing, so their bytes
+    // leave the budget to what is drawn.
+    let image =
+        rig_core::message::UserContent::image_base64("A".repeat(4 * PREVIEW_BYTES), None, None);
+    let drawn = Conversation::from_messages([
+        Message::user("look at this"),
+        Message::User {
+            content: vec![image],
+        },
+        Message::assistant("a cat"),
+        Message::System { content: big },
+    ]);
+    let (all, _) = shown(&drawn, None);
+    assert_eq!(all.len(), 4, "{all:?}");
 }

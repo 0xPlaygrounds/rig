@@ -28,8 +28,8 @@ fn code_is_drawn_in_the_terminals_palette_and_plain_text_is_not_highlighted() {
     assert!(highlight("ls -la", Language::Named("bash")).is_some());
 }
 
-/// `count` lines of `language`'s code made from `line`, numbered: a text
-/// long enough to be kept.
+/// `count` lines made from `line`, each `#` numbered: a text long enough
+/// to be kept.
 fn long(line: &str, count: usize) -> String {
     (0..count)
         .map(|n| line.replace('#', &n.to_string()))
@@ -160,6 +160,17 @@ fn the_kept_texts_stay_within_their_bounds_oldest_dropped_first() {
     same_as_fresh(&format!("{text}y = 2\n"), "a.py");
     assert_eq!(kept().len(), 2);
     assert!(!kept().contains(&"big\n".to_owned()));
+    // A text that alone would pass the bound is not kept, and leaves the
+    // others be.
+    KEPT.with_borrow_mut(|kept| {
+        kept.clear();
+        kept.push(stand_in("other\n", 1));
+        let mut full = stand_in("x_0 = 1\n", KEPT_BYTES);
+        full.lines.push(Vec::new());
+        kept.push(full);
+    });
+    highlight(&text, Language::File("a.py"));
+    assert_eq!(kept(), ["other\n"]);
     for n in 0..KEPT_COUNT + 3 {
         same_as_fresh(&long(&format!("v{n}_# = 1\n"), 500), "a.py");
     }
