@@ -88,7 +88,11 @@ pub(super) fn call_asked(
         && let Ok((AgentId(of), conversation)) = agents.get(agent)
         && out.main(agent)
     {
-        let id = translate::call_id_in(of, conversation, &request.call.id);
+        let calls = &out.session.calls;
+        let taken = |id: &str| calls.values().any(|shown| shown == id);
+        let Some(id) = translate::call_id_in(of, conversation, &request.call.id, taken) else {
+            return;
+        };
         out.session.calls.insert(asked.entity, id.clone());
         if restored {
             return;

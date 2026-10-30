@@ -47,26 +47,27 @@ impl Asking<'_, '_> {
         };
         let held = hold.map(|&HoldOf(effect)| effect);
         let approval = held.and_then(|effect| self.approvals.get(effect).ok());
-        let call = held
-            .filter(|_| approval.is_some())
-            .and_then(|effect| Some((effect, self.calls.get(effect).ok()?)));
         out.stream();
         let session = &mut *out.session;
+        // The call and its id: a subagent's, never shown before, is shown
+        // from here on.
+        let call = held.filter(|_| approval.is_some()).and_then(|effect| {
+            let (request, &ForAgent(agent)) = self.calls.get(effect).ok()?;
+            let call_id = session.calls.get(&effect).cloned().or_else(|| {
+                let (AgentId(of), conversation) = self.agents.get(agent).ok()?;
+                let taken = |id: &str| session.calls.values().any(|shown| shown == id);
+                translate::call_id_in(of, conversation, &request.call.id, taken)
+            })?;
+            session.calls.insert(effect, call_id.clone());
+            Some((request, agent, call_id))
+        });
         let (id, cx) = (session.id.clone(), session.cx.clone());
         let (sender, wake) = (session.sender.clone(), session.wake.clone());
-        let task = if let Some((effect, (request, &ForAgent(agent)))) = call {
+        let task = if let Some((request, agent, call_id)) = call {
             // The call in full: a subagent's was never shown.
             let cwd = translate::cwd_of(self.dirs.get(agent).ok(), &self.root);
             let reasons = approval.into_iter().flat_map(|needs| &needs.reasons);
             let reasons: Vec<_> = reasons.map(|reason| reason.text.as_str()).collect();
-            // A subagent's call, never shown before, is shown from here on.
-            let call_id = match self.agents.get(agent) {
-                Ok((AgentId(of), conversation)) => {
-                    translate::call_id_in(of, conversation, &request.call.id)
-                }
-                Err(_) => format!("{agent}/{}", request.call.id),
-            };
-            session.calls.insert(effect, call_id.clone());
             let why = reasons.join("\n");
             let tool = translate::tool_asked(&request.call, call_id, &cwd, &why);
             let options = vec![

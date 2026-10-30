@@ -3,7 +3,7 @@
 //! session's replay, and a call's id is where it sits in the conversation,
 //! so a replayed tool call has the id and look it had live.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::Path;
 
 use agent_client_protocol::schema::v1 as acp;
@@ -77,17 +77,29 @@ fn call_id(agent: &str, message: MessageId, n: usize) -> String {
     format!("{agent}/{message}/{n}")
 }
 
-/// The ACP id of the call `call` of `agent`, whose conversation is
-/// `conversation`: of the last message that asked for it.
-pub(crate) fn call_id_in(agent: &str, conversation: &Conversation, call: &CallId) -> String {
-    let found = conversation.entries().rev().find_map(|entry| {
+/// The ACP id of a call of `agent` with the id `call`, whose conversation
+/// is `conversation`: in the last message that asked for it, the first
+/// such call whose id is not `taken`, as a reply may repeat an id. None for
+/// a call no message asked for.
+pub(crate) fn call_id_in(
+    agent: &str,
+    conversation: &Conversation,
+    call: &CallId,
+    taken: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let (id, reply) = conversation.entries().rev().find_map(|entry| {
         let message::Message::Assistant(reply) = entry.message else {
             return None;
         };
-        let n = calls_of(reply).position(|asked| asked.id == *call)?;
-        Some(call_id(agent, entry.id, n))
-    });
-    found.unwrap_or_else(|| format!("{agent}/{call}"))
+        calls_of(reply)
+            .any(|asked| asked.id == *call)
+            .then_some((entry.id, reply))
+    })?;
+    let mut ids = calls_of(reply)
+        .enumerate()
+        .filter(|(_, asked)| asked.id == *call)
+        .map(|(n, _)| call_id(agent, id, n));
+    ids.find(|id| !taken(id))
 }
 
 /// The calls a reply asks for, in order.
@@ -210,26 +222,34 @@ pub(crate) fn replay(
             entries.push((Some(entry.id), std::sync::Arc::new(entry.message.clone())));
         }
     }
-    // A result answers the last call before it with its id.
-    let (mut calls, mut last, mut results) = (Vec::new(), HashMap::new(), HashMap::new());
+    // Results answer the calls waiting with their id in call order, one
+    // each, as rig pairs them. A message saved without an id has none to
+    // give its calls: they are numbered apart.
+    let (mut calls, mut waiting, mut results) = (Vec::new(), HashMap::new(), HashMap::new());
+    let mut unnumbered = 0;
     for (id, message) in &entries {
         match &**message {
             message::Message::Assistant(reply) => {
                 for (n, call) in calls_of(reply).enumerate() {
                     let acp_id = match id {
                         Some(id) => call_id(agent, *id, n),
-                        None => format!("{agent}/{}", call.id),
+                        None => {
+                            unnumbered += 1;
+                            format!("{agent}/-/{unnumbered}")
+                        }
                     };
-                    last.insert(call.id.clone(), acp_id.clone());
+                    let queue: &mut VecDeque<String> = waiting.entry(call.id.clone()).or_default();
+                    queue.push_back(acp_id.clone());
                     calls.push(acp_id);
                 }
             }
             message::Message::User { content } => {
                 for part in content.iter() {
                     if let UserContent::ToolResult(result) = part
-                        && let Some(acp_id) = last.get(&result.call)
+                        && let Some(acp_id) =
+                            waiting.get_mut(&result.call).and_then(VecDeque::pop_front)
                     {
-                        results.insert(acp_id.clone(), result);
+                        results.insert(acp_id, result);
                     }
                 }
             }

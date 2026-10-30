@@ -127,7 +127,8 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
     };
     let first = call_id("main", first, 0);
     // The id a live call of the last turn has.
-    let second = call_id_in("main", &conversation, &CallId::from_wire("c1"));
+    let second = call_id_in("main", &conversation, &CallId::from_wire("c1"), |_| false);
+    let second = second.unwrap_or_default();
     assert_ne!(first, second);
     let replaced = BTreeMap::from([(summary, originals)]);
     let updates = replay("main", &conversation, &replaced, Path::new("/p"));
@@ -188,13 +189,13 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
         };
         messages.extend(pair);
     }
-    // Two calls of one reply.
+    // Two calls of one reply, with one id, as rig lets a reply repeat it.
     let (Some(read), Some(list)) = (ToolName::new("read").ok(), ToolName::new("list").ok()) else {
         return;
     };
     let both = [
-        ToolCall::from_wire("c1", ToolFunction::new(read, json!({ "path": "b.txt" }))),
-        ToolCall::from_wire("c2", ToolFunction::new(list, json!({ "path": "." }))),
+        ToolCall::from_wire("c9", ToolFunction::new(read, json!({ "path": "b.txt" }))),
+        ToolCall::from_wire("c9", ToolFunction::new(list, json!({ "path": "." }))),
     ];
     let results = both.iter().zip(["four", "five"]).map(|(call, said)| {
         UserContent::ToolResult(call.result(vec![ToolResultContent::text(said)]))
@@ -229,9 +230,15 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
             at(6, 1, "\"five\""),
         ]
     );
-    // A live call finds its id the same way.
-    let live = call_id_in("main", &conversation, &CallId::from_wire("c2"));
-    assert_eq!(live, at(6, 1, "").trim_end());
+    // Live calls find the same ids: each the first not taken yet.
+    let repeated = CallId::from_wire("c9");
+    let first = call_id_in("main", &conversation, &repeated, |_| false);
+    let (first_id, second_id) = (at(6, 0, ""), at(6, 1, ""));
+    assert_eq!(first.as_deref(), Some(first_id.trim_end()));
+    let second = call_id_in("main", &conversation, &repeated, |id| {
+        id == first_id.trim_end()
+    });
+    assert_eq!(second.as_deref(), Some(second_id.trim_end()));
 }
 
 #[test]

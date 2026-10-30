@@ -132,8 +132,6 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
         // A call the session's process is killed in.
         assert!(driven.model(&id, "test/wait").await);
         let request = acp::PromptRequest::new(id.clone(), vec!["Wait.".into()]);
-        let waiting = driven.cx.send_request(request);
-        assert!(driven.until(|_| sleeping(place)).await);
         let announced = |from: usize| -> Vec<String> {
             let updates = driven.updates(&id).into_iter().skip(from);
             let calls = updates.filter_map(|update| match update {
@@ -142,6 +140,16 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
             });
             calls.collect()
         };
+        let shown = announced(0).len();
+        let waiting = driven.cx.send_request(request);
+        // Its call runs, and the client was told of it.
+        let told = |seen: &Seen| {
+            let calls = seen.events.iter().filter(|event| {
+                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCall(_)) if *of == id)
+            });
+            calls.count() > shown
+        };
+        assert!(driven.until(|seen| told(seen) && sleeping(place)).await);
         let live = announced(0);
         let unique: std::collections::HashSet<_> = live.iter().collect();
         assert!(
