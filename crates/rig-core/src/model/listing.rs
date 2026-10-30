@@ -46,6 +46,10 @@ pub struct ModelInfo {
     /// Distinct from context length and not automatically applied to requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+
+    /// Provider-reported tool-calling support, or `None` when unreported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_tool_calls: Option<bool>,
 }
 
 impl ModelInfo {
@@ -60,6 +64,7 @@ impl ModelInfo {
             owned_by: None,
             context_length: None,
             max_output_tokens: None,
+            supports_tool_calls: None,
         }
     }
 
@@ -74,6 +79,7 @@ impl ModelInfo {
             owned_by: None,
             context_length: None,
             max_output_tokens: None,
+            supports_tool_calls: None,
         }
     }
 
