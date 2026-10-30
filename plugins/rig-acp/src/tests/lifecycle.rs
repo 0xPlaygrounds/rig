@@ -157,14 +157,33 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
             .ok();
         assert!(waiting.block_task().await.is_err());
         let before = driven.updates(&id).len();
-        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
-        assert!(driven.cx.send_request(load).block_task().await.is_ok());
-        // The new process's model may call again, after the history.
-        let replayed = announced(before);
-        assert_eq!(replayed.get(..live.len()), Some(live.as_slice()));
+        // Loaded with a server slow to start: the turn the session carries
+        // on calls `w1` again before the session opens.
+        let slow = stub_with("files", vec![acp::EnvVariable::new(SLOW, "1500")]);
+        let mut loaded = false;
+        for _ in 0..100 {
+            let load = acp::LoadSessionRequest::new(id.clone(), &driven.project)
+                .mcp_servers(vec![slow.clone()]);
+            match driven.cx.send_request(load).block_task().await {
+                Ok(_) => loaded = true,
+                // Until the router cleaned up after the killed process.
+                Err(error) if error.message.contains("already open") => {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    continue;
+                }
+                Err(_) => {}
+            }
+            break;
+        }
+        assert!(loaded);
+        let again = |seen: &Seen| {
+            let calls = seen.events.iter().filter(|event| {
+                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCall(_)) if *of == id)
+            });
+            calls.count() > live.len() * 2
+        };
+        assert!(driven.until(again).await, "{:?}", tool_steps(driven, &id));
         let interrupted = live.last().cloned().unwrap_or_default();
-        let shown = replayed.iter().filter(|call| **call == interrupted).count();
-        assert_eq!(shown, 1, "{replayed:?}");
         let failed = |seen: &Seen| {
             seen.events.iter().any(|event| {
                 matches!(event, Event::Update(_, acp::SessionUpdate::ToolCallUpdate(update))
@@ -175,6 +194,12 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
         assert!(driven.until(failed).await, "{:?}", tool_steps(driven, &id));
         let close = acp::CloseSessionRequest::new(id.clone());
         assert!(driven.cx.send_request(close).block_task().await.is_ok());
+        // Counted once the close answered, after every update of the session:
+        // the history first, then each call once.
+        let replayed = announced(before);
+        assert_eq!(replayed.get(..live.len()), Some(live.as_slice()));
+        let unique: std::collections::HashSet<_> = replayed.iter().collect();
+        assert_eq!(unique.len(), replayed.len(), "{replayed:?}");
     });
     assert!(router.is_some());
 }

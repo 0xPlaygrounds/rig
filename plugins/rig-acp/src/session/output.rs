@@ -71,17 +71,20 @@ pub(super) fn stream(mut out: Out) {
     out.stream();
 }
 
-/// A call of the main agent's model asked for: pending. One the session
-/// restored is not announced again: its history has it, under its id.
+/// A call of the main agent's model asked for: pending. Only a call of a
+/// reply the conversation has, which gives its id: not one a plugin starts
+/// before its reply ends. One the session restored is not announced again:
+/// its history has it, under its id.
 pub(super) fn call_asked(
     asked: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent, Has<Restored>)>,
+    calls: Query<(&ToolRequest, &ForAgent, &Effect, Has<Restored>)>,
     agents: Query<(&AgentId, &Conversation)>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
     mut out: Out,
 ) {
-    if let Ok((request, &ForAgent(agent), restored)) = calls.get(asked.entity)
+    if let Ok((request, &ForAgent(agent), effect, restored)) = calls.get(asked.entity)
+        && effect.parent.is_some()
         && let Ok((AgentId(of), conversation)) = agents.get(agent)
         && out.main(agent)
     {

@@ -492,6 +492,10 @@ fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_sess
             .position(|event| matches!(event, Event::Update(of, _) if *of == id));
         assert!(opened.is_some() && first > opened, "{opened:?} {first:?}");
         assert!(driven.prompt(&id, "/mcp").await.is_ok());
+        // A call no reply of the conversation asked for is not shown.
+        let shown = tool_steps(driven, &id).len();
+        assert!(driven.prompt(&id, "/early").await.is_ok());
+        assert_eq!(tool_steps(driven, &id).len(), shown);
         let said = driven.said(&id);
         assert!(said.contains("files (client): connected, 1 tool"), "{said}");
     });

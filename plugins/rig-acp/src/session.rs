@@ -124,9 +124,11 @@ pub(crate) struct Session {
     closing: Vec<Reply<acp::CloseSessionResponse>>,
     /// The tasks asking the client a question, by the question's entity.
     asking: HashMap<Entity, tokio::task::AbortHandle>,
-    /// The ACP ids of the main agent's calls, history's included, and of
-    /// those running, by the call's entity.
+    /// The ACP id of each running call the client was shown, or sees
+    /// settle, by the call's entity.
     calls: HashMap<Entity, String>,
+    /// A loaded session's history as it was restored, until it opens.
+    replay: Option<Vec<acp::SessionUpdate>>,
     requests: Receiver<Request>,
     sender: Sender<Request>,
     runtime: tokio::runtime::Handle,
@@ -266,6 +268,7 @@ pub(crate) fn install(app: &mut App) {
         closing: Vec::new(),
         asking: HashMap::new(),
         calls: HashMap::new(),
+        replay: None,
         requests,
         sender,
         runtime,
@@ -598,14 +601,35 @@ struct Opened<'w, 's> {
 /// server's first attempt is still out: a loaded session's history first,
 /// then the answer, the updates held meanwhile, the commands and options.
 fn open(mut opened: Opened) {
-    let ready = opened.restored.is_some() && opened.starting.is_empty();
-    let agent = main_agent(&opened.primary);
-    let (Some(agent), true) = (agent, ready && opened.session.opening.is_some()) else {
+    let restored = opened.restored.is_some() && opened.session.opening.is_some();
+    let agent = main_agent(&opened.primary).filter(|_| restored);
+    let Some(agent) = agent else {
         return;
     };
     let Ok((id, conversation, chosen, work)) = opened.agents.get(agent) else {
         return;
     };
+    // The history as restored, before a turn the session carries on adds
+    // to it: what that turn adds reaches the client as it happens.
+    if opened.session.replay.is_none() {
+        let replay = match &opened.session.opening {
+            Some(Opening::Load(..)) => {
+                let replaced = opened
+                    .store
+                    .as_ref()
+                    .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
+                    .map(|summarized| summarized.replaced)
+                    .unwrap_or_default();
+                let cwd = translate::cwd_of(work, &opened.root);
+                translate::replay(&id.0, conversation, &replaced, &cwd)
+            }
+            _ => Vec::new(),
+        };
+        opened.session.replay = Some(replay);
+    }
+    if !opened.starting.is_empty() {
+        return;
+    }
     // A new session's agent gets the first model it can reach, as a
     // headless run's does; the answer waits a frame, so its options show it.
     if !opened.session.chose {
@@ -621,19 +645,7 @@ fn open(mut opened: Opened) {
             return;
         }
     }
-    let replay = match &opened.session.opening {
-        Some(Opening::Load(..)) => {
-            let replaced = opened
-                .store
-                .as_ref()
-                .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
-                .map(|summarized| summarized.replaced)
-                .unwrap_or_default();
-            let cwd = translate::cwd_of(work, &opened.root);
-            translate::replay(&id.0, conversation, &replaced, &cwd)
-        }
-        _ => Vec::new(),
-    };
+    let replay = opened.session.replay.take().unwrap_or_default();
     let config = opened.options.of(agent);
     let mut listed: Vec<_> = opened
         .slash

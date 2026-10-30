@@ -188,6 +188,21 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
         };
         messages.extend(pair);
     }
+    // Two calls of one reply.
+    let (Some(read), Some(list)) = (ToolName::new("read").ok(), ToolName::new("list").ok()) else {
+        return;
+    };
+    let both = [
+        ToolCall::from_wire("c1", ToolFunction::new(read, json!({ "path": "b.txt" }))),
+        ToolCall::from_wire("c2", ToolFunction::new(list, json!({ "path": "." }))),
+    ];
+    let results = both.iter().zip(["four", "five"]).map(|(call, said)| {
+        UserContent::ToolResult(call.result(vec![ToolResultContent::text(said)]))
+    });
+    let results = results.collect();
+    let asked = both.into_iter().map(AssistantContent::ToolCall).collect();
+    messages.push(message::Message::Assistant(AssistantMessage::new(asked)));
+    messages.push(message::Message::User { content: results });
     let conversation = Conversation::from_messages(messages);
     let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
     let done: Vec<_> = updates
@@ -200,14 +215,23 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
             _ => None,
         })
         .collect();
-    let at = |index, said| {
-        let id = conversation.id(index).map(|id| call_id("main", id, 0));
+    let at = |index, n, said| {
+        let id = conversation.id(index).map(|id| call_id("main", id, n));
         format!("{} {said}", id.unwrap_or_default())
     };
     assert_eq!(
         done,
-        [at(0, "\"one\""), at(2, "\"two\""), at(4, "\"three\"")]
+        [
+            at(0, 0, "\"one\""),
+            at(2, 0, "\"two\""),
+            at(4, 0, "\"three\""),
+            at(6, 0, "\"four\""),
+            at(6, 1, "\"five\""),
+        ]
     );
+    // A live call finds its id the same way.
+    let live = call_id_in("main", &conversation, &CallId::from_wire("c2"));
+    assert_eq!(live, at(6, 1, "").trim_end());
 }
 
 #[test]

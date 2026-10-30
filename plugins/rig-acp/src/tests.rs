@@ -152,8 +152,10 @@ fn agent() {
         rig_basics::subagents::SubagentsPlugin,
     ))
     .add_command("ask", "Ask a question", ask)
+    .add_command("early", "Start a call early", early)
     .add_command("hold", "Wait until stopped", hold)
     .add_observer(asked)
+    .add_observer(carry_on)
     .add_observer(release)
     .add_systems(AgentPass, guard.in_set(Stage::Gate).before(ApprovalSystems));
     if !session {
@@ -175,6 +177,30 @@ struct Asked;
 fn ask(In(args): In<CommandArgs>, mut commands: Commands) {
     let question = Ask::new("Which one?").choice("a", "A").choice("b", "B");
     commands.spawn((question, Asked, ForAgent(args.agent)));
+}
+
+/// Carries on a turn the session restored, as a plugin may.
+fn carry_on(restored: On<Add<Restored>>, turns: Query<(), With<TurnOf>>, mut commands: Commands) {
+    if turns.contains(restored.entity) {
+        commands.entity(restored.entity).try_insert(CarryOn);
+    }
+}
+
+/// `/early`: a call a plugin starts before the reply that asks for it ended,
+/// as one that starts reads early does, withdrawn at once.
+fn early(In(args): In<CommandArgs>, mut commands: Commands) {
+    let Ok(read) = rig_harness::rig_core::message::ToolName::new("read") else {
+        return;
+    };
+    let function =
+        rig_harness::rig_core::message::ToolFunction::new(read, json!({ "path": "fixture.txt" }));
+    let call = rig_harness::rig_core::message::ToolCall::from_wire("e1", function);
+    let mut early = commands.spawn((
+        ToolRequest { call },
+        Effect::with_parent_id(None),
+        ForAgent(args.agent),
+    ));
+    early.try_despawn();
 }
 
 /// Work that is no turn, as a sign-in waiting for its browser: `/hold`
