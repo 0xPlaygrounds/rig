@@ -637,8 +637,8 @@ impl Workspace for Remote {
         out
     }
 
-    /// As git lists them there in a git work tree (unless `listing` is
-    /// [`All`](Listing::All)), else as `find` does, then filtered by
+    /// Regular worktree files from git's listing (unless `listing` is
+    /// [`All`](Listing::All)), else as `find` lists them, then filtered by
     /// [`Listing::keeps`] and `glob`.
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
         let globs = glob
@@ -657,9 +657,13 @@ impl Workspace for Remote {
                 "git rev-parse --is-inside-work-tree >/dev/null 2>&1"
             }
         };
+        // Git lists relative paths, so `/` can make xargs fail if Git fails.
         let script = format!(
             "r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; cd \"$r\" || exit {NOT_FOUND}; \
-             if {git}; then git ls-files -z -co --exclude-standard; \
+             if {git}; then {{ git ls-files -z -co --exclude-standard || printf \"\\0/\\0\"; }} | \
+             xargs -0 sh -c 'for p do \
+             [ \"$p\" != / ] || exit 255; \
+             if [ -f \"$p\" ] && [ ! -L \"$p\" ]; then printf \"%s\\0\" \"$p\"; fi; done' sh; \
              else find . -type f -print0; fi",
             quote_path(root)
         );
