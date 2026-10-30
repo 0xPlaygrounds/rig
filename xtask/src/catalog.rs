@@ -143,7 +143,7 @@ const RIG_KEYS: [&str; 14] = [
     "rejects_forced_tool_choice",
     "binds_context",
     "prompt_cache_options",
-    "chat_tools_need_reasoning_off",
+    "chat_tools",
     "prefill",
 ];
 

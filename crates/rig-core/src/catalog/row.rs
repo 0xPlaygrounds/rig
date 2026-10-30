@@ -10,7 +10,7 @@ use super::details::{
     CostDetails, CostTier, Interleaved, Mode, ModelDetails, ProviderOverride, Rates, Tier,
 };
 use super::spec::{
-    CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
+    CacheSupport, ChatTools, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
 };
 use crate::completion::{CacheRetention, Effort};
 use crate::providers::registry::{Format, ProviderId};
@@ -159,7 +159,7 @@ struct Facts {
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt_cache_options: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    chat_tools_need_reasoning_off: Option<bool>,
+    chat_tools: Option<ChatTools>,
     #[serde(skip_serializing_if = "Option::is_none")]
     prefill: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -358,7 +358,7 @@ impl Row {
                 rejects_forced_tool_choice: Some(compat.rejects_forced_tool_choice),
                 binds_context: Some(compat.binds_context),
                 prompt_cache_options: Some(compat.prompt_cache_options),
-                chat_tools_need_reasoning_off: Some(compat.chat_tools_need_reasoning_off),
+                chat_tools: compat.chat_tools,
                 prefill: Some(compat.prefill),
                 pinned: None,
             },
@@ -646,9 +646,7 @@ impl Facts {
                 .or(self.rejects_forced_tool_choice),
             binds_context: over.binds_context.or(self.binds_context),
             prompt_cache_options: over.prompt_cache_options.or(self.prompt_cache_options),
-            chat_tools_need_reasoning_off: over
-                .chat_tools_need_reasoning_off
-                .or(self.chat_tools_need_reasoning_off),
+            chat_tools: over.chat_tools.or(self.chat_tools),
             prefill: over.prefill.or(self.prefill),
             pinned: over.pinned.or(self.pinned),
         }
@@ -663,7 +661,7 @@ impl Facts {
             rejects_forced_tool_choice: self.rejects_forced_tool_choice.unwrap_or(false),
             binds_context: self.binds_context.unwrap_or(false),
             prompt_cache_options: self.prompt_cache_options.unwrap_or(false),
-            chat_tools_need_reasoning_off: self.chat_tools_need_reasoning_off.unwrap_or(false),
+            chat_tools: self.chat_tools,
             prefill: self.prefill.unwrap_or(false),
         }
     }

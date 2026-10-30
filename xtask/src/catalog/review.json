@@ -3361,7 +3361,7 @@
           ],
           "prompt_cache_options": true,
           "sampling": "reasoning_off",
-          "chat_tools_need_reasoning_off": true,
+          "chat_tools": "never",
           "reasoning_default": "medium"
         }
       },
@@ -3375,7 +3375,7 @@
           ],
           "prompt_cache_options": true,
           "sampling": "reasoning_off",
-          "chat_tools_need_reasoning_off": true,
+          "chat_tools": "reasoning_off",
           "reasoning_default": "medium"
         }
       },
@@ -3389,7 +3389,7 @@
           ],
           "prompt_cache_options": true,
           "sampling": "reasoning_off",
-          "chat_tools_need_reasoning_off": true,
+          "chat_tools": "reasoning_off",
           "reasoning_default": "medium"
         }
       },
@@ -3403,7 +3403,7 @@
           ],
           "prompt_cache_options": true,
           "sampling": "reasoning_off",
-          "chat_tools_need_reasoning_off": true,
+          "chat_tools": "never",
           "reasoning_default": "medium"
         }
       },
@@ -3417,7 +3417,7 @@
           ],
           "prompt_cache_options": true,
           "sampling": "reasoning_off",
-          "chat_tools_need_reasoning_off": true,
+          "chat_tools": "never",
           "reasoning_default": "medium"
         }
       },
@@ -3939,6 +3939,22 @@
             "text"
           ]
         }
+      },
+      "minimax-m3-1-flash": {
+        "source": "https://venice.ai/models/minimax-m3-1-flash",
+        "note": "models.dev lists no effort levels; Venice's model page lists these",
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ]
       },
       "mistral-small-2603": {
         "name": "Mistral Small (26.03)",

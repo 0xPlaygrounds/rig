@@ -262,6 +262,17 @@ pub enum Sampling {
     Never,
 }
 
+/// When OpenAI Chat Completions takes a model's tools.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatTools {
+    /// Only while its reasoning is off.
+    ReasoningOff,
+    /// Never: tool calls need the Responses API.
+    Never,
+}
+
 /// Wire facts the encoders read that no portable field holds. Each defaults
 /// to `false` or `None`, which is what a model the field does not concern
 /// has. An override file sets each one by its field name under a row's
@@ -288,9 +299,9 @@ pub struct Compat {
     /// OpenAI: the prompt cache takes `prompt_cache_options`, not
     /// `prompt_cache_retention`.
     pub prompt_cache_options: bool,
-    /// OpenAI: Chat Completions takes the model's tools only while its
-    /// reasoning is off.
-    pub chat_tools_need_reasoning_off: bool,
+    /// OpenAI: when Chat Completions takes the model's tools. `None` is
+    /// always.
+    pub chat_tools: Option<ChatTools>,
     /// The model continues a request that ends in an assistant message (a
     /// prefill) from where that message stops, instead of refusing it, as
     /// Anthropic's models before Claude 4.6 do while their reasoning is

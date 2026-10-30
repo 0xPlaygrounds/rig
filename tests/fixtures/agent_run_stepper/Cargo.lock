@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "rig-agent"
-version = "0.44.0"
+version = "0.46.0-rc.1"
 dependencies = [
  "async-stream",
  "futures",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.44.0"
+version = "0.46.0-rc.1"
 dependencies = [
  "async-stream",
  "base64",
@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "rig-http"
-version = "0.44.0"
+version = "0.46.0-rc.1"
 dependencies = [
  "bytes",
  "futures",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "rig-memory"
-version = "0.44.0"
+version = "0.46.0-rc.1"
 dependencies = [
  "base64",
  "memchr",
@@ -754,7 +754,6 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
- "indexmap",
  "itoa",
  "memchr",
  "serde",

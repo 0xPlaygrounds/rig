@@ -6,7 +6,7 @@
 
 use serde_json::json;
 
-use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport, Sampling};
+use crate::catalog::{ChatTools, ModelFacts, ModelSpec, ReasoningSupport, Sampling};
 use crate::completion::options::{BodyRefusal, FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{
     CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier, Verbosity,
@@ -212,7 +212,8 @@ fn off_refusal(facts: &ModelFacts, spec: Option<&ModelSpec>, model: &str) -> Opt
 }
 
 /// Whether `model`'s prompt cache takes `prompt_cache_options` (GPT-5.6 and
-/// later, which keep one 30 minute retention): its catalog entry's, or for
+/// later, which keep prompts for 30 minutes, or 12 hours on Responses): its
+/// catalog entry's, or for
 /// a model the catalog does not list, its GPT generation's.
 pub(crate) fn caches_by_options(facts: &ModelFacts, model: &str) -> bool {
     match openai_spec(facts, model) {
@@ -224,10 +225,10 @@ pub(crate) fn caches_by_options(facts: &ModelFacts, model: &str) -> bool {
 /// OpenAI's prompt cache retention for `model`, from the retentions its
 /// catalog entry honours. Where it takes `prompt_cache_retention`, `Short`
 /// is `in_memory` and `Long` is `24h`; a listed model with no retention
-/// data takes `Short` only. Where it takes `prompt_cache_options`, one 30
-/// minute retention is all there is: `Short` sends nothing, `Long` is
-/// `long` (Responses sends its 30 minute `ttl`; Chat refuses), and `None`
-/// stops caching through explicit mode with no breakpoints. A model the
+/// data takes `Short` only. Where it takes `prompt_cache_options`, `Short`
+/// sends nothing (the default 30 minute `ttl`), `Long` is `long` (Responses
+/// sends the 12 hour `ttl`; Chat refuses), and `None` stops caching through
+/// explicit mode with no breakpoints. A model the
 /// catalog does not list is read by its GPT generation: `Long` on GPT-4.1
 /// and GPT-5 to 5.5, `24h` only on GPT-5.5, and `prompt_cache_options` from
 /// GPT-5.6 on.
@@ -257,7 +258,7 @@ pub(crate) fn openai_cache(
         }
         CacheRetention::None => Mapping::unsupported("prompt caching is always on before GPT-5.6"),
         CacheRetention::Short if options => {
-            Mapping::Omit("30 minutes is the only retention from GPT-5.6 on")
+            Mapping::Omit("30 minutes is the default retention from GPT-5.6 on")
         }
         CacheRetention::Short if !honours(CacheRetention::Short) => {
             Mapping::unsupported("this model keeps its prompt cache for 24 hours only")
@@ -287,11 +288,12 @@ pub(crate) enum Endpoint {
 /// final body, which also holds what `additional_params` and the provider
 /// options set, with the effort the body asks for: while the model reasons
 /// it takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
-/// Completions, `logprobs`). One rule is the route's own: a
-/// model marked `chat_tools_need_reasoning_off` whose reasoning cannot be
-/// turned off takes no tools on Chat Completions at all. (One that can turn
-/// it off takes them at effort `none`; the API's own error names that fix,
-/// and a recorded session pins it.)
+/// Completions, `logprobs`). One rule is the route's own: a model whose
+/// `chat_tools` is [`ChatTools::Never`], or [`ChatTools::ReasoningOff`]
+/// while its reasoning cannot be turned off, takes no tools on Chat
+/// Completions at all. (One that can turn it off takes them at effort
+/// `none`; the API's own error names that fix, and a recorded session pins
+/// it.)
 ///
 /// # Errors
 ///
@@ -351,11 +353,12 @@ fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Ve
         .get("tools")
         .and_then(serde_json::Value::as_array)
         .is_some_and(|tools| !tools.is_empty());
-    if endpoint == Endpoint::ChatCompletions
-        && carries_tools
-        && spec.compat.chat_tools_need_reasoning_off
-        && spec.reasoning.can_disable() == Some(false)
-    {
+    let tools_refused = match spec.compat.chat_tools {
+        Some(ChatTools::Never) => true,
+        Some(ChatTools::ReasoningOff) => spec.reasoning.can_disable() == Some(false),
+        None => false,
+    };
+    if endpoint == Endpoint::ChatCompletions && carries_tools && tools_refused {
         refusals.push(BodyRefusal {
             field: "tools",
             reason: "the model cannot call tools through Chat Completions; use the Responses API"
@@ -1337,7 +1340,7 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
                 facts,
                 model,
                 cache,
-                send("prompt_cache_options", json!({"ttl": "30m"})),
+                send("prompt_cache_options", json!({"ttl": "12h"})),
             )
         }),
         service_tier: Mapping::of(fields.service_tier, |tier| match tier {
