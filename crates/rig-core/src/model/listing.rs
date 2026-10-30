@@ -46,6 +46,10 @@ pub struct ModelInfo {
     /// Distinct from context length and not automatically applied to requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
+
+    /// Provider-advertised API endpoints that accept this model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supported_endpoints: Option<Vec<String>>,
 }
 
 impl ModelInfo {
@@ -60,6 +64,7 @@ impl ModelInfo {
             owned_by: None,
             context_length: None,
             max_output_tokens: None,
+            supported_endpoints: None,
         }
     }
 
@@ -74,6 +79,7 @@ impl ModelInfo {
             owned_by: None,
             context_length: None,
             max_output_tokens: None,
+            supported_endpoints: None,
         }
     }
 

@@ -6,7 +6,8 @@
 //! a device code or exchange a GitHub token for a session, use an
 //! [`auth::Authenticator`]; [`SignedInModel`](crate::client::signed_in::SignedInModel)
 //! serves a catalog model with the session it resolves.
-//! Completion routes are selected by model; all routes include editor-identity headers.
+//! Completion routes can follow the model catalogue's advertised endpoints through
+//! [`wire::route_for_model_info`]; all routes include editor-identity headers.
 //!
 //! ```no_run
 //! use rig_core::providers::copilot;
@@ -68,6 +69,8 @@ pub const GPT_5_1_CODEX: &str = "gpt-5.1-codex";
 pub const GPT_5_5: &str = "gpt-5.5";
 /// `gpt-5.4`
 pub const GPT_5_4: &str = "gpt-5.4";
+/// `gpt-6.1-terra`
+pub const GPT_6_1_TERRA: &str = "gpt-6.1-terra";
 /// `claude-sonnet-4` completion model (Anthropic, via Copilot)
 pub const CLAUDE_SONNET_4: &str = "claude-sonnet-4";
 /// `claude-sonnet-4.6`
