@@ -687,6 +687,26 @@ fn a_spec_built_in_code_joins_the_catalog() {
     assert_eq!(sample.iter().count(), 4);
 }
 
+/// An override lifts a built-in Chat Completions tool rule with `any`.
+#[test]
+fn an_override_lifts_the_chat_tool_rule() {
+    let builtin = Catalog::builtin();
+    assert_eq!(
+        spec(builtin, "openai", "gpt-6.1-terra").compat.chat_tools,
+        Some(ChatTools::Never)
+    );
+    let overrides = Catalog::from_overrides(
+        r#"{"openai": {"models": {"gpt-6.1-terra": {"rig": {"chat_tools": "any"}}}}}"#,
+        builtin,
+    )
+    .expect("the model is listed in the built-in catalog");
+    let lifted = builtin.with_overrides(&overrides);
+    assert_eq!(
+        spec(&lifted, "openai", "gpt-6.1-terra").compat.chat_tools,
+        Some(ChatTools::Any)
+    );
+}
+
 /// Every built-in spec reads back from its serde form and from its override
 /// row, so a spec a program changed can be saved either way.
 #[test]

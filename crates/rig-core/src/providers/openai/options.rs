@@ -356,7 +356,7 @@ fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Ve
     let tools_refused = match spec.compat.chat_tools {
         Some(ChatTools::Never) => true,
         Some(ChatTools::ReasoningOff) => spec.reasoning.can_disable() == Some(false),
-        None => false,
+        Some(ChatTools::Any) | None => false,
     };
     if endpoint == Endpoint::ChatCompletions && carries_tools && tools_refused {
         refusals.push(BodyRefusal {

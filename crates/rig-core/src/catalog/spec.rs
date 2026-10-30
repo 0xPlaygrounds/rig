@@ -267,6 +267,8 @@ pub enum Sampling {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatTools {
+    /// Always.
+    Any,
     /// Only while its reasoning is off.
     ReasoningOff,
     /// Never: tool calls need the Responses API.
@@ -300,7 +302,7 @@ pub struct Compat {
     /// `prompt_cache_retention`.
     pub prompt_cache_options: bool,
     /// OpenAI: when Chat Completions takes the model's tools. `None` is
-    /// always.
+    /// [`ChatTools::Any`].
     pub chat_tools: Option<ChatTools>,
     /// The model continues a request that ends in an assistant message (a
     /// prefill) from where that message stops, instead of refusing it, as
