@@ -844,7 +844,12 @@ fn a_long_conversations_preview_lays_out_its_end_or_from_its_entry() {
         _ => Message::assistant(said(n)),
     }));
     let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
-    for (at, seen) in [(None, "end 39."), (ids.get(3).copied(), "start 3 ")] {
+    let last = ids.last().copied();
+    for (at, seen) in [
+        (None, "end 39."),
+        (ids.get(3).copied(), "start 3 "),
+        (last, "start 39 "),
+    ] {
         let (mut app, _) = view_app();
         app.insert_resource(TuiTestScreen::new(100, 30));
         let picker = Picker::new("Sessions").item("a long session", "resume it");
@@ -869,9 +874,15 @@ fn a_long_conversations_preview_lays_out_its_end_or_from_its_entry() {
         // A run of the whole's entries, with their ids, and far from all.
         assert!(!kept.is_empty() && kept.len() < ids.len() / 2, "{kept:?}");
         assert!(ids.windows(kept.len()).any(|run| run == kept), "{kept:?}");
+        // From an early entry the budget goes to the entries below it;
+        // from the last, to those above it, which the pane shows too.
         match at {
+            Some(at) if Some(at) == last => {
+                assert_eq!(kept.last(), Some(&at));
+                assert!(kept.len() > 1, "{kept:?}");
+            }
             Some(at) => assert_eq!(kept.first(), Some(&at)),
-            None => assert_eq!(kept.last(), ids.last()),
+            None => assert_eq!(kept.last(), last.as_ref()),
         }
         let drawn = app.world().resource::<TuiTestScreen>().rows().join("\n");
         assert!(drawn.contains(seen), "{drawn}");
@@ -909,6 +920,7 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
         result("c1", "listed"),
         call("c2", "ls"),
         result("c2", &big),
+        Message::user("the stop's own entry"),
     ]);
     let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
     let id = |at: usize| ids.get(at).copied();
@@ -922,16 +934,19 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
     let (from_call, _) = shown(&whole, id(3));
     assert_eq!(from_call, ids.get(3..5).unwrap_or_default());
 
-    // Once a stop drawn under the second call's result answered that
-    // call, the window ends past it too.
+    // Once a stop drawn under a later entry answered the second call, a
+    // window holding that call ends past the stop; one without it does
+    // not.
     let stopped = TurnEnd::Stopped {
         why: None,
-        at: id(6),
+        at: id(7),
         calls: vec![CallId::from_wire("c2")],
     };
     assert!(whole.end_turn(stopped));
+    let (from_second, _) = shown(&whole, id(5));
+    assert_eq!(from_second, ids.get(5..8).unwrap_or_default());
     let (from_call, _) = shown(&whole, id(3));
-    assert_eq!(from_call, ids.get(3..7).unwrap_or_default());
+    assert_eq!(from_call, ids.get(3..5).unwrap_or_default());
 
     // Back from the end, the big result takes the budget and its call
     // comes with it. The mark above that call moves to the top, one

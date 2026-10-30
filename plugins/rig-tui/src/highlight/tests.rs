@@ -90,6 +90,7 @@ fn a_line_split_between_its_cr_and_its_lf_goes_on_right() {
         .get(KEPT_FROM..)
         .and_then(|rest| rest.find("\r\n"))
         .map_or(0, |at| KEPT_FROM + at);
+    assert!(cr > 0, "no CRLF past {KEPT_FROM}");
     for end in [cr, cr + 1, cr + 2, text.len()] {
         same_as_fresh(text.get(..end).unwrap_or_default(), "a.py");
     }
@@ -134,7 +135,7 @@ fn texts_growing_in_turn_each_go_on_from_their_own() {
 }
 
 #[test]
-fn the_kept_texts_stay_within_their_bytes_oldest_dropped_first() {
+fn the_kept_texts_stay_within_their_bounds_oldest_dropped_first() {
     KEPT.with_borrow_mut(Vec::clear);
     let python = syntax(Language::File("a.py"));
     assert!(python.is_some(), "no grammar for Python");
@@ -159,15 +160,8 @@ fn the_kept_texts_stay_within_their_bytes_oldest_dropped_first() {
     same_as_fresh(&format!("{text}y = 2\n"), "a.py");
     assert_eq!(kept().len(), 2);
     assert!(!kept().contains(&"big\n".to_owned()));
-}
-
-#[test]
-fn the_kept_texts_stay_within_their_count() {
-    KEPT.with_borrow_mut(Vec::clear);
     for n in 0..KEPT_COUNT + 3 {
         same_as_fresh(&long(&format!("v{n}_# = 1\n"), 500), "a.py");
     }
     assert_eq!(kept().len(), KEPT_COUNT);
-    let bytes: usize = KEPT.with_borrow(|kept| kept.iter().map(|text| text.bytes).sum());
-    assert!(bytes <= KEPT_BYTES, "{bytes}");
 }

@@ -1,6 +1,5 @@
 //! Pickers and questions over the transcript.
 
-use std::collections::HashSet;
 use std::io;
 
 use bevy_ecs::prelude::*;
@@ -9,8 +8,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use rig_core::conversation::pairing::safe_start;
-use rig_core::conversation::{self, Aside, Author, MessageId, TurnEnd};
-use rig_core::message::Message;
+use rig_core::conversation::{self, Aside, Author, MessageId, TURN, TurnEnd};
+use rig_core::message::{CallId, Message};
 use rig_ecs::stage::{Effect, Outcome, Settled, SupersededBy};
 use rig_harness::ask::Ask;
 use rig_harness::pick::{Chosen, Highlighted, PickPreview, Picker};
@@ -745,8 +744,8 @@ pub(crate) fn follow_previews(
 }
 
 /// The part of `conversation` a preview lays out, its entries keeping
-/// their ids: from `at` on, else back from the end, entries until they
-/// pass [`PREVIEW_BYTES`], and at least the one. Its edges may take in
+/// their ids: `at`'s entry, else the last, then the entries after it, then
+/// those before it, until they pass [`PREVIEW_BYTES`]. Its edges may take in
 /// more, so no call is parted from its results, and no stopped call from
 /// the entry its stop is drawn under. Turn records stay; other asides stay
 /// when drawn within it.
@@ -763,28 +762,33 @@ fn window(
         size += saved_size(message);
         fits
     };
-    let (mut start, mut end) = match at {
-        Some(at) => {
-            let after = messages.iter().skip(at.saturating_add(1));
-            (
-                at,
-                at + 1 + after.take_while(|message| within(message)).count(),
-            )
-        }
-        None => {
-            let before = messages.iter().rev().skip(1);
-            let count = before.take_while(|message| within(message)).count();
-            (first.saturating_sub(count), messages.len())
-        }
-    };
+    let after = messages.iter().skip(first.saturating_add(1));
+    let after = after.take_while(|message| within(message)).count();
+    let before = messages.iter().take(first).rev();
+    let before = before.take_while(|message| within(message)).count();
+    let mut start = first - before;
+    let mut end = (first + 1 + after).min(messages.len());
     while start > 0 && safe_start(messages, start) != start {
         start -= 1;
     }
     end = safe_start(messages, end);
+    // A stop past the end that answered a call in the window takes the
+    // window to it.
+    let asks = |calls: &[CallId], end: usize| {
+        let window = messages.get(start..end).unwrap_or_default();
+        window.iter().any(|message| match &**message {
+            Message::Assistant(reply) => reply.tool_calls().any(|call| calls.contains(&call.id)),
+            _ => false,
+        })
+    };
     while let Some(stop) = conversation.turns().find_map(|(_, turn)| match turn.end {
-        Some(TurnEnd::Stopped { at: Some(stop), .. }) => conversation
+        Some(TurnEnd::Stopped {
+            at: Some(stop),
+            calls,
+            ..
+        }) => conversation
             .index_of(stop)
-            .filter(|stop| conversation.start_of(turn.start) < end && *stop >= end),
+            .filter(|stop| *stop >= end && asks(&calls, end)),
         _ => None,
     }) {
         end = safe_start(messages, stop.saturating_add(1));
@@ -792,10 +796,11 @@ fn window(
     let mut shown = conversation.view();
     shown.splice(end.., [], Author::rig());
     shown.splice(..start, [], Author::rig());
-    let turns: HashSet<_> = conversation.turns().map(|(id, _)| id).collect();
     for (id, aside) in conversation.asides() {
+        if aside.kind == TURN {
+            continue;
+        }
         match TranscriptSlot::of_aside(aside, conversation) {
-            _ if turns.contains(&id) => {}
             TranscriptSlot::Top if start == 0 => {}
             TranscriptSlot::After(index) if index.saturating_add(1) == start => {
                 let top = Aside {

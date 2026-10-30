@@ -14,7 +14,6 @@
 //! ```
 
 use std::cell::RefCell;
-use std::mem::size_of;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -90,7 +89,14 @@ pub fn highlight(code: &str, language: Language<'_>) -> Option<Vec<Vec<Span<'sta
     if code.len() < KEPT_FROM {
         return fresh(code, syntax);
     }
-    KEPT.with_borrow_mut(|kept| grown(kept, code, syntax))
+    let grown = KEPT.try_with(|kept| {
+        let mut kept = kept.try_borrow_mut().ok()?;
+        Some(grown(&mut kept, code, syntax))
+    });
+    match grown {
+        Ok(Some(drawn)) => drawn,
+        _ => fresh(code, syntax),
+    }
 }
 
 /// `code` highlighted from its first line.
@@ -103,8 +109,8 @@ fn fresh(code: &str, syntax: &SyntaxReference) -> Option<Vec<Vec<Span<'static>>>
 
 /// `code` highlighted on from the longest text of `kept` it extends in the
 /// same grammar, else afresh. Its complete lines are kept in that text's
-/// place, as the most recent, and the oldest texts are dropped past the
-/// bounds.
+/// place, as the most recent, unless they alone pass the bytes bound, and
+/// the oldest texts are dropped past the bounds.
 fn grown(
     kept: &mut Vec<Kept>,
     code: &str,
@@ -148,6 +154,9 @@ fn grown(
         let (highlight, parse) = state.clone();
         let mut parser = HighlightLines::from_state(&THEME, highlight, parse);
         drawn.push(spans(&mut parser, last)?);
+    }
+    if bytes > KEPT_BYTES {
+        return Some(drawn);
     }
     kept.push(Kept {
         syntax,
