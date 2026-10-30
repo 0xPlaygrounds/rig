@@ -424,8 +424,9 @@ impl ReplayTarget for Converse {
         ]
     }
 
-    /// A hosted tool's use is a typed `toolUse`; its result is the
-    /// `toolResult` in the same turn. Converse rejects one without the other.
+    /// A hosted tool's use is a `toolUse` of a type other than `tool_use`;
+    /// its result is the `toolResult` in the same turn. Converse rejects one
+    /// without the other.
     fn hosted_pair(&self, item: &Value) -> Option<(Pairing, String)> {
         let (side, body) = match item.get("toolUse") {
             Some(body) => (Pairing::Use, body),
