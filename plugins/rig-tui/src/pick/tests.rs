@@ -829,3 +829,121 @@ fn a_narrow_keys_row_leaves_out_its_first_keys() {
         "{rows:#?}"
     );
 }
+
+#[test]
+fn a_long_conversations_preview_lays_out_its_end_or_from_its_entry() {
+    use rig_core::completion::Message;
+    use rig_core::conversation::Conversation;
+    use rig_harness::pick::PickPreview;
+
+    use crate::TuiTestScreen;
+
+    let said = |n: usize| format!("start {n} {}end {n}.", "word ".repeat(800));
+    let whole = Conversation::from_messages((0..40).map(|n| match n % 2 {
+        0 => Message::user(said(n)),
+        _ => Message::assistant(said(n)),
+    }));
+    let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
+    for (at, seen) in [(None, "end 39."), (ids.get(3).copied(), "start 3 ")] {
+        let (mut app, _) = view_app();
+        app.insert_resource(TuiTestScreen::new(100, 30));
+        let picker = Picker::new("Sessions").item("a long session", "resume it");
+        let preview = PickPreview::Conversation {
+            conversation: whole.clone(),
+            at,
+        };
+        app.world_mut().spawn((picker, preview));
+        app.update();
+        app.update();
+        let world = app.world_mut();
+        let mut panes = world.query_filtered::<&TranscriptPane, With<PreviewPane>>();
+        let kept: Vec<_> = panes
+            .single(world)
+            .iter()
+            .filter_map(|pane| match &pane.source {
+                TranscriptSource::Value(shown) => Some(shown.entries().map(|entry| entry.id)),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        // A run of the whole's entries, with their ids, and far from all.
+        assert!(!kept.is_empty() && kept.len() < ids.len() / 2, "{kept:?}");
+        assert!(ids.windows(kept.len()).any(|run| run == kept), "{kept:?}");
+        match at {
+            Some(at) => assert_eq!(kept.first(), Some(&at)),
+            None => assert_eq!(kept.last(), ids.last()),
+        }
+        let drawn = app.world().resource::<TuiTestScreen>().rows().join("\n");
+        assert!(drawn.contains(seen), "{drawn}");
+    }
+}
+
+#[test]
+fn a_previews_edges_keep_calls_with_their_results_and_stops() {
+    use rig_core::completion::{AssistantContent, Message};
+    use rig_core::conversation::{Aside, Author, Conversation, TurnEnd};
+    use rig_core::message::{AssistantMessage, CallId, ToolName};
+
+    let big = "word ".repeat(PREVIEW_BYTES / 4);
+    let shell = ToolName::new("shell").ok();
+    let call = |id: &str, args: &str| {
+        let call = shell.clone().map(|shell| {
+            AssistantContent::tool_call(id, shell, serde_json::json!({ "command": args }))
+        });
+        Message::Assistant(AssistantMessage::new(call.into_iter().collect()))
+    };
+    let result = |id: &str, text: &str| {
+        let result = shell
+            .clone()
+            .map(|shell| Message::tool_result(CallId::from_wire(id), shell, text));
+        result.unwrap_or_else(|| Message::user(text))
+    };
+    let mut whole = Conversation::from_messages([
+        Message::user("earlier"),
+        Message::assistant("an earlier answer"),
+        Message::user("go"),
+    ]);
+    whole.open_turn();
+    whole.extend([
+        call("c1", &big),
+        result("c1", "listed"),
+        call("c2", "ls"),
+        result("c2", &big),
+    ]);
+    let ids: Vec<_> = whole.entries().map(|entry| entry.id).collect();
+    let id = |at: usize| ids.get(at).copied();
+    let shown = |whole: &Conversation, at| {
+        let shown = window(whole, at);
+        let ids: Vec<_> = shown.entries().map(|entry| entry.id).collect();
+        (ids, shown)
+    };
+
+    // From a big call, the window ends past its result.
+    let (from_call, _) = shown(&whole, id(3));
+    assert_eq!(from_call, ids.get(3..5).unwrap_or_default());
+
+    // Once a stop drawn under the second call's result answered that
+    // call, the window ends past it too.
+    let stopped = TurnEnd::Stopped {
+        why: None,
+        at: id(6),
+        calls: vec![CallId::from_wire("c2")],
+    };
+    assert!(whole.end_turn(stopped));
+    let (from_call, _) = shown(&whole, id(3));
+    assert_eq!(from_call, ids.get(3..7).unwrap_or_default());
+
+    // Back from the end, the big result takes the budget and its call
+    // comes with it. The mark above that call moves to the top, one
+    // further up is left out, and the turn's record stays.
+    let mark = |after| Aside::new("test.mark", Author::rig(), serde_json::Value::Null).after(after);
+    let gone = whole.add_aside(mark(id(0)));
+    let above = whole.add_aside(mark(id(4)));
+    let kept = whole.add_aside(mark(id(6)));
+    let (from_end, end) = shown(&whole, None);
+    assert_eq!(from_end, ids.get(5..).unwrap_or_default());
+    assert!(end.aside(gone).is_none());
+    assert_eq!(end.aside(above).map(|aside| aside.after), Some(None));
+    assert!(end.aside(kept).is_some());
+    assert_eq!(end.turns().count(), 1);
+}
