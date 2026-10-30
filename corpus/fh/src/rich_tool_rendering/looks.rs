@@ -8,7 +8,7 @@ use rig_tools::fs::file_change;
 use rig_tools::{Edit, Read, Search, SearchHits, Shell, Write, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::{OUTPUT_INDENT, ToolCallView, text_rows};
+use rig_tui::{LookLine, OUTPUT_INDENT, ToolCallView, text_rows};
 use serde_json::Value;
 
 use crate::rich_tool_rendering::highlight::{Lang, spans};
@@ -18,7 +18,7 @@ const ADDED: Color = Color::Indexed(22);
 const REMOVED: Color = Color::Indexed(52);
 
 /// Draws `view` with the look of its tool.
-pub(crate) fn render(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+pub(crate) fn render(view: &ToolCallView<'_>) -> Vec<LookLine> {
     match view.name() {
         Edit::NAME | Write::NAME => change(view),
         Shell::NAME => shell(view),
@@ -83,7 +83,7 @@ fn diffs(view: &ToolCallView<'_>, path: &str) -> Vec<String> {
 
 /// `edit` and `write`: the path with the lines added and removed, then
 /// the change as a diff.
-fn change(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+fn change(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let diffs = diffs(view, &path);
     let body: Vec<&str> = diffs
@@ -94,30 +94,32 @@ fn change(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let added = body.iter().filter(|line| line.starts_with('+')).count();
     let removed = body.iter().filter(|line| line.starts_with('-')).count();
     let title = format!("{} {path}", view.name());
-    let mut lines = vec![view.header(title, format!("+{added} -{removed}"))];
+    let mut lines = vec![LookLine::from(
+        view.header(title, format!("+{added} -{removed}")),
+    )];
     if view.failed() {
         lines.extend(view.result_lines());
         return lines;
     }
     let lang = Lang::of(&path);
-    lines.extend(body.iter().map(|line| diff_line(line, lang)));
+    lines.extend(body.iter().map(|line| diff_line(line, lang).into()));
     lines
 }
 
 /// `shell`: `$ command`; while it runs, its output so far; then its
 /// output, and how it ended (the header says a failure) and how long it
 /// ran, red when it failed.
-fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+fn shell(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let command = view.argument("command").unwrap_or_default();
     let mut command_lines = command.lines();
     let first = command_lines.next().unwrap_or_default();
-    let mut lines = vec![view.header(format!("$ {first}"), "")];
-    lines.extend(command_lines.map(|line| Line::from(format!("  {line}")).bold()));
+    let mut lines = vec![LookLine::from(view.header(format!("$ {first}"), ""))];
+    lines.extend(command_lines.map(|line| Line::from(format!("  {line}")).bold().into()));
     let text = view.result_text();
     let errored = view.result.is_some_and(|result| result.is_error);
     let Some(text) = text.as_deref().filter(|_| !errored) else {
         match view.output {
-            Some(output) => lines.extend(printed(output, Style::new().dim())),
+            Some(output) => lines.extend(looked(printed(output, Style::new().dim()))),
             None => lines.extend(view.result_lines()),
         }
         return lines;
@@ -132,11 +134,11 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     } else {
         Style::new().dim()
     };
-    lines.extend(printed(output, style));
+    lines.extend(looked(printed(output, style)));
     // Answered in an earlier run, the call has no facts: the tool's own
     // line says how it ended.
     let Some(status) = status else {
-        lines.extend(said.map(|said| Line::from(format!("{OUTPUT_INDENT}{said}")).dim()));
+        lines.extend(said.map(|said| Line::from(format!("{OUTPUT_INDENT}{said}")).dim().into()));
         return lines;
     };
     let said = match status {
@@ -152,11 +154,15 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     if failed {
         if let Some(took) = view.took {
             let took = format!("{OUTPUT_INDENT}{:.1}s", took.as_secs_f64());
-            lines.push(Line::from(took).red());
+            lines.push(Line::from(took).red().into());
         }
         return lines;
     }
-    lines.push(Line::from(format!("{OUTPUT_INDENT}{said}{took}")).green());
+    lines.push(
+        Line::from(format!("{OUTPUT_INDENT}{said}{took}"))
+            .green()
+            .into(),
+    );
     lines
 }
 
@@ -167,12 +173,17 @@ fn printed(output: &str, style: Style) -> Vec<Line<'static>> {
     output.lines().map(line).collect()
 }
 
+/// `lines` as a look's lines.
+fn looked(lines: Vec<Line<'static>>) -> impl Iterator<Item = LookLine> {
+    lines.into_iter().map(LookLine::from)
+}
+
 /// `read`: a line with the path and the lines it showed, then the
 /// content.
-fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+fn read(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let Some(text) = view.result_text().filter(|_| !view.failed()) else {
-        let mut lines = vec![view.header(format!("read {path}"), "")];
+        let mut lines = vec![LookLine::from(view.header(format!("read {path}"), ""))];
         lines.extend(view.result_lines());
         return lines;
     };
@@ -182,12 +193,12 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .and_then(|facts| facts.get::<FilesRead>().ok().flatten());
     let shown = read.and_then(|read| read.0.first().and_then(|file| file.lines));
     let range = shown.map(range).unwrap_or_default();
-    let mut lines = vec![view.header(format!("read {path}"), range)];
+    let mut lines = vec![LookLine::from(view.header(format!("read {path}"), range))];
     let lang = Lang::of(&path);
     lines.extend(text.lines().map(|line| {
         let mut parts = vec![Span::from("    ")];
         parts.extend(spans(&line.replace('\t', "  "), lang));
-        Line::from(parts)
+        Line::from(parts).into()
     }));
     lines
 }
@@ -205,7 +216,7 @@ fn range(shown: LinesShown) -> String {
 }
 
 /// `search`: how many matches, then each.
-fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+fn search(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let pattern = view.argument("pattern").unwrap_or_default().to_owned();
     let title = format!("search {pattern}");
     let found = view
@@ -213,7 +224,7 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .and_then(|facts| facts.get::<SearchHits>().ok().flatten());
     let Some(SearchHits(found)) = found else {
         // Not run yet, failed, or answered in an earlier run.
-        let mut lines = vec![view.header(title, "")];
+        let mut lines = vec![LookLine::from(view.header(title, ""))];
         lines.extend(view.result_lines());
         return lines;
     };
@@ -223,7 +234,7 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         (count, true) => format!("{count}+ matches"),
     };
     let hits: Vec<String> = found.hits.iter().map(ToString::to_string).collect();
-    let mut lines = vec![view.header(title, count)];
-    lines.extend(text_rows(&hits.join("\n"), Style::new().dim()));
+    let mut lines = vec![LookLine::from(view.header(title, count))];
+    lines.extend(looked(text_rows(&hits.join("\n"), Style::new().dim())));
     lines
 }

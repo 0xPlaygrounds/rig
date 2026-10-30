@@ -1,7 +1,17 @@
 use super::render;
 
+/// `text` rendered and drawn, colored.
+fn rendered(
+    text: &str,
+    theme: &crate::Theme,
+    width: Option<usize>,
+) -> Vec<ratatui::text::Line<'static>> {
+    let lines = render(text, theme, width);
+    lines.iter().map(crate::LookLine::colored).collect()
+}
+
 fn text(markdown: &str) -> Vec<String> {
-    render(markdown, &crate::Theme::default(), None)
+    rendered(markdown, &crate::Theme::default(), None)
         .iter()
         .map(|line| line.to_string())
         .collect()
@@ -26,7 +36,7 @@ fn an_image_is_drawn_as_a_link() {
 
 #[test]
 fn a_fenced_block_is_drawn_in_its_languages_colors() {
-    let lines = render(
+    let lines = rendered(
         "```rust\nfn main() {}\n```\n",
         &crate::Theme::default(),
         None,
@@ -41,7 +51,7 @@ fn a_fenced_block_is_drawn_in_its_languages_colors() {
 #[test]
 fn an_alert_is_on_its_tint_under_its_name() {
     let theme = crate::Theme::default();
-    let lines = render("> [!WARNING]\n> Back it up first.\n", &theme, None);
+    let lines = rendered("> [!WARNING]\n> Back it up first.\n", &theme, None);
     let rows: Vec<String> = lines.iter().map(ToString::to_string).collect();
     assert_eq!(rows, ["Warning", "  Back it up first."]);
     assert!(
@@ -50,14 +60,14 @@ fn an_alert_is_on_its_tint_under_its_name() {
             .all(|line| line.style.bg == Some(theme.call_running))
     );
     // A plain quote has no tint and no name.
-    let quote = render("> just a quote\n", &theme, None);
+    let quote = rendered("> just a quote\n", &theme, None);
     assert!(quote.iter().all(|line| line.style.bg.is_none()));
 }
 
 #[test]
 fn code_is_on_the_code_tint_and_a_block_says_its_language() {
     let theme = crate::Theme::default();
-    let lines = render("Run `cargo test`.\n\n```sh\nls\n```\n", &theme, None);
+    let lines = rendered("Run `cargo test`.\n\n```sh\nls\n```\n", &theme, None);
     let inline = lines
         .first()
         .and_then(|line| line.spans.iter().find(|span| span.content == "cargo test"));
@@ -69,7 +79,7 @@ fn code_is_on_the_code_tint_and_a_block_says_its_language() {
     );
     assert!(block.iter().all(|line| line.style.bg == Some(theme.code)));
     let plain = theme.without_color();
-    let rows: Vec<String> = render("Run `cargo test`.", &plain, None)
+    let rows: Vec<String> = rendered("Run `cargo test`.", &plain, None)
         .iter()
         .map(ToString::to_string)
         .collect();

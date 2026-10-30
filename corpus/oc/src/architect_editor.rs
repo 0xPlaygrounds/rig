@@ -646,7 +646,7 @@ fn shown(base: &Path, path: &str) -> String {
 mod look {
     use rig_harness::prelude::*;
     use rig_tui::ratatui::text::Line;
-    use rig_tui::{RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
+    use rig_tui::{LookLine, RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
 
     use super::IMPLEMENT;
 
@@ -660,15 +660,15 @@ mod look {
         }
     }
 
-    fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    fn look(view: &ToolCallView<'_>) -> Vec<LookLine> {
         let description = view.argument("description").unwrap_or_default();
-        let mut lines = vec![view.header("Implement", description.to_owned())];
+        let mut lines = vec![view.header("Implement", description.to_owned()).into()];
         for child in view.children {
             let indent = "  ".repeat(child.depth + 2);
             let mut said = child.answer.as_deref().unwrap_or_default().lines();
             let first = said.next().unwrap_or_default();
-            lines.push(Line::from(format!("{indent}↳ {} {first}", child.name)));
-            lines.extend(said.map(|line| Line::from(format!("{indent}  {line}"))));
+            lines.push(Line::from(format!("{indent}↳ {} {first}", child.name)).into());
+            lines.extend(said.map(|line| Line::from(format!("{indent}  {line}")).into()));
         }
         lines.extend(view.result_lines());
         lines

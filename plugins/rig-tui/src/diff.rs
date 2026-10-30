@@ -1,6 +1,6 @@
 //! A unified diff a tool returned, drawn in the transcript: each line
 //! with its numbers in the old and the new file, in the colors of the
-//! file's language ([`highlight`](crate::highlight)), removed lines on red
+//! file's language once drawn ([`Code`]), removed lines on red
 //! and added ones on green ([`Theme`]), and the words a changed line
 //! changed on a stronger shade of each.
 
@@ -12,8 +12,9 @@ use ratatui::text::{Line, Span};
 use rig_core::tool::FileChange;
 use similar::{ChangeTag, TextDiff};
 
-use crate::Theme;
-use crate::highlight::{Language, highlight};
+use crate::highlight::{Code, Language};
+use crate::renderers::CodeLine;
+use crate::{LookLine, Theme};
 
 /// What a line of the diff is.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,7 +35,7 @@ enum Kind {
 
 /// `text` drawn as a unified diff when it holds a hunk header, else
 /// `None`, in `theme`'s colors.
-pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
+pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<LookLine>> {
     if !text.lines().any(|line| header(line).is_some()) {
         return None;
     }
@@ -47,14 +48,14 @@ pub fn unified_lines(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
 
 /// `change`'s hunks drawn as [`unified_lines`] draws them, in the colors
 /// of its path's language, without the `---`/`+++` lines naming its file.
-pub fn change_lines(change: &FileChange, theme: &Theme) -> Vec<Line<'static>> {
+pub fn change_lines(change: &FileChange, theme: &Theme) -> Vec<LookLine> {
     let mut lines = classify(&change.unified());
     lines.retain(|(kind, _)| *kind != Kind::File);
     draw(&lines, Some(change.path.as_str()), theme)
 }
 
 /// The classified `lines` of a diff of the file at `path`, each drawn.
-fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line<'static>> {
+fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<LookLine> {
     let width = lines
         .iter()
         .map(|(kind, _)| match kind {
@@ -74,29 +75,41 @@ fn draw(lines: &[(Kind, String)], path: Option<&str>, theme: &Theme) -> Vec<Line
         let number = |at: Option<usize>| at.map_or(" ".repeat(width), |at| format!("{at:>width$}"));
         let gutter =
             |old, new, sign| Span::from(format!("    {} {} {sign} ", number(old), number(new)));
-        let spans = code
-            .remove(&at)
-            .unwrap_or_else(|| vec![Span::from(text.clone())]);
+        let spans = vec![Span::from(text.clone())];
         let mut marked =
             |shade| overlay(spans.clone(), &words.remove(&at).unwrap_or_default(), shade);
-        match *kind {
-            Kind::Other => Line::from(format!("    {text}")).dim(),
-            Kind::File => Line::from(format!("    {text}")).bold(),
-            Kind::Hunk => Line::from(format!("    {text}")).dim(),
+        let (line, gutter) = match *kind {
+            Kind::Other => (Line::from(format!("    {text}")).dim(), None),
+            Kind::File => (Line::from(format!("    {text}")).bold(), None),
+            Kind::Hunk => (Line::from(format!("    {text}")).dim(), None),
             Kind::Same(old, new) => {
-                Line::from([vec![gutter(Some(old), Some(new), ' ').dim()], spans].concat())
+                let gutter = gutter(Some(old), Some(new), ' ').dim();
+                (
+                    Line::from([vec![gutter.clone()], spans.clone()].concat()),
+                    Some(gutter),
+                )
             }
             Kind::Removed(old) => {
                 let shade = theme.changed_word(theme.removed_word);
                 let gutter = gutter(Some(old), None, '-').red();
-                Line::from([vec![gutter], marked(shade)].concat()).bg(theme.removed)
+                let line = Line::from([vec![gutter.clone()], marked(shade)].concat());
+                (line.bg(theme.removed), Some(gutter))
             }
             Kind::Added(new) => {
                 let shade = theme.changed_word(theme.added_word);
                 let gutter = gutter(None, Some(new), '+').green();
-                Line::from([vec![gutter], marked(shade)].concat()).bg(theme.added)
+                let line = Line::from([vec![gutter.clone()], marked(shade)].concat());
+                (line.bg(theme.added), Some(gutter))
             }
-        }
+        };
+        let code = gutter
+            .zip(code.remove(&at))
+            .map(|(gutter, (code, index))| CodeLine {
+                code,
+                index,
+                at: gutter.content.len(),
+            });
+        LookLine { line, code }
     });
     drawn.collect()
 }
@@ -194,11 +207,11 @@ fn header(line: &str) -> Option<((usize, usize), (usize, usize))> {
     Some((range(old)?, range(new)?))
 }
 
-/// Each code line's spans in the colors of `path`'s language, by the
-/// line's index: the hunk's old side (same and removed lines) and its new
-/// side (same and added) highlighted apart. Empty when the language has no
-/// grammar.
-fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, Vec<Span<'static>>> {
+/// Each code line's code and its place in it, by the line's index: the
+/// hunk's old side (same and removed lines) and its new side (same and
+/// added) each a code in `path`'s language. Empty when the language has
+/// no grammar.
+fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, (Code, usize)> {
     let mut spans = HashMap::new();
     let hunks = lines
         .iter()
@@ -217,11 +230,12 @@ fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, Vec<Span<
                 .map(|(at, (_, text))| (*at, text))
                 .collect();
             let code: Vec<&str> = side.iter().map(|(_, text)| text.as_str()).collect();
-            let Some(drawn) = highlight(&code.join("\n"), Language::File(path)) else {
+            let code = Code::new(&code.join("\n"), Language::File(path));
+            if !code.colored() {
                 return spans;
-            };
-            for ((at, _), line) in side.iter().zip(drawn) {
-                spans.entry(*at).or_insert(line);
+            }
+            for (index, (at, _)) in side.iter().enumerate() {
+                spans.entry(*at).or_insert_with(|| (code.clone(), index));
             }
         }
     }

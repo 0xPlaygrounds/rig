@@ -18,6 +18,7 @@ use rig_harness::rig_core::conversation::Note;
 
 use super::{diff, markdown};
 use crate::Theme;
+use crate::highlight::Code;
 
 /// A tool call and its result, if it has one yet, as a render system sees
 /// them through [`ToolRender::view`].
@@ -168,6 +169,25 @@ impl<'a> ToolCallView<'a> {
         title: impl Into<String>,
         detail: Vec<Span<'static>>,
     ) -> Line<'static> {
+        self.header_at(title, detail).0
+    }
+
+    /// [`header`](Self::header) with line `index` of `code` as its detail,
+    /// such as a command, colored when drawn.
+    pub fn header_code(&self, title: impl Into<String>, code: &Code, index: usize) -> LookLine {
+        let detail = code.line(index, Vec::new());
+        let (line, at) = self.header_at(title, detail.line.spans);
+        let code = detail.code.map(|code| CodeLine { at, ..code });
+        LookLine { line, code }
+    }
+
+    /// The header line with `detail`, and the byte of its text where
+    /// `detail` starts.
+    fn header_at(
+        &self,
+        title: impl Into<String>,
+        detail: Vec<Span<'static>>,
+    ) -> (Line<'static>, usize) {
         let failure = || match self.exit() {
             Some(ExitStatus::Exited(code)) if code != 0 => format!("exit {code}"),
             Some(ExitStatus::Signaled) => "killed by a signal".to_owned(),
@@ -189,12 +209,13 @@ impl<'a> ToolCallView<'a> {
         let mut spans = vec![Span::from(" "), Span::from(title.into()).bold()];
         if !detail.is_empty() {
             spans.push(Span::from(" "));
-            spans.extend(detail);
         }
+        let at = spans.iter().map(|span| span.content.len()).sum();
+        spans.extend(detail);
         if !state.is_empty() {
             spans.push(Span::from(format!(" · {state}")).italic());
         }
-        Line::from(spans).bg(band)
+        (Line::from(spans).bg(band), at)
     }
 
     /// The whole result, indented under the header, red for an error but
@@ -202,9 +223,13 @@ impl<'a> ToolCallView<'a> {
     /// coloured. The line that says the tool cut its output
     /// ([`OutputCut`]), naming the file with all of it, is on its side.
     /// Before the result, a running call's progress.
-    pub fn result_lines(&self) -> Vec<Line<'static>> {
+    pub fn result_lines(&self) -> Vec<LookLine> {
         let Some(text) = self.result_text() else {
-            return self.progress_lines();
+            return self
+                .progress_lines()
+                .into_iter()
+                .map(LookLine::from)
+                .collect();
         };
         if !self.failed()
             && let Some(lines) = diff::unified_lines(&text, &self.theme)
@@ -213,7 +238,8 @@ impl<'a> ToolCallView<'a> {
         }
         let (output, marker) = self.cut_marker(&text);
         let failed = self.failed() && !self.stopped();
-        result_rows(output.into_iter(), marker, result_style(failed))
+        let rows = result_rows(output.into_iter(), marker, result_style(failed));
+        rows.into_iter().map(LookLine::from).collect()
     }
 
     /// The lines of `text`, the result, without the line that says the
@@ -249,9 +275,9 @@ impl<'a> ToolCallView<'a> {
 
     /// The look of a tool no render system draws: the name, the arguments and
     /// the result.
-    pub fn default_lines(&self) -> Vec<Line<'static>> {
+    pub fn default_lines(&self) -> Vec<LookLine> {
         let arguments = serde_json::Value::Object(self.call.function.arguments.clone()).to_string();
-        let mut lines = vec![self.header(self.name().to_owned(), arguments)];
+        let mut lines = vec![self.header(self.name().to_owned(), arguments).into()];
         lines.extend(self.result_lines());
         lines
     }
@@ -441,6 +467,103 @@ fn result_rows<'t>(
     .collect()
 }
 
+/// A line a look draws: styled text, from a [`Line`], or a line of
+/// [`Code`] ([`Code::line`], [`ToolCallView::header_code`]) laid out plain
+/// and colored when the line is drawn.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LookLine {
+    /// The line as laid out, any code in it plain.
+    pub(crate) line: Line<'static>,
+    /// The line of code in it, if any.
+    pub(crate) code: Option<CodeLine>,
+}
+
+/// Where a line of [`Code`] is in a [`LookLine`].
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CodeLine {
+    pub(crate) code: Code,
+    /// The line's place in it.
+    pub(crate) index: usize,
+    /// The byte of the look line's text where the code line's text
+    /// ([`Code::line`]) starts.
+    pub(crate) at: usize,
+}
+
+impl From<Line<'static>> for LookLine {
+    fn from(line: Line<'static>) -> Self {
+        Self { line, code: None }
+    }
+}
+
+/// Its text, as drawn.
+impl std::fmt::Display for LookLine {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.line.fmt(formatter)
+    }
+}
+
+impl LookLine {
+    /// The line as drawn: its code's text in the code's colors, each
+    /// colored piece with the style of the laid-out text there laid over
+    /// it, such as a diff's shade on the words a line changed. The text is
+    /// the laid-out text, and plain if the code has no colors for it.
+    pub fn colored(&self) -> Line<'static> {
+        let Some(CodeLine { code, index, at }) = &self.code else {
+            return self.line.clone();
+        };
+        let Some(colors) = code.spans(*index) else {
+            return self.line.clone();
+        };
+        let laid: String = self.line.spans.iter().map(|span| &*span.content).collect();
+        let text: String = colors.iter().map(|span| &*span.content).collect();
+        if laid.get(*at..*at + text.len()) != Some(text.as_str()) {
+            return self.line.clone();
+        }
+        let mut runs = Vec::with_capacity(colors.len());
+        let mut end = *at;
+        for span in colors {
+            let start = end;
+            end += span.content.len();
+            runs.push((start..end, span.style));
+        }
+        let mut spans = Vec::new();
+        let mut start = 0;
+        for span in &self.line.spans {
+            let piece = start..start + span.content.len();
+            start = piece.end;
+            let mut cuts = vec![piece.start, piece.end];
+            let inside = runs.iter().flat_map(|(run, _)| [run.start, run.end]);
+            cuts.extend(inside.filter(|cut| piece.start < *cut && *cut < piece.end));
+            cuts.sort_unstable();
+            cuts.dedup();
+            for pair in cuts.windows(2) {
+                let [from, to] = pair else { continue };
+                let Some(text) = span.content.get(from - piece.start..to - piece.start) else {
+                    continue;
+                };
+                let color = runs.iter().find(|(run, _)| run.contains(from));
+                let style = color.map_or(span.style, |(_, color)| color.patch(span.style));
+                spans.push(Span::styled(text.to_owned(), style));
+            }
+        }
+        Line {
+            spans,
+            ..self.line.clone()
+        }
+    }
+
+    /// The line as laid out, any code in it plain: the text it draws.
+    pub fn line(&self) -> &Line<'static> {
+        &self.line
+    }
+
+    /// The line with `style` laid over its own, as [`Line::patch_style`].
+    pub fn patch_style(mut self, style: Style) -> Self {
+        self.line = self.line.patch_style(style);
+        self
+    }
+}
+
 /// Named line ranges within a rendered item.
 pub(crate) type Decorated = Vec<(String, std::ops::Range<usize>)>;
 
@@ -499,14 +622,14 @@ pub struct MessageView<'a> {
 impl MessageView<'_> {
     /// The default look: the user's text after `›`, a reply's as markdown
     /// with its marks, reasoning as dimmed markdown.
-    pub fn default_lines(&self) -> Vec<Line<'static>> {
+    pub fn default_lines(&self) -> Vec<LookLine> {
         match self.role {
             Role::User => {
                 let lines = self.text.lines().enumerate();
                 let rows = lines.map(|(index, line)| {
                     let prefix = if index == 0 { "› " } else { "  " };
                     let text = line.replace('\t', "    ");
-                    Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()])
+                    Line::from(vec![Span::from(prefix).dim(), Span::from(text).bold()]).into()
                 });
                 rows.collect()
             }
@@ -516,10 +639,8 @@ impl MessageView<'_> {
             Role::Reasoning => {
                 let lines = markdown::render(self.text, &self.theme, Some(self.width));
                 let style = Style::new().dim().italic();
-                lines
-                    .into_iter()
-                    .map(|line| line.patch_style(style))
-                    .collect()
+                let lines = lines.into_iter();
+                lines.map(|line| line.patch_style(style)).collect()
             }
         }
     }
@@ -567,7 +688,7 @@ pub struct RenderRevision(pub u64);
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderOutput {
     /// The item's unwrapped lines.
-    pub lines: Vec<Line<'static>>,
+    pub lines: Vec<LookLine>,
     /// Named lines appended after the item's lines.
     pub decorations: Vec<(String, Vec<Line<'static>>)>,
 }
@@ -585,12 +706,12 @@ impl RenderOutput {
         }
     }
 
-    fn drawn(&self) -> (Vec<Line<'static>>, Decorated) {
+    fn drawn(&self) -> (Vec<LookLine>, Decorated) {
         let mut lines = self.lines.clone();
         let mut ranges = Vec::new();
         for (name, more) in &self.decorations {
             let start = lines.len();
-            lines.extend(more.iter().cloned());
+            lines.extend(more.iter().cloned().map(LookLine::from));
             if start != lines.len() {
                 ranges.push((name.clone(), start..lines.len()));
             }
@@ -1020,8 +1141,8 @@ impl Renderers {
         &self,
         key: RenderKey,
         input: RenderInput,
-        lines: Vec<Line<'static>>,
-    ) -> (Vec<Line<'static>>, Decorated) {
+        lines: Vec<LookLine>,
+    ) -> (Vec<LookLine>, Decorated) {
         match self.pass {
             Pass::Collect => {
                 let place = self.place.get();
@@ -1053,10 +1174,7 @@ impl Renderers {
         }
     }
 
-    pub(crate) fn call_decorated(
-        &self,
-        view: &ToolCallView<'_>,
-    ) -> (Vec<Line<'static>>, Decorated) {
+    pub(crate) fn call_decorated(&self, view: &ToolCallView<'_>) -> (Vec<LookLine>, Decorated) {
         let input = ToolRender {
             call: view.call.clone(),
             result: view.result.cloned(),
@@ -1075,28 +1193,38 @@ impl Renderers {
     }
 
     /// A delivered text's lines; only messages hold one.
-    pub(crate) fn entry(&self, view: &EntryView<'_>) -> Vec<Line<'static>> {
+    pub(crate) fn entry(&self, view: &EntryView<'_>) -> Vec<LookLine> {
         match self.in_message() {
             Some((index, block)) => self.entry_at(RenderKey::Entry(index, block), view),
-            None => view.default_lines(),
+            None => view
+                .default_lines()
+                .into_iter()
+                .map(LookLine::from)
+                .collect(),
         }
     }
 
-    fn entry_at(&self, key: RenderKey, view: &EntryView<'_>) -> Vec<Line<'static>> {
+    fn entry_at(&self, key: RenderKey, view: &EntryView<'_>) -> Vec<LookLine> {
         let input = EntryRender {
             id: view.id,
             plugin: view.plugin.to_owned(),
             title: view.title.to_owned(),
             text: view.text.to_owned(),
         };
-        self.output(key, RenderInput::Entry(input), view.default_lines())
+        let lines = view.default_lines().into_iter().map(LookLine::from);
+        self.output(key, RenderInput::Entry(input), lines.collect())
             .0
     }
 
     /// A content block's lines; only messages hold one.
-    pub(crate) fn content(&self, view: &ContentView<'_>) -> Vec<Line<'static>> {
+    pub(crate) fn content(&self, view: &ContentView<'_>) -> Vec<LookLine> {
+        let lines = view
+            .default_lines()
+            .into_iter()
+            .map(LookLine::from)
+            .collect();
         let Some((index, _)) = self.in_message() else {
-            return view.default_lines();
+            return lines;
         };
         let content = match view.block {
             ContentBlock::Image(v) => RenderContent::Image(v.clone()),
@@ -1113,12 +1241,12 @@ impl Renderers {
         self.output(
             RenderKey::Content(index, view.index),
             RenderInput::Content(input),
-            view.default_lines(),
+            lines,
         )
         .0
     }
 
-    pub(crate) fn aside(&self, view: &AsideView<'_>) -> Option<Vec<Line<'static>>> {
+    pub(crate) fn aside(&self, view: &AsideView<'_>) -> Option<Vec<LookLine>> {
         let key = RenderKey::Aside(view.id);
         if let Some(note) = Note::of(view.aside) {
             return Some(self.entry_at(
@@ -1143,7 +1271,7 @@ impl Renderers {
     pub(crate) fn message_decorations(
         &self,
         view: &DecoratedMessage<'_>,
-    ) -> (Vec<Line<'static>>, Decorated) {
+    ) -> (Vec<LookLine>, Decorated) {
         let Some((index, _)) = self.in_message() else {
             return (Vec::new(), Vec::new());
         };

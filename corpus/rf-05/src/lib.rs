@@ -215,14 +215,19 @@ fn draw(mut batch: ResMut<rig_tui::RenderBatch>) {
 /// How the terminal view draws a `word_count` call: its file, then the
 /// words it counted, or its result while it has no count (a refusal).
 #[cfg(feature = "tui")]
-pub fn render(call: &rig_tui::ToolCallView<'_>) -> Vec<rig_tui::ratatui::text::Line<'static>> {
-    let mut lines = vec![call.header("Count", call.argument("path").unwrap_or_default())];
+pub fn render(call: &rig_tui::ToolCallView<'_>) -> Vec<rig_tui::LookLine> {
+    let header = call.header("Count", call.argument("path").unwrap_or_default());
+    let mut lines = vec![header.into()];
     let counted = call
         .facts
         .and_then(|facts| facts.get::<Counted>().ok().flatten());
     match counted {
         Some(Counted { words }) => {
-            lines.push(format!("{}{words} words", rig_tui::OUTPUT_INDENT).into());
+            let line = rig_tui::ratatui::text::Line::from(format!(
+                "{}{words} words",
+                rig_tui::OUTPUT_INDENT
+            ));
+            lines.push(line.into());
         }
         None => lines.extend(call.result_lines()),
     }

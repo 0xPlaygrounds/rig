@@ -180,7 +180,7 @@ mod tui {
     /// Draws the welcome asides.
     fn draw(mut batch: ResMut<RenderBatch>) {
         for (aside, output) in batch.asides_mut(WELCOME) {
-            output.lines = lines(&aside.view());
+            output.lines = lines(&aside.view()).into_iter().map(Into::into).collect();
         }
     }
 

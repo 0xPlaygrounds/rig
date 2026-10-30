@@ -27,7 +27,7 @@ use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
     AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
-    MessageView, Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style,
+    LookLine, MessageView, Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style,
     result_text, text_rows,
 };
 use super::theme::Theme;
@@ -700,7 +700,7 @@ impl ShownAside<'_> {
     }
 
     /// Its lines in `theme`'s colors; none for a kind nothing draws.
-    pub(crate) fn lines(&self, renderers: &Renderers, theme: &Theme) -> Vec<Line<'static>> {
+    pub(crate) fn lines(&self, renderers: &Renderers, theme: &Theme) -> Vec<LookLine> {
         renderers.aside(&self.view(*theme)).unwrap_or_default()
     }
 }
@@ -961,7 +961,7 @@ struct Cached {
     message: Arc<Message>,
     /// [`Look::hash_message`] of it then.
     look: u64,
-    lines: Vec<Line<'static>>,
+    lines: Vec<LookLine>,
     line_marks: Marks,
     wrapped: Wrapped,
     /// Whether its lines depend on the width, as a reply's table does, so
@@ -996,12 +996,41 @@ impl Cached {
 }
 
 /// Lines wrapped to a width: the rows, whether each continues the row
-/// before it (a line wrapped), and where the items are in the rows.
+/// before it (a line wrapped), and where the items are in the rows. Code
+/// is plain in the rows, and colored when they are drawn
+/// ([`drawn`](Self::drawn)).
 #[derive(Default)]
 pub(crate) struct Wrapped {
     rows: Vec<Line<'static>>,
     continues: Vec<Option<RowWrap>>,
     marks: Marks,
+    /// The lines with code, by the rows they wrapped to, top to bottom.
+    code: Vec<(Range<usize>, LookLine)>,
+    width: usize,
+}
+
+impl Wrapped {
+    /// Rows `range` as drawn: those of a line with code wrapped again from
+    /// the line colored, which wraps to the same rows, their text the same.
+    fn drawn(&self, range: Range<usize>) -> Vec<Line<'static>> {
+        let mut rows = self.rows.get(range.clone()).unwrap_or_default().to_vec();
+        let first = self
+            .code
+            .partition_point(|(rows, _)| rows.end <= range.start);
+        let code = self.code.get(first..).unwrap_or_default().iter();
+        for (lines, line) in code.take_while(|(lines, _)| lines.start < range.end) {
+            let colored = wrap(&line.colored(), self.width);
+            for (at, (row, _)) in (lines.start..).zip(colored) {
+                if let Some(slot) = at
+                    .checked_sub(range.start)
+                    .and_then(|index| rows.get_mut(index))
+                {
+                    *slot = row;
+                }
+            }
+        }
+        rows
+    }
 }
 
 /// The wrapped rows of the shown agent's messages.
@@ -1026,7 +1055,7 @@ impl Part {
     /// `lines`, with the items `marks` says are in them, wrapped to
     /// `width`.
     pub(crate) fn rows(
-        lines: &[Line<'static>],
+        lines: &[LookLine],
         marks: &[(TranscriptItem, Range<usize>)],
         width: usize,
     ) -> Self {
@@ -1348,7 +1377,7 @@ impl Transcript {
             return Vec::new();
         };
         if !lights.any() {
-            return wrapped.rows.get(range).unwrap_or_default().to_vec();
+            return wrapped.drawn(range);
         }
         let continues = |row: usize| wrapped.continues.get(row).is_some_and(Option::is_some);
         let mut first = range.start;
@@ -1359,9 +1388,9 @@ impl Transcript {
         while continues(end) {
             end += 1;
         }
-        let rows = wrapped.rows.get(first..end).unwrap_or_default();
+        let rows = wrapped.drawn(first..end);
         let joints = wrapped.continues.get(first..end).unwrap_or_default();
-        let lit = light(rows, joints, start + first, lights);
+        let lit = light(&rows, joints, start + first, lights);
         let shown = lit.into_iter().skip(range.start - first);
         shown.take(range.len()).collect()
     }
@@ -1370,19 +1399,24 @@ impl Transcript {
 /// `lines` wrapped to `width`, and `marks` of lines moved to the rows
 /// they wrap to.
 fn wrap_marked(
-    lines: &[Line<'static>],
+    lines: &[LookLine],
     marks: &[(TranscriptItem, Range<usize>)],
     width: usize,
 ) -> Wrapped {
     let mut rows = Vec::with_capacity(lines.len());
     let mut continues = Vec::with_capacity(lines.len());
+    let mut code = Vec::new();
     // The first row of each line, and past the last.
     let mut starts = Vec::with_capacity(lines.len() + 1);
     for line in lines {
-        starts.push(rows.len());
-        for (row, joint) in wrap(line, width) {
+        let start = rows.len();
+        starts.push(start);
+        for (row, joint) in wrap(&line.line, width) {
             rows.push(row);
             continues.push(joint);
+        }
+        if line.code.is_some() {
+            code.push((start..rows.len(), line.clone()));
         }
     }
     starts.push(rows.len());
@@ -1395,6 +1429,8 @@ fn wrap_marked(
         rows,
         continues,
         marks,
+        code,
+        width,
     }
 }
 
@@ -1569,7 +1605,7 @@ fn message_lines(
     (entry, at): (&ShownEntry<'_>, usize),
     (previous, next): (Option<&Message>, Option<&Message>),
     (look, width): (&Look<'_>, usize),
-) -> (Vec<Line<'static>>, Marks) {
+) -> (Vec<LookLine>, Marks) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
     look.renderers.at(Place::Message {
@@ -1581,7 +1617,7 @@ fn message_lines(
     // turn it cut off.
     let note = entry.stop;
     let inside = look.inside(at);
-    let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
+    let inside_before = |item: usize, lines: &mut Vec<LookLine>, marks: &mut Marks| {
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
@@ -1591,7 +1627,7 @@ fn message_lines(
                         continue;
                     }
                     let start = lines.len();
-                    lines.push(Line::default());
+                    lines.push(LookLine::default());
                     lines.extend(on_band(drawn, look.theme.tool));
                     marks.push((shown.item(), start..lines.len()));
                 }
@@ -1622,7 +1658,7 @@ fn message_lines(
                         if note {
                             continue;
                         }
-                        lines.push(Line::default());
+                        lines.push(LookLine::default());
                         // The user's own text has no author, or the user with no title.
                         let other = |author: &&Author| {
                             author.kind != AuthorKind::User || author.title.is_some()
@@ -1681,7 +1717,7 @@ fn message_lines(
                 inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     AssistantContent::Text(text) => {
-                        lines.push(Line::default());
+                        lines.push(LookLine::default());
                         let marks =
                             id.map(|id| look.marks_in(MarkIn::Message { id, block: item_at }));
                         lines.extend(
@@ -1776,9 +1812,9 @@ fn message_lines(
 /// The stop drawn under `message`, the last of a turn a stop cut off:
 /// within a reply when it is one, else under the request or the results
 /// nothing answered.
-fn stop_lines(message: &Message, theme: &Theme) -> Vec<Line<'static>> {
+fn stop_lines(message: &Message, theme: &Theme) -> Vec<LookLine> {
     match message {
-        Message::Assistant(_) => vec![Line::from("[stopped]").dim()],
+        Message::Assistant(_) => vec![Line::from("[stopped]").dim().into()],
         Message::User { content } => {
             let results = content
                 .iter()
@@ -1797,7 +1833,7 @@ fn stop_lines(message: &Message, theme: &Theme) -> Vec<Line<'static>> {
 fn content_lines(
     (id, index, block, assistant): (Option<MessageId>, usize, ContentBlock<'_>, bool),
     look: &Look<'_>,
-    (lines, marks): (&mut Vec<Line<'static>>, &mut Marks),
+    (lines, marks): (&mut Vec<LookLine>, &mut Marks),
 ) {
     let view = ContentView {
         message: id,
@@ -1820,7 +1856,7 @@ fn delivered_lines(
     author: &Author,
     text: &str,
     look: &Look<'_>,
-) -> Vec<Line<'static>> {
+) -> Vec<LookLine> {
     let body = author
         .header()
         .and_then(|header| text.strip_prefix(&header))
@@ -1839,7 +1875,7 @@ fn delivered_lines(
 /// level, marked as that item.
 pub(crate) fn notice_lines(
     (at, notice): (usize, &ShownNotice),
-    lines: &mut Vec<Line<'static>>,
+    lines: &mut Vec<LookLine>,
     marks: &mut Marks,
 ) {
     let style = match notice.level {
@@ -1848,18 +1884,23 @@ pub(crate) fn notice_lines(
         NoticeLevel::Error => Style::new().fg(Color::Red),
     };
     let start = lines.len();
-    lines.extend(plain_lines(&notice.text, style));
+    lines.extend(
+        plain_lines(&notice.text, style)
+            .into_iter()
+            .map(LookLine::from),
+    );
     marks.push((TranscriptItem::Notice(at), start..lines.len()));
 }
 
 /// `lines` on the band `band`, each where it has no background of its
 /// own, such as a diff's line: the background of every row it wraps to.
 pub(crate) fn on_band(
-    lines: impl IntoIterator<Item = Line<'static>>,
+    lines: impl IntoIterator<Item = impl Into<LookLine>>,
     band: Color,
-) -> impl Iterator<Item = Line<'static>> {
-    lines.into_iter().map(move |mut line| {
-        line.style.bg = line.style.bg.or(Some(band));
+) -> impl Iterator<Item = LookLine> {
+    lines.into_iter().map(move |line| {
+        let mut line = line.into();
+        line.line.style.bg = line.line.style.bg.or(Some(band));
         line
     })
 }

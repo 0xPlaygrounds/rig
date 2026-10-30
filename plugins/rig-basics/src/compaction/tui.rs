@@ -14,7 +14,7 @@ use rig_memory::{Compacted, Summarized, SummaryState, summarized_in_log};
 use rig_tui::ratatui::style::Style;
 use rig_tui::ratatui::text::Line;
 use rig_tui::{
-    EntryView, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender, text_rows,
+    EntryView, LookLine, RenderBatch, RenderSystems, Replaced, Theme, TranscriptRender, text_rows,
 };
 
 use crate::compaction::summary_author;
@@ -163,14 +163,18 @@ fn summary_lines(
     state: Option<&SummaryState>,
     theme: &Theme,
     width: usize,
-) -> Vec<Line<'static>> {
+) -> Vec<LookLine> {
     let style = Style::new().magenta();
-    let mut lines = vec![Line::styled(
+    let mut lines = vec![LookLine::from(Line::styled(
         "The earlier messages were compacted into this summary",
         style.bold(),
-    )];
+    ))];
     let Some(state) = state else {
-        lines.extend(text_rows(entry.text, style.dim()));
+        lines.extend(
+            text_rows(entry.text, style.dim())
+                .into_iter()
+                .map(LookLine::from),
+        );
         return lines;
     };
     lines.extend(rig_tui::markdown::render(
@@ -196,10 +200,7 @@ fn summary_lines(
             "modified-files" => "Changed",
             name => name,
         };
-        lines.push(Line::styled(
-            format!("{label}: {}", values.join(", ")),
-            style.dim(),
-        ));
+        lines.push(Line::styled(format!("{label}: {}", values.join(", ")), style.dim()).into());
     }
     lines
 }

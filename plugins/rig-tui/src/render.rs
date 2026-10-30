@@ -31,7 +31,7 @@ use super::panel::{
 };
 use super::pick::{Choices, InlineStrip, Item, Listing, PickerInput, Row, detail_column};
 use super::renderers::{
-    CallState, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
+    CallState, LookLine, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
 use super::terminal::{Tui, TuiTestScreen};
@@ -759,7 +759,7 @@ pub(crate) fn lay_out_transcript(
             if drawn.is_empty() {
                 continue;
             }
-            let mut lines = vec![Line::default()];
+            let mut lines = vec![LookLine::default()];
             lines.extend(on_band(drawn, sources.theme.tool));
             let marks = [(aside.item(), 0..lines.len())];
             parts.push(Part::rows(&lines, &marks, wrap_width));
@@ -782,7 +782,7 @@ pub(crate) fn lay_out_transcript(
                 let reasoning = view(Role::Reasoning, &partial.reasoning, &[]);
                 extra.extend(reasoning.default_lines());
                 if !partial.text.is_empty() {
-                    extra.push(Line::default());
+                    extra.push(LookLine::default());
                     let marks = look.marks_in(MarkIn::Streaming(call));
                     extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
                 }
@@ -808,7 +808,7 @@ pub(crate) fn lay_out_transcript(
         }
         let stands_for = entries.get(index).map_or(0, |entry| entry.stands_for);
         if stands_for > 0 {
-            extra.extend([Line::default(), compacted_line(stands_for)]);
+            extra.extend([LookLine::default(), compacted_line(stands_for).into()]);
         }
         if !extra.is_empty() {
             parts.push(Part::rows(&extra, &marks, wrap_width));
@@ -1493,11 +1493,11 @@ fn with_keys<'a>(surface: Block<'a>, keys: &str) -> Block<'a> {
 
 /// The messages the agent accepted and has not sent yet, under the
 /// transcript, in the order they came.
-fn inbox_lines(inbox: &[&Incoming], theme: &Theme, lines: &mut Vec<Line<'static>>) {
+fn inbox_lines(inbox: &[&Incoming], theme: &Theme, lines: &mut Vec<LookLine>) {
     if inbox.is_empty() {
         return;
     }
-    lines.push(Line::default());
+    lines.push(LookLine::default());
     for message in inbox {
         let when = match message.mode {
             DeliveryMode::Steer => "steering",

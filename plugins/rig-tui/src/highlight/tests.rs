@@ -1,11 +1,52 @@
 use super::*;
 
-#[test]
-fn code_is_drawn_in_the_terminals_palette_and_plain_text_is_not_highlighted() {
-    let Some(lines) = highlight("fn main() {\n    let x = 1;\n}\n", Language::File("a.rs")) else {
-        return;
+/// `count` lines made from `line`, each `#` numbered: a text long enough
+/// to be kept.
+fn long(line: &str, count: usize) -> String {
+    (0..count)
+        .map(|n| line.replace('#', &n.to_string()))
+        .collect()
+}
+
+/// `text`'s lines colored from its first, by the grammar of `path`.
+fn whole(text: &str, path: &str) -> Vec<Vec<Span<'static>>> {
+    let syntax = syntax(Language::File(path));
+    assert!(syntax.is_some(), "{path} has no grammar");
+    let Some(syntax) = syntax else {
+        return Vec::new();
     };
-    assert_eq!(lines.len(), 3);
+    let mut parser = HighlightLines::new(syntax, &THEME);
+    let lines = LinesWithEndings::from(text).map(|line| spans(&mut parser, line));
+    lines.map(Option::unwrap_or_default).collect()
+}
+
+/// Each line of `code`, colored in the order of `order`, then checked
+/// against the whole text colored from its first line.
+fn colored_as_whole(code: &Code, path: &str, order: impl IntoIterator<Item = usize>) {
+    let whole = whole(&code.0.text, path);
+    for index in order {
+        assert_eq!(code.spans(index).as_ref(), whole.get(index), "line {index}");
+    }
+    for (index, line) in whole.iter().enumerate() {
+        assert_eq!(code.spans(index).as_ref(), Some(line), "line {index}");
+    }
+}
+
+/// How many of `code`'s lines are colored, past those kept apart.
+fn colored(code: &Code) -> usize {
+    code.colors().lines.len()
+}
+
+/// The texts of the kept codes, oldest first.
+fn kept() -> Vec<String> {
+    KEPT.with_borrow(|kept| kept.iter().map(|code| code.0.text.clone()).collect())
+}
+
+#[test]
+fn code_is_drawn_in_the_terminals_palette_and_plain_text_is_not_colored() {
+    let code = Code::new("fn main() {\n    let x = 1;\n}\n", Language::File("a.rs"));
+    assert_eq!(code.len(), 3);
+    let lines: Vec<_> = (0..code.len()).filter_map(|at| code.spans(at)).collect();
     let colors: Vec<Color> = lines
         .iter()
         .flatten()
@@ -17,43 +58,20 @@ fn code_is_drawn_in_the_terminals_palette_and_plain_text_is_not_highlighted() {
             .iter()
             .all(|color| matches!(color, Color::Indexed(_)))
     );
-    let text: String = lines
-        .first()
-        .into_iter()
-        .flatten()
-        .map(|span| span.content.as_ref())
-        .collect();
-    assert_eq!(text, "fn main() {");
-    assert!(highlight("hello", Language::File("notes.txt")).is_none());
-    assert!(highlight("ls -la", Language::Named("bash")).is_some());
-}
-
-/// `count` lines made from `line`, each `#` numbered: a text long enough
-/// to be kept.
-fn long(line: &str, count: usize) -> String {
-    (0..count)
-        .map(|n| line.replace('#', &n.to_string()))
-        .collect()
-}
-
-/// What the kept texts are, oldest first.
-fn kept() -> Vec<String> {
-    KEPT.with_borrow(|kept| kept.iter().map(|text| text.text.clone()).collect())
-}
-
-/// Highlights `code` as `path`'s language, and checks it against a fresh
-/// highlight of the whole text.
-fn same_as_fresh(code: &str, path: &str) {
-    let fresh = syntax(Language::File(path)).and_then(|syntax| fresh(code, syntax));
-    assert!(fresh.is_some(), "{path} has no grammar");
-    assert_eq!(highlight(code, Language::File(path)), fresh, "{code:?}");
+    let line = code.line(0, vec![Span::raw("> ")]);
+    assert_eq!(line.to_string(), "> fn main() {");
+    assert_eq!(line.colored().to_string(), "> fn main() {");
+    let notes = Code::new("hello", Language::File("notes.txt"));
+    assert!(!notes.colored());
+    assert_eq!(notes.spans(0), None);
+    assert!(Code::new("ls -la", Language::Named("bash")).colored());
 }
 
 #[test]
-fn a_growing_text_is_highlighted_as_the_whole_text_is() {
+fn a_block_colored_in_any_order_is_colored_as_the_whole_of_it_is() {
     KEPT.with_borrow_mut(Vec::clear);
-    // A string and a comment opened in one piece and closed in a later
-    // one, and CRLF lines with tabs and wide text.
+    // A string and a comment that span lines, CRLF lines with tabs and
+    // wide text, and a last line with no end.
     let cases = [
         (
             "a.py",
@@ -64,62 +82,97 @@ fn a_growing_text_is_highlighted_as_the_whole_text_is() {
         ),
         (
             "a.rs",
-            format!("/*\n{}*/\nfn main() {{}}\n", long("  comment # ✓\n", 400)),
+            format!("/*\n{}*/\nfn main() {{}}", long("  comment # ✓\n", 40)),
         ),
         ("a.py", long("\tx_# = \"é\"  # note\r\n", 300)),
     ];
     for (path, text) in cases {
-        let cuts = (1..text.len()).step_by(997).chain([text.len()]);
-        for cut in cuts.filter(|cut| text.is_char_boundary(*cut)) {
-            let piece = text.get(..cut).unwrap_or_default();
-            same_as_fresh(piece, path);
-            if piece.len() >= KEPT_FROM {
-                let kept = kept();
-                let last = kept.last().map(String::as_str).unwrap_or_default();
-                assert!(!last.is_empty() && piece.starts_with(last), "{kept:?}");
-            }
-        }
+        let last = text.lines().count() - 1;
+        colored_as_whole(
+            &Code::made(&text, syntax(Language::File(path))),
+            path,
+            0..=last,
+        );
+        let code = Code::made(&text, syntax(Language::File(path)));
+        colored_as_whole(&code, path, [last, 0, last / 2]);
     }
 }
 
 #[test]
-fn a_line_split_between_its_cr_and_its_lf_goes_on_right() {
+fn only_the_lines_drawn_and_those_above_them_are_colored_each_once() {
     KEPT.with_borrow_mut(Vec::clear);
-    let text = long("\tx_# = \"é\"  # note\r\n", 400);
-    let cr = text
-        .get(KEPT_FROM..)
-        .and_then(|rest| rest.find("\r\n"))
-        .map_or(0, |at| KEPT_FROM + at);
-    assert!(cr > 0, "no CRLF past {KEPT_FROM}");
-    for end in [cr, cr + 1, cr + 2, text.len()] {
-        same_as_fresh(text.get(..end).unwrap_or_default(), "a.py");
-    }
-}
-
-#[test]
-fn the_lines_kept_are_not_highlighted_again() {
-    KEPT.with_borrow_mut(Vec::clear);
-    let text = long("x_# = 1\n", 600);
-    same_as_fresh(&text, "a.py");
+    let text = long("x_# = 1\n", 1000);
+    let (code, other) = (
+        Code::new(&text, Language::File("a.py")),
+        Code::new(&format!("# other\n{text}"), Language::File("a.py")),
+    );
+    assert!(code.spans(500).is_some());
+    assert_eq!(colored(&code), 501);
+    assert_eq!(colored(&other), 0);
+    // A line colored is not colored again.
     let marked = vec![Span::raw("kept")];
-    KEPT.with_borrow_mut(|kept| {
-        if let Some(first) = kept.last_mut().and_then(|text| text.lines.first_mut()) {
-            *first = marked.clone();
-        }
-    });
-    let grown = highlight(&format!("{text}y = 2\n"), Language::File("a.py")).unwrap_or_default();
-    assert_eq!(grown.first(), Some(&marked));
-    assert_eq!(grown.len(), 601);
+    if let Some(first) = code.colors().lines.first_mut() {
+        *first = marked.clone();
+    }
+    assert!(code.spans(20).is_some());
+    assert_eq!(code.spans(0), Some(marked));
+    assert_eq!(colored(&code), 501);
 }
 
 #[test]
-fn a_rewritten_text_or_another_language_is_highlighted_afresh() {
+fn a_growing_text_goes_on_from_the_colored_lines_of_the_one_it_extends() {
+    KEPT.with_borrow_mut(Vec::clear);
+    let text = format!(
+        "s = '''\n{}'''\nx = 1\n",
+        long("\tin the string # ✓\r\n", 400)
+    );
+    let mut before = 0;
+    let cuts = (KEPT_FROM..text.len()).step_by(997).chain([text.len()]);
+    for cut in cuts.filter(|cut| text.is_char_boundary(*cut)) {
+        let piece = text.get(..cut).unwrap_or_default();
+        let code = Code::new(piece, Language::File("a.py"));
+        assert!(colored(&code) >= before, "nothing taken at {cut}");
+        // The end on screen, as a file being written streams in.
+        let last = code.len().saturating_sub(1);
+        colored_as_whole(&code, "a.py", [last]);
+        before = colored(&code);
+        assert_eq!(kept().last().map(String::as_str), Some(piece));
+    }
+    // Cut between a line's CR and its LF, then on.
+    let cr = text.get(KEPT_FROM..).and_then(|rest| rest.find("\r\n"));
+    let cr = cr.map_or(0, |at| KEPT_FROM + at);
+    for end in [cr, cr + 1, cr + 2] {
+        let code = Code::new(text.get(..end).unwrap_or_default(), Language::File("a.py"));
+        colored_as_whole(&code, "a.py", [code.len().saturating_sub(1)]);
+    }
+}
+
+#[test]
+fn an_unfinished_last_line_is_not_taken_by_a_text_that_ends_otherwise() {
+    KEPT.with_borrow_mut(Vec::clear);
+    let lines = long("x_# = 1\n", 600);
+    let open = Code::new(&format!("{lines}s = '''abc"), Language::File("a.py"));
+    colored_as_whole(&open, "a.py", [open.len() - 1]);
+    let closed = Code::new(&format!("{lines}# abc"), Language::File("a.py"));
+    assert_eq!(colored(&closed), 600);
+    colored_as_whole(&closed, "a.py", [closed.len() - 1]);
+}
+
+#[test]
+fn a_rewritten_text_or_another_language_is_colored_afresh_and_the_same_is_shared() {
     KEPT.with_borrow_mut(Vec::clear);
     let text = long("x_# = 1  # one\n", 400);
-    same_as_fresh(&text, "a.py");
-    same_as_fresh(&format!("\"\"\"{text}"), "a.py");
-    same_as_fresh(&format!("{text}y = 2\n"), "a.rb");
-    same_as_fresh(&format!("{text}y = 2\n"), "a.py");
+    let code = Code::new(&text, Language::File("a.py"));
+    colored_as_whole(&code, "a.py", [399]);
+    let rewritten = Code::new(&format!("\"\"\"{text}"), Language::File("a.py"));
+    assert_eq!(colored(&rewritten), 0);
+    colored_as_whole(&rewritten, "a.py", [400]);
+    let ruby = Code::new(&format!("{text}y = 2\n"), Language::File("a.rb"));
+    assert_eq!(colored(&ruby), 0);
+    colored_as_whole(&ruby, "a.rb", [400]);
+    let again = Code::new(&text, Language::File("a.py"));
+    assert!(Arc::ptr_eq(&again.0, &code.0));
+    assert_eq!(colored(&again), 400);
 }
 
 #[test]
@@ -127,52 +180,102 @@ fn texts_growing_in_turn_each_go_on_from_their_own() {
     KEPT.with_borrow_mut(Vec::clear);
     let one = format!("s = '''\n{}", long("in a string #\n", 400));
     let two = long("t_# = 2\n", 600);
+    let mut before = [0, 0];
     for cut in (KEPT_FROM..one.len().min(two.len())).step_by(1499) {
-        same_as_fresh(one.get(..cut).unwrap_or_default(), "a.py");
-        same_as_fresh(two.get(..cut).unwrap_or_default(), "a.py");
+        for (text, before) in [&one, &two].into_iter().zip(&mut before) {
+            let code = Code::new(text.get(..cut).unwrap_or_default(), Language::File("a.py"));
+            assert!(colored(&code) >= *before, "nothing taken at {cut}");
+            colored_as_whole(&code, "a.py", [code.len() - 1]);
+            *before = colored(&code);
+        }
     }
     assert_eq!(kept().len(), 2, "{:?}", kept());
 }
 
 #[test]
-fn the_kept_texts_stay_within_their_bounds_oldest_dropped_first() {
+fn the_kept_codes_stay_within_their_bounds_oldest_dropped_first() {
     KEPT.with_borrow_mut(Vec::clear);
     let python = syntax(Language::File("a.py"));
     assert!(python.is_some(), "no grammar for Python");
-    let Some(syntax) = python else {
-        return;
-    };
-    // Stand-ins said to take half the bound each, then one past it.
-    let stand_in = |text: &str, bytes| Kept {
-        syntax,
-        text: text.to_owned(),
-        lines: Vec::new(),
-        state: HighlightLines::new(syntax, &THEME).state(),
-        bytes,
+    // Stand-ins, each with a text of half the bound, then one past it.
+    let stand_in = |name: &str, bytes: usize| {
+        let text = format!("{name}\n{}", "#".repeat(bytes));
+        Code::made(&text, python)
     };
     KEPT.with_borrow_mut(|kept| {
-        kept.extend(["one\n", "two\n", "three\n"].map(|text| stand_in(text, KEPT_BYTES / 2)));
+        kept.extend(["one", "two", "three"].map(|name| stand_in(name, KEPT_BYTES / 2)));
     });
     let text = long("x_# = 1\n", 600);
-    same_as_fresh(&text, "a.py");
-    assert_eq!(kept(), ["three\n", text.as_str()]);
-    KEPT.with_borrow_mut(|kept| kept.insert(0, stand_in("big\n", KEPT_BYTES + 1)));
-    same_as_fresh(&format!("{text}y = 2\n"), "a.py");
-    assert_eq!(kept().len(), 2);
-    assert!(!kept().contains(&"big\n".to_owned()));
-    // A text that alone would pass the bound is not kept, and leaves the
+    Code::new(&text, Language::File("a.py"));
+    let starts = || {
+        kept()
+            .iter()
+            .map(|text| text.chars().take(5).collect::<String>())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(starts(), ["three", "x_0 ="]);
+    // A code that alone passes the bound is not kept, and leaves the
     // others be.
-    KEPT.with_borrow_mut(|kept| {
-        kept.clear();
-        kept.push(stand_in("other\n", 1));
-        let mut full = stand_in("x_0 = 1\n", KEPT_BYTES);
-        full.lines.push(Vec::new());
-        kept.push(full);
-    });
-    highlight(&text, Language::File("a.py"));
-    assert_eq!(kept(), ["other\n"]);
+    let big = format!("{}\n", "x".repeat(KEPT_BYTES));
+    Code::new(&big, Language::File("a.py"));
+    assert_eq!(starts(), ["three", "x_0 ="]);
     for n in 0..KEPT_COUNT + 3 {
-        same_as_fresh(&long(&format!("v{n}_# = 1\n"), 500), "a.py");
+        Code::new(&long(&format!("v{n}_# = 1\n"), 500), Language::File("a.py"));
     }
     assert_eq!(kept().len(), KEPT_COUNT);
+}
+
+#[test]
+fn a_transcript_colors_only_the_code_on_screen_and_draws_it_colored() {
+    use crate::Highlight;
+    use crate::transcript::{Part, Scroll, Transcript};
+    use crate::wrap::wrap;
+    KEPT.with_borrow_mut(Vec::clear);
+    let line = "x_# = 'a string long enough to wrap at the width of the pane'\n";
+    let top = Code::new(&long(line, 300), Language::File("a.py"));
+    let bottom = Code::new(&long(&format!("y{line}"), 50), Language::File("a.py"));
+    fn lines(code: &Code) -> impl Iterator<Item = LookLine> + '_ {
+        (0..code.len()).map(|at| code.line(at, vec![Span::raw("  ")]))
+    }
+    let all: Vec<LookLine> = lines(&top).chain(lines(&bottom)).collect();
+    let width = 40;
+    let parts = [Part::rows(&all, &[], width)];
+    let lit = [Highlight {
+        text: "y4".to_owned(),
+        style: Style::new().reversed(),
+        match_case: false,
+        spans: Vec::new(),
+    }];
+    for highlights in [&[][..], &lit] {
+        let visible =
+            Transcript::default().visible(&parts, (40, 10), &mut Scroll::default(), highlights);
+        assert_eq!(colored(&top), 0);
+        assert_eq!(colored(&bottom), 50);
+        let rows: Vec<Line<'static>> = lines(&bottom)
+            .flat_map(|line| wrap(&line.colored(), width))
+            .map(|(row, _)| row)
+            .collect();
+        let shown = rows
+            .get(rows.len() - visible.rows.len()..)
+            .unwrap_or_default();
+        let text =
+            |rows: &[Line<'static>]| rows.iter().map(ToString::to_string).collect::<Vec<_>>();
+        assert_eq!(text(&visible.rows), text(shown));
+        let spans = visible.rows.iter().flat_map(|row| &row.spans);
+        assert!(spans.clone().any(|span| span.style.fg.is_some()));
+        if highlights.is_empty() {
+            assert_eq!(visible.rows, shown);
+        } else {
+            let reversed = |span: &&Span<'_>| {
+                span.style
+                    .add_modifier
+                    .contains(ratatui::style::Modifier::REVERSED)
+            };
+            assert!(
+                spans
+                    .filter(reversed)
+                    .all(|span| span.content.eq_ignore_ascii_case("y4"))
+            );
+        }
+    }
 }

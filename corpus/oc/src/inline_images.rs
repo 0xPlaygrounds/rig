@@ -518,7 +518,8 @@ fn draw_images(mut images: ResMut<Images>, mut batch: ResMut<RenderBatch>) {
     let width = batch.width;
     for (content, output) in batch.contents_mut(ContentKind::Image) {
         if let ContentBlock::Image(image) = content.view().block {
-            output.lines = images.lines(image, width).0;
+            let lines = images.lines(image, width).0;
+            output.lines = lines.into_iter().map(Into::into).collect();
         }
     }
 }

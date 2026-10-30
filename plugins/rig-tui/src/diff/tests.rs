@@ -2,6 +2,17 @@ use rig_core::tool::{Hunk, HunkLine, Lines};
 
 use super::*;
 
+/// [`unified_lines`] as drawn, colored.
+fn drawn_unified(text: &str, theme: &Theme) -> Option<Vec<Line<'static>>> {
+    unified_lines(text, theme).map(|lines| lines.iter().map(LookLine::colored).collect())
+}
+
+/// [`change_lines`] as drawn, colored.
+fn drawn_change(change: &FileChange, theme: &Theme) -> Vec<Line<'static>> {
+    let lines = change_lines(change, theme);
+    lines.iter().map(LookLine::colored).collect()
+}
+
 const EDIT: &str = "Edited a.rs: line 10.
 --- a.rs
 +++ a.rs
@@ -15,7 +26,7 @@ const EDIT: &str = "Edited a.rs: line 10.
 #[test]
 fn each_line_has_its_numbers_and_its_band() {
     let theme = Theme::on((0, 0, 0), true);
-    let Some(lines) = unified_lines(EDIT, &theme) else {
+    let Some(lines) = drawn_unified(EDIT, &theme) else {
         return;
     };
     let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
@@ -47,7 +58,7 @@ fn each_line_has_its_numbers_and_its_band() {
 #[test]
 fn only_the_words_a_line_changed_are_marked() {
     let theme = Theme::on((0, 0, 0), true);
-    let lines = unified_lines(EDIT, &theme).unwrap_or_default();
+    let lines = drawn_unified(EDIT, &theme).unwrap_or_default();
     let marked = |at: usize, shade| {
         let spans = lines
             .get(at)
@@ -65,7 +76,7 @@ fn only_the_words_a_line_changed_are_marked() {
 #[test]
 fn a_removed_line_like_a_file_header_stays_a_removed_line() {
     let diff = "@@ -1,2 +1,1 @@\n--- not a file\n kept\n";
-    let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+    let lines = drawn_unified(diff, &Theme::default()).unwrap_or_default();
     let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
     assert_eq!(
         texts.get(1).map(String::as_str),
@@ -84,7 +95,7 @@ fn a_changes_lines_are_its_hunks_in_its_files_colors() {
             HunkLine::Added("    let last = end;\n".into()),
         ],
     }]);
-    let lines = change_lines(&change, &Theme::on((0, 0, 0), true));
+    let lines = drawn_change(&change, &Theme::on((0, 0, 0), true));
     let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
     assert!(
         texts
@@ -126,7 +137,7 @@ fn a_hunk_cut_short_ends_at_its_first_line_that_cannot_be_its() {
         let output = format!(
             "@@ -1,19 +1,57 @@\n use std::fs;\n{end}\n+literal\n@@ -30,1 +60,1 @@\n kept\n"
         );
-        let lines = unified_lines(&output, &Theme::default()).unwrap_or_default();
+        let lines = drawn_unified(&output, &Theme::default()).unwrap_or_default();
         let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
         assert_eq!(
             texts.get(2..).unwrap_or_default(),
@@ -149,7 +160,7 @@ fn a_line_fits_its_hunk_only_while_its_side_has_lines_left() {
         ("@@ -1,1 +1,2 @@\n-old\n context\n", "     context"),
     ];
     for (hunk, last) in hunks {
-        let lines = unified_lines(hunk, &Theme::default()).unwrap_or_default();
+        let lines = drawn_unified(hunk, &Theme::default()).unwrap_or_default();
         let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
         assert_eq!(texts.last().map(String::as_str), Some(last), "{hunk}");
     }
@@ -191,7 +202,7 @@ fn a_blank_line_is_context_only_when_its_hunk_goes_on_after_it() {
         ),
     ];
     for (diff, drawn) in diffs {
-        let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+        let lines = drawn_unified(diff, &Theme::default()).unwrap_or_default();
         let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
         assert_eq!(texts.get(1..).unwrap_or_default(), drawn, "{diff}");
     }
@@ -200,7 +211,7 @@ fn a_blank_line_is_context_only_when_its_hunk_goes_on_after_it() {
 #[test]
 fn a_line_number_past_the_largest_stays_there() {
     let diff = format!("@@ -{},2 +1 @@\n-x\n-y\n", usize::MAX);
-    let lines = unified_lines(&diff, &Theme::default()).unwrap_or_default();
+    let lines = drawn_unified(&diff, &Theme::default()).unwrap_or_default();
     let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
     let largest = usize::MAX.to_string();
     let gutter = format!("    {largest} {}", " ".repeat(largest.len()));
@@ -213,7 +224,7 @@ fn a_line_number_past_the_largest_stays_there() {
 #[test]
 fn a_missing_newline_note_keeps_its_hunk_open() {
     let diff = "@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n";
-    let lines = unified_lines(diff, &Theme::default()).unwrap_or_default();
+    let lines = drawn_unified(diff, &Theme::default()).unwrap_or_default();
     let texts: Vec<String> = lines.iter().map(ToString::to_string).collect();
     assert_eq!(
         texts.get(1..).unwrap_or_default(),

@@ -2,8 +2,7 @@
 //! task's title or the agent a call names, then what the tool answered.
 
 use rig_harness::prelude::*;
-use rig_tui::ratatui::text::Line;
-use rig_tui::{RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
+use rig_tui::{LookLine, RenderBatch, RenderSystems, ToolCallView, TranscriptRender};
 
 use super::{MESSAGE, TASK, WAIT};
 
@@ -30,13 +29,13 @@ fn draw(mut batch: ResMut<RenderBatch>) {
 }
 
 /// The tool's name and its argument `shown`, then the result.
-fn look(view: &ToolCallView<'_>, shown: &str) -> Vec<Line<'static>> {
+fn look(view: &ToolCallView<'_>, shown: &str) -> Vec<LookLine> {
     let title = format!(
         "{} {}",
         view.name(),
         view.argument(shown).unwrap_or_default()
     );
-    let mut lines = vec![view.header(title, "")];
+    let mut lines = vec![view.header(title, "").into()];
     lines.extend(view.result_lines());
     lines
 }

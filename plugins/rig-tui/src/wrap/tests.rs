@@ -38,3 +38,28 @@ fn a_list_item_wraps_under_its_text() {
         .collect();
     assert_eq!(rows, ["• one two", "  three"]);
 }
+
+#[test]
+fn a_line_wraps_by_its_text_alone_however_its_spans_split_it() {
+    // A ZWJ sequence, a combining accent, a variation selector and a
+    // keycap, each split across spans in the line cut into characters.
+    let text = "let s = \"👩\u{200d}💻 e\u{301}  ✌\u{fe0f} 1\u{fe0f}\u{20e3}\" + words that go on";
+    let (dim, bold) = (Style::new().dim(), Style::new().bold());
+    let pieces = text.chars().enumerate().map(|(at, ch)| {
+        let style = if at % 2 == 0 { dim } else { bold };
+        ratatui::text::Span::styled(ch.to_string(), style)
+    });
+    let split = Line::from(pieces.collect::<Vec<_>>());
+    let rows = |line: &Line<'_>, width| {
+        let rows = wrap(line, width).into_iter();
+        rows.map(|(row, joint)| (row.to_string(), joint))
+            .collect::<Vec<_>>()
+    };
+    for width in 1..=text.len() {
+        assert_eq!(
+            rows(&Line::from(text), width),
+            rows(&split, width),
+            "{width}"
+        );
+    }
+}

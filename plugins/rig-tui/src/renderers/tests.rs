@@ -81,7 +81,8 @@ fn reasoning_is_dimmed_markdown() {
         "{lines:?}"
     );
     let dim_italic = Modifier::DIM | Modifier::ITALIC;
-    let drawn = |line: &Line<'_>| {
+    let drawn = |line: &crate::LookLine| {
+        let line = line.colored();
         let mut spans = line.spans.iter();
         spans.all(|span| {
             line.style
@@ -124,6 +125,67 @@ fn a_calls_row_is_tinted_by_where_it_stands_and_has_no_marker() {
     let said = |index: usize| rows.get(index).map(|(row, _)| row.to_string());
     assert!(said(1).is_some_and(|row| row.ends_with("· running")));
     assert!(said(3).is_some_and(|row| row.ends_with("· failed")));
+}
+
+#[test]
+fn a_line_of_code_is_drawn_in_its_colors_under_the_styles_around_and_over_it() {
+    let code = Code::new(
+        "let x = 1; // one\n",
+        crate::highlight::Language::File("a.rs"),
+    );
+    let colors = code.spans(0).unwrap_or_default();
+    assert!(
+        colors.iter().any(|span| span.style.fg.is_some()),
+        "{colors:?}"
+    );
+    let spans = |line: &Line<'static>| -> Vec<(String, Style)> {
+        let spans = line.spans.iter();
+        spans
+            .map(|span| (span.content.to_string(), span.style))
+            .collect()
+    };
+    // After a line number, as a read draws it.
+    let number = Span::from("  7  ").dim();
+    let numbered = code.line(0, vec![number.clone()]).colored();
+    let mut expected = vec![number];
+    expected.extend(colors.iter().cloned());
+    assert_eq!(spans(&numbered), spans(&Line::from(expected)));
+    // In a header, with its state after it.
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
+    let view = ToolCallView::new(&call, None, CallState::Running(None));
+    let header = view.header_code("$", &code, 0);
+    let drawn = header.colored();
+    assert_eq!(drawn.to_string(), header.to_string());
+    assert_eq!(drawn.to_string(), " $ let x = 1; // one · running");
+    assert_eq!(drawn.style, view.header("$", "").style);
+    assert_eq!(drawn.spans.last(), Some(&Span::from(" · running").italic()));
+    assert!(drawn.spans.iter().any(|span| span.style.fg.is_some()));
+    // Under a shade on a word and a background, as a diff draws them.
+    let shade = Style::new().bg(ratatui::style::Color::Indexed(1));
+    let marked = LookLine {
+        line: Line::from(vec![
+            Span::raw("+ let x = "),
+            Span::styled("1", shade),
+            Span::raw("; // one"),
+        ])
+        .bg(ratatui::style::Color::Indexed(2)),
+        code: Some(CodeLine {
+            code: code.clone(),
+            index: 0,
+            at: 2,
+        }),
+    };
+    let drawn = marked.colored();
+    assert_eq!(drawn.to_string(), "+ let x = 1; // one");
+    assert_eq!(drawn.style, marked.line().style);
+    let one = drawn.spans.iter().find(|span| span.content == "1");
+    let color = colors.iter().find(|span| span.content.contains('1'));
+    let laid = color.map(|color| color.style.patch(shade));
+    assert_eq!(one.map(|span| span.style), laid);
+    assert!(laid.is_some_and(|laid| laid.fg.is_some() && laid.bg == shade.bg));
 }
 
 #[test]
@@ -264,7 +326,7 @@ struct Label(&'static str);
 
 fn label_tools(mut batch: ResMut<RenderBatch>, label: Res<Label>) {
     for (_, output) in batch.tools_mut("probe") {
-        output.lines = vec![Line::from(label.0)];
+        output.lines = vec![Line::from(label.0).into()];
     }
 }
 
@@ -378,7 +440,7 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
             TranscriptRender,
             (|mut batch: ResMut<RenderBatch>| {
                 for (_, output) in batch.tools_mut("probe") {
-                    output.lines = vec![Line::from("replacement")];
+                    output.lines = vec![Line::from("replacement").into()];
                 }
             })
             .in_set(RenderSystems::Render)
@@ -419,7 +481,7 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
 fn label_by_argument(mut batch: ResMut<RenderBatch>) {
     for (call, output) in batch.tools_mut("probe") {
         let n = call.call.function.arguments.get("n").cloned();
-        output.lines = vec![Line::from(format!("probe {}", n.unwrap_or_default()))];
+        output.lines = vec![Line::from(format!("probe {}", n.unwrap_or_default())).into()];
     }
 }
 
