@@ -203,7 +203,14 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
         let close = acp::CloseSessionRequest::new(id.clone());
         assert!(driven.cx.send_request(close).block_task().await.is_ok());
         // Counted once the close answered, after every update of the session:
-        // the history first, then each call once.
+        // the history first, then each call once, the interrupted one failed
+        // once.
+        let failures = driven.updates(&id).into_iter().filter(|update| {
+            matches!(update, acp::SessionUpdate::ToolCallUpdate(update)
+                if update.tool_call_id.to_string() == interrupted
+                    && update.fields.status == Some(acp::ToolCallStatus::Failed))
+        });
+        assert_eq!(failures.count(), 1);
         let replayed = announced(before);
         assert_eq!(replayed.get(..live.len()), Some(live.as_slice()));
         let unique: std::collections::HashSet<_> = replayed.iter().collect();

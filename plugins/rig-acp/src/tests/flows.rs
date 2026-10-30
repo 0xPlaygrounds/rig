@@ -492,12 +492,46 @@ fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_sess
             .position(|event| matches!(event, Event::Update(of, _) if *of == id));
         assert!(opened.is_some() && first > opened, "{opened:?} {first:?}");
         assert!(driven.prompt(&id, "/mcp").await.is_ok());
-        // A call no reply of the conversation asked for is not shown.
+        // A call a plugin starts before its reply ended is not shown, even
+        // with the id of a call the conversation has.
         let shown = tool_steps(driven, &id).len();
-        assert!(driven.prompt(&id, "/early").await.is_ok());
+        assert!(driven.prompt(&id, "/early m1").await.is_ok());
         assert_eq!(tool_steps(driven, &id).len(), shown);
         let said = driven.said(&id);
         assert!(said.contains("files (client): connected, 1 tool"), "{said}");
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_failed_turn_tells_the_client_its_message_was_taken_out() {
+    let place = Place::new("failed");
+    let router = drive(&place, full_client(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/fail").await);
+        assert!(driven.prompt(&id, "Summarize the fixture.").await.is_err());
+        // In the reply, or as a notice once it was answered.
+        let taken = |seen: &Seen| {
+            seen.events.iter().any(|event| match event {
+                Event::Update(of, acp::SessionUpdate::AgentMessageChunk(chunk)) => {
+                    *of == id
+                        && text(&chunk.content).is_some_and(|said| {
+                            said.contains("taken out of the conversation")
+                                && said.contains("Summarize the fixture.")
+                        })
+                }
+                Event::Update(of, acp::SessionUpdate::Notice(notice)) => {
+                    *of == id
+                        && notice.title.contains("taken out of the conversation")
+                        && notice.title.contains("Summarize the fixture.")
+                }
+                _ => false,
+            })
+        };
+        assert!(driven.until(taken).await, "{}", told(driven, &id));
     });
     assert!(router.is_some());
 }

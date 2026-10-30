@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use agent_client_protocol::schema::{ProtocolVersion, v1 as acp};
 use agent_client_protocol::{Agent, Client, ConnectionTo};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
@@ -102,6 +102,12 @@ fn agent() {
         calls("g1", "read", json!({ "path": "guarded.txt" })),
         reply("read it for you"),
     ]);
+    // A provider that fails every call, retries included.
+    let fail = script(
+        (0..8)
+            .map(|_| vec![MockStreamEvent::error("overloaded")])
+            .collect(),
+    );
     let guarded = script(vec![
         calls("g1", "read", json!({ "path": "guarded.txt" })),
         reply("guarded done"),
@@ -118,6 +124,7 @@ fn agent() {
         ("test/reply", &replies),
         ("test/read", &read),
         ("test/again", &again),
+        ("test/fail", &fail),
         ("test/delegate", &delegate),
         ("test/sub", &sub),
         ("test/guarded", &guarded),
@@ -186,15 +193,16 @@ fn carry_on(restored: On<Add<Restored>>, turns: Query<(), With<TurnOf>>, mut com
     }
 }
 
-/// `/early`: a call a plugin starts before the reply that asks for it ended,
-/// as one that starts reads early does, withdrawn at once.
+/// `/early <id>`: a call with the id `id` a plugin starts before the reply
+/// that asks for it ended, as one that starts reads early does, withdrawn
+/// at once.
 fn early(In(args): In<CommandArgs>, mut commands: Commands) {
     let Ok(read) = rig_harness::rig_core::message::ToolName::new("read") else {
         return;
     };
     let function =
         rig_harness::rig_core::message::ToolFunction::new(read, json!({ "path": "fixture.txt" }));
-    let call = rig_harness::rig_core::message::ToolCall::from_wire("e1", function);
+    let call = rig_harness::rig_core::message::ToolCall::from_wire(args.args.trim(), function);
     let mut early = commands.spawn((
         ToolRequest { call },
         Effect::with_parent_id(None),

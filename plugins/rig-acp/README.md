@@ -92,7 +92,9 @@ to use a new one.
   yours and the project's for that session, which `/mcp` and a notice show.
   SSE servers are not supported.
 - **Notices:** what rig tells you (an MCP server that failed, a command's
-  output) goes into the reply, or as a notice to an editor that shows them.
+  output, a message a failed turn took out of the conversation, with its
+  text to send again) goes into the reply, or as a notice to an editor that
+  shows them.
 
 Not supported: the editor's file system and terminal (rig runs its own
 tools), additional directories, session modes, audio, and ACP v2.
