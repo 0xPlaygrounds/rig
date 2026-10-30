@@ -103,9 +103,48 @@ an unapproved server. Approve one from a script with
 `rig -p '/mcp approve files'`, or name the server in your own
 `$RIG_HOME/mcp.json` instead.
 
+## Servers a client names
+
+A front for a client of rig's, such as `rig acp` for an editor
+([rig-acp](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-acp)), hands rig the MCP servers the client names for the
+session, in code:
+
+```rust
+use rig_harness::prelude::*;
+use rig_mcp_client::{AddMcpServer, McpCorePlugin, ServerSpec};
+
+fn plugin(app: &mut App) {
+    if !app.is_plugin_added::<McpCorePlugin>() {
+        app.add_plugins(McpCorePlugin);
+    }
+    // Before `Startup`, when the files' servers start.
+    app.add_systems(PreStartup, |mut commands: Commands| {
+        commands.trigger(AddMcpServer {
+            name: "files".into(),
+            spec: Ok(ServerSpec::Http {
+                url: "https://example.com/mcp".into(),
+                headers: Default::default(),
+            }),
+        });
+    });
+}
+```
+
+`McpCorePlugin` connects such servers and offers `/mcp`, and reads no
+`mcp.json`: the user's servers join only when `McpPlugin`, which adds it,
+is on. A client's server is never saved, needs no approval, takes its values
+as they are (no `${VAR}`), and shows in `/mcp` as `files (client)`. It takes
+its name for the session: a server of either file of that name does not
+start, even when the client's fails, and a notice and `/mcp` say so
+(`files (user): does not run; the client's of that name does`). A second
+server of one name from the client is refused with a notice. `spec` is
+`Err(why)` for a declaration that names no way rig can reach (an SSE server):
+it is listed invalid, and still holds its name. A run that keeps no session,
+such as `rig acp`'s own, starts no server of the files.
+
 ## `/mcp`
 
-- `/mcp`: each server, its file (`user` or `project`) and its state:
+- `/mcp`: each server, its file (`user` or `project`) or `client`, and its state:
   connected with how many tools, connecting, retrying with the last error,
   not approved, denied, disabled, or invalid with why.
 - `/mcp add [--user|--project] <name> <command> [args…]` and

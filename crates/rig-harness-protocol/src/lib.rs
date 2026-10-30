@@ -476,6 +476,12 @@ impl RunDir {
         Some(Self(PathBuf::from(path)))
     }
 
+    /// The run directory at `path`, such as one a supervisor other than
+    /// the launcher makes for an agent it starts and names in [`env::RUN`].
+    pub fn at(path: impl Into<PathBuf>) -> Self {
+        Self(path.into())
+    }
+
     /// The directory itself.
     pub fn path(&self) -> &Path {
         &self.0
@@ -520,6 +526,113 @@ impl RunDir {
     pub fn groups(&self) -> PathBuf {
         self.0.join("groups")
     }
+
+    /// Kills the process groups the agent listed in [`Self::groups`] and
+    /// left running, as it does when killed by `SIGKILL`; a clean exit
+    /// lists none. A group is killed only while one of its processes, its
+    /// leader or one the leader left behind as it exited, carries
+    /// [`env::PROCESS_LEDGER`] naming the list, so an id the system gave
+    /// another process since is left alone. `kill(1)` sends the signal,
+    /// so this keeps to std.
+    ///
+    /// # Errors
+    ///
+    /// When the list cannot be read or removed.
+    pub fn kill_left_groups(&self) -> std::io::Result<()> {
+        let ledger = self.groups();
+        let listed = match std::fs::read_to_string(&ledger) {
+            Ok(listed) => listed,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        // A group id of 0 or 1 would name the caller's own group or every
+        // process.
+        let groups: Vec<String> = listed
+            .lines()
+            .filter_map(|id| id.trim().parse::<i32>().ok())
+            .filter(|&id| id > 1 && members(id).into_iter().any(|pid| marked(pid, &ledger)))
+            .map(|id| format!("-{id}"))
+            .collect();
+        if !groups.is_empty() {
+            child("kill")
+                .args(["-s", "KILL", "--"])
+                .args(&groups)
+                .stderr(std::process::Stdio::null())
+                .status()
+                .ok();
+        }
+        match std::fs::remove_file(&ledger) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
+        }
+    }
+}
+
+/// The processes of the group `group`, its leader first: Linux reads each
+/// process's group in `/proc`, macOS through `ps`; elsewhere only the
+/// leader.
+fn members(group: i32) -> Vec<i32> {
+    let mut members = vec![group];
+    let of_group = |pid: i32, pgid: i32| (pgid == group && pid != group).then_some(pid);
+    if cfg!(target_os = "linux") {
+        let entries = std::fs::read_dir("/proc").into_iter().flatten().flatten();
+        members.extend(entries.filter_map(|entry| {
+            let pid = entry.file_name().to_str()?.parse().ok()?;
+            let stat = std::fs::read_to_string(entry.path().join("stat")).ok()?;
+            // After the command's closing parenthesis: state, parent, group.
+            let (_, fields) = stat.rsplit_once(')')?;
+            of_group(pid, fields.split_whitespace().nth(2)?.parse().ok()?)
+        }));
+    } else if cfg!(target_os = "macos") {
+        let listed = child("ps").args(["-A", "-o", "pid=,pgid="]).output();
+        let listed = listed.map(|listed| String::from_utf8_lossy(&listed.stdout).into_owned());
+        members.extend(listed.unwrap_or_default().lines().filter_map(|line| {
+            let mut ids = line.split_whitespace().map(str::parse::<i32>);
+            of_group(ids.next()?.ok()?, ids.next()?.ok()?)
+        }));
+    }
+    members
+}
+
+/// Whether the process `id` carries [`env::PROCESS_LEDGER`] set to
+/// `ledger`: it is a process the agent started, or one of its children.
+/// Linux reads its environment in `/proc`, macOS through `ps -E`;
+/// elsewhere no process is.
+fn marked(id: i32, ledger: &Path) -> bool {
+    let mark = format!("{}={}", env::PROCESS_LEDGER, ledger.display());
+    if cfg!(target_os = "linux") {
+        let environ = std::fs::read(format!("/proc/{id}/environ"));
+        environ.is_ok_and(|environ| {
+            environ
+                .split(|&byte| byte == 0)
+                .any(|entry| entry == mark.as_bytes())
+        })
+    } else if cfg!(target_os = "macos") {
+        let shown = child("ps")
+            .args(["-E", "-ww", "-o", "command=", "-p", &id.to_string()])
+            .stderr(std::process::Stdio::null())
+            .output();
+        // `ps -E` appends each variable after a space.
+        let entry = format!(" {mark}");
+        shown.is_ok_and(|shown| {
+            let shown = String::from_utf8_lossy(&shown.stdout);
+            shown
+                .match_indices(&entry)
+                .filter_map(|(at, _)| shown.get(at + entry.len()..))
+                .any(|rest| rest.is_empty() || rest.starts_with([' ', '\n']))
+        })
+    } else {
+        false
+    }
+}
+
+/// `program`, without the plugins' secrets in its environment.
+fn child(program: &str) -> std::process::Command {
+    let mut command = std::process::Command::new(program);
+    for secret in secret_variables() {
+        command.env_remove(secret);
+    }
+    command
 }
 
 /// A session's directory. The agent keeps the session there through its
@@ -677,6 +790,20 @@ impl SessionDir {
                 removed => removed,
             },
         }
+    }
+
+    /// Writes `directory` as the one the session runs in
+    /// ([`Self::directory`]), beside the file and renamed over it, so a
+    /// reader sees the old one or the new one, never a part.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be written.
+    pub fn set_working_directory(&self, directory: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(&self.0)?;
+        let part = self.0.join("directory.part");
+        std::fs::write(&part, directory.to_string_lossy().as_bytes())?;
+        std::fs::rename(part, self.directory())
     }
 
     /// The plain-text file of [`Self::name`].

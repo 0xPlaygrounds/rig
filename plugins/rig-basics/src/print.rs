@@ -830,6 +830,14 @@ struct Agents<'w, 's> {
     choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
     /// Why an agent's model was refused, as its notice said.
     refused: Query<'w, 's, &'static ModelRefused>,
+    work: Work<'w, 's>,
+    keep: Query<'w, 's, (), With<KeepRunning>>,
+}
+
+/// The agents' work in progress, for a front nobody sits at that waits for
+/// the work it sent to settle, as a headless run does.
+#[derive(SystemParam)]
+pub struct Work<'w, 's> {
     /// Running turns; a restored one the kernel stops is none (one that goes
     /// on is no longer `Restored`).
     turns: Query<'w, 's, (), (With<TurnOf>, Without<Restored>)>,
@@ -853,14 +861,13 @@ struct Agents<'w, 's> {
             Or<(Without<Started>, With<Outcome>)>,
         ),
     >,
-    keep: Query<'w, 's, (), With<KeepRunning>>,
 }
 
-impl Agents<'_, '_> {
+impl Work<'_, '_> {
     /// Whether no agent works: no turn, task, held effect or message on its
     /// way. An open effect that started and waits on the world outside,
     /// such as a question nobody answers, is no work.
-    fn idle(&self) -> bool {
+    pub fn idle(&self) -> bool {
         self.turns.is_empty()
             && self.messages.is_empty()
             && self.held.is_empty()
@@ -958,7 +965,7 @@ fn drive(
             // it; a command may start none, or other work, such as a
             // sign-in. A subagent's answer starts another turn of the agent
             // that started it.
-            if !agents.idle() {
+            if !agents.work.idle() {
                 run.step = Step::Sent { agent };
                 return;
             }
@@ -1030,7 +1037,7 @@ fn send(
         // Work the restored session left runs, such as a turn a plugin
         // carries on after a crash: it finishes, and its answer is the
         // run's.
-        None if !agents.idle() => run.step = Step::Sent { agent },
+        None if !agents.work.idle() => run.step = Step::Sent { agent },
         // The run restarted on a reload with nothing left to do.
         None if restarted => return Some((ended(Some(agent), 0), Reason::Worst)),
         None => {

@@ -54,6 +54,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
             "rig_basics::telemetry::effect_log::EffectLogPlugin",
             "rig_basics::telemetry::diagnostics::DiagnosticsPlugin",
             "rig_mcp_client::McpPlugin",
+            "rig_acp::AcpPlugin",
             "rig_claude_cloak::ClaudeCloakPlugin",
         ]
     );

@@ -214,6 +214,15 @@ fn write_servers(path: &Path, servers: Value) {
 /// An app with the plugin on `project`, its home inside it, `settings`, and
 /// the notices it writes collected; `invoked` makes it a headless run.
 fn app_in(project: &Path, settings: &str, invoked: Option<Invocation>) -> (App, Receiver<()>) {
+    app_with::<McpPlugin>(project, settings, invoked)
+}
+
+/// [`app_in`] with the plugin `P`.
+fn app_with<P: Plugin + Default>(
+    project: &Path,
+    settings: &str,
+    invoked: Option<Invocation>,
+) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let data = PluginData {
         session: Arc::new(MemoryStore::default()),
@@ -232,7 +241,7 @@ fn app_in(project: &Path, settings: &str, invoked: Option<Invocation>) -> (App, 
     }
     app.add_plugins((ServicesPlugin, AgentPlugin, SessionLogPlugin));
     // As the agent loads it, with the entity its tools are attributed to.
-    rig_harness::load::<McpPlugin>(&mut app, "rig-mcp-client", "path plugins/rig-mcp-client");
+    rig_harness::load::<P>(&mut app, "rig-mcp-client", "path plugins/rig-mcp-client");
     collect::<Notice>(&mut app);
     collect::<Recalled>(&mut app);
     (app, wakes)
@@ -927,4 +936,237 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
     let late = groups.spawn(&mut stub());
     assert!(late.is_err_and(|error| error.to_string() == "rig is exiting"));
     drop(running);
+}
+
+/// The stub as a client names it, `env` added to its environment.
+fn client_stub(name: &str, env: Value) -> AddMcpServer {
+    let written = stub_server(env);
+    let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
+    let list = written.get("args").and_then(Value::as_array);
+    let vars = written.get("env").and_then(Value::as_object);
+    AddMcpServer {
+        name: name.to_owned(),
+        spec: Ok(ServerSpec::Stdio {
+            command: written.get("command").map(text).unwrap_or_default(),
+            args: list.into_iter().flatten().map(text).collect(),
+            env: vars
+                .into_iter()
+                .flatten()
+                .map(|(k, v)| (k.clone(), text(v)))
+                .collect(),
+            cwd: None,
+        }),
+    }
+}
+
+/// Names `servers` for the app as a client does, before it starts.
+fn name_clients(app: &mut App, servers: Vec<AddMcpServer>) {
+    app.add_systems(PreStartup, move |mut commands: Commands| {
+        for server in &servers {
+            commands.trigger(server.clone());
+        }
+    });
+}
+
+#[test]
+fn a_client_server_is_taken_as_given_and_no_file_is_read_without_the_plugin() {
+    let project = project("client");
+    let mine = project.join("mine-started");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "mine": stub_server(json!({ MARKER: mine })) }),
+    );
+    // Taken as given: the stub writes its marker at the path as written.
+    let literal = project.join("${NOT_EXPANDED}");
+    let (mut app, wakes) = app_with::<McpCorePlugin>(&project, "", None);
+    name_clients(
+        &mut app,
+        vec![client_stub("files", json!({ MARKER: literal }))],
+    );
+    app.finish();
+    run_until(&mut app, &wakes, |world| has(world, "files__add"));
+    assert!(literal.exists() && !mine.exists());
+    assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
+    let agent = rig_harness_test_support::first_agent(app.world_mut());
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    mcp(&mut app, agent, "");
+    let told = notices(app.world());
+    let listed = "files (client): connected, 2 tools".to_owned();
+    assert_eq!(told.last(), Some(&listed), "{told:?}");
+    mcp(&mut app, agent, "add other /bin/true");
+    let refused = &app.world().resource::<Collected<Recalled>>().0;
+    let why = refused.last().and_then(|recalled| recalled.why.as_deref());
+    assert!(why.is_some_and(|why| why.starts_with("/mcp add changes an mcp.json")));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
+    let project = project("client-names");
+    let (user, theirs) = (project.join("home/mcp.json"), project.join(".rig/mcp.json"));
+    let (mine, ours) = (
+        project.join("user-started"),
+        project.join("project-started"),
+    );
+    let (first, second) = (
+        project.join("first-started"),
+        project.join("second-started"),
+    );
+    let approved = stub_server(json!({ MARKER: ours }));
+    write_servers(
+        &user,
+        json!({ "files": stub_server(json!({ MARKER: mine })) }),
+    );
+    write_servers(&theirs, json!({ "files": approved }));
+    let (mut app, wakes) = app_in(&project, "", None);
+    let data = app.world().resource::<PluginData>();
+    let lock = config::lock_path(&project.join("home"));
+    let mut approvals = Approvals::read(Some(data), project.display().to_string(), lock);
+    assert!(approvals.set("files", approved, true).is_ok());
+    name_clients(
+        &mut app,
+        vec![
+            client_stub("files", json!({ MARKER: first })),
+            client_stub("files", json!({ MARKER: second })),
+        ],
+    );
+    app.finish();
+    run_until(&mut app, &wakes, |world| has(world, "files__add"));
+    let agent = rig_harness_test_support::first_agent(app.world_mut());
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    // A file's server of the name stays stopped whatever /mcp does.
+    mcp(&mut app, agent, "approve files");
+    mcp(&mut app, agent, "remove --user files");
+    mcp(&mut app, agent, "");
+    assert!(!mine.exists() && !ours.exists());
+    assert!(first.exists() && !second.exists());
+    assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
+    // The approved project's server stands for the user's, and gives way.
+    let told = notices(app.world());
+    assert!(
+        told.contains(&gives_way("files", Scope::Project)),
+        "{told:?}"
+    );
+    let listed = told.last().cloned().unwrap_or_default();
+    assert!(
+        listed.contains("files (client): connected, 2 tools"),
+        "{listed}"
+    );
+    let gave_way = "files (project): does not run; the client's of that name does";
+    assert!(listed.contains(gave_way), "{listed}");
+    let second = "MCP server `files`: the client named two; the first stays.";
+    assert!(told.contains(&second.to_owned()), "{told:?}");
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_client_server_that_fails_holds_the_start_no_longer_than_its_attempt() {
+    let project = project("client-fails");
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "good__add", json!({ "a": 2, "b": 3 })),
+        reply("5"),
+    ]);
+    let invoked = Invocation {
+        print: Some("Add 2 and 3.".to_owned()),
+        flags: vec![(TOOLS.to_owned(), Some("good__add".to_owned()))],
+        ..Invocation::default()
+    };
+    let settings = "[mcp]\nconnect_timeout_secs = 1\nfirst_retry_secs = 3600";
+    let (mut app, wakes) = app_with::<McpCorePlugin>(&project, settings, Some(invoked));
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((ExitPlugin, PrintPlugin))
+        .init_resource::<Ended>()
+        .add_observer(|ended: On<HeadlessEnded>, mut log: ResMut<Ended>| {
+            log.0 = Some(ended.event().clone());
+        });
+    let mut broken = client_stub("broken", json!({}));
+    if let Ok(ServerSpec::Stdio { command, .. }) = &mut broken.spec {
+        "/no/such/mcp-server".clone_into(command);
+    }
+    let silent = client_stub("silent", json!({ SILENT: "1" }));
+    name_clients(
+        &mut app,
+        vec![broken, silent, client_stub("good", json!({}))],
+    );
+    let started = Instant::now();
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.is_some()
+    });
+    assert!(started.elapsed() < Duration::from_secs(10));
+    let ended = app.world().resource::<Ended>().0.clone();
+    let ended = ended.map(|ended| (ended.code, ended.answer));
+    assert_eq!(ended, Some((0, Some("5".to_owned()))));
+    let told = notices(app.world());
+    let failed = |name: &str| {
+        let start = format!("MCP server `{name}` could not connect: ");
+        told.iter().any(|text| text.starts_with(&start))
+    };
+    assert!(failed("broken") && failed("silent"), "{told:?}");
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_client_server_that_fails_or_is_refused_still_keeps_the_users_from_its_name() {
+    let project = project("client-fails-name");
+    let mine = project.join("user-started");
+    let user = project.join("home/mcp.json");
+    write_servers(
+        &user,
+        json!({ "files": stub_server(json!({ MARKER: mine })) }),
+    );
+    let mut broken = client_stub("files", json!({}));
+    if let Ok(ServerSpec::Stdio { command, .. }) = &mut broken.spec {
+        "/no/such/mcp-server".clone_into(command);
+    }
+    let refused = AddMcpServer {
+        name: "files".to_owned(),
+        spec: Err("not a transport rig speaks".to_owned()),
+    };
+    for client in [broken, refused] {
+        let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+        name_clients(&mut app, vec![client]);
+        app.finish();
+        run_until(&mut app, &wakes, |world| {
+            let servers = world.try_query::<(&McpServer, &McpStatus)>();
+            servers.is_some_and(|mut servers| {
+                servers.iter(world).any(|(server, status)| {
+                    let failed = matches!(status.state, McpState::Retrying | McpState::Invalid);
+                    server.name == "files" && failed
+                })
+            })
+        });
+        assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
+        assert!(!mine.exists());
+    }
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_run_with_no_session_starts_no_server_of_the_files() {
+    let project = project("sessionless");
+    let mine = project.join("user-started");
+    let user = project.join("home/mcp.json");
+    write_servers(
+        &user,
+        json!({ "files": stub_server(json!({ MARKER: mine })) }),
+    );
+    let invoked = Invocation {
+        command: Some("stats".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _wakes) = app_in(&project, "", Some(invoked));
+    let front = Front::new("stats")
+        .sessionless()
+        .on_command("stats", "", "Count");
+    app.add_front(front);
+    assert!(app.runs_front("stats"));
+    app.finish();
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(status(app.world_mut(), "files").is_none());
+    assert!(!mine.exists());
+    std::fs::remove_dir_all(project).ok();
 }

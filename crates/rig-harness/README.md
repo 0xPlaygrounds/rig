@@ -72,6 +72,7 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
 | `rig-mcp-client` | `McpPlugin` | the tools of the MCP servers of `RIG_HOME/mcp.json` and the approved ones of the project's `.rig/mcp.json`, as `<server>__<tool>`; `/mcp` |
+| `rig-acp` | `AcpPlugin` | `rig acp`: the Agent Client Protocol on stdin and stdout, for editors such as Zed |
 | `rig-claude-cloak` | `ClaudeCloakPlugin` | `claude-cloak/*` models signed in with a Claude subscription (OAuth), and `/claude-cloak login` and `logout` |
 
 An entry names its crate, `crate = "rig-tui"`, and no source: the agent builds

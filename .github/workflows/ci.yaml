@@ -275,3 +275,5 @@ jobs:
         run: cargo xtask verify --check native-only-rig-rmcp
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-tungstenite
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check native-only-rig-acp

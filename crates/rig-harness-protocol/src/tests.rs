@@ -364,3 +364,46 @@ fn resume_goes_wherever_an_option_goes() {
         "the agent never gets it"
     );
 }
+
+/// A group whose leader exited is killed while a process it left carries
+/// the ledger's mark: an MCP server a wrapper started, say.
+#[cfg(unix)]
+#[test]
+fn a_group_whose_leader_left_is_killed_for_the_process_it_left() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-ledger-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let left = root.join("left");
+    // The leader starts a sleep in its own group, writes its id, and exits.
+    let script = format!("sleep 60 & echo $! > '{}'", left.display());
+    let leader = std::process::Command::new("sh")
+        .args(["-c", &script])
+        .env(super::env::PROCESS_LEDGER, run.groups())
+        .process_group(0)
+        .spawn();
+    let leader = leader.and_then(|mut leader| leader.wait().map(|_| leader.id()));
+    assert!(leader.is_ok());
+    let Ok(leader) = leader else { return };
+    let sleeper = std::fs::read_to_string(&left).unwrap_or_default();
+    // Gone once killed, even before whoever adopted it reaps it.
+    let alive = || {
+        let state = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", sleeper.trim()])
+            .output();
+        state.is_ok_and(|state| {
+            let state = String::from_utf8_lossy(&state.stdout);
+            !state.trim().is_empty() && !state.trim_start().starts_with('Z')
+        })
+    };
+    assert!(!sleeper.trim().is_empty() && alive());
+    std::fs::write(run.groups(), format!("{leader}\n")).ok();
+    assert!(run.kill_left_groups().is_ok());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while alive() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!alive());
+    std::fs::remove_dir_all(root).ok();
+}
