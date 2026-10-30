@@ -32,7 +32,7 @@ use rig_harness::rig_memory::summarized_in_log;
 use rig_harness::services::WorkDir;
 use rig_mcp_client::{AddMcpServer, ServerSpec};
 
-use rig_harness::rig_core::completion::message::{CallId, Message as Said, StopReason as Stop};
+use rig_harness::rig_core::completion::message::{Message as Said, StopReason as Stop};
 
 use crate::{Reply, translate};
 
@@ -126,10 +126,7 @@ pub(crate) struct Session {
     asking: HashMap<Entity, tokio::task::AbortHandle>,
     /// The ACP ids of the main agent's calls, history's included, and of
     /// those running, by the call's entity.
-    call_ids: translate::CallIds,
     calls: HashMap<Entity, String>,
-    /// The main agent's calls restored with the session, until it opens.
-    restored: Vec<(Entity, CallId)>,
     requests: Receiver<Request>,
     sender: Sender<Request>,
     runtime: tokio::runtime::Handle,
@@ -268,9 +265,7 @@ pub(crate) fn install(app: &mut App) {
         early,
         closing: Vec::new(),
         asking: HashMap::new(),
-        call_ids: translate::CallIds::default(),
         calls: HashMap::new(),
-        restored: Vec::new(),
         requests,
         sender,
         runtime,
@@ -626,23 +621,19 @@ fn open(mut opened: Opened) {
             return;
         }
     }
-    // A resumed session's history is not shown again, but its calls' ids
-    // are taken, as its client may have shown them.
-    let replaced = opened
-        .store
-        .as_ref()
-        .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
-        .map(|summarized| summarized.replaced)
-        .unwrap_or_default();
-    let cwd = translate::cwd_of(work, &opened.root);
-    let mut replay = translate::replay(conversation, &replaced, &cwd, &mut opened.session.call_ids);
-    if !matches!(opened.session.opening, Some(Opening::Load(..))) {
-        replay.clear();
-    }
-    let session = &mut *opened.session;
-    for (entity, call) in std::mem::take(&mut session.restored) {
-        session.calls.insert(entity, session.call_ids.last(&call));
-    }
+    let replay = match &opened.session.opening {
+        Some(Opening::Load(..)) => {
+            let replaced = opened
+                .store
+                .as_ref()
+                .and_then(|store| summarized_in_log(&*store.0, &id.0).ok())
+                .map(|summarized| summarized.replaced)
+                .unwrap_or_default();
+            let cwd = translate::cwd_of(work, &opened.root);
+            translate::replay(&id.0, conversation, &replaced, &cwd)
+        }
+        _ => Vec::new(),
+    };
     let config = opened.options.of(agent);
     let mut listed: Vec<_> = opened
         .slash

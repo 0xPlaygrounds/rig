@@ -8,7 +8,6 @@ use bevy_ecs::system::SystemParam;
 use rig_basics::approval::{ALLOW, DENY, NeedsApproval};
 use rig_harness::pick::{Pick, Picker};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::message::CallId;
 use rig_harness::services::WorkDir;
 
 use super::output::Out;
@@ -35,7 +34,7 @@ pub(crate) struct Asking<'w, 's> {
     asks: Query<'w, 's, (&'static Ask, Option<&'static HoldOf>, &'static mut Decision)>,
     approvals: Query<'w, 's, &'static NeedsApproval>,
     calls: Query<'w, 's, (&'static ToolRequest, &'static ForAgent)>,
-    agent_ids: Query<'w, 's, &'static AgentId>,
+    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
     dirs: Query<'w, 's, &'static WorkDir>,
     root: Res<'w, ProjectRoot>,
 }
@@ -60,18 +59,14 @@ impl Asking<'_, '_> {
             let cwd = translate::cwd_of(self.dirs.get(agent).ok(), &self.root);
             let reasons = approval.into_iter().flat_map(|needs| &needs.reasons);
             let reasons: Vec<_> = reasons.map(|reason| reason.text.as_str()).collect();
-            // A subagent's call, never shown before, gets an id apart from
-            // the main agent's, which its history gives again.
-            let call_id = match session.calls.get(&effect) {
-                Some(call_id) => call_id.clone(),
-                None => {
-                    let of = self.agent_ids.get(agent).map(|AgentId(id)| id.as_str());
-                    let wire = format!("{}/{}", of.unwrap_or("agent"), request.call.id);
-                    let call_id = session.call_ids.next(&CallId::from_wire(wire));
-                    session.calls.insert(effect, call_id.clone());
-                    call_id
+            // A subagent's call, never shown before, is shown from here on.
+            let call_id = match self.agents.get(agent) {
+                Ok((AgentId(of), conversation)) => {
+                    translate::call_id_in(of, conversation, &request.call.id)
                 }
+                Err(_) => format!("{agent}/{}", request.call.id),
             };
+            session.calls.insert(effect, call_id.clone());
             let why = reasons.join("\n");
             let tool = translate::tool_asked(&request.call, call_id, &cwd, &why);
             let options = vec![

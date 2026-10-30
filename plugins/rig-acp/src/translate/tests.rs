@@ -119,12 +119,18 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
     for message in again {
         conversation.push(message);
     }
-    let Some(&summary) = spliced.changed.first() else {
+    let (Some(&summary), Some(first)) = (
+        spliced.changed.first(),
+        originals.get(1).and_then(|asked| asked.id),
+    ) else {
         return;
     };
+    let first = call_id("main", first, 0);
+    // The id a live call of the last turn has.
+    let second = call_id_in("main", &conversation, &CallId::from_wire("c1"));
+    assert_ne!(first, second);
     let replaced = BTreeMap::from([(summary, originals)]);
-    let mut ids = CallIds::default();
-    let updates = replay(&conversation, &replaced, Path::new("/p"), &mut ids);
+    let updates = replay("main", &conversation, &replaced, Path::new("/p"));
     let shown: Vec<String> = updates
         .iter()
         .map(|update| match update {
@@ -154,26 +160,27 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
         shown,
         [
             user("Read a.txt."),
-            format!("call c1 {:?} {:?}", acp::ToolKind::Read, location("a.txt")),
-            "done c1 \"a text\"".to_owned(),
+            format!(
+                "call {first} {:?} {:?}",
+                acp::ToolKind::Read,
+                location("a.txt")
+            ),
+            format!("done {first} \"a text\""),
             agent("It says a text."),
             agent("After it."),
             user("<skill>Read b.txt.</skill>"),
             format!(
-                "call c1#2 {:?} {:?}",
+                "call {second} {:?} {:?}",
                 acp::ToolKind::Read,
                 location("b.txt")
             ),
-            "done c1#2 \"b text\"".to_owned(),
+            format!("done {second} \"b text\""),
         ]
     );
-    // A live call after them has an id of its own.
-    let call = CallId::from_wire("c1");
-    assert_eq!(ids.next(&call), "c1#3");
 }
 
 #[test]
-fn a_call_id_used_again_or_like_one_issued_gets_an_id_of_its_own() {
+fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
     let mut messages = Vec::new();
     for (id, said) in [("c1", "one"), ("c1#2", "two"), ("c1", "three")] {
         let Some(pair) = read(id, "a.txt", said) else {
@@ -182,8 +189,7 @@ fn a_call_id_used_again_or_like_one_issued_gets_an_id_of_its_own() {
         messages.extend(pair);
     }
     let conversation = Conversation::from_messages(messages);
-    let mut ids = CallIds::default();
-    let updates = replay(&conversation, &BTreeMap::new(), Path::new("/p"), &mut ids);
+    let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
     let done: Vec<_> = updates
         .into_iter()
         .filter_map(|update| match update {
@@ -194,7 +200,14 @@ fn a_call_id_used_again_or_like_one_issued_gets_an_id_of_its_own() {
             _ => None,
         })
         .collect();
-    assert_eq!(done, ["c1 \"one\"", "c1#2 \"two\"", "c1#3 \"three\""]);
+    let at = |index, said| {
+        let id = conversation.id(index).map(|id| call_id("main", id, 0));
+        format!("{} {said}", id.unwrap_or_default())
+    };
+    assert_eq!(
+        done,
+        [at(0, "\"one\""), at(2, "\"two\""), at(4, "\"three\"")]
+    );
 }
 
 #[test]

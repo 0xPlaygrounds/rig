@@ -1,7 +1,7 @@
 //! Rig's conversation and tool calls as ACP updates, and ACP prompts as rig
 //! messages. The same functions build a turn's live updates and a loaded
-//! session's replay, and both take a call's id from [`CallIds`], so a
-//! replayed tool call has the id and look it had live.
+//! session's replay, and a call's id is where it sits in the conversation,
+//! so a replayed tool call has the id and look it had live.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -69,37 +69,33 @@ fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
         .collect()
 }
 
-/// The ACP ids of a session's tool calls, each issued once: a call's own
-/// id, else that id with the first of `#2`, `#3` and on not issued yet, as
-/// a provider may use an id again in a later turn and a client knows a call
-/// by its id. Issued in history order, so a session's history gives its
-/// calls the ids they had live.
-#[derive(Default)]
-pub(crate) struct CallIds {
-    issued: HashSet<String>,
-    /// The id last issued for each call id.
-    last: HashMap<String, String>,
+/// The ACP id of the `n`th call of the message `message` of the agent
+/// `agent`: where the call sits in rig's saved conversation, so live and
+/// replayed calls have the same id, and never a provider's call id, which a
+/// provider may use again.
+fn call_id(agent: &str, message: MessageId, n: usize) -> String {
+    format!("{agent}/{message}/{n}")
 }
 
-impl CallIds {
-    /// The id of a new call with the id `call`.
-    pub(crate) fn next(&mut self, call: &CallId) -> String {
-        let wire = call.wire().into_owned();
-        let (mut id, mut n) = (wire.clone(), 1);
-        while self.issued.contains(&id) {
-            n += 1;
-            id = format!("{wire}#{n}");
-        }
-        self.issued.insert(id.clone());
-        self.last.insert(wire, id.clone());
-        id
-    }
+/// The ACP id of the call `call` of `agent`, whose conversation is
+/// `conversation`: of the last message that asked for it.
+pub(crate) fn call_id_in(agent: &str, conversation: &Conversation, call: &CallId) -> String {
+    let found = conversation.entries().rev().find_map(|entry| {
+        let message::Message::Assistant(reply) = entry.message else {
+            return None;
+        };
+        let n = calls_of(reply).position(|asked| asked.id == *call)?;
+        Some(call_id(agent, entry.id, n))
+    });
+    found.unwrap_or_else(|| format!("{agent}/{call}"))
+}
 
-    /// The id of the last call with the id `call`.
-    pub(crate) fn last(&self, call: &CallId) -> String {
-        let wire = call.wire().into_owned();
-        self.last.get(&wire).cloned().unwrap_or(wire)
-    }
+/// The calls a reply asks for, in order.
+fn calls_of(reply: &message::AssistantMessage) -> impl Iterator<Item = &ToolCall> {
+    reply.content.iter().filter_map(|part| match part {
+        AssistantContent::ToolCall(call) => Some(call),
+        _ => None,
+    })
 }
 
 /// A call the model asked for, as ACP announces it under `id`: pending.
@@ -198,13 +194,13 @@ fn chunk(content: acp::ContentBlock, id: Option<MessageId>) -> acp::ContentChunk
 /// its client saw it, with what each compaction summary replaced (rig's own
 /// log keeps it, read into `replaced`) in place of the summary. Text the
 /// user typed, the model's text and readable reasoning, and each tool call
-/// with its result, its id given by `ids`; messages rig wrote for the model
-/// itself (an author other than the user and the model) are left out.
+/// with its result, ids of the agent `agent`; messages rig wrote for the
+/// model itself (an author other than the user and the model) are left out.
 pub(crate) fn replay(
+    agent: &str,
     conversation: &Conversation,
     replaced: &BTreeMap<MessageId, Vec<Entry>>,
     cwd: &Path,
-    ids: &mut CallIds,
 ) -> Vec<acp::SessionUpdate> {
     let mut entries = Vec::new();
     let mut expanded = HashSet::new();
@@ -215,20 +211,25 @@ pub(crate) fn replay(
         }
     }
     // A result answers the last call before it with its id.
-    let (mut calls, mut results) = (Vec::new(), HashMap::new());
-    for (_, message) in &entries {
+    let (mut calls, mut last, mut results) = (Vec::new(), HashMap::new(), HashMap::new());
+    for (id, message) in &entries {
         match &**message {
             message::Message::Assistant(reply) => {
-                for part in &reply.content {
-                    if let AssistantContent::ToolCall(call) = part {
-                        calls.push(ids.next(&call.id));
-                    }
+                for (n, call) in calls_of(reply).enumerate() {
+                    let acp_id = match id {
+                        Some(id) => call_id(agent, *id, n),
+                        None => format!("{agent}/{}", call.id),
+                    };
+                    last.insert(call.id.clone(), acp_id.clone());
+                    calls.push(acp_id);
                 }
             }
             message::Message::User { content } => {
                 for part in content.iter() {
-                    if let UserContent::ToolResult(result) = part {
-                        results.insert(ids.last(&result.call), result);
+                    if let UserContent::ToolResult(result) = part
+                        && let Some(acp_id) = last.get(&result.call)
+                    {
+                        results.insert(acp_id.clone(), result);
                     }
                 }
             }

@@ -72,25 +72,25 @@ pub(super) fn stream(mut out: Out) {
 }
 
 /// A call of the main agent's model asked for: pending. One the session
-/// restored is in its history, which gives it its id when it opens.
+/// restored is not announced again: its history has it, under its id.
 pub(super) fn call_asked(
     asked: On<Add<ToolRequest>>,
     calls: Query<(&ToolRequest, &ForAgent, Has<Restored>)>,
+    agents: Query<(&AgentId, &Conversation)>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
     mut out: Out,
 ) {
     if let Ok((request, &ForAgent(agent), restored)) = calls.get(asked.entity)
+        && let Ok((AgentId(of), conversation)) = agents.get(agent)
         && out.main(agent)
     {
+        let id = translate::call_id_in(of, conversation, &request.call.id);
+        out.session.calls.insert(asked.entity, id.clone());
         if restored {
-            let call = (asked.entity, request.call.id.clone());
-            out.session.restored.push(call);
             return;
         }
         let cwd = translate::cwd_of(dirs.get(agent).ok(), &root);
-        let id = out.session.call_ids.next(&request.call.id);
-        out.session.calls.insert(asked.entity, id.clone());
         let call = translate::tool_call(&request.call, id, &cwd);
         out.send(acp::SessionUpdate::ToolCall(call));
     }
@@ -123,10 +123,6 @@ pub(super) fn settled(
     if let Some(task) = out.session.asking.remove(&settled.entity) {
         task.abort();
     }
-    let entity = settled.entity;
-    out.session
-        .restored
-        .retain(|(restored, _)| *restored != entity);
     if let Ok(outcome) = calls.get(settled.entity)
         && let Some(id) = out.session.calls.remove(&settled.entity)
     {

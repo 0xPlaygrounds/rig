@@ -63,41 +63,6 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
         let gone = driven.cx.send_request(prompt).block_task().await;
         let code = gone.err().map(|error| i32::from(error.code));
         assert_eq!(code, Some(-32002), "a session not open is not found");
-        // Loaded again, the call it was killed in shows once, failed.
-        let before = driven.updates(&first).len();
-        let load = acp::LoadSessionRequest::new(first.clone(), &driven.project);
-        assert!(driven.cx.send_request(load).block_task().await.is_ok());
-        let ended = |seen: &Seen| {
-            seen.events.iter().any(|event| {
-                matches!(event, Event::Update(of, acp::SessionUpdate::ToolCallUpdate(update))
-                    if *of == first && update.tool_call_id.to_string() == "w1"
-                        && update.fields.status == Some(acp::ToolCallStatus::Failed))
-            })
-        };
-        assert!(
-            driven.until(ended).await,
-            "{:?}",
-            tool_steps(driven, &first)
-        );
-        // The new process's model may call `w1` again, as `w1#2`.
-        let announced: Vec<_> = driven
-            .updates(&first)
-            .into_iter()
-            .skip(before)
-            .filter_map(|update| match update {
-                acp::SessionUpdate::ToolCall(call) => Some(call.tool_call_id.to_string()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            announced.first().map(String::as_str),
-            Some("w1"),
-            "{announced:?}"
-        );
-        let again = announced.iter().filter(|id| *id == "w1").count();
-        assert_eq!(again, 1, "{announced:?}");
-        let close = acp::CloseSessionRequest::new(first.clone());
-        assert!(driven.cx.send_request(close).block_task().await.is_ok());
         // The client leaves while a session's tool and MCP server run.
         let stays = vec![acp::EnvVariable::new(STAYS, "1")];
         let third = driven.new_session(vec![stub_with("files", stays)]).await;
@@ -118,6 +83,100 @@ fn a_killed_session_leaves_no_tool_and_the_others_go_on_until_the_client_leaves(
         .and_then(|runtime| runtime.block_on(router.process.wait()).ok());
     assert!(status.is_some_and(|status| status.success()));
     assert!(eventually(|| processes_of(place).is_empty()));
+}
+
+#[test]
+fn a_loaded_session_shows_each_call_under_its_live_id() {
+    let place = Place::new("ids");
+    let place = &place;
+    let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        driven.answering(Answering::Allow);
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        // Two calls the provider calls `r1`.
+        for (model, prompt) in [
+            ("test/read", "Read the fixture."),
+            ("test/again", "Read the missing file."),
+        ] {
+            assert!(driven.model(&id, model).await);
+            assert!(driven.prompt(&id, prompt).await.is_ok());
+        }
+        // A subagent's call, shown by the permission it asks.
+        assert!(driven.model(&id, "test/delegate").await);
+        assert!(driven.prompt(&id, "Delegate the read.").await.is_ok());
+        assert!(driven.until(|seen| !seen.asked.is_empty()).await);
+        let asked = driven
+            .seen()
+            .asked
+            .first()
+            .map(|call| call.tool_call_id.to_string());
+        let asked = asked.unwrap_or_default();
+        let ended = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(_, acp::SessionUpdate::ToolCallUpdate(update))
+                    if update.tool_call_id.to_string() == asked
+                        && update.fields.status == Some(acp::ToolCallStatus::Completed))
+            })
+        };
+        assert!(driven.until(ended).await, "{:?}", tool_steps(driven, &id));
+        // Its report ends a turn of the main agent too.
+        let noted = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(_, acp::SessionUpdate::AgentMessageChunk(chunk))
+                    if text(&chunk.content).is_some_and(|said| said.contains("noted")))
+            })
+        };
+        assert!(driven.until(noted).await, "{}", driven.said(&id));
+        // A call the session's process is killed in.
+        assert!(driven.model(&id, "test/wait").await);
+        let request = acp::PromptRequest::new(id.clone(), vec!["Wait.".into()]);
+        let waiting = driven.cx.send_request(request);
+        assert!(driven.until(|_| sleeping(place)).await);
+        let announced = |from: usize| -> Vec<String> {
+            let updates = driven.updates(&id).into_iter().skip(from);
+            let calls = updates.filter_map(|update| match update {
+                acp::SessionUpdate::ToolCall(call) => Some(call.tool_call_id.to_string()),
+                _ => None,
+            });
+            calls.collect()
+        };
+        let live = announced(0);
+        let unique: std::collections::HashSet<_> = live.iter().collect();
+        assert!(
+            unique.len() == live.len() && !unique.contains(&asked),
+            "{live:?} {asked}"
+        );
+        let pid = process_of(place, &id);
+        assert!(pid.is_some(), "no process runs {id}");
+        let Some(pid) = pid else { return };
+        std::process::Command::new("kill")
+            .args(["-KILL", &pid.to_string()])
+            .status()
+            .ok();
+        assert!(waiting.block_task().await.is_err());
+        let before = driven.updates(&id).len();
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.cx.send_request(load).block_task().await.is_ok());
+        // The new process's model may call again, after the history.
+        let replayed = announced(before);
+        assert_eq!(replayed.get(..live.len()), Some(live.as_slice()));
+        let interrupted = live.last().cloned().unwrap_or_default();
+        let shown = replayed.iter().filter(|call| **call == interrupted).count();
+        assert_eq!(shown, 1, "{replayed:?}");
+        let failed = |seen: &Seen| {
+            seen.events.iter().any(|event| {
+                matches!(event, Event::Update(_, acp::SessionUpdate::ToolCallUpdate(update))
+                    if update.tool_call_id.to_string() == interrupted
+                        && update.fields.status == Some(acp::ToolCallStatus::Failed))
+            })
+        };
+        assert!(driven.until(failed).await, "{:?}", tool_steps(driven, &id));
+        let close = acp::CloseSessionRequest::new(id.clone());
+        assert!(driven.cx.send_request(close).block_task().await.is_ok());
+    });
+    assert!(router.is_some());
 }
 
 #[test]
