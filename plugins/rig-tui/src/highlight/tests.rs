@@ -53,7 +53,7 @@ fn same_as_fresh(code: &str, path: &str) {
 fn a_growing_text_is_highlighted_as_the_whole_text_is() {
     KEPT.with_borrow_mut(Vec::clear);
     // A string and a comment opened in one piece and closed in a later
-    // one, a line split between its \r and its \n, tabs and wide text.
+    // one, and CRLF lines with tabs and wide text.
     let cases = [
         (
             "a.py",
@@ -79,12 +79,36 @@ fn a_growing_text_is_highlighted_as_the_whole_text_is() {
                 assert!(!last.is_empty() && piece.starts_with(last), "{kept:?}");
             }
         }
-        let crlf = text.find("\r\n").map_or(0, |at| at + 1);
-        if crlf > 0 {
-            let piece = text.get(..crlf + KEPT_FROM).unwrap_or_default();
-            same_as_fresh(piece, path);
-        }
     }
+}
+
+#[test]
+fn a_line_split_between_its_cr_and_its_lf_goes_on_right() {
+    KEPT.with_borrow_mut(Vec::clear);
+    let text = long("\tx_# = \"é\"  # note\r\n", 400);
+    let cr = text
+        .get(KEPT_FROM..)
+        .and_then(|rest| rest.find("\r\n"))
+        .map_or(0, |at| KEPT_FROM + at);
+    for end in [cr, cr + 1, cr + 2, text.len()] {
+        same_as_fresh(text.get(..end).unwrap_or_default(), "a.py");
+    }
+}
+
+#[test]
+fn the_lines_kept_are_not_highlighted_again() {
+    KEPT.with_borrow_mut(Vec::clear);
+    let text = long("x_# = 1\n", 600);
+    same_as_fresh(&text, "a.py");
+    let marked = vec![Span::raw("kept")];
+    KEPT.with_borrow_mut(|kept| {
+        if let Some(first) = kept.last_mut().and_then(|text| text.lines.first_mut()) {
+            *first = marked.clone();
+        }
+    });
+    let grown = highlight(&format!("{text}y = 2\n"), Language::File("a.py")).unwrap_or_default();
+    assert_eq!(grown.first(), Some(&marked));
+    assert_eq!(grown.len(), 601);
 }
 
 #[test]
@@ -107,6 +131,34 @@ fn texts_growing_in_turn_each_go_on_from_their_own() {
         same_as_fresh(two.get(..cut).unwrap_or_default(), "a.py");
     }
     assert_eq!(kept().len(), 2, "{:?}", kept());
+}
+
+#[test]
+fn the_kept_texts_stay_within_their_bytes_oldest_dropped_first() {
+    KEPT.with_borrow_mut(Vec::clear);
+    let python = syntax(Language::File("a.py"));
+    assert!(python.is_some(), "no grammar for Python");
+    let Some(syntax) = python else {
+        return;
+    };
+    // Stand-ins said to take half the bound each, then one past it.
+    let stand_in = |text: &str, bytes| Kept {
+        syntax,
+        text: text.to_owned(),
+        lines: Vec::new(),
+        state: HighlightLines::new(syntax, &THEME).state(),
+        bytes,
+    };
+    KEPT.with_borrow_mut(|kept| {
+        kept.extend(["one\n", "two\n", "three\n"].map(|text| stand_in(text, KEPT_BYTES / 2)));
+    });
+    let text = long("x_# = 1\n", 600);
+    same_as_fresh(&text, "a.py");
+    assert_eq!(kept(), ["three\n", text.as_str()]);
+    KEPT.with_borrow_mut(|kept| kept.insert(0, stand_in("big\n", KEPT_BYTES + 1)));
+    same_as_fresh(&format!("{text}y = 2\n"), "a.py");
+    assert_eq!(kept().len(), 2);
+    assert!(!kept().contains(&"big\n".to_owned()));
 }
 
 #[test]
