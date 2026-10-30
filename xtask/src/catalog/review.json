@@ -1051,6 +1051,18 @@
         "rig": {
           "cache": ["long"]
         }
+      },
+      "gpt-6.1-terra": {
+        "from": "openai/gpt-6.1-terra",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
+        }
       }
     }
   },
@@ -1630,18 +1642,6 @@
         "rig": {
           "reasoning_default": "high"
         }
-      },
-      "gemini-3-pro-image-preview": {
-        "note": "unverified: the preview's model page is gone; levels taken from the GA gemini-3-pro-image row, the same model",
-        "reasoning_options": [
-          {
-            "type": "effort",
-            "values": [
-              "low",
-              "high"
-            ]
-          }
-        ]
       },
       "gemini-3-pro-preview": {
         "source": "https://ai.google.dev/gemini-api/docs/thinking",
@@ -3394,6 +3394,20 @@
         }
       },
       "gpt-6.1-sol": {
+        "source": "https://developers.openai.com/api/docs/pricing https://developers.openai.com/api/docs/guides/latest-model",
+        "rig": {
+          "cache": [
+            "none",
+            "short",
+            "long"
+          ],
+          "prompt_cache_options": true,
+          "sampling": "reasoning_off",
+          "chat_tools_need_reasoning_off": true,
+          "reasoning_default": "medium"
+        }
+      },
+      "gpt-6.1-terra": {
         "source": "https://developers.openai.com/api/docs/pricing https://developers.openai.com/api/docs/guides/latest-model",
         "rig": {
           "cache": [
