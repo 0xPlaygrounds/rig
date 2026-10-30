@@ -103,10 +103,12 @@ struct Colors {
     last: Option<Vec<Span<'static>>>,
     /// About how much memory `lines` take.
     bytes: usize,
+    /// Whether the grammar failed on a line, so the code draws plain.
+    failed: bool,
 }
 
 impl Code {
-    /// `text` in `language`. A text of [`KEPT_FROM`] bytes or more is
+    /// `text` in `language`. A text of 4 KiB or more is
     /// kept for a while: the same text in the same grammar again is that
     /// code, with its colors, and a text extending it goes on from its
     /// colored lines.
@@ -147,7 +149,7 @@ impl Code {
     }
 
     /// Whether its language has a grammar, so its lines get colors.
-    pub fn colored(&self) -> bool {
+    pub fn has_grammar(&self) -> bool {
         self.0.syntax.is_some()
     }
 
@@ -171,7 +173,7 @@ impl Code {
         spans.extend(text.map(Span::raw));
         LookLine {
             line: Line::from(spans),
-            code: self.colored().then(|| crate::renderers::CodeLine {
+            code: self.has_grammar().then(|| crate::renderers::CodeLine {
                 code: self.clone(),
                 index,
                 at,
@@ -191,11 +193,15 @@ impl Code {
 
     /// Line `index`'s spans in color, their texts joined as
     /// [`line`](Self::line) draws it; `None` with no grammar, past the last
-    /// line, or if the grammar fails on it.
+    /// line, or once the grammar failed on a line of it, so the whole code
+    /// draws plain.
     pub(crate) fn spans(&self, index: usize) -> Option<Vec<Span<'static>>> {
         let syntax = self.0.syntax?;
         let line = self.raw(index)?;
         let mut colors = self.colors();
+        if colors.failed {
+            return None;
+        }
         if let Some(spans) = colors.lines.get(index) {
             return Some(spans.clone());
         }
@@ -207,7 +213,10 @@ impl Code {
         let colored = self.color(&mut colors, syntax, through);
         if colored.is_none() {
             // A grammar failing leaves a state it cannot go on from.
-            *colors = Colors::default();
+            *colors = Colors {
+                failed: true,
+                ..Colors::default()
+            };
             return None;
         }
         if ended {
@@ -218,7 +227,10 @@ impl Code {
             .clone()
             .unwrap_or_else(|| HighlightLines::new(syntax, &THEME).state());
         let mut parser = HighlightLines::from_state(&THEME, highlight, parse);
-        let spans = spans(&mut parser, line)?;
+        let Some(spans) = spans(&mut parser, line) else {
+            colors.failed = true;
+            return None;
+        };
         colors.last = Some(spans.clone());
         Some(spans)
     }
@@ -307,14 +319,18 @@ impl Code {
             return;
         }
         kept.push(self.clone());
-        let mut total: usize = kept.iter().map(Self::bytes).sum();
-        while kept.len() > KEPT_COUNT || total > KEPT_BYTES {
-            let Some(dropped) = kept.first().map(Self::bytes) else {
+        // Each measured once: a code may be colored on another thread meanwhile.
+        let sizes: Vec<usize> = kept.iter().map(Self::bytes).collect();
+        let mut total: usize = sizes.iter().sum();
+        let mut dropped = 0;
+        for size in &sizes {
+            if kept.len() - dropped <= KEPT_COUNT && total <= KEPT_BYTES {
                 break;
-            };
-            kept.remove(0);
-            total -= dropped;
+            }
+            total -= size;
+            dropped += 1;
         }
+        kept.drain(..dropped);
     }
 }
 

@@ -2154,7 +2154,9 @@ with `rig_tui::highlight::code_rows(code, Language::File(path))`, or a
 `Code::new(code, language)` and `code.line(index, prefix)` for each line
 after a prefix of its own, such as a line number
 (`ToolCallView::header_code` for a header's; `Language::Named("rust")` for a
-language by name).
+language by name). Lines drawn outside the transcript, such as markdown or
+a diff in a panel of a plugin's own, are drawn as `LookLine::colored()`
+gives them.
 The transcript is a `TranscriptPane`
 ([another](#what-agents-do-and-say-in-a-terminal-panel)), the default screen's
 marked `MainPane`. Plugins read and set a pane's `TranscriptView` component

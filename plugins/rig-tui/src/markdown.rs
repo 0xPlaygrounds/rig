@@ -247,7 +247,7 @@ impl Writer {
             "" => None,
             language => Some(Code::new(code, Language::Named(language))),
         };
-        let Some(colored) = colored.filter(Code::colored) else {
+        let Some(colored) = colored.filter(Code::has_grammar) else {
             for line in code.split('\n') {
                 let mut spans = self.prefix();
                 spans.push(Span::from("  "));

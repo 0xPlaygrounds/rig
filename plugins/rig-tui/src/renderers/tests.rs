@@ -180,6 +180,12 @@ fn a_line_of_code_is_drawn_in_its_colors_under_the_styles_around_and_over_it() {
     };
     let drawn = marked.colored();
     assert_eq!(drawn.to_string(), "+ let x = 1; // one");
+    // A code line said to start elsewhere keeps its text, plain.
+    let mut astray = marked.clone();
+    if let Some(code) = &mut astray.code {
+        code.at = 1;
+    }
+    assert_eq!(astray.colored(), astray.line().clone());
     assert_eq!(drawn.style, marked.line().style);
     let one = drawn.spans.iter().find(|span| span.content == "1");
     let color = colors.iter().find(|span| span.content.contains('1'));

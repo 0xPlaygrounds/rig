@@ -548,7 +548,8 @@ impl LookLine {
         }
         Line {
             spans,
-            ..self.line.clone()
+            style: self.line.style,
+            alignment: self.line.alignment,
         }
     }
 

@@ -62,9 +62,9 @@ fn code_is_drawn_in_the_terminals_palette_and_plain_text_is_not_colored() {
     assert_eq!(line.to_string(), "> fn main() {");
     assert_eq!(line.colored().to_string(), "> fn main() {");
     let notes = Code::new("hello", Language::File("notes.txt"));
-    assert!(!notes.colored());
+    assert!(!notes.has_grammar());
     assert_eq!(notes.spans(0), None);
-    assert!(Code::new("ls -la", Language::Named("bash")).colored());
+    assert!(Code::new("ls -la", Language::Named("bash")).has_grammar());
 }
 
 #[test]
@@ -247,8 +247,9 @@ fn a_transcript_colors_only_the_code_on_screen_and_draws_it_colored() {
         spans: Vec::new(),
     }];
     for highlights in [&[][..], &lit] {
+        // An odd height, so the screen starts on a line's second row.
         let visible =
-            Transcript::default().visible(&parts, (40, 10), &mut Scroll::default(), highlights);
+            Transcript::default().visible(&parts, (40, 11), &mut Scroll::default(), highlights);
         assert_eq!(colored(&top), 0);
         assert_eq!(colored(&bottom), 50);
         let rows: Vec<Line<'static>> = lines(&bottom)

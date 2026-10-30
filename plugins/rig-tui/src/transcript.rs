@@ -1020,7 +1020,7 @@ impl Wrapped {
         let code = self.code.get(first..).unwrap_or_default().iter();
         for (lines, line) in code.take_while(|(lines, _)| lines.start < range.end) {
             let colored = wrap(&line.colored(), self.width);
-            for (at, (row, _)) in (lines.start..).zip(colored) {
+            for (at, (row, _)) in lines.clone().zip(colored) {
                 if let Some(slot) = at
                     .checked_sub(range.start)
                     .and_then(|index| rows.get_mut(index))

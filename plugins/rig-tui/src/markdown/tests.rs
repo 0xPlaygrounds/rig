@@ -1,4 +1,4 @@
-use super::render;
+use super::{render, render_marked};
 
 /// `text` rendered and drawn, colored.
 fn rendered(
@@ -91,5 +91,23 @@ fn a_task_says_done_or_open_with_a_mark() {
     assert_eq!(
         text("- [x] built\n- [ ] tested\n"),
         ["• ✓ built", "• ○ tested"]
+    );
+}
+
+#[test]
+fn a_mark_in_a_code_block_is_drawn_in_the_lines_colors() {
+    let text = "```rust\nlet x = 1;\n```\n";
+    let at = text.find("1;").unwrap_or_default();
+    let mark = ratatui::text::Span::from("[m]");
+    let lines = render_marked(text, &[(at, mark.clone())], &crate::Theme::default(), None);
+    let line = lines
+        .get(1)
+        .map(crate::LookLine::colored)
+        .unwrap_or_default();
+    assert_eq!(line.to_string(), "  let x = [m]1;");
+    assert!(line.spans.contains(&mark), "{line:?}");
+    assert!(
+        line.spans.iter().any(|span| span.style.fg.is_some()),
+        "{line:?}"
     );
 }

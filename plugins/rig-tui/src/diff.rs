@@ -231,7 +231,7 @@ fn highlighted(lines: &[(Kind, String)], path: &str) -> HashMap<usize, (Code, us
                 .collect();
             let code: Vec<&str> = side.iter().map(|(_, text)| text.as_str()).collect();
             let code = Code::new(&code.join("\n"), Language::File(path));
-            if !code.colored() {
+            if !code.has_grammar() {
                 return spans;
             }
             for (index, (at, _)) in side.iter().enumerate() {
