@@ -162,6 +162,10 @@ fn a_line_of_code_is_drawn_in_its_colors_under_the_styles_around_and_over_it() {
     assert_eq!(drawn.to_string(), " $ let x = 1; // one · running");
     assert_eq!(drawn.style, view.header("$", "").style);
     assert_eq!(drawn.spans.last(), Some(&Span::from(" · running").italic()));
+    // A blank first line draws no detail, as a header without one.
+    let blank = Code::new("\nsleep 1", crate::highlight::Language::Named("bash"));
+    let header = view.header_code("$", &blank, 0);
+    assert_eq!(header.colored(), view.header("$", ""));
     assert!(drawn.spans.iter().any(|span| span.style.fg.is_some()));
     // Under a shade on a word and a background, as a diff draws them.
     let shade = Style::new().bg(ratatui::style::Color::Indexed(1));

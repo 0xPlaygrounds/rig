@@ -107,11 +107,22 @@ struct Colors {
     failed: bool,
 }
 
+impl Colors {
+    /// Marks the code failed: its lines draw plain from now on, and with no
+    /// colored lines it hands nothing on to a text extending it, which
+    /// colors itself afresh.
+    fn fail(&mut self) {
+        *self = Self {
+            failed: true,
+            ..Self::default()
+        };
+    }
+}
+
 impl Code {
-    /// `text` in `language`. A text of 4 KiB or more is
-    /// kept for a while: the same text in the same grammar again is that
-    /// code, with its colors, and a text extending it goes on from its
-    /// colored lines.
+    /// `text` in `language`. A text of 4 KiB or more is kept for a while:
+    /// the same text in the same grammar again is that code, with its
+    /// colors, and a text extending it goes on from its colored lines.
     pub fn new(text: &str, language: Language<'_>) -> Self {
         let syntax = syntax(language);
         if syntax.is_none() || text.len() < KEPT_FROM {
@@ -170,7 +181,7 @@ impl Code {
         let at = prefix.iter().map(|span| span.content.len()).sum();
         let mut spans = prefix;
         let text = self.raw(index).map(|line| plain(line, 0..line.len()));
-        spans.extend(text.map(Span::raw));
+        spans.extend(text.filter(|text| !text.is_empty()).map(Span::raw));
         LookLine {
             line: Line::from(spans),
             code: self.has_grammar().then(|| crate::renderers::CodeLine {
@@ -210,29 +221,23 @@ impl Code {
             return Some(spans.clone());
         }
         let through = if ended { index + 1 } else { index };
-        let colored = self.color(&mut colors, syntax, through);
-        if colored.is_none() {
-            // A grammar failing leaves a state it cannot go on from.
-            *colors = Colors {
-                failed: true,
-                ..Colors::default()
-            };
-            return None;
+        let spans = self.color(&mut colors, syntax, through).and_then(|()| {
+            if ended {
+                return colors.lines.get(index).cloned();
+            }
+            let (highlight, parse) = colors
+                .state
+                .clone()
+                .unwrap_or_else(|| HighlightLines::new(syntax, &THEME).state());
+            let mut parser = HighlightLines::from_state(&THEME, highlight, parse);
+            spans(&mut parser, line)
+        });
+        match &spans {
+            Some(spans) if !ended => colors.last = Some(spans.clone()),
+            Some(_) => {}
+            None => colors.fail(),
         }
-        if ended {
-            return colors.lines.get(index).cloned();
-        }
-        let (highlight, parse) = colors
-            .state
-            .clone()
-            .unwrap_or_else(|| HighlightLines::new(syntax, &THEME).state());
-        let mut parser = HighlightLines::from_state(&THEME, highlight, parse);
-        let Some(spans) = spans(&mut parser, line) else {
-            colors.failed = true;
-            return None;
-        };
-        colors.last = Some(spans.clone());
-        Some(spans)
+        spans
     }
 
     /// Colors the lines before `through` that `colors` has not.
@@ -385,11 +390,12 @@ fn spans(parser: &mut HighlightLines<'_>, line: &str) -> Option<Vec<Span<'static
 /// [`OUTPUT_INDENT`], in `language`'s colors once drawn, or dimmed for a
 /// language with no grammar.
 pub fn code_rows(code: &str, language: Language<'_>) -> Vec<LookLine> {
-    if syntax(language).is_none() {
+    let colored = Code::new(code, language);
+    if !colored.has_grammar() {
         let rows = text_rows(code, Style::new().dim());
         return rows.into_iter().map(LookLine::from).collect();
     }
-    let code = Code::new(code, language);
+    let code = colored;
     let rows = (0..code.len()).map(|index| code.line(index, vec![Span::from(OUTPUT_INDENT)]));
     rows.collect()
 }

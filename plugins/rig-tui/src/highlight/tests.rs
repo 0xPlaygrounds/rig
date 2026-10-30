@@ -241,7 +241,7 @@ fn a_transcript_colors_only_the_code_on_screen_and_draws_it_colored() {
     let width = 40;
     let parts = [Part::rows(&all, &[], width)];
     let lit = [Highlight {
-        text: "y4".to_owned(),
+        text: "'a string".to_owned(),
         style: Style::new().reversed(),
         match_case: false,
         spans: Vec::new(),
@@ -267,16 +267,34 @@ fn a_transcript_colors_only_the_code_on_screen_and_draws_it_colored() {
         if highlights.is_empty() {
             assert_eq!(visible.rows, shown);
         } else {
+            // Each match is lit over its colors, and only the match.
             let reversed = |span: &&Span<'_>| {
                 span.style
                     .add_modifier
                     .contains(ratatui::style::Modifier::REVERSED)
             };
-            assert!(
-                spans
-                    .filter(reversed)
-                    .all(|span| span.content.eq_ignore_ascii_case("y4"))
-            );
+            let mut matched = 0;
+            for row in &visible.rows {
+                let lit: Vec<&Span<'_>> = row.spans.iter().filter(reversed).collect();
+                let text: String = lit.iter().map(|span| &*span.content).collect();
+                assert!(text.is_empty() || text == "'a string", "{row:?}");
+                assert!(lit.iter().all(|span| span.style.fg.is_some()), "{row:?}");
+                matched += usize::from(!text.is_empty());
+            }
+            assert!(matched > 0);
         }
     }
+}
+
+#[test]
+fn a_code_the_grammar_failed_on_draws_plain_and_hands_nothing_on() {
+    KEPT.with_borrow_mut(Vec::clear);
+    let lines = long("x_# = 1\n", 600);
+    let code = Code::new(&format!("{lines}y = "), Language::File("a.py"));
+    colored_as_whole(&code, "a.py", [code.len() - 1]);
+    code.colors().fail();
+    assert_eq!(code.spans(0), None);
+    let grown = Code::new(&format!("{lines}y = 2\n"), Language::File("a.py"));
+    assert_eq!(colored(&grown), 0);
+    colored_as_whole(&grown, "a.py", [grown.len() - 1]);
 }

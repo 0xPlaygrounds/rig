@@ -159,17 +159,7 @@ impl<'a> ToolCallView<'a> {
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
         let detail = detail.into();
         let detail = (!detail.is_empty()).then(|| Span::from(detail).dim());
-        self.header_spans(title, detail.into_iter().collect())
-    }
-
-    /// [`header`](Self::header) with `detail` in spans styled by the look,
-    /// such as a highlighted command; the state's words still end it.
-    pub fn header_spans(
-        &self,
-        title: impl Into<String>,
-        detail: Vec<Span<'static>>,
-    ) -> Line<'static> {
-        self.header_at(title, detail).0
+        self.header_at(title, detail.into_iter().collect()).0
     }
 
     /// [`header`](Self::header) with line `index` of `code` as its detail,
@@ -181,8 +171,8 @@ impl<'a> ToolCallView<'a> {
         LookLine { line, code }
     }
 
-    /// The header line with `detail`, and the byte of its text where
-    /// `detail` starts.
+    /// The header line with `detail` in spans, the state's words after
+    /// them, and the byte of its text where `detail` starts.
     fn header_at(
         &self,
         title: impl Into<String>,
@@ -526,25 +516,29 @@ impl LookLine {
             end += span.content.len();
             runs.push((start..end, span.style));
         }
+        // The laid-out spans and the colors' runs both run end to end over
+        // the line, so one pass cuts each span where a run starts or ends.
+        let mut runs = runs.into_iter().peekable();
         let mut spans = Vec::new();
         let mut start = 0;
         for span in &self.line.spans {
-            let piece = start..start + span.content.len();
-            start = piece.end;
-            let mut cuts = vec![piece.start, piece.end];
-            let inside = runs.iter().flat_map(|(run, _)| [run.start, run.end]);
-            cuts.extend(inside.filter(|cut| piece.start < *cut && *cut < piece.end));
-            cuts.sort_unstable();
-            cuts.dedup();
-            for pair in cuts.windows(2) {
-                let [from, to] = pair else { continue };
-                let Some(text) = span.content.get(from - piece.start..to - piece.start) else {
-                    continue;
+            let end = start + span.content.len();
+            let mut from = start;
+            while from < end {
+                while runs.next_if(|(run, _)| run.end <= from).is_some() {}
+                let (to, style) = match runs.peek() {
+                    Some((run, color)) if run.start <= from => {
+                        (run.end.min(end), color.patch(span.style))
+                    }
+                    Some((run, _)) => (run.start.min(end), span.style),
+                    None => (end, span.style),
                 };
-                let color = runs.iter().find(|(run, _)| run.contains(from));
-                let style = color.map_or(span.style, |(_, color)| color.patch(span.style));
-                spans.push(Span::styled(text.to_owned(), style));
+                if let Some(text) = span.content.get(from - start..to - start) {
+                    spans.push(Span::styled(text.to_owned(), style));
+                }
+                from = to;
             }
+            start = end;
         }
         Line {
             spans,
