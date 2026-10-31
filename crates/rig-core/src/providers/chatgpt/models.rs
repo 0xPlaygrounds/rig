@@ -115,7 +115,7 @@ pub(crate) async fn account_models_with_limits(
     })
     .await
     .map_err(|_| {
-        ProviderError::from(crate::http_client::Error::instance(std::io::Error::new(
+        ProviderError::from(crate::http_client::Error::transient(std::io::Error::new(
             std::io::ErrorKind::TimedOut,
             format!("ChatGPT model list request timed out after {timeout:?}"),
         )))

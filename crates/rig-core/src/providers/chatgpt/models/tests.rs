@@ -75,7 +75,7 @@ impl HttpClientExt for Scripted {
         let recorded = stored.is_ok();
         async move {
             if !recorded {
-                return Err(http_client::Error::instance(std::io::Error::other(
+                return Err(http_client::Error::permanent(std::io::Error::other(
                     "request recorder poisoned",
                 )));
             }
