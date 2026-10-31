@@ -378,7 +378,8 @@ fn refuse_untaken(mut start: ResMut<RunStart>, mut commands: Commands) {
     }
 }
 
-/// Intersects access before dispatch, including agents admitted this pass.
+/// Keeps access within `--tools` before dispatch, including agents admitted
+/// this pass, by inserting it ([`narrow`]).
 fn limit_tools(
     agents: Query<(Entity, &ToolAccess), With<Agent>>,
     tools: Res<Tools>,

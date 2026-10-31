@@ -1236,3 +1236,33 @@ fn a_peer_whose_parent_loses_the_tools_to_reach_peers_is_told_no_more() {
     session.passes(|_| false);
     assert!(!role(&mut session));
 }
+
+/// `Peers` and an access inserted together give one peer role, which a
+/// narrower access then takes away whole.
+#[test]
+fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let args = json!({ "description": "Lone", "prompt": "Work alone." });
+    session.call(session.parent, TASK, "lone", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let roles = |session: &mut Session| {
+        let world = session.app.world_mut();
+        let mut roles = world.query::<(&Name, &SectionOf)>();
+        let roles = roles.iter(world);
+        roles
+            .filter(|(name, of)| of.0 == child && name.as_str() == "peer_role")
+            .count()
+    };
+    let reaching = ToolAccess::All.narrow(["look", MESSAGE, WAIT]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(child)
+        .insert((Peers, reaching));
+    assert_eq!(roles(&mut session), 1);
+    let narrowed = ToolAccess::All.narrow(["look"]);
+    session.app.world_mut().entity_mut(child).insert(narrowed);
+    assert_eq!(roles(&mut session), 0);
+}

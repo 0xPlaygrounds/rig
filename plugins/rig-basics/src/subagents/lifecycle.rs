@@ -18,9 +18,11 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
         .add_observer(brief_subagent)
-        .add_observer(|added: On<Add<Peers>>, briefing: PeerBriefing| briefing.brief(added.entity))
-        .add_observer(|set: On<Insert<ToolAccess>>, briefing: PeerBriefing| {
-            briefing.brief(set.entity)
+        .add_observer(|added: On<Add<Peers>>, mut commands: Commands| {
+            brief_peer(added.entity, &mut commands);
+        })
+        .add_observer(|set: On<Insert<ToolAccess>>, mut commands: Commands| {
+            brief_peer(set.entity, &mut commands);
         })
         .add_observer(brief_environment)
         .add_observer(work_on_turn_start)
@@ -212,35 +214,34 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
 }
 
-/// What telling a subagent about its [`Peers`] reads.
-#[derive(SystemParam)]
-struct PeerBriefing<'w, 's> {
-    peers: Query<'w, 's, &'static ToolAccess, With<Peers>>,
-    roles: Query<'w, 's, (Entity, &'static Name, &'static SectionOf)>,
-    commands: Commands<'w, 's>,
-}
-
-impl PeerBriefing<'_, '_> {
-    /// Tells `agent`, a subagent with [`Peers`], about them, as
-    /// [`brief_subagent`] does, while it has `message` and `wait` to reach
-    /// them: again whenever its access is set, as when a restore inserts the
-    /// saved one after its other components, or the kernel keeps it within
-    /// its parent's.
-    fn brief(mut self, agent: Entity) {
-        let Ok(access) = self.peers.get(agent) else {
-            return;
-        };
-        let reaches = access.allows(MESSAGE) && access.allows(WAIT);
-        let shown =
-            (self.roles.iter()).find(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG);
-        match (reaches, shown) {
-            (true, None) => {
-                self.commands.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
+/// Tells `agent`, a subagent with [`Peers`], about them, as
+/// [`brief_subagent`] does, while it has `message` and `wait` to reach them:
+/// again whenever its access is set, as when a restore inserts the saved one
+/// after its other components, or the kernel keeps it within its parent's.
+/// Decided as the commands apply, so two calls in one flush give one role.
+fn brief_peer(agent: Entity, commands: &mut Commands) {
+    commands.queue(move |world: &mut World| {
+        let reaches = world
+            .get::<ToolAccess>(agent)
+            .filter(|_| world.get::<Peers>(agent).is_some())
+            .is_some_and(|access| access.allows(MESSAGE) && access.allows(WAIT));
+        let mut roles = world.query::<(Entity, &Name, &SectionOf)>();
+        let shown: Vec<Entity> = (roles.iter(world))
+            .filter(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG)
+            .map(|(section, ..)| section)
+            .collect();
+        match (reaches, shown.is_empty()) {
+            (true, true) => {
+                world.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
             }
-            (false, Some((section, ..))) => self.commands.entity(section).despawn(),
+            (false, false) => {
+                for section in shown {
+                    world.despawn(section);
+                }
+            }
             _ => {}
         }
-    }
+    });
 }
 
 /// The tag of the peer role's prompt section.
