@@ -1213,3 +1213,26 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
     let child = child.unwrap_or(Entity::PLACEHOLDER);
     assert_eq!(told(&mut session, child), (true, false));
 }
+
+/// A peer told about its peers is told no more once its parent loses
+/// `message` and `wait`, as the kernel keeps it within its parent.
+#[test]
+fn a_peer_whose_parent_loses_the_tools_to_reach_peers_is_told_no_more() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let child = session.task("Propose");
+    let role = |session: &mut Session| {
+        let world = session.app.world_mut();
+        let mut roles = world.query::<(&Name, &SectionOf)>();
+        (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role")
+    };
+    assert!(role(&mut session));
+    let narrowed = ToolAccess::All.narrow([TASK, "look"]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.parent)
+        .insert(narrowed);
+    session.passes(|_| false);
+    assert!(!role(&mut session));
+}

@@ -169,3 +169,26 @@ fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
     assert!(accesses.contains(&(false, false)));
     assert!(accesses.contains(&(true, false)));
 }
+
+/// The agents an access was inserted on.
+#[derive(Resource, Default)]
+struct Inserted(Vec<Entity>);
+
+#[test]
+fn the_start_keeps_every_agent_to_the_tools_by_inserting_its_access() {
+    let (mut app, held) = app(Front::new("view").on_terminal(), true, Some("read"));
+    app.init_resource::<Inserted>().add_observer(
+        |set: On<Insert<ToolAccess>>, mut seen: ResMut<Inserted>| {
+            seen.0.push(set.entity);
+        },
+    );
+    let agent = app.world_mut().spawn(Agent).id();
+    app.update();
+    app.world_mut().resource_mut::<Inserted>().0.clear();
+    app.world_mut().despawn(held);
+    app.update();
+    let world = app.world();
+    assert!(world.resource::<Inserted>().0.contains(&agent));
+    let names = world.get::<ToolAccess>(agent).and_then(ToolAccess::names);
+    assert_eq!(names, Some(&["read".to_owned()][..]));
+}

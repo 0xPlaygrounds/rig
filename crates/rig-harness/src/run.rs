@@ -324,12 +324,14 @@ pub(crate) fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
 }
 
 /// Once no [`Starting`] is left, checks the names `--tools` gives against
-/// the tools registered then. A refusal leaves every agent's tool access
-/// as the session has it.
+/// the tools registered then, and keeps every agent to them before the
+/// first request is built. A refusal leaves every agent's tool access as
+/// the session has it.
 fn check_start(
     starting: Query<(), With<Starting>>,
     tools: Option<Res<Tools>>,
     defs: Query<&ToolDef>,
+    agents: Query<(Entity, &ToolAccess), With<Agent>>,
     (mut start, exit): (ResMut<RunStart>, Option<Res<ExitReason>>),
     mut commands: Commands,
 ) {
@@ -339,12 +341,32 @@ fn check_start(
         return;
     }
     let names = defs.iter().map(|tool| tool.0.name.as_str());
-    match tools.and_then(|tools| tools.unknown(names)) {
+    match tools.as_ref().and_then(|tools| tools.unknown(names)) {
         Some(why) => {
             start.refused = Some(why);
             commands.remove_resource::<Tools>();
         }
-        None => start.over = true,
+        None => {
+            start.over = true;
+            if let Some(tools) = tools {
+                narrow(&agents, &tools, &mut commands);
+            }
+        }
+    }
+}
+
+/// Inserts each of `agents`' access kept to `tools` where it is wider, so
+/// what follows an agent's access sees it change.
+fn narrow(
+    agents: &Query<(Entity, &ToolAccess), With<Agent>>,
+    tools: &Tools,
+    commands: &mut Commands,
+) {
+    for (agent, access) in agents {
+        let narrowed = access.narrow(tools.0.iter().map(String::as_str));
+        if *access != narrowed {
+            commands.entity(agent).insert(narrowed);
+        }
     }
 }
 
@@ -357,13 +379,12 @@ fn refuse_untaken(mut start: ResMut<RunStart>, mut commands: Commands) {
 }
 
 /// Intersects access before dispatch, including agents admitted this pass.
-fn limit_tools(mut agents: Query<&mut ToolAccess, With<Agent>>, tools: Res<Tools>) {
-    for mut access in &mut agents {
-        let narrowed = access.narrow(tools.0.iter().map(String::as_str));
-        if *access != narrowed {
-            *access = narrowed;
-        }
-    }
+fn limit_tools(
+    agents: Query<(Entity, &ToolAccess), With<Agent>>,
+    tools: Res<Tools>,
+    mut commands: Commands,
+) {
+    narrow(&agents, &tools, &mut commands);
 }
 
 /// Removes offers built at Admit before the agent's access was intersected.

@@ -369,10 +369,9 @@ fn restored_agents_cannot_broaden_the_cli_limit() {
     app.update();
     let world = app.world_mut();
     let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-    assert!(
-        world.get::<ToolAccess>(agent).and_then(ToolAccess::names)
-            == Some(&["allowed".to_owned()][..])
-    );
+    // Kept to `--tools` as the start ended, before any request: the saved
+    // `allowed` and the limit's `denied` leave nothing.
+    assert!(world.get::<ToolAccess>(agent).and_then(ToolAccess::names) == Some(&[][..]));
     send(
         &input,
         json!({"v": 1, "type": "send", "text": "Recall it."}),
