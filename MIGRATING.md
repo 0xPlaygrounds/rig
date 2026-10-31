@@ -1007,10 +1007,11 @@ let model = Model::new(wire, http).with_idle_timeout(None);
 #### Provider requests that changed without an API change
 
 - On OpenAI Responses, `CacheRetention::Long` on GPT-5.6 and later asks for
-  the 12 hour prompt cache, which bills cache writes at 2.5x the input rate.
+  the 12 hour prompt cache, whose cache writes OpenAI bills at 2.5x the
+  input rate.
   Use `Short` for the 30 minute default.
-- Requests that set `cache_points` against OpenAI GPT-5.6 or later carry
-  `prompt_cache_breakpoint` markers.
+- On OpenAI's own Responses API, requests that set `cache_points` against
+  GPT-5.6 or later carry `prompt_cache_breakpoint` markers.
 - On MiniMax, Moonshot, Groq and Doubleword Responses, typed options that
   were refused are now sent, and a `store: false` conversation sends earlier
   reasoning items back.
@@ -1020,14 +1021,18 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   `"summary": "auto"`. Set `additional_params` to
   `{"reasoning":{"summary":"detailed"}}` for another summary.
 - Tools on Chat Completions are refused for GPT-6.1 Terra at every effort.
-- Catalog facts for the models listed in `crates/rig-core/TYPED_OPTIONS.md`
-  12.0 changed their reasoning and image support. Models models.dev retired
+- Catalog facts for the models listed in `crates/rig-core/TYPED_OPTIONS.md`,
+  section 12.0 (Catalog refresh), changed their reasoning and image support. Models models.dev retired
   follow each provider's rule for an unlisted model.
 - `ProviderId::resolve("ollama")` is `SelectionError::Ambiguous`.
-- A catalog override file with an unknown key inside `provider`,
-  `experimental`, `cost.tiers`, `cost.context_over_200k` or `interleaved`
-  no longer loads, and the old `chat_tools_need_reasoning_off` key is
-  rejected.
+- DeepSeek requests with strict tools go to its `/beta` endpoint, with
+  schemas rewritten into what strict mode takes.
+- A catalog override file that sets `rig.chat_tools_need_reasoning_off` no
+  longer loads; use `chat_tools` (see
+  [section 3](#3-provider-selection-dialects-and-the-catalog)). Override files
+  may now also set `limit.input`, `provider`, `experimental`, `interleaved`,
+  `cost.tiers` and `cost.context_over_200k`, and a misspelled key inside them
+  is reported.
 
 #### Costs, telemetry and error bodies
 
@@ -1068,12 +1073,15 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   until it ends, unless the call sets `timeout_secs` or the user interrupts.
   A remote command stops when its transport's stdin closes, so a transport
   must forward stdin (`ssh`, `koh exec`); `ssh -n` stops every command at once.
+- `read` returns PNG, JPEG, GIF and WebP files as an image (up to 3840 KB)
+  and refuses a file that is not UTF-8. A third call of one missing tool name
+  in a turn fails that turn. One Ctrl+D on an empty input quits.
 - A tool path whose first component is `~` is the home directory. A session
   whose history wrote into a project folder named `~` reaches the home
   directory when the same call runs again.
 - Compaction measures against the model's input limit, not its context
-  window, so it starts earlier (for GPT-6, about 906K tokens instead of about
-  1,034K). After an overflow the older messages are summarized instead of
+  window, so it starts earlier (for the GPT-6 models, about 906K tokens
+  instead of about 1,034K). After an overflow the older messages are summarized instead of
   asking for notes. A request with no output limit asks for at most 64,000
   tokens plus any thinking budget and 1,024, never above the catalog's output
   limit, instead of the whole window left; a model with no known window or
@@ -1127,9 +1135,10 @@ differ in their low bits. To keep the 0.45 behavior, add a direct dependency:
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 ```
 
-Some rig builds still enable them: `rig-cassette` with `traffic` (and so
-`rig-traffic`) enables both, `rig-claude-cloak` and `rig-mcp-client` enable
-`preserve_order`, and `rig-mongodb` enables it through BSON.
+Some rig builds still enable them: `rig-cassette` with `traffic`, `http` or
+`bedrock` (and so `rig-traffic`) enables both, `rig-claude-cloak`,
+`rig-mcp-client` and so `rig-acp` enable `preserve_order`, and `rig-mongodb`
+enables it through BSON.
 
 ### 2. Message data: `Native`, reasoning blobs and images
 
@@ -1177,8 +1186,8 @@ let detail: ImageDetail = serde_json::from_value(serde_json::json!("low"))?;
 ```
 
 `rig_tools::attach::attached_file` moved to
-`rig_core::conversation::attached_file`, with the `FILE_OPEN` and
-`FILE_CLOSE` markers. `Conversation::resume` is removed.
+`rig_core::conversation::attached_file`, where the `FILE_OPEN` and
+`FILE_CLOSE` markers are now public. `Conversation::resume` is removed.
 
 ### 3. Provider selection, dialects and the catalog
 
@@ -1199,6 +1208,7 @@ header on its quirks instead. `openai::wire::Quirks` also gains
 from a shipped constant:
 
 ```rust
+let mut quirks = Quirks::openai();
 // before
 quirks.identity = Some(Identity { originator, originator_env, user_agent_env, session_ids: true });
 // after
@@ -1211,9 +1221,13 @@ quirks.session_header = Some("session-id");
 ```rust
 // before
 MessagesDecoder::new(false)
+MessagesDecoder::new(true) // a dialect that takes unsigned thinking back
 // after
 MessagesDecoder::new(anthropic::wire::Quirks::anthropic())
+MessagesDecoder::new(anthropic::wire::MOONSHOT.quirks) // or your dialect's quirks
 ```
+
+`Quirks::anthropic()` also prices cache writes by their TTL split.
 
 Catalog pricing is decided per wire through `ReplayTarget::catalog_priced`
 and the dialects' `Quirks::catalog_priced`, not a list of provider names.
@@ -1234,7 +1248,8 @@ ContextUse { tokens, limit: spec.input_limit() }
 ```
 
 `xiaomimimo::MIMO_V2_FLASH`, `MIMO_V2_OMNI` and `MIMO_V2_PRO` are removed
-because Xiaomi retired them; use `MIMO_V2_6_FLASH` or `MIMO_V2_6_PRO`.
+because Xiaomi retired them; use `MIMO_V2_6_FLASH`, `MIMO_V2_6_PRO` or
+`MIMO_V2_6_PRO_ULTRASPEED`.
 `ModelSpec` and `ProviderError` are `#[non_exhaustive]`, so their new
 `max_input_tokens`, `details` and `Stalled` need no code change. The
 `test-utils` scripted error is exhaustive, though:
@@ -1464,7 +1479,9 @@ let rows = (0..code.len()).map(|index| code.line(index, vec![Span::from("   ")])
 ```
 
 A look that draws no code converts with `LookLine::from`; a panel outside the
-transcript draws `LookLine::colored()`. `header_code` replaces `header_spans`.
+transcript draws `LookLine::colored()`. For `header_spans`, use
+`header(title, detail)` for a plain detail or `header_code(title, &code, index)`
+for a line of code; a header of arbitrary styled spans has no replacement.
 
 **Other plugin-facing changes:**
 
@@ -1504,9 +1521,14 @@ transcript draws `LookLine::colored()`. `header_code` replaces `header_spans`.
   `exit.failure()` to describe it.
 - The TUI's `Editor`: `clear()` keeps the text in `PromptHistory`, `take`
   keeps a draft hidden behind a recalled prompt, and `up` on the first line
-  moves the cursor to its start before it browses. A filter of
-  `PromptHistory::entries` that should also hide seeded prompts runs after
-  `HistorySystems::Seed`.
+  moves the cursor to its start before it browses. A repeated prompt moves to
+  the end of `PromptHistory::entries` instead of being skipped. A filter of
+  `PromptHistory::entries` that should also hide seeded prompts runs in
+  `TuiKeys`:
+
+  ```rust
+  app.add_systems(TuiKeys, scrub.after(HistorySystems::Seed).before(InputSystems::Dispatch));
+  ```
 
 ### 8. The coding agent's `plugins.toml` and settings
 
@@ -1562,9 +1584,12 @@ mark_nonce_env = "FUX_MARK_NONCE"
 `/retry` is gone: after a failed turn, the message is back in the input;
 press Enter to send it again. A key saved with `/login <provider>` is used
 before the provider's environment variable, and then the provider's other
-environment variables (such as a base URL) are not read for it. A project's
-`.rig/mcp.json` server waits for `/mcp approve <name>` once; move a server
-you always want into `$RIG_HOME/mcp.json` to skip that.
+environment variables (such as a base URL) are not read for it. With
+`McpPlugin` on, a project's `.rig/mcp.json` server waits for
+`/mcp approve <name>` once; move a server you always want into
+`$RIG_HOME/mcp.json` to skip that. The model-facing `reload` tool is gone, so
+the model can no longer rebuild the agent, and a `--tools` list that names
+`reload` is refused.
 
 ### 9. Headless drivers: `rig -p`, `rig -p --json` and `rig --json`
 
@@ -1572,16 +1597,20 @@ you always want into `$RIG_HOME/mcp.json` to skip that.
   session log, and names its error for every non-zero code. After a signal,
   the launcher's death or a closed stdin, every cut tool call gets a
   `tool_result` with `"cancelled": true` and every cut turn a `turn_end`
-  `"stopped"` before it. Every `tool_result` has the `cancelled` field and
-  every line has `ms`; `turn_end` has `first_token_ms`.
-- Exit codes: an unknown `--tools` name or `--model` exits 2 (an unknown
-  `--model` was 1), before any model call, also at a terminal. A turn that
+  `"stopped"` before it. Every `tool_result` has the `cancelled` and
+  `refused` fields and every line has `ms`; `turn_end` has
+  `first_token_ms`. A refused tool call writes its `tool_call` and a
+  `tool_result` with `"refused": true`.
+- Exit codes: an unknown `--tools` name exits 2 before any model call, also
+  at a terminal. In `rig -p` and `--json`, an unknown `--model` also exits 2
+  (it was 1); at a terminal it shows a notice and picks no model. A turn that
   ends with no answer text fails (`turn_end` `"outcome": "failed"`, exit 1;
   it was exit 0 with `"answer": null`). A run whose stdout nobody reads, such
   as after `| head -1`, stops with 130. A signal also exits 130.
 - `--tools` can name a tool a plugin registers in the background, such as an
   MCP server's `<server>__<tool>`: the run waits for every `print::Starting`
-  entity first. An empty `--tools` permits no tools, in every front.
+  entity first. `--tools` now applies at a terminal too (0.45 ignored it
+  there), and an empty `--tools` permits no tools (0.45 gave every tool).
 - A failed `rig -p` run names the unanswered message on stderr
   (`rig: not answered: <text>`); `--json` writes it as a `recalled` event.
 - A resumed run no longer replays or finishes a turn an exit cut off.
