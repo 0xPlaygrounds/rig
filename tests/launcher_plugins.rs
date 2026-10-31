@@ -16,6 +16,7 @@ fn help_and_refused_commands_use_their_streams_and_leave_the_home_untouched() {
     let result = (|| -> anyhow::Result<()> {
         let root = assert_fs::TempDir::new()?;
         let home = root.path().join("home");
+        let home = home.as_path();
         for args in [
             vec!["--help"],
             vec!["add", "--help"],
@@ -24,14 +25,14 @@ fn help_and_refused_commands_use_their_streams_and_leave_the_home_untouched() {
             vec!["-h", "new", "example"],
             vec!["unknown", "--help"],
         ] {
-            let output = plugin(&home, &args)?;
+            let output = plugin(home, &args)?;
             anyhow::ensure!(output.status.success(), "{args:?}: {output:?}");
             anyhow::ensure!(output.stderr.is_empty(), "{args:?}: {output:?}");
             anyhow::ensure!(String::from_utf8(output.stdout)?.contains("rig plugin add <type>"));
             anyhow::ensure!(!home.exists());
         }
         for args in [vec![], vec!["unknown"]] {
-            let output = plugin(&home, &args)?;
+            let output = plugin(home, &args)?;
             anyhow::ensure!(output.status.code() == Some(2), "{args:?}: {output:?}");
             anyhow::ensure!(output.stdout.is_empty(), "{args:?}: {output:?}");
             anyhow::ensure!(String::from_utf8(output.stderr)?.starts_with("usage:\n"));
@@ -40,7 +41,7 @@ fn help_and_refused_commands_use_their_streams_and_leave_the_home_untouched() {
         fs::create_dir(&home)?;
         let original = "an invalid plugin list\n";
         fs::write(home.join("plugins.toml"), original)?;
-        let output = plugin(&home, &["add", "--help"])?;
+        let output = plugin(home, &["add", "--help"])?;
         anyhow::ensure!(output.status.success(), "{output:?}");
         anyhow::ensure!(fs::read_to_string(home.join("plugins.toml"))? == original);
         Ok(())
@@ -51,11 +52,12 @@ fn help_and_refused_commands_use_their_streams_and_leave_the_home_untouched() {
 #[test]
 fn list_exposes_a_missing_shipped_plugin_that_the_picker_can_enable() {
     let result = (|| -> anyhow::Result<()> {
-        let home = assert_fs::TempDir::new()?;
+        let root = assert_fs::TempDir::new()?;
+        let home = root.path();
         let original = "# An older home.\n";
         fs::write(home.join("plugins.toml"), original)?;
         let type_path = "rig_mcp_client::McpPlugin";
-        let output = plugin(&home, &["list"])?;
+        let output = plugin(home, &["list"])?;
         anyhow::ensure!(output.status.success(), "{output:?}");
         let text = String::from_utf8(output.stdout)?;
         let row = text
@@ -74,10 +76,10 @@ fn list_exposes_a_missing_shipped_plugin_that_the_picker_can_enable() {
             "{row:?}"
         );
         anyhow::ensure!(fs::read_to_string(home.join("plugins.toml"))? == original);
-        let enabled = plugin(&home, &["enable", type_path])?;
+        let enabled = plugin(home, &["enable", type_path])?;
         anyhow::ensure!(enabled.status.success(), "{enabled:?}");
         anyhow::ensure!(String::from_utf8(enabled.stdout)?.contains("Added"));
-        let output = plugin(&home, &["list"])?;
+        let output = plugin(home, &["list"])?;
         anyhow::ensure!(output.status.success(), "{output:?}");
         let text = String::from_utf8(output.stdout)?;
         let rows: Vec<_> = text
