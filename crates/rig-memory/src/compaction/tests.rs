@@ -378,6 +378,44 @@ fn compactions_are_undone_newest_first_with_their_ids_and_states() {
     assert_eq!(load(&store, "agent").expect("loaded"), conversation);
 }
 
+/// A plan pairs each output with the call in the reply before it, as a
+/// call id may come again in a later reply; notes that are blank, or whose
+/// message is gone, clear nothing, as the outputs would go without them.
+#[test]
+fn a_clear_plan_pairs_outputs_with_their_reply_and_clears_nothing_without_notes() {
+    let big = "x".repeat(4_000);
+    let conversation = Conversation::from_messages([
+        Message::user("start"),
+        call("1", "read", "a.rs"),
+        result("1", &big),
+        call("1", "read", "b.rs"),
+        result("1", &big),
+        Message::assistant("done"),
+    ]);
+    let plan = ClearToolOutputs::new(0).plan(&conversation);
+    let paths: Vec<Option<&str>> = plan
+        .calls(&conversation)
+        .map(|(call, _)| call.and_then(|call| call.function.arguments.get("path")?.as_str()))
+        .collect();
+    assert_eq!(paths, [Some("a.rs"), Some("b.rs")]);
+    let mut blank = conversation.clone();
+    assert_eq!(
+        plan.apply(&mut blank, Some(" \n"), summary_author()),
+        Cleared::default()
+    );
+    let mut gone = conversation.clone();
+    let through = plan.through.and_then(|id| gone.index_of(id));
+    assert!(through.is_some());
+    gone.splice(through.unwrap_or_default().., [], summary_author());
+    let before = (gone.revision(), gone.messages().to_vec());
+    assert_eq!(
+        plan.apply(&mut gone, Some("notes"), summary_author()),
+        Cleared::default()
+    );
+    assert_eq!((gone.revision(), gone.messages().to_vec()), before);
+    assert_eq!(blank.messages(), conversation.messages());
+}
+
 /// A plan clears by message id, leaves outputs under `keep_under` whole,
 /// and puts its notes after the outputs of the newest message it clears,
 /// where a later clearing, which touches only tool outputs, leaves them.
@@ -403,8 +441,11 @@ fn a_clear_plan_keeps_small_outputs_and_its_notes_survive_the_next_clearing() {
     };
     let plan = clearing.plan(&conversation);
     let planned: Vec<CallId> = plan
-        .results(&conversation)
-        .map(|result| result.call.clone())
+        .calls(&conversation)
+        .map(|(call, result)| {
+            assert_eq!(call.map(|call| &call.id), Some(&result.call));
+            result.call.clone()
+        })
         .collect();
     assert_eq!(planned, [CallId::from_wire("1"), CallId::from_wire("3")]);
     assert_eq!(plan.through, conversation.id(6));

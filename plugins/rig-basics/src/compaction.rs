@@ -22,8 +22,7 @@
 //!   20k tokens of them as the provider counts them, so a clearing, which
 //!   rewrites what the prompt cache holds, comes seldom. Before that the
 //!   model writes notes on them ([`Noting`]), which stay after them, unless
-//!   reading each again, off the frame, gives it back unchanged
-//!   ([`Rereads`]). An output is never cleared otherwise: when its notes
+//!   reading each again, off the frame, gives it back unchanged. An output is never cleared otherwise: when its notes
 //!   fail or would not fit, it stays, and a notice says why. After an
 //!   overflow no notes are asked: outputs are cleared at once only when
 //!   each reads back unchanged, and the older messages summarized otherwise.
@@ -294,12 +293,14 @@ impl Noting {
 #[component(storage = "SparseSet")]
 struct SummaryRead;
 
-/// An agent as compacting it reads it: its messages and its model.
+/// An agent as compacting it reads it: its messages, its model and the
+/// tools it may call.
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct Compacting {
     conversation: &'static mut Conversation,
     connection: Option<&'static Connection>,
+    access: Option<&'static ToolAccess>,
 }
 
 /// The most outputs one re-read checks ([`Rereads::start`]): clearing more
@@ -317,35 +318,30 @@ struct Rereads<'w, 's> {
 
 impl Rereads<'_, '_> {
     /// Starts reading again every output `plan` clears of `conversation`,
-    /// `agent`'s, each by a fresh run of the `read` call that made it, and
-    /// holds `call` until the [`Reread`] is in; says whether it started.
-    /// Only the outputs of `read` calls can be read again, at most
-    /// [`MOST_REREAD`] of them, and only while the built-in `read` tool is
-    /// registered. It always runs off the frame, so a workspace on another
-    /// host never blocks one, and it notes nothing as seen.
+    /// that of `agent`, which may call the tools `access` allows, each by a
+    /// fresh run of the
+    /// `read` call that made it, and holds `call` until the [`Reread`] is
+    /// in; says whether it started. Only the outputs of `read` calls can be
+    /// read again, at most [`MOST_REREAD`] of them, and only while the
+    /// built-in `read` tool is registered and the agent may call it, as the
+    /// model must be able to read them again itself. It always runs off the
+    /// frame, so a workspace on another host never blocks one, and it notes
+    /// nothing as seen.
     fn start(
         &self,
         commands: &mut Commands,
         (agent, call): (Entity, Entity),
         plan: &ClearPlan,
-        conversation: &rig_core::conversation::Conversation,
+        (conversation, access): (&rig_core::conversation::Conversation, Option<&ToolAccess>),
     ) -> bool {
         let place = self.tools.place(Some(agent), self.workspace.0.clone());
-        if self.tools.build(Read::NAME, place.clone()).is_none() {
+        let allowed = access.is_none_or(|access| access.allows(Read::NAME));
+        if !allowed || self.tools.build(Read::NAME, place.clone()).is_none() {
             return false;
         }
-        let call_of = |result: &rig_core::message::ToolResult| {
-            let mut messages = conversation.messages().iter();
-            messages.find_map(|message| match &**message {
-                completion::Message::Assistant(reply) => {
-                    reply.tool_calls().find(|call| call.id == result.call)
-                }
-                _ => None,
-            })
-        };
         let mut reads = Vec::new();
-        for result in plan.results(conversation) {
-            let made = call_of(result).filter(|made| made.function.name.as_str() == Read::NAME);
+        for (made, result) in plan.calls(conversation) {
+            let made = made.filter(|made| made.function.name.as_str() == Read::NAME);
             let Some(made) = made.filter(|_| reads.len() < MOST_REREAD) else {
                 return false;
             };
@@ -1151,7 +1147,13 @@ fn compact_near_the_window(
         }
         // A request a plugin brought whole is not the conversation's to clear.
         if step.is_none() && plan.cleared.results > 0 && model.history.is_some() {
-            if reread.is_none() && rereads.start(&mut commands, (agent, call), &plan, conversation)
+            if reread.is_none()
+                && rereads.start(
+                    &mut commands,
+                    (agent, call),
+                    &plan,
+                    (conversation, compacting.access),
+                )
             {
                 // The call is held, and prepared again once the re-read is in.
                 continue;
@@ -1304,7 +1306,12 @@ fn recover_from_overflow(
         let clears = step.is_none() && plan.cleared.results > 0;
         if clears
             && reread.is_none()
-            && rereads.start(&mut commands, (agent, call), &plan, conversation)
+            && rereads.start(
+                &mut commands,
+                (agent, call),
+                &plan,
+                (conversation, compacting.access),
+            )
         {
             // The call is held, and taken up again once the re-read is in.
             continue;

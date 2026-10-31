@@ -1007,6 +1007,109 @@ fn an_overflow_with_nothing_to_summarize_clears_only_what_reads_back_unchanged()
     }
 }
 
+/// Near the limit, notes too big to ask with nothing older to summarize
+/// instead clear nothing: the outputs stay, a notice says why, and the
+/// request goes as it is.
+#[test]
+fn notes_too_big_with_nothing_to_summarize_keep_the_outputs() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    let model = MockCompletionModel::from_stream_turns(vec![reply("done")]);
+    let agent = agent(&mut app, &model, 1_000_000, Vec::new());
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    let outputs: Vec<(String, String)> = (0..6)
+        .map(|n| (format!("gone{n}.rs"), "x".repeat(60_000)))
+        .collect();
+    let read = summarized_then_read(app.world_mut(), agent, &outputs);
+    assert!(read.is_some(), "the conversation was summarized");
+    // The request is over the limit, so notes asked of it would be too.
+    limit_input(&mut app, agent, 70_000);
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    world.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let ended = app.world().resource::<Ended>().0.clone();
+    assert_eq!(answer(&app).as_deref(), Some("done"), "{ended:?} {:?}", notices(&app));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [only] if !only.contains("[output cleared") && !asks_summary(only)),
+        "{sent:?}"
+    );
+    let notices = notices(&app);
+    assert!(
+        notices
+            .iter()
+            .any(|it| it.contains("kept") && it.contains("would not fit")),
+        "{notices:?}"
+    );
+}
+
+/// Outputs are never proven by reading them again for an agent that may
+/// not call `read`, as its model could not read them again itself: notes
+/// are asked instead.
+#[test]
+fn an_agent_without_read_gets_notes_not_a_re_read() {
+    let files = Arc::new(Files::default());
+    let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
+    let messages = files.read_all(5);
+    let model = MockCompletionModel::from_stream_turns([reply("- 0.rs: lines"), reply("done")]);
+    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+        return;
+    };
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ToolAccess::Only(Vec::new()));
+    let reads = files.reads();
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(files.reads(), reads, "nothing read again");
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [notes, _] if notes.contains("replaced by a placeholder")),
+        "{sent:?}"
+    );
+}
+
+/// Stopping the turn while the outputs are read again clears nothing, and
+/// the re-read's late result goes nowhere.
+#[test]
+fn a_stop_while_reading_again_clears_nothing() {
+    let files = Arc::new(Files::default());
+    let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
+    let messages = files.read_all(5);
+    let model = MockCompletionModel::from_stream_turns([reply("never asked")]);
+    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+        return;
+    };
+    let release = files.hold();
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        let mut rereads = world.iter_entities();
+        rereads.any(|entity| entity.contains::<Rereading>())
+    });
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.world_mut().flush();
+    app.update();
+    drop(release);
+    for _ in 0..20 {
+        app.update();
+    }
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Stopped(None)]),
+        "{ended:?}"
+    );
+    assert!(sent(&model).is_empty());
+    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+    assert!(!live.contains(rig_memory::ClearToolOutputs::PLACEHOLDER));
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Rereading>().iter(world).count(), 0);
+}
+
 /// A `/compact` summary too big to ask in place, a request of its own
 /// instead, that fails for a while is sent again as that same request, not
 /// built again in place.

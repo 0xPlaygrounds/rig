@@ -284,15 +284,17 @@ impl Default for CompactionPolicy {
 }
 
 /// What a clearing near the model's window does with the tool outputs it
-/// drops; its serde form is `"summarize"` or `"clear"`.
+/// drops that cannot be shown to come back unchanged when read again; its
+/// serde form is `"summarize"` or `"clear"`. Outputs that read back unchanged
+/// are cleared either way.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NearWindow {
-    /// The model first writes notes on the outputs that cannot be had
-    /// again ([`SummaryPrompts::notes`]), which stay after them.
+    /// The model first writes notes on them ([`SummaryPrompts::notes`]),
+    /// which stay after them; without notes they stay.
     #[default]
     Summarize,
-    /// They are cleared with no model call.
+    /// No model call is made: they stay.
     Clear,
 }
 
@@ -960,7 +962,7 @@ impl Summarizer {
     /// [`AFTER_OVERFLOW`] of the input limit. The room below the reserve, or
     /// half the limit when that is more, is split: the summary asks for at
     /// most half of it, and the older messages fill the rest, less the
-    /// earlier summary, but never less than [`LEAST_READ`] tokens or an
+    /// earlier summary, but never less than 16k tokens or an
     /// eighth of the input limit, whichever is smaller. A model whose
     /// output bounds are unknown ([`known_limits`]) is sent no output
     /// limit, as a turn is not, so its server's default holds.
@@ -1336,19 +1338,30 @@ pub struct ClearPlan {
 }
 
 impl ClearPlan {
-    /// The tool results of `conversation` it clears.
-    pub fn results<'c>(
+    /// The tool results of `conversation` it clears, each with the call it
+    /// answers: the one of its id in the newest reply before it, as call ids
+    /// are unique only within a reply.
+    pub fn calls<'c>(
         &self,
         conversation: &'c Conversation,
-    ) -> impl Iterator<Item = &'c ToolResult> {
+    ) -> impl Iterator<Item = (Option<&'c ToolCall>, &'c ToolResult)> {
+        let mut reply = None;
         conversation.entries().flat_map(move |entry| {
             let content = match entry.message {
                 Message::User { content } => content.as_slice(),
-                _ => &[],
+                Message::Assistant(answer) => {
+                    reply = Some(answer);
+                    &[]
+                }
+                Message::System { .. } => &[],
             };
+            let reply = reply;
             let items = self.targets.get(&entry.id).into_iter().flatten();
-            items.filter_map(|&at| match content.get(at) {
-                Some(UserContent::ToolResult(result)) => Some(result),
+            items.filter_map(move |&at| match content.get(at) {
+                Some(UserContent::ToolResult(result)) => {
+                    let mut calls = reply.into_iter().flat_map(|reply| reply.tool_calls());
+                    Some((calls.find(|call| call.id == result.call), result))
+                }
                 _ => None,
             })
         })
