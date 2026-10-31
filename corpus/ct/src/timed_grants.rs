@@ -26,6 +26,7 @@ use rig_basics::approval::{ApprovalSystems, Approved, NeedsApproval};
 use rig_basics::subagents::SpawnedAgent;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{Scope, Touches};
+use rig_harness::rig_ecs::session_log::Reset;
 use serde::{Deserialize, Serialize};
 
 /// The plugin's name, in its notices.
@@ -192,7 +193,15 @@ pub struct Grants(Vec<Entity>);
 
 /// An agent's grants as saved with the session.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved(Reset),
+    Default,
+    Clone,
+    Serialize,
+    Deserialize
+)]
 pub struct SavedGrants(pub Vec<SavedGrant>);
 
 /// One saved grant.

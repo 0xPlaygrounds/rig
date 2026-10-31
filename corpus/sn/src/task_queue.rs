@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_basics::telemetry::usage::TurnUsage;
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Never;
 use serde::Deserialize;
 
 #[cfg(feature = "tui")]
@@ -173,7 +174,7 @@ impl Task {
 
 /// On a task's agent, saved with it: the task it runs.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct QueuedTask(pub u32);
 
 /// The last thing the queue said, for the status line: `task 2 done`.

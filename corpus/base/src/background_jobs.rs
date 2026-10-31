@@ -31,6 +31,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bevy_app::OnAppExitSystems;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Reset;
 use rig_tools::process::Launcher;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -132,7 +133,7 @@ impl JobRecord {
 
 /// The jobs an agent started, kept with the session.
 #[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Reset), Default)]
 pub struct AgentJobs(pub Vec<JobRecord>);
 
 /// A running job's entity: the agent that started it.

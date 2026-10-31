@@ -31,6 +31,7 @@
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
+use rig_harness::rig_ecs::session_log::Never;
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::{
@@ -78,7 +79,7 @@ pub struct SideExchange {
 /// On a side agent, kept with the session: one a restore brings back is
 /// retired, its panel being gone.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct SideAgent;
 
 /// On a side agent's spawn request: the conversation it starts from.

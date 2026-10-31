@@ -17,21 +17,24 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::PartialReflect;
+use bevy_reflect::prelude::*;
 use rig_core::conversation::MessageId;
 
-use super::agent::{Agent, AgentId, CacheKey, Conversation, Notice};
+use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation, Notice};
 use super::model::Connection;
 use super::restore::SavedKeys;
-use super::session_log::{ReflectSaved, SessionLog, save_conversation};
+use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 
 /// Fork the agent `agent`: a new agent in the same session whose log is a
 /// copy of `agent`'s up to a turn boundary at or before `through` (its
 /// end with `None`; rig-memory's `Writer::fork_log`), its conversation that
 /// copy. A user message that asked for a turn is at no boundary, so a fork
-/// through it ends just before it. The new agent has every saved
-/// component `agent` has now (its model, reasoning setting, tools, system
-/// prompt and working directory among them) and its connection, and shares
-/// its prompt cache ([`CacheKey`]). It has no parent. [`AgentForked`]
+/// through it ends just before it. The new agent has the saved components
+/// `agent` has now (its model, reasoning setting, tools, system prompt and
+/// working directory among them) as their fork rules say
+/// ([`ReflectSaved`]), its connection, and a [`ForkedFrom`] naming it, and
+/// shares its prompt cache ([`CacheKey`]). Its context is [`ContextStale`]
+/// until its first reply. It has no parent. [`AgentForked`]
 /// names it; a fork that cannot be made, such as without a session log or
 /// through a message the agent never had, is a notice. It is made once the
 /// commands run, after the source's unsaved changes are saved.
@@ -43,6 +46,12 @@ pub struct ForkAgent {
     /// The last message the fork may keep; `None` for the end.
     pub through: Option<MessageId>,
 }
+
+/// On an agent made by a [`ForkAgent`]: the id of the agent it was forked
+/// from. Saved with the session.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Saved, Default, Clone, Debug, PartialEq)]
+pub struct ForkedFrom(pub String);
 
 /// An agent made by a [`ForkAgent`].
 #[derive(Event, Clone, Debug)]
@@ -98,9 +107,21 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
         .fork_log(&id.0, &to.0, through)
         .map_err(|failure| failure.to_string())?;
     let registry = registry.read();
+    let (mut resets, mut removals) = (Vec::new(), Vec::new());
     let saved: Vec<(&ReflectComponent, Box<dyn PartialReflect>)> = registry
         .iter_with_data::<ReflectSaved>()
-        .filter_map(|(registration, _)| {
+        .filter_map(|(registration, saved)| {
+            match saved.fork {
+                Fork::Copy => {}
+                Fork::Reset(reset) => {
+                    resets.push(reset);
+                    return None;
+                }
+                Fork::Never(remove) => {
+                    removals.push(remove);
+                    return None;
+                }
+            }
             let component = registration.data::<ReflectComponent>()?;
             let value = component.reflect(world.get_entity(from).ok()?)?;
             let value = match value.reflect_clone() {
@@ -113,13 +134,23 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     let key = CacheKey(CacheKey::of(world.get::<CacheKey>(from), &id).to_owned());
     let connection = world.get::<Connection>(from).cloned();
     let conversation = Conversation(copy.conversation);
+    let empty = conversation.messages().is_empty();
     let mut spawned = world.spawn((Name::new("agent"), Agent, to.clone(), conversation));
     for (component, value) in &saved {
         component.insert(&mut spawned, value.as_ref(), &registry);
     }
-    spawned.insert(key);
+    spawned.insert((key, ForkedFrom(id.0.clone())));
+    // No reply of the fork measured the conversation it starts with.
+    if !empty {
+        spawned.insert(ContextStale {});
+    }
     if let Some(connection) = connection {
         spawned.insert(connection);
+    }
+    // Removals last, so no component inserted before brings back a
+    // required one.
+    for rule in resets.into_iter().chain(removals) {
+        rule(&mut spawned);
     }
     let fork = spawned.id();
     // A value the copied log holds that the source has no more is gone in

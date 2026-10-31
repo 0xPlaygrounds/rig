@@ -470,6 +470,13 @@ pub(crate) fn queue_choices(
     show_first(&view, &choices, (&showing, input), &mut commands);
 }
 
+/// Where the terminal view takes in this frame's pickers and questions, in
+/// `Update` after the agent loop, and finds a picker's selection again
+/// when it was filled again. A plugin that fills a picker again in `Update`
+/// does so before it, so the next key acts on the rows shown.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChoiceSystems;
+
 /// Selects again, in `shown` filled again, the item `state` had selected,
 /// by its command, else its label, among the rows what is typed leaves;
 /// else the row it was on, as far as there are rows.

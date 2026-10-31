@@ -36,6 +36,7 @@ use rig_harness::rig_core::providers::anthropic::{self, AnthropicConfig};
 use rig_harness::rig_core::providers::registry::ProviderId;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::wire::{Body, Mode, Wire, WireFrame, decode_reply};
+use rig_harness::rig_ecs::session_log::Reset;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -83,7 +84,7 @@ impl Default for BatchSettings {
 /// The item an agent's turn waits for, saved with the session so a restart
 /// polls it again rather than sending the request again.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Reset), Default)]
 pub struct BatchWait(pub Option<PendingItem>);
 
 /// A submitted batch item.

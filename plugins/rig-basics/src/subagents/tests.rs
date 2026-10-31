@@ -11,6 +11,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::*;
+use rig_ecs::fork::{ForkAgent, ForkedFrom};
 use rig_harness_test_support::{
     MemoryStore, app_on, calls, commit_message, connect, reply, run_until, start_call,
 };
@@ -879,6 +880,81 @@ fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
         .iter(world)
         .count();
     assert_eq!(agents, 1, "only the parent comes back");
+}
+
+/// Forks `agent` at its end; the fork.
+fn fork(session: &mut Session, agent: Entity) -> Entity {
+    let world = session.app.world_mut();
+    world.trigger(ForkAgent {
+        agent,
+        through: None,
+    });
+    world.flush();
+    let mut forks = world.query_filtered::<Entity, With<ForkedFrom>>();
+    let fork = forks.iter(world).next();
+    fork.unwrap_or(Entity::PLACEHOLDER)
+}
+
+/// A fork of a working subagent is no subagent and owes no report: the
+/// task the subagent was given is reported once, by the subagent.
+#[test]
+fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
+    let parent_model = MockCompletionModel::from_stream_turns([reply("Noted."), reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent_model));
+    let args = json!({ "description": "Kid", "prompt": "Reply ORIGINAL." });
+    session.call(session.parent, TASK, "t1", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let fork = fork(&mut session, child);
+    let world = session.app.world();
+    assert!(
+        world.get::<Subtask>(fork).is_none(),
+        "the fork is no subagent"
+    );
+    let owed = world.get::<OpenRequests>(fork).map(|open| open.0.len());
+    assert_eq!(owed, Some(0), "the fork owes no report");
+
+    let fork_model = MockCompletionModel::from_stream_turns([reply("FORK")]);
+    let child_model = MockCompletionModel::from_stream_turns([reply("ORIGINAL")]);
+    session.answer_by(fork, &fork_model);
+    session.answer_by(child, &child_model);
+    let deliver = Deliver::new(fork, "Reply FORK now.", DeliveryMode::Queue);
+    session.app.world_mut().trigger(deliver);
+    let parent = session.parent;
+    run_until(&mut session.app, &session.wakes, |world| {
+        let finished = matches!(world.get::<Lifecycle>(child), Some(Lifecycle::Finished(_)));
+        let idle = |agent| world.get::<ActiveTurn>(agent).is_none();
+        finished && idle(fork) && idle(parent) && fork_model.request_count() > 0
+    });
+    session.app.update();
+    let reports = session.to(session.parent);
+    assert_eq!(reports, [("t1", DeliveryMode::Steer, "ORIGINAL")]);
+}
+
+/// A fork of a helper for one job goes on after its turn.
+#[test]
+fn a_fork_of_a_helper_for_one_job_is_not_retired() {
+    let parent = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let job = SpawnSubagent::helper("summarizer")
+        .brief("Sum up the session.")
+        .once();
+    let request = (session.app.world_mut())
+        .spawn((job, ForAgent(session.parent)))
+        .id();
+    session.passes(|world| world.get::<Settled>(request).is_some());
+    let helper = session.app.world().get::<SpawnedAgent>(request);
+    let helper = helper.map_or(Entity::PLACEHOLDER, |helper| helper.0);
+    let fork = fork(&mut session, helper);
+    let model = MockCompletionModel::from_stream_turns([reply("Mine.")]);
+    session.answer_by(fork, &model);
+    let deliver = Deliver::new(fork, "Go on.", DeliveryMode::Queue);
+    session.app.world_mut().trigger(deliver);
+    run_until(&mut session.app, &session.wakes, |world| {
+        model.request_count() > 0 && world.get::<ActiveTurn>(fork).is_none()
+    });
+    session.app.update();
+    assert!(session.app.world().get_entity(fork).is_ok(), "not retired");
 }
 
 #[test]

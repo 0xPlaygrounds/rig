@@ -30,6 +30,7 @@ use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_ecs::session_log::Never;
 use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};
 use rig_tools::{MAX_BYTES, OutputLimit, Shell, ShellArgs, blocking};
 use serde::{Deserialize, Serialize};
@@ -171,7 +172,7 @@ pub struct CandidateOf {
 /// Saved on a candidate, so one a restart brings back without its run is
 /// retired.
 #[derive(Component, Reflect, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct WasCandidate;
 
 /// On a candidate's `SpawnSubagent` request.

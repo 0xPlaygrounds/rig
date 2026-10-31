@@ -39,7 +39,7 @@ pub(super) fn add(app: &mut App) {
         Last,
         (
             label_usage.run_if(resource_changed::<SessionUsage>),
-            label_context,
+            label_context.after(CurrentAgentSystems),
         )
             .after(StopTurnsOnExit)
             .before(WriteLogs),

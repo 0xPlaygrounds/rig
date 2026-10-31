@@ -282,18 +282,16 @@ fn name_successor(
 /// started, or, when a session is restored, the end of its handoff chain.
 fn show_successor(
     new: Query<(Entity, &HandedOffFrom), Added<HandedOffFrom>>,
-    agents: MainAgentQuery,
+    (main, ids): (MainAgentQuery, Query<&AgentId>),
     mut shown: ResMut<ShownAgent>,
 ) {
     if new.is_empty() {
         return;
     }
-    let mut at = shown.0.or_else(|| main_agent(&agents));
+    let mut at = shown.0.or_else(|| main_agent(&main));
     // At most one step per new agent.
     for _ in 0..new.iter().count() {
-        let id = at
-            .and_then(|agent| agents.get(agent).ok())
-            .map(|(_, id, _)| id);
+        let id = at.and_then(|agent| ids.get(agent).ok());
         let next = new.iter().find(|(_, from)| Some(&from.agent) == id);
         let Some((successor, _)) = next else {
             break;

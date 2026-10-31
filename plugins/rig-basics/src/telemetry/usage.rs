@@ -21,6 +21,7 @@
 use std::collections::BTreeMap;
 
 use rig_core::completion::{ContextUse, Usage, UsageTotals};
+use rig_ecs::session_log::Reset;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -52,10 +53,18 @@ impl Plugin for UsagePlugin {
 
 /// Model calls' usage summed, as rig-core's [`UsageTotals`] sums it: in
 /// all, and split per model and per purpose. On every agent (its calls),
-/// saved with the session; the session's is [`SessionUsage`] and a
-/// turn's a [`TurnUsage`].
+/// saved with the session, and a fork starts from zero; the session's is
+/// [`SessionUsage`] and a turn's a [`TurnUsage`].
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved(Reset),
+    Default,
+    Clone,
+    Serialize,
+    Deserialize
+)]
 #[serde(default)]
 pub struct AgentUsage {
     /// Every call.

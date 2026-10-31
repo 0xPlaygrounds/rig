@@ -568,6 +568,84 @@ fn a_question_is_a_form_or_closed_with_why_for_a_client_without_forms() {
     }
 }
 
+/// The model the last options `session` was told of show.
+fn advertised_model(seen: &Seen, session: &acp::SessionId) -> Option<String> {
+    let updates = seen.events.iter().filter_map(|event| match event {
+        Event::Update(of, acp::SessionUpdate::ConfigOptionUpdate(update)) if of == session => {
+            Some(update)
+        }
+        _ => None,
+    });
+    let mut models = updates.filter_map(|update| {
+        update
+            .config_options
+            .iter()
+            .find_map(|option| match &option.kind {
+                acp::SessionConfigKind::Select(select) if option.id.to_string() == "model" => {
+                    Some(select.current_value.to_string())
+                }
+                _ => None,
+            })
+    });
+    models.next_back()
+}
+
+/// Showing another agent of the session, such as with `/agents`, makes it
+/// the one prompts go to, and the options show its model.
+#[test]
+fn the_options_follow_the_agent_shown() {
+    let place = Place::new("shown");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/reply").await);
+        assert!(driven.prompt(&id, "Hello.").await.is_ok());
+        assert!(driven.prompt(&id, "/fork").await.is_ok());
+        let forked = "Forked into a new agent";
+        let confirmed = driven.until(|seen| {
+            seen.events.iter().any(|event| match event {
+                Event::Update(of, acp::SessionUpdate::AgentMessageChunk(chunk)) => {
+                    *of == id && text(&chunk.content).is_some_and(|said| said.contains(forked))
+                }
+                _ => false,
+            })
+        });
+        let confirmed = confirmed.await;
+        assert!(confirmed, "{}", driven.said(&id));
+        assert!(driven.prompt(&id, "/model test/read").await.is_ok());
+        let read = |seen: &Seen| advertised_model(seen, &id).as_deref() == Some("test/read");
+        assert!(driven.until(read).await, "{}", driven.said(&id));
+        // The agent forked from, back on `test/reply`.
+        let logs = std::fs::read_dir(place.home.join("sessions"))
+            .into_iter()
+            .flatten();
+        let logs = logs.flatten().flat_map(|session| {
+            std::fs::read_dir(session.path().join("logs"))
+                .into_iter()
+                .flatten()
+                .flatten()
+        });
+        let source = logs.map(|log| log.path()).find_map(|log| {
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            let name = log.file_stem()?.to_str()?.to_owned();
+            (name != "session" && !text.contains("ForkedFrom")).then_some(name)
+        });
+        assert!(source.is_some(), "no source log");
+        let Some(source) = source else { return };
+        assert!(
+            driven
+                .prompt(&id, &format!("/agents {source}"))
+                .await
+                .is_ok()
+        );
+        let reply = |seen: &Seen| advertised_model(seen, &id).as_deref() == Some("test/reply");
+        assert!(driven.until(reply).await, "{}", driven.said(&id));
+    });
+    assert!(router.is_some());
+}
+
 #[test]
 fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
     let place = Place::new("refused");

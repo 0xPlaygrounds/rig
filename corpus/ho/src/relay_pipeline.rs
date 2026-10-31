@@ -41,6 +41,7 @@ use std::path::Path;
 use regex::Regex;
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Never;
 use serde::Deserialize;
 
 /// The file of pipelines, in `RIG_HOME` and in a project's `.rig`.
@@ -134,7 +135,7 @@ fn check(stages: &[StageDef]) -> Result<(), String> {
 /// On the user's agent while a pipeline of it runs; saved with the
 /// session, so a restart resumes it at its current stage.
 #[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[reflect(Component, Saved(Never), Default, Clone, Debug)]
 pub struct PipelineRun {
     /// The pipeline's name.
     pub name: String,

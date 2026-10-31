@@ -290,7 +290,8 @@ pub(crate) fn install(app: &mut App) {
         Update,
         (output::notices, options::changed, settle)
             .chain()
-            .after(AgentLoop),
+            .after(AgentLoop)
+            .after(CurrentAgentSystems),
     )
     .init_resource::<output::Read>()
     .add_systems(PostUpdate, output::stream)

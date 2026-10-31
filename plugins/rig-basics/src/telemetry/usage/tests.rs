@@ -405,3 +405,75 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
     app.update();
     assert_eq!(context(app.world()).as_deref(), Some("ctx 500/2.0k (25%)"));
 }
+
+/// A fork's meter starts afresh: no calls of its own, and its context
+/// unknown until its first reply, in the status line and in `/usage`.
+#[cfg(feature = "tui")]
+#[test]
+fn a_fork_starts_with_no_calls_and_an_unknown_context() {
+    // Every agent has a status line, as in the terminal view.
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((AgentPlugin, SessionLogPlugin, UsagePlugin))
+        .register_required_components::<Agent, rig_tui::StatusItems>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let Some(mut connection) = connect(&model) else {
+        return;
+    };
+    connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
+    let world = app.world_mut();
+    let source = world.spawn((Agent, connection)).id();
+    world.trigger(Deliver::new(source, "hello", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    let usage = rig_core::completion::Usage::new()
+        .input_tokens(400)
+        .output_tokens(100);
+    let mut spent = AgentUsage::default();
+    spent.total.calls = 1;
+    let last = LastUsage(Some(rig_memory::Anchor {
+        usage,
+        through: MessageId::default(),
+    }));
+    app.world_mut().entity_mut(source).insert((spent, last));
+    app.world_mut().trigger(rig_ecs::fork::ForkAgent {
+        agent: source,
+        through: None,
+    });
+    app.update();
+    let world = app.world_mut();
+    let mut forks = world.query_filtered::<Entity, With<rig_ecs::fork::ForkedFrom>>();
+    let fork = forks.iter(world).next();
+    assert!(fork.is_some(), "a fork is made");
+    let Some(fork) = fork else { return };
+    let context = |world: &World, agent| {
+        world
+            .get::<rig_tui::StatusItems>(agent)
+            .and_then(|items| items.iter().find(|item| item.name == "context"))
+            .map(|item| item.text.clone())
+    };
+    assert_eq!(
+        context(app.world(), source).as_deref(),
+        Some("ctx 500/2.0k (25%)")
+    );
+    assert_eq!(context(app.world(), fork).as_deref(), Some("ctx ?/2.0k"));
+    let calls = app
+        .world()
+        .get::<AgentUsage>(fork)
+        .map(|spent| spent.total.calls);
+    assert_eq!(calls, Some(0));
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(fork, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(shown.contains("This agent: no model call yet."), "{shown}");
+    assert!(
+        shown.contains("Context: unknown until the next reply."),
+        "{shown}"
+    );
+}

@@ -84,7 +84,7 @@ pub use pane::{MainPane, MainTranscript, PaneKeys, TranscriptPane, TranscriptSou
 pub use panel::{
     PanelCanvas, Placement, RedrawArea, RequestRedraw, TerminalSize, TuiPanel, TuiSystems,
 };
-pub use pick::{ChoiceAction, ChoiceKeys, InlineStrip, PickerInput};
+pub use pick::{ChoiceAction, ChoiceKeys, ChoiceSystems, InlineStrip, PickerInput};
 pub use ratatui;
 pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
@@ -264,8 +264,9 @@ pub fn add_view(app: &mut App) {
                 // its picker, its notices and a refusal come back in this
                 // frame, and so does a question asked there.
                 (
-                    pick::queue_choices,
-                    pick::mark_highlighted,
+                    (pick::queue_choices, pick::mark_highlighted)
+                        .chain()
+                        .in_set(ChoiceSystems),
                     pick::follow_previews,
                     keys::arm_inline_keys,
                     view::collect_notices,

@@ -26,7 +26,6 @@ use std::collections::HashSet;
 use rig_basics::activity::{Activity, ActivityPlugin, ActivityStatus, ActivitySystems};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
-use rig_harness::rig_memory::main_order;
 
 /// The window's name as a front, and its option: `rig --gui`.
 pub const FRONT: &str = "gui";
@@ -319,9 +318,13 @@ type AgentItem<'a> = (
 );
 
 /// Keeps the agent list.
-fn list_agents(agents: Query<AgentItem, With<Agent>>, mut list: ResMut<GuiAgents>) {
+fn list_agents(
+    (agents, main): (Query<AgentItem, With<Agent>>, MainAgentQuery),
+    mut list: ResMut<GuiAgents>,
+) {
+    let main = main_agent(&main);
     let mut roots: Vec<_> = agents.iter().filter(|agent| !agent.4).collect();
-    roots.sort_by(|a, b| main_order(a.4, &a.2.0).cmp(&main_order(b.4, &b.2.0)));
+    roots.sort_by_key(|agent| (Some(agent.0) != main, &agent.2.0));
     let mut rows = Vec::new();
     let mut stack: Vec<(Entity, usize)> = roots.iter().rev().map(|root| (root.0, 0)).collect();
     while let Some((agent, depth)) = stack.pop() {

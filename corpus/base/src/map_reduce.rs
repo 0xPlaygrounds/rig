@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 
 use rig_basics::subagents::{SpawnSubagent, SpawnedAgent};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Never;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -185,7 +186,7 @@ pub struct MapWorker {
 /// interrupted, but brings back a worker the exit cut off mid-turn, which
 /// would carry on with no job and no file rule, so this plugin retires it.
 #[derive(Component, Reflect, Default)]
-#[reflect(Component, Saved, Default)]
+#[reflect(Component, Saved(Never), Default)]
 pub struct WasMapWorker;
 
 /// The arguments of a `map_files` call.

@@ -60,3 +60,34 @@ fn an_excerpt_says_who_wrote_a_message_and_how_it_starts() {
         ]
     );
 }
+
+/// A listed value is the current agent's, else that of the first other
+/// agent by id that has one, whatever order the agents started in.
+#[test]
+fn relisting_takes_a_value_from_the_current_agent_then_by_id() {
+    let agent = |id: &str, value: Option<&str>| crate::SavedAgent {
+        id: id.to_owned(),
+        saved: value
+            .map(|value| BTreeMap::from([("k".to_owned(), json!(value))]))
+            .unwrap_or_default(),
+        ..crate::SavedAgent::default()
+    };
+    let session = |current: &str| crate::Session {
+        agents: vec![
+            agent("c", Some("from c")),
+            agent("b", Some("from b")),
+            agent("a", Some("from a")),
+            agent("d", None),
+        ],
+        saved: BTreeMap::from([(crate::CURRENT.to_owned(), json!(current))]),
+        ..crate::Session::default()
+    };
+    let listed = std::collections::BTreeSet::from(["k".to_owned()]);
+    let relisted = |current: &str| {
+        let mut meta = SessionMeta::default();
+        meta.relist(&session(current), &listed);
+        meta.listed.get("k").cloned()
+    };
+    assert_eq!(relisted("b"), Some(json!("from b")));
+    assert_eq!(relisted("d"), Some(json!("from a")));
+}
