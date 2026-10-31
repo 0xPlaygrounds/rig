@@ -21,13 +21,13 @@ pub use erased::DynHttpClient;
 pub use middleware::{Exchange, HttpMiddleware};
 pub use multipart::MultipartForm;
 
-/// A transport's own error, boxed.
+/// A boxed error: `Send + Sync` except on wasm.
 #[cfg(not(target_family = "wasm"))]
-type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-/// A transport's own error, boxed.
+/// A boxed error: `Send + Sync` except on wasm.
 #[cfg(target_family = "wasm")]
-type BoxError = Box<dyn std::error::Error + 'static>;
+pub type BoxError = Box<dyn std::error::Error + 'static>;
 
 /// Why an HTTP request failed: a protocol or header error, a non-success
 /// reply, or the transport's own error, which says whether sending the same

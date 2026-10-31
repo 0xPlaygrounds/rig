@@ -108,21 +108,23 @@ fn status_error(status: StatusCode) -> reqwest::Error {
         .expect_err("a non-success status")
 }
 
-/// A middleware's own failure says nothing about a second send, so it is
-/// not retried; a reqwest or rig error it passed on keeps its class, also
-/// one that came back from the middleware chain, and the context the
-/// middleware added stays in the message.
+/// A middleware's error keeps the class of the reqwest or rig error it
+/// passed on, also one that came back from the middleware chain, with the
+/// context it added in the message; a middleware says a failure is final
+/// with a permanent rig error, and an unclassified one may hide a dropped
+/// connection, so it is retried.
 #[cfg(any(
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
 ))]
 #[test]
-fn a_middleware_error_is_permanent_unless_reqwest_classifies_it() {
-    let own = reqwest_middleware::Error::middleware(std::io::Error::other("no key"));
-    assert!(matches!(
-        middleware::from_middleware(own),
-        Error::Permanent(_)
-    ));
+fn a_middleware_error_keeps_the_class_of_what_it_passed_on() {
+    /// A wrapper that hides what it wraps from the source chain, as
+    /// `reqwest-retry`'s `RetryError::Error` does.
+    #[derive(Debug, thiserror::Error)]
+    #[error(transparent)]
+    struct GaveUp(reqwest_middleware::Error);
+
     let sent = |status| reqwest_middleware::Error::Reqwest(status_error(status));
     let mut passed_on = vec![
         (
@@ -134,9 +136,17 @@ fn a_middleware_error_is_permanent_unless_reqwest_classifies_it() {
             true,
         ),
         (anyhow::Error::new(sent(StatusCode::BAD_REQUEST)), false),
+        (
+            anyhow::Error::new(GaveUp(sent(StatusCode::BAD_REQUEST))),
+            true,
+        ),
+        (anyhow::Error::new(std::io::Error::other("no key")), true),
     ];
     #[cfg(not(target_family = "wasm"))]
-    passed_on.push((anyhow::Error::new(Error::transient("reset")), true));
+    passed_on.extend([
+        (anyhow::Error::new(Error::transient("reset")), true),
+        (anyhow::Error::new(Error::permanent("no key")), false),
+    ]);
     for (error, transient) in passed_on {
         let error = reqwest_middleware::Error::Middleware(error.context("refreshing the key"));
         let error = middleware::from_middleware(error);

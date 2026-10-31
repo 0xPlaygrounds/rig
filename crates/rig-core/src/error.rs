@@ -236,13 +236,7 @@ pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<Str
     chain
 }
 
-/// A boxed request-building failure.
-#[cfg(not(target_family = "wasm"))]
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-/// A boxed request-building failure.
-#[cfg(target_family = "wasm")]
-pub type BoxError = Box<dyn std::error::Error + 'static>;
+pub use crate::http_client::BoxError;
 
 /// A request-building failure shared by every clone of the error that holds
 /// it.

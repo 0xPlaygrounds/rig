@@ -65,15 +65,16 @@ impl Execute for ReqwestMiddlewareClient {
 
 /// Classify a middleware client's error: reqwest's own as [`from_reqwest`]
 /// does. A middleware's error, with any context it added, is classified as
-/// the first reqwest or rig error in its chain, looking through middleware
-/// errors it wraps, and is [`Error::Permanent`] when there is none, since
-/// nothing says that sending again would help.
+/// the first reqwest or rig error in its source chain, looking through
+/// middleware errors it wraps; a middleware that knows its failure is final
+/// says so with [`Error::permanent`]. An error the chain does not classify
+/// is [`Error::Transient`], since it may hide a dropped connection.
 pub(crate) fn from_middleware(error: reqwest_middleware::Error) -> Error {
     let error = match error {
         reqwest_middleware::Error::Reqwest(error) => return from_reqwest(error),
         reqwest_middleware::Error::Middleware(error) => error,
     };
-    if wrapped_transient(&*error).unwrap_or(false) {
+    if wrapped_transient(&*error) {
         Error::transient(error)
     } else {
         Error::permanent(error)
@@ -81,26 +82,26 @@ pub(crate) fn from_middleware(error: reqwest_middleware::Error) -> Error {
 }
 
 /// Whether the first reqwest or rig error in `error`'s source chain may
-/// pass on a second send, when there is one.
-fn wrapped_transient(error: &(dyn std::error::Error + 'static)) -> Option<bool> {
+/// pass on a second send; true when there is none.
+fn wrapped_transient(error: &(dyn std::error::Error + 'static)) -> bool {
     let mut link = Some(error);
     while let Some(error) = link {
         if let Some(error) = error.downcast_ref::<reqwest::Error>() {
-            return Some(is_transient(error));
+            return is_transient(error);
         }
         match error.downcast_ref::<reqwest_middleware::Error>() {
-            Some(reqwest_middleware::Error::Reqwest(error)) => return Some(is_transient(error)),
+            Some(reqwest_middleware::Error::Reqwest(error)) => return is_transient(error),
             Some(reqwest_middleware::Error::Middleware(error)) => {
                 return wrapped_transient(&**error);
             }
             None => {}
         }
         if let Some(error) = error.downcast_ref::<Error>() {
-            return Some(error.is_transient());
+            return error.is_transient();
         }
         link = error.source();
     }
-    None
+    true
 }
 
 http_client_ext!(ReqwestMiddlewareClient);
