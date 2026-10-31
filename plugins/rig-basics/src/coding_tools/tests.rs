@@ -839,3 +839,28 @@ fn a_message_goes_on_when_the_one_before_is_dropped() {
     assert!(held, "the second message waited for the first");
     assert!(said(app.world(), agent).contains("SECOND_MESSAGE"));
 }
+
+/// A message's files come in the order it names them, a file on a host
+/// read later included: images carry no name to the model.
+#[test]
+fn a_mixed_messages_files_keep_the_order_it_names_them() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-order-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("fast_local.txt"), "LOCAL_TEXT").ok();
+    std::fs::write(dir.join("fast_remote.txt"), "REMOTE_TEXT").ok();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(Slow::default())), &dir, "");
+    let text = "ORDER @fast_local.txt @fast_remote.txt";
+    app.world_mut()
+        .spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("REMOTE_TEXT")
+    });
+    let said = said(app.world(), agent);
+    let at = |text: &str| said.find(text);
+    assert!(
+        at("LOCAL_TEXT").is_some() && at("LOCAL_TEXT") < at("REMOTE_TEXT"),
+        "{said}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

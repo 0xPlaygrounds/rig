@@ -302,6 +302,12 @@ impl Plugin for AttachPlugin {
 #[derive(Component)]
 struct Reading(Entity);
 
+/// The labels of the files a message names, in the order it names them, on
+/// the hold of one whose files on another machine come after those on this
+/// one.
+#[derive(Component)]
+struct Order(Vec<String>);
+
 /// The files a message names, read off the main thread, on the hold that
 /// keeps the message ([`HoldOf`]) until they are attached; taken then.
 #[derive(Component)]
@@ -367,11 +373,14 @@ fn attach(
             add_attached(&mut typed, agent, attached, &mut notices);
         }
         if !there.is_empty() {
+            let order = (Reference::parse(typed.text()))
+                .map(|reference| reference.label(&base, &*workspace))
+                .collect();
             let text = there.join(" ");
             let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
             let pool = IoTaskPool::get_or_init(TaskPool::default);
             let running = Running::spawn_into::<ReadFiles, _>(pool, &wake, read);
-            commands.spawn((hold, running));
+            commands.spawn((hold, running, Order(order)));
             waiting.push(agent);
             continue;
         }
@@ -390,6 +399,7 @@ type ReadHolds<'w, 's> = Query<
         &'static Reading,
         &'static HoldOf,
         Option<&'static mut ReadFiles>,
+        Option<&'static Order>,
     ),
 >;
 
@@ -429,14 +439,14 @@ fn release(
 ) {
     let mut holds: Vec<_> = (holds.iter_mut())
         .filter(|(hold, ..)| !gone.contains(hold))
-        .map(|(hold, &Reading(agent), &HoldOf(message), read)| {
+        .map(|(hold, &Reading(agent), &HoldOf(message), read, order)| {
             let sent = messages.get(message).ok().map(|(effect, ..)| effect.id());
-            (agent, sent, hold, message, read)
+            (agent, sent, hold, message, read, order)
         })
         .collect();
     holds.sort_unstable_by_key(|&(agent, sent, ..)| (agent, sent));
     let mut blocked = None;
-    for (agent, _, hold, message, read) in holds {
+    for (agent, _, hold, message, read, order) in holds {
         if blocked == Some(agent) {
             continue;
         }
@@ -448,15 +458,21 @@ fn release(
         let Some(read) = read.0.take() else {
             continue;
         };
-        if let Ok((_, mut typed, _)) = messages.get_mut(message) {
+        // A message a stop recalled has no use for its files.
+        if let Ok((_, mut typed, decision)) = messages.get_mut(message)
+            && !decision.is_decided()
+        {
             match read {
                 Ok(attached) => add_attached(&mut typed, agent, attached, notices),
                 Err(failure) => {
                     notices.write(Notice::warn(agent, format!("No files attached: {failure}")));
                 }
             }
+            if let Some(Order(order)) = order {
+                in_order(&mut typed.parts, order);
+            }
         }
-        commands.entity(hold).despawn();
+        commands.entity(hold).try_despawn();
     }
 }
 
@@ -504,7 +520,7 @@ fn stop_reading(
         if decision.decide(Decider::plugin("attach"), Outcome::custom("recalled")) {
             back.push((effect.id(), agent, typed.text().trim().to_owned()));
         }
-        commands.entity(hold).despawn();
+        commands.entity(hold).try_despawn();
     }
     back.sort_unstable();
     for agent in stopped {
@@ -518,6 +534,27 @@ fn stop_reading(
                 text: texts.join("\n\n"),
                 why: None,
             });
+        }
+    }
+}
+
+/// Puts the attachments of `parts` that `order` names in its order, in the
+/// places they take, leaving the others where they are.
+fn in_order(parts: &mut [MessagePart], order: &[String]) {
+    let rank = |part: &MessagePart| match part {
+        MessagePart::Attachment(attached) => {
+            order.iter().position(|label| *label == attached.label)
+        }
+        MessagePart::Text(_) => None,
+    };
+    let mut ranked: Vec<(usize, usize, MessagePart)> = (parts.iter().enumerate())
+        .filter_map(|(slot, part)| Some((slot, rank(part)?, part.clone())))
+        .collect();
+    let slots: Vec<usize> = ranked.iter().map(|&(slot, ..)| slot).collect();
+    ranked.sort_by_key(|&(_, rank, _)| rank);
+    for (slot, (_, _, part)) in slots.into_iter().zip(ranked) {
+        if let Some(place) = parts.get_mut(slot) {
+            *place = part;
         }
     }
 }

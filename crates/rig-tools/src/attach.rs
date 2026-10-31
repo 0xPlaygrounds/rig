@@ -144,6 +144,19 @@ impl<'a> Reference<'a> {
         }
     }
 
+    /// What the file it names is called once attached
+    /// ([`Attached::files`]), resolved from `base` in `workspace`: its path
+    /// as written, unless the workspace puts it elsewhere than below
+    /// `base`, such as `~/` in the home directory or a path on a host.
+    pub fn label(&self, base: &Path, workspace: &dyn Workspace) -> String {
+        let named = Path::new(&*self.path);
+        let joined = workspace.join(base, named);
+        match joined == base.join(named) {
+            true => self.path.clone().into_owned(),
+            false => joined.display().to_string(),
+        }
+    }
+
     fn quoted(span: Range<usize>, path: Cow<'a, str>) -> Self {
         Self {
             span,
@@ -224,13 +237,7 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
     let mut seen: Vec<PathBuf> = Vec::new();
     for reference in Reference::parse(text) {
         let named = &*reference.path;
-        // As typed, unless the workspace puts it elsewhere than below the
-        // base, such as in a home directory or on a host.
-        let joined = workspace.join(base, Path::new(named));
-        let label = match joined == base.join(named) {
-            true => named.to_owned(),
-            false => joined.display().to_string(),
-        };
+        let label = reference.label(base, workspace);
         let path = workspace.resolve(Some(base), named);
         let warn = is_path_reference(named);
         match workspace.stat(&path) {
