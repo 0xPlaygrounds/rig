@@ -962,8 +962,9 @@ impl Summarizer {
     /// [`AFTER_OVERFLOW`] of the input limit. The room below the reserve, or
     /// half the limit when that is more, is split: the summary asks for at
     /// most half of it, and the older messages fill the rest, less the
-    /// earlier summary, but never less than 16k tokens or an
-    /// eighth of the input limit, whichever is smaller. A model whose
+    /// earlier summary, but never less than 16k tokens or an eighth of the
+    /// input limit, whichever is smaller; with no limit known, never more
+    /// than `unknown_window_chars` either way. A model whose
     /// output bounds are unknown ([`known_limits`]) is sent no output
     /// limit, as a turn is not, so its server's default holds.
     pub fn request(
@@ -982,7 +983,7 @@ impl Summarizer {
             None => (
                 self.max_tokens(spec),
                 limits.unknown_window_chars,
-                chars(LEAST_READ),
+                chars(LEAST_READ).min(limits.unknown_window_chars),
             ),
             Some(limit) => {
                 let limit = match reason {

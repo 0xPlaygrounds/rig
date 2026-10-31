@@ -83,7 +83,7 @@ use rig_memory::{
     apply_summary, estimate_tokens, known_limits, next_request_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
-use rig_tools::{Read, ReadArgs, Seen};
+use rig_tools::{Read, ReadArgs};
 use serde::{Deserialize, Deserializer};
 #[cfg(feature = "tui")]
 pub use tui::SummaryLooks;
@@ -164,7 +164,11 @@ impl<'de> Deserialize<'de> for CompactionDefault {
         let tracks = table.contains_key("tracked");
         let policy = serde_path_to_error::deserialize(serde_json::Value::Object(table));
         let mut policy: CompactionPolicy = policy.map_err(|failure| {
-            serde::de::Error::custom(format_args!("{}: {}", failure.path(), failure.inner()))
+            let path = failure.path();
+            match path.iter().next() {
+                Some(_) => serde::de::Error::custom(format_args!("{path}: {}", failure.inner())),
+                None => serde::de::Error::custom(failure.inner()),
+            }
         })?;
         if !tracks {
             policy.tracked = TRACKED.to_vec();
@@ -347,11 +351,8 @@ impl Rereads<'_, '_> {
             };
             reads.push((made.function.arguments.clone(), result.content.clone()));
         }
-        let read = Read {
-            seen: Seen::default(),
-            ..Read::default()
-        }
-        .at(place);
+        // Its own `Seen`, so the model is never taken to have seen what it read.
+        let read = Read::default().at(place);
         let revision = conversation.revision();
         let work = async move {
             let same = same_again(&read, reads).await;
@@ -1042,10 +1043,13 @@ fn fits(spec: &ModelSpec, tokens: u64, (asked, least): (u64, u64)) -> bool {
 /// Before a turn's request that leaves less than the reserve of the input
 /// limit of the model it goes to free, or no room for an answer, takes
 /// the next step of the call's recovery path ([`Recovering`]): clears old
-/// tool outputs, after the model's notes on those it could not get back
-/// ([`Noting`]), or, when clearing would leave more than half the room
-/// used, or was not enough, summarizes the older messages. Notes too big
-/// to ask give way to a summary of its own. A request whose summary
+/// tool outputs when reading each again gives it back unchanged, else after
+/// the model's notes on them ([`Noting`]), or, when clearing would leave
+/// more than half the room used, or was not enough, summarizes the older
+/// messages. Notes too big to ask give way to a summary of its own; with
+/// none to be, or with `near_window = "clear"`, the outputs stay and a
+/// notice says why. A request a plugin brought whole is not cleared. A
+/// request whose summary
 /// failed or was cancelled goes only if it fits with room for a
 /// [`LEAST_SHARE`] of its answer; otherwise the turn fails. A request
 /// that goes clamps its output limit to the room the window leaves.
@@ -1204,26 +1208,24 @@ fn compact_near_the_window(
                     &plan.cleared,
                     kept,
                 ));
-                fit_output(&mut model, spec, used);
-                commands.entity(agent).try_insert(Sent(start));
-                continue;
+            } else {
+                let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
+                commands.entity(agent).try_insert(ContextStale {});
+                // The request's copy too, as cleared by compaction.
+                if let Some(history) = &mut model.history {
+                    plan.apply(history, None, summary_author());
+                }
+                commands.entity(call).try_insert(Recovering::Cleared);
+                used = after;
+                start = measure(&model, spec, prompt, anchor).1;
+                let then = ", as reading them again gave each back unchanged";
+                notices.write(cleared_notice(
+                    agent,
+                    &CompactReason::Threshold,
+                    &cleared,
+                    then,
+                ));
             }
-            let cleared = plan.apply(&mut compacting.conversation, None, summary_author());
-            commands.entity(agent).try_insert(ContextStale {});
-            // The request's copy too, as cleared by compaction.
-            if let Some(history) = &mut model.history {
-                plan.apply(history, None, summary_author());
-            }
-            commands.entity(call).try_insert(Recovering::Cleared);
-            used = after;
-            start = measure(&model, spec, prompt, anchor).1;
-            let then = ", as reading them again gave each back unchanged";
-            notices.write(cleared_notice(
-                agent,
-                &CompactReason::Threshold,
-                &cleared,
-                then,
-            ));
         }
         fit_output(&mut model, spec, used);
         commands.entity(agent).try_insert(Sent(start));
@@ -1750,7 +1752,7 @@ fn take_notes(
         Ok(notes) => {
             let cleared = plan.apply(&mut conversation, Some(&notes), by);
             notices.write(match cleared.results {
-                0 => kept("the notes on them were empty"),
+                0 => kept("the notes on them were empty or had nowhere to go"),
                 _ => cleared_notice(
                     agent,
                     reason,

@@ -179,14 +179,34 @@ fn a_summary_of_its_own_always_reads_some_conversation() {
             .request(&turns(100), &previous, &reason, &spec)
             .ok()
     });
-    let texts = request.as_ref().map(texts).unwrap_or_default();
-    let read = texts.iter().find_map(|(role, text)| {
+    let sent = request.as_ref().map(texts).unwrap_or_default();
+    let read = sent.iter().find_map(|(role, text)| {
         let (_, rest) = text
             .split_once("<conversation>")
             .filter(|_| *role == "user")?;
         Some(rest.split_once("</conversation>")?.0.len())
     });
     assert!(read.is_some_and(|read| read >= 4_096 * 3), "{read:?}");
+    // With no window known, the floor never passes the characters set.
+    let unknown = rig_core::providers::registry::ProviderId::catalog("ollama")
+        .map(|vendor| ModelSpec::new(vendor, "test"));
+    let summarizer = Summarizer {
+        limits: SummaryLimits {
+            unknown_window_chars: 20_000,
+            ..SummaryLimits::DEFAULT
+        },
+        ..Summarizer::DEFAULT
+    };
+    let request = unknown.and_then(|spec| {
+        let reason = CompactReason::Threshold;
+        summarizer.request(&turns(100), "", &reason, &spec).ok()
+    });
+    let sent = request.as_ref().map(texts).unwrap_or_default();
+    let user = sent.iter().find(|(role, _)| *role == "user");
+    assert!(
+        user.is_some_and(|(_, text)| text.len() < 20_100),
+        "{user:?}"
+    );
 }
 
 #[test]

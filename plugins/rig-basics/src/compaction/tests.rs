@@ -1032,7 +1032,12 @@ fn notes_too_big_with_nothing_to_summarize_keep_the_outputs() {
         !world.resource::<Ended>().0.is_empty()
     });
     let ended = app.world().resource::<Ended>().0.clone();
-    assert_eq!(answer(&app).as_deref(), Some("done"), "{ended:?} {:?}", notices(&app));
+    assert_eq!(
+        answer(&app).as_deref(),
+        Some("done"),
+        "{ended:?} {:?}",
+        notices(&app)
+    );
     let sent = sent(&model);
     assert!(
         matches!(sent.as_slice(), [only] if !only.contains("[output cleared") && !asks_summary(only)),
