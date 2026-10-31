@@ -1075,7 +1075,8 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   window, so it starts earlier (for GPT-6, about 906K tokens instead of about
   1,034K). After an overflow the older messages are summarized instead of
   asking for notes. A request with no output limit asks for at most 64,000
-  tokens (plus any thinking budget) instead of the whole window left.
+  tokens (plus any thinking budget) instead of the whole window left; a model
+  with no known window or output limit keeps the server's default.
 - A reply stopped with Esc is sent back to the model as the text it had
   written. Quitting mid-turn stops the turn as Esc does, and resuming after a
   quit or a crash runs nothing until you send a message.
@@ -1126,14 +1127,14 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 ```
 
 Some rig builds still enable them: `rig-cassette` with `traffic` (and so
-`rig-traffic`) enables both, `rig-claude-cloak` enables `preserve_order`, and
-`rig-mongodb` enables it through BSON.
+`rig-traffic`) enables both, `rig-claude-cloak` and `rig-mcp-client` enable
+`preserve_order`, and `rig-mongodb` enables it through BSON.
 
 ### 2. Message data: `Native`, reasoning blobs and images
 
 `Native` has three new public fields: `blob_slot`, `baseline` and `edited`.
-Prefer `AssistantContent::with_native(item)`, which fills them, over a struct
-literal:
+Prefer `AssistantContent::with_native(item)` over a struct literal. It records
+a tool call's `baseline` and leaves `edited` false and `blob_slot` unset:
 
 ```rust
 // before
@@ -1218,9 +1219,10 @@ and the dialects' `Quirks::catalog_priced`, not a list of provider names.
 
 `Compat::chat_tools_need_reasoning_off: bool` becomes
 `Compat::chat_tools: Option<ChatTools>` (`Any`, `Never` or `ReasoningOff`).
-In an override file, `chat_tools_need_reasoning_off = true` becomes
-`chat_tools = "never"` or `"reasoning_off"`, and `false` becomes `"any"`;
-the old key is rejected. `ContextUse::window` is renamed `limit` and holds
+In a JSON override file's `rig` object, `"chat_tools_need_reasoning_off": true`
+becomes `"chat_tools": "reasoning_off"` (the same rule) or `"never"` (stricter:
+no tools on Chat Completions at any effort), and `false` becomes `"any"`. The
+old key is rejected. `ContextUse::window` is renamed `limit` and holds
 the model's input limit:
 
 ```rust
@@ -1233,7 +1235,17 @@ ContextUse { tokens, limit: spec.input_limit() }
 `xiaomimimo::MIMO_V2_FLASH`, `MIMO_V2_OMNI` and `MIMO_V2_PRO` are removed
 because Xiaomi retired them; use `MIMO_V2_6_FLASH` or `MIMO_V2_6_PRO`.
 `ModelSpec` and `ProviderError` are `#[non_exhaustive]`, so their new
-`max_input_tokens`, `details` and `Stalled` need no code change.
+`max_input_tokens`, `details` and `Stalled` need no code change. The
+`test-utils` scripted error is exhaustive, though:
+`rig_core::test_utils::MockError` gains `Stalled(Duration)`, so a `match` on
+it adds an arm:
+
+```rust
+match error {
+    MockError::Provider(_) | MockError::Request(_) | MockError::ProviderResponse(_) => {}
+    MockError::Stalled(_) => {} // new in 0.46
+}
+```
 
 ### 4. Agent runs, observers and effect records
 
@@ -1305,8 +1317,9 @@ recorder.record_http_interaction(request, response); // was `.await`ed
 ```
 
 Proxy recording now goes through the traffic recorder. A recording is refused
-when a stream fails midway, a success's body is never read, a request gets no
-reply, or an exchange is still open 5 s after `finish`.
+when a reply is never read, its body fails while it is read, a stream fails
+midway or stops between frames, a request gets no reply, or an exchange is
+still open 5 s after `finish`.
 
 ### 7. Coding-agent plugin API
 
@@ -1337,8 +1350,10 @@ fn tools_as_text(mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>
 app.add_systems(AgentPass, tools_as_text.in_set(PrepareSystems::Adapt));
 ```
 
-What `ModelStarts::sent` and `dropped` gave is `adapted.sent(model)` and
-`adapted.dropped(model)`; after Start, read `SentTo`. A call's connection is
+What `ModelStarts::sent` and `dropped` gave is `adapted.sent(model)` (the
+request) and `adapted.dropped(model)` (the refused options), neither in a
+`Result`; the connection is `adapted.0` and the prompt is `model.prompt`.
+After Start, read `SentTo`. A call's connection is
 chosen once, after `PrepareSystems::Edit`, so route in `Edit` or before.
 `PrepareSystems` is exhaustive, so a `match` on it adds the `Adapt` and
 `AdaptOutermost` arms.
@@ -1454,9 +1469,10 @@ transcript draws `LookLine::colored()`. `header_code` replaces `header_spans`.
 - Exhaustive enums with new variants, so a `match` adds arms:
   `rig_tui::CallState::Stopped`, `rig_tui::InputAction::Exit`,
   `rig_tui::HistorySystems::Seed` and `rig_basics::activity::ActivityStatus::Writing`.
-- `EntryView` and `EntryRender` gain `id: Option<MessageId>`.
-- `AppCliExt` gains `refuse_run`; it matters only to a type of your own that
-  implements the trait.
+- `EntryView` gains `id: Option<MessageId>`.
+- `AppCliExt` gains `refuse_run(why)`, with which a plugin refuses a run. It
+  is a new required method only for a type of your own that implements the
+  trait.
 - `SessionPicker::show` and `SessionItem` are removed: put labels in a
   `ResumeLabel` or a listed saved value, or relabel the `Picker`'s items in a
   system after `SessionPickerSystems`. `SessionEntry::label()` no longer holds
@@ -1487,13 +1503,12 @@ transcript draws `LookLine::colored()`. `header_code` replaces `header_spans`.
   moves the cursor to its start before it browses. A filter of
   `PromptHistory::entries` that should also hide seeded prompts runs after
   `HistorySystems::Seed`.
-- `rig_harness::host::launcher::refuse` is replaced by `app.refuse_run(why)`.
 
 ### 8. The coding agent's `plugins.toml` and settings
 
 The launcher does not rewrite an existing `RIG_HOME/plugins.toml`. Until the
-login entry is renamed the agent build fails with
-`cannot find login_chatgpt in rig_basics` and the previous build starts:
+login entry is renamed the agent build fails, because
+`rig_basics::login_chatgpt` no longer exists, and the previous build starts:
 
 ```toml
 # before
@@ -6714,7 +6729,6 @@ Renamed or relocated items, for searching.
 | `rig_basics::coding_tools::ShellSettings`, `Shell::{max_timeout, quiet}`, `Ended::Quiet` | removed (no default shell timeout) | 0.46 |
 | `SessionPicker::show`, `SessionItem` | `ResumeLabel`, a system after `SessionPickerSystems` | 0.46 |
 | `rig_basics::reload::{SELF_EXTENSION_TAG, self_extension, ReloadAsked, MAX_RELOADS, ORIGIN}` | removed | 0.46 |
-| `rig_harness::host::launcher::refuse` (crate-private) | `AppCliExt::refuse_run` | 0.46 |
 | `rig::core`, `rig_agent::core` | `rig`, `rig_core` | 0.45 |
 | `rig_core::memory`, `ConversationMemory` and policy wrappers | `rig_core::conversation` plus `rig_memory::{Store, AsyncStore}` | 0.45 |
 | `rig_core::transcript::{validate_canonical, TranscriptError}` | `conversation::pairing::{validate, PairingError}` | 0.45 |
