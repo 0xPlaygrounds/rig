@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/systemone
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"typesafe/jev-1.13","provider":{"data_collection":"deny","zdr":true},"questions":{"billing":{"instructions":"Does the customer report a billing problem?","type":"noul"}},"state":{"message":"I was charged twice for one order."}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"answers":{"billing":{"noul":0.99,"type":"noul"}},"id":"gen-dec-1792519266-QPUhlRdbrZg2PTkyczAQ","model":"typesafe/jev-1.13-20260917","provider":"TypeSafe","usage":{"cost":0.000012096,"input_tokens":288,"output_tokens":20}}'
