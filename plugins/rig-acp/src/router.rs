@@ -28,8 +28,8 @@ use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
 use rig_harness::host::session::StoreOpener;
 use rig_harness::prelude::*;
-use rig_harness::run::TOOLS;
 use rig_harness::rig_tools::process::Process;
+use rig_harness::run::TOOLS;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{oneshot, watch};
 
