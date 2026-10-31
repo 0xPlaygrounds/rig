@@ -352,8 +352,8 @@ impl Workspace for Slow {
         path.to_path_buf()
     }
 
-    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
-        Ok(Vec::new())
+    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Listed> {
+        Ok(Listed::default())
     }
 
     fn spawn(
@@ -863,4 +863,48 @@ fn a_mixed_messages_files_keep_the_order_it_names_them() {
         "{said}"
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A file on a host under a directory that may not be searched there is
+/// reported with why, not as missing.
+#[cfg(unix)]
+#[test]
+fn a_host_path_that_cannot_be_read_says_why() {
+    use std::os::unix::fs::PermissionsExt;
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-host-locked-{}", std::process::id()));
+    let locked = dir.join("home").join("locked");
+    std::fs::create_dir_all(&locked).ok();
+    std::fs::write(locked.join("x.txt"), "SECRET").ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Root reads it anyway: nothing to check there.
+    let readable = std::fs::metadata(locked.join("x.txt")).is_ok();
+    let settings = format!(
+        "[remote.hosts]\nbench = ['sh', '-c', 'cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\"', '{}']\n",
+        dir.join("home").display()
+    );
+    let (mut app, wakes, agent) = attaching(None, &dir, &settings);
+    let text = "quote @bench:~/locked/x.txt";
+    app.world_mut()
+        .spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("quote")
+    });
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    if readable {
+        return;
+    }
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let warned: Vec<&str> = (notices.iter())
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text.as_str())
+        .collect();
+    assert!(
+        warned.len() == 1
+            && warned
+                .iter()
+                .all(|text| text.starts_with("could not read bench:~/locked/x.txt: ")),
+        "{warned:?}"
+    );
 }

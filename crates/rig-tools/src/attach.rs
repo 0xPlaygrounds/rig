@@ -15,7 +15,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{Conversation, EntryRef, FILE_CLOSE, FILE_OPEN, attached_file};
 use rig_core::message::{ImageMediaType, UserContent};
 
-use crate::workspace::{Stat, Workspace};
+use crate::workspace::{Observation, Stat, Workspace};
 use crate::{MAX_LINES, show_lines};
 
 /// The largest image attached: providers refuse one whose base64 is over
@@ -240,30 +240,30 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
         let label = reference.label(base, workspace);
         let path = workspace.resolve(Some(base), named);
         let warn = is_path_reference(named);
-        match workspace.stat(&path) {
-            Ok(Stat::File { .. }) => {}
-            Ok(Stat::Missing) if warn => {
+        match look(workspace, &path) {
+            Observation::Found(()) => {}
+            Observation::Missing if warn => {
                 let missing = format!("{}: no such file", Reference::format(named));
                 if !attached.warnings.contains(&missing) {
                     attached.warnings.push(missing);
                 }
                 continue;
             }
-            Ok(Stat::Dir | Stat::Other) if warn => {
+            Observation::Excluded if warn => {
                 let note = format!("{label} is not attached: it is not a file.");
                 if !attached.notes.contains(&note) {
                     attached.notes.push(note);
                 }
                 continue;
             }
-            Err(failure) if warn => {
+            Observation::Failed(failure) if warn => {
                 let failed = format!("could not read {label}: {failure}");
                 if !attached.warnings.contains(&failed) {
                     attached.warnings.push(failed);
                 }
                 continue;
             }
-            Ok(_) | Err(_) => continue,
+            Observation::Missing | Observation::Excluded | Observation::Failed(_) => continue,
         }
         if seen.contains(&path) {
             continue;
@@ -282,6 +282,19 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
         seen.push(path);
     }
     attached
+}
+
+/// What `path` in `workspace` is to an attachment: a regular file is
+/// found; a directory or anything else is left out; a look that failed,
+/// such as one under a directory that may not be searched, is never taken
+/// for nothing there.
+fn look(workspace: &dyn Workspace, path: &Path) -> Observation<()> {
+    match workspace.stat(path) {
+        Ok(Stat::File { .. }) => Observation::Found(()),
+        Ok(Stat::Missing) => Observation::Missing,
+        Ok(Stat::Dir | Stat::Other) => Observation::Excluded,
+        Err(failure) => Observation::Failed(failure),
+    }
 }
 
 /// Whether `reference`, an `@` token without its `@`, looks like a path by
