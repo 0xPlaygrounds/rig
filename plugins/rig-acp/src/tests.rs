@@ -116,6 +116,11 @@ fn agent() {
         calls("w1", "shell", json!({ "command": "sleep 120" })),
         reply("waited"),
     ]);
+    // A `shell` call that ends at once.
+    let quick = script(vec![
+        calls("q1", "shell", json!({ "command": "true" })),
+        reply("ran"),
+    ]);
     let mcp = script(vec![
         calls("m1", "files__add", json!({ "a": 2, "b": 3 })),
         reply("added"),
@@ -130,6 +135,7 @@ fn agent() {
         ("test/guarded", &guarded),
         ("test/wait", &wait),
         ("test/mcp", &mcp),
+        ("test/shell", &quick),
     ]);
     // A model of the catalog no key reaches.
     if let Ok(nowhere) = ProviderId::declare("acp-unreachable") {

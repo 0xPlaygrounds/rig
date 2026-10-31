@@ -460,9 +460,8 @@ fn name(
     }
     let name = title_of(&args.args);
     let session = paths.as_ref().and_then(|paths| paths.id());
-    let current = paths.as_ref().map(|paths| (&paths.0, &*title));
     let mine = paths.as_ref().map(|paths| &paths.0);
-    if let Err(refusal) = claim_name(&home.0, current, session.as_ref(), mine, &name) {
+    if let Err(refusal) = claim_name(&home.0, session.as_ref(), mine, &name) {
         notices.write(refusal);
         return;
     }
@@ -475,15 +474,30 @@ fn name(
 
 /// Keeps the session's name in its directory ([`SessionDir::set_name`]),
 /// where `rig --resume <name>` and `/resume <name>` find it, as its
-/// [`SessionTitle`] has it.
-fn write_name(paths: Option<Res<SessionPaths>>, title: Res<SessionTitle>) {
+/// [`SessionTitle`] has it, such as one a plugin gave it: a name another
+/// session holds is refused, and the title goes back to the one written.
+fn write_name(
+    paths: Option<Res<SessionPaths>>,
+    home: Res<RigHome>,
+    mut title: ResMut<SessionTitle>,
+    mut notices: MessageWriter<Notice>,
+) {
     let Some(paths) = paths else {
         return;
     };
-    if paths.name() != title.name
-        && let Err(failure) = paths.set_name(title.name.as_deref())
-    {
-        error!("could not write the session's name: {failure}");
+    let written = paths.name();
+    if written == title.name {
+        return;
+    }
+    let claimed = match &title.name {
+        Some(name) => claim_name(&home.0, paths.id().as_ref(), Some(&paths.0), name),
+        None => (paths.set_name(None)).map_err(|failure| {
+            Notice::error(None, format!("Could not unname the session: {failure}."))
+        }),
+    };
+    if let Err(refusal) = claimed {
+        notices.write(refusal);
+        title.name = written;
     }
 }
 
@@ -497,7 +511,6 @@ fn name_session(
     mut notices: MessageWriter<Notice>,
 ) {
     let name = title_of(&named.name);
-    let current = paths.as_ref().map(|paths| (&paths.0, &*title));
     let this = paths.as_ref().and_then(|paths| paths.id()).as_ref() == Some(&named.session);
     let dir = home.0.session(&named.session);
     if !this && !dir.path().is_dir() {
@@ -512,7 +525,7 @@ fn name_session(
         true => paths.as_ref().map(|paths| &paths.0),
         false => Some(&dir),
     };
-    if let Err(refusal) = claim_name(&home.0, current, Some(&named.session), target, &name) {
+    if let Err(refusal) = claim_name(&home.0, Some(&named.session), target, &name) {
         notices.write(refusal);
         return;
     }
@@ -527,7 +540,6 @@ fn name_session(
 /// both take one name. An error notice says why not.
 fn claim_name(
     home: &Home,
-    current: Option<(&SessionDir, &SessionTitle)>,
     session: Option<&SessionId>,
     target: Option<&SessionDir>,
     name: &str,
@@ -538,7 +550,7 @@ fn claim_name(
     };
     let lock = lock_file(&home.root().join(NAMES_LOCK), true).map_err(failed)?;
     lock.lock().map_err(failed)?;
-    if let Some(refusal) = name_conflict(home, current, session, name) {
+    if let Some(refusal) = name_conflict(home, session, name) {
         return Err(refusal);
     }
     match target {
@@ -551,15 +563,9 @@ fn claim_name(
 /// session's name.
 const NAMES_LOCK: &str = "names.lock";
 
-/// Refuses a name held by another session that is saved or that another
-/// rig runs, which may be saved later, using the running session's title
-/// for its own directory.
-fn name_conflict(
-    home: &Home,
-    current: Option<(&SessionDir, &SessionTitle)>,
-    session: Option<&SessionId>,
-    name: &str,
-) -> Option<Notice> {
+/// Refuses a name another session's name file holds, of a session that
+/// is saved or that another rig runs, which may be saved later.
+fn name_conflict(home: &Home, session: Option<&SessionId>, name: &str) -> Option<Notice> {
     let entries = std::fs::read_dir(home.sessions()).into_iter().flatten();
     let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
     let mut sessions = ids.map(|id: SessionId| (home.session(&id), id));
@@ -567,11 +573,7 @@ fn name_conflict(
         if Some(id) == session || !(dir.is_saved() || dir.runs_elsewhere()) {
             return false;
         }
-        let stored = match current.filter(|(paths, _)| paths.path() == dir.path()) {
-            Some((_, title)) => title.name.clone(),
-            None => dir.name(),
-        };
-        stored.is_some_and(|stored| title_of(&stored) == name)
+        dir.name().is_some_and(|stored| title_of(&stored) == name)
     })?;
     Some(Notice::error(
         None,

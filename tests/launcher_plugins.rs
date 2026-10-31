@@ -38,7 +38,7 @@ fn help_and_refused_commands_use_their_streams_and_leave_the_home_untouched() {
             anyhow::ensure!(String::from_utf8(output.stderr)?.starts_with("usage:\n"));
             anyhow::ensure!(!home.exists());
         }
-        fs::create_dir(&home)?;
+        fs::create_dir(home)?;
         let original = "an invalid plugin list\n";
         fs::write(home.join("plugins.toml"), original)?;
         let output = plugin(home, &["add", "--help"])?;

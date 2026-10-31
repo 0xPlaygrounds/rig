@@ -723,9 +723,9 @@ fn rig_acp_tools_limit_each_session_and_an_unknown_name_refuses_it() {
         let Some(new) = new else { return };
         let id = new.session_id;
         // The model calls `shell`, which `--tools read` leaves out.
-        assert!(driven.model(&id, "test/wait").await);
+        assert!(driven.model(&id, "test/shell").await);
         assert_eq!(
-            driven.prompt(&id, "Wait.").await.ok(),
+            driven.prompt(&id, "Run it.").await.ok(),
             Some(acp::StopReason::EndTurn)
         );
         let last = tool_steps(driven, &id).last().map(|(_, status)| *status);

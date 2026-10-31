@@ -10,7 +10,8 @@
 //! `--tools` is given, the agent loop waits for that check, so no turn,
 //! request or tool call sees the tools still coming; a front nobody sits
 //! at makes it wait in any case ([`AppRunExt::run_after_start`]). A run
-//! asked to exit meanwhile exits without the agent loop.
+//! asked to exit meanwhile exits without the agent loop, and a signal then
+//! leaves each restored turn to carry on in the next run.
 //!
 //! A name no tool has refuses the run with exit code 2, and every agent
 //! keeps its access as the session has it. A front that says why a run
@@ -30,13 +31,15 @@
 //! }
 //! ```
 
+use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use rig_core::catalog::edit_distance;
+use rig_ecs::StopTurnsOnExit;
 use rig_ecs::agent::{Agent, ToolAccess, TurnOf};
 use rig_ecs::inbox::Incoming;
-use rig_ecs::restore::Restored;
+use rig_ecs::restore::{CarryOn, Restored};
 use rig_ecs::stage::{
     Admitted, AgentLoop, AgentPass, Effect, ForAgent, Outcome, PrepareSystems, Settled, Started,
 };
@@ -201,6 +204,14 @@ impl AppRunExt for App {
         self.insert_resource(LoopAfterStart)
             .configure_sets(Update, AgentLoop.run_if(|start: Res<RunStart>| start.over))
             .add_systems(PostUpdate, exit_unstarted.after(refuse_untaken))
+            .add_systems(
+                Last,
+                keep_restored
+                    .in_set(RunExitSystems)
+                    .in_set(OnAppExitSystems)
+                    .before(StopTurnsOnExit)
+                    .run_if(on_message::<AppExit>),
+            )
     }
 }
 
@@ -237,6 +248,30 @@ fn exit_unstarted(
     if let Some(reason) = reason.filter(|_| !start.over && !*exited) {
         *exited = true;
         exits.write(reason.exit());
+    }
+}
+
+/// The `Last` system that, on a signal before the start was over, leaves
+/// each restored turn to carry on, before the exit stops the running turns
+/// ([`StopTurnsOnExit`]).
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RunExitSystems;
+
+/// On a signal before the start was over, lets each restored turn carry on
+/// ([`CarryOn`]): no plugin had its say about it yet, so the exit leaves it
+/// as the session has it, for the next run to decide. A run that ends
+/// itself first, as on a refused `--tools`, stops it as any exit does.
+fn keep_restored(
+    start: Res<RunStart>,
+    reason: Option<Res<ExitReason>>,
+    turns: Query<Entity, (With<Restored>, With<TurnOf>, Without<CarryOn>)>,
+    mut commands: Commands,
+) {
+    if start.over || !matches!(reason.as_deref(), Some(ExitReason::Signal)) {
+        return;
+    }
+    for turn in &turns {
+        commands.entity(turn).insert(CarryOn);
     }
 }
 

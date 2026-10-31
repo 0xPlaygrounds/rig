@@ -53,7 +53,7 @@ use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
 use rig_harness::rig_core::tool::feedback::not_finished;
-use rig_harness::run::{RunPlugin, RunStartSystems};
+use rig_harness::run::{RunExitSystems, RunPlugin, RunStartSystems};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -189,7 +189,7 @@ impl Plugin for PrintPlugin {
                 .add_systems(
                     Last,
                     (
-                        note_cut_off.after(keep_restored).before(StopTurnsOnExit),
+                        note_cut_off.after(RunExitSystems).before(StopTurnsOnExit),
                         json_exit.after(WriteLogs),
                     )
                         .in_set(OnAppExitSystems)
@@ -290,24 +290,6 @@ fn hold_calls(
 ) {
     for call in &calls {
         commands.spawn(HoldOf(call));
-    }
-}
-
-/// On a signal before the start was checked, lets each restored turn
-/// carry on ([`CarryOn`]): no plugin had its say about it yet, so the exit
-/// leaves it as the session has it, for the next run to decide. A run that
-/// ends itself first, as on a refused `--tools`, stops it as any exit does.
-fn keep_restored(
-    run: Res<Run>,
-    reason: Option<Res<ExitReason>>,
-    turns: Query<Entity, (With<Restored>, With<TurnOf>, Without<CarryOn>)>,
-    mut commands: Commands,
-) {
-    if run.checked || !matches!(reason.as_deref(), Some(ExitReason::Signal)) {
-        return;
-    }
-    for turn in &turns {
-        commands.entity(turn).insert(CarryOn);
     }
 }
 
@@ -475,13 +457,6 @@ impl AppHeadlessExt for App {
         // Nothing runs before the start: no restored turn, request or
         // prompt sees the tools still coming, or a refused `--tools`.
         .run_after_start()
-        .add_systems(
-            Last,
-            keep_restored
-                .in_set(OnAppExitSystems)
-                .before(StopTurnsOnExit)
-                .run_if(on_message::<AppExit>),
-        )
         .add_observer(keep_answer)
         .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
     }

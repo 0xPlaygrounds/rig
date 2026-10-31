@@ -403,7 +403,7 @@ fn name_refuses_another_saved_sessions_normalized_name_but_accepts_its_own() {
 }
 
 #[test]
-fn naming_another_session_refuses_the_current_sessions_pending_name() {
+fn naming_another_session_refuses_the_name_this_session_has() {
     let home = home("unique-event-name");
     let saved = home.new_session();
     assert!(saved.is_ok());
@@ -569,5 +569,54 @@ fn two_sessions_named_alike_in_one_frame_never_share_the_name() {
     assert!(name(&mut first).is_empty());
     let refused = name(&mut second);
     assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Each rig reads the other's name from its file, not from what it last
+/// knew of it, and a name a plugin sets on the title goes through the same
+/// check.
+#[test]
+fn names_given_across_sessions_and_by_plugins_never_share_one() {
+    let home = home("unique-across");
+    let (first, second) = (running(&home, "1-1"), running(&home, "1-2"));
+    assert!(first.is_some() && second.is_some());
+    let (Some(mut first), Some(mut second)) = (first, second) else {
+        return;
+    };
+    first.update();
+    second.update();
+    let (one, two) = (
+        "1-1".parse::<SessionId>().ok(),
+        "1-2".parse::<SessionId>().ok(),
+    );
+    let (Some(one), Some(two)) = (one, two) else {
+        return;
+    };
+    let errors = |app: &mut App| {
+        let mut notices = app.world_mut().resource_mut::<Messages<Notice>>();
+        let errors =
+            (notices.drain()).filter(|notice| notice.level == rig_ecs::agent::NoticeLevel::Error);
+        errors.map(|notice| notice.text).collect::<Vec<_>>()
+    };
+    second.world_mut().trigger(NameSession {
+        session: one,
+        name: "alpha".to_owned(),
+    });
+    second.world_mut().flush();
+    assert!(errors(&mut second).is_empty());
+    first.world_mut().trigger(NameSession {
+        session: two.clone(),
+        name: "alpha".to_owned(),
+    });
+    first.world_mut().flush();
+    let refused = errors(&mut first);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    // A plugin naming the second session alike is refused at the frame's end.
+    second.world_mut().resource_mut::<SessionTitle>().name = Some("alpha".to_owned());
+    second.update();
+    let refused = errors(&mut second);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    assert_eq!(second.world().resource::<SessionTitle>().name, None);
+    assert_eq!(home.session(&two).name(), None);
     fs::remove_dir_all(home.root()).ok();
 }

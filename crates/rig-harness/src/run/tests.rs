@@ -15,13 +15,14 @@ use crate::host::exit::ExitPlugin;
 #[derive(Resource, Default)]
 struct Passes(usize);
 
-/// An app run by `front`, on a terminal or not, with `--tools tools`, the
-/// tool `read` and a start held by the returned entity.
-fn app(front: Front, terminal: bool, tools: &str) -> (App, Entity) {
+/// An app run by `front`, on a terminal or not, with `--tools tools` when
+/// given, the tool `read` and a start held by the returned entity.
+fn app(front: Front, terminal: bool, tools: Option<&str>) -> (App, Entity) {
     let mut app = App::new();
+    let tools = tools.map(|tools| (TOOLS.to_owned(), Some(tools.to_owned())));
     app.insert_resource(Invoked {
         args: Invocation {
-            flags: vec![(TOOLS.to_owned(), Some(tools.to_owned()))],
+            flags: tools.into_iter().collect(),
             ..Invocation::default()
         },
         terminal,
@@ -57,7 +58,7 @@ fn register(app: &mut App, name: &str) {
 #[test]
 fn a_terminal_run_waits_for_its_start_and_takes_a_tool_registered_meanwhile() {
     let terminal = Front::new("view").on_terminal();
-    let (mut app, held) = app(terminal, true, "read,mcp__echo");
+    let (mut app, held) = app(terminal, true, Some("read,mcp__echo"));
     app.update();
     app.update();
     assert!(!app.world().resource::<RunStart>().is_over());
@@ -77,7 +78,7 @@ fn a_terminal_run_waits_for_its_start_and_takes_a_tool_registered_meanwhile() {
 
 #[test]
 fn a_name_no_tool_has_refuses_the_run_once_the_start_is_over() {
-    let (mut app, held) = app(Front::new("view").on_terminal(), true, "read,shel");
+    let (mut app, held) = app(Front::new("view").on_terminal(), true, Some("read,shel"));
     app.update();
     assert_eq!(app.should_exit(), None, "held: a tool may still come");
     app.world_mut().despawn(held);
@@ -85,6 +86,15 @@ fn a_name_no_tool_has_refuses_the_run_once_the_start_is_over() {
     app.update();
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
     assert_eq!(app.world().resource::<Passes>().0, 0);
+}
+
+#[test]
+fn a_terminal_run_without_tools_runs_while_its_start_is_held() {
+    let (mut app, _held) = app(Front::new("view").on_terminal(), true, None);
+    app.update();
+    app.update();
+    assert!(!app.world().resource::<RunStart>().is_over());
+    assert!(app.world().resource::<Passes>().0 > 0);
 }
 
 #[test]
