@@ -596,6 +596,53 @@ fn a_lost_capability_is_refused() {
     }
 }
 
+/// Each capability a row gains is reported, and refuses nothing.
+#[test]
+fn a_gained_capability_is_reported() {
+    let effort = |values: serde_json::Value| json!([{"type": "effort", "values": values}]);
+    let reasoning =
+        |options: serde_json::Value| json!({"reasoning": true, "reasoning_options": options});
+    for (before, after, gained) in [
+        (
+            json!({"reasoning": false}),
+            reasoning(effort(json!(["low"]))),
+            "reasons (effort low)",
+        ),
+        (
+            reasoning(effort(json!(["low"]))),
+            reasoning(effort(json!(["low", "high"]))),
+            "effort: high",
+        ),
+        (
+            reasoning(effort(json!(["low"]))),
+            reasoning(json!([{"type": "effort", "values": ["low"]}, {"type": "toggle"}])),
+            "can turn reasoning off",
+        ),
+        (
+            reasoning(effort(json!(["low"]))),
+            reasoning(json!([{"type": "effort", "values": ["low"]}, {"type": "budget_tokens"}])),
+            "reasoning budget",
+        ),
+        (
+            json!({"modalities": {"input": ["text"]}}),
+            json!({"modalities": {"input": ["text", "pdf"]}}),
+            "input: pdf",
+        ),
+    ] {
+        let comparison = compared(
+            &one("venice", "m", before),
+            &json!({}),
+            &one("venice", "m", after),
+            &json!({}),
+        );
+        assert_eq!(comparison.refusal(), None);
+        assert_eq!(
+            comparison.gains,
+            [("venice/m".to_owned(), vec![gained.to_owned()])]
+        );
+    }
+}
+
 /// What rig reads the same is no change: a list in another order, `toggle`
 /// for effort `none`, and an absent flag for `false`. The report counts it,
 /// and a field rig does not read, by name.
@@ -801,6 +848,21 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
         let comparison = compared(before, &json!({}), after, &review);
         assert_eq!(refused(&comparison), unanswered, "{review}");
     }
+    // A row that read "no control" through its `rig.reasoning_control` fact
+    // is answered by that key, not by the options it already sets.
+    let o_x = one("openai", "o-x", json!({"reasoning": true}));
+    let reviewed = |control: Option<&str>| {
+        let mut row = json!({"source": "https://example.com/o", "reasoning_options": []});
+        if let (Some(control), Some(row)) = (control, row.as_object_mut()) {
+            row.insert("rig".to_owned(), json!({"reasoning_control": control}));
+        }
+        json!({"openai": {"models": {"o-x": row}}})
+    };
+    let comparison = compared(&o_x, &reviewed(Some("none")), &o_x, &reviewed(None));
+    assert!(comparison.refusal().is_some_and(|refusal| refusal.contains(
+        "openai/o-x: reasoning controls become unknown (were no control) (answer with \
+         `rig.reasoning_control`)"
+    )));
 }
 
 /// A removed row, limit and budget changes and a price change are reported,
@@ -1088,7 +1150,7 @@ fn a_new_or_changed_review_row_needs_a_source() {
 /// What rig-core reads from `spec`, in the guard's terms.
 fn rig_core_reading(spec: &rig_core::catalog::ModelSpec) -> Option<Reading> {
     use rig_core::catalog::ReasoningSupport;
-    let efforts = ["minimal", "low", "medium", "high", "xhigh", "max"];
+    let efforts = guard::EFFORTS;
     let reasoning = match &spec.reasoning {
         ReasoningSupport::None => Reasoning::None,
         ReasoningSupport::Unknown { .. } => Reasoning::Unknown,

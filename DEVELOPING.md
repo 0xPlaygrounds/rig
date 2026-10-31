@@ -242,13 +242,12 @@ cargo xtask catalog sync --from ../api.json
 - **Check each list under "Reasoning controls now listed"**: rig sent any
   reasoning control to those models before and now refuses what the list
   lacks, so a wrong list there is a new refusal.
-- **Paste the report** sync prints into the PR under "Catalog changes": it
+- **Paste the report** sync prints into the PR under "Catalog changes". It
   goes to stdout and refusals to stderr, so
   `cargo xtask catalog sync --from ../api.json > ../catalog-changes.md`
-  captures exactly it. A
-  later sync reports only what changed since the last one; to see the whole
-  refresh again, restore main's catalog first:
-  `git checkout origin/main -- crates/rig-core/src/catalog/models.json`.
+  captures the report alone. A later sync reports only what changed since
+  the last one; to see the whole refresh again, restore main's catalog
+  first: `git checkout origin/main -- crates/rig-core/src/catalog/models.json`.
 - **Decide every removed row in the PR**: retired (say how you know), or kept
   with a review row that carries its facts and a `name`. A public model
   constant naming it is deleted or kept to match;

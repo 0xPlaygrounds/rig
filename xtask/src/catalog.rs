@@ -24,17 +24,10 @@
 //!    rig-core's `Catalog::with_models_dev` keeps them when an application
 //!    lays a newer copy of models.dev over the built-in catalog.
 //!
-//! Before it writes, sync compares what rig-core reads from each row of the
-//! checked-in catalog and of the new one ([`guard`]). It writes nothing
-//! while a row loses a capability (it stops reasoning; loses an effort
-//! level, the off switch or its budget; its reasoning controls become
-//! unknown; it loses tool calls, an input modality, structured output, or
-//! sampling it took) that the row's own review does not answer by setting
-//! the deciding key with a `source`. Otherwise it prints a markdown report of
-//! every change, for the refresh PR. A review row that sets a capability,
-//! `limit` or a `rig` fact names a `source`, and one that only copies a row
-//! with `from` takes that row's, unless `unsourced.txt` lists it unchanged.
-//! DEVELOPING.md's "Refreshing the model catalog" is the procedure.
+//! Before it writes, sync refuses a capability loss the review does not
+//! answer, and a review fact without a `source`; otherwise it prints a
+//! markdown report of every change ([`guard`]). DEVELOPING.md's "Refreshing
+//! the model catalog" is the procedure.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
 //! command fetches <https://models.dev/api.json> with `curl`. Sync also
@@ -342,45 +335,53 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
     std::fs::write(&stamp, format!("{read_at}\n"))
         .map_err(|error| format!("{}: {error}", stamp.display()))?;
     // A closed stdout is an error to report, where `print!` would panic.
+    use std::io::Write as _;
     let mut stdout = std::io::stdout().lock();
-    std::io::Write::write_all(&mut stdout, comparison.markdown(&read_at).as_bytes())
-        .and_then(|()| std::io::Write::flush(&mut stdout))
+    stdout
+        .write_all(comparison.markdown(&read_at).as_bytes())
+        .and_then(|()| stdout.flush())
         .map_err(|error| format!("writing the report: {error}"))
 }
 
-/// Check the checked-in catalog and the review's sources offline.
+/// Check the checked-in catalog and the review's sources offline, and
+/// report every problem found at once.
 pub(crate) fn check(root: &Path) -> Result<(), String> {
     let current = read_text(&root.join(OUTPUT))?;
     let catalog =
         read_rows(&serde_json::from_str(&current).map_err(|e| format!("{OUTPUT}: {e}"))?)?;
+    let review = read_json(&root.join(REVIEW))?;
+    let reviewed = read_rows(&review)?;
+    let mut errors = Vec::new();
     if render(&catalog) != current {
-        return Err(format!(
+        errors.push(format!(
             "{OUTPUT} is not in the form `cargo xtask catalog sync` writes"
         ));
     }
     let stamp = read_text(&root.join(GENERATED_AT))?;
     if !is_rfc3339_utc(stamp.trim_end()) {
-        return Err(format!(
+        errors.push(format!(
             "{GENERATED_AT} is not a `YYYY-MM-DDTHH:MM:SSZ` time; run `cargo xtask catalog sync`"
         ));
     }
-    let review = read_json(&root.join(REVIEW))?;
-    let reviewed = read_rows(&review)?;
-    guard::provenance(&reviewed, &read_text(&root.join(UNSOURCED))?)?;
+    errors.extend(validate_review(&reviewed).err());
+    errors.extend(guard::provenance(&reviewed, &read_text(&root.join(UNSOURCED))?).err());
     let mut pinned = catalog.clone();
     pin(&mut pinned, &reviewed);
     if pinned != catalog {
-        return Err(format!(
+        errors.push(format!(
             "{OUTPUT} pins other keys than the review and joins set; run `cargo xtask catalog sync`"
         ));
     }
     let missing = missing_facts(&catalog, &review)?;
-    match missing.is_empty() {
-        true => Ok(()),
-        false => Err(format!(
+    if !missing.is_empty() {
+        errors.push(format!(
             "{OUTPUT} lacks reviewed facts; run `cargo xtask catalog sync`:\n{}",
             missing.join("\n")
-        )),
+        ));
+    }
+    match errors.is_empty() {
+        true => Ok(()),
+        false => Err(errors.join("\n\n")),
     }
 }
 

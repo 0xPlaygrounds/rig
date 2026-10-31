@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 use super::{REVIEW, REVIEW_KEYS, Rows, UNSOURCED};
 
 /// The effort words rig-core reads as an `Effort`, lowest first.
-const EFFORTS: [&str; 6] = ["minimal", "low", "medium", "high", "xhigh", "max"];
+pub(super) const EFFORTS: [&str; 6] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 /// The input modalities rig-core reads, in its order.
 const INPUTS: [&str; 5] = ["text", "image", "audio", "video", "pdf"];
@@ -162,7 +162,7 @@ fn reasoning(row: &Map<String, Value>, no_control: bool) -> Reasoning {
 
 /// A capability a row loses, and the review key that answers it: the one
 /// that decides the lost value.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub(super) struct Loss {
     pub(super) what: String,
     pub(super) answer: &'static str,
@@ -181,10 +181,20 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
         (Reasoning::None, now) => gains.push(format!("reasons ({})", controls(now))),
         (was @ Reasoning::Listed { .. }, Reasoning::Unknown) => lose(
             format!("reasoning controls become unknown (were {})", controls(was)),
-            "reasoning_options",
+            // A row that listed nothing read "no control" only through its
+            // `rig.reasoning_control` fact, which then decides it.
+            match was {
+                Reasoning::Listed {
+                    levels,
+                    off: false,
+                    budget: None,
+                } if levels.is_empty() => "rig.reasoning_control",
+                _ => "reasoning_options",
+            },
         ),
-        // Neither: rig refused no control before and refuses what the list
-        // lacks now; `compare` lists it on its own.
+        // Not a loss or a gain: rig refused no control before and refuses
+        // what the list lacks now. `compare` lists it under "Reasoning
+        // controls now listed".
         (Reasoning::Unknown, _) => {}
         (
             Reasoning::Listed {
@@ -802,22 +812,22 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
     for (vendor, models) in review {
         for (id, row) in models {
             let key = format!("{vendor}/{id}");
-            let sets: Vec<&str> = SOURCED
+            let facts: Vec<&str> = SOURCED
                 .into_iter()
                 .filter(|field| row.contains_key(*field))
                 .collect();
             // A pure copy states no fact of its own, so its origin's source
             // covers it.
-            let needs = match (sets.is_empty(), row.contains_key("from")) {
+            let needs = match (facts.is_empty(), row.contains_key("from")) {
                 (false, _) => source(row).is_none(),
                 (true, true) => source(row)
                     .or_else(|| origin(review, row).and_then(source))
                     .is_none(),
                 (true, false) => false,
             };
-            let sets = match sets.is_empty() {
+            let named = match facts.is_empty() {
                 true => "from".to_owned(),
-                false => sets.join(", "),
+                false => facts.join(", "),
             };
             match (needs, listed.remove(&key)) {
                 (false, None) => {}
@@ -826,10 +836,10 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
                 )),
                 (true, Some(print)) if print == fingerprint(row) => {}
                 (true, Some(_)) => errors.push(format!(
-                    "  {key}: changed, and sets {sets}; give it a \"source\" and drop its line \
+                    "  {key}: changed, and sets {named}; give it a \"source\" and drop its line \
                      from {UNSOURCED}"
                 )),
-                (true, None) => errors.push(format!("  {key}: sets {sets}")),
+                (true, None) => errors.push(format!("  {key}: sets {named}")),
             }
         }
     }
