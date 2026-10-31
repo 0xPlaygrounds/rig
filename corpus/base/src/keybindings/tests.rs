@@ -85,6 +85,7 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "deepseek/deepseek-flash".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
     press(&mut app, "alt+m", agent);

@@ -52,6 +52,7 @@ fn fixture(home: &Home) -> (App, SessionDir) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/fixture".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     let asks = [
         "Start.",

@@ -150,6 +150,7 @@ fn the_item_follows_the_providers_limits_and_the_model() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
     assert_eq!(item(&app, agent), None);
@@ -200,6 +201,7 @@ fn the_item_follows_the_providers_limits_and_the_model() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
     assert_eq!(item(&app, agent), None);

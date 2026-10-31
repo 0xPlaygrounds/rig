@@ -150,6 +150,19 @@ impl fmt::Display for ReasoningSetting {
     }
 }
 
+/// Who made a model or reasoning choice, which says whether it outlives
+/// the run.
+#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
+#[reflect(Clone, Debug, PartialEq)]
+pub enum ChoiceKind {
+    /// The user, with a command of their own such as `/model`: a plugin
+    /// may keep it for later runs.
+    ByUser,
+    /// For this run only, such as a command-line flag, an editor that sets
+    /// the model of each session, an automatic pick or a plugin's own.
+    ForThisRun,
+}
+
 /// Choose the agent's model by catalog reference (`vendor/model`).
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
@@ -158,6 +171,8 @@ pub struct SetModel {
     pub entity: Entity,
     /// The catalog reference.
     pub model: String,
+    /// Who chose it.
+    pub kind: ChoiceKind,
 }
 
 /// Choose the agent's reasoning setting; `None` is the provider default.
@@ -168,11 +183,26 @@ pub struct SetReasoning {
     pub entity: Entity,
     /// The setting.
     pub effort: ReasoningSetting,
+    /// Who chose it.
+    pub kind: ChoiceKind,
+}
+
+/// A [`SetModel`] or [`SetReasoning`] the agent took: the new value is on
+/// it. A refused one triggers nothing.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct ChoiceTaken {
+    /// The agent.
+    pub entity: Entity,
+    /// Who chose it.
+    pub kind: ChoiceKind,
+    /// The model chosen, or `None` for a reasoning setting.
+    pub model: Option<ModelChoice>,
 }
 
 /// Chooses the agent's model: a known catalog model replaces the agent's
-/// [`ModelChoice`], which [`connect`] connects; an unknown one keeps it,
-/// with an error notice naming the closest models and the one kept.
+/// [`ModelChoice`], which [`connect`] connects, and is [`ChoiceTaken`]; an
+/// unknown one keeps it, with an error notice naming the closest models
+/// and the one kept.
 pub(crate) fn on_set_model(
     set: On<SetModel>,
     agents: Query<(Has<ActiveTurn>, Option<&ModelChoice>), With<Agent>>,
@@ -189,9 +219,13 @@ pub(crate) fn on_set_model(
     }
     match models.0.catalog().resolve(&set.model) {
         Ok(found) => {
-            commands
-                .entity(set.entity)
-                .insert(ModelChoice(found.spec.reference()));
+            let model = ModelChoice(found.spec.reference());
+            commands.entity(set.entity).insert(model.clone());
+            commands.trigger(ChoiceTaken {
+                entity: set.entity,
+                kind: set.kind,
+                model: Some(model),
+            });
         }
         Err(why) => {
             let stop = if why.suggestions.is_empty() { "." } else { "" };
@@ -286,7 +320,8 @@ pub(crate) fn check_effort(
     }
 }
 
-/// Sets the agent's reasoning setting after checking it against the model.
+/// Sets the agent's reasoning setting after checking it against the model,
+/// and says it was [`ChoiceTaken`].
 pub(crate) fn on_set_reasoning(
     set: On<SetReasoning>,
     agents: Query<(Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
@@ -308,6 +343,11 @@ pub(crate) fn on_set_reasoning(
     match spec.validate(&spec.default_options(set.effort.0)) {
         Ok(()) => {
             commands.entity(set.entity).insert(set.effort);
+            commands.trigger(ChoiceTaken {
+                entity: set.entity,
+                kind: set.kind,
+                model: None,
+            });
             notices.write(Notice::info(
                 set.entity,
                 format!("Reasoning: {}.", set.effort),

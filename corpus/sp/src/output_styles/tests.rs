@@ -117,6 +117,7 @@ fn a_style_is_in_each_request_once_stays_out_of_subagents_and_resumes() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 
     // `/style` alone offers every style, the current one marked.

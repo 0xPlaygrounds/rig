@@ -132,6 +132,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
 

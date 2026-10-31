@@ -195,6 +195,7 @@ fn references_go_with_the_message_once_and_through_the_tool() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
 

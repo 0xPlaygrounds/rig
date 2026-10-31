@@ -274,6 +274,7 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/b".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     ask(&mut app, &wakes, agent, r#"prefill {""#, "Give me JSON.", 3);
     assert_eq!(b.request_count(), 0);
@@ -317,6 +318,7 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/a".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     let before = answers(app.world(), agent).len();
     ask(&mut app, &wakes, agent, r#"prefill {""#, "Again.", 5);

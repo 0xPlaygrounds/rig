@@ -76,6 +76,7 @@ fn start(
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: MAIN_MODEL.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     // The terminal view shows the main agent, as a front does.
     app.world_mut().trigger(ShowAgent { entity: agent });

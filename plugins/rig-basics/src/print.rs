@@ -949,6 +949,7 @@ fn drive(
                     commands.trigger(SetModel {
                         entity: agent,
                         model,
+                        kind: ChoiceKind::ForThisRun,
                     });
                 }
                 run.step = Step::Connecting { agent };

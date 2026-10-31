@@ -23,6 +23,7 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
+use rig_basics::models::TypedChoices;
 use rig_basics::print::{Starting, Work};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::host::signals;
@@ -254,6 +255,9 @@ pub(crate) fn install(app: &mut App) {
         })
         .collect();
     let servers: Vec<AddMcpServer> = declared.into_iter().map(|(_, server)| server).collect();
+    // The editor sets the model of every session, so none typed here is
+    // the user's default.
+    app.insert_resource(TypedChoices(ChoiceKind::ForThisRun));
     app.insert_resource(Session {
         id,
         cx,
@@ -641,6 +645,7 @@ fn open(mut opened: Opened) {
             opened.commands.trigger(SetModel {
                 entity: agent,
                 model,
+                kind: ChoiceKind::ForThisRun,
             });
             opened.session.wake.wake();
             return;

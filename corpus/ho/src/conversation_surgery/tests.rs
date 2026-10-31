@@ -44,6 +44,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> Option<(App, Recei
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     Some((app, wakes, agent))
 }

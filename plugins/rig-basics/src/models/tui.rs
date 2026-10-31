@@ -57,10 +57,11 @@ fn listing(spec: &ModelSpec, note: &str) -> Listed {
 }
 
 /// Lets the user pick one of the [`ModelItem`]s, then of the catalog's
-/// models, each with why it cannot be used, if it cannot.
+/// models, each with why it cannot be used, if it cannot; the agent's
+/// `current` model says so, and is selected at first.
 pub(super) fn pick_model(
     agent: Entity,
-    (models, contributed): (&Models, &Query<&ModelItem>),
+    (models, contributed, current): (&Models, &Query<&ModelItem>, Option<&ModelChoice>),
     notices: &mut MessageWriter<Notice>,
     commands: &mut Commands,
 ) {
@@ -73,6 +74,7 @@ pub(super) fn pick_model(
         more: None,
         checked: false,
     });
+    let current = current.map(|current| format!("model {}", current.0));
     let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
         label: listed.line,
         command: format!("model {}", listed.reference),
@@ -80,13 +82,21 @@ pub(super) fn pick_model(
         more: None,
         checked: false,
     });
-    let items: Vec<PickItem> = contributed.chain(listed).collect();
+    let mut items: Vec<PickItem> = contributed.chain(listed).collect();
     if items.is_empty() {
         notices.write(Notice::error(agent, "The catalog lists no model."));
         return;
     }
+    let at = items
+        .iter()
+        .position(|item| Some(&item.command) == current.as_ref());
+    if let Some(item) = at.and_then(|at| items.get_mut(at)) {
+        item.detail = Some("current".to_owned());
+    }
+    let selected = at.unwrap_or(0);
     commands.spawn(Picker {
         items,
+        selected,
         ..Picker::new("Model").for_agent(agent)
     });
 }

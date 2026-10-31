@@ -149,6 +149,7 @@ fn a_resumed_session_is_recapped_beside_the_work() {
     first.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     for ask in ["Migrate auth.", "Now the client.", "Wire them.", "Finish."] {
         turn(&mut first, &wakes, ask);

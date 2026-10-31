@@ -41,6 +41,7 @@ impl Plugin for ModelsPlugin {
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
         )
+        .init_resource::<TypedChoices>()
         .add_systems(First, choose_invoked_model);
         #[cfg(feature = "tui")]
         tui::add(app);
@@ -74,6 +75,20 @@ impl ModelItem {
             label: label.into(),
             command: command.into(),
         }
+    }
+}
+
+/// What a model or reasoning setting chosen with a command, `/model`,
+/// `/effort` or their pickers, is in this run: [`ChoiceKind::ByUser`]
+/// unless a front whose client owns the choice inserts
+/// [`ChoiceKind::ForThisRun`], as ACP does, where the editor sets the
+/// model of every session.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct TypedChoices(pub ChoiceKind);
+
+impl Default for TypedChoices {
+    fn default() -> Self {
+        Self(ChoiceKind::ByUser)
     }
 }
 
@@ -127,6 +142,7 @@ fn choose_invoked_model(
     commands.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 }
 
@@ -136,13 +152,18 @@ fn choose_invoked_model(
 fn model(
     In(args): In<CommandArgs>,
     items: Query<&ModelItem>,
-    #[cfg(feature = "tui")] models: Res<Models>,
+    typed: Res<TypedChoices>,
+    #[cfg(feature = "tui")] (models, chosen): (Res<Models>, Query<&ModelChoice>),
     #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     if args.args.is_empty() {
         #[cfg(feature = "tui")]
-        tui::pick_model(args.agent, (&models, &items), &mut notices, &mut commands);
+        {
+            let current = chosen.get(args.agent).ok();
+            let listed = (&*models, &items, current);
+            tui::pick_model(args.agent, listed, &mut notices, &mut commands);
+        }
         return;
     }
     if let Some(item) = items.iter().find(|item| item.name == args.args.trim()) {
@@ -152,6 +173,7 @@ fn model(
     commands.trigger(SetModel {
         entity: args.agent,
         model: args.args,
+        kind: typed.0,
     });
 }
 
@@ -160,6 +182,7 @@ fn model(
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
+    typed: Res<TypedChoices>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -177,6 +200,7 @@ fn effort(
             commands.trigger(SetReasoning {
                 entity: args.agent,
                 effort: ReasoningSetting(choice.reasoning),
+                kind: typed.0,
             });
         }
         Err(why) => {

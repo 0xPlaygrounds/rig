@@ -85,6 +85,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, text: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, text, DeliveryMode::Steer));

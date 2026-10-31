@@ -47,6 +47,7 @@ fn run_session(
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, typed, DeliveryMode::Steer));

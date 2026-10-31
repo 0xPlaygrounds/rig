@@ -40,7 +40,7 @@ use rig_core::serve::ErasedHandler;
 use rig_harness::services::RigHome;
 
 use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopTurn};
-use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
+use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
@@ -301,6 +301,7 @@ fn on_signed_in(
             commands.trigger(SetModel {
                 entity: login.agent,
                 model,
+                kind: ChoiceKind::ForThisRun,
             });
         }
         Err(why) => {

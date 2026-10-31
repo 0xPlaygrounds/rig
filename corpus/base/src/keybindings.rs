@@ -229,6 +229,7 @@ fn cycle_model(
             commands.trigger(SetModel {
                 entity: agent,
                 model: model.clone(),
+                kind: ChoiceKind::ByUser,
             });
         }
     }

@@ -40,6 +40,7 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     app.update();

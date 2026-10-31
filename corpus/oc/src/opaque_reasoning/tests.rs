@@ -262,6 +262,7 @@ fn switch(app: &mut App, agent: Entity, model: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
 }

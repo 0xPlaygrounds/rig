@@ -44,6 +44,7 @@ fn a_scripted_catalog_model_answers_in_a_session_directory_and_its_work_is_colle
     world.trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Look.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -125,6 +126,7 @@ fn a_scripted_app_lists_only_its_models_and_sends_no_http() {
     world.trigger(SetModel {
         entity: agent,
         model: openai.reference(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Hi.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
