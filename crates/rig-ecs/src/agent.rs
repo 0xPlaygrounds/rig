@@ -234,24 +234,123 @@ impl From<Option<String>> for SystemPrompt {
 }
 
 /// Which registered tools the agent may call. Saved with the session.
-#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
+/// Only [`within`](Self::within), [`narrow`](Self::narrow) and
+/// [`grant`](Self::grant) build an [`Only`](Self::Only), so an access made
+/// from another never has a tool that one lacks; before it admits anything
+/// the kernel keeps each agent's access within the access of every agent
+/// above it ([`SpawnedBy`]), whatever made or restored it.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub enum ToolAccess {
     /// Every registered tool.
     #[default]
     All,
     /// Only the tools named.
-    Only(Vec<String>),
+    Only(Granted),
 }
+
+/// The tools a [`ToolAccess::Only`] names.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Granted(Vec<String>);
+
+impl Granted {
+    /// The names, in the order granted.
+    pub fn names(&self) -> &[String] {
+        &self.0
+    }
+}
+
+/// Why [`ToolAccess::grant`] refused: `name` is not one of the tools the
+/// granting access has, `yours`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NotYours {
+    /// The tool asked for.
+    pub name: String,
+    /// The registered tools the granting access allows, sorted.
+    pub yours: Vec<String>,
+}
+
+impl std::fmt::Display for NotYours {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (name, yours) = (&self.name, self.yours.join(", "));
+        write!(f, "`{name}` is not one of your tools ({yours})")
+    }
+}
+
+impl std::error::Error for NotYours {}
 
 impl ToolAccess {
     /// Whether the tool `name` may be called.
     pub fn allows(&self, name: &str) -> bool {
         match self {
             Self::All => true,
-            Self::Only(names) => names.iter().any(|allowed| allowed == name),
+            Self::Only(granted) => granted.0.iter().any(|allowed| allowed == name),
         }
     }
+
+    /// The names an [`Only`](Self::Only) gives; `None` for [`All`](Self::All).
+    pub fn names(&self) -> Option<&[String]> {
+        match self {
+            Self::All => None,
+            Self::Only(granted) => Some(granted.names()),
+        }
+    }
+
+    /// This access kept within `other`: the tools both allow, in this
+    /// one's order, or `other`'s when this one allows every tool.
+    pub fn within(&self, other: &Self) -> Self {
+        match (self, other) {
+            (_, Self::All) => self.clone(),
+            (Self::All, Self::Only(_)) => other.clone(),
+            (Self::Only(mine), Self::Only(_)) => {
+                let kept = mine.0.iter().filter(|name| other.allows(name));
+                Self::Only(Granted(kept.cloned().collect()))
+            }
+        }
+    }
+
+    /// This access kept to `names`, each once: never more than it was, such
+    /// as for `--tools`.
+    pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
+        self.within(&Self::Only(Granted(unique(names))))
+    }
+
+    /// A child's access: the tools `asked`, each once, every one a tool of
+    /// `registered` this access allows; or why not, for the first that is
+    /// not.
+    pub fn grant<'a>(
+        &self,
+        asked: &[String],
+        registered: impl IntoIterator<Item = &'a str>,
+    ) -> Result<Self, NotYours> {
+        let mut yours: Vec<&str> = registered
+            .into_iter()
+            .filter(|name| self.allows(name))
+            .collect();
+        yours.sort_unstable();
+        yours.dedup();
+        match asked.iter().find(|name| !yours.contains(&name.as_str())) {
+            Some(name) => Err(NotYours {
+                name: name.clone(),
+                yours: yours.into_iter().map(str::to_owned).collect(),
+            }),
+            None => Ok(Self::Only(Granted(unique(
+                asked.iter().map(String::as_str),
+            )))),
+        }
+    }
+}
+
+/// `names` in their order, each once.
+fn unique<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut unique: Vec<String> = Vec::new();
+    for name in names {
+        if !unique.iter().any(|kept| kept == name) {
+            unique.push(name.to_owned());
+        }
+    }
+    unique
 }
 
 /// A running turn of the agent it names, from a user message to the reply
@@ -590,3 +689,6 @@ impl TurnOutcome {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -225,7 +225,7 @@ fn record_usage(
 /// it spawned used, the session's total with its split per model and per
 /// purpose, and the other plugins' [`UsageRow`]s.
 fn usage(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     agents: Query<(
         &AgentUsage,
         &LastUsage,

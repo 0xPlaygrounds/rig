@@ -27,7 +27,7 @@ use rig_ecs::stage::{
     AgentLoop, Effect, ForAgent, Outcome, Settled, despawn_open_children, follow_successor,
 };
 use rig_ecs::tasks::{PollTasks, Wake};
-use rig_ecs::tools::ToolRequest;
+use rig_ecs::tools::{ToolDef, ToolRequest};
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
 pub(crate) struct HarnessPlugin;
@@ -70,7 +70,8 @@ pub struct AgentSpec {
     pub model: Option<String>,
     /// The agent's own part of its system prompt.
     pub system_prompt: Option<String>,
-    /// The tools it may call, by name.
+    /// The tools it may call, by name: each a registered tool its parent
+    /// may call, or every tool without a parent.
     pub tools: Option<Vec<String>>,
 }
 
@@ -98,6 +99,7 @@ impl Harness {
 
     /// Spawns an agent from `spec`, [`SpawnedBy`] the agent `parent` when
     /// given, and returns its id. It is idle until a message is sent to it.
+    /// Refused for a tool in `spec.tools` the parent may not call.
     pub async fn spawn_agent(
         &self,
         spec: AgentSpec,
@@ -252,11 +254,17 @@ fn spawn_agent(
         .map(SystemPrompt)
         .or(parent_prompt)
         .unwrap_or_default();
-    let access = spec
-        .tools
-        .map(ToolAccess::Only)
-        .or(parent_access)
-        .unwrap_or_default();
+    let parent_access = parent_access.unwrap_or_default();
+    let access = match &spec.tools {
+        Some(asked) => {
+            let mut tools = world.query::<&ToolDef>();
+            let registered = tools.iter(world).map(|def| def.0.name.as_str());
+            parent_access
+                .grant(asked, registered)
+                .map_err(|refused| refused.to_string())?
+        }
+        None => parent_access,
+    };
     let id = AgentId::default();
     let mut agent = world.spawn((Agent, id.clone(), Name::new(spec.name), prompt, access));
     // The parent first, so the agent's log opens naming it.

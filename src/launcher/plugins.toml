@@ -11,6 +11,8 @@
 # below can go. A commented-out entry is a disabled one, and the comment
 # above an entry is its description: `rig plugin list` and /plugins show
 # them, and `rig plugin enable` and `disable` turn entries on and off.
+# Shipped types missing from this file also appear off in those lists;
+# `rig plugin enable` adds their default entry and description.
 # `rig plugin new <name>` makes a plugin crate in plugins/<name> and adds
 # its entry; `rig plugin check` checks this file.
 

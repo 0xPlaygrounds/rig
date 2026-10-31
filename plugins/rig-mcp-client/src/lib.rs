@@ -37,7 +37,6 @@ use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::futures_lite::future;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_basics::print::Starting;
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{Answered as Answer, EffectId, EffectKind};
 use rig_core::error::ErrorReport;

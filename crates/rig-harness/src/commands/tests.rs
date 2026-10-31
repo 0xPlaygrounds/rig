@@ -10,6 +10,10 @@ use super::*;
 #[derive(Resource, Default)]
 struct Echoed(Vec<(String, DeliveryMode)>);
 
+/// Each run of a command that accepts no text.
+#[derive(Resource, Default)]
+struct Ran(Vec<(Entity, DeliveryMode)>);
+
 /// An app with the kernel, an `/echo` command and an agent.
 fn app() -> (App, Entity) {
     let mut app = App::new();
@@ -131,4 +135,49 @@ fn a_disabled_command_gives_way_to_its_replacement() {
         .map(|notice| notice.text.as_str())
         .collect();
     assert_eq!(said, ["new"]);
+}
+
+#[test]
+fn a_command_declares_its_input_and_refuses_extra_text_before_running() {
+    let (mut app, agent) = app();
+    app.init_resource::<Ran>().add_command(
+        "nothing",
+        "Takes no text",
+        |In(args): In<NoArgs>, mut ran: ResMut<Ran>| {
+            ran.0.push((args.agent, args.mode));
+        },
+    );
+    let world = app.world_mut();
+    let kinds: Vec<_> = world
+        .query::<(&Name, &SlashCommand)>()
+        .iter(world)
+        .map(|(name, command)| (name.as_str().to_owned(), command.args))
+        .collect();
+    assert!(kinds.contains(&("/nothing".to_owned(), Args::None)));
+    assert!(kinds.contains(&("/echo".to_owned(), Args::Text)));
+    world.trigger(RunCommand::new(agent, "nothing   PELICAN  "));
+    world.flush();
+    assert!(world.resource::<Ran>().0.is_empty());
+    let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+    assert_eq!(recalled.len(), 1);
+    assert!(recalled.iter().all(|recalled| {
+        recalled.agent == agent
+            && recalled.text == "/nothing   PELICAN  "
+            && recalled
+                .why
+                .as_ref()
+                .is_some_and(|why| why.contains("/nothing") && why.contains("PELICAN"))
+    }));
+    world.trigger(RunCommand {
+        mode: DeliveryMode::Queue,
+        ..RunCommand::new(agent, "nothing \n\t")
+    });
+    world.trigger(RunCommand::new(agent, "echo  some text  "));
+    world.flush();
+    assert_eq!(world.resource::<Ran>().0, [(agent, DeliveryMode::Queue)]);
+    assert_eq!(
+        world.resource::<Echoed>().0,
+        [("some text".to_owned(), DeliveryMode::Steer)]
+    );
+    assert!(world.resource::<Messages<Recalled>>().is_empty());
 }

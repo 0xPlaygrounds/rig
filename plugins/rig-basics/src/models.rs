@@ -19,13 +19,14 @@
 use rig_harness::prelude::*;
 
 pub mod defaults;
+mod pick;
 #[cfg(feature = "tui")]
 mod tui;
 
 /// Gives the agent the user talks to the model `--model` names, or no
 /// model when the catalog lists none by that name, and adds `/model` and
-/// `/effort`; with the `tui` feature, each is a picker without arguments,
-/// and each agent's status line shows its model and reasoning setting.
+/// `/effort`, each a picker without arguments; with the `tui` feature,
+/// each agent's status line shows its model and reasoning setting.
 #[derive(Default)]
 pub struct ModelsPlugin;
 
@@ -131,18 +132,17 @@ fn choose_invoked_model(
 }
 
 /// `/model vendor/model` sets the agent's model, and `/model <name>` runs
-/// the [`ModelItem`] of that name; without arguments, the terminal view
-/// lets the user pick one.
+/// the [`ModelItem`] of that name; without arguments, a picker lets the
+/// user pick one.
 fn model(
     In(args): In<CommandArgs>,
     items: Query<&ModelItem>,
-    #[cfg(feature = "tui")] models: Res<Models>,
-    #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
+    models: Res<Models>,
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     if args.args.is_empty() {
-        #[cfg(feature = "tui")]
-        tui::pick_model(args.agent, (&models, &items), &mut notices, &mut commands);
+        pick::pick_model(args.agent, (&models, &items), &mut notices, &mut commands);
         return;
     }
     if let Some(item) = items.iter().find(|item| item.name == args.args.trim()) {
@@ -156,7 +156,7 @@ fn model(
 }
 
 /// `/effort <level>` sets the agent's reasoning setting; without
-/// arguments, the terminal view lets the user pick one.
+/// arguments, a picker lets the user pick one. Refused without a model.
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
@@ -164,12 +164,11 @@ fn effort(
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
-        notices.write(Notice::info(args.agent, "Pick a model with /model first."));
+        notices.write(Notice::error(args.agent, "Pick a model with /model first."));
         return;
     };
     if args.args.is_empty() {
-        #[cfg(feature = "tui")]
-        tui::pick_effort(args.agent, spec, &mut commands);
+        pick::pick_effort(args.agent, spec, &mut commands);
         return;
     }
     match spec.reasoning.named(&args.args) {

@@ -10,8 +10,9 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
-use rig_harness_protocol::Home;
+use rig_harness_protocol::{Home, REFUSED_EXIT_CODE};
 
 use super::Result;
 use super::plugin_list::{self, PluginList, Source};
@@ -38,18 +39,21 @@ pub const USAGE: &str =
                          plugin crates at the launcher's version, named
                          after the type's crate (rig_inspect::InspectPlugin
                          is in rig-inspect). A type listed disabled gets its
-                         entry enabled instead.
+                         entry enabled instead. Shipped types keep their
+                         description from the default plugin list.
   rig plugin remove <type>
                          Remove the plugin type <type> from plugins.toml; its
                          crate stays where it is.
-  rig plugin list        List every plugin in plugins.toml, enabled (`on`) or
-                         disabled (`off`, its entry commented out), with its
-                         crate and the comment above its entry.
+  rig plugin list        List every plugin in plugins.toml and every shipped
+                         plugin, enabled (`on`) or disabled (`off`), with its
+                         crate and description. Missing shipped entries are
+                         off; `rig plugin enable` adds them.
   rig plugin enable <type>
   rig plugin disable <type>
                          Uncomment or comment out the entry of <type>,
                          keeping every other line; /reload or `rig build`
-                         applies it.
+                         applies it. Enabling a missing shipped type adds
+                         its default entry and description.
   rig plugin check [--build]
                          Check plugins.toml and the plugin crates it names by
                          path; with --build, also build the agent with them
@@ -60,7 +64,11 @@ pub const USAGE: &str =
 ";
 
 /// Runs `rig plugin` with `args`, the words after `plugin`.
-pub fn run(home: &Home, args: &[&str]) -> Result<()> {
+pub fn run(home: &Home, args: &[&str]) -> Result<ExitCode> {
+    if args.iter().any(|arg| matches!(*arg, "--help" | "-h")) {
+        print!("{USAGE}");
+        return Ok(ExitCode::SUCCESS);
+    }
     match args {
         ["new", name] => new(home, name),
         ["add", type_path, options @ ..] => add(home, type_path, options),
@@ -70,8 +78,12 @@ pub fn run(home: &Home, args: &[&str]) -> Result<()> {
         ["disable", type_path] => enable(home, type_path, false),
         ["check"] => check(home),
         ["check", "--build"] => check(home).and_then(|()| check_build(home)),
-        _ => Err(format!("usage:\n{USAGE}").into()),
-    }
+        _ => {
+            eprint!("usage:\n{USAGE}");
+            return Ok(ExitCode::from(REFUSED_EXIT_CODE));
+        }
+    }?;
+    Ok(ExitCode::SUCCESS)
 }
 
 /// `rig plugin new <name>`: the crate `name` in `RIG_HOME/plugins/<name>`,
@@ -164,6 +176,31 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
             return Ok(());
         }
     }
+    let entry = added_entry(home, type_path, options)?;
+    plugin_list::append(&plugins_toml, &entry, |list| {
+        match list
+            .plugins
+            .last()
+            .and_then(|plugin| check_plugin(plugin, &source))
+        {
+            Some(problem) => Err(problem.into()),
+            None => Ok(()),
+        }
+    })?;
+    println!(
+        "Added `{type_path}` to {}.\n/reload in the agent, or `rig build`, builds it.",
+        plugins_toml.display()
+    );
+    Ok(())
+}
+
+/// The table to add, from the template when no options override it.
+fn added_entry(home: &Home, type_path: &str, options: &[&str]) -> Result<String> {
+    if options.is_empty()
+        && let Some(entry) = plugin_list::shipped_entry(type_path)?
+    {
+        return Ok(entry);
+    }
     let mut keys: Vec<(&str, String)> = Vec::new();
     let mut name: Option<String> = None;
     let mut rest = options.iter();
@@ -196,21 +233,7 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
         entry.push_str(&format!("{key} = {}\n", quoted(value)));
     }
     entry.push_str(&format!("plugin = {}\n", quoted(type_path)));
-    plugin_list::append(&plugins_toml, &entry, |list| {
-        match list
-            .plugins
-            .last()
-            .and_then(|plugin| check_plugin(plugin, &source))
-        {
-            Some(problem) => Err(problem.into()),
-            None => Ok(()),
-        }
-    })?;
-    println!(
-        "Added `{type_path}` to {}.\n/reload in the agent, or `rig build`, builds it.",
-        plugins_toml.display()
-    );
-    Ok(())
+    Ok(entry)
 }
 
 /// `rig plugin remove <type>`: the entry of `type_path`, with the comment
@@ -237,11 +260,11 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
     Ok(())
 }
 
-/// `rig plugin list`: every entry of `plugins.toml`, one line each: `on`
+/// `rig plugin list`: every listed or shipped plugin, one line each: `on`
 /// or `off`, the type, its crate, and the comment above its entry, with a
 /// warning on a disabled essential plugin. `/plugins` reads these lines.
 fn list(home: &Home) -> Result<()> {
-    let listed = plugin_list::listed(&home.plugins_toml())?;
+    let listed = plugin_list::available(&home.plugins_toml())?;
     let width =
         |of: fn(&plugin_list::Listed) -> usize| listed.iter().map(of).max().unwrap_or_default();
     let types = width(|listed| listed.entry.type_path.len());
@@ -266,10 +289,19 @@ fn list(home: &Home) -> Result<()> {
 }
 
 /// `rig plugin enable <type>` and `rig plugin disable <type>`: uncomments
-/// or comments out the entry of `type_path`.
+/// or comments out the entry of `type_path`. Enabling a missing shipped
+/// type adds its template entry.
 fn enable(home: &Home, type_path: &str, enabled: bool) -> Result<()> {
     let plugins_toml = home.plugins_toml();
-    PluginList::load(&plugins_toml)?;
+    let listed = plugin_list::listed(&plugins_toml)?;
+    if enabled
+        && !listed
+            .iter()
+            .any(|listed| listed.entry.type_path == type_path)
+        && plugin_list::shipped_entry(type_path)?.is_some()
+    {
+        return add(home, type_path, &[]);
+    }
     let changed = plugin_list::set_enabled(&plugins_toml, type_path, enabled)?;
     let state = if enabled { "enabled" } else { "disabled" };
     if !changed {

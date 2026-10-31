@@ -39,9 +39,9 @@ impl Plugin for ScaffoldPlugin {
 }
 
 /// `/__name__`: a notice with the word count of the agent's last answer.
-/// `args.agent` is the agent, `args.args` the text after the command name.
+/// `args.agent` is the agent. `NoArgs` refuses text after the command name.
 fn command(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     mut agents: Query<(&Conversation, &mut Uses)>,
     mut notices: MessageWriter<Notice>,
 ) {

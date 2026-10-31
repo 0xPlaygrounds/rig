@@ -143,6 +143,9 @@ pub struct Front {
     /// Where a run it takes keeps its session, in place of
     /// [`StoreOpener`] ([`Self::session_store`]).
     pub session_store: Option<StoreOpener>,
+    /// Whether it shows [`Picker`](crate::pick::Picker)s; the harness
+    /// refuses each one a run whose front does not show them opens.
+    pub pickers: bool,
 }
 
 impl Front {
@@ -156,6 +159,7 @@ impl Front {
             command: None,
             sessionless: false,
             session_store: None,
+            pickers: false,
         }
     }
 
@@ -168,6 +172,12 @@ impl Front {
     /// It takes a run without an interactive terminal.
     pub fn headless(mut self) -> Self {
         self.headless = true;
+        self
+    }
+
+    /// It shows pickers and answers them ([`pick`](crate::pick)).
+    pub fn shows_pickers(mut self) -> Self {
+        self.pickers = true;
         self
     }
 
@@ -228,6 +238,12 @@ impl Cli {
     /// Whether the front of this run keeps no session.
     pub fn sessionless(&self) -> bool {
         self.chosen().is_some_and(|front| front.sessionless)
+    }
+
+    /// Whether the front of this run, once chosen, shows pickers; `None`
+    /// before, or when no front takes the run.
+    pub(crate) fn pickers(&self) -> Option<bool> {
+        self.chosen().map(|front| front.pickers)
     }
 
     /// Whether the front of this run takes an interactive terminal.

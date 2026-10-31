@@ -33,7 +33,7 @@ use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::{SavedKeys, now_ms};
 use rig_ecs::session_log::{ConversationChanged, SessionStore};
-use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::commands::{AppCommandsExt, CommandArgs, NoArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{
     CurrentAgent, Exit, ExitReason, Files, MainAgentQuery, RigHome, SessionPaths, first_typed,
@@ -397,7 +397,7 @@ fn update_meta(
 }
 
 fn new(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     conversations: Query<&Conversation, With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -445,6 +445,8 @@ fn resume(
 
 fn name(
     In(args): In<CommandArgs>,
+    home: Res<RigHome>,
+    paths: Option<Res<SessionPaths>>,
     mut title: ResMut<SessionTitle>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -457,6 +459,12 @@ fn name(
         return;
     }
     let name = title_of(&args.args);
+    let session = paths.as_ref().and_then(|paths| paths.id());
+    let current = paths.as_ref().map(|paths| (&paths.0, &*title));
+    if let Some(refusal) = name_conflict(&home.0, current, session.as_ref(), &name) {
+        notices.write(refusal);
+        return;
+    }
     notices.write(Notice::info(
         args.agent,
         format!("This session is now named “{name}”."),
@@ -488,7 +496,12 @@ fn name_session(
     mut notices: MessageWriter<Notice>,
 ) {
     let name = title_of(&named.name);
-    if paths.and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
+    let current = paths.as_ref().map(|paths| (&paths.0, &*title));
+    if let Some(refusal) = name_conflict(&home.0, current, Some(&named.session), &name) {
+        notices.write(refusal);
+        return;
+    }
+    if paths.as_ref().and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
         title.name = Some(name);
         return;
     }
@@ -503,6 +516,30 @@ fn name_session(
         let why = format!("Could not name session {}: {why}.", named.session);
         notices.write(Notice::error(None, why));
     }
+}
+
+/// Refuses a name held by another saved session, using the running
+/// session's title while its name file waits for `Last`.
+fn name_conflict(
+    home: &Home,
+    current: Option<(&SessionDir, &SessionTitle)>,
+    session: Option<&SessionId>,
+    name: &str,
+) -> Option<Notice> {
+    let (other, _) = home.saved_sessions().into_iter().find(|(id, dir)| {
+        if Some(id) == session {
+            return false;
+        }
+        let stored = match current.filter(|(paths, _)| paths.path() == dir.path()) {
+            Some((_, title)) => title.name.clone(),
+            None => dir.name(),
+        };
+        stored.is_some_and(|stored| title_of(&stored) == name)
+    })?;
+    Some(Notice::error(
+        None,
+        format!("“{name}” is the name of session {other} already; pick another."),
+    ))
 }
 
 /// Exits to run the session asked for next.

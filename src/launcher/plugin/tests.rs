@@ -1,5 +1,120 @@
 use super::*;
 
+const MCP: &str = "rig_mcp_client::McpPlugin";
+
+fn old_home(test: &str) -> Home {
+    Home::at(std::env::temp_dir().join(format!("rig-plugin-{test}-{}", std::process::id())))
+}
+
+#[test]
+fn enabling_a_shipped_plugin_missing_from_an_old_home_adds_its_description() {
+    let home = old_home("enable");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.plugins_toml(), "# An older home.\n")?;
+        run(&home, &["enable", MCP])?;
+        let parsed = PluginList::load(&home.plugins_toml())?;
+        let text = fs::read_to_string(home.plugins_toml())?;
+        run(&home, &["enable", MCP])?;
+        Ok((
+            parsed.plugins.iter().any(|plugin| plugin.type_path == MCP),
+            text.contains("# MCP servers:"),
+            text == fs::read_to_string(home.plugins_toml())?,
+        ))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(matches!(result, Ok((true, true, true))), "{result:?}");
+}
+
+#[test]
+fn adding_a_shipped_plugin_without_a_source_keeps_its_template_description() {
+    let home = old_home("add");
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.plugins_toml(), "# An older home.\n")?;
+        run(&home, &["add", MCP])?;
+        let text = fs::read_to_string(home.plugins_toml())?;
+        Ok(text.contains("# MCP servers:") && !text.contains("# Added by"))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(matches!(result, Ok(true)), "{result:?}");
+}
+
+#[test]
+fn plugin_help_anywhere_succeeds_without_creating_a_home() {
+    let home = old_home("help");
+    fs::remove_dir_all(home.root()).ok();
+    let cases: &[&[&str]] = &[
+        &["--help"],
+        &["add", "--help"],
+        &["enable", "-h"],
+        &["add", MCP, "--path", "--help"],
+        &["-h", "new", "example"],
+        &["unknown", "--help"],
+    ];
+    let results: Vec<_> = cases.iter().map(|args| run(&home, args)).collect();
+    let created = home.root().exists();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(
+        results
+            .iter()
+            .all(|result| matches!(result, Ok(code) if *code == ExitCode::SUCCESS)),
+        "{results:?}"
+    );
+    assert!(!created);
+}
+
+#[test]
+fn missing_or_unknown_plugin_commands_are_refused_without_creating_a_home() {
+    let home = old_home("refused");
+    fs::remove_dir_all(home.root()).ok();
+    for args in [vec![], vec!["unknown"], vec!["enable"]] {
+        let result = run(&home, &args);
+        assert!(
+            matches!(result, Ok(code) if code == ExitCode::from(REFUSED_EXIT_CODE)),
+            "{args:?}: {result:?}"
+        );
+    }
+    assert!(!home.root().exists());
+}
+
+#[test]
+fn an_explicit_source_overrides_the_shipped_entry() {
+    let entry = added_entry(
+        &old_home("source"),
+        MCP,
+        &["--crate", "rig-mcp-client", "--version", "1"],
+    );
+    let parsed = entry
+        .and_then(|entry| plugin_list::parse(&entry, Path::new("/home")))
+        .ok();
+    assert!(parsed.is_some_and(|list| list.plugins.iter().any(|entry| {
+        entry.type_path == MCP && entry.package.source == Source::Version("1".to_owned())
+    })));
+}
+
+#[test]
+fn enabling_an_unknown_type_does_not_change_the_file() {
+    let home = old_home("unknown");
+    let original = "# An older home.\n";
+    let result = (|| -> Result<_> {
+        fs::create_dir_all(home.root())?;
+        fs::write(home.plugins_toml(), original)?;
+        let failure = run(&home, &["enable", "rig_mcp_client::UnknownPlugin"])
+            .err()
+            .ok_or("unknown type was accepted")?;
+        Ok((
+            failure.to_string(),
+            fs::read_to_string(home.plugins_toml())?,
+        ))
+    })();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(
+        matches!(&result, Ok((failure, text)) if failure.contains("rig plugin add") && text == original),
+        "{result:?}"
+    );
+}
+
 #[test]
 fn the_scaffold_names_the_plugin_and_its_command() {
     assert_eq!(type_name("agent-viz"), "AgentVizPlugin");

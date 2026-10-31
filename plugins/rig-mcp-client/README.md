@@ -26,7 +26,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 
 - `$RIG_HOME/mcp.json` (default `~/.rig/mcp.json`): yours, in every project.
 - `<project>/.rig/mcp.json`: the project's, unless the project is on another
-  host (`--remote`), whose `.rig` is not on this machine, or its `.rig` is
+  host, whose `.rig` is not on this machine, or its `.rig` is
   `RIG_HOME` itself, as in your home directory, or its path is not UTF-8
   (approvals could not tell it from another such path). Its servers start only once you
   approve them (below). Approved, one replaces a server of yours of the same

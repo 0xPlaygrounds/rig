@@ -4351,7 +4351,7 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
     ]);
     app.init_resource::<Ended>().add_observer(log_ended);
     let agent = agent_on(&mut app, &model);
-    let only_look = ToolAccess::Only(vec!["look".to_owned()]);
+    let only_look = ToolAccess::All.narrow(["look"]);
     app.world_mut().entity_mut(agent).insert(only_look);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
@@ -4519,7 +4519,7 @@ fn a_call_the_agent_may_not_make_is_refused_not_answered_in_its_place() {
     let call = spawn_call(world, "look", "look");
     let agent = world.get::<ForAgent>(call).map(|of| of.0);
     if let Some(agent) = agent {
-        world.entity_mut(agent).insert(ToolAccess::Only(Vec::new()));
+        world.entity_mut(agent).insert(ToolAccess::All.narrow([]));
     }
     let done = |world: &mut World| world.get::<Settled>(call).is_some();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));

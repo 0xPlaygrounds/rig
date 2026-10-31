@@ -23,12 +23,12 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
-use rig_basics::print::{Starting, Work};
-use rig_harness::harness_protocol::SessionId;
+use rig_harness::harness_protocol::{REFUSED_EXIT_CODE, SessionId};
 use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
 use rig_harness::rig_memory::summarized_in_log;
+use rig_harness::run::RunStartSystems;
 use rig_harness::services::WorkDir;
 use rig_mcp_client::{AddMcpServer, ServerSpec};
 
@@ -79,6 +79,16 @@ impl Opening {
             Self::New(request, _) => &request.mcp_servers,
             Self::Load(request, _) => &request.mcp_servers,
             Self::Resume(request, _) => &request.mcp_servers,
+        }
+    }
+
+    /// Refuses to open the session, saying `why`.
+    fn refuse(self, why: String) {
+        let refused = crate::error(Error::invalid_params(), why);
+        match self {
+            Self::New(_, reply) => reply.send(Err(refused)),
+            Self::Load(_, reply) => reply.send(Err(refused)),
+            Self::Resume(_, reply) => reply.send(Err(refused)),
         }
     }
 
@@ -284,6 +294,7 @@ pub(crate) fn install(app: &mut App) {
         (requests_in, open, stop_cancelled)
             .chain()
             .after(PollTasks)
+            .after(RunStartSystems)
             .before(AgentLoop),
     )
     .add_systems(
@@ -298,7 +309,6 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(output::call_asked)
     .add_observer(output::started)
     .add_observer(output::settled)
-    .add_observer(questions::picker)
     .add_observer(ended)
     .add_observer(questions::forgotten);
     let mut session = app.world_mut().resource_mut::<Session>();
@@ -578,7 +588,7 @@ impl Requested<'_, '_> {
 struct Opened<'w, 's> {
     session: ResMut<'w, Session>,
     restored: Option<Res<'w, SessionRestored>>,
-    starting: Query<'w, 's, (), With<Starting>>,
+    start: ResMut<'w, RunStart>,
     primary: MainAgentQuery<'w, 's>,
     agents: Query<
         'w,
@@ -598,10 +608,21 @@ struct Opened<'w, 's> {
     commands: Commands<'w, 's>,
 }
 
-/// Answers the opening request once the session is restored and no MCP
-/// server's first attempt is still out: a loaded session's history first,
-/// then the answer, the updates held meanwhile, the commands and options.
+/// Answers the opening request once the session is restored and the run's
+/// start is over, no MCP server's first attempt still out: a loaded
+/// session's history first, then the answer, the updates held meanwhile,
+/// the commands and options. A start refused for `--tools` refuses the
+/// opening with why, and the session's process exits.
 fn open(mut opened: Opened) {
+    if let Some(why) = opened.start.take_refusal() {
+        if let Some(opening) = opened.session.opening.take() {
+            opening.refuse(why);
+        }
+        opened
+            .commands
+            .trigger(Exit(ExitReason::Failed(REFUSED_EXIT_CODE)));
+        return;
+    }
     let restored = opened.restored.is_some() && opened.session.opening.is_some();
     let agent = main_agent(&opened.primary).filter(|_| restored);
     let Some(agent) = agent else {
@@ -628,7 +649,7 @@ fn open(mut opened: Opened) {
         };
         opened.session.replay = Some(replay);
     }
-    if !opened.starting.is_empty() {
+    if !opened.start.is_over() {
         return;
     }
     // A new session's agent gets the first model it can reach, as a

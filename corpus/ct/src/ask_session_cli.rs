@@ -323,7 +323,7 @@ fn make_answerer(
     }
     commands.entity(agent).insert((
         SystemPrompt(prompt),
-        ToolAccess::Only(vec![SEARCH.to_owned(), FETCH.to_owned()]),
+        ToolAccess::All.narrow([SEARCH, FETCH]),
     ));
     commands.trigger(SetModel {
         entity: agent,

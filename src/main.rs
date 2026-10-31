@@ -50,9 +50,6 @@ const ENVIRONMENT: &str = "
 Environment:
   RIG_HOME    Root of every rig directory (default: ~/.rig).
   RIG_SOURCE  A rig checkout to build the agent from instead of crates.io.
-  RIG_SECRET_<NAME>
-              A secret a plugin asks for, given to the agent alone; the
-              launcher asks for one the environment does not hold.
 
 Exit codes:
   0           Success.
@@ -74,9 +71,7 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["build"] => launcher::build::build(&home).map(|()| ExitCode::SUCCESS),
-        ["plugin", command @ ..] => {
-            launcher::plugin::run(&home, command).map(|()| ExitCode::SUCCESS)
-        }
+        ["plugin", command @ ..] => launcher::plugin::run(&home, command),
         ["help" | "--help" | "-h"] => {
             print!(
                 "{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{}{ENVIRONMENT}",

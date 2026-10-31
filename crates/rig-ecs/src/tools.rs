@@ -29,7 +29,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::agent::{AgentId, CallOf, ToolAccess};
+use super::agent::{AgentId, CallOf, SpawnedBy, ToolAccess};
 use super::effects::Handler;
 use super::stage::{
     Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
@@ -442,6 +442,39 @@ pub(crate) fn offered<'a>(
         .collect();
     offered.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
     offered
+}
+
+/// Keeps each agent's access within the access of every agent above it,
+/// before anything is admitted: a child never calls or is offered a tool
+/// its parent may not, however its access was made or restored. Looks only
+/// when an access or a parent changed.
+pub(crate) fn keep_within_parents(
+    mut agents: Query<(Entity, &mut ToolAccess, Option<Ref<SpawnedBy>>)>,
+) {
+    let mut changed = false;
+    let mut above: HashMap<Entity, (ToolAccess, Option<Entity>)> = HashMap::new();
+    for (agent, access, parent) in &mut agents {
+        changed |= access.is_changed() || parent.as_ref().is_some_and(Ref::is_changed);
+        above.insert(agent, (access.clone(), parent.map(|parent| parent.0)));
+    }
+    if !changed {
+        return;
+    }
+    for (_, mut access, parent) in &mut agents {
+        let mut within = access.clone();
+        let mut next = parent.map(|parent| parent.0);
+        // A cycle of parents ends once every agent was passed.
+        for _ in 0..above.len() {
+            let Some((upper, parent)) = next.and_then(|up| above.get(&up)) else {
+                break;
+            };
+            within = within.within(upper);
+            next = *parent;
+        }
+        if within != *access {
+            *access = within;
+        }
+    }
 }
 
 /// What starting a tool call reads: the registered tools and the agents'

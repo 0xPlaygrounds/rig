@@ -106,6 +106,31 @@ pub fn shipped() -> BTreeSet<String> {
         .collect()
 }
 
+/// The enabled table of a shipped type, with its original description.
+pub fn shipped_entry(type_path: &str) -> Result<Option<String>> {
+    let Some(listed) = entries(TEMPLATE, Path::new("/"))?
+        .into_iter()
+        .find(|listed| listed.entry.type_path == type_path)
+    else {
+        return Ok(None);
+    };
+    let mut text = String::new();
+    for (number, line) in TEMPLATE
+        .lines()
+        .enumerate()
+        .take(listed.lines.end)
+        .skip(listed.description_start)
+    {
+        if !listed.enabled && listed.lines.contains(&number) {
+            text.push_str(&uncommented(line));
+        } else {
+            text.push_str(line);
+        }
+        text.push('\n');
+    }
+    Ok(Some(text))
+}
+
 /// Parses `text` as the plugin list at `path`: relative plugin paths are
 /// relative to its directory, and errors name it.
 fn parse_file(path: &Path, text: &str) -> Result<PluginList> {
@@ -216,6 +241,8 @@ pub struct Listed {
     pub description: String,
     /// Its `[[plugin]]` line and the key lines right after it.
     lines: std::ops::Range<usize>,
+    /// The first comment line of its description, or its table's line.
+    description_start: usize,
 }
 
 /// The keys a `[[plugin]]` table may hold.
@@ -228,6 +255,25 @@ pub fn listed(path: &Path) -> Result<Vec<Listed>> {
     let text = fs::read_to_string(path)?;
     let base = path.parent().unwrap_or(Path::new("."));
     entries(&text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
+}
+
+/// The file's entries, followed by the shipped types it lacks, shown off.
+pub fn available(path: &Path) -> Result<Vec<Listed>> {
+    let mut listed = listed(path)?;
+    for mut shipped in entries(TEMPLATE, Path::new("/"))? {
+        if listed
+            .iter()
+            .any(|listed| listed.entry.type_path == shipped.entry.type_path)
+        {
+            continue;
+        }
+        shipped.enabled = false;
+        shipped
+            .description
+            .push_str(" (not in plugins.toml; `rig plugin enable` adds it)");
+        listed.push(shipped);
+    }
+    Ok(listed)
 }
 
 /// Enables or disables the entry of `type_path` in the plugin list at
@@ -360,12 +406,14 @@ fn entries(text: &str, base: &Path) -> Result<Vec<Listed>> {
             .filter_map(|line| commented(line))
             .map(str::trim)
             .collect();
+        let description_start = number - comments.len();
         let description = comments.into_iter().rev().collect::<Vec<_>>().join(" ");
         listed.push(Listed {
             entry,
             enabled,
             description,
             lines: number..number + 1 + keys,
+            description_start,
         });
     }
     Ok(listed)

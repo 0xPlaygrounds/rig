@@ -32,6 +32,7 @@ use super::exit::{Exit, ExitReason, reason_from_exit};
 use super::session::leave_session;
 use crate::describe::{Describing, describing};
 use crate::secrets::Secrets;
+use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
 use rig_ecs::agent::Notice;
@@ -123,6 +124,12 @@ impl Plugin for LauncherPlugin {
     /// launcher when the run's front takes the terminal's screen
     /// ([`RunDir::screen`]).
     fn cleanup(&self, app: &mut App) {
+        // So every table of a file no plugin reads is checked too.
+        let world = app.world_mut();
+        if !world.contains_resource::<Settings>() {
+            let settings = Settings::read(&RigHome::of(world).settings());
+            world.insert_resource(settings);
+        }
         if let Some(refusal) = cli::refusal(app) {
             refuse(app, refusal);
         }
@@ -247,17 +254,8 @@ pub(crate) fn refuse(app: &mut App, why: String) {
         return;
     }
     leave_session(app.world_mut());
-    let stop = if why.ends_with(['.', '?', '!']) {
-        ""
-    } else {
-        "."
-    };
-    let said = format!("rig: {why}{stop}\n");
-    eprint!("{said}");
+    tell_refusal(app.world(), &why);
     if let Some(run) = app.world().get_resource::<LauncherRun>() {
-        if let Err(failure) = std::fs::write(run.0.refusal(), said) {
-            error!("could not tell the launcher why the run is refused: {failure}");
-        }
         // No front takes the screen.
         std::fs::remove_file(run.0.screen()).ok();
     }
@@ -267,6 +265,33 @@ pub(crate) fn refuse(app: &mut App, why: String) {
             .after(signal_ready)
             .run_if(resource_exists::<Refused>),
     );
+}
+
+/// Refuses this run once it runs, as for a `--tools` name no tool has
+/// once its start is over: says `why` on stderr and in the launcher's
+/// [`RunDir::refusal`], which the launcher says again once a front that
+/// took the screen gave it back, and exits with [`REFUSED_EXIT_CODE`]. The session keeps
+/// what it has.
+pub(crate) fn refuse_running(world: &mut World, why: &str) {
+    tell_refusal(world, why);
+    world.trigger(Exit(ExitReason::Failed(REFUSED_EXIT_CODE)));
+}
+
+/// Says why the run is refused on stderr and in the launcher's
+/// [`RunDir::refusal`].
+fn tell_refusal(world: &World, why: &str) {
+    let stop = if why.ends_with(['.', '?', '!']) {
+        ""
+    } else {
+        "."
+    };
+    let said = format!("rig: {why}{stop}\n");
+    eprint!("{said}");
+    if let Some(run) = world.get_resource::<LauncherRun>()
+        && let Err(failure) = std::fs::write(run.0.refusal(), said)
+    {
+        error!("could not tell the launcher why the run is refused: {failure}");
+    }
 }
 
 /// Exits a refused run once the launcher knows that the build started: it
@@ -305,7 +330,7 @@ pub fn inform_build_failure(commands: &mut Commands, agent: Entity, text: String
 }
 
 /// Shows the launcher's notice, such as a rollback, and what is wrong with
-/// the user's settings, at startup.
+/// the user's settings, its tables no plugin reads included, at startup.
 fn launcher_notice(
     settings: Option<Res<Settings>>,
     mut notices: MessageWriter<Notice>,
@@ -319,6 +344,7 @@ fn launcher_notice(
     for problem in settings.iter().flat_map(|settings| settings.problems()) {
         notices.write(Notice::error(None, problem.clone()));
     }
+    notices.write_batch(settings.iter().flat_map(|settings| settings.unread()));
     if let Ok(failure) = std::env::var(env::BUILD_FAILURE)
         && !failure.trim().is_empty()
     {

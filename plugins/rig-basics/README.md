@@ -48,16 +48,17 @@ so each can be turned off alone.
 In TUI, print and JSON runs, omitting `--tools` preserves each agent's tool access.
 `--tools=` permits no tools; `--tools=read,write` intersects each agent's
 existing access with those names before its first request and at execution.
-A run refuses a name no registered tool has, with exit code 2, before any
-model or tool call: a print or JSON run with its lines, a TUI run before its
-view opens. A print or JSON run checks once every plugin finished and no
-`print::Starting` entity is left: a plugin whose tools come in the
-background, such as rig-mcp-client's MCP servers, holds the start until they
-are in, and until then the run runs no turn, request or prompt. A TUI run
-checks once every plugin finished, so such a tool cannot be named there.
+The harness owns this check (`rig_harness::run`), the same in every front:
+once every plugin finished and no `rig_harness::run::Starting` entity is
+left, a run refuses a name no registered tool has, with exit code 2, before
+any model or tool call: a print or JSON run with its lines, a TUI run as its
+view closes. A plugin whose tools come in the background, such as
+rig-mcp-client's MCP servers, holds the start until they are in, so their
+tools can be named; until then the agent runs no turn, request or prompt.
 This limit also applies to subagents, including their normally supplied
-`message` and `wait` tools: include those names when children need them.
-Subagents cannot use this flag to broaden their inherited restrictions.
+`message` and `wait` tools: include those names when children need them. A
+subagent never has a tool its parent lacks: it gets `message` and `wait`
+only when its parent has them, and asking for another tool is refused.
 Access is intersected in Prepare Input and already-built tool advertisements
 are pruned in Prepare Edit, before dispatch and in a defined order with session
 persistence.

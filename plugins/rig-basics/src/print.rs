@@ -51,9 +51,9 @@ use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::edit_distance;
 use rig_harness::rig_core::redact;
 use rig_harness::rig_core::tool::feedback::not_finished;
+use rig_harness::run::{RunPlugin, RunStartSystems};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
@@ -71,17 +71,6 @@ pub const ORIGIN: &str = "print";
 
 /// The option that answers a one-shot run's questions.
 pub const ANSWER: &str = "answer";
-
-/// The option that intersects every agent's tool access with the names given.
-/// Omission leaves access unchanged; an empty value permits no tools. A run
-/// refuses a name no registered tool has, with exit code 2, before any
-/// model or tool call, headless or at a terminal. A headless run checks
-/// once every plugin finished and no [`Starting`] is left, so a tool a
-/// plugin registers in the background, such as an MCP server's, can be
-/// named while its plugin holds the start; a run at a terminal checks once
-/// every plugin finished, so such a tool cannot be named there. Subagents
-/// retain inherited restrictions and this limit.
-pub const TOOLS: &str = "tools";
 
 /// The version of the JSON lines, `v` on every line both ways.
 pub const VERSION: u64 = 1;
@@ -107,20 +96,6 @@ impl PrintSection {
         }
     }
 }
-
-/// While any entity has it, a run nobody sits at does not end when its
-/// agents are idle: a plugin that sends the agent work over time spawns
-/// one, and despawns it to let the run end.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct KeepRunning;
-
-/// While any entity has it, a run nobody sits at waits before it checks
-/// `--tools` and sends its prompt: a plugin whose tools arrive in the
-/// background, such as an MCP client, spawns one for each source and
-/// removes it once their tools are in or it gave up, and bounds that wait
-/// itself.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Starting;
 
 /// Triggered each time the run's work settles (no agent works) after a
 /// turn of the agent its prompts go to ended.
@@ -155,10 +130,12 @@ impl Plugin for PrintPlugin {
         let json = "Write the run as JSON lines; without -p, read requests as JSON lines on \
                     stdin (rig help-agents)";
         let answer = "Answer the questions of a -p run with these choices";
+        if !app.is_plugin_added::<RunPlugin>() {
+            app.add_plugins(RunPlugin);
+        }
         app.add_front(Front::new(FRONT).headless())
             .add_front(Front::new(JSON).on_flag(JSON, json))
-            .add_flag(Flag::new(ANSWER, answer).value("ID[,ID…]"))
-            .add_flag(Flag::new(TOOLS, "Give the agent only these tools").value("NAME[,NAME…]"));
+            .add_flag(Flag::new(ANSWER, answer).value("ID[,ID…]"));
     }
 
     fn finish(&self, app: &mut App) {
@@ -173,23 +150,13 @@ impl Plugin for PrintPlugin {
                 .map(str::to_owned)
                 .collect()
         };
-        let (answers, tools) = (list(ANSWER), list(TOOLS));
+        let answers = list(ANSWER);
         app.add_systems(
             AgentPass,
             hold_calls
                 .in_set(Stage::Gate)
                 .run_if(resource_exists::<HoldCalls>),
         );
-        if invoked.as_ref().is_some_and(|invoked| invoked.flag(TOOLS)) {
-            app.insert_resource(Tools(tools)).add_systems(
-                AgentPass,
-                (
-                    limit_tools.in_set(PrepareSystems::Input),
-                    limit_offers.in_set(PrepareSystems::Edit),
-                )
-                    .distributive_run_if(resource_exists::<Tools>),
-            );
-        }
         let json = app.runs_front(JSON);
         if !json && !app.runs_front(FRONT) {
             return;
@@ -297,64 +264,22 @@ impl Plugin for PrintPlugin {
             run.unread = unread;
         }
     }
-
-    /// Refuses unknown tools after every plugin finished in a run someone
-    /// sits at, before its view starts, holding all model and tool calls,
-    /// including restored work. The session keeps every agent's tool access
-    /// unchanged. A headless run checks once its start is over
-    /// (`check_start`).
-    fn cleanup(&self, app: &mut App) {
-        let world = app.world_mut();
-        if world.contains_resource::<Run>() {
-            return;
-        }
-        let mut tools = world.query::<&ToolDef>();
-        let names: Vec<String> = tools
-            .iter(world)
-            .map(|tool| tool.0.name.to_string())
-            .collect();
-        let refused = world
-            .get_resource::<Tools>()
-            .and_then(|tools| tools.unknown(names.iter().map(String::as_str)));
-        let Some(why) = refused else {
-            return;
-        };
-        world.remove_resource::<Tools>();
-        world.insert_resource(HoldCalls);
-        app.refuse_run(why);
-    }
 }
 
-/// Once no [`Starting`] is left, checks the names `--tools` gives against
-/// the tools registered then: the agent loop runs from the frame they all
-/// are. A run they are not [`drive`] ends, keeping every agent's tool
-/// access as the session has it.
-fn check_start(
-    starting: Query<(), With<Starting>>,
-    tools: Option<Res<Tools>>,
-    defs: Query<&ToolDef>,
-    (mut run, exit): (ResMut<Run>, Option<Res<ExitReason>>),
-    mut commands: Commands,
-) {
-    // A run asked to exit never starts, though its last start ended in the
-    // same frame. A `/command` waits too: it may start a turn, as a skill's
-    // does.
-    let waiting = !starting.is_empty() || exit.is_some();
-    if run.checked || run.step != Step::Start || run.refused.is_some() || waiting {
+/// Takes the end of the start ([`RunStart`]): the agent loop runs from the
+/// frame it is over, and a run whose `--tools` was refused [`drive`] ends,
+/// keeping every agent's tool access as the session has it. A `/command`
+/// waits too: it may start a turn, as a skill's does.
+fn check_start(mut start: ResMut<RunStart>, mut run: ResMut<Run>) {
+    if run.checked || run.refused.is_some() {
         return;
     }
-    let names = defs.iter().map(|tool| tool.0.name.as_str());
-    match tools.and_then(|tools| tools.unknown(names)) {
-        Some(why) => {
-            run.refused = Some(why);
-            commands.remove_resource::<Tools>();
-        }
-        None => run.checked = true,
-    }
+    run.refused = start.take_refusal();
+    run.checked = run.refused.is_none() && start.is_over();
 }
 
-/// While it exists, model and tool calls are held: for a run whose tool
-/// list was refused, or that was interrupted before its first frame.
+/// While it exists, model and tool calls are held: for a run interrupted
+/// before its first frame.
 #[derive(Resource)]
 struct HoldCalls;
 
@@ -365,22 +290,6 @@ fn hold_calls(
 ) {
     for call in &calls {
         commands.spawn(HoldOf(call));
-    }
-}
-
-/// Exits a run asked to exit before its start was checked, such as on a
-/// signal or a refused `--tools`, as its exit effect would, without the
-/// agent loop: restored work stays as the session has it, never answered
-/// for tools still coming.
-fn exit_unstarted(
-    run: Res<Run>,
-    reason: Option<Res<ExitReason>>,
-    mut exits: MessageWriter<AppExit>,
-    mut exited: Local<bool>,
-) {
-    if let Some(reason) = reason.filter(|_| !run.checked && !*exited) {
-        *exited = true;
-        exits.write(reason.exit());
     }
 }
 
@@ -410,88 +319,6 @@ pub struct PrintSystems;
 /// The choices `--answer` gives, in order; none without it.
 #[derive(Resource)]
 struct Answers(Vec<String>);
-
-/// The tools `--tools` leaves the agent.
-#[derive(Resource)]
-struct Tools(Vec<String>);
-
-impl Tools {
-    /// Why some of the names no tool of `registered` has, if any does:
-    /// each unknown name, then the names they likely mean, or else every
-    /// tool there is.
-    fn unknown<'a>(&self, registered: impl IntoIterator<Item = &'a str>) -> Option<String> {
-        let mut registered: Vec<&str> = registered.into_iter().collect();
-        registered.sort_unstable();
-        let unknown: Vec<&str> = self
-            .0
-            .iter()
-            .map(String::as_str)
-            .filter(|name| !registered.contains(name))
-            .collect();
-        if unknown.is_empty() {
-            return None;
-        }
-        let names = unknown.iter().map(|name| format!("`{name}`"));
-        let names = names.collect::<Vec<_>>().join(", ");
-        let tools = if unknown.len() == 1 { "tool" } else { "tools" };
-        let meant: Option<Vec<String>> = unknown
-            .iter()
-            .map(|name| closest(name, &registered).map(|close| format!("`{close}`")))
-            .collect();
-        let hint = match (meant, registered.is_empty()) {
-            (Some(meant), _) => format!("did you mean {}?", meant.join(", ")),
-            (None, true) => "this build has no tools".to_owned(),
-            (None, false) => format!("the tools are {}", registered.join(", ")),
-        };
-        Some(format!("--tools: unknown {tools} {names}; {hint}"))
-    }
-}
-
-/// The name of `names` closest to `name`, within a quarter of its length
-/// (at least one edit), so a typo finds its tool and another word none, as
-/// the model catalog suggests.
-fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
-    let limit = (name.chars().count() / 4).max(1);
-    let distances = names
-        .iter()
-        .map(|close| (edit_distance(name, close), *close));
-    let close = distances.filter(|(distance, _)| *distance <= limit).min();
-    close.map(|(_, close)| close)
-}
-
-/// Intersects access before dispatch, including agents admitted this pass.
-fn limit_tools(mut agents: Query<&mut ToolAccess, With<Agent>>, tools: Res<Tools>) {
-    for mut access in &mut agents {
-        let names = match &*access {
-            ToolAccess::All => tools.0.clone(),
-            ToolAccess::Only(names) => {
-                if names.iter().all(|name| tools.0.contains(name)) {
-                    continue;
-                }
-                names
-                    .iter()
-                    .filter(|name| tools.0.contains(name))
-                    .cloned()
-                    .collect()
-            }
-        };
-        *access = ToolAccess::Only(names);
-    }
-}
-
-/// Removes offers built at Admit before the agent's access was intersected.
-fn limit_offers(
-    agents: Query<&ToolAccess, With<Agent>>,
-    mut calls: Query<(&ForAgent, &mut ModelRequest), Added<Admitted>>,
-) {
-    for (agent, mut call) in &mut calls {
-        if let Ok(access) = agents.get(agent.0) {
-            call.request_mut()
-                .tools
-                .retain(|tool| access.allows(&tool.name));
-        }
-    }
-}
 
 /// Answers each question with the first of the `--answer` choices it
 /// offers, or refuses it, saying why.
@@ -641,14 +468,13 @@ impl AppHeadlessExt for App {
         .add_systems(
             Update,
             (
-                check_start.after(PollTasks).before(AgentLoop),
+                check_start.after(RunStartSystems).before(AgentLoop),
                 drive.after(AgentLoop),
             ),
         )
         // Nothing runs before the start: no restored turn, request or
         // prompt sees the tools still coming, or a refused `--tools`.
-        .configure_sets(Update, AgentLoop.run_if(|run: Res<Run>| run.checked))
-        .add_systems(Update, exit_unstarted.after(drive))
+        .run_after_start()
         .add_systems(
             Last,
             keep_restored
@@ -658,8 +484,6 @@ impl AppHeadlessExt for App {
         )
         .add_observer(keep_answer)
         .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
-        // The frame after the last start ended looks again.
-        .add_observer(|_: On<Remove<Starting>>, wake: Res<Wake>| wake.wake())
     }
 }
 
@@ -833,47 +657,6 @@ struct Agents<'w, 's> {
     refused: Query<'w, 's, &'static ModelRefused>,
     work: Work<'w, 's>,
     keep: Query<'w, 's, (), With<KeepRunning>>,
-}
-
-/// The agents' work in progress, for a front nobody sits at that waits for
-/// the work it sent to settle, as a headless run does.
-#[derive(SystemParam)]
-pub struct Work<'w, 's> {
-    /// Running turns; a restored one the kernel stops is none (one that goes
-    /// on is no longer `Restored`).
-    turns: Query<'w, 's, (), (With<TurnOf>, Without<Restored>)>,
-    /// Work in progress, such as a sign-in; not a long-lived stream, such
-    /// as a file watch.
-    running: Query<'w, 's, &'static Running>,
-    /// Messages on their way to an agent, such as the prompt itself.
-    messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
-    /// Effects not started yet, such as one held at Gate, or answered and
-    /// not settled, such as one held for review; not an exit, nor a
-    /// restored call, which is its turn's.
-    held: Query<
-        'w,
-        's,
-        (),
-        (
-            With<Effect>,
-            Without<Settled>,
-            Without<ExitRequest>,
-            Without<Restored>,
-            Or<(Without<Started>, With<Outcome>)>,
-        ),
-    >,
-}
-
-impl Work<'_, '_> {
-    /// Whether no agent works: no turn, task, held effect or message on its
-    /// way. An open effect that started and waits on the world outside,
-    /// such as a question nobody answers, is no work.
-    pub fn idle(&self) -> bool {
-        self.turns.is_empty()
-            && self.messages.is_empty()
-            && self.held.is_empty()
-            && self.running.iter().all(Running::is_stream)
-    }
 }
 
 /// Once [`check_start`] passed, ends a run whose `--tools` was refused,

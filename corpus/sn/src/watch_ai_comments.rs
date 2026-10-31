@@ -25,7 +25,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use rig_basics::print::KeepRunning;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ContentHash, FilesChanged, Scope, Touches, content_hash};
 use rig_harness::rig_tools::workspace::Workspace;

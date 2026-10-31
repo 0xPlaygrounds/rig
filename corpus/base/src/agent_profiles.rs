@@ -155,10 +155,7 @@ impl Profile {
     /// `tools` narrowed to this profile's allowlist: never more than it was.
     fn narrow(&self, tools: &ToolAccess) -> ToolAccess {
         match &self.tools {
-            Some(names) => {
-                let allowed = names.iter().filter(|name| tools.allows(name));
-                ToolAccess::Only(allowed.cloned().collect())
-            }
+            Some(names) => tools.narrow(names.iter().map(String::as_str)),
             None => tools.clone(),
         }
     }
@@ -311,12 +308,12 @@ fn profile_spawn(
         request.model = request.model.take().or_else(|| profile.model.clone());
         request.effort = request.effort.take().or_else(|| profile.effort.clone());
         let asked = match (&request.tools, parents.get(parent)) {
-            (Some(names), _) => ToolAccess::Only(names.clone()),
+            (Some(names), _) => ToolAccess::All.narrow(names.iter().map(String::as_str)),
             (None, Ok(access)) => access.clone(),
             (None, Err(_)) => ToolAccess::All,
         };
-        if let ToolAccess::Only(names) = profile.narrow(&asked) {
-            request.tools = Some(names);
+        if let Some(names) = profile.narrow(&asked).names() {
+            request.tools = Some(names.to_vec());
         }
     }
 }

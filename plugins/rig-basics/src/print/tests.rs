@@ -1797,3 +1797,27 @@ fn an_error_before_the_run_looked_fails_it_only_when_the_agent_never_connects() 
     let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
     assert_eq!(codes, [0], "{ends:?}");
 }
+
+/// Done item: `rig -p /model` and `/effort` exit 2 saying what to type,
+/// where they exited 0 having shown nothing.
+#[test]
+fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
+    for (command, said) in [
+        (
+            "/model",
+            "rig: Model: rig cannot show a list to pick from here; type one of: /model ",
+        ),
+        ("/effort", "rig: Reasoning for "),
+    ] {
+        let model = answering(&["unused"]);
+        let stderr = Lines::default();
+        let (app, _) = one_shot(command, Some(MODEL), &model, false, |app| {
+            app.insert_resource(Printed::to(stderr.clone()))
+                .add_plugins(rig_harness::pick::PickPlugin);
+        });
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{command}");
+        let lines = stderr.text();
+        assert!(lines.iter().any(|line| line.starts_with(said)), "{lines:?}");
+        assert_eq!(model.request_count(), 0);
+    }
+}
