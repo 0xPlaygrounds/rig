@@ -131,10 +131,14 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         after_public.contains("notes.txt:1: KEY=public") && !after_public.contains("locked"),
         "{after_public}"
     );
-    // Nor does a search for file names, which keeps the names it found.
+    // Nor does a search for file names, which keeps the names it found:
+    // its own result, after the last mention of its call.
+    let names = after_names
+        .rsplit_once("\"5\"")
+        .map_or("", |(_, result)| result);
     assert!(
-        after_names.contains("notes.txt") && !after_names.contains("locked"),
-        "{after_names}"
+        names.contains("notes.txt") && !names.contains("No matches") && !names.contains("locked"),
+        "{names}"
     );
     let counts = app.world().resource::<PathGuardCounts>();
     assert_eq!(counts.blocked.get("deny_read .env*"), Some(&1));

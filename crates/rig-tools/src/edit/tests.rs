@@ -360,3 +360,24 @@ fn a_loose_ambiguous_match_is_not_sent_to_replace_all() {
         "{why}"
     );
 }
+
+/// The closest text to an `old_text` not found marks a line it cut, so it
+/// is not copied as if whole.
+#[test]
+fn the_closest_text_marks_a_line_it_cut() {
+    let line = format!("{}OLD", "0".repeat(340));
+    let wanted = format!("{}OLX", "0".repeat(340));
+    let missed = apply(
+        "a.txt",
+        &format!("{line}\n"),
+        &[Replacement::new(wanted, "NEW")],
+    );
+    let why = missed
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(
+        why.ends_with(&format!("is line 1:\n{} […]", "0".repeat(300))),
+        "{why}"
+    );
+}

@@ -342,10 +342,11 @@ fn cut_of(lines: LinesShown) -> Option<OutputCut> {
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows
 /// them: as they are, at most `limit` lines and about `max_bytes` bytes,
 /// and a last line saying how many lines were left out and the offset to
-/// read on from, or that `first` is past the end. Lines longer than a
-/// width are cut, marked `[…]`, and counted in a note: 2000 characters, or
-/// less when that lets the asked lines fit `max_bytes`, as in a file of
-/// long lines, but never below 100 characters.
+/// read on from, or that `first` is past the end, after a line naming the
+/// text's line endings when they are not LF. Lines longer than a width are
+/// cut, marked `[…]`, and counted in a note: 2000 characters, or less when
+/// that lets the asked lines fit `max_bytes`, as in a file of long lines,
+/// but never below 100 characters.
 pub fn show_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
     lines_from(text, first, limit, max_bytes).0
 }
