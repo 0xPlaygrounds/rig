@@ -64,7 +64,8 @@ pub struct ReflectSaved {
 
 /// A saved agent component a fork starts afresh with, as its `Default`,
 /// such as a meter of the agent's own calls:
-/// `#[reflect(Component, Saved(Reset))]`.
+/// `#[reflect(Component, Saved(Reset))]`. The fork has it whether or not
+/// the source has.
 pub struct Reset;
 
 /// A saved agent component a fork does not get, such as a duty the source

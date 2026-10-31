@@ -66,7 +66,12 @@ impl Plugin for RecentSessionsPlugin {
             .add_systems(
                 Update,
                 (
-                    track_shape.run_if(on_message::<ConversationChanged>),
+                    track_shape
+                        .run_if(
+                            on_message::<ConversationChanged>
+                                .or_eager(resource_exists_and_changed::<CurrentAgent>),
+                        )
+                        .after(CurrentAgentSystems),
                     read_only_closed.run_if(resource_changed::<KeyFocus>),
                 ),
             )
@@ -562,7 +567,8 @@ fn read_only_closed(
 }
 
 /// Keeps [`SessionShape`] as the main agent's conversation has it, from
-/// its first turn on: nothing is saved before.
+/// its first turn on, and as the agent the user switched to has it:
+/// nothing is saved before.
 fn track_shape(
     (main, conversations): (MainAgentQuery, Query<&Conversation>),
     shape: Option<ResMut<SessionShape>>,

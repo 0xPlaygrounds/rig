@@ -330,3 +330,39 @@ fn lists_filters_and_resumes_recent_sessions_without_writing() {
     fs::remove_dir_all(home.root()).ok();
     fs::remove_dir_all(empty.root()).ok();
 }
+
+/// Switching to another branch of the session, with no conversation
+/// changing, lists that branch's turns.
+#[test]
+fn the_turns_listed_follow_the_branch_switched_to() {
+    let home = scratch_home("recent-switch");
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    let model = MockCompletionModel::from_stream_turns([reply("1."), reply("2."), reply("3.")]);
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((AgentPlugin, SessionLogPlugin, RecentSessionsPlugin))
+        .add_plugins(CurrentAgentPlugin)
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let choice = || ModelChoice(MODEL.to_owned());
+    let long = app.world_mut().spawn((Agent, choice())).id();
+    let short = app.world_mut().spawn((Agent, choice())).id();
+    for (n, agent) in [long, long, short].into_iter().enumerate() {
+        let ask = Deliver::new(agent, "Go on.", DeliveryMode::Steer);
+        app.world_mut().trigger(ask);
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() > n
+        });
+    }
+    let turns = |app: &mut App, agent: Entity| {
+        let id = app.world().get::<AgentId>(agent).cloned();
+        app.world_mut().resource_mut::<CurrentAgent>().0 = id.map(|id| id.0).unwrap_or_default();
+        app.update();
+        app.world()
+            .get_resource::<SessionShape>()
+            .map(|shape| shape.turns)
+    };
+    assert_eq!(turns(&mut app, long), Some(2));
+    assert_eq!(turns(&mut app, short), Some(1));
+}
