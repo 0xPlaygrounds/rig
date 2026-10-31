@@ -155,9 +155,8 @@ pub(crate) fn tool_status(id: String, status: acp::ToolCallStatus) -> acp::ToolC
     acp::ToolCallUpdate::new(id, fields)
 }
 
-/// What a saved call of a reply that failed or was stopped says: it never
-/// ran.
-const NEVER_RAN: &str = "Stopped before it ran.";
+/// What a saved call of a reply that failed or was stopped says.
+const NEVER_RAN: &str = "Never ran.";
 
 /// A call's last update: done, or failed when `failed`, with what it
 /// answered.

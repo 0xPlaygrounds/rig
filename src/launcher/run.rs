@@ -375,9 +375,9 @@ fn launch(
         }
         let restore = std::mem::take(&mut screen);
         if !rejected {
-            let refusal = refusal.map(|refusal| (refusal, kept_screen));
             let log = Some(log.as_path()).filter(|log| log.exists());
-            let said = stopped(status, resume.as_deref(), refusal, log);
+            let refusal = refusal.as_deref();
+            let said = stopped(status, resume.as_deref(), refusal, kept_screen, log);
             return Ok(Ended::new(status, said).restoring(restore));
         }
         if !home.good().exists() {
@@ -446,14 +446,15 @@ impl Ended {
 /// What the launcher says when the agent exited with `status`, not 0. A
 /// run a signal ended, which the agent was told of, gets the `resume`
 /// command as a quit does. A refused run said why itself: its `refusal`
-/// comes again only when the screen was kept since (`.1`), so it is no
-/// longer seen. Any other end is a failure: the agent stopped, where its
-/// log is when it kept one and, when the session can be resumed, the
-/// `resume` command.
+/// comes again only when a restarted view kept the screen
+/// (`kept_screen`), which hid it. Any other end is a failure: the agent
+/// stopped, where its log is when it kept one and, when the session can be
+/// resumed, the `resume` command.
 fn stopped(
     status: ExitStatus,
     resume: Option<&str>,
-    refusal: Option<(String, bool)>,
+    refusal: Option<&str>,
+    kept_screen: bool,
     log: Option<&Path>,
 ) -> Option<String> {
     let code = status.code().and_then(|code| u8::try_from(code).ok());
@@ -461,8 +462,8 @@ fn stopped(
         (Some(SIGNAL_EXIT_CODE), _) => {
             resume.map(|resume| format!("To resume this session: {resume}"))
         }
-        (Some(REFUSED_EXIT_CODE), Some((refusal, lost))) => {
-            lost.then(|| refusal.trim_end().to_owned())
+        (Some(REFUSED_EXIT_CODE), Some(refusal)) => {
+            kept_screen.then(|| refusal.trim_end().to_owned())
         }
         _ => {
             let resume = resume.map_or_else(String::new, |resume| {

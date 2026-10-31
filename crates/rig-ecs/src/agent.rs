@@ -420,11 +420,11 @@ impl PartialCall {
         call
     }
 
-    /// The call as a stop keeps it, never run: while it streams, its
-    /// arguments read from the JSON so far by [`ToolFunction::parse`], with
-    /// the text as it came in `invalid_arguments` unless it is a whole
-    /// object, even when none came, so nothing is invented; once it ended,
-    /// as it ended.
+    /// The call as a stop keeps it, never run. While it streams, its
+    /// arguments are what [`ToolFunction::parse`] reads from the JSON so
+    /// far, and the text as it came goes in `invalid_arguments` unless it is
+    /// a whole object, also when none came, so nothing is invented. Once it
+    /// ended, it is as it ended.
     pub fn stopped(&self) -> ToolCall {
         let mut call = self.call.clone();
         if let Some((_, arguments)) = &self.streaming {

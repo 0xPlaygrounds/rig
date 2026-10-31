@@ -784,8 +784,7 @@ pub(crate) fn lay_out_transcript(
                 .flat_map(|(_, partial)| &partial.calls);
             for (at, call) in streaming.map(PartialCall::shown).enumerate() {
                 sources.renderers.at(Place::Outside(at));
-                let call = &call;
-                let mut view = ToolCallView::new(call, None, CallState::Streaming);
+                let mut view = ToolCallView::new(&call, None, CallState::Streaming);
                 view.theme = *sources.theme;
                 let start = extra.len();
                 let (drawn, decorated) = sources.renderers.call_decorated(&view);
