@@ -28,8 +28,9 @@ use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
 ///
 /// Synchronous, as the rest of rig-tools: the tools call it inside
 /// [`blocking`](crate::blocking). Code on a thread that must not wait, such
-/// as an app's main thread, calls it inline only when [`host`](Self::host)
-/// is `None`, and otherwise off that thread.
+/// as an app's main thread, calls it inline on a path only when
+/// [`host_for`](Self::host_for) that path is `None`, and otherwise off that
+/// thread.
 ///
 /// A workspace of your own implements every method; [`Local`] is the
 /// reference for what each does.
@@ -38,6 +39,14 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// `None` for this machine.
     fn host(&self) -> Option<&str> {
         None
+    }
+
+    /// Where a path, as [`join`](Self::join) gives it, is when it is not on
+    /// this machine: by default [`host`](Self::host), the whole
+    /// workspace's. A workspace that routes some paths to another machine,
+    /// such as [`Hosts`](crate::remote::Hosts), says it for each.
+    fn host_for(&self, _: &Path) -> Option<&str> {
+        self.host()
     }
 
     /// What `path` is, its links followed: a file (its size, whether it is

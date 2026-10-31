@@ -91,9 +91,12 @@ the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
 empty input quits. A leading `/` completes command names and `@` completes
-the project's paths (skipping what `.gitignore` leaves out); Tab or Enter
-takes the selected one. A command that is unknown or refused comes back in
-the input with the reason, and Enter then sends it to the model as it is.
+the paths of the shown agent's working directory (skipping what
+`.gitignore` leaves out); Tab or Enter takes the selected one. A path a
+space or trailing punctuation would cut is inserted quoted,
+`@"my notes.md"`, which is also how to type one by hand. A command that is
+unknown or refused comes back in the input with the reason, and Enter then
+sends it to the model as it is.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier
@@ -115,9 +118,15 @@ reads the reply's text and a note that the call never ran, never the call.
 Messages still waiting when the agent exits come back when the session is
 resumed.
 
-`@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
-reads images. Ctrl+V pastes the clipboard's image (through `wl-paste`, `xclip`
-or `pngpaste`) as such a path, and a dropped image file becomes one too.
+`@path` attaches the file: its text, or, for a PNG, JPEG, GIF or WebP file,
+the image when the model reads images. It resolves as the tools resolve a
+path, so `@bench:~/notes.md` is the host `bench`'s file. A reference that
+looks like a path (it has a `/` or an extension) with no file there, or one
+that cannot be read, is warned about with the reason. A message waiting for
+files on another machine holds back those sent after it, and Esc meanwhile
+puts them all back in the input. Ctrl+V pastes the clipboard's image
+(through `wl-paste`, `xclip` or `pngpaste`) as such a path, and a dropped
+image file becomes one too.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
 in its own way, always whole: every call's arguments and result, every diff

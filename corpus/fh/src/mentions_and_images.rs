@@ -43,7 +43,7 @@ use rig_harness::rig_core::message::{Message as ChatMessage, UserContent};
 use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
 };
-use rig_tools::attach::{is_image_path, is_path_reference, read_image};
+use rig_tools::attach::{Reference, TRAILING, is_image_path, is_path_reference, read_image};
 use rig_tools::workspace::{Listing, Local, Stat, Workspace};
 use rig_tools::{blocking, show_lines};
 use rig_tui::{
@@ -160,32 +160,63 @@ const DESCRIBE: &str = "Describe this image for a coding agent that cannot see i
 shows, and every piece of text, number, error message and label in it, verbatim.";
 
 /// One `@` mention: the path as written, and the lines it asks for.
-struct Mention<'a> {
-    label: &'a str,
-    path: &'a str,
+struct Mention {
+    label: String,
+    path: String,
     lines: Option<(usize, usize)>,
 }
 
-/// The mentions in `text`, each once, in order. A token's trailing
-/// punctuation is not part of its path.
-fn mentions(text: &str) -> Vec<Mention<'_>> {
-    let mut found: Vec<Mention<'_>> = Vec::new();
-    for token in text.split_whitespace() {
-        let Some(reference) = token.strip_prefix('@') else {
-            continue;
+impl Mention {
+    /// The mention as a message writes it: its path as a [`Reference`],
+    /// then its range.
+    fn written(&self) -> String {
+        let range = self.label.strip_prefix(&self.path).unwrap_or_default();
+        format!("{}{range}", Reference::format(&self.path))
+    }
+}
+
+/// The mentions in `text` ([`Reference::parse`]), each path and range
+/// once, in order. A quoted path is taken as written, its lines following
+/// the closing quote (`@"my notes.md":10-40`).
+fn mentions(text: &str) -> Vec<Mention> {
+    let mut found: Vec<Mention> = Vec::new();
+    for reference in Reference::parse(text) {
+        let mention = match reference.quoted {
+            true => {
+                let after = text.get(reference.span.end..).unwrap_or_default();
+                let range = after.split(char::is_whitespace).next().unwrap_or_default();
+                let range = range.strip_prefix(':').unwrap_or_default();
+                let range = range.trim_end_matches(TRAILING);
+                let path = reference.path.into_owned();
+                match lines(range) {
+                    Some(lines) => Mention {
+                        label: format!("{path}:{range}"),
+                        path,
+                        lines: Some(lines),
+                    },
+                    None => Mention {
+                        label: path.clone(),
+                        path,
+                        lines: None,
+                    },
+                }
+            }
+            false => {
+                let label = reference.path.into_owned();
+                let ranged = label
+                    .rsplit_once(':')
+                    .and_then(|(path, range)| Some((path.to_owned(), lines(range)?)));
+                let (path, lines) = match ranged {
+                    Some((path, range)) => (path, Some(range)),
+                    None => (label.clone(), None),
+                };
+                Mention { label, path, lines }
+            }
         };
-        let label = reference.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'', '`']);
-        if label.is_empty() || found.iter().any(|seen| seen.label == label) {
-            continue;
+        let seen = |other: &Mention| other.path == mention.path && other.lines == mention.lines;
+        if !found.iter().any(seen) {
+            found.push(mention);
         }
-        let ranged = label
-            .rsplit_once(':')
-            .and_then(|(path, range)| Some((path, lines(range)?)));
-        let (path, lines) = match ranged {
-            Some((path, range)) => (path, Some(range)),
-            None => (label, None),
-        };
-        found.push(Mention { label, path, lines });
     }
     found
 }
@@ -214,12 +245,13 @@ struct Found {
 fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: usize) -> Found {
     let mut found = Found::default();
     for mention in mentions(text) {
-        let label = mention.label;
-        let path = workspace.resolve(Some(base), mention.path);
+        let label = &mention.label;
+        let path = workspace.resolve(Some(base), &mention.path);
         let content = match workspace.stat(&path) {
-            Ok(Stat::Missing) if is_path_reference(mention.path) => {
+            Ok(Stat::Missing) if is_path_reference(&mention.path) => {
                 found.warnings.push(format!(
-                    "@{label} does not exist; it is sent as plain text."
+                    "{} does not exist; it is sent as plain text.",
+                    mention.written()
                 ));
                 continue;
             }
@@ -240,10 +272,10 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
             Err(failure) => Err(failure.to_string()),
         };
         match content {
-            Ok(content) => found.attached.push((label.to_owned(), content)),
+            Ok(content) => found.attached.push((label.clone(), content)),
             Err(why) => found
                 .warnings
-                .push(format!("@{label} is not attached: {why}.")),
+                .push(format!("{} is not attached: {why}.", mention.written())),
         }
     }
     found
@@ -273,7 +305,7 @@ fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<S
 fn read_text(
     workspace: &dyn Workspace,
     path: &Path,
-    mention: &Mention<'_>,
+    mention: &Mention,
     max_bytes: usize,
 ) -> Result<(String, FileRead), String> {
     let text = workspace
@@ -288,7 +320,7 @@ fn read_text(
         None => text.clone(),
     };
     let newline = if body.ends_with('\n') { "" } else { "\n" };
-    let label = mention.label;
+    let label = &mention.label;
     let block = format!("<file path=\"{label}\">\n{body}{newline}</file>");
     let read = FileRead::new(path.to_string_lossy(), content_hash(text.as_bytes()));
     Ok((block, read))

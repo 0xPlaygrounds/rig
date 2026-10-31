@@ -13,6 +13,7 @@ use rig_ecs::agent::Notice;
 use rig_ecs::tasks::{Running, Wake};
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::Processes;
+use rig_tools::attach::Reference;
 use rig_tools::process::Launcher;
 use rig_tools::{blocking, clipboard};
 
@@ -110,8 +111,8 @@ pub(crate) fn type_pasted(
     commands.entity(pasted.entity).despawn();
 }
 
-/// Types `@path` at the cursor, after a space when the text before it does
-/// not end in whitespace, so `@path` is a token of its own.
+/// Types `path` as a [`Reference`] at the cursor, after a space when the
+/// text before it does not end in whitespace, so it is a token of its own.
 pub(crate) fn type_path(editor: &mut Editor, path: &Path) {
     let before = editor.text().get(..editor.cursor()).unwrap_or_default();
     let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
@@ -119,26 +120,42 @@ pub(crate) fn type_path(editor: &mut Editor, path: &Path) {
     } else {
         " "
     };
-    editor.insert(&format!("{space}@{} ", path.display()));
+    let reference = Reference::format(&path.to_string_lossy());
+    editor.insert(&format!("{space}{reference} "));
 }
 
 /// The path a paste holds when it is one image file, as a terminal pastes
-/// a dropped file: quoted, with escaped spaces, or as a `file://` URL. A
-/// path with whitespace in it is not one, since `@path` ends at a space.
+/// a dropped file: quoted (taken as it is), shell-escaped, such as
+/// `shot\ \(1\).png` (unescaped, except on Windows, where `\` separates
+/// directories), or as a `file://` URL.
 pub(crate) fn dropped_image(text: &str) -> Option<PathBuf> {
     let text = text.trim();
-    let text = text
+    let quoted = text
         .strip_prefix('\'')
         .and_then(|text| text.strip_suffix('\''))
         .or_else(|| {
             text.strip_prefix('"')
                 .and_then(|text| text.strip_suffix('"'))
-        })
-        .unwrap_or(text);
-    let text = text.strip_prefix("file://").unwrap_or(text);
-    if text.contains(char::is_whitespace) {
-        return None;
+        });
+    let path = match quoted {
+        Some(quoted) => quoted.to_owned(),
+        None if cfg!(windows) => text.to_owned(),
+        None => unescape(text),
+    };
+    let path = PathBuf::from(path.strip_prefix("file://").unwrap_or(&path));
+    (rig_tools::attach::is_image_path(&path) && path.is_file()).then_some(path)
+}
+
+/// `text` with each `\` that escapes the next character, as a shell
+/// writes a path, taken out.
+fn unescape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(character) = chars.next() {
+        match character {
+            '\\' => out.extend(chars.next()),
+            other => out.push(other),
+        }
     }
-    let path = Path::new(text);
-    (rig_tools::attach::is_image_path(path) && path.is_file()).then(|| path.to_path_buf())
+    out
 }

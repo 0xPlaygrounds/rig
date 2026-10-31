@@ -192,6 +192,10 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
     assert_eq!(joined, Path::new("bench:~/strata/src/lib.rs"));
     let home = hosts.resolve(Some(remote_base), "~/notes");
     assert_eq!(home, Path::new("bench:~/notes"));
+    // A `HOST:` path is the host's, so it is read off a thread that must
+    // not wait; any other is this machine's.
+    assert_eq!(hosts.host_for(&home), Some("bench"));
+    assert_eq!(hosts.host_for(Path::new("/project/other:~/x")), None);
     let alone = Remote::new("solo", ["true"], Launcher::default()).map(|remote| {
         let remote: &dyn Workspace = &remote;
         remote.resolve(Some(Path::new("/srv")), "~/x")
