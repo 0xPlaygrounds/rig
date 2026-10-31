@@ -1,3 +1,4 @@
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -31,6 +32,174 @@ fn transport(home: &Path) -> Vec<String> {
         "cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\"".to_owned(),
         home.display().to_string(),
     ]
+}
+
+fn git(root: &Path, args: &[&str]) -> io::Result<()> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ))
+    }
+}
+
+fn search_after_deletion(
+    name: &str,
+    remote: bool,
+    indexed: bool,
+    stage_deletion: bool,
+    deleted_count: usize,
+) -> io::Result<(Vec<PathBuf>, bool)> {
+    let dir = scratch(name);
+    let root = dir.join("home/strata");
+    let outcome = (|| {
+        for i in 0..deleted_count {
+            std::fs::write(root.join(format!("gone-{i:04}.rs")), "fn gone() {}\n")?;
+        }
+        std::fs::write(root.join("zz-kept.rs"), "fn kept() {}\n")?;
+        if indexed {
+            git(&root, &["init", "-q"])?;
+            git(&root, &["add", "."])?;
+        }
+        for i in 0..deleted_count {
+            std::fs::remove_file(root.join(format!("gone-{i:04}.rs")))?;
+        }
+        if stage_deletion {
+            git(&root, &["add", "-u"])?;
+        }
+        let bench = Remote::new("bench", transport(&dir.join("home")), Launcher::default())?;
+        let workspace: &dyn Workspace = if remote { &bench } else { &Local };
+        let found = crate::find(
+            workspace,
+            &SearchArgs::new("")
+                .files()
+                .in_path(root.to_string_lossy())
+                .glob("*.rs"),
+        )
+        .map_err(io::Error::other)?;
+        let names = found
+            .names
+            .iter()
+            .map(|path| {
+                path.strip_prefix(&root)
+                    .map(Path::to_path_buf)
+                    .map_err(io::Error::other)
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok((names, found.stopped))
+    })();
+    std::fs::remove_dir_all(dir)?;
+    outcome
+}
+
+#[test]
+fn remote_file_search_excludes_unstaged_deletions() {
+    let found = search_after_deletion("deleted", true, true, false, 1);
+    assert_eq!(
+        found.as_ref().ok(),
+        Some(&(vec![PathBuf::from("zz-kept.rs")], false)),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn remote_deleted_files_do_not_use_the_search_limit() {
+    let found = search_after_deletion("deleted-limit", true, true, false, crate::MAX_FILES);
+    assert_eq!(
+        found.as_ref().ok(),
+        Some(&(vec![PathBuf::from("zz-kept.rs")], false)),
+        "{found:?}"
+    );
+}
+
+#[test]
+fn file_search_deletion_controls() {
+    for (name, remote, indexed, stage_deletion) in [
+        ("deleted-local", false, true, false),
+        ("deleted-no-git", true, false, false),
+        ("deleted-staged", true, true, true),
+    ] {
+        let found = search_after_deletion(name, remote, indexed, stage_deletion, 1);
+        assert_eq!(
+            found.as_ref().ok(),
+            Some(&(vec![PathBuf::from("zz-kept.rs")], false)),
+            "{name}: {found:?}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_git_listing_keeps_only_regular_worktree_files() {
+    let dir = scratch("git-regular-files");
+    let root = dir.join("home/strata");
+    let checked = (|| -> io::Result<_> {
+        let unusual = "-quoted '雪\nfile.rs";
+        for name in ["tracked.rs", "gone.rs", "replaced.rs", ".hidden.rs"] {
+            std::fs::write(root.join(name), "fn present() {}\n")?;
+        }
+        std::fs::write(root.join(".gitignore"), "ignored.rs\n")?;
+        std::fs::write(root.join("ignored.rs"), "ignored\n")?;
+        std::os::unix::fs::symlink("tracked.rs", root.join("link.rs"))?;
+        std::os::unix::fs::symlink("absent.rs", root.join("broken.rs"))?;
+        git(&root, &["init", "-q"])?;
+        git(&root, &["add", "."])?;
+        std::fs::remove_file(root.join("gone.rs"))?;
+        std::fs::remove_file(root.join("replaced.rs"))?;
+        std::fs::create_dir(root.join("replaced.rs"))?;
+        std::fs::write(root.join(unusual), "untracked\n")?;
+
+        let log = dir.join("calls.log");
+        let remote = Remote::new(
+            "bench",
+            counted(&dir.join("home"), &log),
+            Launcher::default(),
+        )?;
+        let mut listings = Vec::new();
+        for listing in [
+            crate::workspace::Listing::Visible,
+            crate::workspace::Listing::Hidden,
+            crate::workspace::Listing::All,
+        ] {
+            let mut local = Local.files(&root, None, listing)?;
+            local.sort();
+            let there = remote.files(&root, None, listing)?;
+            listings.push((local, there));
+        }
+        Ok((listings, calls(&log)))
+    })();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(checked.is_ok(), "{checked:?}");
+    if let Ok((listings, count)) = checked {
+        for (local, remote) in listings {
+            assert_eq!(remote, local);
+        }
+        assert_eq!(count, 3);
+    }
+}
+
+#[test]
+fn remote_git_listing_reports_index_errors() {
+    let dir = scratch("git-index-error");
+    let root = dir.join("home/strata");
+    let checked = (|| -> io::Result<_> {
+        git(&root, &["init", "-q"])?;
+        std::fs::write(root.join("tracked.rs"), "fn present() {}\n")?;
+        git(&root, &["add", "."])?;
+        std::fs::write(root.join(".git/index"), b"broken")?;
+        let remote = Remote::new("bench", transport(&dir.join("home")), Launcher::default())?;
+        Ok(remote
+            .files(&root, None, crate::workspace::Listing::Visible)
+            .is_err())
+    })();
+    std::fs::remove_dir_all(dir).ok();
+    assert_eq!(checked.ok(), Some(true));
 }
 
 fn call<T: Tool<Error = rig_core::tool::ToolExecutionError>>(
