@@ -49,6 +49,8 @@ fn references_resolve_from_the_base_and_missing_paths_are_reported() {
         .map(|(label, _)| label.as_str())
         .collect();
     assert_eq!(labels, ["Cargo.toml"]);
+    let pasted = attachments(r#"var s = @"hello world";"#, &base(), &Local);
+    assert!(pasted.warnings.is_empty(), "{:?}", pasted.warnings);
     assert_eq!(
         attached.warnings,
         ["@missing/x.rs: no such file", "@gone.rs: no such file"]

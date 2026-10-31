@@ -177,7 +177,8 @@ fn mentions(text: &str) -> Vec<Mention> {
                 let after = text.get(reference.span.end..).unwrap_or_default();
                 let range = after.split(char::is_whitespace).next().unwrap_or_default();
                 let range = range.strip_prefix(':').unwrap_or_default();
-                let range = range.trim_end_matches(['.', ',', ';', ')']);
+                let range =
+                    range.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'', '`']);
                 let path = reference.path.into_owned();
                 match lines(range) {
                     Some(lines) => Mention {
@@ -241,7 +242,8 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
         let content = match workspace.stat(&path) {
             Ok(Stat::Missing) if is_path_reference(&mention.path) => {
                 found.warnings.push(format!(
-                    "@{label} does not exist; it is sent as plain text."
+                    "{} does not exist; it is sent as plain text.",
+                    Reference::format(label)
                 ));
                 continue;
             }

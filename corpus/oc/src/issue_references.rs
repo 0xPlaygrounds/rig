@@ -57,9 +57,9 @@ pub struct ReferenceCache {
 }
 
 /// Where the plugin attaches the references a message names, in
-/// [`PrepareSystems::Compose`] after the `@path` files; a reference that
-/// is not cached is attached later, once loaded, under a hold on the
-/// message.
+/// [`PrepareSystems::Compose`] after the `@path` files start loading; a
+/// reference that is not cached is attached later, once loaded, under a
+/// hold on the message.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ReferenceSystems;
 

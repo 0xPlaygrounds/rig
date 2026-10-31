@@ -190,8 +190,8 @@ fn unclosed(rest: &str) -> (Cow<'_, str>, usize) {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Attached {
     /// The files read, each with its label: its path as the message named
-    /// it, joined as the workspace joins it (`~/` made the home
-    /// directory).
+    /// it, or where the workspace joins it when that is not below the base,
+    /// such as `~/` made the home directory.
     pub files: Vec<(String, UserContent)>,
     /// A line for the user about each file that is there but could not be
     /// attached, and why.
@@ -219,8 +219,13 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
     let mut seen: Vec<PathBuf> = Vec::new();
     for reference in Reference::parse(text) {
         let named = &*reference.path;
-        let label = workspace.join(Path::new(""), Path::new(named));
-        let label = label.display().to_string();
+        // As typed, unless the workspace puts it elsewhere than below the
+        // base, such as in a home directory or on a host.
+        let joined = workspace.join(base, Path::new(named));
+        let label = match joined == base.join(named) {
+            true => named.to_owned(),
+            false => joined.display().to_string(),
+        };
         let path = workspace.resolve(Some(base), named);
         let warn = is_path_reference(named);
         match workspace.stat(&path) {

@@ -313,8 +313,9 @@ impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
 
 /// Starts reading the files each user's message names as it comes in, off
 /// the main thread, under a hold on the message: any path may be on
-/// another machine. A message that names none is held too while one sent
-/// before it to the same agent is, so it does not pass it. A message a
+/// another machine. A message of the user's own that names none is held
+/// too while one sent before it to the same agent is, so it does not pass
+/// it. A message a
 /// restart put back in the inbox ([`Started`]) has them already.
 fn attach(
     typed: Query<(Entity, &Effect, &Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
@@ -334,7 +335,8 @@ fn attach(
     for (message, _, typed, &ForAgent(agent)) in typed {
         let hold = (Name::new("attachments"), Reading(agent), HoldOf(message));
         if Reference::parse(typed.text()).next().is_none() {
-            if waiting.contains(&agent) {
+            // Only the user's own, which a stop puts back in the input.
+            if waiting.contains(&agent) && typed.author == Author::user() {
                 commands.spawn((hold, ReadFiles::from(Ok(Attached::default()))));
             }
             continue;

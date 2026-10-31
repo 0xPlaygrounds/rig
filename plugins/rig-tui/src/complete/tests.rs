@@ -164,6 +164,9 @@ fn a_picked_path_with_a_space_is_quoted() {
     std::fs::write(root.join("attach notes.txt"), "").ok();
     std::fs::write(root.join("attach"), "").ok();
     std::fs::write(root.join("my dir").join("inner file.txt"), "").ok();
+    if cfg!(unix) {
+        std::fs::write(root.join("back\\slash.txt"), "").ok();
+    }
     let (mut app, _) = view_app();
     app.insert_resource(ProjectRoot(root.clone()));
     let walked = |app: &mut App| {
@@ -187,6 +190,14 @@ fn a_picked_path_with_a_space_is_quoted() {
     walked(&mut app);
     press(&mut app, "tab");
     assert_eq!(typed_text(&app), "@\"my dir/inner file.txt\" ");
+    // On Unix a `\` is part of a name, not a directory's end.
+    if cfg!(unix) {
+        press(&mut app, "ctrl+c");
+        type_text(&mut app, "@back");
+        walked(&mut app);
+        press(&mut app, "tab");
+        assert_eq!(typed_text(&app), "@back\\slash.txt ");
+    }
     press(&mut app, "ctrl+c");
     push(
         &mut app,
@@ -214,10 +225,14 @@ fn a_dropped_image_with_a_space_is_typed_quoted() {
     let shown = image.display().to_string();
     let mut drops = vec![(format!("'{shown}'"), shown.clone())];
     if cfg!(unix) {
-        let escaped = shown.replace(' ', "\\ ");
-        std::fs::write(&escaped, b"\x89PNG\r\n\x1a\n").ok();
-        drops.push((escaped.clone(), shown.clone()));
-        drops.push((format!("'{escaped}'"), escaped));
+        let named = root.join("shot\\ 1.png").display().to_string();
+        std::fs::write(&named, b"\x89PNG\r\n\x1a\n").ok();
+        let escaped = format!(
+            "{}/shot\\ 1.png",
+            root.display().to_string().replace(' ', "\\ ")
+        );
+        drops.push((escaped, shown.clone()));
+        drops.push((format!("'{named}'"), named));
     }
     let (mut app, _) = view_app();
     for (pasted, path) in drops {

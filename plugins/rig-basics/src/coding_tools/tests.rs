@@ -260,11 +260,25 @@ fn a_host_reference_attaches_the_hosts_file() {
     run_until(&mut app, &wakes, |world| {
         said(world, agent).contains("ON_THE_HOST")
     });
-    let said = said(app.world(), agent);
+    let first = said(app.world(), agent);
     assert!(
-        said.contains("ON_THE_HOST") && !said.contains("WRONG_LOCAL_SHADOW"),
-        "{said}"
+        first.contains("ON_THE_HOST") && !first.contains("WRONG_LOCAL_SHADOW"),
+        "{first}"
     );
+    // From a work directory on the host, `~` is the host's home, and the
+    // file goes by its place there.
+    std::fs::write(home.join("other.txt"), "OTHER_ON_THE_HOST").ok();
+    let world = app.world_mut();
+    world
+        .entity_mut(agent)
+        .insert(WorkDir("bench:~/app".into()));
+    let text = "quote @~/other.txt";
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("OTHER_ON_THE_HOST")
+    });
+    let said = said(app.world(), agent);
+    assert!(said.contains("bench:~/other.txt"), "{said}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -612,4 +626,51 @@ fn a_message_does_not_pass_one_whose_files_are_read() {
         at("FIRST_MESSAGE").is_some() && at("FIRST_MESSAGE") < at("SECOND_MESSAGE"),
         "{said}"
     );
+}
+
+/// Stopping the turn while a message waits for its files, and another
+/// behind it, puts both back in the input, in the order they were sent.
+#[test]
+fn a_stop_recalls_every_held_message_in_order() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, _wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    for text in ["FIRST_MESSAGE @notes.txt", "SECOND_MESSAGE"] {
+        let message = (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+        app.world_mut().spawn(message);
+        app.update();
+    }
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let back: Vec<&str> = recalled.iter().map(|back| back.text.as_str()).collect();
+    assert_eq!(back, ["FIRST_MESSAGE @notes.txt\n\nSECOND_MESSAGE"]);
+}
+
+/// A message that is not the user's own, such as a skill's, does not wait
+/// behind one whose files are read, so a stop that puts the user's back
+/// in the input leaves none of it waiting.
+#[test]
+fn a_skills_message_is_not_left_waiting_by_a_stop() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = (
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    app.world_mut().spawn(first);
+    app.update();
+    let mut skill = Incoming::new("SKILL_BODY", DeliveryMode::Steer);
+    skill.author = Author::user().titled("skill");
+    let skill = app.world_mut().spawn((skill, ForAgent(agent))).id();
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(app.world().get::<Holds>(skill).is_none());
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SKILL_BODY")
+    });
+    assert!(said(app.world(), agent).contains("SKILL_BODY"));
 }

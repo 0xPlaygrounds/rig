@@ -219,7 +219,7 @@ fn stages_are_ordered_with_the_defaults() {
 #[test]
 fn a_quoted_mention_is_its_path_with_its_range_after_the_quote() {
     let found: Vec<(String, Option<(usize, usize)>)> =
-        mentions(r#"see @notes.md:2, @"notes.md:2" and @"my notes.md":3-4 and @notes.md:2"#)
+        mentions(r#"see @notes.md:2, @"notes.md:2" and @"my notes.md":3-4? and @notes.md:2"#)
             .into_iter()
             .map(|mention| (mention.path, mention.lines))
             .collect();

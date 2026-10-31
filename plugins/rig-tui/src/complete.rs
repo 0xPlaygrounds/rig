@@ -319,7 +319,11 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
             return Vec::new();
         }
     };
-    let text = |path: &Path| path.to_string_lossy().replace('\\', "/");
+    // `/` between directories; on Unix a `\` is part of a name.
+    let text = |path: &Path| match cfg!(windows) {
+        true => path.to_string_lossy().replace('\\', "/"),
+        false => path.to_string_lossy().into_owned(),
+    };
     let mut paths = Vec::new();
     let mut directories = HashSet::new();
     for file in &files {
