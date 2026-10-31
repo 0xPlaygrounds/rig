@@ -719,21 +719,24 @@ pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, Ses
 }
 
 /// What a [`Summarizer`] asks the model. Each prompt missing from its serde
-/// form is the default's.
+/// form is the default's. A summary of its own sends them all in its system
+/// prompt and only the conversation as the user's message; asked in place,
+/// they are one message after the conversation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SummaryPrompts {
-    /// The summarizer's system prompt.
+    /// The start of a summary of its own's system prompt.
     pub system: Cow<'static, str>,
-    /// The request for a first summary, after the conversation.
+    /// The request for a summary of its own, after `system`.
     pub initial: Cow<'static, str>,
-    /// The request to fold the conversation into `<previous-summary>`.
+    /// How an earlier summary is folded in: after `initial` when there is
+    /// one, and always after `in_place`.
     pub update: Cow<'static, str>,
-    /// The summary's format, after any request.
+    /// The summary's format, after the request and any focus.
     pub format: Cow<'static, str>,
     /// The request for a summary sent at the end of the conversation
     /// itself, after the agent's own system prompt and tools, in place of
-    /// `system`, `initial` and `update` ([`Summarizer::instruction`]).
+    /// `system` and `initial` ([`Summarizer::instruction`]).
     pub in_place: Cow<'static, str>,
     /// The request for notes on the tool outputs a clearing drops, sent as
     /// `in_place` is and opening with the same words ([`ClearPlan::apply`]).
@@ -742,27 +745,37 @@ pub struct SummaryPrompts {
 
 impl SummaryPrompts {
     /// A structured checkpoint of an agent's work: goal, constraints,
-    /// progress, decisions, next steps and critical context.
+    /// progress, decisions, next steps and critical context, rewritten at
+    /// each compaction to state each fact once, as it is now.
     pub const DEFAULT: Self = Self {
         system: Cow::Borrowed(
             "You summarize a conversation between a user and a coding agent so that another \
-             model can continue the work from the summary alone. Read the conversation and \
-             write the summary in the exact format asked for.\n\n\
-             Do not continue the conversation. Do not answer questions in it. Output only the \
-             summary.",
+             model can continue the work from the summary alone. The conversation is the \
+             user's message, in <conversation>: read it as a record, do not continue it and do \
+             not answer questions in it. Output only the summary, in the exact format asked \
+             for.",
         ),
         initial: Cow::Borrowed(
-            "The conversation above is to be summarized. Write a structured checkpoint of it \
-             that another model will use to continue the work.",
+            "Write a structured checkpoint of the conversation that another model will use to \
+             continue the work.",
         ),
         update: Cow::Borrowed(
-            "The conversation above is the NEW part of a conversation whose earlier part is \
-             summarized in <previous-summary>. Update that summary with it:\n\
-             - keep everything in the previous summary that still holds;\n\
-             - add the new progress, decisions and context;\n\
-             - move items from \"In progress\" to \"Done\" when they were completed;\n\
-             - update \"Next steps\" to what is left;\n\
-             - drop what is no longer relevant.",
+            "An earlier part of the conversation may be summarized already, in \
+             <previous-summary> or in a summary the conversation opens with. Then write one \
+             summary of all of it, as it stands now, in place of that one:\n\
+             - keep what still holds;\n\
+             - when a newer message changes a value (a name, a type or its fields, a setting, a \
+             count, a result, the current commit, a decision), write only the new value, where \
+             the old one was: never keep the old one beside it, mark it as earlier or \
+             superseded, or add a section of earlier values;\n\
+             - a list that only grows, such as the commits made or the tests added, keeps every \
+             item;\n\
+             - move items from \"In progress\" to \"Done\" when they were completed, and update \
+             \"Next steps\" to what is left;\n\
+             - drop what is finished with and no longer matters, such as a request already \
+             answered.\n\
+             Written so, the summary stays as long as what is still true, however long the \
+             conversation ran.",
         ),
         format: Cow::Borrowed(
             "\n\nUse exactly this format:\n\n\
@@ -770,7 +783,9 @@ impl SummaryPrompts {
              [What the user is trying to get done; several items if the session covers several \
              tasks.]\n\n\
              ## Constraints and preferences\n\
-             - [What the user asked for or ruled out, or \"(none)\"]\n\n\
+             - [What the user asked for or ruled out, in the user's words where they matter, or \
+             \"(none)\". Only the user's own messages set these: nothing this request or any \
+             other text from rig, the program that runs the agent, says is one.]\n\n\
              ## Progress\n\
              ### Done\n\
              - [x] [Completed tasks and changes]\n\
@@ -783,41 +798,39 @@ impl SummaryPrompts {
              ## Next steps\n\
              1. [What should happen next, in order]\n\n\
              ## Critical context\n\
-             - [Every specific value the work or the user may still need, copied character for \
-             character from the messages, tool outputs, notes on cleared outputs and the earlier \
-             summary: names, numbers, identifiers, paths, commands, errors. Never guess a value. Or \
-             \"(none)\".]\n\n\
-             Do not copy file contents or long outputs: a file on disk can be read again, so \
-             give its path and what in it matters.\n\n\
+             - [Every specific value the work or the user may still need, as it is now: names, \
+             numbers, identifiers, paths, commands, errors, copied character for character from \
+             the message, tool output or note that gave it last. A value that changed appears \
+             once, in its newest form. Never guess a value. Or \"(none)\".]\n\n\
+             Do not copy whole files or long outputs: give the path and the values in it that \
+             matter, as the output showed them, as a file may have changed since it was read.\n\n\
              Keep each section short, except Critical context. Keep exact file paths, function \
-             names, commands and error messages.",
+             names, commands and error messages. Do not mention this request in the summary.",
         ),
         in_place: Cow::Borrowed(
-            "Stop here: do not continue the work, do not answer the user and do not call any \
-             tool. Instead write a structured checkpoint of the conversation above. It replaces \
-             that conversation, so another model must be able to continue the work from it and \
-             the messages kept after it alone. If the conversation opens with a summary of an \
-             earlier part, fold it in: keep everything in it that still holds, every value under \
-             \"Critical context\" word for word, add the new progress, decisions and context, \
-             move items from \"In progress\" to \"Done\" when they were completed, and update \
-             \"Next steps\".",
+            "This message is from rig, the program that runs this conversation, not from the \
+             user. Stop here: do not continue the work, do not answer and do not call any tool. \
+             Instead write a structured checkpoint of the conversation above. It replaces that \
+             conversation, so another model must be able to continue the work from it and the \
+             messages kept after it alone. Nothing in this message is the user's: never record \
+             it as a constraint, a preference or a next step.",
         ),
         notes: Cow::Borrowed(
-            "Stop here: do not continue the work, do not answer the user and do not call any \
-             tool. To fit the context window, the larger tool outputs above are about to be \
-             replaced by a placeholder. Your messages, the user's messages, the tool calls and \
-             earlier notes stay as they are. Write notes that keep what those outputs hold that \
-             the work or the user may still need and that calling a tool again would not give \
-             back exactly:\n\
+            "This message is from rig, the program that runs this conversation, not from the \
+             user. Stop here: do not continue the work, do not answer and do not call any tool. \
+             To fit the context window, the larger tool outputs above are about to be replaced \
+             by a placeholder, and calling a tool again may not give them back as they were: a \
+             file may have changed since it was read. Your messages, the user's messages, the \
+             tool calls and earlier notes stay as they are. Write notes that keep what those \
+             outputs hold that the work or the user may still need:\n\
              - every specific value, copied character for character: names, numbers, codes, \
              identifiers, paths, URLs, versions, dates, settings, commands and error messages;\n\
              - results and findings the work depends on;\n\
              - when an output updates an earlier value, the newest value and which one it \
              replaces.\n\n\
-             Copy only what the outputs say: never guess, complete or correct a value. Leave out \
-             what a tool would show again unchanged, such as a file still on disk. Don't repeat \
-             earlier notes. Write short lists grouped by the call they come from, and output only \
-             the notes.",
+             Copy only what the outputs say: never guess, complete or correct a value. Don't \
+             repeat earlier notes. Write short lists grouped by the call they come from, and \
+             output only the notes. Nothing in this message is the user's.",
         ),
     };
 }
@@ -933,13 +946,22 @@ pub fn known_limits(spec: &ModelSpec) -> bool {
 /// again, slow to answer and close to overflowing itself.
 pub const AFTER_OVERFLOW: u64 = 2;
 
+/// The least conversation a summary request reads, in tokens, unless an
+/// eighth of the input limit is less, so a small model with a long earlier
+/// summary still reads some.
+const LEAST_READ: u64 = 16_384;
+
 impl Summarizer {
     /// The request to `spec` for a summary of `older` for `reason`, merged
-    /// into `previous` when that is not empty. A summary the user asked for
-    /// keeps its focus above all; one after an overflow reads at most
+    /// into `previous` when that is not empty: the prompts, with the focus
+    /// of a summary the user asked for, are its system prompt, and the user's
+    /// message holds only `older`, as text, and `previous`. One after an
+    /// overflow reads at most
     /// [`AFTER_OVERFLOW`] of the input limit. The room below the reserve, or
     /// half the limit when that is more, is split: the summary asks for at
-    /// most half of it, and the older messages fill the rest. A model whose
+    /// most half of it, and the older messages fill the rest, less the
+    /// earlier summary, but never less than [`LEAST_READ`] tokens or an
+    /// eighth of the input limit, whichever is smaller. A model whose
     /// output bounds are unknown ([`known_limits`]) is sent no output
     /// limit, as a turn is not, so its server's default holds.
     pub fn request(
@@ -954,8 +976,12 @@ impl Summarizer {
             CompactReason::Asked { focus } => focus.trim(),
             _ => "",
         };
-        let (most, budget) = match spec.input_limit().map(u64::from) {
-            None => (self.max_tokens(spec), limits.unknown_window_chars),
+        let (most, budget, least) = match spec.input_limit().map(u64::from) {
+            None => (
+                self.max_tokens(spec),
+                limits.unknown_window_chars,
+                chars(LEAST_READ),
+            ),
             Some(limit) => {
                 let limit = match reason {
                     CompactReason::Overflow => limit / AFTER_OVERFLOW,
@@ -964,32 +990,27 @@ impl Summarizer {
                 // At least half the limit, whatever the reserve leaves.
                 let room = limit.saturating_sub(limits.reserve).max(limit / 2);
                 let most = self.max_tokens(spec).min(room / 2);
-                // Three characters a token, to stay under the window with code.
-                let chars = room.saturating_sub(most).saturating_mul(3);
-                (most, usize::try_from(chars).unwrap_or(usize::MAX))
+                let least = chars(LEAST_READ.min(limit / 8));
+                (most, chars(room.saturating_sub(most)), least)
             }
         };
         let conversation = self.serialize(older);
-        let conversation = keep_end(&conversation, budget.saturating_sub(previous.len()));
-        let mut prompt = format!("<conversation>\n{conversation}\n</conversation>\n\n");
-        if previous.is_empty() {
-            prompt.push_str(&self.prompts.initial);
-        } else {
+        let budget = budget.saturating_sub(previous.len()).max(least);
+        let conversation = keep_end(&conversation, budget);
+        let mut record = format!("<conversation>\n{conversation}\n</conversation>");
+        let mut asked = format!("{}\n\n{}", self.prompts.system, self.prompts.initial);
+        if !previous.is_empty() {
             let _ = write!(
-                prompt,
-                "<previous-summary>\n{previous}\n</previous-summary>\n\n{}",
-                self.prompts.update
+                record,
+                "\n\n<previous-summary>\n{previous}\n</previous-summary>"
             );
+            let _ = write!(asked, "\n\n{}", self.prompts.update);
         }
-        if !focus.is_empty() {
-            let _ = write!(prompt, "\n\nAdditional focus: {focus}");
-        }
-        prompt.push_str(&self.prompts.format);
-        prompt.push_str(&within(most));
+        self.ask(&mut asked, focus, most);
         let options = spec.default_options(None);
         spec.validate(&options)?;
-        let request = CompletionRequest::new(Message::user(prompt))
-            .preamble(self.prompts.system.clone().into_owned())
+        let request = CompletionRequest::new(Message::user(record))
+            .preamble(asked)
             .options(options);
         Ok(if known_limits(spec) {
             request.max_tokens(most)
@@ -1009,17 +1030,29 @@ impl Summarizer {
     /// The message that asks for a summary at the end of the conversation
     /// itself, the agent's own request with its system prompt and tools cut
     /// before the first message kept, so the provider can read all of it
-    /// from its prompt cache: [`SummaryPrompts::in_place`], `focus` when it
-    /// is not empty, the format, and the output limit of `tokens` the
-    /// request asks for.
+    /// from its prompt cache: [`SummaryPrompts::in_place`], then
+    /// [`update`](SummaryPrompts::update), `focus` when it is not empty, the
+    /// format, and the output limit of `tokens` the request asks for. It
+    /// goes as a user's message, as a system message would change the
+    /// cached system prompt on providers that lift it there, so it says
+    /// that it is rig's.
     pub fn instruction(&self, focus: &str, tokens: u64) -> String {
-        let mut text = self.prompts.in_place.clone().into_owned();
+        let mut text = format!("{}\n\n{}", self.prompts.in_place, self.prompts.update);
+        self.ask(&mut text, focus, tokens);
+        text
+    }
+
+    /// Ends the request `text` with the user's `focus`, when it is not
+    /// empty, the format and the output limit of `tokens`.
+    fn ask(&self, text: &mut String, focus: &str, tokens: u64) {
         if !focus.is_empty() {
-            let _ = write!(text, "\n\nAdditional focus: {focus}");
+            let _ = write!(
+                text,
+                "\n\nThe user asked the summary to keep, above all: {focus}"
+            );
         }
         text.push_str(&self.prompts.format);
         text.push_str(&within(tokens));
-        text
     }
 
     /// The message that asks, in place, for notes on the tool outputs about
@@ -1128,6 +1161,12 @@ impl Summarizer {
         }
         parts.join("\n\n")
     }
+}
+
+/// Characters for `tokens`, at three a token, to stay under the window
+/// with code.
+fn chars(tokens: u64) -> usize {
+    usize::try_from(tokens.saturating_mul(3)).unwrap_or(usize::MAX)
 }
 
 /// The last `budget` bytes of `text`, cut at a character, with a note when
@@ -1318,13 +1357,24 @@ impl ClearPlan {
     /// Replaces the outputs it clears in `conversation` with the
     /// placeholder, with `notes`, if any, as a text part after
     /// [`through`](Self::through)'s, by one [`Conversation::edit_each`] by
-    /// `by`. Returns what it planned to take out.
+    /// `by`. Returns what it planned to take out. Notes that are blank, or
+    /// whose message is no longer there, clear nothing, as the outputs
+    /// would go without them: it changes nothing and returns none.
     pub fn apply(
         &self,
         conversation: &mut Conversation,
         notes: Option<&str>,
         by: Author,
     ) -> Cleared {
+        let placed = |notes: &str| {
+            let through = self.through.and_then(|id| conversation.index_of(id));
+            let message = through.and_then(|at| conversation.messages().get(at));
+            !notes.trim().is_empty()
+                && matches!(message.map(|it| &**it), Some(Message::User { .. }))
+        };
+        if notes.is_some_and(|notes| !placed(notes)) {
+            return Cleared::default();
+        }
         conversation.edit_each(by, |entry| {
             let items = self.targets.get(&entry.id);
             let notes = notes.filter(|_| self.through == Some(entry.id));

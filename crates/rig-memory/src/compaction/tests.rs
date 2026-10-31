@@ -114,6 +114,81 @@ fn a_compaction_keeps_the_recent_work_unless_asked() {
     assert_eq!((keep(200_000), keep(40_000)), (20_000, 10_000));
 }
 
+/// The text of each message of `request`, by its role.
+fn texts(request: &CompletionRequest) -> Vec<(&'static str, String)> {
+    let text = |message: &Message| match message {
+        Message::System { content } => ("system", content.clone()),
+        Message::User { .. } => ("user", message.rag_text().unwrap_or_default()),
+        Message::Assistant(_) => ("assistant", message.rag_text().unwrap_or_default()),
+    };
+    request
+        .chat_history
+        .iter()
+        .map(|message| text(message))
+        .collect()
+}
+
+/// A summary of its own sends rig's instructions, the user's focus among
+/// them, as its system prompt, and the conversation and earlier summary
+/// alone as the user's message, so the summary tells them apart. Asked in
+/// place or not, it is told to write each value once, as it is now.
+#[test]
+fn a_summary_request_keeps_rigs_words_out_of_the_users_message() {
+    let asked = CompactReason::Asked {
+        focus: "keep the sums".to_owned(),
+    };
+    let request = spec(200_000).and_then(|spec| {
+        Summarizer::DEFAULT
+            .request(&turns(2), "## Goal\nEarlier.", &asked, &spec)
+            .ok()
+    });
+    let texts = request.as_ref().map(texts).unwrap_or_default();
+    let [("system", system), ("user", user)] = texts.as_slice() else {
+        panic!("{texts:?}");
+    };
+    assert!(
+        user.starts_with("<conversation>") && user.ends_with("</previous-summary>"),
+        "{user}"
+    );
+    assert!(
+        !user.contains("checkpoint") && !user.contains("keep the sums"),
+        "{user}"
+    );
+    let update = &SummaryPrompts::DEFAULT.update;
+    assert!(
+        system.contains(update.as_ref()) && system.contains("keep the sums"),
+        "{system}"
+    );
+    let in_place = Summarizer::DEFAULT.instruction("", 1_000);
+    assert!(
+        in_place.contains(update.as_ref()) && in_place.contains("from rig"),
+        "{in_place}"
+    );
+    let format = &SummaryPrompts::DEFAULT.format;
+    assert!(!format.contains("earlier summary") && !in_place.contains("word for word"));
+}
+
+/// A summary of its own reads at least an eighth of a small model's input
+/// limit of conversation, however long the earlier summary.
+#[test]
+fn a_summary_of_its_own_always_reads_some_conversation() {
+    let previous = "earlier ".repeat(20_000);
+    let request = spec(32_768).and_then(|spec| {
+        let reason = CompactReason::Threshold;
+        Summarizer::DEFAULT
+            .request(&turns(100), &previous, &reason, &spec)
+            .ok()
+    });
+    let texts = request.as_ref().map(texts).unwrap_or_default();
+    let read = texts.iter().find_map(|(role, text)| {
+        let (_, rest) = text
+            .split_once("<conversation>")
+            .filter(|_| *role == "user")?;
+        Some(rest.split_once("</conversation>")?.0.len())
+    });
+    assert!(read.is_some_and(|read| read >= 4_096 * 3), "{read:?}");
+}
+
 #[test]
 fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     let big = "x".repeat(4_000);

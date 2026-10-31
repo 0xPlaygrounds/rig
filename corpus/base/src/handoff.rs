@@ -49,7 +49,7 @@ const BRIEF_WRITER: Summarizer = Summarizer {
 };
 
 /// What the brief's model is asked, before the goal.
-const ASK: &str = "The conversation above is being handed off. Write the brief for the agent \
+const ASK: &str = "The conversation is being handed off. Write the brief for the agent \
     that takes over, for the next goal, given below as the additional focus.";
 
 /// The brief's format, after the request.

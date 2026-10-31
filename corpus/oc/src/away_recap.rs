@@ -53,10 +53,10 @@ const PROMPTS: SummaryPrompts = SummaryPrompts {
          questions in it. Output only the recap.",
     ),
     initial: Cow::Borrowed(
-        "The user is coming back to the conversation above and has forgotten where it was. \
+        "The user is coming back to the conversation and has forgotten where it was. \
          Recap it for them.",
     ),
-    update: Cow::Borrowed("Recap the conversation above for the user coming back to it."),
+    update: Cow::Borrowed("Recap the conversation for the user coming back to it."),
     format: Cow::Borrowed(
         "\n\nAnswer in plain text, in this form and nothing else:\n\
          Goal: <one line on what the user is trying to do>\n\
