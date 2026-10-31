@@ -156,8 +156,8 @@ pub(super) struct Loss {
 const REASONING_OPTIONS: &[&str] = &["reasoning_options"];
 
 /// What `new` loses and gains against `old`. `sampling_fact` says whether
-/// the new row's `rig` facts set its sampling rule, which then decides it
-/// over `temperature`.
+/// the new row's `rig` facts name its sampling rule, which then decides it;
+/// otherwise `temperature` does.
 fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec<String>) {
     let mut losses = Vec::new();
     let mut gains = Vec::new();
@@ -248,7 +248,7 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
     if samples_less(was, now) {
         let answers: &'static [&'static str] = match sampling_fact {
             true => &["rig.sampling"],
-            false => &["temperature", "rig.sampling"],
+            false => &["temperature"],
         };
         lose(sampling, answers);
     } else if samples_less(now, was) {
@@ -808,7 +808,7 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
     match errors.is_empty() {
         true => Ok(()),
         false => Err(format!(
-            "{REVIEW}: {} rows set a fact with no \"source\":\n{}\n\
+            "{REVIEW}: {} rows need a \"source\" or their line in {UNSOURCED} changed:\n{}\n\
              Say what proved each fact (a doc URL, a cassette, a live check), or write \
              \"unverified: <where it came from>\". Never claim a check that was not made.",
             errors.len(),

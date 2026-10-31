@@ -683,6 +683,12 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
             venice(json!({"source": "https://example.com/m", "temperature": false})),
             vec![],
         ),
+        (
+            &sampled,
+            &no_rule,
+            venice(json!({"source": "https://example.com/m", "rig": {"sampling": null}})),
+            vec!["venice/m: sampling any -> unknown"],
+        ),
     ] {
         let comparison = compared(before, &json!({}), after, &review);
         assert_eq!(refused(&comparison), unanswered, "{review}");
@@ -852,6 +858,14 @@ fn rig_core_reading(spec: &rig_core::catalog::ModelSpec) -> Option<Reading> {
         },
         _ => return None,
     };
+    // An effort level the guard does not know is a difference, not a skip.
+    if let ReasoningSupport::Listed { levels, .. } = &spec.reasoning
+        && levels
+            .iter()
+            .any(|level| !efforts.contains(&level.as_str()))
+    {
+        return None;
+    }
     let input = spec.input;
     Some(Reading {
         reasoning,
