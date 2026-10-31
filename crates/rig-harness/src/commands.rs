@@ -274,10 +274,12 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
                 args: args.to_owned(),
                 mode,
             };
+            world.insert_resource(CommandRuns);
             let ran = match kind {
                 Args::None => run::<NoArgs>(world, system, args),
                 Args::Text => run::<CommandArgs>(world, system, args),
             };
+            world.remove_resource::<CommandRuns>();
             let mut reply = swap_notices(world, earlier);
             let mut refusals: Vec<String> =
                 ran.err().map(|ran| ran.to_string()).into_iter().collect();
@@ -301,6 +303,10 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
         });
     }
 }
+
+/// While it exists, a command runs, with everything it triggers.
+#[derive(Resource)]
+pub(crate) struct CommandRuns;
 
 /// Runs the registered system with its declared input type.
 fn run<A: CommandInput>(

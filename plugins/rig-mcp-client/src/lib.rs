@@ -9,10 +9,10 @@
 //! every front.
 //!
 //! A server is an entity with an [`McpStatus`]; its tools are entities
-//! [`McpToolOf`] it. Each new server holds a headless run's start
-//! ([`Starting`]) until its first attempt connected or failed, which
-//! `connect_timeout_secs` bounds, so `rig -p --tools <server>__<tool>`
-//! can name its tools. `/mcp` shows the servers; `/mcp add`, `/mcp
+//! [`McpToolOf`] it. Each new server holds the run's start ([`Starting`])
+//! until its first attempt connected or failed, which
+//! `connect_timeout_secs` bounds, so `--tools <server>__<tool>` can name
+//! its tools in every front. `/mcp` shows the servers; `/mcp add`, `/mcp
 //! remove`, `/mcp approve` and `/mcp deny` change the files and save it.
 //! The `[mcp]` table of `settings.toml` is [`McpSettings`]. [`McpPlugin`]
 //! reads the files; a front that hands rig its client's servers adds

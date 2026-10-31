@@ -128,7 +128,7 @@ fn listen(
         Ok((listening, requests)) => {
             server.listening = Some(listening);
             let pool = IoTaskPool::get_or_init(TaskPool::default);
-            commands.spawn((Socket, Running::stream(pool, &wake, requests)));
+            commands.spawn((Socket, ShowsPickers, Running::stream(pool, &wake, requests)));
         }
         Err(why) => {
             notices.write(Notice::error(None, format!("attach: cannot listen: {why}")));

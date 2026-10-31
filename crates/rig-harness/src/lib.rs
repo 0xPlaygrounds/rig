@@ -131,7 +131,9 @@ pub mod prelude {
     pub use crate::per_call::{
         AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,
     };
-    pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
+    pub use crate::pick::{
+        Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker, ShowsPickers,
+    };
     pub use crate::plugin_data::PluginData;
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::run::{AppRunExt, KeepRunning, RunStart, Starting, Work};

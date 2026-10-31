@@ -703,10 +703,11 @@ the rows shown), and despawning it closes it. A front answers it, or an open `As
 `Pick::person(entity, chosen)`, a `Chosen { items, text }`: a picker runs
 each chosen item's command, in list order, and gets `Picked` (`None` when
 closed), a question the chosen choices with the text as their note. A
-front that shows pickers says so (`Front::new(..).shows_pickers()`); in a
-run whose front does not, such as `-p`, `--json` or ACP, the harness closes
-each picker at once with an error notice listing the commands its items
-run, which refuses the command that opened it.
+front that shows pickers says so (`Front::new(..).shows_pickers()`), and a
+plugin that shows them beside any front, such as to an attached client,
+spawns a `ShowsPickers` entity. Otherwise, as in `-p`, `--json` or ACP, the
+harness closes each picker a command opens at once, with an error notice
+listing the commands its items run, which refuses the command.
 `Picker::multiple()` (`.checked(true)`) and `Ask::multiple()` (with
 `.with(Choice::new(id, label).checked().more(text))`) take several. The
 terminal view ticks with Tab, shows a choice's `more` on Right, and once

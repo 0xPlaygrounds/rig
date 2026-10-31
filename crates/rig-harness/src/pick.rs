@@ -12,9 +12,9 @@
 //! decides the answer, a question's choices with the note typed on them.
 //! In a run whose front shows no pickers
 //! ([`Front::shows_pickers`](crate::host::cli::Front::shows_pickers)), such
-//! as `-p`, the harness closes each picker at once with an error notice
-//! that says what to type instead, which refuses the command that opened
-//! it.
+//! as `-p`, the harness closes each picker a command opens at once, with an
+//! error notice that says what to type instead, which refuses the command,
+//! unless a plugin shows pickers itself ([`ShowsPickers`]).
 //!
 //! ```no_run
 //! use rig_harness::pick::{Chosen, Picked, Picker};
@@ -47,7 +47,7 @@ use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
-use crate::commands::RunCommand;
+use crate::commands::{CommandRuns, RunCommand};
 use crate::host::cli::Cli;
 use crate::main_agent::{CurrentAgentPlugin, ShownAgent};
 
@@ -292,16 +292,25 @@ impl Plugin for PickPlugin {
 /// How many of a picker's commands a refusal lists.
 const PICKS: usize = 10;
 
-/// Closes a picker the run's front does not show, saying what to do
-/// instead in an error notice about its agent.
+/// While any entity has it, something besides the run's front shows and
+/// answers pickers, such as a client attached to the session: no picker is
+/// refused.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ShowsPickers;
+
+/// Closes a picker a command opened that nothing shows, saying what to do
+/// instead in an error notice about its agent, which refuses the command.
+/// A picker a plugin opens by itself is left to it.
 fn refuse_unshown(
     added: On<Add<Picker>>,
     pickers: Query<&Picker>,
-    cli: Option<Res<Cli>>,
+    (cli, command): (Option<Res<Cli>>, Option<Res<CommandRuns>>),
+    shows: Query<(), With<ShowsPickers>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let shown = cli.and_then(|cli| cli.pickers()).unwrap_or(true);
+    let front = cli.and_then(|cli| cli.pickers()).unwrap_or(true);
+    let shown = front || !shows.is_empty() || command.is_none();
     if let (false, Ok(picker)) = (shown, pickers.get(added.entity)) {
         notices.write(Notice::error(picker.agent, unshown(picker)));
         commands.trigger(Pick::person(added.entity, None));

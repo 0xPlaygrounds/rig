@@ -617,6 +617,11 @@ fn names_given_across_sessions_and_by_plugins_never_share_one() {
     let refused = errors(&mut second);
     assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
     assert_eq!(second.world().resource::<SessionTitle>().name, None);
+    // The same with spaces around it, which the name file would not keep.
+    second.world_mut().resource_mut::<SessionTitle>().name = Some("  alpha ".to_owned());
+    second.update();
+    let refused = errors(&mut second);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
     assert_eq!(home.session(&two).name(), None);
     fs::remove_dir_all(home.root()).ok();
 }

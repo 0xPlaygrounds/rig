@@ -190,19 +190,23 @@ unfinished turn). Another server's word is a hint: such a call still runs
 beside the reply's other readers, but a restart never runs it again. A
 project's server is never trusted this way.
 
-## Headless runs
+## Waiting for the servers
 
 `rig -p` and `rig --json` wait, before the prompt and before any turn, for
 each server to connect or fail, each at most `connect_timeout_secs`. A
 `/command` prompt waits too, as one may start a turn (a skill's does), so
-`rig -p '/mcp approve files'` may wait for a server that does not answer. The
-terminal view does not wait: a turn it resumes at once may call a server's
-tool before the server is in, and the call is refused as an unknown tool. So
-`--tools` can name an MCP tool:
+`rig -p '/mcp approve files'` may wait for a server that does not answer.
+With `--tools`, every front waits the same way, the terminal view included,
+so `--tools` can name an MCP tool anywhere:
 
 ```sh
 rig -p --tools files__read_text_file 'Summarize README.md'
+rig --tools files__read_text_file,read
 ```
+
+Without `--tools` the terminal view does not wait: a turn it resumes at once
+may call a server's tool before the server is in, and the call is refused as
+an unknown tool.
 
 When a server fails, the run says why on stderr and refuses the name, with
 exit code 2:

@@ -172,6 +172,14 @@ fn a_picker_the_front_cannot_show_refuses_its_command_saying_what_to_type() {
     let world = app.world_mut();
     assert_eq!(world.query::<&Picker>().iter(world).count(), 0);
     assert_eq!(world.resource::<Seen>().picked, [None]);
+    // A picker a plugin opens by itself, and one a plugin shows, stay.
+    world.spawn(Picker::new("Status").item("Skip", "note skip"));
+    world.spawn(ShowsPickers);
+    world.trigger(RunCommand::new(agent, "size"));
+    app.update();
+    assert!(refusals(&mut app).is_empty());
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Picker>().iter(world).count(), 2);
 
     let shows = Front::new("tui").on_terminal().shows_pickers();
     let (mut app, agent) = run_by(shows, true);

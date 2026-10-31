@@ -489,15 +489,19 @@ fn write_name(
     if written == title.name {
         return;
     }
-    let claimed = match &title.name {
-        Some(name) => claim_name(&home.0, paths.id().as_ref(), Some(&paths.0), name),
+    let claimed = match title.name.as_deref().map(title_of) {
+        Some(name) => claim_name(&home.0, paths.id().as_ref(), Some(&paths.0), &name),
         None => (paths.set_name(None)).map_err(|failure| {
             Notice::error(None, format!("Could not unname the session: {failure}."))
         }),
     };
-    if let Err(refusal) = claimed {
-        notices.write(refusal);
-        title.name = written;
+    match claimed {
+        // As the file has it, so the next frame finds nothing to write.
+        Ok(()) => title.name = paths.name(),
+        Err(refusal) => {
+            notices.write(refusal);
+            title.name = written;
+        }
     }
 }
 
