@@ -421,7 +421,7 @@ fn names_integer(types: &Value) -> bool {
 }
 
 /// [`kind`] for a value where an `integer` was or was not expected: a
-/// whole number too large for one says so only where one was.
+/// whole number out of its range says so only where one was.
 fn got(integer: bool, value: &Value) -> &'static str {
     match value {
         Value::Number(number)
@@ -429,7 +429,7 @@ fn got(integer: bool, value: &Value) -> &'static str {
                 && !integral(number)
                 && number.as_f64().is_some_and(|n| n.fract() == 0.0) =>
         {
-            "a number too large for an integer"
+            "a number out of an integer's range"
         }
         value => kind(value),
     }

@@ -25,38 +25,37 @@
 use serde::de::DeserializeOwned;
 use serde_json::{Number, Value};
 
-/// `args` as the arguments type `A`. Arguments that do not decode as sent
-/// are decoded once more with each integral float in them as its integer,
-/// one bound for a `serde_json::Value` or `f64` field too; arguments that
-/// decode as sent reach `A` exactly so, every float in them a float.
+/// `args` as the arguments type `A`. Arguments are decoded as sent first,
+/// and those that decode so reach `A` exactly as sent. Others are decoded
+/// once more with each integral float in them as its integer, one bound
+/// for a `serde_json::Value` or `f64` field too.
 ///
 /// # Errors
 ///
-/// When `args` does not fit `A` either way: the error of the arguments as
-/// sent.
+/// When `args` does not fit `A` either way: the error of the second try
+/// when there was one, else of the arguments as sent.
 pub fn decode_args<A: DeserializeOwned>(args: &Value) -> Result<A, serde_json::Error> {
-    A::deserialize(args).or_else(|error| as_integers(args).ok_or(error))
+    A::deserialize(args).or_else(|error| as_integers(args).unwrap_or(Err(error)))
 }
 
 /// [`decode_args`] for arguments as JSON text, decoded straight from the
-/// text first, so a call that decodes, or is refused, today does so with
-/// the same words (a refusal names its line and column). Only the retry
-/// reads the text as a `Value`, which keeps the last of a repeated key, as
-/// a call's arguments (a JSON object) always have.
+/// text first. A call that decodes today decodes the same, and one refused
+/// with no whole float in it is refused with the same words, its line and
+/// column named. Only the retry reads the text as a `Value`, which keeps
+/// the last of a repeated key, as a call's arguments (a JSON object)
+/// always have.
 pub(crate) fn decode_text<A: DeserializeOwned>(args: &str) -> Result<A, serde_json::Error> {
     serde_json::from_str(args).or_else(|error| match serde_json::from_str::<Value>(args) {
-        Ok(value) => as_integers(&value).ok_or(error),
+        Ok(value) => as_integers(&value).unwrap_or(Err(error)),
         Err(_) => Err(error),
     })
 }
 
 /// `args` decoded with each integral float as its integer; `None` when it
-/// has none or still does not decode.
-fn as_integers<A: DeserializeOwned>(args: &Value) -> Option<A> {
+/// has none, so a second try would fail as the first did.
+fn as_integers<A: DeserializeOwned>(args: &Value) -> Option<Result<A, serde_json::Error>> {
     let mut whole = args.clone();
-    integers(&mut whole)
-        .then(|| A::deserialize(&whole).ok())
-        .flatten()
+    integers(&mut whole).then(|| A::deserialize(&whole))
 }
 
 /// Makes each float in `value` that is a [`Whole`] number that integer;

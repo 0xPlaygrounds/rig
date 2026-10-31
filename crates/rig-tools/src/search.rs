@@ -248,7 +248,10 @@ impl Tool for Search {
             let paths = found.hits.iter_mut().map(|hit| &mut hit.path);
             let unread = found.unread.iter_mut().map(|unread| &mut unread.path);
             for path in paths.chain(&mut found.names).chain(unread) {
-                if let Ok(below) = path.strip_prefix(base) {
+                // The searched directory itself keeps its whole path.
+                if let Ok(below) = path.strip_prefix(base)
+                    && !below.as_os_str().is_empty()
+                {
                     *path = shown(below);
                 }
             }
@@ -369,7 +372,7 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         let mut lines = text
             .lines()
             .enumerate()
-            .filter(|(_, line)| pattern.is_match(line))
+            .filter_map(|(number, line)| Some((number, line, pattern.find(line)?.range())))
             .peekable();
         if lines.peek().is_none() {
             continue;
@@ -389,8 +392,8 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         // Only a file's first hit cut before its match gives the command,
         // which the others follow with their own line and bytes.
         let mut resolved = found.files.last().and_then(|read| shell_path(&read.path));
-        for (number, line) in lines {
-            let cut = excerpt(line, pattern.find(line).map(|at| at.range()), MAX_LINE);
+        for (number, line, span) in lines {
+            let cut = excerpt(line, Some(span), MAX_LINE);
             let shown = cut.hidden().and_then(|_| resolved.take());
             let source = shown.as_deref().map(|path| Source {
                 path,

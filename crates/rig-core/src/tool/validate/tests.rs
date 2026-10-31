@@ -132,7 +132,7 @@ fn an_integer_is_a_whole_number_a_64_bit_integer_holds() {
     assert_eq!(refused(json!(-1)), ["/offset: expected at least 0, got -1"]);
     assert_eq!(
         refused(json!(1e30)),
-        ["/offset: expected an integer, got a number too large for an integer"]
+        ["/offset: expected an integer, got a number out of an integer's range"]
     );
     let text = json!({"type": "string"});
     assert_eq!(
