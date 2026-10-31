@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Write as _;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,7 +20,7 @@ use serde::Deserialize;
 
 use crate::process::{Ended, KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
-use crate::{CUT_MARK, Live, MAX_LINE_CHARS, OutputLimit, Spill, blocking, clip};
+use crate::{Excerpt, Live, MAX_LINE_CHARS, OutputLimit, Source, Spill, blocking, shell_path};
 
 /// Output past which the command is killed. While it runs, only what the
 /// [`OutputLimit`] keeps, and each stream's unfinished line, is held in
@@ -228,6 +229,7 @@ impl Shell {
             spill: self.spill.clone(),
             cut: self.cut,
             live: self.live.clone(),
+            local: process.remote().is_none(),
             ..Kept::default()
         };
         let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
@@ -388,23 +390,51 @@ const CONTEXT: usize = 3;
 /// The longest a line kept from the cut middle is shown.
 const MAX_PICKED: usize = 300;
 
-/// Whether `line` from the cut middle of an output is kept: an error, a
-/// failure or a panic, as compilers, test runners and scripts print them.
-/// Warnings are not, so a flood of them never crowds out an error.
-fn matters(line: &str) -> bool {
-    let start = line.trim_start();
-    start.starts_with("error")
-        || start.starts_with("Error")
-        || [
-            "FAILED",
-            "FAIL:",
-            "failed",
-            "panicked",
-            "Traceback",
-            "Error:",
-        ]
-        .iter()
-        .any(|word| line.contains(word))
+/// Words that make a line [`matter`](matters) wherever they are in it.
+const FAILURES: [&str; 8] = [
+    "FAILED",
+    "FAIL:",
+    "failed",
+    "panicked",
+    "Traceback",
+    "Error:",
+    "error:",
+    "fatal:",
+];
+
+/// The word that keeps `line` when it comes from the cut middle of an
+/// output, and where it is: an error, a failure or a panic, as compilers,
+/// test runners, scripts and git print them. Warnings are not kept, so a
+/// flood of them never crowds out an error.
+fn matters(line: &str) -> Option<Failure> {
+    let start = line.len() - line.trim_start().len();
+    let rest = line.get(start..).unwrap_or_default();
+    if let Some(word) = ["error", "Error"]
+        .into_iter()
+        .find(|word| rest.starts_with(word))
+    {
+        return Some(Failure {
+            word,
+            span: start..start + word.len(),
+        });
+    }
+    FAILURES
+        .into_iter()
+        .filter_map(|word| {
+            let at = line.find(word)?;
+            Some(Failure {
+                word,
+                span: at..at + word.len(),
+            })
+        })
+        .min_by_key(|failure| failure.span.start)
+}
+
+/// A word that makes a line [`matter`](matters), and where it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Failure {
+    word: &'static str,
+    span: Range<usize>,
 }
 
 /// `line` without the terminal escape sequences in it, such as the colours
@@ -449,23 +479,54 @@ fn plain(line: &str) -> Cow<'_, str> {
 struct Line {
     /// Its number, from 0.
     at: usize,
-    /// Its text, ending in `\n`.
-    text: String,
-    /// Whether the whole line [`matters`].
-    matters: bool,
-    /// Whether it was cut short.
-    long: bool,
+    /// Its text, or the start of it kept, without its line end.
+    body: String,
+    /// What marks its cut, once it was cut short.
+    mark: String,
+    /// Its length, without its line end.
+    bytes: usize,
+    /// The word that makes it [`matter`](matters), when the output may be
+    /// cut and it does.
+    matters: Option<Failure>,
 }
 
 impl Line {
-    /// Cuts the line at `chars` characters, marked, when it is longer.
-    fn shorten(&mut self, chars: usize) {
-        let body = self.text.trim_end_matches(['\n', '\r']);
-        let kept = clip(body, chars);
-        if kept.len() < body.len() {
-            self.text = format!("{kept}{CUT_MARK}\n");
-            self.long = true;
+    /// The line as kept, ending in `\n`.
+    fn text(&self) -> String {
+        format!("{}{}\n", self.body, self.mark)
+    }
+
+    /// The bytes of [`text`](Self::text).
+    fn len(&self) -> usize {
+        self.body.len() + self.mark.len() + 1
+    }
+
+    /// Whether it was cut short.
+    fn long(&self) -> bool {
+        !self.mark.is_empty()
+    }
+
+    /// Cuts the line at `chars` characters, marked, when it is longer: a
+    /// line cut before the word that makes it matter says where that word
+    /// is, with the command that shows it in the file `spill` (quoted for
+    /// `sh`) that has the whole output, when there is one.
+    fn shorten(&mut self, chars: usize, spill: Option<&str>) {
+        let span = self.matters.as_ref().map(|failure| failure.span.clone());
+        let cut = Excerpt::within(&self.body, self.bytes, span, chars);
+        if !cut.is_cut() {
+            return;
         }
+        let what = match &self.matters {
+            Some(failure) => format!("`{}`", failure.word),
+            None => String::new(),
+        };
+        let source = spill.map(|path| Source {
+            path,
+            line: self.at + 1,
+        });
+        let (kept, mark) = (cut.kept().len(), cut.mark(&what, source));
+        self.body.truncate(kept);
+        self.mark = mark;
     }
 }
 
@@ -519,6 +580,8 @@ struct Kept {
     /// Whether the output is inside a private key block, whose lines are
     /// left out until its end line.
     in_key: bool,
+    /// Whether the command runs on this machine, where the spill file is.
+    local: bool,
 }
 
 impl Kept {
@@ -574,16 +637,19 @@ impl Kept {
         {
             self.spilled = None;
         }
+        let body = line.strip_suffix('\n').unwrap_or(&line);
         let mut line = Line {
             at: self.lines,
-            matters: self.cut.is_some() && matters(&line),
-            text: line,
-            long: false,
+            matters: self.cut.and_then(|_| matters(body)),
+            bytes: body.trim_end_matches('\r').len(),
+            body: body.to_owned(),
+            mark: String::new(),
         };
+        let spill = self.spill_path();
         if self.cutting {
-            line.shorten(MAX_LINE_CHARS);
+            line.shorten(MAX_LINE_CHARS, spill.as_deref());
         }
-        self.tail_bytes += line.text.len();
+        self.tail_bytes += line.len();
         self.tail.push_back(line);
         self.lines += 1;
         let Some(limit) = self.cut else {
@@ -595,23 +661,25 @@ impl Kept {
             }
             self.cutting = true;
             self.spill();
+            let spill = self.spill_path();
             for line in &mut self.tail {
-                line.shorten(MAX_LINE_CHARS);
+                line.shorten(MAX_LINE_CHARS, spill.as_deref());
             }
-            self.tail_bytes = self.tail.iter().map(|line| line.text.len()).sum();
+            self.tail_bytes = self.tail.iter().map(Line::len).sum();
             while self.head.len() < limit.lines / 2
                 && let Some(line) = self.tail.pop_front()
             {
-                if self.head_bytes + line.text.len() > limit.bytes / 2 {
+                if self.head_bytes + line.len() > limit.bytes / 2 {
                     self.tail.push_front(line);
                     break;
                 }
-                self.head_bytes += line.text.len();
-                self.tail_bytes -= line.text.len();
+                self.head_bytes += line.len();
+                self.tail_bytes -= line.len();
                 self.head.push(line);
             }
         }
         // The last lines take what the first and the picked ones leave.
+        let spill = self.spill_path();
         while self.tail.len()
             > limit
                 .lines
@@ -624,13 +692,13 @@ impl Kept {
             let Some(mut line) = self.tail.pop_front() else {
                 break;
             };
-            self.tail_bytes -= line.text.len();
-            if line.matters {
+            self.tail_bytes -= line.len();
+            if line.matters.is_some() {
                 self.context = CONTEXT + 1;
             }
             if self.context > 0 {
                 self.context -= 1;
-                line.shorten(MAX_PICKED);
+                line.shorten(MAX_PICKED, spill.as_deref());
                 self.pick(limit, line);
             }
         }
@@ -643,19 +711,19 @@ impl Kept {
         let (lines, bytes) = (limit.lines / 8, limit.bytes / 8);
         if self.later.is_empty()
             && self.picked.len() < lines
-            && self.picked_bytes + line.text.len() <= bytes
+            && self.picked_bytes + line.len() <= bytes
         {
-            self.picked_bytes += line.text.len();
+            self.picked_bytes += line.len();
             self.picked.push(line);
             return;
         }
-        self.later_bytes += line.text.len();
+        self.later_bytes += line.len();
         self.later.push_back(line);
         while self.later.len() > lines || self.later_bytes > bytes {
             self.missed = true;
             while let Some(line) = self.later.pop_front() {
-                self.later_bytes -= line.text.len();
-                if self.later.front().is_none_or(|line| line.matters) {
+                self.later_bytes -= line.len();
+                if self.later.front().is_none_or(|line| line.matters.is_some()) {
                     break;
                 }
             }
@@ -696,9 +764,17 @@ impl Kept {
             let mut file = file;
             self.tail
                 .iter()
-                .try_for_each(|line| file.write_all(line.text.as_bytes()))
+                .try_for_each(|line| file.write_all(line.text().as_bytes()))
                 .is_ok()
         });
+    }
+
+    /// The file that has the whole output, quoted for `sh`, when a command
+    /// run in `shell` would find it: it is written on this machine, so only
+    /// when the commands run here too.
+    fn spill_path(&self) -> Option<String> {
+        let (path, _) = self.spilled.as_ref().filter(|_| self.local)?;
+        shell_path(&path.to_string_lossy())
     }
 
     /// The kept output: after a cut, a line saying how much was cut and
@@ -719,7 +795,7 @@ impl Kept {
             .collect();
         let long: Vec<usize> = kept
             .iter()
-            .filter(|line| line.long)
+            .filter(|line| line.long())
             .map(|line| line.at)
             .collect();
         let mut text = String::new();
@@ -791,7 +867,7 @@ impl Kept {
                     line.at
                 ));
             }
-            text.push_str(&line.text);
+            text.push_str(&line.text());
             next = line.at + 1;
         }
         (text, fact)

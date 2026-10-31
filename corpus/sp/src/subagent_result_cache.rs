@@ -192,7 +192,7 @@ fn hash_of(workspace: &dyn Workspace, path: &Path) -> Option<String> {
 /// too: every file a `list` or `search` there could have seen, whatever
 /// its glob or `hidden` argument.
 fn files_under(workspace: &dyn Workspace, path: &Path) -> Option<BTreeSet<String>> {
-    let files = workspace.files(path, None, Files::Hidden).ok()?;
+    let files = workspace.files(path, None, Files::Hidden).ok()?.files;
     Some(
         files
             .iter()

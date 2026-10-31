@@ -205,6 +205,7 @@ fn read_styles(workspace: &dyn Workspace, dirs: &[PathBuf]) -> (Styles, Vec<Stri
     for dir in dirs {
         let mut files = workspace
             .files(dir, Some("*.md"), Files::All)
+            .map(|listed| listed.files)
             .unwrap_or_default();
         files.retain(|path| path.parent() == Some(dir.as_path()));
         files.sort();

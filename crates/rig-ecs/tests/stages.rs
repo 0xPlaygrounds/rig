@@ -472,10 +472,27 @@ fn after_the_gates_an_answer_sees_their_decisions_and_holds() {
     );
 }
 
+#[test]
+fn a_whole_number_sent_as_a_float_runs_as_that_integer() {
+    let mut app = app();
+    let call = app.world_mut().spawn(run(Sum, r#"{"a":2.0,"b":3}"#)).id();
+    let settled = run_until(&mut app, |world| world.get::<Settled>(call).is_some());
+    assert!(settled, "{:?}", notices(&app));
+    let records = records(&app);
+    let ran = records
+        .iter()
+        .find(|record| record.disposition == Disposition::Ran);
+    assert!(
+        ran.is_some_and(|record| record.outcome.is_ok() && output(&record.outcome).contains('5')),
+        "{records:?}"
+    );
+}
+
 /// The open tool `wait`'s arguments.
 #[derive(Deserialize, schemars::JsonSchema)]
 struct Wait {
     signal: String,
+    times: Option<u32>,
 }
 
 /// What `wait`'s observer was told of a call, and whether it had started.
@@ -489,6 +506,7 @@ struct Told {
     parent: Option<rig_core::effect::EffectId>,
     id: String,
     signal: String,
+    times: Option<u32>,
     started: bool,
 }
 
@@ -518,6 +536,7 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
                 parent: called.parent,
                 id: called.tool_call.id.to_string(),
                 signal: called.args.signal.clone(),
+                times: called.args.times,
                 started,
             });
         },
@@ -546,7 +565,7 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
         Some(world.spawn(spawned).id())
     };
     let (Some(good), Some(bad)) = (
-        call("good", serde_json::json!({ "signal": "go" })),
+        call("good", serde_json::json!({ "signal": "go", "times": 2.0 })),
         call("bad", serde_json::json!({ "signal": 5 })),
     ) else {
         return;
@@ -555,7 +574,8 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
         world.get::<Settled>(good).is_some() && world.get::<Settled>(bad).is_some()
     };
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
-    // The call that fits started, then told its tool every field.
+    // The call that fits started, then told its tool every field, a whole
+    // number sent as a float as that integer.
     let effect = app.world().get::<Effect>(good).map(Effect::id);
     let told = &app.world().resource::<ToldOf>().0;
     let (Some(effect), Some(tool), Some(caller)) = (effect, tool, caller) else {
@@ -570,6 +590,7 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
         parent: Some(parent),
         id: "good".to_owned(),
         signal: "go".to_owned(),
+        times: Some(2),
         started: true,
     };
     assert_eq!(told.as_slice(), [good_told]);

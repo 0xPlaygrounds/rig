@@ -28,7 +28,7 @@ use rig_harness::rig_core::tool::{
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_tools::fs::{file_change, io_error};
 use rig_harness::rig_tools::workspace::{Listing, Stat, Workspace};
-use rig_harness::rig_tools::{clip, workspace::Local};
+use rig_harness::rig_tools::{excerpt, workspace::Local};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -318,7 +318,8 @@ fn plan(
         .map_err(|error| match error.kind() {
             std::io::ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
             _ => io_error(&root.to_string_lossy(), error),
-        })?;
+        })?
+        .files;
     let mut planned = Vec::new();
     for file in files {
         let Some(before) = text_of(workspace, &file) else {
@@ -335,8 +336,8 @@ fn plan(
             .take(EXAMPLES)
             .map(|line| {
                 (
-                    clip(line.trim(), LINE).to_owned(),
-                    clip(replace(line).trim(), LINE).to_owned(),
+                    excerpt(line.trim(), None, LINE).kept().to_owned(),
+                    excerpt(replace(line).trim(), None, LINE).kept().to_owned(),
                 )
             })
             .collect();

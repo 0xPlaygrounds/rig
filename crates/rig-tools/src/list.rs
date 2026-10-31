@@ -12,7 +12,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fs::{listed, shown};
+use crate::fs::{listed, shown, unread};
 use crate::workspace::{Listing, Local, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
@@ -170,9 +170,10 @@ fn list(
     root: &Path,
     args: &ListArgs,
 ) -> Result<(String, FilesListed, Option<OutputCut>), ToolExecutionError> {
-    let files = listed(workspace, root, args.glob.as_deref(), args.listing())?;
+    let listed = listed(workspace, root, args.glob.as_deref(), args.listing())?;
     let depth = args.depth.unwrap_or(usize::MAX).max(1);
-    let entries: BTreeSet<String> = files
+    let entries: BTreeSet<String> = listed
+        .files
         .iter()
         .filter_map(|file| {
             let below = file.strip_prefix(root).ok()?;
@@ -209,7 +210,26 @@ fn list(
             spill: None,
         }
     });
-    if total == 0 {
+    if !listed.failed.is_empty() {
+        let failed = listed.failed.iter().map(|(path, error)| {
+            let below = path.strip_prefix(root).ok();
+            let below = below
+                .filter(|below| !below.as_os_str().is_empty())
+                .unwrap_or(path);
+            (shown(below).display().to_string(), error.to_string())
+        });
+        if total == 0 {
+            text.push_str("No files in the directories read.\n");
+        }
+        text.push_str(&unread(
+            failed,
+            [
+                "what is in it is not listed",
+                "what is in them is not listed",
+            ],
+        ));
+        text.push('\n');
+    } else if total == 0 {
         text.push_str("No files.\n");
     }
     let listed = FilesListed {

@@ -378,7 +378,21 @@ fn filter_searches(
                 None => kept.hits.push(hit),
             }
         }
-        if hidden.is_empty() {
+        for name in found.names {
+            match policy.check(Access::Read, &name.to_string_lossy()) {
+                Some(rule) => hidden.push(rule.label()),
+                None => kept.names.push(name),
+            }
+        }
+        // A protected path it could not read is not named either.
+        let unread = found.unread.len();
+        kept.unread = (found.unread.into_iter())
+            .filter(|unread| {
+                let path = unread.path.to_string_lossy();
+                policy.check(Access::Read, &path).is_none()
+            })
+            .collect();
+        if hidden.is_empty() && kept.unread.len() == unread {
             continue;
         }
         let noun = if hidden.len() == 1 {
@@ -386,11 +400,13 @@ fn filter_searches(
         } else {
             "matches"
         };
-        let text = format!(
-            "{}\n[{} {noun} in protected files hidden]",
-            render(&kept),
-            hidden.len()
-        );
+        let text = match hidden.len() {
+            0 => render(&kept),
+            count => format!(
+                "{}\n[{count} {noun} in protected files hidden]",
+                render(&kept)
+            ),
+        };
         *outcome = Outcome::from(ToolResult::success(ToolOutput::text(text)));
         if !restored {
             for rule in hidden {

@@ -13,7 +13,7 @@ use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecution
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::workspace::{Contents, Listing, Local, Stat, Workspace};
+use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace};
 
 /// Reads `path` as text after checking, without opening it, that it is a
 /// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
@@ -196,7 +196,7 @@ pub(crate) fn listed(
     root: &Path,
     glob: Option<&str>,
     listing: Listing,
-) -> Result<Vec<PathBuf>, ToolExecutionError> {
+) -> Result<Listed, ToolExecutionError> {
     let shown = root.to_string_lossy();
     let missing = || {
         let missing = io::Error::new(ErrorKind::NotFound, "no such file or directory");
@@ -210,7 +210,8 @@ pub(crate) fn listed(
             _ => io_error(&shown, error),
         })?;
     // Only an empty listing asks whether `root` is there at all.
-    if files.is_empty()
+    if files.files.is_empty()
+        && files.failed.is_empty()
         && workspace
             .stat(root)
             .map_err(|error| io_error(&shown, error))?
@@ -219,6 +220,57 @@ pub(crate) fn listed(
         return Err(missing());
     }
     Ok(files)
+}
+
+/// Most paths a tool's note on what it could not read names, the most
+/// bytes of the paths and reasons it shows, and the most characters of
+/// one reason and of one path.
+const MAX_UNREAD: usize = 20;
+const MAX_UNREAD_BYTES: usize = 4 * 1024;
+const MAX_WHY_CHARS: usize = 200;
+const MAX_PATH_CHARS: usize = 500;
+
+/// A tool's last line on the paths it could not read, each shown with why,
+/// as many as fit [`MAX_UNREAD`] and [`MAX_UNREAD_BYTES`], and how many
+/// more: `[could not read 2 paths, so {what}: a (Permission denied), b (…)]`,
+/// `what` said of one path, then of several.
+pub(crate) fn unread(
+    paths: impl ExactSizeIterator<Item = (String, String)>,
+    [of_one, of_many]: [&str; 2],
+) -> String {
+    let count = paths.len();
+    let (noun, what) = if count == 1 {
+        ("path", of_one)
+    } else {
+        ("paths", of_many)
+    };
+    let mut named: Vec<String> = Vec::new();
+    let mut bytes = 0;
+    for (path, why) in paths.take(MAX_UNREAD) {
+        let cut = |text: &str, chars| {
+            let cut = crate::excerpt(text, None, chars);
+            let mark = if cut.is_cut() { crate::CUT_MARK } else { "" };
+            format!("{}{mark}", cut.kept())
+        };
+        let one = format!(
+            "{} ({})",
+            cut(&path, MAX_PATH_CHARS),
+            cut(&why, MAX_WHY_CHARS)
+        );
+        // The first always shows, so the note names one at least.
+        if !named.is_empty() && bytes + one.len() > MAX_UNREAD_BYTES {
+            break;
+        }
+        bytes += one.len();
+        named.push(one);
+    }
+    if count > named.len() {
+        named.push(format!("and {} more", count - named.len()));
+    }
+    format!(
+        "[could not read {count} {noun}, so {what}: {}]",
+        named.join(", ")
+    )
 }
 
 /// `path` as the file tools open it: made absolute against `base` (`None`:

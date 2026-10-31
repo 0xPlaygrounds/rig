@@ -19,7 +19,9 @@ use rig_core::redact;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::{arguments_refusal, unknown_tool_feedback};
-use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_definition};
+use rig_core::tool::{
+    Scope, Tool, ToolErrorKind, Touches, args_schema, decode_args, tool_definition,
+};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -80,7 +82,8 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
         let why = "a tool call needs an agent".to_owned();
         return Err(tool_error(ToolErrorKind::NotFound, why));
     };
-    let args = A::deserialize(&tool_call.function.arguments).map_err(|error| {
+    let arguments = serde_json::Value::Object(tool_call.function.arguments.clone());
+    let args = decode_args::<A>(&arguments).map_err(|error| {
         let why = format!(
             "The arguments do not fit: {error}. Nothing ran; fix the call and send it again."
         );

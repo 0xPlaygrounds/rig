@@ -14,9 +14,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::attach::{self, NoImage, is_image_path};
-use crate::workspace::{Local, Workspace, text_error};
+use crate::workspace::{Endings, Local, Workspace, text_error};
 use crate::{
-    CUT_MARK, MAX_BYTES, MAX_FILE_BYTES, MAX_LINE_CHARS, MAX_LINES, blocking, clip, shell_path,
+    CHUNK_BYTES, CUT_MARK, MAX_BYTES, MAX_FILE_BYTES, MAX_LINE_CHARS, MAX_LINES, blocking, excerpt,
+    line_bytes, shell_path,
 };
 
 /// Reads a text file's lines as they are, or a PNG, JPEG, GIF or WebP
@@ -293,7 +294,15 @@ impl Tool for Read {
                 .excerpt(&path, first, limit)
                 .map_err(|error| text_error(&shown, error))?;
             let asked = excerpt.text.lines().take(limit).collect();
-            let (output, lines) = show(asked, first, excerpt.total, MAX_BYTES, Some(&shown));
+            let endings = excerpt.endings;
+            let (output, lines) = show(
+                asked,
+                first,
+                excerpt.total,
+                MAX_BYTES,
+                Some(&shown),
+                endings,
+            );
             let hash = excerpt.hash;
             // A read that got the whole file leaves its text for an edit.
             let whole = excerpt
@@ -333,36 +342,37 @@ fn cut_of(lines: LinesShown) -> Option<OutputCut> {
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows
 /// them: as they are, at most `limit` lines and about `max_bytes` bytes,
 /// and a last line saying how many lines were left out and the offset to
-/// read on from, or that `first` is past the end. Lines longer than a
-/// width are cut, marked `[…]`, and counted in a note: 2000 characters, or
-/// less when that lets the asked lines fit `max_bytes`, as in a file of
-/// long lines, but never below 100 characters.
+/// read on from, or that `first` is past the end, after a line naming the
+/// text's line endings when they are not LF. Lines longer than a width are
+/// cut, marked `[…]`, and counted in a note: 2000 characters, or less when
+/// that lets the asked lines fit `max_bytes`, as in a file of long lines,
+/// but never below 100 characters.
 pub fn show_lines(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
     lines_from(text, first, limit, max_bytes).0
 }
 
 /// The narrowest a line is cut to so that more lines fit.
 const MIN_LINE_CHARS: usize = 100;
-/// The bytes of a cut line the command in a read's note shows at once:
-/// a fifth of what `shell` returns, in lines it keeps whole.
-const CHUNK_BYTES: usize = 10_000;
 
 /// [`show_lines`], and which lines it shows.
 fn lines_from(text: &str, first: usize, limit: usize, max_bytes: usize) -> (String, LinesShown) {
     let first = first.max(1);
     let asked = text.lines().skip(first - 1).take(limit).collect();
-    show(asked, first, text.lines().count(), max_bytes, None)
+    let endings = Some(Endings::of(text));
+    show(asked, first, text.lines().count(), max_bytes, None, endings)
 }
 
 /// [`lines_from`] given the lines `asked`, from line `first` (from 1) of
 /// a file of `total` lines. With the file's `path`, the note on the lines
-/// cut says how to read on in the first of them.
+/// cut says how to read on in the first of them; with its line `endings`,
+/// a last line says when they are not LF.
 fn show(
     asked: Vec<&str>,
     first: usize,
     total: usize,
     max_bytes: usize,
     path: Option<&str>,
+    endings: Option<Endings>,
 ) -> (String, LinesShown) {
     let width = width(&asked, max_bytes);
     let mut out = String::new();
@@ -371,7 +381,7 @@ fn show(
     // The first line cut, its number, and the bytes shown of it.
     let mut first_cut = None;
     for (at, line) in asked.iter().enumerate() {
-        let kept = clip(line, width);
+        let kept = excerpt(line, None, width).kept();
         let clipped = kept.len() < line.len();
         let mark = if clipped { CUT_MARK.len() } else { 0 };
         // The first line always shows, so a read always makes progress.
@@ -420,6 +430,13 @@ fn show(
                 String::new()
             }
         );
+    }
+    match endings {
+        Some(Endings::Crlf) => out.push_str("[CRLF line endings; edit keeps them]\n"),
+        Some(Endings::Mixed) => {
+            out.push_str("[mixed line endings: some lines end in CRLF, the others in LF]\n");
+        }
+        Some(Endings::Lf) | None => {}
     }
     if total == 0 {
         out.push_str("[empty file]\n");
@@ -471,8 +488,8 @@ fn read_on(path: &str, cut: usize, number: usize, kept: usize, bytes: usize) -> 
         false => format!("the remaining {} bytes", to - kept),
     };
     format!(
-        "; {which} shows {kept} of its {bytes} bytes: in `shell`, `sed -n '{number}p;{number}q' \
-         {path} | cut -b {from}-{to} | LC_ALL=C fold -b -w {MAX_LINE_CHARS}` shows {next}"
+        "; {which} shows {kept} of its {bytes} bytes: in `shell`, {} shows {next}",
+        line_bytes(path, number, from, to)
     )
 }
 
@@ -487,7 +504,7 @@ fn width(asked: &[&str], max_bytes: usize) -> usize {
         asked
             .iter()
             .map(|line| {
-                let kept = clip(line, width);
+                let kept = excerpt(line, None, width).kept();
                 let mark = if kept.len() < line.len() {
                     CUT_MARK.len()
                 } else {

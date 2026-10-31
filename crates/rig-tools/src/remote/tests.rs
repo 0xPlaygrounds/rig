@@ -736,3 +736,107 @@ fn a_remote_home_file_is_listed_as_named() {
         Some("~/notes.txt\n")
     );
 }
+
+/// A failed batch read there names each file it was to read, so a search
+/// says what it could not read rather than "No matches."; a file under a
+/// directory there that may not be searched is not taken for missing.
+#[cfg(unix)]
+#[test]
+fn what_could_not_be_read_there_is_not_taken_for_absent() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("unread");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn needle() {}\n").ok();
+    // Every script that copies files aside, as a batch read does, fails.
+    let mut refusing = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "case \"$1\" in *mktemp*) echo 'reads refused' >&2; exit 1;; esac; \
+         cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\""
+            .to_owned(),
+    ];
+    refusing.push(home.display().to_string());
+    let bench = Remote::new("bench", refusing, Launcher::default());
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let search = Search {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+    };
+    let (found, _) = call(&search, SearchArgs::new("needle").in_path("bench:~/strata"));
+    let found = found.unwrap_or_default();
+    assert!(
+        found.starts_with(
+            "No matches in the files read.\n[could not read 1 path, so it was not searched: \
+             bench:~/strata/src/lib.rs ("
+        ) && found.contains("reads refused"),
+        "{found}"
+    );
+    let locked = home.join("locked");
+    std::fs::create_dir_all(&locked).ok();
+    std::fs::write(locked.join("a.txt"), "a\n").ok();
+    let link = home.join("strata/link.txt");
+    std::os::unix::fs::symlink("../locked/a.txt", &link).ok();
+    std::fs::create_dir_all(locked.join("inner")).ok();
+    std::os::unix::fs::symlink("locked/inner", home.join("hidden")).ok();
+    // A link to a directory that may be searched hides nothing.
+    std::os::unix::fs::symlink("strata", home.join("alias")).ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    let hidden = std::fs::read(locked.join("a.txt")).is_err();
+    let stat = workspace.stat(Path::new("bench:~/locked/a.txt"));
+    let linked = workspace.stat(Path::new("bench:~/strata/link.txt"));
+    let slashed = workspace.stat(Path::new("bench:~/hidden/"));
+    let gone = workspace.stat(Path::new("bench:~/strata/gone/a.txt"));
+    let aliased = workspace.stat(Path::new("bench:~/alias/gone.txt"));
+    let all = crate::workspace::Listing::All;
+    let listing = workspace.files(Path::new("bench:~/locked"), None, all);
+    let missing = workspace.files(Path::new("bench:~/strata/gone"), None, all);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(gone.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    assert!(aliased.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    let not_found = Some(std::io::ErrorKind::NotFound);
+    assert_eq!(missing.err().map(|error| error.kind()), not_found);
+    if hidden {
+        assert_eq!(
+            stat.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // Nor a link there whose target such a directory hides.
+        assert_eq!(
+            linked.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // Written with a trailing `/` too.
+        assert_eq!(
+            slashed.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // A directory there that may not be entered is no missing one.
+        let kind = listing.err().map(|error| error.kind());
+        assert!(kind.is_some() && kind != not_found, "{kind:?}");
+    }
+}
+
+/// A command that ran on a host, whose output is spilled on this machine,
+/// says where a cut failure word is but gives no command for the spill
+/// file, which a command there would not find.
+#[cfg(unix)]
+#[test]
+fn a_cut_line_of_a_command_there_gives_no_command_for_the_spill_here() {
+    let dir = scratch("spill");
+    let bench = Remote::new("bench", transport(&dir.join("home")), Launcher::default());
+    let shell = Shell {
+        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+        spill: Some(crate::Spill(dir.join("spill"))),
+        ..Shell::default()
+    };
+    let command = "seq 1 1500; head -c 3000 /dev/zero | tr '\\0' x; echo ' FAILED'; seq 1 1500";
+    let (ran, _) = call(&shell, ShellArgs::new(command).in_dir("bench:~"));
+    let ran = ran.unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        ran.contains("[… cut at byte 300 of 3007; `FAILED` is at bytes 3002-3007]"),
+        "{ran:.600}"
+    );
+}

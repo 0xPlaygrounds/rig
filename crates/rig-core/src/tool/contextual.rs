@@ -111,7 +111,7 @@ pub(crate) fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
 where
     A: serde::de::DeserializeOwned,
 {
-    match serde_json::from_str(args) {
+    match crate::tool::decode::decode_text(args) {
         Ok(parsed) => Ok(parsed),
         Err(original) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| {
             ToolExecutionError::invalid_args(format!("failed to parse tool arguments: {original}"))

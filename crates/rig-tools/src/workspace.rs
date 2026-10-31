@@ -50,11 +50,14 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// a FIFO or a device can block forever.
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents>;
 
-    /// The whole content of each of `paths` that is a regular file of at
-    /// most `limit` bytes, in order: `None` for any other path, and for one
-    /// that could not be read. What a search reads; a workspace where each
-    /// call costs a round trip, such as a remote one, reads them in one.
-    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+    /// What each of `paths` holds, in order: the whole content of a
+    /// regular file of at most `limit` bytes; any other file is
+    /// [`Excluded`](Observation::Excluded), nothing there
+    /// [`Missing`](Observation::Missing), and a path that could not be
+    /// read [`Failed`](Observation::Failed) with why. What a search reads;
+    /// a workspace where each call costs a round trip, such as a remote
+    /// one, reads them in one.
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         paths
             .iter()
             .map(|path| read_file(self, path, limit))
@@ -145,9 +148,10 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// The regular files under `root` (or `root` itself when it is a file),
     /// in walk order, as `root` joined with their path below it: those
     /// `listing` keeps ([`Listing`]), and only those matching `glob`, such
-    /// as `*.rs`, when it is given. A malformed glob is an
-    /// [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>>;
+    /// as `*.rs`, when it is given; and the paths under `root` it could not
+    /// look into, such as a directory it may not read. A malformed glob is
+    /// an [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed>;
 
     /// Starts `program` with `args` in `dir` (`None`: the launcher's own
     /// directory) under `launcher`'s policy: its wrapper and variables.
@@ -229,6 +233,42 @@ impl Listing {
     }
 }
 
+/// What looking at one path found. Only [`Missing`](Self::Missing) says
+/// nothing is there: a look that failed says why, so it is never taken
+/// for absence.
+#[derive(Debug)]
+pub enum Observation<T> {
+    /// It is there, and this is what was found.
+    Found(T),
+    /// Nothing is there.
+    Missing,
+    /// Something is there that this look leaves out, such as a directory
+    /// or a file larger than the limit.
+    Excluded,
+    /// The look failed, so whether something is there is not known.
+    Failed(io::Error),
+}
+
+impl<T> Observation<T> {
+    /// What was found, if it was.
+    pub fn found(self) -> Option<T> {
+        match self {
+            Self::Found(found) => Some(found),
+            Self::Missing | Self::Excluded | Self::Failed(_) => None,
+        }
+    }
+}
+
+/// What [`Workspace::files`] listed.
+#[derive(Debug, Default)]
+pub struct Listed {
+    /// The regular files, in walk order.
+    pub files: Vec<PathBuf>,
+    /// The paths it could not look into, and why: what is under them is
+    /// not known, not absent.
+    pub failed: Vec<(PathBuf, io::Error)>,
+}
+
 /// What [`Workspace::read`] read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Contents {
@@ -251,6 +291,41 @@ pub struct Excerpt {
     /// that much costs about what a call does, and an edit after the read
     /// starts from it instead of fetching the file.
     pub whole: Option<String>,
+    /// How the whole file's lines end, when known: a workspace that sends
+    /// only the lines asked of a large file, such as a remote one, may not
+    /// know.
+    pub endings: Option<Endings>,
+}
+
+/// How a text's lines end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Endings {
+    /// In LF, or no line ends.
+    Lf,
+    /// Every line that ends ends in CRLF: [`Edit`](crate::Edit) writes
+    /// the lines it changes with CRLF too.
+    Crlf,
+    /// Some in CRLF, some in LF.
+    Mixed,
+}
+
+impl Endings {
+    /// How the lines of `text` end.
+    ///
+    /// ```
+    /// use rig_tools::workspace::Endings;
+    ///
+    /// assert_eq!(Endings::of("a\r\nb\r\nc"), Endings::Crlf);
+    /// assert_eq!(Endings::of("a\r\nb\n"), Endings::Mixed);
+    /// assert_eq!(Endings::of("a\rb"), Endings::Lf);
+    /// ```
+    pub fn of(text: &str) -> Self {
+        match text.matches("\r\n").count() {
+            0 => Self::Lf,
+            crlf if crlf == text.matches('\n').count() => Self::Crlf,
+            _ => Self::Mixed,
+        }
+    }
 }
 
 impl Excerpt {
@@ -269,6 +344,7 @@ impl Excerpt {
             total: text.lines().count(),
             hash: content_hash(text.as_bytes()),
             whole: (text.len() <= MAX_BYTES).then(|| text.to_owned()),
+            endings: Some(Endings::of(text)),
         }
     }
 }
@@ -412,18 +488,25 @@ pub(crate) fn excerpt_of<W: Workspace + ?Sized>(
     Ok(Excerpt::of(&text, first, count))
 }
 
-/// `path`'s whole content when it is a regular file of at most `limit`
-/// bytes, as [`Workspace::read_files`] reads each by default.
+/// What `path` holds, as [`Workspace::read_files`] reads each file by
+/// default: its whole content when it is a regular file of at most `limit`
+/// bytes.
 pub(crate) fn read_file<W: Workspace + ?Sized>(
     workspace: &W,
     path: &Path,
     limit: u64,
-) -> Option<Vec<u8>> {
-    let small = matches!(workspace.stat(path), Ok(Stat::File { size, .. }) if size <= limit);
-    small
-        .then(|| workspace.read(path, limit).ok())
-        .flatten()
-        .map(|contents| contents.bytes)
+) -> Observation<Vec<u8>> {
+    match workspace.stat(path) {
+        Ok(Stat::File { size, .. }) if size <= limit => match workspace.read(path, limit) {
+            Ok(contents) if contents.size <= limit => Observation::Found(contents.bytes),
+            Ok(_) => Observation::Excluded,
+            Err(error) if error.kind() == ErrorKind::NotFound => Observation::Missing,
+            Err(error) => Observation::Failed(error),
+        },
+        Ok(Stat::Missing) => Observation::Missing,
+        Ok(Stat::File { .. } | Stat::Dir | Stat::Other) => Observation::Excluded,
+        Err(error) => Observation::Failed(error),
+    }
 }
 
 /// `path` in this machine's home directory when its first component is
@@ -515,7 +598,7 @@ impl Workspace for Local {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
         let mut walk = WalkBuilder::new(root);
         match listing {
             Listing::All => walk.standard_filters(false),
@@ -533,12 +616,28 @@ impl Workspace for Local {
             walk.overrides(overrides);
         }
         // Only regular files: symbolic links are not followed.
-        Ok(walk
-            .build()
-            .flatten()
-            .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
-            .map(ignore::DirEntry::into_path)
-            .collect())
+        let mut listed = Listed::default();
+        for entry in walk.build() {
+            match entry {
+                Ok(entry) if entry.file_type().is_some_and(|kind| kind.is_file()) => {
+                    listed.files.push(entry.into_path());
+                }
+                Ok(_) => {}
+                // What the ignore rules say wrong about themselves, such as a
+                // bad glob in a `.gitignore`, hides no file, and a path gone
+                // since it was listed is absent.
+                Err(error) => {
+                    let path = walk_path(&error).map(Path::to_path_buf);
+                    let error = error.into_io_error();
+                    if let (Some(path), Some(error)) = (path, error)
+                        && error.kind() != ErrorKind::NotFound
+                    {
+                        listed.failed.push((path, unwrapped(error)));
+                    }
+                }
+            }
+        }
+        Ok(listed)
     }
 
     fn spawn(
@@ -561,6 +660,27 @@ impl Workspace for Local {
     /// yet is looked at every second, as the default does.
     fn watch(self: Arc<Self>, root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
         crate::watch::notified(root, recursive, listing)
+    }
+}
+
+/// `error` without the path a walk put in its message, which the listing
+/// names beside it: the system's own error under it, when there is one.
+fn unwrapped(error: io::Error) -> io::Error {
+    let code = (error.get_ref())
+        .and_then(|inner| inner.source())
+        .and_then(|source| source.downcast_ref::<io::Error>())
+        .and_then(io::Error::raw_os_error);
+    code.map_or(error, io::Error::from_raw_os_error)
+}
+
+/// The path a walk's `error` is about, if it names one.
+fn walk_path(error: &ignore::Error) -> Option<&Path> {
+    match error {
+        ignore::Error::WithPath { path, .. } => Some(path),
+        ignore::Error::WithDepth { err, .. } | ignore::Error::WithLineNumber { err, .. } => {
+            walk_path(err)
+        }
+        _ => None,
     }
 }
 

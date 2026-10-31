@@ -233,7 +233,15 @@ fn search(view: &ToolCallView<'_>) -> Vec<LookLine> {
         (count, false) => format!("{count} matches"),
         (count, true) => format!("{count}+ matches"),
     };
-    let hits: Vec<String> = found.hits.iter().map(ToString::to_string).collect();
+    let mut hits: Vec<String> = found.hits.iter().map(ToString::to_string).collect();
+    const UNREAD_ROWS: usize = 20;
+    hits.extend(
+        (found.unread.iter().take(UNREAD_ROWS))
+            .map(|unread| format!("could not read {}: {}", unread.path.display(), unread.error)),
+    );
+    if let Some(more) = (found.unread.len().checked_sub(UNREAD_ROWS)).filter(|more| *more > 0) {
+        hits.push(format!("could not read {more} more"));
+    }
     let mut lines = vec![LookLine::from(view.header(title, count))];
     lines.extend(looked(text_rows(&hits.join("\n"), Style::new().dim())));
     lines

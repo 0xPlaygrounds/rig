@@ -518,6 +518,7 @@ fn fragments(workspace: &dyn Workspace, dir: &Path, short: &str) -> std::io::Res
     let prefix = format!("{short}-");
     let mut found: Vec<(u64, PathBuf)> = workspace
         .files(dir, Some("*.md"), FileListing::All)?
+        .files
         .into_iter()
         .filter_map(|path| {
             let turn = name(&path)

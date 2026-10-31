@@ -170,3 +170,99 @@ fn every_matching_line_is_found_whatever_the_line_ends() {
     }
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A match past the 300 characters a hit shows of its line says where it
+/// is, with the command that shows it, on a line of 350 characters and of
+/// 4,000.
+#[cfg(unix)]
+#[test]
+fn a_match_past_the_cut_says_where_it_is() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-wide-hit-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    let file = dir.join("wide.txt");
+    let short = format!("{}NEEDLE{}", "0".repeat(340), "0".repeat(4));
+    let long = format!("{}NEEDLE", "0".repeat(4000));
+    std::fs::write(&file, format!("{short}\n{long}\n")).ok();
+    let found = find(
+        &Local,
+        &SearchArgs::new("NEEDLE").in_path(dir.to_string_lossy()),
+    )
+    .unwrap_or_default();
+    let quoted = format!("'{}'", file.display());
+    let texts: Vec<&str> = found.hits.iter().map(|hit| hit.text.as_str()).collect();
+    let zeros = "0".repeat(300);
+    assert_eq!(
+        texts,
+        [
+            format!(
+                "{zeros} [… cut at byte 300 of 350; the match is at bytes 341-346: in `shell`, \
+                 `sed -n '1p;1q' {quoted} | cut -b 301-350 | LC_ALL=C fold -b -w 2000` shows \
+                 bytes 301-350]"
+            ),
+            format!("{zeros} [… cut at byte 300 of 4006; the match is at bytes 4001-4006]"),
+        ]
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A file and a directory a search could not read are named, so its
+/// result never reads as "no matches" for them, and a search that read
+/// nothing it could match says so.
+#[cfg(unix)]
+#[test]
+fn what_a_search_could_not_read_is_named() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("rig-tools-unread-{}", std::process::id()));
+    let closed = dir.join("closed");
+    std::fs::create_dir_all(&closed).ok();
+    std::fs::write(dir.join("open.txt"), "needle\n").ok();
+    std::fs::write(dir.join("locked.txt"), "needle\n").ok();
+    std::fs::write(closed.join("inner.txt"), "needle\n").ok();
+    let mode = |path: &std::path::Path, mode| {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).ok()
+    };
+    mode(&dir.join("locked.txt"), 0o000);
+    mode(&closed, 0o000);
+    // One who may read anything, such as root, sees no failure to name.
+    let locked = std::fs::read(dir.join("locked.txt")).is_err();
+    let args = SearchArgs::new("needle").in_path(dir.to_string_lossy());
+    let found = find(&Local, &args).unwrap_or_default();
+    let none = find(&Local, &args.glob("locked.txt")).unwrap_or_default();
+    mode(&dir.join("locked.txt"), 0o644);
+    mode(&closed, 0o755);
+    std::fs::remove_dir_all(&dir).ok();
+    if !locked {
+        return;
+    }
+    let mut unread: Vec<_> = found
+        .unread
+        .iter()
+        .map(|unread| unread.path.clone())
+        .collect();
+    unread.sort();
+    assert_eq!(unread, [closed, dir.join("locked.txt")]);
+    let text = render(&found);
+    assert!(
+        text.starts_with(&format!("{}:1: needle\n", dir.join("open.txt").display()))
+            && text.contains("\n[could not read 2 paths, so they were not searched: ")
+            && text.contains("closed (Permission denied (os error 13))"),
+        "{text}"
+    );
+    // `closed` may hold a `locked.txt` too.
+    let text = render(&none);
+    assert!(
+        text.starts_with("No matches in the files read.\n[could not read 2 paths, so they"),
+        "{text}"
+    );
+}
+
+/// A search saved before paths it could not read were kept still loads,
+/// and one with none saves as before.
+#[test]
+fn a_saved_search_without_unread_paths_loads_and_saves_as_before() {
+    let saved = serde_json::from_str::<super::Found>(r#"{"hits": [], "stopped": false}"#);
+    assert!(saved.is_ok_and(|found| found.unread.is_empty()));
+    let written = serde_json::to_value(super::Found::default()).unwrap_or_default();
+    assert!(written.get("unread").is_none(), "{written}");
+}

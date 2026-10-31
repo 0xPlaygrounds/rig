@@ -279,7 +279,7 @@ impl FileIndex {
 /// `.gitignore` and hidden names leave out.
 fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
     let files = match workspace.files(root, None, Listing::Visible) {
-        Ok(files) => files,
+        Ok(listed) => listed.files,
         Err(failure) => {
             warn!("could not list the project's files: {failure}");
             return Vec::new();
