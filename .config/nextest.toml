@@ -1,3 +1,7 @@
+# `NEXTEST_TEST_THREADS`, the run's computed thread count that the wire test
+# encodes on, is set for tests from 0.9.130.
+nextest-version = { required = "0.9.130" }
+
 # The tests that shell out to a nested Cargo build, and the pinned request
 # bodies of every wire (about 7 minutes), are the slowest in the tree by an
 # order of magnitude (the facade feature-forwarding guard runs
@@ -7,6 +11,13 @@
 [[profile.default.overrides]]
 filter = 'test(portable_tool_facade_is_feature_additive) + binary(macro_hygiene) + test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies)'
 priority = 100
+
+# The wire tests encode on as many threads as the run has
+# (`NEXTEST_TEST_THREADS`), so each holds every slot while it runs and the
+# run stays within `--test-threads`.
+[[profile.default.overrides]]
+filter = 'binary_id(rig::core) & (test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies) | test(=core::request_bodies::tests::encoding_stays_within_the_runners_threads))'
+threads-required = "num-test-threads"
 
 # A test that runs past a minute is reported as slow, and killed after three:
 # a hang fails in minutes and names itself, not when the CI job times out.

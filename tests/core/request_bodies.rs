@@ -432,12 +432,25 @@ fn every_wire_built() -> bool {
 /// Every output, by wire, model id and shape: `{model}` stands for the id.
 type Outputs = BTreeMap<String, BTreeMap<String, Vec<String>>>;
 
-/// Encode the corpus on every wire, one thread per wire at a time.
+/// How many threads a test may encode on: the runner's cap, which nextest
+/// passes as `NEXTEST_TEST_THREADS` and reserves for the test
+/// (`threads-required` in `.config/nextest.toml`), else every core, as
+/// libtest's own default.
+fn workers() -> usize {
+    let cores = std::thread::available_parallelism().map_or(1, usize::from);
+    std::env::var("NEXTEST_TEST_THREADS")
+        .ok()
+        .and_then(|cap| cap.parse::<usize>().ok())
+        .map_or(cores, |cap| cap.clamp(1, cores))
+}
+
+/// Encode the corpus on every wire, one thread per wire at a time, on at
+/// most [`workers`] threads.
 fn encode_all(models: &[String], encoders: &[Encoder]) -> Outputs {
     let shapes = shapes();
     let next = std::sync::atomic::AtomicUsize::new(0);
     let results = std::sync::Mutex::new(Outputs::new());
-    let threads = std::thread::available_parallelism().map_or(4, usize::from);
+    let threads = workers();
     std::thread::scope(|scope| {
         for _ in 0..threads {
             scope.spawn(|| {

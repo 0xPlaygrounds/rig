@@ -1236,11 +1236,13 @@ fn out_of_credit() -> MockCompletionModel {
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
     // A provider refusal fails the turn; a `--model` the catalog lacks is
     // refused before it, as a command line.
-    for (named, model, code) in [
-        (None, out_of_credit(), 1),
-        (Some("nobody/nothing"), silent(), 2),
+    for (named, model, code, asked) in [
+        (None, out_of_credit(), 1, 1),
+        (Some("nobody/nothing"), silent(), 2, 0),
     ] {
         let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
+        // The refusal is the scripted model's, not another provider's.
+        assert_eq!(model.request_count(), asked, "{parsed:?}");
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
         assert_eq!(at(&exit, "code"), code, "{exit}");

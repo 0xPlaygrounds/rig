@@ -115,6 +115,43 @@ fn the_corpus_holds_every_catalog_id() {
     );
 }
 
+/// The encoding runs on no more threads than the runner gives the test, so
+/// a run stays within `--test-threads`.
+#[test]
+fn encoding_stays_within_the_runners_threads() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let active = Arc::new(AtomicUsize::new(0));
+    let most = Arc::new(AtomicUsize::new(0));
+    let encoders: Vec<Encoder> = (0..16)
+        .map(|index| {
+            let (active, most) = (Arc::clone(&active), Arc::clone(&most));
+            Encoder {
+                key: format!("slow|{index}"),
+                encode: Box::new(move |_, _| {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(now, Ordering::SeqCst);
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    String::new()
+                }),
+            }
+        })
+        .collect();
+    let outputs = encode_all(&["model".to_owned()], &encoders);
+    assert_eq!(outputs.len(), encoders.len());
+    let cap = std::env::var("NEXTEST_TEST_THREADS")
+        .ok()
+        .and_then(|cap| cap.parse::<usize>().ok())
+        .unwrap_or(usize::MAX);
+    let most = most.load(Ordering::SeqCst);
+    assert!(
+        (1..=cap).contains(&most),
+        "{most} threads at once, cap {cap}"
+    );
+}
+
 /// What each wire sends for each model id and shape is what the golden
 /// pins; a change fails here until it is listed in `TYPED_OPTIONS.md`
 /// section 12.0 and the golden is regenerated.

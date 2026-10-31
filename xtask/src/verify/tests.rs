@@ -1402,39 +1402,72 @@ fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
     }
 }
 
-/// The `-E` filter `--affected` runs for `paths`, or `None` when it runs
-/// nothing.
-fn affected_filter(paths: &[&str]) -> Option<String> {
+/// What `--affected` selects for `paths`: the arguments after the fixed
+/// profile, job and thread ones, or `None` when it runs nothing. The fixture
+/// adds a package reached only through a dev-dependency of `example` and two
+/// packages depending on each other, one of them on `rig-sqlite`.
+fn affected_selection(paths: &[&str]) -> Option<Vec<String>> {
     let options = Options::parse(vec!["--affected".into(), "--base".into(), "main".into()]).ok()?;
+    let mut metadata = metadata();
+    let extra = serde_json::json!([
+        {"name":"downstream","manifest_path":"/repo/crates/downstream/Cargo.toml","dependencies":[{"name":"example","kind":"dev"}]},
+        {"name":"cycle-a","manifest_path":"/repo/crates/cycle-a/Cargo.toml","dependencies":[{"name":"rig-sqlite"},{"name":"cycle-b","kind":"dev"}]},
+        {"name":"cycle-b","manifest_path":"/repo/crates/cycle-b/Cargo.toml","dependencies":[{"name":"cycle-a"}]}
+    ]);
+    metadata["packages"]
+        .as_array_mut()?
+        .extend(extra.as_array()?.iter().cloned());
     let plan = selection::plan(
         Path::new("/repo"),
-        &metadata(),
+        &metadata,
         &options,
         &paths.iter().map(|s| (*s).into()).collect(),
         &checks::all(),
     )
     .ok()?;
-    let check = plan.first()?;
-    check.steps.first()?.args.last().cloned()
+    let args = &plan.first()?.steps.first()?.args;
+    let threads = args.iter().position(|arg| arg == "--test-threads")?;
+    Some(args.get(threads + 2..)?.to_vec())
+}
+
+/// `-p` for each of `names`.
+fn packages(names: &[&str]) -> Option<Vec<String>> {
+    Some(
+        names
+            .iter()
+            .flat_map(|name| ["-p".to_owned(), (*name).to_owned()])
+            .collect(),
+    )
 }
 
 #[test]
-fn affected_runs_the_tests_of_the_changed_packages_and_their_dependents() {
+fn affected_builds_only_the_changed_packages_and_their_dependents() {
     assert!(Options::parse(vec!["--affected".into()]).is_err());
+    // Every package depending on a changed one, through any kind of
+    // dependency and transitively, and nothing else: cargo builds only these.
     assert_eq!(
-        affected_filter(&["crates/rig-agent/src/lib.rs", "crates/rig-sqlite/README.md"]),
-        Some("rdeps(rig-agent) | rdeps(rig-sqlite)".to_owned())
+        affected_selection(&["crates/rig-agent/src/lib.rs"]),
+        packages(&["downstream", "example", "rig-agent"])
+    );
+    assert_eq!(
+        affected_selection(&["crates/rig-agent/src/lib.rs", "crates/rig-sqlite/README.md"]),
+        packages(&[
+            "cycle-a",
+            "cycle-b",
+            "downstream",
+            "example",
+            "rig-agent",
+            "rig-sqlite"
+        ])
     );
     // The facade's own sources are its.
-    assert_eq!(
-        affected_filter(&["src/lib.rs"]),
-        Some("rdeps(rig)".to_owned())
-    );
+    assert_eq!(affected_selection(&["src/lib.rs"]), packages(&["rig"]));
     // The lockfile or CI can break anything; a Markdown file at the root nothing.
-    assert_eq!(affected_filter(&["Cargo.lock"]), Some("all()".to_owned()));
+    let everything = Some(vec!["--workspace".to_owned()]);
+    assert_eq!(affected_selection(&["Cargo.lock"]), everything);
     assert_eq!(
-        affected_filter(&[".github/workflows/ci.yaml"]),
-        Some("all()".to_owned())
+        affected_selection(&[".github/workflows/ci.yaml"]),
+        everything
     );
-    assert_eq!(affected_filter(&["DEVELOPING.md"]), None);
+    assert_eq!(affected_selection(&["DEVELOPING.md"]), None);
 }

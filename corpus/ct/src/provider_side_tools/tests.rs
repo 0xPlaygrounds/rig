@@ -4,11 +4,12 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use rig_core::catalog::Catalog;
 use rig_core::http_client::{
     self, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
     StatusCode, StreamingResponse,
 };
-use rig_core::providers::registry::{ConnectOptions, ProviderId};
+use rig_core::providers::registry::ConnectOptions;
 use rig_core::test_utils::MockCompletionModel;
 use rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::settings::Settings;
@@ -226,12 +227,13 @@ fn app(fake: &Fake, other: &MockCompletionModel) -> (App, Receiver<()>, Entity) 
          allowed_domains = [\"github.com\"]"
     );
     let Models(mut connector): Models = scripted_models([("other/model", other)]);
-    if let Some(anthropic) = ProviderId::catalog("anthropic") {
-        let options = ConnectOptions::new()
-            .api_key("test-key")
-            .http(DynHttpClient::new(fake.clone()));
-        connector.provide(anthropic, options);
+    if let Ok(claude) = Catalog::builtin().resolve(CLAUDE) {
+        connector.catalog_mut().insert(claude.spec.clone());
+        let options = ConnectOptions::new().api_key("test-key");
+        connector.provide(claude.spec.provider, options);
     }
+    let fake = fake.clone();
+    connector.wrap_http(move |_| DynHttpClient::new(fake.clone()));
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(Models(connector))
         .add_plugins((AgentPlugin, SessionLogPlugin, ProviderToolsPlugin))
