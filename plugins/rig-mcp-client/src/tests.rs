@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::sync::Arc;
@@ -742,8 +744,11 @@ fn a_project_on_another_host_has_no_project_servers_here() {
     write_servers(&local, json!({ "here": stub_server(json!({})) }));
     let before = std::fs::read_to_string(&local).unwrap_or_default();
     let (mut app, _) = app_in(&project, "", None);
-    let remote =
-        rig_harness::rig_tools::remote::Remote::new("bench", ["false"], Default::default());
+    let remote = rig_harness::rig_tools::remote::Remote::new(
+        "bench",
+        ["false"],
+        rig_harness::rig_tools::process::Launcher::default,
+    );
     assert!(remote.is_ok(), "{remote:?}");
     if let Ok(remote) = remote {
         app.insert_resource(ProjectWorkspace(Arc::new(remote)));
@@ -908,13 +913,11 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        let launched = Processes::default().launcher().command(text("command"));
-        let mut command = tokio::process::Command::from(launched);
+        let mut command = Processes::default().launcher().command(text("command"));
         command
             .args(args.iter().filter_map(Value::as_str))
             .envs([(STUB, "1"), (SILENT, "1")])
-            .stdin(Stdio::piped())
-            .kill_on_drop(true);
+            .stdin(Stdio::piped());
         command
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -923,9 +926,11 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
     assert!(runtime.is_ok(), "{runtime:?}");
     let Ok(runtime) = runtime else { return };
     let _entered = runtime.enter();
-    let running = groups.spawn(&mut stub());
-    let pid = running.as_ref().ok().and_then(|it| it.child.id());
-    let pid = pid.map(|pid| pid.to_string()).unwrap_or_default();
+    let running = groups.spawn(stub());
+    let pid = running
+        .as_ref()
+        .map(|it| it.id().to_string())
+        .unwrap_or_default();
     assert!(alive(&pid));
     groups.close();
     let waited = Instant::now();
@@ -934,7 +939,7 @@ fn as_rig_exits_every_server_process_is_killed_and_none_starts() {
     }
     assert!(!alive(&pid), "{pid} outlived the exit");
     // Nothing starts once closed.
-    let late = groups.spawn(&mut stub());
+    let late = groups.spawn(stub());
     assert!(late.is_err_and(|error| error.to_string() == "rig is exiting"));
     drop(running);
 }

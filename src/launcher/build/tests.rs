@@ -172,6 +172,262 @@ fn a_log_only_build_shows_one_line_while_cargo_works_and_its_errors_once_it_fail
     let (shown, logged, _) = fake_build("noop", (BuildOutput::LogOnly, false), finished);
     assert_eq!(shown, "");
     assert!(logged.contains("Finished"), "{logged:?}");
+    // Nor does one that waited a moment for another cargo's lock.
+    let blocked = format!("    Blocking waiting for file lock on package cache\n{finished}");
+    let (shown, logged, _) = fake_build("blocked", (BuildOutput::LogOnly, false), &blocked);
+    assert_eq!(shown, "");
+    assert!(logged.contains("Blocking"), "{logged:?}");
+}
+
+/// A short wait for cargo's lock in one command says nothing when a later
+/// command of the same build is silent for long.
+#[test]
+fn a_wait_for_cargos_lock_ends_with_its_command() {
+    let root = std::env::temp_dir().join(format!("rig-build-log-two-{}", std::process::id()));
+    let home = Home::at(&root);
+    let shown = Shown::default();
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let commands = [
+        "printf '    Blocking waiting for file lock on build directory\\n' >&2",
+        "sleep 4",
+    ];
+    for script in commands {
+        let mut cargo = Command::new("sh");
+        cargo.args(["-c", script]).stderr(Stdio::piped());
+        assert!(log.run(cargo).is_ok_and(|status| status.success()));
+    }
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(shown.text(), "");
+}
+
+/// A wait for another cargo's lock that lasts is said once it passes its
+/// time, while cargo still prints nothing.
+#[test]
+fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
+    let root = std::env::temp_dir().join(format!("rig-build-log-wait-{}", std::process::id()));
+    let home = Home::at(&root);
+    let shown = Shown::default();
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let mut cargo = Command::new("sh");
+    let script = "printf '    Blocking waiting for file lock on build directory\\n' >&2; \
+                  sleep 4; printf '    Finished in 4s\\n' >&2";
+    cargo.args(["-c", script]).stderr(Stdio::piped());
+    let started = Instant::now();
+    let ran = log.run(cargo);
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| status.success()));
+    assert!(started.elapsed() >= Duration::from_secs(4));
+    let text = shown.text();
+    assert!(
+        text.starts_with("rig: building the agent (output in "),
+        "{text:?}"
+    );
+    assert_eq!(text.lines().count(), 1, "{text:?}");
+}
+
+/// cargo starts with no signal blocked, though the launcher blocks the
+/// ending ones while it starts it.
+#[cfg(target_os = "linux")]
+#[test]
+fn cargo_starts_with_no_signal_blocked() {
+    let root = std::env::temp_dir().join(format!("rig-build-mask-{}", std::process::id()));
+    let home = Home::at(&root);
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    cargo
+        .args(["-c", "grep SigBlk /proc/self/status >&2"])
+        .stderr(Stdio::piped());
+    let ran = log.run(cargo);
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| status.success()));
+    let blocked = logged
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("SigBlk:"));
+    assert_eq!(blocked.map(str::trim), Some("0000000000000000"), "{logged}");
+}
+
+/// A signal the launcher was started ignoring, as `nohup` starts it with
+/// SIGHUP, stays ignored by cargo during a build and by the launcher after
+/// it. Checked in a run of its own, so no other test shares the change.
+#[cfg(target_os = "linux")]
+#[test]
+fn an_ignored_hangup_stays_ignored_through_a_build() {
+    const PROBE: &str = "RIG_IGNORED_HANGUP_PROBE";
+    if std::env::var_os(PROBE).is_none() {
+        let name = "launcher::build::tests::an_ignored_hangup_stays_ignored_through_a_build";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(PROBE, "1")
+                .output()
+        });
+        let ran = output.is_ok_and(|output| {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
+        });
+        assert!(ran, "the run with SIGHUP ignored failed");
+        return;
+    }
+    // SAFETY: plain calls; this run of the test binary is this test's own.
+    unsafe {
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
+    let root = std::env::temp_dir().join(format!("rig-build-hangup-{}", std::process::id()));
+    let home = Home::at(&root);
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    cargo
+        .args(["-c", "grep SigIgn /proc/self/status >&2"])
+        .stderr(Stdio::piped());
+    let ran = log.run(cargo);
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| status.success()));
+    let ignored = logged
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("SigIgn:"))
+        .and_then(|mask| u64::from_str_radix(mask.trim(), 16).ok());
+    assert!(
+        ignored.is_some_and(|mask| mask & 1 << (libc::SIGHUP - 1) != 0),
+        "{logged}"
+    );
+    // SAFETY: reads the action into a zeroed struct this test owns.
+    let after = unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        libc::sigaction(libc::SIGHUP, std::ptr::null(), &raw mut action);
+        action.sa_sigaction
+    };
+    assert_eq!(after, libc::SIG_IGN);
+}
+
+/// A launcher that leads a session of its own, as an agent's `/reload`
+/// starts it, keeps cargo in its own group, which the agent kills as a
+/// whole; told to end mid-build, it and cargo's children end by that
+/// signal (143 for SIGTERM).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
+    use std::os::unix::process::ExitStatusExt;
+
+    const PROBE: &str = "RIG_SESSION_LEADER_PROBE";
+    let seen = std::env::temp_dir().join(format!("rig-build-leader-{}", std::process::id()));
+    if let Some(seen) = std::env::var_os(PROBE) {
+        let seen = std::path::PathBuf::from(seen);
+        let root = seen.with_extension("home");
+        let home = Home::at(&root);
+        let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+        let mut cargo = Command::new("sh");
+        // "cargo" ignores SIGTERM, from before it says it is ready; what it
+        // started does not.
+        let script = "trap '' TERM; (trap - TERM; exec sleep 30) & \
+                      echo $(ps -o pgid= -p $$) $! $$ > \"$0\"; wait";
+        cargo.args(["-c", script]).arg(&seen).stderr(Stdio::piped());
+        let watched = seen.clone();
+        std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !watched.exists() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            // SAFETY: plain integers; this run of the test binary is its own.
+            unsafe {
+                libc::kill(libc::getpid(), libc::SIGTERM);
+            }
+        });
+        log.run(cargo).ok();
+        return;
+    }
+    let name = "launcher::build::tests::a_launcher_leading_its_session_keeps_cargo_in_its_group";
+    let launcher = std::env::current_exe().and_then(|test| {
+        Command::new("setsid")
+            .arg(test)
+            .args(["--exact", name, "--test-threads", "1"])
+            .env(PROBE, &seen)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    });
+    let Ok(mut launcher) = launcher else {
+        return assert!(launcher.is_ok());
+    };
+    let status = launcher.wait();
+    let ids = fs::read_to_string(&seen).unwrap_or_default();
+    fs::remove_file(&seen).ok();
+    fs::remove_dir_all(seen.with_extension("home")).ok();
+    let mut ids = ids.split_whitespace();
+    let (group, sleep, cargo) = (
+        ids.next().unwrap_or_default(),
+        ids.next().unwrap_or_default(),
+        ids.next().unwrap_or_default(),
+    );
+    let alive = |pid: &str| {
+        fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while (alive(sleep) || alive(cargo)) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        status.ok().and_then(|status| status.signal()),
+        Some(libc::SIGTERM)
+    );
+    assert_eq!(group, launcher.id().to_string());
+    assert!(
+        !sleep.is_empty() && !alive(sleep),
+        "cargo's child outlived it"
+    );
+    assert!(!cargo.is_empty() && !alive(cargo), "cargo outlived it");
+}
+
+/// Stopping the build, as a signal that ends the launcher does, kills
+/// cargo's whole group: what cargo started too, as rustc.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stopped_build_leaves_nothing_running() {
+    let root = std::env::temp_dir().join(format!("rig-build-stop-{}", std::process::id()));
+    fs::create_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let pid = root.join("compiler.pid");
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    let script = format!("sleep 60 & echo $! > '{}'; wait", pid.display());
+    cargo.args(["-c", &script]).stderr(Stdio::piped());
+    let watched = pid.clone();
+    let stopper = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !watched.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        stop::kill();
+    });
+    let ran = log.run(cargo);
+    assert!(stopper.join().is_ok());
+    let compiler = fs::read_to_string(&pid).unwrap_or_default();
+    let alive = || {
+        fs::read_to_string(format!("/proc/{}/stat", compiler.trim())).is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| !status.success()));
+    assert!(!compiler.trim().is_empty() && !alive());
 }
 
 #[test]

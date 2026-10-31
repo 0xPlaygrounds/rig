@@ -525,8 +525,8 @@ fn finish(
     let (mut out, mut err) = (String::new(), String::new());
     while let Ok(line) = process.lines().recv_timeout(PIPE_GRACE) {
         match line {
-            OutputLine::Out(text) => out.push_str(&text),
-            OutputLine::Err(text) => err.push_str(&text),
+            OutputLine::Out(bytes) => out.push_str(&String::from_utf8_lossy(&bytes)),
+            OutputLine::Err(bytes) => err.push_str(&String::from_utf8_lossy(&bytes)),
         }
     }
     let Some(status) = ended else {

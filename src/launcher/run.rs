@@ -257,7 +257,6 @@ fn launch(
         let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
         absent(fs::remove_file(run.refusal()))?;
-        absent(fs::remove_file(run.groups()))?;
         absent(fs::remove_file(run.screen()))?;
         let mut command = Command::new(binary.path());
         command
@@ -299,11 +298,12 @@ fn launch(
             }
         };
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
+        let restart = !headless || (answers_prompt && !directory.switch().exists());
         screen |= run.screen().exists();
-        // A reload may leave jobs running for the next build on purpose.
-        // Best effort: a list that cannot be read must not keep the
-        // terminal from being put back below.
-        if !reload {
+        // A reload that restarts leaves the jobs running, listed for the
+        // next build to take over. Best effort: a list that cannot be read
+        // must not keep the terminal from being put back below.
+        if !(reload && restart) {
             run.kill_left_groups().ok();
         }
         promoted?;
@@ -312,7 +312,6 @@ fn launch(
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
         }
-        let restart = !headless || (answers_prompt && !directory.switch().exists());
         if reload && restart {
             if headless {
                 invocation = &restarted;

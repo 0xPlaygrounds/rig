@@ -5,9 +5,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
-use std::io::{self, ErrorKind, Write as _};
+use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
@@ -19,7 +19,7 @@ use rig_core::tool::{
 };
 
 use crate::fs::Previous;
-use crate::process::Launcher;
+use crate::process::{Launcher, Process, Spawn};
 use crate::workspace::{Listed, Listing, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking};
 
@@ -437,18 +437,16 @@ impl Git {
     /// be run. `git` starts as `launcher` starts processes.
     fn find(root: &Path, keep: &Path, launcher: &Launcher) -> Option<Self> {
         let git = |args: &[&OsStr]| {
-            launcher
-                .command("git")
-                .arg("-C")
+            let mut git = launcher.command("git");
+            git.arg("-C")
                 .arg(root)
                 .args(args)
                 .env_remove("GIT_DIR")
                 .env_remove("GIT_WORK_TREE")
                 .env_remove("GIT_INDEX_FILE")
-                .env_remove("GIT_OBJECT_DIRECTORY")
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
+                .env_remove("GIT_OBJECT_DIRECTORY");
+            Process::start(git, Spawn::default())
+                .and_then(|git| git.output(None))
                 .ok()
         };
         let output = git(&[
@@ -508,14 +506,13 @@ impl Git {
             .env("GIT_ALTERNATE_OBJECT_DIRECTORIES", &self.objects)
             .env("GIT_OPTIONAL_LOCKS", "0")
             .env_remove("GIT_DIR")
-            .env_remove("GIT_WORK_TREE")
-            .stdin(Stdio::null());
+            .env_remove("GIT_WORK_TREE");
         command
     }
 
     /// What `args` prints, or why it failed.
     fn run(&self, args: &[&OsStr]) -> io::Result<Vec<u8>> {
-        let output = self.command(args).output()?;
+        let output = Process::start(self.command(args), Spawn::default())?.output(None)?;
         match output.status.success() {
             true => Ok(output.stdout),
             false => Err(io::Error::other(format!(
@@ -561,19 +558,13 @@ impl Git {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let mut child = self
-            .command(&["cat-file", "--batch=%(objectsize)"].map(OsStr::new))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()?;
         let input: String = ids.iter().map(|id| format!("{id}\n")).collect();
-        let stdin = child.stdin.take();
-        // Written beside the read, so neither pipe fills while the other waits.
-        let output = std::thread::scope(|scope| {
-            scope.spawn(|| stdin.map(|mut stdin| stdin.write_all(input.as_bytes())));
-            child.wait_with_output()
-        })?;
+        let how = Spawn {
+            stdin: Some(input.into_bytes()),
+            merge_stderr: false,
+        };
+        let cat = self.command(&["cat-file", "--batch=%(objectsize)"].map(OsStr::new));
+        let output = Process::start(cat, how)?.output(None)?;
         let mut rest = output.stdout.as_slice();
         let mut blobs = Vec::with_capacity(ids.len());
         for id in ids {

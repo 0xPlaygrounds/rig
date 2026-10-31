@@ -2,7 +2,7 @@
 //! with the plugins listed in `$RIG_HOME/plugins.toml`, builds it, and runs it.
 //! When the agent exits with the reload code it starts the new build, and a
 //! build that crashes during startup is rolled back to the last one that
-//! worked. It uses only std.
+//! worked. It uses std, and libc on unix to stop its build when told to end.
 //!
 //! Its own first words (`build`, `plugin`, `help`, `help-agents`,
 //! `--version`) are read before the build; the rest of the command line,

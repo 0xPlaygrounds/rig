@@ -482,8 +482,7 @@ fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, 
             .stderr(Stdio::from(errors));
     }
     let program = command.get_program().to_string_lossy().into_owned();
-    command
-        .status()
+    rig_tools::process::foreground(command)
         .map_err(|failure| format!("could not run {program}: {failure}"))
 }
 

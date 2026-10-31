@@ -45,7 +45,7 @@ each plugin added): ask it before reading rig's source.
 # Words
 
 - **Crates.** The **kernel** is rig-ecs (never "runtime" or "core"), the
-  **harness** rig-harness, the **launcher** the std-only `rig` binary; a
+  **harness** rig-harness, the **launcher** the `rig` binary (std, and libc on unix); a
   **plugin** is a Bevy plugin `plugins.toml` lists. Sources: `crates/<name>`
   for libraries, kernel and harness; `plugins/rig-basics/src/<module>` for
   the default plugins, `plugins/<name>` for rig-tui and the optional ones.

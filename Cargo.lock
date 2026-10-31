@@ -13909,6 +13909,7 @@ dependencies = [
  "bytes",
  "futures",
  "httpmock",
+ "libc",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-bedrock",

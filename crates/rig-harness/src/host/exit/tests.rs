@@ -153,3 +153,60 @@ fn a_refused_exit_still_exits() {
         [AppExit::from_code(3)]
     );
 }
+
+/// Exiting for good ends what the calls the exit stopped still run, also a
+/// process that ignores the request to stop: the exit does not leave it to a
+/// later kill that would die with the agent.
+#[cfg(target_os = "linux")]
+#[test]
+fn an_exit_ends_what_the_calls_it_stopped_still_run() {
+    use rig_tools::process::{Launcher, Scope, Spawn};
+
+    let call = Scope::default();
+    let ready = std::env::temp_dir().join(format!("rig-exit-stubborn-{}", std::process::id()));
+    let script = format!(
+        "trap '' TERM; echo $$ > '{}'; exec sleep 30",
+        ready.display()
+    );
+    let started = call.enter(|| Launcher::default().spawn("sh", ["-c", &script], Spawn::default()));
+    let Ok(mut process) = started else {
+        return assert!(started.is_ok());
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let pid = std::fs::read_to_string(&ready).unwrap_or_default();
+    std::fs::remove_file(&ready).ok();
+    // The call's thread goes on waiting for it, as a stopped call's does.
+    let waiting = std::thread::spawn(move || process.run(None, |_| true));
+    let mut app = app();
+    app.add_systems(Last, (move || call.stop()).in_set(rig_ecs::StopTurnsOnExit));
+    app.world_mut().trigger(Exit(ExitReason::Quit));
+    app.update();
+    let alive = || {
+        let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim()));
+        stat.is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    // Shorter than the stopped call's own delayed kill, which would end it
+    // anyway.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while alive() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let left = alive();
+    assert!(waiting.join().is_ok());
+    assert!(
+        !pid.trim().is_empty() && !left,
+        "{} outlived the exit",
+        pid.trim()
+    );
+}

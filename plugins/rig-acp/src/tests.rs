@@ -3,6 +3,8 @@
 //! client drives it ([`Driven`]). The lines libtest prints on stdout are not
 //! ACP, and both the router and the client skip them.
 
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;

@@ -407,3 +407,110 @@ fn a_group_whose_leader_left_is_killed_for_the_process_it_left() {
     assert!(!alive());
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The groups an agent left are asked to stop before they are killed, so
+/// one that ends on its own when asked, such as an agent that ends what it
+/// started, gets to; one that ignores the request is killed after the
+/// grace.
+#[cfg(unix)]
+#[test]
+fn groups_left_are_asked_to_stop_before_they_are_killed() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-term-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let asked = root.join("asked");
+    let ready = [root.join("heeds"), root.join("ignores")];
+    let [heeding, ignoring] = ready.each_ref().map(|ready| ready.display());
+    // Each says it is ready once its trap is set.
+    let heeds = format!(
+        "trap 'touch \"{}\"; exit' TERM; touch '{heeding}'; while :; do sleep 0.05; done",
+        asked.display()
+    );
+    let ignores = format!("trap '' TERM; touch '{ignoring}'; exec sleep 60");
+    let mut leaders = Vec::new();
+    for script in [heeds, ignores] {
+        let leader = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .env(super::env::PROCESS_LEDGER, run.groups())
+            .process_group(0)
+            .spawn();
+        assert!(leader.is_ok());
+        leaders.extend(leader.ok());
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready.iter().all(|ready| ready.exists()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let ids: String = leaders
+        .iter()
+        .map(|leader| format!("{}\n", leader.id()))
+        .collect();
+    std::fs::write(run.groups(), ids).ok();
+    let started = std::time::Instant::now();
+    assert!(run.kill_left_groups().is_ok());
+    let took = started.elapsed();
+    let ended: Vec<bool> = leaders
+        .iter_mut()
+        .map(|leader| leader.wait().is_ok())
+        .collect();
+    assert_eq!(ended, [true, true]);
+    assert!(asked.exists(), "the group was killed without being asked");
+    assert!(took >= super::RunDir::STOP_GRACE, "{took:?}");
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// A group whose marked processes end when asked is still killed while
+/// another of its processes, without the mark, ignores the request.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_group_is_killed_while_it_holds_processes_once_asked() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-unmarked-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let pid = root.join("stubborn");
+    // The marked leader starts an unmarked member that ignores SIGTERM,
+    // then waits, ending on SIGTERM itself.
+    let script = format!(
+        "env -i sh -c \"trap '' TERM; echo \\$\\$ > '{}'; exec sleep 60\" & wait",
+        pid.display()
+    );
+    let leader = std::process::Command::new("sh")
+        .args(["-c", &script])
+        .env(super::env::PROCESS_LEDGER, run.groups())
+        .process_group(0)
+        .spawn();
+    let Ok(mut leader) = leader else {
+        return assert!(leader.is_ok());
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !pid.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let stubborn = std::fs::read_to_string(&pid).unwrap_or_default();
+    std::fs::write(run.groups(), format!("{}\n", leader.id())).ok();
+    assert!(run.kill_left_groups().is_ok());
+    leader.wait().ok();
+    let gone = || {
+        std::fs::read_to_string(format!("/proc/{}/stat", stubborn.trim())).map_or(true, |stat| {
+            stat.rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !gone() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        !stubborn.trim().is_empty() && gone(),
+        "the unmarked member outlived the cleanup"
+    );
+}

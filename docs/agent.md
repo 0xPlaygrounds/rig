@@ -228,7 +228,15 @@ plugin. The `rig-tools` library also provides `search`, `list`, `delete` and
 `move`; the stock agent leaves those operations to `shell`.
 A `shell` call runs until its command ends, unless the model sets
 `timeout_secs` or you interrupt it; either stops the command, on a remote
-host too. The whole output
+host too. A job the command leaves running on this machine in the
+background with its output elsewhere (`server > log 2>&1 &`) keeps running
+between calls and through an interrupt of a later one, and ends when rig
+exits; `setsid server > log 2>&1 &` keeps it running after rig (on macOS,
+which has no `setsid` command, `perl -MPOSIX -e 'POSIX::setsid(); exec
+@ARGV' server > log 2>&1 &`). On a remote
+host such a job keeps running after the call. A command finds no editor
+and no pager: `git commit` without `-m` fails at once, saying to pass `-m`
+or `--no-edit`. The whole output
 of a `shell` call that was cut is kept in `RIG_HOME/sessions/<id>/spill/`,
 and the model reads it by the path the cut output names.
 

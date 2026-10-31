@@ -25,7 +25,7 @@ schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
 reqwest = { workspace = true, features = ["json", "rustls", "gzip", "brotli", "deflate", "zstd"] }
-tokio = { workspace = true, features = ["net", "io-util", "time", "sync", "rt", "process", "macros"] }
+tokio = { workspace = true, features = ["net", "io-util", "time", "sync", "rt", "macros"] }
 sha2 = { workspace = true }
 base64 = { workspace = true }
 rand = "0.9"

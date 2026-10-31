@@ -10,7 +10,8 @@ use super::Result;
 use super::build::BuildOutput;
 
 /// This launcher's [`RunDir`], held locked while it lives. Dropping it
-/// removes the directory, unless it keeps the log of a run that failed.
+/// kills the process groups an agent left listed there and removes the
+/// directory, unless it keeps the log of a run that failed.
 pub struct Run {
     dir: RunDir,
     _lock: File,
@@ -25,6 +26,8 @@ impl Run {
 
 impl Drop for Run {
     fn drop(&mut self) {
+        // Jobs a reload kept for a restart that did not come.
+        self.dir.kill_left_groups().ok();
         if !self.dir.log().exists() {
             fs::remove_dir_all(self.dir.path()).ok();
         }
@@ -42,9 +45,9 @@ pub fn hold_run(home: &Home) -> Result<Run> {
 }
 
 /// Removes what launchers that are gone, such as one killed with its
-/// terminal, left: their staged and trial builds, their run directories
-/// but the logs of failed runs, and the directories of their sessions that
-/// saved nothing. Call it holding [`lock`].
+/// terminal, left: the jobs an agent of theirs left listed, their staged
+/// and trial builds, their run directories but the logs of failed runs,
+/// and the directories of their sessions that saved nothing. Call it holding [`lock`].
 pub fn sweep(home: &Home) -> Result<()> {
     if let Ok(entries) = fs::read_dir(home.bin()) {
         for entry in entries {
@@ -63,8 +66,13 @@ pub fn sweep(home: &Home) -> Result<()> {
                 continue;
             };
             let run = home.run(launcher);
-            if is_free(&run.lock()) && !run.log().exists() {
-                fs::remove_dir_all(run.path())?;
+            if is_free(&run.lock()) {
+                // Jobs a reload kept, when that launcher was killed before
+                // the restart.
+                run.kill_left_groups().ok();
+                if !run.log().exists() {
+                    fs::remove_dir_all(run.path())?;
+                }
             }
         }
     }

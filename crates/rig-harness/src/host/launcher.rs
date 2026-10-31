@@ -80,6 +80,16 @@ impl Invoked {
     }
 }
 
+/// Keeps the process groups the agent owns in `run`'s list, taking over
+/// those the agent before a reload left running: each only while one of
+/// its processes carries the list's mark, so an id the system gave another
+/// group while the launcher restarted, however long that took, is not.
+fn own_groups(run: &RunDir) {
+    let adopted = run.live_groups().unwrap_or_default();
+    let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
+    rig_tools::process::record_groups(run.groups(), adopted);
+}
+
 /// The run directory of the launcher that started this agent, from
 /// [`env::RUN`]. [`LauncherPlugin`] inserts it unless the app inserted one
 /// before.
@@ -87,8 +97,8 @@ impl Invoked {
 pub struct LauncherRun(pub RunDir);
 
 /// Inserts [`Invoked`], [`LauncherRun`] and [`Secrets`], lists the
-/// process groups the agent starts for the launcher to kill should the
-/// agent die without stopping them, shows the launcher's startup notice,
+/// process groups the agent owns for the launcher to kill once it exits
+/// (taking over those the agent before a reload left running), shows the launcher's startup notice,
 /// hands a failed build to the primary agent, and writes the ready file.
 pub struct LauncherPlugin;
 
@@ -100,7 +110,7 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
-            rig_tools::process::record_groups(run.groups());
+            own_groups(&run);
             app.insert_resource(LauncherRun(run));
         }
         watch_launcher(app);

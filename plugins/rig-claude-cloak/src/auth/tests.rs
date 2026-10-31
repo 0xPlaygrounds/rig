@@ -12,12 +12,44 @@ fn browser_opener_receives_the_authorization_url_as_one_argument() -> anyhow::Re
         "synthetic-challenge",
     )?;
     let command = browser_command(&url);
-    let command = command.as_std();
     #[cfg(target_os = "linux")]
     anyhow::ensure!(command.get_program() == "xdg-open");
     #[cfg(target_os = "macos")]
     anyhow::ensure!(command.get_program() == "/usr/bin/open");
     anyhow::ensure!(command.get_args().collect::<Vec<_>>() == [std::ffi::OsStr::new(url.as_str())]);
+    Ok(())
+}
+
+/// An opener that waits for the browser it started past its time fails
+/// the login, and the browser stays.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+#[allow(clippy::disallowed_methods, reason = "test fixtures")]
+async fn a_slow_opener_never_takes_its_browser_with_it() -> anyhow::Result<()> {
+    let browser = std::env::temp_dir().join(format!("rig-browser-{}", std::process::id()));
+    let mut opener = std::process::Command::new("sh");
+    let script = format!("sleep 30 & echo $! > '{}'; wait", browser.display());
+    opener.args(["-c", &script]);
+    let opened = open_browser(opener, Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let pid = fs::read_to_string(&browser).unwrap_or_default();
+    fs::remove_file(&browser).ok();
+    let stat = fs::read_to_string(format!("/proc/{}/stat", pid.trim())).unwrap_or_default();
+    let alive = !stat.is_empty()
+        && !stat
+            .rsplit(')')
+            .next()
+            .unwrap_or_default()
+            .trim_start()
+            .starts_with('Z');
+    if let Ok(pid) = pid.trim().parse::<i32>() {
+        std::process::Command::new("kill")
+            .arg(pid.to_string())
+            .status()
+            .ok();
+    }
+    anyhow::ensure!(matches!(opened, Err(AuthError::Browser)));
+    anyhow::ensure!(alive, "the browser died with its opener");
     Ok(())
 }
 

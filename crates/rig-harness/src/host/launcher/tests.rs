@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use rig_ecs::AgentPlugin;
@@ -185,4 +187,41 @@ fn the_processes_carry_the_mark_the_launcher_looks_for() {
         rig_tools::process::LEDGER_VARIABLE,
         rig_harness_protocol::env::PROCESS_LEDGER
     );
+}
+
+/// After a reload the agent takes over the jobs its list names while they
+/// carry the list's mark, and leaves an id whose processes do not alone:
+/// it may name another group by then.
+#[cfg(target_os = "linux")]
+#[test]
+fn jobs_a_reload_kept_are_taken_over_while_marked() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-harness-adopt-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = rig_harness_protocol::RunDir::at(&root);
+    let start = |marked: bool| {
+        let mut sleep = std::process::Command::new("sleep");
+        sleep.arg("30").process_group(0);
+        if marked {
+            sleep.env(rig_harness_protocol::env::PROCESS_LEDGER, run.groups());
+        }
+        sleep.spawn().ok()
+    };
+    let jobs = [start(true), start(false)];
+    assert!(jobs.iter().all(Option::is_some), "could not start the jobs");
+    let [Some(mut kept), Some(mut stranger)] = jobs else {
+        return;
+    };
+    let listed = format!("{}\n{}\n", kept.id(), stranger.id());
+    std::fs::write(run.groups(), listed).ok();
+    super::own_groups(&run);
+    let owned = std::fs::read_to_string(run.groups()).unwrap_or_default();
+    for job in [&mut kept, &mut stranger] {
+        job.kill().ok();
+        job.wait().ok();
+    }
+    std::fs::remove_dir_all(&root).ok();
+    let owned: Vec<&str> = owned.lines().collect();
+    assert_eq!(owned, [kept.id().to_string()]);
 }

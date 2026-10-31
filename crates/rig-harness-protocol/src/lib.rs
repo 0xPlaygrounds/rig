@@ -526,53 +526,102 @@ impl RunDir {
         self.0.join("lock")
     }
 
-    /// The process groups the agent started and has not reaped yet, one
-    /// id per line: the launcher kills those left once the agent exits
-    /// for anything but a reload, such as after `SIGKILL`, each only while
-    /// its leader carries [`env::PROCESS_LEDGER`] naming this file.
+    /// The process groups the agent owns, one id per line: each from its
+    /// start until it is empty or the agent killed it. The launcher kills
+    /// those left once the agent exits for anything but a reload, such as
+    /// after `SIGKILL`; after a reload the next agent takes them over
+    /// ([`Self::live_groups`]).
     pub fn groups(&self) -> PathBuf {
         self.0.join("groups")
     }
 
-    /// Kills the process groups the agent listed in [`Self::groups`] and
-    /// left running, as it does when killed by `SIGKILL`; a clean exit
-    /// lists none. A group is killed only while one of its processes, its
-    /// leader or one the leader left behind as it exited, carries
-    /// [`env::PROCESS_LEDGER`] naming the list, so an id the system gave
-    /// another process since is left alone. `kill(1)` sends the signal,
-    /// so this keeps to std.
+    /// The group ids listed in [`Self::groups`], none when there is no
+    /// list.
+    fn listed_groups(&self) -> std::io::Result<Vec<i32>> {
+        let listed = match std::fs::read_to_string(self.groups()) {
+            Ok(listed) => listed,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
+        // A group id of 0 or 1 would name the caller's own group or every
+        // process.
+        Ok(listed
+            .lines()
+            .filter_map(|id| id.trim().parse::<i32>().ok())
+            .filter(|&id| id > 1)
+            .collect())
+    }
+
+    /// The groups listed in [`Self::groups`] that still have a process
+    /// carrying [`env::PROCESS_LEDGER`] naming the list, its leader or one
+    /// the leader left behind as it exited: so an id the system gave
+    /// another process since is not among them.
+    ///
+    /// # Errors
+    ///
+    /// When the list cannot be read.
+    pub fn live_groups(&self) -> std::io::Result<Vec<i32>> {
+        let ledger = self.groups();
+        Ok(self
+            .listed_groups()?
+            .into_iter()
+            .filter(|&id| members(id).into_iter().any(|pid| marked(pid, &ledger)))
+            .collect())
+    }
+
+    /// Ends the process groups the agent listed in [`Self::groups`] and
+    /// left running ([`Self::live_groups`]), as after `SIGKILL` or when it
+    /// exits with a job still running in the background, and removes the
+    /// list: asks them to stop (`SIGTERM`), so an agent among them, such as
+    /// a session of `rig acp`, ends its own; waits at most
+    /// [`STOP_GRACE`](Self::STOP_GRACE) for them to empty; then kills what
+    /// is left (`SIGKILL`). `kill(1)` sends the signals, so this keeps to
+    /// std.
     ///
     /// # Errors
     ///
     /// When the list cannot be read or removed.
     pub fn kill_left_groups(&self) -> std::io::Result<()> {
-        let ledger = self.groups();
-        let listed = match std::fs::read_to_string(&ledger) {
-            Ok(listed) => listed,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error),
+        let signal = |name: &str, groups: &[i32]| {
+            if !groups.is_empty() {
+                child("kill")
+                    .args(["-s", name, "--"])
+                    .args(groups.iter().map(|id| format!("-{id}")))
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .ok();
+            }
         };
-        // A group id of 0 or 1 would name the caller's own group or every
-        // process.
-        let groups: Vec<String> = listed
-            .lines()
-            .filter_map(|id| id.trim().parse::<i32>().ok())
-            .filter(|&id| id > 1 && members(id).into_iter().any(|pid| marked(pid, &ledger)))
-            .map(|id| format!("-{id}"))
-            .collect();
-        if !groups.is_empty() {
-            child("kill")
-                .args(["-s", "KILL", "--"])
-                .args(&groups)
-                .stderr(std::process::Stdio::null())
-                .status()
-                .ok();
+        let mut left = self.live_groups()?;
+        signal("TERM", &left);
+        // From here on a group is ended once it is empty: one that holds
+        // processes is never given to another, marked or not.
+        let deadline = std::time::Instant::now() + Self::STOP_GRACE;
+        while !left.is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            left.retain(|&id| exists(id));
         }
-        match std::fs::remove_file(&ledger) {
+        signal("KILL", &left);
+        match std::fs::remove_file(self.groups()) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
             _ => Ok(()),
         }
     }
+
+    /// How long [`Self::kill_left_groups`] waits for the groups it asked to
+    /// stop: longer than an agent among them takes to end its own (it gives
+    /// them 2 s).
+    pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+}
+
+/// Whether the process group `group` has a process: `kill -0` to it
+/// succeeds.
+fn exists(group: i32) -> bool {
+    child("kill")
+        .args(["-0", "--", &format!("-{group}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 /// The processes of the group `group`, its leader first: Linux reads each

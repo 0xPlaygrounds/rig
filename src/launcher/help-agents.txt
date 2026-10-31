@@ -45,6 +45,11 @@ takes minutes, and a start waits for another rig's build; stderr says
 so in one line once the wait passes 3 seconds, and is otherwise quiet
 about the build unless it fails.
 
+A job a shell command leaves running on this machine in the background,
+its output elsewhere (`server > log 2>&1 &`), ends when rig exits; `setsid`
+keeps it running after (on macOS: perl -MPOSIX -e 'POSIX::setsid(); exec
+@ARGV' CMD).
+
 Every line, both ways, is a JSON object with "v":1. A line of another
 version is refused with a reply saying whether rig or the driver needs
 updating. Every event has "ms", when it was written (Unix milliseconds).

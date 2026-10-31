@@ -4,6 +4,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use fs2::FileExt;
 use rand::RngCore;
 use rig_harness::rig_core::error::retryable_status;
+use rig_harness::rig_tools::process::{self, Process};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -514,19 +515,53 @@ async fn callback_listeners(
     Err(AuthError::Callback)
 }
 
-fn browser_command(url: &Url) -> tokio::process::Command {
+fn browser_command(url: &Url) -> std::process::Command {
     #[cfg(target_os = "linux")]
     let opener = "xdg-open";
     #[cfg(target_os = "macos")]
     let opener = "/usr/bin/open";
-    let mut command = tokio::process::Command::new(opener);
+    let mut command = std::process::Command::new(opener);
     command
         .arg(url.as_str())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
+        .stderr(Stdio::null());
+    // A browser it starts outlives rig with the user's own editor and pager.
+    for (name, _) in process::NON_INTERACTIVE {
+        match std::env::var_os(name) {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
     command
+}
+
+/// Runs `opener`, which opens the browser: whether it said it did within
+/// `wait`. It is handed over as it starts, so the browser it starts, and
+/// an opener that waits for that browser, stay as rig goes on or exits.
+async fn open_browser(opener: std::process::Command, wait: Duration) -> Result<(), AuthError> {
+    let mut opener = Process::start_with_stdio(opener).map_err(|_| AuthError::Browser)?;
+    opener.release();
+    let waited = tokio::time::timeout(wait, async {
+        loop {
+            match opener.try_wait() {
+                Ok(None) => tokio::time::sleep(Duration::from_millis(20)).await,
+                ended => return ended,
+            }
+        }
+    });
+    match waited.await {
+        Ok(Ok(Some(status))) if status.success() => Ok(()),
+        Err(_) => {
+            // Still waiting for its browser: reaped once it is done.
+            let reaper = std::thread::Builder::new();
+            reaper
+                .spawn(move || opener.wait_for(Duration::MAX).ok())
+                .ok();
+            Err(AuthError::Browser)
+        }
+        _ => Err(AuthError::Browser),
+    }
 }
 
 /// Opens a browser for an explicit PKCE login and stores credentials privately.
@@ -544,13 +579,7 @@ pub async fn login(home: &Path) -> Result<(), AuthError> {
     let verifier = random_verifier();
     let state = random_state();
     let url = authorization_url(&redirect, &state, &verifier)?;
-    let status = tokio::time::timeout(Duration::from_secs(15), browser_command(&url).status())
-        .await
-        .map_err(|_| AuthError::Browser)?
-        .map_err(|_| AuthError::Browser)?;
-    if !status.success() {
-        return Err(AuthError::Browser);
-    }
+    open_browser(browser_command(&url), Duration::from_secs(15)).await?;
     let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
     let client = OAuthClient::production()?;
     exchange_code(&dir, &client, &code, &state, &verifier, &redirect).await?;

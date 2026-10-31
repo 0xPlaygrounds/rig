@@ -546,8 +546,8 @@ impl Git {
             let (mut out, mut err) = (String::new(), String::new());
             for line in process.lines().iter() {
                 match line {
-                    OutputLine::Out(text) => out.push_str(&text),
-                    OutputLine::Err(text) => err.push_str(&text),
+                    OutputLine::Out(bytes) => out.push_str(&String::from_utf8_lossy(&bytes)),
+                    OutputLine::Err(bytes) => err.push_str(&String::from_utf8_lossy(&bytes)),
                 }
             }
             Ok((status.success(), out, err))
