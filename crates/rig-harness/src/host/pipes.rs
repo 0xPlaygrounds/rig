@@ -264,8 +264,8 @@ const CHUNK: usize = 64 * 1024;
 
 /// Reads `read` on a thread of its own as lines of at most `limit` bytes
 /// ([`NdjsonFramer::with_limit`]): each line, [`TooLarge`] in the place of a
-/// longer one, whose rest is skipped, and the unterminated last line. At
-/// most [`READY_LINES`] wait to be taken; the thread waits for room before
+/// longer one, whose rest is skipped, and the unterminated last line. A
+/// few lines wait to be taken at most; the thread waits for room before
 /// it reads on. The channel closes at the end of the input, a read error,
 /// or once nobody takes the lines.
 pub fn read_lines(

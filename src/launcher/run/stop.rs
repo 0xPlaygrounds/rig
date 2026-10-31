@@ -35,7 +35,7 @@ impl Watch {
     /// Hears the ending signals until dropped; if one was heard by then,
     /// they stay heard, so the launcher's cleanup is not cut short.
     pub(super) fn start() -> Self {
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, target_family = "wasm")))]
         console::listen();
         Self {
             told: None,
@@ -74,7 +74,7 @@ impl Drop for Watch {
         if heard().is_none() {
             unix::restore(&self.replaced);
         }
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, target_family = "wasm")))]
         console::WAITING.store(false, Ordering::SeqCst);
     }
 }
@@ -156,7 +156,11 @@ mod unix {
             let mut unblocked: libc::sigset_t = std::mem::zeroed();
             libc::sigemptyset(&raw mut unblocked);
             libc::sigaddset(&raw mut unblocked, signal);
-            libc::pthread_sigmask(libc::SIG_UNBLOCK, &raw const unblocked, std::ptr::null_mut());
+            libc::pthread_sigmask(
+                libc::SIG_UNBLOCK,
+                &raw const unblocked,
+                std::ptr::null_mut(),
+            );
             libc::raise(signal);
         }
     }
@@ -165,7 +169,7 @@ mod unix {
 /// Ctrl+C reaches every process of the console, the agent too: while the
 /// launcher waits for the agent it notes Ctrl+C and waits on; otherwise it
 /// ends as Ctrl+C ends it.
-#[cfg(not(unix))]
+#[cfg(not(any(unix, target_family = "wasm")))]
 mod console {
     use std::sync::atomic::{AtomicBool, Ordering};
 

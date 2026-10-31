@@ -146,7 +146,7 @@ impl Running {
     /// the entity as a [`Done<T>`], in order, and wakes the loop; once the
     /// last one is in, `Running` is removed. Several items may come in one
     /// frame, so a reader observes `Insert<Done<T>>`, which sees each. At
-    /// most [`STREAM_ITEMS`] wait; the task waits for room before reading
+    /// most 256 wait; the task waits for room before reading
     /// the next.
     pub fn stream<T: Send + Sync + 'static>(
         pool: &TaskPool,
