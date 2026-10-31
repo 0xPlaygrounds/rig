@@ -199,7 +199,9 @@ fn a_picked_path_with_a_space_is_quoted() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// A dropped image whose path has a space becomes a quoted reference.
+/// A dropped image whose path has a space becomes a quoted reference: a
+/// quoted drop is taken as it is, an escaped one unescaped, even when a
+/// file is named with the backslash too.
 #[test]
 fn a_dropped_image_with_a_space_is_typed_quoted() {
     use crate::KeyInput;
@@ -209,16 +211,21 @@ fn a_dropped_image_with_a_space_is_typed_quoted() {
     let root = scratch("drop-space");
     let image = root.join("shot 1.png");
     std::fs::write(&image, b"\x89PNG\r\n\x1a\n").ok();
+    let shown = image.display().to_string();
+    let mut drops = vec![(format!("'{shown}'"), shown.clone())];
+    if cfg!(unix) {
+        let escaped = shown.replace(' ', "\\ ");
+        std::fs::write(&escaped, b"\x89PNG\r\n\x1a\n").ok();
+        drops.push((escaped.clone(), shown.clone()));
+        drops.push((format!("'{escaped}'"), escaped));
+    }
     let (mut app, _) = view_app();
-    for pasted in [
-        format!("'{}'", image.display()),
-        image.display().to_string().replace(' ', "\\ "),
-    ] {
+    for (pasted, path) in drops {
         press(&mut app, "ctrl+c");
         type_text(&mut app, "see");
         push(&mut app, KeyInput::Event(Event::Paste(pasted)));
         app.update();
-        assert_eq!(typed_text(&app), format!("see @\"{}\" ", image.display()));
+        assert_eq!(typed_text(&app), format!("see @\"{path}\" "));
     }
     std::fs::remove_dir_all(&root).ok();
 }

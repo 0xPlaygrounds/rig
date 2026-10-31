@@ -125,20 +125,23 @@ pub(crate) fn type_path(editor: &mut Editor, path: &Path) {
 }
 
 /// The path a paste holds when it is one image file, as a terminal pastes
-/// a dropped file: quoted, with escaped spaces, or as a `file://` URL.
+/// a dropped file: quoted (taken as it is), with its spaces escaped
+/// (unescaped, except on Windows, where `\` separates directories), or as
+/// a `file://` URL.
 pub(crate) fn dropped_image(text: &str) -> Option<PathBuf> {
     let text = text.trim();
-    let text = text
+    let quoted = text
         .strip_prefix('\'')
         .and_then(|text| text.strip_suffix('\''))
         .or_else(|| {
             text.strip_prefix('"')
                 .and_then(|text| text.strip_suffix('"'))
-        })
-        .unwrap_or(text);
-    let text = text.strip_prefix("file://").unwrap_or(text);
-    [text.to_owned(), text.replace("\\ ", " ")]
-        .into_iter()
-        .map(PathBuf::from)
-        .find(|path| rig_tools::attach::is_image_path(path) && path.is_file())
+        });
+    let path = match quoted {
+        Some(quoted) => quoted.to_owned(),
+        None if cfg!(windows) => text.to_owned(),
+        None => text.replace("\\ ", " "),
+    };
+    let path = PathBuf::from(path.strip_prefix("file://").unwrap_or(&path));
+    (rig_tools::attach::is_image_path(&path) && path.is_file()).then_some(path)
 }

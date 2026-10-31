@@ -167,9 +167,8 @@ struct Mention {
 }
 
 /// The mentions in `text` ([`Reference::parse`]), each path and range
-/// once, in order. A
-/// quoted path is taken as written, its lines following the closing quote
-/// (`@"my notes.md":10-40`).
+/// once, in order. A quoted path is taken as written, its lines following
+/// the closing quote (`@"my notes.md":10-40`).
 fn mentions(text: &str) -> Vec<Mention> {
     let mut found: Vec<Mention> = Vec::new();
     for reference in Reference::parse(text) {
@@ -205,7 +204,7 @@ fn mentions(text: &str) -> Vec<Mention> {
                 Mention { label, path, lines }
             }
         };
-        let seen = |seen: &Mention| seen.path == mention.path && seen.lines == mention.lines;
+        let seen = |other: &Mention| other.path == mention.path && other.lines == mention.lines;
         if !found.iter().any(seen) {
             found.push(mention);
         }
@@ -232,8 +231,8 @@ struct Found {
 }
 
 /// Reads what the mentions in `text` name, resolved from `base` in
-/// `workspace`, which may route a path to another machine: off the main
-/// thread.
+/// `workspace`. Reads `workspace`: on the main thread only for a local
+/// one.
 fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: usize) -> Found {
     let mut found = Found::default();
     for mention in mentions(text) {
@@ -481,7 +480,11 @@ fn attach(
         adding.add(message, effect, agent, &mut typed, images);
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let max_bytes = adding.config.max_bytes;
-        // Off the main thread: any path may be on another machine.
+        if workspace.0.host().is_none() {
+            let found = read_mentions(typed.text(), &base, &*workspace.0, max_bytes);
+            adding.add(message, effect, agent, &mut typed, found);
+            continue;
+        }
         let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
         let read = blocking(move || Ok(read_mentions(&text, &base, &*workspace, max_bytes)));
         let pool = IoTaskPool::get_or_init(TaskPool::default);

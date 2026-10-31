@@ -580,3 +580,36 @@ fn a_resumed_session_draws_its_tool_rows_as_the_live_one_did() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A message sent while one before it still waits for its files waits
+/// too, so the model reads them in the order they were sent.
+#[test]
+fn a_message_does_not_pass_one_whose_files_are_read() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = "FIRST_MESSAGE @notes.txt";
+    app.world_mut()
+        .spawn((Incoming::new(first, DeliveryMode::Steer), ForAgent(agent)));
+    app.update();
+    let second = app
+        .world_mut()
+        .spawn((
+            Incoming::new("SECOND_MESSAGE", DeliveryMode::Steer),
+            ForAgent(agent),
+        ))
+        .id();
+    app.update();
+    let held = app.world().get::<Holds>(second).is_some();
+    assert!(held, "the second message waits for the first");
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SECOND_MESSAGE")
+    });
+    let said = said(app.world(), agent);
+    let at = |text: &str| said.find(text);
+    assert!(
+        at("FIRST_MESSAGE").is_some() && at("FIRST_MESSAGE") < at("SECOND_MESSAGE"),
+        "{said}"
+    );
+}

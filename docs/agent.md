@@ -93,8 +93,9 @@ history from anywhere on the first line. The usual emacs keys edit
 empty input quits. A leading `/` completes command names and `@` completes
 the project's paths (skipping what `.gitignore` leaves out); Tab or Enter
 takes the selected one. A path a space or trailing punctuation would cut is
-put in quoted, `@"my notes.md"`, the form to type for one by hand. A command that is unknown or refused comes back in
-the input with the reason, and Enter then sends it to the model as it is.
+put in quoted, `@"my notes.md"`, the form to type for one by hand. A
+command that is unknown or refused comes back in the input with the
+reason, and Enter then sends it to the model as it is.
 `/help` lists the commands.
 
 While an earlier prompt is shown, the input's top row says "An earlier

@@ -203,14 +203,14 @@ pub struct Attached {
 
 /// The files `text` names ([`Reference::parse`]), each once, resolved from
 /// `base` in `workspace` as a file tool resolves a path
-/// ([`resolve`](Workspace::resolve): `bench:~/x` is on the host `bench`
+/// (`Workspace::resolve`: `bench:~/x` is on the host `bench`
 /// of a [`Hosts`](crate::remote::Hosts), `~/x` in the workspace's home)
 /// and read from it. Every reference that names a file there is attached,
 /// whatever its shape (`@notes.md`, `@src/lib.rs`, `@Makefile`, `@.env`);
 /// one with no file there, or whose path could not be looked at, is
-/// warned about when it is quoted or [looks like a
-/// path](is_path_reference), and otherwise stays text, such as `@alice`
-/// or `@alice.smith`.
+/// warned about when it [looks like a path](is_path_reference), and
+/// otherwise stays text, such as `@alice`, `@alice.smith` or a pasted
+/// C# string, `@"hello world"`.
 ///
 /// Reads `workspace`, which may route a path to another machine: call it
 /// off any thread that must not wait.
@@ -222,7 +222,7 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
         let label = workspace.join(Path::new(""), Path::new(named));
         let label = label.display().to_string();
         let path = workspace.resolve(Some(base), named);
-        let warn = reference.quoted || is_path_reference(named);
+        let warn = is_path_reference(named);
         match workspace.stat(&path) {
             Ok(Stat::File { .. }) => {}
             Ok(Stat::Missing) if warn => {
@@ -270,9 +270,9 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
 /// Whether `reference`, an `@` token without its `@`, looks like a path by
 /// its shape alone: it holds a `/`, or ends in a dot and one to four
 /// letters or digits. [`attachments`] warns about such a token when no
-/// file is there; any other unquoted token (a mention, an address, or a
-/// file with no extension) is attached only when its file is there, and
-/// is otherwise left as text.
+/// file is there; any other token (a mention, an address, or a file with
+/// no extension) is attached only when its file is there, and is
+/// otherwise left as text.
 ///
 /// ```
 /// use rig_tools::attach::is_path_reference;

@@ -290,80 +290,106 @@ impl Plugin for AttachPlugin {
             .init_resource::<ProjectWorkspace>()
             .configure_sets(AgentPass, AttachSystems.in_set(PrepareSystems::Compose))
             .add_systems(AgentPass, attach.in_set(AttachSystems))
-            .add_observer(attach_read)
+            .add_observer(release_read)
             .add_observer(stop_reading);
     }
 }
 
-/// The hold ([`HoldOf`]) on a message while the files it names are read.
+/// The hold ([`HoldOf`]) on a user's message to this agent while the
+/// files it names, or those of a message sent before it, are read.
 #[derive(Component)]
-struct Reading;
+struct Reading(Entity);
 
 /// The files a message names, read off the main thread, on the hold that
-/// keeps the message ([`HoldOf`]) until they are attached.
+/// keeps the message ([`HoldOf`]) until they are attached; taken then.
 #[derive(Component)]
-struct ReadFiles(Result<Attached, ToolExecutionError>);
+struct ReadFiles(Option<Result<Attached, ToolExecutionError>>);
 
 impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
     fn from(read: Result<Attached, ToolExecutionError>) -> Self {
-        Self(read)
+        Self(Some(read))
     }
 }
 
 /// Starts reading the files each user's message names as it comes in, off
 /// the main thread, under a hold on the message: any path may be on
-/// another machine. A message a restart put back in the inbox
-/// ([`Started`]) has them already.
+/// another machine. A message that names none is held too while one sent
+/// before it to the same agent is, so it does not pass it. A message a
+/// restart put back in the inbox ([`Started`]) has them already.
 fn attach(
-    typed: Query<(Entity, &Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
+    typed: Query<(Entity, &Effect, &Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
+    reading: Query<&Reading>,
     dirs: Query<&WorkDir>,
     workspace: Res<ProjectWorkspace>,
     root: Res<ProjectRoot>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    for (message, typed, &ForAgent(agent)) in &typed {
-        if typed.author.kind != AuthorKind::User
-            || typed.command().is_some()
-            || Reference::parse(typed.text()).next().is_none()
-        {
+    let mut waiting: Vec<Entity> = reading.iter().map(|&Reading(agent)| agent).collect();
+    let mut typed: Vec<_> = (typed.iter())
+        .filter(|(_, _, typed, _)| typed.author.kind == AuthorKind::User)
+        .filter(|(_, _, typed, _)| typed.command().is_none())
+        .collect();
+    typed.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+    for (message, _, typed, &ForAgent(agent)) in typed {
+        let hold = (Name::new("attachments"), Reading(agent), HoldOf(message));
+        if Reference::parse(typed.text()).next().is_none() {
+            if waiting.contains(&agent) {
+                commands.spawn((hold, ReadFiles::from(Ok(Attached::default()))));
+            }
             continue;
         }
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
         let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
         let pool = IoTaskPool::get_or_init(TaskPool::default);
-        commands.spawn((
-            Name::new("attachments"),
-            Reading,
-            HoldOf(message),
-            Running::spawn_into::<ReadFiles, _>(pool, &wake, read),
-        ));
+        let running = Running::spawn_into::<ReadFiles, _>(pool, &wake, read);
+        commands.spawn((hold, running));
+        waiting.push(agent);
     }
 }
 
-/// Attaches the files read off the main thread to the message they were
-/// read for, with a notice about each that could not be and a warning
-/// about each that is not there, and releases it.
-fn attach_read(
-    read: On<Insert<ReadFiles>>,
-    holds: Query<(&HoldOf, &ReadFiles)>,
-    mut messages: Query<(&mut Incoming, &ForAgent)>,
+/// Attaches the files read off the main thread to each message, with a
+/// notice about each that could not be and a warning about each that is
+/// not there, and releases it, in the order the messages to an agent were
+/// sent: one waits until those before it are read.
+fn release_read(
+    _: On<Insert<ReadFiles>>,
+    mut holds: Query<(Entity, &Reading, &HoldOf, Option<&mut ReadFiles>)>,
+    mut messages: Query<(&Effect, &mut Incoming)>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let Ok((&HoldOf(message), ReadFiles(attached))) = holds.get(read.entity) else {
-        return;
-    };
-    if let Ok((mut typed, &ForAgent(agent))) = messages.get_mut(message) {
-        match attached {
-            Ok(attached) => add_attached(&mut typed, agent, attached.clone(), &mut notices),
-            Err(failure) => {
-                notices.write(Notice::warn(agent, format!("No files attached: {failure}")));
+    let mut holds: Vec<_> = (holds.iter_mut())
+        .map(|(hold, &Reading(agent), &HoldOf(message), read)| {
+            let sent = messages.get(message).ok().map(|(effect, _)| effect.id());
+            (agent, sent, hold, message, read)
+        })
+        .collect();
+    holds.sort_unstable_by_key(|&(agent, sent, ..)| (agent, sent));
+    let mut blocked = None;
+    for (agent, _, hold, message, read) in holds {
+        if blocked == Some(agent) {
+            continue;
+        }
+        let Some(mut read) = read else {
+            blocked = Some(agent);
+            continue;
+        };
+        // Taken: this hold is released already.
+        let Some(read) = read.0.take() else {
+            continue;
+        };
+        if let Ok((_, mut typed)) = messages.get_mut(message) {
+            match read {
+                Ok(attached) => add_attached(&mut typed, agent, attached, &mut notices),
+                Err(failure) => {
+                    notices.write(Notice::warn(agent, format!("No files attached: {failure}")));
+                }
             }
         }
+        commands.entity(hold).despawn();
     }
-    commands.entity(read.entity).despawn();
 }
 
 /// Stops reading the files of the user's messages to the stopped agent and
