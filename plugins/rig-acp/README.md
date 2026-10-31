@@ -80,7 +80,7 @@ to use a new one.
   editor does not need (rig refuses them there; the editor closes the
   session instead of `/quit`), and `/fork` and `/agents`, which switch the
   session to another agent; typed anyway, they work, and the editor
-  follows that agent. With rig-acp on, `/mcp` is in every rig run,
+  follows the top-level agent of the one shown. With rig-acp on, `/mcp` is in every rig run,
   the terminal view's too, as rig-acp brings rig-mcp-client's core: it lists
   an editor's servers, and the files' ones only with `McpPlugin` on.
 - **MCP servers:** those the editor names for a session (stdio, and

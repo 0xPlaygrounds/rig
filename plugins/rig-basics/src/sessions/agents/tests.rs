@@ -230,6 +230,15 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_continues_it() {
         .flatten();
     let id = |agent: Option<Entity>| agent.and_then(|agent| again.world().get::<AgentId>(agent));
     assert_eq!(id(main), fork_id.as_ref());
+    drop(again);
+
+    // A program without the app reads the same main agent.
+    let saved = rig_harness::rig_memory::Session::read(&store).ok();
+    let main = saved.as_ref().and_then(|saved| saved.main_agent());
+    assert_eq!(
+        main.map(|agent| agent.id.as_str()),
+        fork_id.as_ref().map(|id| id.0.as_str())
+    );
 }
 
 /// A Responses reply streamed with `items` as its output.

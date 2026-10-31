@@ -408,6 +408,7 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
 
 /// A fork's meter starts afresh: no calls of its own, and its context
 /// unknown until its first reply, in the status line and in `/usage`.
+#[cfg(feature = "tui")]
 #[test]
 fn a_fork_starts_with_no_calls_and_an_unknown_context() {
     // Every agent has a status line, as in the terminal view.
