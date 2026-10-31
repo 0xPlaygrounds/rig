@@ -193,3 +193,41 @@ fn an_interrupt_ends_a_held_tool_call_of_a_program_and_its_hold() {
         Some(Disposition::Cancelled)
     );
 }
+
+#[test]
+fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
+    // As the drive test's intermediary: allowed `run_steel` and `look` only.
+    let access = ToolAccess::All.narrow([RUN_STEEL, "look"]);
+    app.world_mut().entity_mut(agent).insert(access);
+    let run = |app: &mut App, id: &str, tools: &str| {
+        let code = format!(r#"(spawn-agent "leaf" (hash 'tools (list {tools})))"#);
+        let call = start_call(
+            app.world_mut(),
+            agent,
+            (RUN_STEEL, id),
+            json!({ "code": code }),
+        );
+        let call = call.unwrap_or(Entity::PLACEHOLDER);
+        run_until(app, &wakes, |world| world.get::<Outcome>(call).is_some());
+        let result = app.world().get::<Outcome>(call).map(Outcome::tool_result);
+        result
+            .map(|result| result.output().render())
+            .unwrap_or_default()
+    };
+    let refused = run(&mut app, "s1", r#""poke""#);
+    assert!(
+        refused.contains("`poke` is not one of your tools (look, run_steel)"),
+        "{refused}"
+    );
+    let granted = run(&mut app, "s2", r#""look""#);
+    assert!(!granted.contains("not one of your tools"), "{granted}");
+    let world = app.world_mut();
+    let leaves: Vec<Option<Vec<String>>> = world
+        .query_filtered::<&ToolAccess, With<SpawnedBy>>()
+        .iter(world)
+        .map(|access| access.names().map(<[String]>::to_vec))
+        .collect();
+    assert_eq!(leaves, [Some(vec!["look".to_owned()])]);
+}

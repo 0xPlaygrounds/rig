@@ -5,7 +5,7 @@ use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
 use rig_core::tool::feedback::not_finished;
 
-use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
+use super::tools::{MESSAGE, PEER_ROLE, SUBAGENT_ROLE, WAIT};
 use super::{
     AwaitedBy, Awaits, Environment, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request,
     Subtask, answered,
@@ -18,7 +18,12 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
         .add_observer(brief_subagent)
-        .add_observer(brief_peer)
+        .add_observer(|added: On<Add<Peers>>, mut commands: Commands| {
+            brief_peer(added.entity, &mut commands);
+        })
+        .add_observer(|set: On<Insert<ToolAccess>>, mut commands: Commands| {
+            brief_peer(set.entity, &mut commands);
+        })
         .add_observer(brief_environment)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
@@ -209,10 +214,38 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
 }
 
-/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
-fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
-    commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+/// Tells `agent`, a subagent with [`Peers`], about them, as
+/// [`brief_subagent`] does, while it has `message` and `wait` to reach them:
+/// again whenever its access is set, as when a restore inserts the saved one
+/// after its other components, or the kernel keeps it within its parent's.
+/// Decided as the commands apply, so two calls in one flush give one role.
+fn brief_peer(agent: Entity, commands: &mut Commands) {
+    commands.queue(move |world: &mut World| {
+        let reaches = world
+            .get::<ToolAccess>(agent)
+            .filter(|_| world.get::<Peers>(agent).is_some())
+            .is_some_and(|access| access.allows(MESSAGE) && access.allows(WAIT));
+        let mut roles = world.query::<(Entity, &Name, &SectionOf)>();
+        let shown: Vec<Entity> = (roles.iter(world))
+            .filter(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG)
+            .map(|(section, ..)| section)
+            .collect();
+        match (reaches, shown.is_empty()) {
+            (true, true) => {
+                world.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
+            }
+            (false, false) => {
+                for section in shown {
+                    world.despawn(section);
+                }
+            }
+            _ => {}
+        }
+    });
 }
+
+/// The tag of the peer role's prompt section.
+const PEER_TAG: &str = "peer_role";
 
 /// Tells a subagent its [`Environment`] in a prompt section of its own,
 /// after the app's facts about the machine.

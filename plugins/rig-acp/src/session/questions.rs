@@ -1,12 +1,12 @@
 //! Questions to the client. An approval asks for permission to run the call
 //! it holds; another question is a form, when the client takes forms; else
-//! it is closed with a reason the model reads, so the turn goes on. A
-//! picker is closed with a notice: the client has a command line.
+//! it is closed with a reason the model reads, so the turn goes on. The
+//! harness refuses a picker, which this front does not show.
 
 use agent_client_protocol::schema::v1 as acp;
 use bevy_ecs::system::SystemParam;
 use rig_basics::approval::{ALLOW, DENY, NeedsApproval};
-use rig_harness::pick::{Pick, Picker};
+use rig_harness::pick::Pick;
 use rig_harness::prelude::*;
 use rig_harness::services::WorkDir;
 
@@ -20,9 +20,6 @@ mod tests;
 /// Why a question the client cannot show is closed, for the model.
 const UNSHOWN: &str = "The client cannot show this question. Go on without an answer: make \
                        reasonable assumptions and say what you assumed.";
-
-/// How many of a picker's commands a note lists.
-const PICKS: usize = 10;
 
 /// The form field of a question's choices, and of its typed answer.
 const CHOICE: &str = "choice";
@@ -201,52 +198,6 @@ pub(super) fn answer_with(commands: &mut Commands, ask: Entity, answer: Option<A
             }
         }
     });
-}
-
-/// Closes a picker, which the client cannot show, saying how to do it
-/// instead.
-pub(super) fn picker(
-    added: On<Add<Picker>>,
-    pickers: Query<&Picker>,
-    mut session: ResMut<Session>,
-    mut commands: Commands,
-) {
-    if let Ok(picker) = pickers.get(added.entity) {
-        session.note(unshown(picker), NoticeLevel::Warn);
-        commands.trigger(Pick::person(added.entity, None));
-    }
-}
-
-/// What to do instead of picking from `picker` here: type a secret, such as
-/// an API key, in rig in a terminal, which hides it, and open a new session,
-/// as a running one reads no key saved elsewhere; else type one of the
-/// commands of its items.
-fn unshown(picker: &Picker) -> String {
-    let title = &picker.title;
-    match (picker.secret, picker.items.as_slice()) {
-        (true, _) => format!(
-            "{title}: this client would show it as you type. Type it in `rig` in a terminal, \
-             with this agent's RIG_HOME, then open a new session here: this one does not read \
-             what is saved meanwhile."
-        ),
-        (false, []) => {
-            format!(
-                "{title}: this client cannot show this question; answer it in rig in a terminal."
-            )
-        }
-        (false, items) => {
-            let shown: Vec<_> = items
-                .iter()
-                .take(PICKS)
-                .map(|item| format!("/{}", item.command))
-                .collect();
-            let more = if items.len() > PICKS { ", …" } else { "" };
-            format!(
-                "{title}: this client cannot show a list to pick from; type one of: {}{more}",
-                shown.join(", ")
-            )
-        }
-    }
 }
 
 /// Stops asking the client about a question that ended before it answered,

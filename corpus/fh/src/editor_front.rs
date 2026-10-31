@@ -48,7 +48,8 @@ pub struct EditorFrontPlugin;
 
 impl Plugin for EditorFrontPlugin {
     fn build(&self, app: &mut App) {
-        app.add_front(Front::new(FRONT).on_flag(FRONT, "Serve an editor extension over stdio"))
+        let front = Front::new(FRONT).on_flag(FRONT, "Serve an editor extension over stdio");
+        app.add_front(front.shows_pickers())
             .register_type::<AutoAccept>()
             .init_resource::<AutoAccept>()
             .init_resource::<Buffers>()

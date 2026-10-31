@@ -44,6 +44,7 @@ fn typed_commands_are_expanded_in_parallel_with_a_timeout() {
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
+    collect::<Recalled>(&mut app);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -93,15 +94,18 @@ fn typed_commands_are_expanded_in_parallel_with_a_timeout() {
     let sent = last_user_text(&model).unwrap_or_default();
     assert!(sent.contains("!{printf 3}"), "{sent}");
 
-    // A slash command runs as typed, nothing expanded and nothing sent.
+    // A slash command runs as typed, nothing expanded and nothing sent:
+    // `/help`, which takes no text, refuses the text as it came.
     app.world_mut()
         .trigger(Deliver::new(agent, "/help !{x}", DeliveryMode::Steer));
     for _ in 0..3 {
         app.update();
     }
-    let notices = &app.world().resource::<Collected<Notice>>().0;
-    let help = notices.iter().any(|notice| notice.text.contains("/help"));
-    assert!(help, "{notices:?}");
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let help = recalled
+        .iter()
+        .any(|recalled| recalled.text == "/help !{x}");
+    assert!(help, "{recalled:?}");
     let mut jobs = app.world_mut().query::<&Job>();
     assert_eq!(jobs.iter(app.world()).count(), 0);
     assert_eq!(model.requests().len(), 2);

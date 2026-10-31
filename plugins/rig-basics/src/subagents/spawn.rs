@@ -32,8 +32,9 @@ pub const SUBAGENT: &str = "subagent";
 /// Each setting left `None` is the parent's: the model (with its
 /// connection and reasoning setting), the system prompt, the
 /// [`Environment`], and the tools, minus `task` once
-/// [`SubagentPolicy::max_depth`] is reached. A task's subagent always has
-/// `message` and `wait`, to reach the agents it works with.
+/// [`SubagentPolicy::max_depth`] is reached. A task's subagent has
+/// `message` and `wait`, to reach the agents it works with, whenever its
+/// parent has them: never a tool its parent lacks.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_add = record_request)]
 #[require(Name = Name::new(SUBAGENT))]
@@ -263,15 +264,16 @@ struct Parent {
 
 /// The new agent's model, reasoning setting and tools for `request`,
 /// checked against its parent's model and reasoning setting, the new
-/// agent's depth and the parent's tools by name.
+/// agent's depth and the parent's `access` to the `registered` tools: the
+/// new agent never gets a tool its parent lacks.
 fn inherit_settings(
     request: &SpawnSubagent,
     parent_model: Option<&ModelChoice>,
     parent_reasoning: ReasoningSetting,
     depth: usize,
-    tools: &[&str],
+    (access, registered): (&ToolAccess, &[&str]),
     (models, policy): (&Models, &SubagentPolicy),
-) -> Result<(ModelChoice, ReasoningSetting, Vec<String>), String> {
+) -> Result<(ModelChoice, ReasoningSetting, ToolAccess), String> {
     let briefless = request.role == Role::Task && request.brief.trim().is_empty();
     if request.title.trim().is_empty() || briefless {
         return Err(
@@ -288,37 +290,35 @@ fn inherit_settings(
     let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
     let may_delegate = depth < policy.max_depth;
     let mut tools: Vec<String> = match &request.tools {
-        None => tools
+        None => registered
             .iter()
-            .filter(|name| may_delegate || **name != TASK)
+            .filter(|name| access.allows(name) && (may_delegate || **name != TASK))
             .map(|name| (*name).to_owned())
             .collect(),
         Some(asked) => {
-            for name in asked {
-                if !tools.contains(&name.as_str()) {
-                    return Err(format!(
-                        "`{name}` is not one of your tools ({})",
-                        tools.join(", ")
-                    ));
-                }
-                if !may_delegate && name == TASK {
-                    return Err(format!(
-                        "A subagent at depth {depth} cannot start subagents of its own; leave \
-                         `{name}` out"
-                    ));
-                }
+            if let Some(name) = asked.iter().find(|name| !may_delegate && *name == TASK) {
+                return Err(format!(
+                    "A subagent at depth {depth} cannot start subagents of its own; leave \
+                     `{name}` out"
+                ));
             }
             asked.clone()
         }
     };
+    // A task reaches its parent with these, when the parent has them: left
+    // out rather than refused by the grant below.
     let reaching = [MESSAGE, WAIT]
         .into_iter()
-        .filter(|_| request.role == Role::Task);
+        .filter(|tool| request.role == Role::Task && access.allows(tool))
+        .filter(|tool| registered.contains(tool));
     for tool in reaching {
         if !tools.iter().any(|name| name == tool) {
             tools.push(tool.to_owned());
         }
     }
+    let tools = access
+        .grant(&tools, registered.iter().copied())
+        .map_err(|refused| refused.to_string())?;
     Ok((model, effort, tools))
 }
 
@@ -355,14 +355,13 @@ fn spawn_requested(
         return;
     };
     let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
-    let names = tools.iter().map(|def| def.0.name.as_str());
-    let mine: Vec<&str> = names.filter(|name| from.access.allows(name)).collect();
+    let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
     let inherited = inherit_settings(
         request,
         from.model,
         *from.reasoning,
         depth,
-        &mine,
+        (from.access, &registered),
         (&models, &policy),
     );
     let (choice, effort, allowed) = match inherited {
@@ -394,7 +393,7 @@ fn spawn_requested(
         SpawnedBy(parent),
         choice,
         effort,
-        ToolAccess::Only(allowed),
+        allowed,
         prompt,
         EffectParent(effect.id()),
     ));

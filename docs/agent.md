@@ -210,19 +210,22 @@ keep. The summarized messages stay in the transcript, under a line that shows
 the summary; a resumed session starts from the messages the summary kept.
 
 A model call that fails on a rate limit, an overloaded provider or a dropped
-connection is retried up to four times, waiting as long as the provider's
-`Retry-After` asks (or 2, 4, 8, 16 seconds). If it still fails, your message
-goes back into the input: press Enter to send it again, or switch models
-first.
+connection is retried up to four times. It waits as long as the provider's
+`Retry-After` asks, up to 60 seconds; a longer requested wait ends retries.
+Without a retry delay, it waits 2, 4, 8, then 16 seconds, each shortened at random
+by up to a quarter. If it still fails, your message goes back into the input:
+press Enter to send it again, or switch models first.
 
 ## Tools
 
 The default tools are `read`, `edit`, `write` and `shell`, each its own
-plugin. A `shell` call runs until its command ends, unless the model sets
+plugin. The `rig-tools` library also provides `search`, `list`, `delete` and
+`move`; the stock agent leaves those operations to `shell`.
+A `shell` call runs until its command ends, unless the model sets
 `timeout_secs` or you interrupt it; either stops the command, on a remote
 host too. The whole output
-of a `shell` call that was cut is kept in `RIG_HOME/spill/`, and the model
-reads it by the path the cut output names.
+of a `shell` call that was cut is kept in `RIG_HOME/sessions/<id>/spill/`,
+and the model reads it by the path the cut output names.
 
 With `rig_basics::checkpoint::CheckpointPlugin` enabled (it is listed
 disabled by default), every `shell` call, and any other call that may write
@@ -234,7 +237,7 @@ repository's `.git`. `[checkpoints] enabled = false` in
 With `[remote.hosts]` in `RIG_HOME/settings.toml`, such as
 `bench = ["koh", "exec", "bench", "--sh"]` or `box = ["ssh", "dev@box"]`, a
 path written `HOST:PATH` (`bench:~/app/src/lib.rs`) is that host's for every
-tool: `read`, `edit`, `write` and `search` act on the file there, and `shell`
+default coding tool: `read`, `edit` and `write` act on the file there, and `shell`
 with `cwd: "box:~/app"` runs the command there, through the host's command,
 while other paths stay on this machine
 ([rig-basics](../plugins/rig-basics/README.md)).
@@ -275,7 +278,11 @@ calls name the call that gave it its work as their parent.
 
 `rig -p "fix the failing test"` answers one prompt and exits: the answer goes
 to stdout, failures to stderr, and the exit code is 0 when the turn ended with
-an answer, 2 for a refused slash command. Text piped in follows the prompt
+an answer, 2 for a refused slash command. A command that would open a list
+to pick from, such as `/model`, `/effort`, `/resume`, `/login` or `/fork at`,
+is refused there with the commands to type instead (`/model
+chatgpt/gpt-6.1-sol`), as is text after a command that takes none (`/new
+hello`). Text piped in follows the prompt
 (`git diff | rig -p "review this"`), and piped in without `-p` it is the
 prompt: `rig` runs the terminal view only on an interactive terminal.
 
@@ -294,8 +301,8 @@ line that carries the final answer, and `rig --json` stays up, one request
 per line on stdin and one event per line on stdout, until stdin closes.
 `rig help-agents` is the whole protocol, with a Python driver. The optional
 `rig_basics::helpers::HelpersPlugin` gives the model the `helper` tool, which
-hands tasks to such one-shot rig children (one, up to eight side by side, or a
-chain) and returns their final answers.
+hands tasks to such one-shot rig children and returns their final answers.
+A call accepts up to eight tasks, run four at a time or in order as a chain.
 
 ## Reload and builds
 
@@ -386,7 +393,7 @@ The optional [`rig-mcp-client`](../plugins/rig-mcp-client) plugin offers the
 tools of MCP servers, stdio or streamable HTTP, named in `$RIG_HOME/mcp.json`
 and, once you approve each, in the project's `.rig/mcp.json`: `rig plugin
 enable rig_mcp_client::McpPlugin`. Its README covers the file format, approval,
-`/mcp` and headless `--tools`.
+`/mcp` and `--tools`, which can name an MCP server's tools in every front.
 
 The optional [`rig-acp`](../plugins/rig-acp) plugin adds `rig acp`, which
 serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
@@ -426,7 +433,8 @@ processes can share one:
 | Path | What it holds |
 | --- | --- |
 | `plugins.toml` | The plugin list. |
-| `settings.toml` | Settings, such as `[shell]`, `[checkpoints]`, `[remote.hosts]` and `[traffic]`. |
+| `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
+| `settings.toml` | Settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |
@@ -435,8 +443,8 @@ processes can share one:
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
 | `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
-| `spill/` | The whole output of a `shell` call that was cut. |
-| `agent.log` | The agent's log. |
+| `sessions/<id>/spill/` | The whole output of a `shell` call that was cut. |
+| `sessions/<id>/agent.log` | The session's agent log. |
 
 Set `RIG_HOME` to put everything elsewhere, for example under a cache
 directory.

@@ -10,6 +10,11 @@
 //! order. A [`Chosen`] holds the items picked and the text typed, either
 //! or both. A front answers an open [`Ask`] the same way: a `Pick` on it
 //! decides the answer, a question's choices with the note typed on them.
+//! In a run whose front shows no pickers
+//! ([`Front::shows_pickers`](crate::host::cli::Front::shows_pickers)), such
+//! as `-p`, the harness closes each picker a command opens at once, with an
+//! error notice that says what to type instead, which refuses the command,
+//! unless a plugin shows pickers itself ([`ShowsPickers`]).
 //!
 //! ```no_run
 //! use rig_harness::pick::{Chosen, Picked, Picker};
@@ -38,10 +43,12 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::conversation::{Conversation, MessageId};
 use rig_core::effect::Decider;
+use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
-use crate::commands::RunCommand;
+use crate::commands::{CommandRuns, RunCommand};
+use crate::host::cli::Cli;
 use crate::main_agent::{CurrentAgentPlugin, ShownAgent};
 
 /// One choice of a picker: what it shows, and the command line, without
@@ -278,8 +285,66 @@ impl Plugin for PickPlugin {
         if !app.is_plugin_added::<CurrentAgentPlugin>() {
             app.add_plugins(CurrentAgentPlugin);
         }
-        app.add_observer(pick);
+        app.add_observer(pick).add_observer(refuse_unshown);
     }
+}
+
+/// How many of a picker's commands a refusal lists.
+const PICKS: usize = 10;
+
+/// While any entity has it, something besides the run's front shows and
+/// answers pickers, such as a client attached to the session: no picker is
+/// refused.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ShowsPickers;
+
+/// Closes a picker a command opened that nothing shows, saying what to do
+/// instead in an error notice about its agent, which refuses the command.
+/// A picker a plugin opens by itself is left to it.
+fn refuse_unshown(
+    added: On<Add<Picker>>,
+    pickers: Query<&Picker>,
+    (cli, command): (Option<Res<Cli>>, Option<Res<CommandRuns>>),
+    shows: Query<(), With<ShowsPickers>>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let front = cli.and_then(|cli| cli.pickers()).unwrap_or(true);
+    let shown = front || !shows.is_empty() || command.is_none();
+    if let (false, Ok(picker)) = (shown, pickers.get(added.entity)) {
+        notices.write(Notice::error(picker.agent, unshown(picker)));
+        commands.trigger(Pick::person(added.entity, None));
+    }
+}
+
+/// What to do instead of picking from `picker` where no front shows it:
+/// type a secret, such as an API key, in rig at a terminal, which hides it;
+/// else type one of the commands of its items, or the command with what
+/// to pick.
+fn unshown(picker: &Picker) -> String {
+    let title = &picker.title;
+    let commands: Vec<String> = (picker.items.iter())
+        .filter(|item| !item.command.is_empty())
+        .map(|item| format!("/{}", item.command))
+        .collect();
+    if picker.secret {
+        return format!(
+            "{title}: rig cannot hide what you type here. Type it in `rig` in a terminal, with \
+             this agent's RIG_HOME; a running session does not read what is saved meanwhile."
+        );
+    }
+    if commands.is_empty() {
+        return format!(
+            "{title}: rig cannot show a list to pick from here; give the command what to pick, \
+             or use `rig` in a terminal."
+        );
+    }
+    let shown = commands.get(..PICKS).unwrap_or(&commands);
+    let more = if commands.len() > PICKS { ", …" } else { "" };
+    format!(
+        "{title}: rig cannot show a list to pick from here; type one of: {}{more}",
+        shown.join(", ")
+    )
 }
 
 /// Runs the chosen items' commands, in list order, for the picker's agent,

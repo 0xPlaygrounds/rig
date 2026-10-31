@@ -95,7 +95,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in the repository-level `examples/` directory. Many provider-specific examples now also live as ignored live integration tests under the repository-level `tests/providers` directory, organized by provider. When running those provider-backed tests, prefer provider-specific targets such as `cargo test -p rig --test openai -- --ignored --test-threads=1` to avoid rate-limiting. More detailed walkthroughs are regularly published on our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
+You can find more examples in the repository-level `examples/` directory.
+Provider suites live under `crates/rig-cassette/tests/providers`, with live-only
+suites under `tests/providers`. Many provider-specific examples are ignored
+live integration tests in those suites. Run them with provider-specific targets
+such as `cargo test -p rig-cassette --features http,agent --test openai -- --ignored --test-threads=1`
+to avoid rate-limiting. More detailed walkthroughs are regularly published on
+our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
 
 ## Integrations
 Rig supports the following LLM providers out of the box:
@@ -105,6 +111,7 @@ Rig supports the following LLM providers out of the box:
 - ChatGPT and GitHub Copilot auth-backed clients
 - Cohere
 - DeepSeek
+- Doubleword
 - Gemini
 - Groq
 - Hugging Face
@@ -292,8 +299,7 @@ mapping, so authorization failures do not become recreation loops.
 context)`; `Model::call` and `Model::stream` record nothing. Request builders
 and request literals contain only provider request data.
 
-Bus-backed `ModelHandle::call_observed` and `ModelHandle::stream_observed`
-take the same context. `ModelAdapter` forwards `Dispatch::adapter_context`;
+`ModelAdapter` forwards `Dispatch::adapter_context`;
 explicit caller context takes precedence over Recorder/Observe context for
 that invocation, including through handler layers. It is never serialized into
 provider data or effect records and is not inherited by child calls.

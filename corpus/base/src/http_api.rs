@@ -98,7 +98,11 @@ impl Plugin for HttpApiPlugin {
                     notices.write(Notice::info(None, text));
                     commands.insert_resource(api);
                     let pool = IoTaskPool::get_or_init(TaskPool::default);
-                    commands.spawn((listener, Running::stream(pool, &wake, requests)));
+                    commands.spawn((
+                        listener,
+                        ShowsPickers,
+                        Running::stream(pool, &wake, requests),
+                    ));
                     commands.spawn(Answerer::default());
                 },
             )

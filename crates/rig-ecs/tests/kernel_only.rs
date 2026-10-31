@@ -738,10 +738,9 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     assert!(plan.is_ok());
     let Ok(plan) = plan else { return };
     app.world_mut().spawn(ToolDef(Arc::new(plan)));
-    let only = ["add", "plan"].map(str::to_owned).to_vec();
     app.world_mut()
         .entity_mut(agent)
-        .insert(ToolAccess::Only(only));
+        .insert(ToolAccess::All.narrow(["add", "plan"]));
     let reason =
         |name: &str| format!("the model kept calling `{name}`, which is not one of its tools");
     let feedback = |name: &str| {

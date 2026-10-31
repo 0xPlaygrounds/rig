@@ -699,7 +699,10 @@ pub(crate) fn build(app: &mut App) {
             // key reaches the model, the conversation or a log, and no
             // plugin has to order itself against it. A plugin that swaps
             // secrets for placeholders in Review leaves nothing to redact.
-            redact_results.in_set(Enter(Stage::Commit)),
+            (
+                redact_results.in_set(Enter(Stage::Commit)),
+                super::tools::keep_within_parents.in_set(Enter(Stage::Admit)),
+            ),
         )
         .configure_sets(
             AgentPass,

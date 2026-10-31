@@ -116,7 +116,7 @@ impl Plugin for RemoteHostsPlugin {
             if name == Read::NAME {
                 def.description.push_str(&format!(
                     " Work on the files of a remote host ({hosts}) in place, by HOST:PATH paths \
-                     in `read`, `edit`, `write` and `search` and `shell` with `cwd` HOST:DIR, \
+                     in `read`, `edit` and `write`, and `shell` with `cwd` HOST:DIR, \
                      not on copies here."
                 ));
             }
@@ -137,8 +137,8 @@ fn prompt(first: &str, names: &[String]) -> String {
     format!(
         "Remote hosts: {}. A path written HOST:PATH is that host's file, as scp reads it: \
          `{first}:~/app/src/lib.rs`, `{first}:/srv/app` (a relative PATH is under the remote \
-         home). `read`, `edit`, `write` and `search` act on it there, and `shell` with `cwd` \
-         set to such a directory, such as `{first}:~/app`, runs the command there. Every \
+         home). `read`, `edit` and `write` act on it there, and `shell` with `cwd` set to \
+         such a directory, such as `{first}:~/app`, runs the command there. Every \
          other path is on this machine. Read and edit remote files in place this way, not \
          through copies here. The tools name remote files in the same form: pass those paths \
          back as they are. A `shell` exit code of 255 from a host can mean its connection \

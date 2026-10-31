@@ -1,6 +1,6 @@
 # Rig examples
 
-Each example is its own package. Run one with:
+Each example is its own package. Run most with:
 
 ```sh
 cargo run -p <example-name>
@@ -13,6 +13,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | --- | --- |
 | `agent_autonomous` | Demonstrates an autonomous extractor loop that keeps feeding its own output back in. |
 | `agent_evaluator_optimizer` | See source. |
+| `agent_no_tokio` | Drives an agent on Bevy's task pool and polls its event feed from a synchronous loop, without a Tokio dependency in the example. |
 | `agent_orchestrator` | See source. |
 | `agent_parallelization` | See source. |
 | `agent_prompt_chaining` | Demonstrates prompt chaining with two agents in sequence. |
@@ -29,24 +30,31 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto the dispatch-boundary `DispatchAction` (`Proceed`/`skip`/`rewrite_tool_args`/`stop`). |
 | `agent_with_loaders` | Demonstrates loading real example files into agent context. |
 | `agent_with_memory` | Demonstrates Rig-managed conversation memory with an in-memory backend; `-- --stream` streams each prompt. |
+| `agent_with_retry_hook` | Shows a response-retry hook with corrective feedback and a per-run retry limit, within the run's model-call budget. |
 | `agent_with_tools_otel` | Agent multi-turn with tools, but with a tracing subscriber that sends all logs/traces to an OTel collector; `-- --stream` streams the answer. |
 | `agent_with_tools` | Demonstrates registering runtime-defined tools on an agent. |
 | `agent` | Demonstrates the smallest useful agent setup with OpenAI. |
 | `calculator_chatbot` | See source. |
+| `candle_local` | Streams a local GGUF model's reply and prints its token counts and generation timings. |
+| `candle_pose` | Streams pose estimates for image frames using a local YOLOv8 model. |
+| [`candle_wasm_chat`](candle_wasm_chat/README.md) | Runs a browser chat agent with SmolLM2 embedded in WebAssembly. Its README covers building and serving it. |
 | `chain` | Demonstrates a retrieval-augmented pipeline with `parallel!` and `lookup`. |
+| `cohere_image_embeddings` | Embeds an image with Cohere Embed v3; pass its path after `--`. |
 | `complex_agentic_loop_claude` | See source. |
 | `custom_vector_store` | Example: Implementing a custom vector store backend |
 | `debate` | See source. |
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
 | `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |
+| `frozen_api` | Checks public API usage with eight Cargo examples. Run one with `cargo run -p frozen_api --example p5_local_operation`. |
 | `gemini_deep_research` | Runs Deep Research or Deep Research Max in the background, then streams it with resume or polls it, and prints the report's sources. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
 | `gemini_extractor_with_rag` | See source. |
 | `gemini_nanobanana_image_generation` | Generates a sized image with Nano Banana 2, optionally from a reference image, and writes every image and text part. |
-| `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
+| `gemini_stream_kill_token_count` | Estimates token usage from partial output when a live Gemini stream is interrupted. |
 | `gemini_text_to_speech` | Speaks a line in one voice, then a two-host script as PCM joined into one WAV file. |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
+| `http_middleware` | Adds an HTTP request header, logs request sizes, and reads response headers through `HttpMiddleware`. |
 | [`litellm`](litellm/README.md) | Runs an agent through a LiteLLM proxy using its OpenAI-compatible Chat Completions API. Includes local proxy setup. |
 | `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `Model` request. |
 | `multi_agent` | See source. |
@@ -64,5 +72,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
 | `transcription` | See source. |
 | `tool_result_outcomes` | Demonstrates structured disk (`Other`/`EIO`) and network (`Network`/`ENETUNREACH`) tool failures, a run-scoped scratchpad ledger, and ordered recorder/policy hooks that terminate fatal failures while returning recoverable feedback to the model. Run `cargo run -p tool_result_outcomes -- --help` for credential-free usage. |
+| `typesafeai_chat` | Runs interactive Jev support decisions with conversation history; `-- --agent` adds replies from an OpenAI agent. |
+| `typesafeai_triage` | Evaluates a support ticket's route, urgency and duplicate-charge evidence with typed Jev queries. |
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embeddings. |
 | `vector_search` | Demonstrates embedding documents and querying an in-memory vector index with OpenAI, or with `-- ollama` a local Ollama server. |

@@ -565,7 +565,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     let child = child.unwrap_or(Entity::PLACEHOLDER);
     let access = world.get::<ToolAccess>(child);
     let only_look =
-        matches!(access, Some(ToolAccess::Only(tools)) if tools == &["look", MESSAGE, WAIT]);
+        access.and_then(ToolAccess::names) == Some(&["look", MESSAGE, WAIT].map(str::to_owned)[..]);
     assert!(
         only_look,
         "its profile's tools, and those that reach agents"
@@ -1178,4 +1178,91 @@ fn a_restored_subagent_whose_work_a_plugin_carries_on_is_not_stopped() {
         });
         assert_eq!(interrupted, !claimed, "{reports:?}");
     }
+}
+
+/// A peer whose parent has neither `message` nor `wait` gets neither, and
+/// is not told to use them, also once its session is resumed, when its
+/// saved access comes after its other components.
+#[test]
+fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
+    let store = MemoryStore::default();
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&store, Some(&parent));
+    let restricted = ToolAccess::All.narrow([TASK, "look"]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.parent)
+        .insert(restricted);
+    let child = session.task("Propose");
+    let told = |session: &mut Session, child: Entity| {
+        let world = session.app.world_mut();
+        let access = world.get::<ToolAccess>(child).and_then(ToolAccess::names);
+        let lacks = access.is_some_and(|names| !names.iter().any(|n| n == MESSAGE || n == WAIT));
+        let mut roles = world.query::<(&Name, &SectionOf)>();
+        let role =
+            (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role");
+        (lacks, role)
+    };
+    assert_eq!(told(&mut session, child), (true, false));
+    session.app.update();
+    drop(session);
+    let mut session = Session::new(&store, None);
+    session.passes(|_| false);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    assert_eq!(told(&mut session, child), (true, false));
+}
+
+/// A peer told about its peers is told no more once its parent loses
+/// `message` and `wait`, as the kernel keeps it within its parent.
+#[test]
+fn a_peer_whose_parent_loses_the_tools_to_reach_peers_is_told_no_more() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let child = session.task("Propose");
+    let role = |session: &mut Session| {
+        let world = session.app.world_mut();
+        let mut roles = world.query::<(&Name, &SectionOf)>();
+        (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role")
+    };
+    assert!(role(&mut session));
+    let narrowed = ToolAccess::All.narrow([TASK, "look"]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.parent)
+        .insert(narrowed);
+    session.passes(|_| false);
+    assert!(!role(&mut session));
+}
+
+/// `Peers` and an access inserted together give one peer role, which a
+/// narrower access then takes away whole.
+#[test]
+fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let args = json!({ "description": "Lone", "prompt": "Work alone." });
+    session.call(session.parent, TASK, "lone", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let roles = |session: &mut Session| {
+        let world = session.app.world_mut();
+        let mut roles = world.query::<(&Name, &SectionOf)>();
+        let roles = roles.iter(world);
+        roles
+            .filter(|(name, of)| of.0 == child && name.as_str() == "peer_role")
+            .count()
+    };
+    let reaching = ToolAccess::All.narrow(["look", MESSAGE, WAIT]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(child)
+        .insert((Peers, reaching));
+    assert_eq!(roles(&mut session), 1);
+    let narrowed = ToolAccess::All.narrow(["look"]);
+    session.app.world_mut().entity_mut(child).insert(narrowed);
+    assert_eq!(roles(&mut session), 0);
 }

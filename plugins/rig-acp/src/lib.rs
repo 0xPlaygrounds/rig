@@ -30,6 +30,8 @@ use reply::{Reply, error, initialized};
 #[cfg(not(target_family = "wasm"))]
 use rig_harness::prelude::*;
 #[cfg(not(target_family = "wasm"))]
+use rig_harness::run::RunPlugin;
+#[cfg(not(target_family = "wasm"))]
 use rig_mcp_client::McpCorePlugin;
 
 #[cfg(not(target_family = "wasm"))]
@@ -43,6 +45,9 @@ impl Plugin for AcpPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<McpCorePlugin>() {
             app.add_plugins(McpCorePlugin);
+        }
+        if !app.is_plugin_added::<RunPlugin>() {
+            app.add_plugins(RunPlugin);
         }
         app.add_front(Front::new("acp").sessionless().on_command(
             "acp",

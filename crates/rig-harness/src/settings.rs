@@ -2,7 +2,10 @@
 //! per plugin. A plugin names its table and a type that reads it, and gets
 //! that type as a resource, its `Default` where the user set nothing. A
 //! table that does not read as the type leaves the default and says why
-//! at startup, as does a file that is not TOML.
+//! at startup, as does a file that is not TOML. So does a table no plugin
+//! reads: an error when it is a likely misspelling of one a plugin reads
+//! (`[trafic]` for `[traffic]`), else a note, such as for a disabled
+//! plugin's table.
 //!
 //! A plugin may let a project override its table
 //! ([`add_project_setting`](AppSettingsExt::add_project_setting)): the same
@@ -28,6 +31,7 @@
 //! assert_eq!(app.world().resource::<Confirm>().patterns, ["rm -rf"]);
 //! ```
 
+use std::collections::BTreeSet;
 use std::io::ErrorKind;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -37,9 +41,11 @@ use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::Allow;
 use bevy_log::warn;
+use rig_ecs::agent::Notice;
 use serde::de::DeserializeOwned;
 
 use crate::host::cli::Declared;
+use crate::run::closest;
 use crate::services::{ProjectRoot, RigHome};
 use crate::workspace::ProjectWorkspace;
 
@@ -50,6 +56,8 @@ pub struct Settings {
     file: String,
     tables: toml::Table,
     problems: Vec<String>,
+    /// The tables a plugin read.
+    read: BTreeSet<String>,
 }
 
 impl Default for Settings {
@@ -89,6 +97,7 @@ impl Settings {
             file,
             tables: toml::Table::new(),
             problems: Vec::new(),
+            read: BTreeSet::new(),
         }
     }
 
@@ -125,6 +134,32 @@ impl Settings {
     /// the user.
     pub fn problems(&self) -> &[String] {
         &self.problems
+    }
+
+    /// A notice for each table of the file no plugin read: an error naming
+    /// the read table it likely misspells, within a quarter of its length
+    /// (at least one edit), else an info notice.
+    pub fn unread(&self) -> Vec<Notice> {
+        let read: Vec<&str> = self.read.iter().map(String::as_str).collect();
+        let unread = self
+            .tables
+            .keys()
+            .filter(|table| !self.read.contains(*table));
+        unread
+            .map(|table| match closest(table, &read) {
+                Some(meant) => Notice::error(
+                    None,
+                    format!(
+                        "{}: no plugin reads [{table}]; did you mean [{meant}]?",
+                        self.file
+                    ),
+                ),
+                None => Notice::info(
+                    None,
+                    format!("{}: no enabled plugin reads [{table}].", self.file),
+                ),
+            })
+            .collect()
     }
 }
 
@@ -178,6 +213,7 @@ impl AppSettingsExt for App {
             world.insert_resource(settings);
         }
         let mut settings = world.resource_mut::<Settings>();
+        settings.read.insert(section.to_owned());
         let value = settings.get::<T>(section).unwrap_or_else(|problem| {
             warn!("{problem}");
             settings.problems.push(problem);

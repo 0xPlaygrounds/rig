@@ -265,10 +265,9 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     // The kernel refuses the `delete` this agent may not make before the
     // gates, so the patch's `write` is refused with it.
     let world = app.world_mut();
-    let tools = [APPLY_PATCH, "edit", "write"].map(str::to_owned);
     world
         .entity_mut(agent)
-        .insert(ToolAccess::Only(tools.into()));
+        .insert(ToolAccess::All.narrow([APPLY_PATCH, "edit", "write"]));
     let model = "test/gpt-5-test".to_owned();
     world.trigger(SetModel {
         entity: agent,

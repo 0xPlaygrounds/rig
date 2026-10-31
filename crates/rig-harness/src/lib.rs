@@ -53,6 +53,7 @@ pub mod per_call;
 pub mod pick;
 pub mod plugin_data;
 pub mod progress;
+pub mod run;
 pub mod secrets;
 pub mod services;
 pub mod settings;
@@ -112,7 +113,7 @@ pub mod prelude {
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
-        AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
+        AppCommandsExt, Args, CommandArgs, CommandSystems, NoArgs, RunCommand, SlashCommand,
     };
     pub use crate::harness_protocol::{Home, StartReason};
     pub use crate::host::cli::{AppCliExt, Declared, Flag, Front};
@@ -130,9 +131,12 @@ pub mod prelude {
     pub use crate::per_call::{
         AppPerCallExt, CallPlace, PerCall, PerCallSystems, PerCallTool, PerCallTools,
     };
-    pub use crate::pick::{Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker};
+    pub use crate::pick::{
+        Chosen, Highlighted, Pick, PickItem, PickPreview, Picked, Picker, ShowsPickers,
+    };
     pub use crate::plugin_data::PluginData;
     pub use crate::progress::{CallOutput, ToolProgress};
+    pub use crate::run::{AppRunExt, KeepRunning, RunStart, Starting, Work};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{
@@ -155,7 +159,8 @@ pub mod prelude {
 /// ([`rig_ecs::AgentPlugin`], [`rig_ecs::session_log::SessionLogPlugin`]),
 /// the launcher protocol, and the services every agent uses: slash
 /// commands, the clock the loop sleeps by, file watches, the questions and
-/// pickers every front answers, and tool progress. Everything else is a
+/// pickers every front answers, the run's start and `--tools`
+/// ([`run`](mod@run)), and tool progress. Everything else is a
 /// plugin `plugins.toml` lists, which can leave it out.
 pub struct RigHarnessPlugins;
 
@@ -173,6 +178,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
+            .add(run::RunPlugin)
             .add(progress::ProgressPlugin)
     }
 }

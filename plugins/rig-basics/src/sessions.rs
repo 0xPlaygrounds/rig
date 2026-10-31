@@ -24,7 +24,7 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use bevy_reflect::serde::TypedReflectSerializer;
 use rig_core::serde_json;
-use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId, lock_file};
 use rig_harness::rig_memory::{SessionMeta, title_of};
 
 use crate::session_picker::{SessionPicker, SessionPickerPlugin};
@@ -33,7 +33,7 @@ use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::{SavedKeys, now_ms};
 use rig_ecs::session_log::{ConversationChanged, SessionStore};
-use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::commands::{AppCommandsExt, CommandArgs, NoArgs};
 use rig_harness::pick::Picker;
 use rig_harness::prelude::{
     CurrentAgent, Exit, ExitReason, Files, MainAgentQuery, RigHome, SessionPaths, first_typed,
@@ -397,7 +397,7 @@ fn update_meta(
 }
 
 fn new(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     conversations: Query<&Conversation, With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -445,6 +445,8 @@ fn resume(
 
 fn name(
     In(args): In<CommandArgs>,
+    home: Res<RigHome>,
+    paths: Option<Res<SessionPaths>>,
     mut title: ResMut<SessionTitle>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -457,6 +459,12 @@ fn name(
         return;
     }
     let name = title_of(&args.args);
+    let session = paths.as_ref().and_then(|paths| paths.id());
+    let mine = paths.as_ref().map(|paths| &paths.0);
+    if let Err(refusal) = claim_name(&home.0, session.as_ref(), mine, &name) {
+        notices.write(refusal);
+        return;
+    }
     notices.write(Notice::info(
         args.agent,
         format!("This session is now named “{name}”."),
@@ -466,15 +474,34 @@ fn name(
 
 /// Keeps the session's name in its directory ([`SessionDir::set_name`]),
 /// where `rig --resume <name>` and `/resume <name>` find it, as its
-/// [`SessionTitle`] has it.
-fn write_name(paths: Option<Res<SessionPaths>>, title: Res<SessionTitle>) {
+/// [`SessionTitle`] has it, such as one a plugin gave it: a name another
+/// session holds is refused, and the title goes back to the one written.
+fn write_name(
+    paths: Option<Res<SessionPaths>>,
+    home: Res<RigHome>,
+    mut title: ResMut<SessionTitle>,
+    mut notices: MessageWriter<Notice>,
+) {
     let Some(paths) = paths else {
         return;
     };
-    if paths.name() != title.name
-        && let Err(failure) = paths.set_name(title.name.as_deref())
-    {
-        error!("could not write the session's name: {failure}");
+    let written = paths.name();
+    if written == title.name {
+        return;
+    }
+    let claimed = match title.name.as_deref().map(title_of) {
+        Some(name) => claim_name(&home.0, paths.id().as_ref(), Some(&paths.0), &name),
+        None => (paths.set_name(None)).map_err(|failure| {
+            Notice::error(None, format!("Could not unname the session: {failure}."))
+        }),
+    };
+    match claimed {
+        // As the file has it, so the next frame finds nothing to write.
+        Ok(()) => title.name = paths.name(),
+        Err(refusal) => {
+            notices.write(refusal);
+            title.name = written;
+        }
     }
 }
 
@@ -488,21 +515,77 @@ fn name_session(
     mut notices: MessageWriter<Notice>,
 ) {
     let name = title_of(&named.name);
-    if paths.and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
-        title.name = Some(name);
+    let this = paths.as_ref().and_then(|paths| paths.id()).as_ref() == Some(&named.session);
+    let dir = home.0.session(&named.session);
+    if !this && !dir.path().is_dir() {
+        let why = format!(
+            "Could not name session {}: there is no such session.",
+            named.session
+        );
+        notices.write(Notice::error(None, why));
         return;
     }
-    let dir = home.0.session(&named.session);
-    let written = if dir.path().is_dir() {
-        dir.set_name(Some(&name))
-            .map_err(|failure| failure.to_string())
-    } else {
-        Err("there is no such session".to_owned())
+    let target = match this {
+        true => paths.as_ref().map(|paths| &paths.0),
+        false => Some(&dir),
     };
-    if let Err(why) = written {
-        let why = format!("Could not name session {}: {why}.", named.session);
-        notices.write(Notice::error(None, why));
+    if let Err(refusal) = claim_name(&home.0, Some(&named.session), target, &name) {
+        notices.write(refusal);
+        return;
     }
+    if this {
+        title.name = Some(name);
+    }
+}
+
+/// Gives `target`, the directory of `session`, the name `name` unless
+/// another session holds it ([`name_conflict`]): checked and written while
+/// holding the home's name lock, so two rigs naming sessions at once never
+/// both take one name. An error notice says why not.
+fn claim_name(
+    home: &Home,
+    session: Option<&SessionId>,
+    target: Option<&SessionDir>,
+    name: &str,
+) -> Result<(), Notice> {
+    let failed = |failure: std::io::Error| {
+        let why = format!("Could not name the session “{name}”: {failure}.");
+        Notice::error(None, why)
+    };
+    let lock = lock_file(&home.root().join(NAMES_LOCK), true).map_err(failed)?;
+    lock.lock().map_err(failed)?;
+    if let Some(refusal) = name_conflict(home, session, name) {
+        return Err(refusal);
+    }
+    match target {
+        Some(target) => target.set_name(Some(name)).map_err(failed),
+        None => Ok(()),
+    }
+}
+
+/// The file in `RIG_HOME` a rig holds locked while it checks and writes a
+/// session's name.
+const NAMES_LOCK: &str = "names.lock";
+
+/// Refuses a name another session's name file holds, of a session that
+/// is saved or that another rig runs, which may be saved later.
+fn name_conflict(home: &Home, session: Option<&SessionId>, name: &str) -> Option<Notice> {
+    let entries = std::fs::read_dir(home.sessions()).into_iter().flatten();
+    let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
+    let mut sessions = ids.map(|id: SessionId| (home.session(&id), id));
+    let (_, other) = sessions.find(|(dir, id)| {
+        if Some(id) == session {
+            return false;
+        }
+        // The name first: probing the lock of every session would race a
+        // launcher taking one.
+        let named = dir.name().is_some_and(|stored| title_of(&stored) == name);
+        named && (dir.is_saved() || dir.runs_elsewhere())
+    })?;
+    Some(Notice::error(
+        None,
+        format!("“{name}” is the name of session {other} already; pick another."),
+    ))
 }
 
 /// Exits to run the session asked for next.

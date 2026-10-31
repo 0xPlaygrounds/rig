@@ -6,6 +6,7 @@ use serde::Deserialize;
 use super::{AppSettingsExt, ProjectSetting, Settings};
 use crate::host::cli::Declared;
 use crate::services::{ProjectRoot, RigHome};
+use rig_ecs::agent::NoticeLevel;
 
 #[derive(Resource, Deserialize, Default, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
@@ -219,4 +220,41 @@ fn a_disabled_declaration_adds_no_second_apply_system() {
     assert!(first.is_some(), "the first declaration was found");
     let problems = app.world().resource::<Settings>().problems();
     assert_eq!(problems.len(), 1, "{problems:?}");
+}
+
+#[test]
+fn a_table_no_plugin_reads_is_named_with_the_one_it_likely_misspells() {
+    let mut app = App::new();
+    let file = "[trafic]\nlog = true\n[tuii]\n[shel]\n[mcp]\n[quiet]\non = true\n";
+    app.insert_resource(Settings::from_toml(file))
+        .add_setting::<Quiet>("quiet")
+        .add_setting::<Quiet>("traffic")
+        .add_setting::<Quiet>("tui");
+    let unread = app.world().resource::<Settings>().unread();
+    let mut said: Vec<(NoticeLevel, &str)> = unread
+        .iter()
+        .map(|notice| (notice.level, notice.text.as_str()))
+        .collect();
+    said.sort_by_key(|(_, text)| *text);
+    assert_eq!(
+        said,
+        [
+            (
+                NoticeLevel::Info,
+                "settings.toml: no enabled plugin reads [mcp]."
+            ),
+            (
+                NoticeLevel::Info,
+                "settings.toml: no enabled plugin reads [shel]."
+            ),
+            (
+                NoticeLevel::Error,
+                "settings.toml: no plugin reads [trafic]; did you mean [traffic]?"
+            ),
+            (
+                NoticeLevel::Error,
+                "settings.toml: no plugin reads [tuii]; did you mean [tui]?"
+            ),
+        ]
+    );
 }

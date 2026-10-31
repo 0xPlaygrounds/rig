@@ -3,10 +3,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use bevy_ecs::message::Messages;
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
+use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{SavedAgent, Session, Store};
 use rig_ecs::session_log::SessionLogPlugin;
+use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{AppKeepsExt, ReflectSaved, StoreOpener};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
@@ -318,6 +321,152 @@ fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
 #[derive(Resource, Default)]
 struct Exits(Vec<ExitReason>);
 
+#[test]
+fn new_refuses_text_without_switching_sessions() {
+    let home = home("new-args");
+    let running = running(&home, "1-1");
+    assert!(running.is_some());
+    let Some(mut app) = running else { return };
+    app.init_resource::<Exits>()
+        .add_observer(|exit: On<Exit>, mut exits: ResMut<Exits>| exits.0.push(exit.0.clone()));
+    let mut conversation = Conversation::default();
+    conversation.push(Message::user("Keep this session"));
+    let world = app.world_mut();
+    let agent = world.spawn((Agent, conversation)).id();
+    world.trigger(RunCommand::new(agent, "new PELICAN"));
+    world.flush();
+    let recalled: Vec<_> = world
+        .resource::<Messages<Recalled>>()
+        .iter_current_update_messages()
+        .collect();
+    assert_eq!(recalled.len(), 1);
+    assert!(recalled.iter().all(|recalled| {
+        recalled.agent == agent
+            && recalled.text == "/new PELICAN"
+            && recalled
+                .why
+                .as_ref()
+                .is_some_and(|why| why.contains("/new") && why.contains("PELICAN"))
+    }));
+    assert!(world.resource::<Exits>().0.is_empty());
+    fs::remove_dir_all(home.root()).ok();
+}
+
+#[test]
+fn name_refuses_another_saved_sessions_normalized_name_but_accepts_its_own() {
+    let home = home("unique-command-name");
+    let saved = home.new_session();
+    assert!(saved.is_ok());
+    let Ok((other, dir)) = saved else { return };
+    // Both spellings shorten to the same stored title.
+    let name = "P".repeat(65);
+    assert!(dir.set_name(Some(&title_of(&name))).is_ok());
+    assert!(dir.mark_saved().is_ok());
+    let running = running(&home, "1-1");
+    assert!(running.is_some());
+    let Some(mut app) = running else { return };
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let line = format!("name   {name}  extra");
+    world.trigger(RunCommand::new(agent, line.clone()));
+    world.flush();
+    let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+    assert_eq!(recalled.len(), 1);
+    assert!(recalled.iter().all(|recalled| {
+        recalled.text == format!("/{line}")
+            && recalled
+                .why
+                .as_ref()
+                .is_some_and(|why| why.contains(other.as_str()) && why.contains(&title_of(&name)))
+    }));
+    assert_eq!(world.resource::<SessionTitle>().name, None);
+    for _ in 0..2 {
+        world.trigger(RunCommand::new(agent, "name  Own\n name"));
+        world.flush();
+    }
+    assert_eq!(
+        world.resource::<SessionTitle>().name.as_deref(),
+        Some("Own name")
+    );
+    assert!(world.resource::<Messages<Recalled>>().is_empty());
+    app.update();
+    let world = app.world_mut();
+    world.trigger(RunCommand::new(agent, "name Own name"));
+    world.flush();
+    assert!(world.resource::<Messages<Recalled>>().is_empty());
+    assert_eq!(
+        world.resource::<SessionPaths>().name().as_deref(),
+        Some("Own name")
+    );
+    fs::remove_dir_all(home.root()).ok();
+}
+
+#[test]
+fn naming_another_session_refuses_the_name_this_session_has() {
+    let home = home("unique-event-name");
+    let saved = home.new_session();
+    assert!(saved.is_ok());
+    let Ok((other, dir)) = saved else { return };
+    assert!(dir.mark_saved().is_ok());
+    let running = running(&home, "1-1");
+    assert!(running.is_some());
+    let Some(mut app) = running else { return };
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    world.trigger(RunCommand::new(agent, "name Old"));
+    world.flush();
+    app.update();
+    let world = app.world_mut();
+    world.trigger(RunCommand::new(agent, "name  Own\n name"));
+    world.flush();
+    // Written as it is taken, so no other rig takes it meanwhile.
+    assert_eq!(
+        world.resource::<SessionPaths>().name().as_deref(),
+        Some("Own name")
+    );
+    world.trigger(NameSession {
+        session: other.clone(),
+        name: "Own  name".to_owned(),
+    });
+    world.flush();
+    let errors: Vec<_> = world
+        .resource_mut::<Messages<Notice>>()
+        .drain()
+        .filter(|notice| notice.level == rig_ecs::agent::NoticeLevel::Error)
+        .collect();
+    assert_eq!(errors.len(), 1);
+    assert!(
+        errors
+            .iter()
+            .all(|notice| { notice.text.contains("1-1") && notice.text.contains("Own name") })
+    );
+    assert_eq!(dir.name(), None);
+    let current = world.resource::<SessionPaths>().id();
+    assert!(current.is_some());
+    if let Some(current) = current {
+        world.trigger(NameSession {
+            session: current,
+            name: "Own name".to_owned(),
+        });
+        world.flush();
+    }
+    assert!(world.resource::<Messages<Notice>>().is_empty());
+    assert_eq!(
+        world.resource::<SessionTitle>().name.as_deref(),
+        Some("Own name")
+    );
+    world.trigger(NameSession {
+        session: other,
+        name: "Old".to_owned(),
+    });
+    world.flush();
+    assert!(world.resource::<Messages<Notice>>().is_empty());
+    assert_eq!(dir.name().as_deref(), Some("Old"));
+    fs::remove_dir_all(home.root()).ok();
+}
+
 /// A name given in one session is kept in its directory, and `/resume`
 /// in another runs the session it names.
 #[test]
@@ -365,4 +514,114 @@ fn an_unopened_or_refused_store_keeps_the_session_name_untouched()
     }
     fs::remove_dir_all(home.root())?;
     Ok(())
+}
+
+/// Another rig's session that is not saved yet holds its name too: it may
+/// be saved later, and then two sessions would share it.
+#[test]
+fn name_refuses_the_name_of_a_session_another_rig_runs_unsaved() {
+    let home = home("unique-unsaved-name");
+    let made = home.new_session();
+    assert!(made.is_ok());
+    let Ok((other, dir)) = made else { return };
+    assert!(dir.set_name(Some("alpha")).is_ok());
+    let held = dir.hold().ok().flatten();
+    assert!(held.is_some(), "the other rig runs it");
+    let running = running(&home, "1-1");
+    assert!(running.is_some());
+    let Some(mut app) = running else { return };
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    world.trigger(RunCommand::new(agent, "name alpha"));
+    world.flush();
+    let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+    let why = recalled.first().and_then(|recalled| recalled.why.clone());
+    assert!(why.is_some_and(|why| why.contains(other.as_str())));
+    drop(held);
+    // Once nobody runs it and it was never saved, the name is free.
+    world.trigger(RunCommand::new(agent, "name alpha"));
+    world.flush();
+    assert!(world.resource::<Messages<Recalled>>().is_empty());
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Two rigs naming their sessions alike at once: the second sees the first's
+/// name, written as it was taken, not at the end of the frame.
+#[test]
+fn two_sessions_named_alike_in_one_frame_never_share_the_name() {
+    let home = home("unique-at-once");
+    let (first, second) = (running(&home, "1-1"), running(&home, "1-2"));
+    assert!(first.is_some() && second.is_some());
+    let (Some(mut first), Some(mut second)) = (first, second) else {
+        return;
+    };
+    let name = |app: &mut App| {
+        app.update();
+        let world = app.world_mut();
+        let agent = world.spawn(Agent).id();
+        world.trigger(RunCommand::new(agent, "name alpha"));
+        world.flush();
+        let mut recalled = world.resource_mut::<Messages<Recalled>>();
+        let refused = recalled.drain().filter_map(|recalled| recalled.why);
+        refused.collect::<Vec<_>>()
+    };
+    assert!(name(&mut first).is_empty());
+    let refused = name(&mut second);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Each rig reads the other's name from its file, not from what it last
+/// knew of it, and a name a plugin sets on the title goes through the same
+/// check.
+#[test]
+fn names_given_across_sessions_and_by_plugins_never_share_one() {
+    let home = home("unique-across");
+    let (first, second) = (running(&home, "1-1"), running(&home, "1-2"));
+    assert!(first.is_some() && second.is_some());
+    let (Some(mut first), Some(mut second)) = (first, second) else {
+        return;
+    };
+    first.update();
+    second.update();
+    let (one, two) = (
+        "1-1".parse::<SessionId>().ok(),
+        "1-2".parse::<SessionId>().ok(),
+    );
+    let (Some(one), Some(two)) = (one, two) else {
+        return;
+    };
+    let errors = |app: &mut App| {
+        let mut notices = app.world_mut().resource_mut::<Messages<Notice>>();
+        let errors =
+            (notices.drain()).filter(|notice| notice.level == rig_ecs::agent::NoticeLevel::Error);
+        errors.map(|notice| notice.text).collect::<Vec<_>>()
+    };
+    second.world_mut().trigger(NameSession {
+        session: one,
+        name: "alpha".to_owned(),
+    });
+    second.world_mut().flush();
+    assert!(errors(&mut second).is_empty());
+    first.world_mut().trigger(NameSession {
+        session: two.clone(),
+        name: "alpha".to_owned(),
+    });
+    first.world_mut().flush();
+    let refused = errors(&mut first);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    // A plugin naming the second session alike is refused at the frame's end.
+    second.world_mut().resource_mut::<SessionTitle>().name = Some("alpha".to_owned());
+    second.update();
+    let refused = errors(&mut second);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    assert_eq!(second.world().resource::<SessionTitle>().name, None);
+    // The same with spaces around it, which the name file would not keep.
+    second.world_mut().resource_mut::<SessionTitle>().name = Some("  alpha ".to_owned());
+    second.update();
+    let refused = errors(&mut second);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
+    assert_eq!(home.session(&two).name(), None);
+    fs::remove_dir_all(home.root()).ok();
 }

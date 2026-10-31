@@ -4342,6 +4342,34 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     assert!(said.is_some_and(|said| said.contains("\"go\"") && !said.contains("[Output of")));
 }
 
+/// A child saved wider than its parent, as an older build could, is kept
+/// within its parent before its first call: it is neither offered nor runs
+/// a tool its parent lacks.
+#[test]
+fn a_child_never_calls_or_is_offered_a_tool_its_parent_lacks() {
+    let mut app = app();
+    let model =
+        MockCompletionModel::from_stream_turns([reply(&[("touch", "forbidden")]), answer("done")]);
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let child = connected(&mut app, &model);
+    let world = app.world_mut();
+    let parent = world.spawn((Agent, ToolAccess::All.narrow(["look"]))).id();
+    world.entity_mut(child).insert(SpawnedBy(parent));
+    world.trigger(Deliver::new(child, "go", DeliveryMode::Steer));
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let offered = model.requests().first().map(|request| {
+        let names = request.tools.iter().map(|tool| tool.name.to_string());
+        names.collect::<Vec<_>>()
+    });
+    assert_eq!(offered, Some(vec!["look".to_owned()]));
+    let touched = records(&app).into_iter().find(
+        |record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == "touch"),
+    );
+    let refused = touched.and_then(|record| record.outcome.err().map(|report| report.kind));
+    assert_eq!(refused, Some(ErrorKind::Denied));
+}
+
 #[test]
 fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
     let mut app = app();
@@ -4351,7 +4379,7 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
     ]);
     app.init_resource::<Ended>().add_observer(log_ended);
     let agent = agent_on(&mut app, &model);
-    let only_look = ToolAccess::Only(vec!["look".to_owned()]);
+    let only_look = ToolAccess::All.narrow(["look"]);
     app.world_mut().entity_mut(agent).insert(only_look);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
@@ -4519,7 +4547,7 @@ fn a_call_the_agent_may_not_make_is_refused_not_answered_in_its_place() {
     let call = spawn_call(world, "look", "look");
     let agent = world.get::<ForAgent>(call).map(|of| of.0);
     if let Some(agent) = agent {
-        world.entity_mut(agent).insert(ToolAccess::Only(Vec::new()));
+        world.entity_mut(agent).insert(ToolAccess::All.narrow([]));
     }
     let done = |world: &mut World| world.get::<Settled>(call).is_some();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
