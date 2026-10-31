@@ -2,12 +2,15 @@
 
 use std::time::SystemTime;
 
+use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::providers::registry::ConnectOptions;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness_test_support::{
-    Collected, Ended, ToolOutputs, advance, answer_open, app_in, calls, collect, first_agent,
-    log_ended, log_tool_outputs, pass_wall_clock, reply, run_until, scratch_home, scripted_models,
+    Collected, Ended, MemoryStore, ToolOutputs, advance, answer_open, app_in, app_on, calls,
+    collect, first_agent, log_ended, log_tool_outputs, pass_wall_clock, reply, run_until,
+    scratch_home, scripted_models,
 };
 
 /// Answers a `look` call at once.
@@ -87,4 +90,76 @@ fn a_question_is_answered_later_and_the_clocks_move_on() {
 
     advance(&mut app, hour);
     assert!(app.world().resource::<Time<Virtual>>().elapsed() >= hour);
+}
+
+#[test]
+fn a_scripted_app_lists_only_its_models_and_sends_no_http() {
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let Models(mut connector) = scripted_models([("corpus-test/one", &model)]);
+    let references = |specs: Vec<&ModelSpec>| -> Vec<String> {
+        specs.into_iter().map(ModelSpec::reference).collect()
+    };
+    assert_eq!(
+        references(connector.catalog().iter().collect()),
+        ["corpus-test/one"]
+    );
+    assert_eq!(references(connector.reachable()), ["corpus-test/one"]);
+    // A real provider's model a test adds itself, with a key, is refused
+    // before it reaches the network.
+    let openai = Catalog::builtin().resolve("openai/gpt-5").ok();
+    assert!(openai.is_some(), "the catalog lists openai/gpt-5");
+    let Some(openai) = openai.map(|found| found.spec.clone()) else {
+        return;
+    };
+    connector.provide(openai.provider, ConnectOptions::new().api_key("sk-fake"));
+    connector.catalog_mut().insert(openai.clone());
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(Models(connector))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let world = app.world_mut();
+    world.trigger(SetModel {
+        entity: agent,
+        model: openai.reference(),
+    });
+    world.trigger(Deliver::new(agent, "Hi.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("sends no HTTP")),
+        "{ended:?}"
+    );
+    assert_eq!(model.request_count(), 0);
+}
+
+#[test]
+fn the_refusal_names_the_request_but_not_its_query() {
+    use std::task::{Context, Poll, Waker};
+
+    use rig_core::http_client::{HttpClientExt, Request};
+    use rig_harness_test_support::Offline;
+
+    let request =
+        Request::post("https://example.test:8443/v1/models/m:generate?key=sentinel-secret")
+            .body(Vec::new());
+    assert!(request.is_ok());
+    let Ok(request) = request else {
+        return;
+    };
+    let sent = std::pin::pin!(Offline.send::<_, Vec<u8>>(request));
+    let why = match sent.poll(&mut Context::from_waker(Waker::noop())) {
+        Poll::Ready(Err(error)) => error.to_string(),
+        Poll::Ready(Ok(_)) | Poll::Pending => String::new(),
+    };
+    assert!(
+        why.contains("POST example.test:8443/v1/models/m:generate"),
+        "{why}"
+    );
+    assert!(!why.contains("sentinel-secret"), "{why}");
 }

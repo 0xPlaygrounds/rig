@@ -133,9 +133,11 @@ fn package<'a>(root: &Path, packages: &'a [Value], path: &str) -> Option<&'a Val
 /// `--affected`: one nextest run, with the local profile and four build
 /// jobs and test threads, of every test the changed `paths` can break: the
 /// tests of each package a path is in and of every package depending on one
-/// (nextest's `rdeps`). A path in no package's own sources (the workspace
-/// manifest, the lockfile, CI or tool configuration) can break any test, so
-/// it selects them all; a Markdown file outside a package selects none.
+/// by any kind of dependency ([`consumers`]). The packages are cargo's `-p`
+/// selection, so only their test targets are built. A path in no package's
+/// own sources (the workspace manifest, the lockfile, CI or tool
+/// configuration) can break any test, so it selects the whole workspace; a
+/// Markdown file outside a package selects none.
 fn affected(root: &Path, metadata: &Value, paths: &BTreeSet<String>) -> Result<Vec<Check>> {
     let packages = metadata["packages"]
         .as_array()
@@ -162,35 +164,33 @@ fn affected(root: &Path, metadata: &Value, paths: &BTreeSet<String>) -> Result<V
     if names.is_empty() && !everything {
         return Ok(Vec::new());
     }
-    let (filter, reason) = if everything {
-        (
-            "all()".to_owned(),
-            "a change outside every package's sources",
-        )
-    } else {
-        let each: Vec<String> = names.iter().map(|name| format!("rdeps({name})")).collect();
-        (
-            each.join(" | "),
-            "the changed packages and every package depending on one",
-        )
-    };
     let mut args: Vec<String> = [
         "nextest",
         "run",
         "--locked",
-        "--workspace",
         "--profile",
         "local",
         "--build-jobs",
         "4",
         "--test-threads",
         "4",
-        "-E",
     ]
     .iter()
     .map(|arg| (*arg).to_owned())
     .collect();
-    args.push(filter);
+    let reason = if everything {
+        args.push("--workspace".to_owned());
+        "a change outside every package's sources"
+    } else {
+        let selected: BTreeSet<String> = names
+            .iter()
+            .flat_map(|name| consumers(packages, name))
+            .collect();
+        for name in selected {
+            args.extend(["-p".to_owned(), name]);
+        }
+        "the changed packages and every package depending on one"
+    };
     Ok(vec![dynamic("affected-tests".into(), args, reason)])
 }
 fn consumers(packages: &[Value], name: &str) -> BTreeSet<String> {

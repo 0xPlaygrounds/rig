@@ -452,47 +452,64 @@ fn prioritized_tests_exist() {
     // A renamed test would silently restore the all-features tail.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let config = std::fs::read_to_string(root.join(".config/nextest.toml")).unwrap();
-    let block = config
+    let blocks: Vec<&str> = config
         .split("[[profile.default.overrides]]")
         .skip(1)
-        .find(|b| b.contains("priority = 100"))
-        .expect("a default-profile override with priority 100");
-    let config = block.split("\n[").next().unwrap();
+        .map(|b| b.split("\n[").next().unwrap())
+        .filter(|b| b.contains("priority = "))
+        .collect();
+    assert!(
+        !blocks.is_empty(),
+        "a default-profile override with a priority"
+    );
     let sources: Vec<String> = execute::tracked_inputs(root)
         .unwrap()
         .into_iter()
         .filter(|p| p.ends_with(".rs") && p.contains("tests/"))
         .collect();
     let mut checked = 0;
-    for line in config
-        .lines()
+    for line in blocks
+        .iter()
+        .flat_map(|b| b.lines())
         .filter(|l| l.trim_start().starts_with("filter = "))
     {
-        for (kind, rest) in ["test(", "binary("].into_iter().flat_map(|kind| {
-            line.match_indices(kind)
-                .map(move |(i, _)| (kind, &line[i + kind.len()..]))
-        }) {
+        for (kind, rest) in ["test(", "binary(", "binary_id("]
+            .into_iter()
+            .flat_map(|kind| {
+                line.match_indices(kind)
+                    .map(move |(i, _)| (kind, &line[i + kind.len()..]))
+            })
+        {
+            // `test(=a::b::name)` names the function `name` in the module file
+            // `a/b.rs` (or `a/b/mod.rs`); `binary_id(package::name)` the binary `name`.
             let name = rest.split(')').next().unwrap();
+            let name = name.strip_prefix('=').unwrap_or(name);
+            let (module, name) = name.rsplit_once("::").unwrap_or(("", name));
             if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 continue;
             }
             checked += 1;
-            let found = if kind == "binary(" {
-                sources
-                    .iter()
-                    .any(|p| p.ends_with(&format!("/tests/{name}.rs")))
+            let found = if kind == "test(" {
+                let file = module.replace("::", "/");
+                sources.iter().any(|p| {
+                    let in_module = file.is_empty()
+                        || p.ends_with(&format!("{file}.rs"))
+                        || p.ends_with(&format!("{file}/mod.rs"));
+                    in_module
+                        && std::fs::read_to_string(root.join(p))
+                            .is_ok_and(|text| text.contains(&format!("fn {name}(")))
+                })
             } else {
                 sources.iter().any(|p| {
-                    std::fs::read_to_string(root.join(p))
-                        .is_ok_and(|text| text.contains(&format!("fn {name}(")))
+                    p.ends_with(&format!("/tests/{name}.rs")) || p == &format!("tests/{name}.rs")
                 })
             };
             assert!(found, "{kind}{name}) names no tracked test");
         }
     }
     assert!(
-        checked >= 2,
-        "expected the prioritized nested-Cargo tests, found {checked}"
+        checked >= 4,
+        "expected the prioritized nested-Cargo and wire tests, found {checked}"
     );
 }
 
@@ -1402,39 +1419,84 @@ fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
     }
 }
 
-/// The `-E` filter `--affected` runs for `paths`, or `None` when it runs
-/// nothing.
-fn affected_filter(paths: &[&str]) -> Option<String> {
+/// What `--affected` selects for `paths`: the arguments after the fixed
+/// profile, job and thread ones, which come first, or `None` when it runs
+/// nothing or the fixed ones are not first. The fixture
+/// adds a package reached only through a dev-dependency of `example` and two
+/// packages depending on each other, one of them on `rig-sqlite`.
+fn affected_selection(paths: &[&str]) -> Option<Vec<String>> {
     let options = Options::parse(vec!["--affected".into(), "--base".into(), "main".into()]).ok()?;
+    let mut metadata = metadata();
+    let extra = serde_json::json!([
+        {"name":"downstream","manifest_path":"/repo/crates/downstream/Cargo.toml","dependencies":[{"name":"example","kind":"dev"}]},
+        {"name":"cycle-a","manifest_path":"/repo/crates/cycle-a/Cargo.toml","dependencies":[{"name":"rig-sqlite"},{"name":"cycle-b","kind":"dev"}]},
+        {"name":"cycle-b","manifest_path":"/repo/crates/cycle-b/Cargo.toml","dependencies":[{"name":"cycle-a"}]}
+    ]);
+    metadata["packages"]
+        .as_array_mut()?
+        .extend(extra.as_array()?.iter().cloned());
     let plan = selection::plan(
         Path::new("/repo"),
-        &metadata(),
+        &metadata,
         &options,
         &paths.iter().map(|s| (*s).into()).collect(),
         &checks::all(),
     )
     .ok()?;
-    let check = plan.first()?;
-    check.steps.first()?.args.last().cloned()
+    let args = &plan.first()?.steps.first()?.args;
+    let fixed = [
+        "nextest",
+        "run",
+        "--locked",
+        "--profile",
+        "local",
+        "--build-jobs",
+        "4",
+        "--test-threads",
+        "4",
+    ];
+    let (head, selection) = args.split_at_checked(fixed.len())?;
+    (head == fixed).then(|| selection.to_vec())
+}
+
+/// `-p` for each of `names`.
+fn packages(names: &[&str]) -> Option<Vec<String>> {
+    Some(
+        names
+            .iter()
+            .flat_map(|name| ["-p".to_owned(), (*name).to_owned()])
+            .collect(),
+    )
 }
 
 #[test]
-fn affected_runs_the_tests_of_the_changed_packages_and_their_dependents() {
+fn affected_builds_only_the_changed_packages_and_their_dependents() {
     assert!(Options::parse(vec!["--affected".into()]).is_err());
+    // Every package depending on a changed one, through any kind of
+    // dependency and transitively, and nothing else: cargo builds only these.
     assert_eq!(
-        affected_filter(&["crates/rig-agent/src/lib.rs", "crates/rig-sqlite/README.md"]),
-        Some("rdeps(rig-agent) | rdeps(rig-sqlite)".to_owned())
+        affected_selection(&["crates/rig-agent/src/lib.rs"]),
+        packages(&["downstream", "example", "rig-agent"])
+    );
+    assert_eq!(
+        affected_selection(&["crates/rig-agent/src/lib.rs", "crates/rig-sqlite/README.md"]),
+        packages(&[
+            "cycle-a",
+            "cycle-b",
+            "downstream",
+            "example",
+            "rig-agent",
+            "rig-sqlite"
+        ])
     );
     // The facade's own sources are its.
-    assert_eq!(
-        affected_filter(&["src/lib.rs"]),
-        Some("rdeps(rig)".to_owned())
-    );
+    assert_eq!(affected_selection(&["src/lib.rs"]), packages(&["rig"]));
     // The lockfile or CI can break anything; a Markdown file at the root nothing.
-    assert_eq!(affected_filter(&["Cargo.lock"]), Some("all()".to_owned()));
+    let everything = Some(vec!["--workspace".to_owned()]);
+    assert_eq!(affected_selection(&["Cargo.lock"]), everything);
     assert_eq!(
-        affected_filter(&[".github/workflows/ci.yaml"]),
-        Some("all()".to_owned())
+        affected_selection(&[".github/workflows/ci.yaml"]),
+        everything
     );
-    assert_eq!(affected_filter(&["DEVELOPING.md"]), None);
+    assert_eq!(affected_selection(&["DEVELOPING.md"]), None);
 }

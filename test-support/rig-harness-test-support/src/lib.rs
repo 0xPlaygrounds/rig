@@ -15,12 +15,17 @@ use std::time::{Duration, Instant};
 use bevy_time::TimeUpdateStrategy;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::effect::EffectId;
+use rig_core::http_client::{
+    self, Bytes, DynHttpClient, HttpClientExt, LazyBody, Method, MultipartForm, Request, Response,
+    StreamingResponse, Uri,
+};
 use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_core::wasm_compat::WasmCompatSend;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
@@ -132,13 +137,18 @@ pub fn connect(model: &MockCompletionModel) -> Option<Connection> {
     })
 }
 
-/// The catalog with each of `served` as the model its reference names,
+/// A catalog of exactly `served`, each the model its reference names,
 /// `vendor/name`, which calls tools, answered by its scripted model. A
-/// vendor the catalog does not know is declared.
+/// vendor rig does not know is declared. No other model is listed, so a run
+/// that names none picks a scripted one whatever keys the environment holds,
+/// and every HTTP request through the connector is refused ([`Offline`]),
+/// so a model a test adds itself reaches no network either. A test that
+/// fakes HTTP wraps the connector's client again with its own.
 pub fn scripted_models<'a>(
     served: impl IntoIterator<Item = (&'a str, &'a MockCompletionModel)>,
 ) -> Models {
-    let mut connector = Connector::new(Catalog::builtin().clone());
+    let mut connector = Connector::new(Catalog::default());
+    connector.wrap_http(|_| DynHttpClient::new(Offline));
     let mut vendors: HashMap<&str, (ProviderId, Vec<(String, MockCompletionModel)>)> =
         HashMap::new();
     for (reference, model) in served {
@@ -168,6 +178,60 @@ pub fn scripted_models<'a>(
         });
     }
     Models(connector)
+}
+
+/// The HTTP client of [`scripted_models`]: it refuses every request,
+/// naming its method, host, port and path, as a client that could not be
+/// built does.
+#[derive(Clone, Copy, Debug)]
+pub struct Offline;
+
+impl Offline {
+    /// The refusal of a request to `uri` with `method`. The query is left
+    /// out, as some providers put the key there.
+    fn refuse<T>(method: &Method, uri: &Uri) -> http_client::Result<T> {
+        let host = uri.host().unwrap_or_default();
+        let port = uri
+            .port_u16()
+            .map(|port| format!(":{port}"))
+            .unwrap_or_default();
+        let path = uri.path();
+        let why = format!("a scripted test app sends no HTTP: {method} {host}{port}{path}");
+        Err(http_client::Error::unbuilt(std::io::Error::other(why)))
+    }
+}
+
+impl HttpClientExt for Offline {
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        std::future::ready(Self::refuse(req.method(), req.uri()))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        std::future::ready(Self::refuse(req.method(), req.uri()))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        std::future::ready(Self::refuse(req.method(), req.uri()))
+    }
 }
 
 /// Every message `M` the app wrote, in order, kept by [`collect`].

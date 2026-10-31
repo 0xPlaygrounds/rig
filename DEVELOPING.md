@@ -21,10 +21,12 @@ prerequisites the small local checks you choose need. Iterate on one package
 with the `local` nextest profile ([Local builds](#local-builds)).
 
 Before pushing, run every test the change can break: the tests of each package
-it touches and of every package that depends on one (nextest's `rdeps`), with
-the `local` profile and four build jobs and test threads. A change to the
-workspace manifest, the lockfile or CI configuration selects every test;
-`--dry-run` shows the selection first.
+it touches and of every package that depends on one, by any kind of
+dependency, with the `local` profile and four build jobs and test threads.
+Only those packages' tests are built, under the features the selected
+packages turn on; CI runs the whole workspace. A change to the workspace manifest,
+the lockfile or CI configuration selects every test; `--dry-run` shows the
+selection first.
 
 ```sh
 cargo xtask verify --affected --base origin/main   # before every push
@@ -137,8 +139,9 @@ than on its own PR; that tradeoff is deliberate.
 
 ## Prerequisites
 
-The repository toolchain (`rust-toolchain.toml`), nextest (0.9.115 or newer,
-for the profile inheritance in `.config/nextest.toml`), Clippy, rustfmt, protoc, Docker for the
+The repository toolchain (`rust-toolchain.toml`), nextest (0.9.130 or newer,
+for the profile inheritance in `.config/nextest.toml` and the thread count it
+gives tests), Clippy, rustfmt, protoc, Docker for the
 storage suites, Node, wasm-bindgen-test-runner at the lock file's
 `wasm-bindgen` version, and Python 3.12+ for the floor checker and its
 isolation tests. The planner probes for what the selected checks need before

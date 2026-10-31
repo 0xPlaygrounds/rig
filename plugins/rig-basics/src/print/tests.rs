@@ -34,6 +34,8 @@ fn noting(store: &MemoryStore, invoked: Invocation) -> (App, Receiver<()>) {
         args: invoked,
         terminal: false,
     })
+    // No model unless a test scripts one: never the environment's.
+    .insert_resource(scripted_models([]))
     .add_plugins(AgentPlugin)
     .init_resource::<Ends>()
     .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
@@ -52,13 +54,16 @@ fn started(
     model: Option<&MockCompletionModel>,
     setup: impl FnOnce(&mut World, Entity),
 ) -> App {
-    let named = model.map(|_| "deepseek/deepseek-flash".to_owned());
+    const NAMED: &str = "deepseek/deepseek-flash";
     let invoked = Invocation {
-        model: named,
+        model: model.map(|_| NAMED.to_owned()),
         ..Invocation::default()
     };
     let (mut app, _) = noting(&MemoryStore::default(), invoked);
-    app.add_plugins(ExitPlugin)
+    // Without one named, the run picks this one in its first frame.
+    let scripted = model.cloned().unwrap_or_else(silent);
+    app.insert_resource(scripted_models([(NAMED, &scripted)]))
+        .add_plugins(ExitPlugin)
         .run_headless(Some(prompt.to_owned()))
         .update();
     let world = app.world_mut();
@@ -965,6 +970,7 @@ fn json_run(
     let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
     app.insert_resource(JsonOut::new(lines.clone()))
         .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, model)]))
         .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin))
         .add_open_tool(
             "wait",
@@ -988,10 +994,6 @@ fn json_run(
     }
     app.finish();
     app.update();
-    let world = app.world_mut();
-    if let (Some(agent), Some(connection)) = (first_agent(world), connect(model)) {
-        world.entity_mut(agent).insert(connection);
-    }
     (app, wakes, lines, input)
 }
 
@@ -1236,11 +1238,13 @@ fn out_of_credit() -> MockCompletionModel {
 fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
     // A provider refusal fails the turn; a `--model` the catalog lacks is
     // refused before it, as a command line.
-    for (named, model, code) in [
-        (None, out_of_credit(), 1),
-        (Some("nobody/nothing"), silent(), 2),
+    for (named, model, code, asked) in [
+        (None, out_of_credit(), 1, 1),
+        (Some("nobody/nothing"), silent(), 2, 0),
     ] {
         let parsed = one_shot("hi", named, &model, true, |_| {}).1.parsed();
+        // The refusal is the scripted model's, not another provider's.
+        assert_eq!(model.request_count(), asked, "{parsed:?}");
         let exit = parsed.last().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "type"), "exit", "{parsed:?}");
         assert_eq!(at(&exit, "code"), code, "{exit}");
