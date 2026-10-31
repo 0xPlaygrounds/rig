@@ -1,12 +1,13 @@
 //! Choosing a model and its reasoning setting: `--model`, `/model`,
 //! `/effort` ([`ModelsPlugin`]), with the terminal view's pickers and both
 //! in each agent's status line under the default `tui` feature, and the
-//! ones a new session starts with, the last ones chosen
+//! ones a new session starts with, the last ones the user chose
 //! ([`DefaultsPlugin`](defaults::DefaultsPlugin)).
 //!
-//! `/model` lists every catalog model, those that can be reached first and
+//! `/model` lists the catalog's models, those that can be reached first and
 //! each other one with why not (no key, no tool calls, the provider's
-//! reason), and completes its argument with them; a provider plugin adds
+//! reason), leaving out those a signed-in account is not offered, opens on
+//! the agent's model, and completes its argument with them; a provider plugin adds
 //! to the catalog through rig-core's [`Connector`] (in [`Models`]). It
 //! lists the [`ModelItem`]s other plugins spawn too, for choices
 //! that are no catalog model, such as a router that picks the model per

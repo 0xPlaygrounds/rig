@@ -40,9 +40,13 @@ supported yet.
 ## Models and sign-in
 
 `/model` picks a model (providers that need no key, such as a local Ollama,
-are listed last), and `/effort` its reasoning setting. `-m vendor/model` picks
-one on the command line; otherwise a session starts with the last model and
-reasoning chosen, else the first model with a key.
+are listed last; the picker opens on the current one), and `/effort` its
+reasoning setting. A new session starts with the model and reasoning you last
+picked with `/model` and `/effort`, saved once that model has answered. `-m
+vendor/model` picks one on the command line for that run only; an editor's
+choice over ACP and an automatic pick are never saved either. With nothing
+saved or named, the terminal view asks you to pick one, and a headless run
+or an editor's new session takes the first model that can be reached.
 
 `/login` without arguments lets you pick the ChatGPT plan or a provider that
 takes an API key. `/login <provider>`, such as `/login anthropic`, asks for
@@ -65,8 +69,12 @@ does. Print mode prints the URL or code, and `rig -p "/login chatgpt"` signs in
 without the terminal view. Esc or a second `/login` cancels a sign-in that waits.
 
 Once signed in, `/model` lists the plan's models as `chatgpt/...`, marked
-"(ChatGPT plan)", and a successful sign-in switches the agent to the plan's
-latest frontier model. The credential is kept in `RIG_HOME/auth/chatgpt.json`,
+"(ChatGPT plan)": those ChatGPT says your account may use, asked once per run
+when first needed (and once more if it refuses a model it listed). Until it
+answers they are marked as being checked; if it cannot be asked, the plan's
+models are refused with the reason, and `/login` asks again. A successful
+sign-in switches the agent to the plan's latest frontier model for that
+session. The credential is kept in `RIG_HOME/auth/chatgpt.json`,
 readable by you alone, and refreshed before a request when it has expired, so
 a long session keeps working (rig processes running at once take turns
 refreshing it). `/logout chatgpt` asks OpenAI to revoke it, then deletes it.
@@ -422,7 +430,7 @@ processes can share one:
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |
 | `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project. |
-| `defaults.json` | The last chosen model and reasoning, which a new session starts with. |
+| `defaults.json` | The model and reasoning last picked with `/model` and `/effort` once that model answered, which a new session starts with. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
 | `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
