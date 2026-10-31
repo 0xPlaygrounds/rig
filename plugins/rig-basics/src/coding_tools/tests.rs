@@ -258,6 +258,7 @@ fn in_another_workspace_a_message_waits_for_its_files() {
 
 /// `@HOST:PATH` attaches that host's file through its transport, even with
 /// a file at the same path here.
+#[cfg(unix)]
 #[test]
 fn a_host_reference_attaches_the_hosts_file() {
     let exe = std::env::current_exe().unwrap_or_default();
@@ -300,22 +301,28 @@ fn a_host_reference_attaches_the_hosts_file() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// This machine's disk behind a slow transport: every path is said to be
-/// on a host, and every look at one but one named `fast…` waits until
-/// `released` (at most 5 s).
+/// Whether the file name of `path` holds `part`.
+fn named(path: &Path, part: &str) -> bool {
+    path.file_name()
+        .is_some_and(|name| name.to_string_lossy().contains(part))
+}
+
+/// This machine's disk behind a slow transport: every path but a file
+/// named `…local…` is said to be on a host, and every look at one but a
+/// file named `…fast…` waits until `released` (at most 5 s).
 #[derive(Debug, Default)]
 struct Slow {
     released: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Workspace for Slow {
-    fn host_for(&self, _: &Path) -> Option<&str> {
-        Some("test://slow")
+    fn host_for(&self, path: &Path) -> Option<&str> {
+        (!named(path, "local")).then_some("test://slow")
     }
 
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         let started = std::time::Instant::now();
-        let fast = path.to_string_lossy().contains("fast");
+        let fast = named(path, "fast");
         while !fast
             && !self.released.load(std::sync::atomic::Ordering::Relaxed)
             && started.elapsed() < std::time::Duration::from_secs(5)
@@ -730,4 +737,40 @@ fn a_read_skills_message_goes_on_after_a_stop() {
     });
     released.store(true, std::sync::atomic::Ordering::Relaxed);
     assert!(said(app.world(), agent).contains("SKILL_BODY"));
+}
+
+/// A message held behind one whose files are on a host has its own files
+/// on this machine attached at once, for the plugins after
+/// [`AttachSystems`], such as one that redacts secrets; only its delivery
+/// waits.
+#[test]
+fn a_held_messages_local_files_are_attached_at_once() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-local-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("fast_local.txt"), "LOCAL_TEXT").ok();
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), &dir, "");
+    app.world_mut().spawn((
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    ));
+    app.update();
+    let second = (
+        Incoming::new("SECOND_MESSAGE @fast_local.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    let second = app.world_mut().spawn(second).id();
+    app.update();
+    let held = app.world().get::<Holds>(second).is_some();
+    let attached = app.world().get::<Incoming>(second).is_some_and(|message| {
+        (message.parts.iter()).any(|part| matches!(part, MessagePart::Attachment(_)))
+    });
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(held && attached, "held {held}, attached {attached}");
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SECOND_MESSAGE")
+    });
+    std::fs::remove_dir_all(&dir).ok();
 }

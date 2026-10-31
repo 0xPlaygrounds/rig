@@ -281,7 +281,7 @@ pub struct AttachPlugin;
 /// text goes before, in `Input`; one that reads or edits the attachments
 /// goes `.after(AttachSystems)`. Files on another machine are read off the
 /// main thread under a hold on the message, so they come later than this
-/// set, as do those of a message held behind one that waits for them.
+/// set.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttachSystems;
 
@@ -316,7 +316,8 @@ impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
 /// comes in: inline when every one is on this machine, else off the main
 /// thread under a hold on the message ([`Workspace::host_for`]). While a
 /// message to an agent is held, a later one of the user's own, or one that
-/// names files, is held behind it, so it does not pass it. A message a
+/// names files, is held behind it, so it does not pass it; its files on
+/// this machine are attached at once all the same. A message a
 /// restart put back in the inbox ([`Started`]) has them already.
 ///
 /// [`Workspace::host_for`]: rig_tools::workspace::Workspace::host_for
@@ -367,12 +368,12 @@ fn attach(
             waiting.push(agent);
             continue;
         }
+        // Attached now, for the plugins after this set; only its delivery
+        // waits.
         let attached = attachments(typed.text(), &base, &*workspace);
-        match waiting.contains(&agent) {
-            true => {
-                commands.spawn((hold, ReadFiles::from(Ok(attached))));
-            }
-            false => add_attached(&mut typed, agent, attached, &mut notices),
+        add_attached(&mut typed, agent, attached, &mut notices);
+        if waiting.contains(&agent) {
+            commands.spawn((hold, ReadFiles::from(Ok(Attached::default()))));
         }
     }
 }

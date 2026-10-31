@@ -227,17 +227,15 @@ fn a_dropped_image_with_a_space_is_typed_quoted() {
     use crossterm::event::Event;
 
     let root = scratch("drop-space");
-    let image = root.join("shot 1.png");
+    let image = root.join("shot (1).png");
     std::fs::write(&image, b"\x89PNG\r\n\x1a\n").ok();
     let shown = image.display().to_string();
     let mut drops = vec![(format!("'{shown}'"), shown.clone())];
     if cfg!(unix) {
-        let named = root.join("shot\\ 1.png").display().to_string();
+        let named = root.join("shot\\ (1).png").display().to_string();
         std::fs::write(&named, b"\x89PNG\r\n\x1a\n").ok();
-        let escaped = format!(
-            "{}/shot\\ 1.png",
-            root.display().to_string().replace(' ', "\\ ")
-        );
+        let root = root.display().to_string().replace(' ', "\\ ");
+        let escaped = format!("{root}/shot\\ \\(1\\).png");
         drops.push((escaped, shown.clone()));
         drops.push((format!("'{named}'"), named));
     }
