@@ -1498,8 +1498,9 @@ public API alone. A request that does not fit takes one recovery path, carried
 through retries (`Recovering`): old tool outputs cleared, then compacted, then
 the turn fails; a model reply starts it again. Old tool outputs are cleared
 only after notes on them, or when every one is a `read` that, run again as a
-call of the turn (so gates decide it), gives the same output; failed notes
-clear nothing. A summary that fails or is cut is never used and clears
+tool call of the agent (`ToolRequest` with `ForAgent`, not `CallOf` its turn,
+so gates decide it and turn counters skip it), gives the same output; failed
+notes clear nothing. A summary that fails or is cut is never used and clears
 nothing: the call goes if it fits as it is (`Recovering::NotSummarized`, as
 for a cancelled summary or notes call); an overflow at that step fails the
 turn. A notes (`Noting`) or summary
