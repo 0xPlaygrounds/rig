@@ -109,7 +109,7 @@ fn status_error(status: StatusCode) -> reqwest::Error {
 }
 
 /// A middleware's own failure says nothing about a second send, so it is
-/// not retried; a reqwest error it passed on is classified as reqwest's.
+/// not retried; a reqwest or rig error it passed on keeps its class.
 #[cfg(any(
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
@@ -127,4 +127,12 @@ fn a_middleware_error_is_permanent_unless_reqwest_classifies_it() {
         middleware::from_middleware(passed_on),
         Error::Transient(_)
     ));
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let rigs = reqwest_middleware::Error::middleware(Error::transient("reset"));
+        assert!(matches!(
+            middleware::from_middleware(rigs),
+            Error::Transient(_)
+        ));
+    }
 }

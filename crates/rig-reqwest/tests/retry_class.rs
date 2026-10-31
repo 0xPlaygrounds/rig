@@ -9,11 +9,13 @@ use rig_http::http_client::{Error, HttpClientExt, NoBody, Request};
 use rig_reqwest::ReqwestClient;
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::time::Duration;
 
 fn client() -> ReqwestClient {
     ReqwestClient::from(
         reqwest::Client::builder()
             .no_proxy()
+            .timeout(Duration::from_secs(10))
             .build()
             .expect("client"),
     )
@@ -26,6 +28,9 @@ fn cut_short() -> String {
     let url = format!("http://{}/", listener.local_addr().expect("address"));
     std::thread::spawn(move || {
         let (mut socket, _) = listener.accept().expect("accept");
+        socket
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("read deadline");
         let mut request = Vec::new();
         let mut byte = [0];
         while !request.ends_with(b"\r\n\r\n") {
