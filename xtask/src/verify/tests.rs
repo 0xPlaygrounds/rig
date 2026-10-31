@@ -1403,7 +1403,8 @@ fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
 }
 
 /// What `--affected` selects for `paths`: the arguments after the fixed
-/// profile, job and thread ones, or `None` when it runs nothing. The fixture
+/// profile, job and thread ones, which come first, or `None` when it runs
+/// nothing or the fixed ones are not first. The fixture
 /// adds a package reached only through a dev-dependency of `example` and two
 /// packages depending on each other, one of them on `rig-sqlite`.
 fn affected_selection(paths: &[&str]) -> Option<Vec<String>> {
@@ -1426,8 +1427,19 @@ fn affected_selection(paths: &[&str]) -> Option<Vec<String>> {
     )
     .ok()?;
     let args = &plan.first()?.steps.first()?.args;
-    let threads = args.iter().position(|arg| arg == "--test-threads")?;
-    Some(args.get(threads + 2..)?.to_vec())
+    let fixed = [
+        "nextest",
+        "run",
+        "--locked",
+        "--profile",
+        "local",
+        "--build-jobs",
+        "4",
+        "--test-threads",
+        "4",
+    ];
+    let (head, selection) = args.split_at_checked(fixed.len())?;
+    (head == fixed).then(|| selection.to_vec())
 }
 
 /// `-p` for each of `names`.

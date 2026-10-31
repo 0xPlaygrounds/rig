@@ -433,9 +433,10 @@ fn every_wire_built() -> bool {
 type Outputs = BTreeMap<String, BTreeMap<String, Vec<String>>>;
 
 /// How many threads a test may encode on: the runner's cap, which nextest
-/// passes as `NEXTEST_TEST_THREADS` and reserves for the test
+/// passes as `NEXTEST_TEST_THREADS` and reserves for the wire test
 /// (`threads-required` in `.config/nextest.toml`), else every core, as
-/// libtest's own default.
+/// libtest's own default. Under `--no-capture` nextest runs one test at a
+/// time, so the cap is one.
 fn workers() -> usize {
     let cores = std::thread::available_parallelism().map_or(1, usize::from);
     std::env::var("NEXTEST_TEST_THREADS")

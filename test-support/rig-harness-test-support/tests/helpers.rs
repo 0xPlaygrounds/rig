@@ -137,3 +137,28 @@ fn a_scripted_app_lists_only_its_models_and_sends_no_http() {
     );
     assert_eq!(model.request_count(), 0);
 }
+
+#[test]
+fn the_refusal_names_the_request_but_not_its_query() {
+    use std::task::{Context, Poll, Waker};
+
+    use rig_core::http_client::{HttpClientExt, Request};
+    use rig_harness_test_support::Offline;
+
+    let request = Request::post("https://example.test/v1/models/m:generate?key=sentinel-secret")
+        .body(Vec::new());
+    assert!(request.is_ok());
+    let Ok(request) = request else {
+        return;
+    };
+    let sent = std::pin::pin!(Offline.send::<_, Vec<u8>>(request));
+    let why = match sent.poll(&mut Context::from_waker(Waker::noop())) {
+        Poll::Ready(Err(error)) => error.to_string(),
+        Poll::Ready(Ok(_)) | Poll::Pending => String::new(),
+    };
+    assert!(
+        why.contains("POST example.test/v1/models/m:generate"),
+        "{why}"
+    );
+    assert!(!why.contains("sentinel-secret"), "{why}");
+}

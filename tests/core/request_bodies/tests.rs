@@ -116,7 +116,8 @@ fn the_corpus_holds_every_catalog_id() {
 }
 
 /// The encoding runs on no more threads than the runner gives the test, so
-/// a run stays within `--test-threads`.
+/// a run stays within `--test-threads`. Its threads only sleep, for a few
+/// milliseconds, so unlike the wire test it reserves no slots.
 #[test]
 fn encoding_stays_within_the_runners_threads() {
     use std::sync::Arc;

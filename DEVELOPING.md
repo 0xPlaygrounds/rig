@@ -23,8 +23,8 @@ with the `local` nextest profile ([Local builds](#local-builds)).
 Before pushing, run every test the change can break: the tests of each package
 it touches and of every package that depends on one, by any kind of
 dependency, with the `local` profile and four build jobs and test threads.
-Only those packages' tests are built, under the features they turn on
-themselves; CI runs the whole workspace. A change to the workspace manifest,
+Only those packages' tests are built, under the features the selected
+packages turn on; CI runs the whole workspace. A change to the workspace manifest,
 the lockfile or CI configuration selects every test; `--dry-run` shows the
 selection first.
 
