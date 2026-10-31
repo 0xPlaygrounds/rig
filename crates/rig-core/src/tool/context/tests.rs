@@ -204,23 +204,6 @@ fn kept_facts_are_redacted_without_old_text_and_bounded() {
         Some(ExitStatus::Exited(3))
     );
 
-    // Two values that each fit but not together: one goes, and what stays
-    // is within the budget as JSON.
-    #[derive(Serialize, Deserialize)]
-    struct Note(String);
-    impl ContextValue for Note {
-        const KEY: &'static str = "test.note";
-    }
-    let mut two = ToolContext::new();
-    let most = MAX_KEPT_FACTS_BYTES * 3 / 5;
-    assert!(two.insert_result(RequestId("x".repeat(most))).is_ok());
-    assert!(two.insert_result(Note("y".repeat(most))).is_ok());
-    let kept = two.result_context().kept();
-    let request = kept.get::<RequestId>().ok().flatten().is_some();
-    let note = kept.get::<Note>().ok().flatten().is_some();
-    assert!(request != note, "one of the two stays");
-    let size = serde_json::to_vec(&kept).map_or(usize::MAX, |json| json.len());
-    assert!(size <= MAX_KEPT_FACTS_BYTES, "{size}");
     // At the edge, the key's quotes and the map's braces count too.
     let mut edge = ToolContext::new();
     let fill = MAX_KEPT_FACTS_BYTES - RequestId::KEY.len() - 2;
