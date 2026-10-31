@@ -18,7 +18,7 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
         .add_observer(brief_subagent)
-        .add_observer(brief_peer)
+        .add_systems(AgentPass, brief_peers.in_set(PrepareSystems::Input))
         .add_observer(brief_environment)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
@@ -209,16 +209,32 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
 }
 
-/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does,
-/// when it has `message` and `wait` to reach them.
-fn brief_peer(added: On<Add<Peers>>, access: Query<&ToolAccess>, mut commands: Commands) {
-    let reaches = access
-        .get(added.entity)
-        .is_ok_and(|access| access.allows(MESSAGE) && access.allows(WAIT));
-    if reaches {
-        commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+/// Tells each subagent with [`Peers`] about them, as [`brief_subagent`]
+/// does, while it has `message` and `wait` to reach them: looked at again
+/// whenever its access changes, as when a restore inserts the saved one, or
+/// the kernel keeps it within its parent's, before its request is composed.
+fn brief_peers(
+    peers: Query<(Entity, &ToolAccess), (With<Peers>, Or<(Added<Peers>, Changed<ToolAccess>)>)>,
+    roles: Query<(Entity, &Name, &SectionOf)>,
+    mut commands: Commands,
+) {
+    for (agent, access) in &peers {
+        let reaches = access.allows(MESSAGE) && access.allows(WAIT);
+        let shown = roles
+            .iter()
+            .find(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG);
+        match (reaches, shown) {
+            (true, None) => {
+                commands.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
+            }
+            (false, Some((section, ..))) => commands.entity(section).despawn(),
+            _ => {}
+        }
     }
 }
+
+/// The tag of the peer role's prompt section.
+const PEER_TAG: &str = "peer_role";
 
 /// Tells a subagent its [`Environment`] in a prompt section of its own,
 /// after the app's facts about the machine.

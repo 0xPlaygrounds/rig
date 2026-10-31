@@ -1181,11 +1181,13 @@ fn a_restored_subagent_whose_work_a_plugin_carries_on_is_not_stopped() {
 }
 
 /// A peer whose parent has neither `message` nor `wait` gets neither, and
-/// is not told to use them.
+/// is not told to use them, also once its session is resumed, when its
+/// saved access comes after its other components.
 #[test]
 fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
+    let store = MemoryStore::default();
     let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
-    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let mut session = Session::new(&store, Some(&parent));
     let restricted = ToolAccess::All.narrow([TASK, "look"]);
     session
         .app
@@ -1193,12 +1195,21 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
         .entity_mut(session.parent)
         .insert(restricted);
     let child = session.task("Propose");
-    let world = session.app.world_mut();
-    let access = world.get::<ToolAccess>(child).and_then(ToolAccess::names);
-    assert!(access.is_some_and(|names| !names.iter().any(|name| name == MESSAGE || name == WAIT)));
-    let mut roles = world.query::<(&Name, &SectionOf)>();
-    let peer_role = roles
-        .iter(world)
-        .any(|(name, of)| of.0 == child && name.as_str() == "peer_role");
-    assert!(!peer_role);
+    let told = |session: &mut Session, child: Entity| {
+        let world = session.app.world_mut();
+        let access = world.get::<ToolAccess>(child).and_then(ToolAccess::names);
+        let lacks = access.is_some_and(|names| !names.iter().any(|n| n == MESSAGE || n == WAIT));
+        let mut roles = world.query::<(&Name, &SectionOf)>();
+        let role =
+            (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role");
+        (lacks, role)
+    };
+    assert_eq!(told(&mut session, child), (true, false));
+    session.app.update();
+    drop(session);
+    let mut session = Session::new(&store, None);
+    session.passes(|_| false);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    assert_eq!(told(&mut session, child), (true, false));
 }
