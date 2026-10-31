@@ -166,6 +166,15 @@ struct Mention {
     lines: Option<(usize, usize)>,
 }
 
+impl Mention {
+    /// The mention as a message writes it: its path as a [`Reference`],
+    /// then its range.
+    fn written(&self) -> String {
+        let range = self.label.strip_prefix(&self.path).unwrap_or_default();
+        format!("{}{range}", Reference::format(&self.path))
+    }
+}
+
 /// The mentions in `text` ([`Reference::parse`]), each path and range
 /// once, in order. A quoted path is taken as written, its lines following
 /// the closing quote (`@"my notes.md":10-40`).
@@ -242,7 +251,7 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
             Ok(Stat::Missing) if is_path_reference(&mention.path) => {
                 found.warnings.push(format!(
                     "{} does not exist; it is sent as plain text.",
-                    Reference::format(label)
+                    mention.written()
                 ));
                 continue;
             }
@@ -266,7 +275,7 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
             Ok(content) => found.attached.push((label.clone(), content)),
             Err(why) => found
                 .warnings
-                .push(format!("@{label} is not attached: {why}.")),
+                .push(format!("{} is not attached: {why}.", mention.written())),
         }
     }
     found

@@ -164,6 +164,8 @@ fn a_picked_path_with_a_space_is_quoted() {
     std::fs::write(root.join("attach notes.txt"), "").ok();
     std::fs::write(root.join("attach"), "").ok();
     std::fs::write(root.join("my dir").join("inner file.txt"), "").ok();
+    std::fs::create_dir_all(root.join("~")).ok();
+    std::fs::write(root.join("~").join("tilde note.txt"), "").ok();
     if cfg!(unix) {
         std::fs::write(root.join("back\\slash.txt"), "").ok();
         std::fs::write(root.join("loop:notes.txt"), "").ok();
@@ -191,6 +193,12 @@ fn a_picked_path_with_a_space_is_quoted() {
     walked(&mut app);
     press(&mut app, "tab");
     assert_eq!(typed_text(&app), "@\"my dir/inner file.txt\" ");
+    // A directory named `~` here is not the home directory.
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "@tilde");
+    walked(&mut app);
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"./~/tilde note.txt\" ");
     // On Unix a `\` is part of a name, not a directory's end.
     if cfg!(unix) {
         press(&mut app, "ctrl+c");
