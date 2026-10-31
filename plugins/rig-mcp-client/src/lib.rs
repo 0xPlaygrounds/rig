@@ -830,9 +830,7 @@ impl Start {
         let refused = child.as_ref().and_then(Group::refused);
         drop(child);
         match refused {
-            Some(refused) => Err(format!(
-                "the server sent a message of {refused}, past the limit of {LINE_LIMIT}"
-            )),
+            Some(refused) => Err(format!("the server sent a message of {refused}")),
             None => Ok(()),
         }
     }

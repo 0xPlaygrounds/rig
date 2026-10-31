@@ -294,7 +294,7 @@ impl Plugin for PrintPlugin {
         // refusal ends it with code 2 after the first frame.
         let prompt = full_prompt(&prompt, piped, interrupted).unwrap_or_else(|refused| {
             app.refuse_run(format!(
-                "stdin: {refused} were piped in, past the limit of {PIPED_LIMIT} bytes"
+                "stdin: {refused} were piped in, which is too much: pipe in less"
             ));
             None
         });
@@ -1930,7 +1930,7 @@ fn request(
             return out.emit(None, "reply", fields);
         }
         Err(refused) => {
-            let why = format!("the request line has {refused}, past the limit of {REQUEST_LIMIT}");
+            let why = format!("the request line has {refused}, which is too much: send less");
             let fields = json!({ "id": Value::Null, "ok": false, "error": why });
             return out.emit(None, "reply", fields);
         }
