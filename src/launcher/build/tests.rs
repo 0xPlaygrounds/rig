@@ -296,7 +296,8 @@ fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
         let home = Home::at(&root);
         let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
         let mut cargo = Command::new("sh");
-        let script = "sleep 30 & echo $(ps -o pgid= -p $$) $! > \"$0\"; wait";
+        // "cargo" ignores SIGTERM; what it started does not.
+        let script = "sleep 30 & echo $(ps -o pgid= -p $$) $! $$ > \"$0\"; trap '' TERM; wait";
         cargo.args(["-c", script]).arg(&seen).stderr(Stdio::piped());
         let watched = seen.clone();
         std::thread::spawn(move || {
@@ -331,24 +332,35 @@ fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
     fs::remove_file(&seen).ok();
     fs::remove_dir_all(seen.with_extension("home")).ok();
     let mut ids = ids.split_whitespace();
-    let (group, sleep) = (
+    let (group, sleep, cargo) = (
+        ids.next().unwrap_or_default(),
         ids.next().unwrap_or_default(),
         ids.next().unwrap_or_default(),
     );
-    let alive = fs::read_to_string(format!("/proc/{sleep}/stat")).is_ok_and(|stat| {
-        !stat
-            .rsplit(')')
-            .next()
-            .unwrap_or_default()
-            .trim_start()
-            .starts_with('Z')
-    });
+    let alive = |pid: &str| {
+        fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while (alive(sleep) || alive(cargo)) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     assert_eq!(
         status.ok().and_then(|status| status.signal()),
         Some(libc::SIGTERM)
     );
     assert_eq!(group, launcher.id().to_string());
-    assert!(!sleep.is_empty() && !alive);
+    assert!(
+        !sleep.is_empty() && !alive(sleep),
+        "cargo's child outlived it"
+    );
+    assert!(!cargo.is_empty() && !alive(cargo), "cargo outlived it");
 }
 
 /// Stopping the build, as a signal that ends the launcher does, kills

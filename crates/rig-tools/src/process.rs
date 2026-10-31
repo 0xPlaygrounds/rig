@@ -658,12 +658,12 @@ impl Process {
     /// returning `false` stops the wait. A blocking call.
     ///
     /// One decision ends the output: once `sink` returned `false`, or the
-    /// deadline passed, `sink` gets nothing more, while the process runs or
-    /// after it exited. After an exit, something it left running that still
-    /// holds its output gets a moment (100 ms) to finish, then the rest of
-    /// its group is killed, as it is when `sink` stops taking output then
-    /// (which ends the wait as [`Ended::Stopped`]) or output comes past the
-    /// deadline (as [`Ended::TimedOut`]); past the deadline or
+    /// deadline passed while it runs, `sink` gets nothing more, also after
+    /// it exited. A process that exited in time has all it printed before
+    /// taken, however long `sink` takes. After an exit, something it left
+    /// running that still holds its output gets a moment (100 ms) to
+    /// finish, then the rest of its group is killed, as it is when `sink`
+    /// stops taking output then (which ends the wait as [`Ended::Stopped`]); past the deadline or
     /// stopped while it runs, the group is [stopped](Self::stop) with
     /// [`STOP_GRACE`]. Output that came before a kill is still read, and
     /// the pipes for that moment after it: a process that left the group
@@ -696,37 +696,32 @@ impl Process {
         };
         if !matches!(ended, Ended::Exited(_)) {
             self.stop(STOP_GRACE).ok();
-            self.read_rest(&mut drop, false);
+            self.read_rest(&mut drop);
             return Ok(ended);
         }
-        let (more, late) = (Cell::new(more), Cell::new(false));
+        // It exited in time: what it printed before is taken, however long
+        // the sink takes.
+        let more = Cell::new(more);
         let mut take = |line| {
-            if !more.get() {
-                return;
+            if more.get() {
+                more.set(sink(line));
             }
-            let past = deadline.is_some_and(|deadline| Instant::now() >= deadline);
-            late.set(past);
-            more.set(!past && sink(line));
         };
-        if !self.read_rest(&mut take, false) || !more.get() {
+        if !self.read_rest(&mut take) || !more.get() {
             self.kill().ok();
-            self.read_rest(&mut take, false);
+            self.read_rest(&mut take);
         }
-        Ok(match (late.get(), more.get()) {
-            (true, _) => Ended::TimedOut,
-            (false, false) => Ended::Stopped,
-            (false, true) => ended,
-        })
+        Ok(if more.get() { ended } else { Ended::Stopped })
     }
 
     /// Hands its output to `take` until the pipes' end: all of it once
-    /// every process holding them closed them within [`PIPE_GRACE`] (or
-    /// had, `closed`), however long `take` takes; else what came within
-    /// that moment, while something still writes. Whether the end came.
-    fn read_rest(&self, take: &mut impl FnMut(OutputLine), closed: bool) -> bool {
+    /// every process holding them closed them within [`PIPE_GRACE`],
+    /// however long `take` takes; else what came within that moment, while
+    /// something still writes. Whether the end came.
+    fn read_rest(&self, take: &mut impl FnMut(OutputLine)) -> bool {
         let end = Instant::now() + PIPE_GRACE;
         loop {
-            let open = !closed && self.reading.load(Ordering::SeqCst) > 0;
+            let open = self.reading.load(Ordering::SeqCst) > 0;
             let left = end.saturating_duration_since(Instant::now());
             if open && left.is_zero() {
                 return false;
@@ -858,15 +853,26 @@ fn stop_groups(ids: Vec<u32>) {
         return;
     }
     signal_listed(&ids, Signal::Terminate);
+    ledger().stopping.extend(&ids);
     let later = ids.clone();
     let spawned = thread::Builder::new()
         .name("rig-process-stop".to_owned())
         .spawn(move || {
             thread::sleep(STOP_GRACE);
-            signal_listed(&later, Signal::Kill);
+            killed(&later);
         });
     if spawned.is_err() {
-        signal_listed(&ids, Signal::Kill);
+        killed(&ids);
+    }
+}
+
+/// Kills the groups `ids` asked to stop, while listed, and forgets that
+/// they were.
+fn killed(ids: &[u32]) {
+    signal_listed(ids, Signal::Kill);
+    let mut ledger = ledger();
+    for id in ids {
+        ledger.stopping.remove(id);
     }
 }
 
@@ -973,6 +979,9 @@ struct Ledger {
     path: Option<PathBuf>,
     listed: BTreeSet<u32>,
     left: BTreeSet<u32>,
+    /// Groups asked to stop and killed after [`STOP_GRACE`] if they still
+    /// run ([`stop_groups`]).
+    stopping: BTreeSet<u32>,
     sweeping: bool,
 }
 
@@ -980,6 +989,7 @@ static LEDGER: Mutex<Ledger> = Mutex::new(Ledger {
     path: None,
     listed: BTreeSet::new(),
     left: BTreeSet::new(),
+    stopping: BTreeSet::new(),
     sweeping: false,
 });
 
@@ -1036,14 +1046,17 @@ pub fn record_groups(path: impl Into<PathBuf>, adopted: impl IntoIterator<Item =
 }
 
 /// Ends the groups the agent owns whose leader exited, such as a job a
-/// command left running in the background, as the agent exits for good:
-/// asks each to stop (`SIGTERM`), waits at most [`STOP_GRACE`] for them to
-/// empty, then kills what is left (`SIGKILL`). A group whose leader still
-/// runs is its [`Process`]'s, which kills it as it is dropped. A job
-/// started with `setsid` is in a session of its own and is not owned. A
-/// blocking call.
+/// command left running in the background, and those a stopped call asked
+/// to stop and would kill later, as the agent exits for good: asks each to
+/// stop (`SIGTERM`), waits at most [`STOP_GRACE`] for them to empty, then
+/// kills what is left (`SIGKILL`). Another group whose leader still runs is
+/// its [`Process`]'s, which kills it as it is dropped. A job started with
+/// `setsid` is in a session of its own and is not owned. A blocking call.
 pub fn end_left() {
-    let ids: Vec<u32> = ledger().left.iter().copied().collect();
+    let ids: Vec<u32> = {
+        let ledger = ledger();
+        ledger.left.union(&ledger.stopping).copied().collect()
+    };
     signal_listed(&ids, Signal::Terminate);
     let deadline = Instant::now() + STOP_GRACE;
     while ids.iter().any(|&id| has_members(id)) && Instant::now() < deadline {
