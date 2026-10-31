@@ -398,7 +398,7 @@ impl HttpMiddleware for Gateway {
         headers: &'a mut HeaderMap,
     ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
         Box::pin(async move {
-            let failed = |why: String| http_client::Error::Instance(why.into());
+            let failed = |why: String| http_client::Error::permanent(why);
             let key = self.key().await.map_err(failed)?;
             let (name, value) = self.provider.auth(&key).map_err(failed)?;
             for (name, value) in &self.provider.headers {

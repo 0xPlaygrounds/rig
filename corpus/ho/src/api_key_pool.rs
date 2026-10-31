@@ -454,8 +454,9 @@ impl Rotating {
                 picked
             };
             let Some((index, key, stand_in)) = picked else {
+                // Keys cool down, so a later send may find one.
                 let why = "no key of the pool can be used";
-                return Err(http_client::Error::instance(std::io::Error::other(why)));
+                return Err(http_client::Error::transient(why));
             };
             tried.push(index);
             let error = match send(self.inner.clone(), keyed(&request, &stand_in, &key)?).await {
@@ -500,13 +501,13 @@ fn keyed(
     let uri = request.uri().to_string();
     if uri.contains(stand_in) {
         let uri = uri.replace(stand_in, key.expose());
-        *keyed.uri_mut() = uri.parse().map_err(http_client::Error::instance)?;
+        *keyed.uri_mut() = uri.parse().map_err(http_client::Error::permanent)?;
     }
     for value in keyed.headers_mut().values_mut() {
         let text = value.to_str().unwrap_or_default();
         if text.contains(stand_in) {
             let mut with_key = HeaderValue::from_str(&text.replace(stand_in, key.expose()))
-                .map_err(http_client::Error::instance)?;
+                .map_err(http_client::Error::permanent)?;
             with_key.set_sensitive(true);
             *value = with_key;
         }

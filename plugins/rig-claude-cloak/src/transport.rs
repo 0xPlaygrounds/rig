@@ -889,7 +889,7 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
 impl OAuthTransport {
     #[allow(clippy::result_large_err)]
     async fn prepare(&self, mut req: Request<Bytes>) -> http_client::Result<Request<Bytes>> {
-        validate(req.uri()).map_err(http_client::Error::instance)?;
+        validate(req.uri()).map_err(http_client::Error::permanent)?;
         #[cfg(test)]
         let credentials = match &self.credentials {
             Some(credentials) => Ok(credentials.clone()),
@@ -897,9 +897,15 @@ impl OAuthTransport {
         };
         #[cfg(not(test))]
         let credentials = crate::auth::credentials_for_request(&self.home).await;
-        let (token, account) = credentials.map_err(http_client::Error::instance)?;
+        let (token, account) = credentials.map_err(|error| {
+            if error.is_transient() {
+                http_client::Error::transient(error)
+            } else {
+                http_client::Error::permanent(error)
+            }
+        })?;
         let original: Value =
-            serde_json::from_slice(req.body()).map_err(http_client::Error::instance)?;
+            serde_json::from_slice(req.body()).map_err(http_client::Error::permanent)?;
         let thinking_requested = original
             .pointer("/_omp/thinking_requested")
             .and_then(Value::as_bool)
@@ -910,10 +916,10 @@ impl OAuthTransport {
                 )
             });
         *req.body_mut() = body(req.body(), &self.device, &self.session, account.as_deref())
-            .map_err(http_client::Error::instance)?;
+            .map_err(http_client::Error::permanent)?;
         *req.uri_mut() = Uri::from_static("https://api.anthropic.com/v1/messages?beta=true");
         let payload: Value =
-            serde_json::from_slice(req.body()).map_err(http_client::Error::instance)?;
+            serde_json::from_slice(req.body()).map_err(http_client::Error::permanent)?;
         let agent = original
             .pointer("/_omp/agent_request")
             .and_then(Value::as_bool)
@@ -958,7 +964,7 @@ impl OAuthTransport {
         for header in req.headers().get_all("anthropic-beta") {
             for beta in header
                 .to_str()
-                .map_err(http_client::Error::instance)?
+                .map_err(http_client::Error::permanent)?
                 .split(',')
                 .map(str::trim)
             {
@@ -1006,7 +1012,7 @@ impl OAuthTransport {
         }
         headers.insert(
             "anthropic-beta",
-            HeaderValue::from_str(&betas.join(",")).map_err(http_client::Error::instance)?,
+            HeaderValue::from_str(&betas.join(",")).map_err(http_client::Error::permanent)?,
         );
         headers.insert(
             "x-claude-code-session-id",
@@ -1023,10 +1029,10 @@ impl OAuthTransport {
                     .as_deref()
                     .unwrap_or(&self.session),
             )
-            .map_err(http_client::Error::instance)?,
+            .map_err(http_client::Error::permanent)?,
         );
         let mut bearer = HeaderValue::from_str(&format!("Bearer {token}"))
-            .map_err(http_client::Error::instance)?;
+            .map_err(http_client::Error::permanent)?;
         bearer.set_sensitive(true);
         headers.insert("authorization", bearer);
         let custom_network = [
@@ -1048,10 +1054,10 @@ impl OAuthTransport {
                 .write(Vec::new(), flate2::Compression::new(6));
             encoder
                 .write_all(req.body())
-                .map_err(http_client::Error::instance)?;
+                .map_err(http_client::Error::permanent)?;
             *req.body_mut() = encoder
                 .finish()
-                .map_err(http_client::Error::instance)?
+                .map_err(http_client::Error::permanent)?
                 .into();
             req.headers_mut()
                 .insert("content-encoding", HeaderValue::from_static("gzip"));
@@ -1091,7 +1097,7 @@ impl HttpClientExt for OAuthTransport {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        async { Err(http_client::Error::instance(Error::Multipart)) }
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
     fn send_streaming<T>(
         &self,

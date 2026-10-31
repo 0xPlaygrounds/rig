@@ -286,7 +286,7 @@ impl CacheCapture {
             let mut bytes = Vec::new();
             flate2::read::GzDecoder::new(request.body().as_ref())
                 .read_to_end(&mut bytes)
-                .map_err(http_client::Error::instance)?;
+                .map_err(http_client::Error::permanent)?;
             bytes
         } else {
             request.body().to_vec()
@@ -294,8 +294,8 @@ impl CacheCapture {
         *self
             .0
             .lock()
-            .map_err(|_| http_client::Error::instance(Error::Body))? =
-            Some(serde_json::from_slice(&bytes).map_err(http_client::Error::instance)?);
+            .map_err(|_| http_client::Error::permanent(Error::Body))? =
+            Some(serde_json::from_slice(&bytes).map_err(http_client::Error::permanent)?);
         Ok(())
     }
 }
@@ -313,7 +313,7 @@ impl HttpClientExt for CacheCapture {
         let request = request.map(Into::into);
         async move {
             this.capture(request)?;
-            Err(http_client::Error::instance(Error::Body))
+            Err(http_client::Error::permanent(Error::Body))
         }
     }
     #[allow(clippy::manual_async_fn)]
@@ -324,7 +324,7 @@ impl HttpClientExt for CacheCapture {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        async { Err(http_client::Error::instance(Error::Multipart)) }
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
     fn send_streaming<T>(
         &self,
@@ -336,7 +336,7 @@ impl HttpClientExt for CacheCapture {
         let request = request.map(Into::into);
         async move {
             self.capture(request)?;
-            Err(http_client::Error::instance(Error::Body))
+            Err(http_client::Error::permanent(Error::Body))
         }
     }
 }
@@ -762,5 +762,78 @@ fn invalid_request_is_rejected() -> anyhow::Result<()> {
     for source in [b"not json".as_slice(), b"[]", br#"{"system":42}"#] {
         anyhow::ensure!(body(source, "device", "session", None).is_err());
     }
+    Ok(())
+}
+
+/// Counts the requests that reach the transport.
+struct Attempts(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+
+impl rig_harness::rig_core::http_client::HttpMiddleware for Attempts {
+    fn before_request_headers<'a>(
+        &'a self,
+        _exchange: rig_harness::rig_core::http_client::Exchange<'a>,
+        _headers: &'a mut http_client::HeaderMap,
+    ) -> rig_harness::rig_core::wasm_compat::WasmBoxedFuture<'a, http_client::Result<()>> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// A turn on Claude Cloak with no login, in a home of its own that never
+/// held one: the call fails after one attempt and sends nothing, since not
+/// being logged in is not a failure a retry can pass.
+#[test]
+fn a_turn_without_a_login_fails_after_one_attempt_that_sends_nothing() -> anyhow::Result<()> {
+    use rig_harness::prelude::*;
+    use rig_harness::rig_core::test_utils::RecordingHttpClient;
+    use rig_harness_test_support::{Ended, MemoryStore, app_on, log_ended, run_until};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let home = std::env::current_exe()?.with_file_name("cloak-never-logged-in");
+    std::fs::remove_dir_all(&home).ok();
+    std::fs::create_dir_all(&home)?;
+    let network = RecordingHttpClient::new("");
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let client = DynHttpClient::new(OAuthTransport {
+        home,
+        inner: DynHttpClient::new(network.clone()),
+        device: "offline-device".into(),
+        session: "offline-session".into(),
+        credentials: None,
+        platform: None,
+    })
+    .with_middleware(Attempts(attempts.clone()));
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.init_resource::<Models>()
+        .add_plugins((AgentPlugin, crate::ClaudeCloakPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let catalog = app.world().resource::<Models>().0.catalog();
+    let spec = catalog.resolve("claude-cloak/claude-haiku-5-5")?.shared();
+    let handler = crate::connect_with_client(&spec, catalog, &crate::Transport::default(), client)?;
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .single(world)?;
+    world.entity_mut(agent).insert(Connection {
+        spec,
+        handler: rig_harness::rig_ecs::effects::Handler(handler),
+    });
+    world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
+    // A retry would come after a two-second wait: a second attempt or the
+    // turn's end, whichever is first.
+    run_until(&mut app, &wakes, |world| {
+        attempts.load(Ordering::SeqCst) > 1 || !world.resource::<Ended>().0.is_empty()
+    });
+    anyhow::ensure!(attempts.load(Ordering::SeqCst) == 1, "retried");
+    anyhow::ensure!(network.requests().is_empty(), "sent without a login");
+    let ended = &app.world().resource::<Ended>().0;
+    anyhow::ensure!(
+        matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("not logged in")),
+        "{ended:?}"
+    );
     Ok(())
 }

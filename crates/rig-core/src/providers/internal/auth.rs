@@ -74,9 +74,20 @@ pub enum AuthError {
     Json(#[from] serde_json::Error),
     /// The HTTP transport failed. Non-success responses arrive as the
     /// status-bearing [`http_client::Error`] variants (so the status is still
-    /// inspectable); response-less failures as [`http_client::Error::Instance`].
+    /// inspectable); response-less failures as
+    /// [`http_client::Error::Transient`] or [`http_client::Error::Permanent`].
     #[error(transparent)]
     Http(#[from] http_client::Error),
+    /// The sign-in server answered with a failure: `message` says what it
+    /// said, and `source`, its reply, says whether asking again may work.
+    #[error("{message}")]
+    Reply {
+        /// What the failure means for the sign-in.
+        message: String,
+        /// The non-success reply.
+        #[source]
+        source: http_client::Error,
+    },
     /// The [`TokenStore`] could not load or save a credential.
     #[error("token store failed: {0}")]
     Store(#[source] crate::error::BoxError),

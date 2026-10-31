@@ -126,7 +126,7 @@ fn the_supplied_timeout_releases_a_pending_request() {
         .err()
         .expect("request times out");
     match error {
-        rig_http::http_client::Error::Instance(error) => assert!(
+        rig_http::http_client::Error::Transient(error) => assert!(
             error
                 .downcast_ref::<reqwest::Error>()
                 .is_some_and(reqwest::Error::is_timeout),

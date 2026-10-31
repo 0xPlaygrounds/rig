@@ -256,7 +256,7 @@ mod unit {
     async fn a_transport_error_after_a_finish_reason_yields_no_terminal_record() {
         let run = run_client(SequencedStreamingHttpClient::new(vec![
             Ok(sse(&[INTERMEDIATE_TERMINAL, ANSWER])),
-            Err(rig::http_client::Error::instance(std::io::Error::new(
+            Err(rig::http_client::Error::transient(std::io::Error::new(
                 std::io::ErrorKind::ConnectionReset,
                 "connection reset",
             ))),
@@ -295,7 +295,7 @@ mod unit {
     async fn a_transport_error_after_the_real_terminal_also_reports_truncation() {
         let run = run_client(SequencedStreamingHttpClient::new(vec![
             Ok(sse(&[ANSWER, REAL_TERMINAL])),
-            Err(rig::http_client::Error::instance(std::io::Error::new(
+            Err(rig::http_client::Error::transient(std::io::Error::new(
                 std::io::ErrorKind::ConnectionReset,
                 "connection reset",
             ))),

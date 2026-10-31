@@ -176,7 +176,7 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
     for (transport, retryable, sources) in [
         (http_client::Error::StreamEnded, true, Vec::new()),
         (
-            http_client::Error::instance(Backend(Reset)),
+            http_client::Error::transient(Backend(Reset)),
             true,
             vec!["transport backend".to_owned(), "socket reset".to_owned()],
         ),
@@ -197,7 +197,7 @@ fn vector_response_less_transport_reports_preserve_classification_and_sources() 
             Vec::new(),
         ),
         (
-            http_client::Error::unbuilt(Backend(Reset)),
+            http_client::Error::permanent(Backend(Reset)),
             false,
             vec!["transport backend".to_owned(), "socket reset".to_owned()],
         ),
@@ -425,9 +425,15 @@ fn reports_match_the_replaced_error_enums() {
             AdapterErrorBoundary::Transport,
         ),
         (
-            "*::HttpError(Instance)",
-            ProviderError::Http(H::instance(std::io::Error::other("conn reset")).into()),
+            "*::HttpError(Transient)",
+            ProviderError::Http(H::transient(std::io::Error::other("conn reset")).into()),
             r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: conn reset","refusal":false,"retryable":true,"source_chain":[]}"#,
+            AdapterErrorBoundary::Unknown,
+        ),
+        (
+            "*::HttpError(Permanent)",
+            ProviderError::Http(H::permanent(std::io::Error::other("not logged in")).into()),
+            r#"{"code":null,"http_status":null,"kind":"http","message":"HttpError: Http client error: not logged in","refusal":false,"retryable":false,"source_chain":[]}"#,
             AdapterErrorBoundary::Unknown,
         ),
         (

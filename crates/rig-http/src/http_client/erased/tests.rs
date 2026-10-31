@@ -324,7 +324,7 @@ mod middleware {
             .with_middleware(SeeReplies(seen.clone()));
         let (parts, body) = request("hello").into_parts();
         let failed = block_on(erased.observe(parts, body, |_| async {
-            Err::<Response<Bytes>, _>(crate::http_client::Error::instance(std::io::Error::other(
+            Err::<Response<Bytes>, _>(crate::http_client::Error::transient(std::io::Error::other(
                 "connection reset",
             )))
         }));

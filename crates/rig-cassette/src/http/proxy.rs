@@ -307,7 +307,7 @@ async fn read_whole(mut response: reqwest::Response) -> http_client::Result<Byte
             Ok(Some(chunk)) => read.extend_from_slice(&chunk),
             Ok(None) => return Ok(read.into()),
             Err(error) => {
-                return Err(http_client::Error::instance(CutShort {
+                return Err(http_client::Error::transient(CutShort {
                     read: read.into(),
                     error,
                 }));
@@ -323,10 +323,7 @@ async fn unary<U>(
 where
     U: From<Bytes> + WasmCompatSend + 'static,
 {
-    let mut response = request?
-        .send()
-        .await
-        .map_err(http_client::Error::instance)?;
+    let mut response = request?.send().await.map_err(rig_reqwest::from_reqwest)?;
     let head = head(&mut response);
     let body: LazyBody<U> = Box::pin(async move { read_whole(response).await.map(U::from) });
     head.body(body).map_err(http_client::Error::Protocol)
@@ -371,12 +368,12 @@ impl HttpClientExt for Raw {
         let (parts, body) = req.into_parts();
         let request = self.request(parts).body(body.into());
         async move {
-            let mut response = request.send().await.map_err(http_client::Error::instance)?;
+            let mut response = request.send().await.map_err(rig_reqwest::from_reqwest)?;
             let head = head(&mut response);
             let body: BoxedStream = Box::pin(
                 response
                     .bytes_stream()
-                    .map(|chunk| chunk.map_err(http_client::Error::instance)),
+                    .map(|chunk| chunk.map_err(rig_reqwest::from_reqwest)),
             );
             head.body(body).map_err(http_client::Error::Protocol)
         }
@@ -404,7 +401,7 @@ where
         // read failed and then the failure, as reqwest reported it.
         let (read, failure) = match body.await {
             Ok(bytes) => (Some(bytes), None),
-            Err(http_client::Error::Instance(error)) => (
+            Err(http_client::Error::Transient(error)) => (
                 error.downcast_ref::<CutShort>().map(|cut| cut.read.clone()),
                 Some(error.to_string()),
             ),

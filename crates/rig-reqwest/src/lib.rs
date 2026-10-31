@@ -131,7 +131,7 @@ fn with_bundled_roots(error: reqwest::Error) -> reqwest::Result<reqwest::Client>
 
 /// The error every send on an unbuilt client reports.
 fn unbuilt(error: &Arc<reqwest::Error>) -> Error {
-    Error::unbuilt(TransportBuildError(Arc::clone(error)))
+    Error::permanent(TransportBuildError(Arc::clone(error)))
 }
 
 impl From<reqwest::Client> for ReqwestClient {
@@ -185,12 +185,23 @@ impl std::error::Error for TransportBuildError {
     }
 }
 
-/// Wrap a reqwest transport error as [`Error::Instance`], retaining its source.
+/// Classify a reqwest error, retaining it as the source. A request reqwest
+/// could not build or a redirect it would not follow is
+/// [`Error::Permanent`]; an error that names a status is a non-success
+/// reply, which its status classifies; every other failure (connecting, a
+/// timeout, a body cut short) is [`Error::Transient`].
 ///
-/// HTTP status failures are handled separately to preserve response headers
-/// and bodies.
+/// A non-success reply this transport reads itself goes through
+/// [`non_success_body_error`] instead, which keeps its headers and body.
 pub fn from_reqwest(err: reqwest::Error) -> Error {
-    Error::instance(err)
+    if let Some(status) = err.status() {
+        return Error::non_success_with_details(status, http::HeaderMap::new(), err.to_string());
+    }
+    if err.is_builder() || err.is_redirect() {
+        Error::permanent(err)
+    } else {
+        Error::transient(err)
+    }
 }
 
 /// The most of a non-success reply's body its error keeps.
@@ -289,7 +300,7 @@ where
     }
 
     let body = async {
-        let bytes = response.bytes().await.map_err(Error::instance)?;
+        let bytes = response.bytes().await.map_err(from_reqwest)?;
         Ok(U::from(bytes))
     };
     #[cfg(not(target_family = "wasm"))]
@@ -325,7 +336,7 @@ async fn into_streaming_response(mut response: reqwest::Response) -> Result<Stre
     use futures::StreamExt;
     let stream = response
         .bytes_stream()
-        .map(|chunk| chunk.map_err(Error::instance));
+        .map(|chunk| chunk.map_err(from_reqwest));
     #[cfg(not(target_family = "wasm"))]
     let stream = rig_http::runtime::bind_stream(stream)?;
     let stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(stream);
@@ -358,7 +369,7 @@ pub fn multipart_form(value: MultipartForm) -> Result<reqwest::multipart::Form> 
                 let mut req_part = reqwest::multipart::Part::stream(bytes);
                 if let Some(content_type) = content_type.as_ref() {
                     req_part = req_part.mime_str(content_type.as_ref()).map_err(|source| {
-                        Error::instance(InvalidPartContentType {
+                        Error::permanent(InvalidPartContentType {
                             part: name.clone(),
                             content_type: content_type.as_ref().to_string(),
                             source,
@@ -411,7 +422,7 @@ impl Execute for ReqwestClient {
             Payload::Bytes(bytes) => request.body(bytes),
             Payload::Form(form) => request.multipart(form),
         };
-        Ok(async move { request.send().await.map_err(Error::instance) })
+        Ok(async move { request.send().await.map_err(from_reqwest) })
     }
 }
 

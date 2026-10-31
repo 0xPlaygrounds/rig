@@ -3,6 +3,7 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use fs2::FileExt;
 use rand::RngCore;
+use rig_harness::rig_core::error::retryable_status;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -35,6 +36,8 @@ pub enum AuthError {
     Busy,
     #[error("OAuth network request failed")]
     Network,
+    #[error("Could not build the OAuth HTTP client")]
+    Client,
     #[error("OAuth async runtime is unavailable")]
     Runtime,
     #[error("OAuth server rejected the request (HTTP {0}); log in again if authorization expired")]
@@ -49,6 +52,19 @@ pub enum AuthError {
     Timeout,
     #[error("OAuth authorization was denied")]
     Denied,
+}
+
+impl AuthError {
+    /// Whether trying again may pass: another refresh held the lock, the
+    /// network failed, or the server answered a status the retry table
+    /// retries. Not being logged in, or any local failure, never does.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Self::Busy | Self::Network => true,
+            Self::Http(status) => retryable_status(Some(*status)),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -198,7 +214,7 @@ fn client() -> Result<reqwest::Client, AuthError> {
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(30))
         .build()
-        .map_err(|_| AuthError::Network)
+        .map_err(|_| AuthError::Client)
 }
 
 async fn response_json<T: serde::de::DeserializeOwned>(

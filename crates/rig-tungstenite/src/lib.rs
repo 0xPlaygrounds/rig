@@ -114,17 +114,35 @@ async fn handshake(
 
     match rig_http::wasm_compat::timeout(timeout, connect).await {
         Ok(result) => result,
-        Err(_) => Err(Error::instance(ConnectTimeout(timeout))),
+        Err(_) => Err(Error::transient(ConnectTimeout(timeout))),
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
 /// Convert a tungstenite failure to a transport error, preserving the status,
-/// headers, and body of a rejected upgrade.
-/// Other failures become [`Error::Instance`].
+/// headers, and body of a rejected upgrade. A connection that dropped or
+/// could not be made is [`Error::Transient`]; a URL, request, message or
+/// protocol error that the same send meets again is [`Error::Permanent`].
 fn from_tungstenite(error: tungstenite::Error) -> Error {
+    use tungstenite::error::{ProtocolError, UrlError};
+    let transient = match &error {
+        tungstenite::Error::Http(_) => false,
+        tungstenite::Error::ConnectionClosed
+        | tungstenite::Error::WriteBufferFull(_)
+        | tungstenite::Error::Url(UrlError::UnableToConnect(_))
+        | tungstenite::Error::Protocol(
+            ProtocolError::HandshakeIncomplete | ProtocolError::ResetWithoutClosingHandshake,
+        ) => true,
+        // rustls reports a certificate it rejects as invalid data.
+        tungstenite::Error::Io(error) => error.kind() != std::io::ErrorKind::InvalidData,
+        _ => false,
+    };
     let tungstenite::Error::Http(response) = error else {
-        return Error::instance(error);
+        return if transient {
+            Error::transient(error)
+        } else {
+            Error::permanent(error)
+        };
     };
 
     let (parts, body) = (*response).into_parts();

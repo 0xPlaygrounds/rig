@@ -94,33 +94,76 @@ fn every_rejection_status_survives() {
 /// non-success status by accident would invent a provider answer that
 /// never existed.
 ///
+/// Each also says whether a second send may pass: only a connection that
+/// dropped or could not be made may.
+///
 /// `Tls` is absent because it cannot be constructed without a TLS backend
-/// in scope, and it is a connect-time failure like `Io`.
+/// in scope.
 #[test]
-fn every_transport_failure_is_left_alone() {
-    let cases: Vec<tungstenite::Error> = vec![
-        tungstenite::Error::ConnectionClosed,
-        tungstenite::Error::AlreadyClosed,
-        tungstenite::Error::Io(std::io::Error::other("connection reset")),
-        tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
-        tungstenite::Error::Protocol(tungstenite::error::ProtocolError::HandshakeIncomplete),
-        tungstenite::Error::WriteBufferFull(Box::new(tungstenite::Message::Text("queued".into()))),
-        tungstenite::Error::AttackAttempt,
-        tungstenite::Error::Url(tungstenite::error::UrlError::NoPathOrQuery),
-        tungstenite::Error::HttpFormat(
-            http::header::HeaderName::from_bytes(b"not a header")
-                .expect_err("an invalid header name should not parse")
-                .into(),
+fn every_transport_failure_keeps_no_response_and_says_its_retry_class() {
+    let header = http::header::HeaderName::from_bytes(b"not a header")
+        .expect_err("an invalid header name should not parse");
+    let cases: Vec<(tungstenite::Error, bool)> = vec![
+        (tungstenite::Error::ConnectionClosed, true),
+        (tungstenite::Error::AlreadyClosed, false),
+        (
+            tungstenite::Error::Io(std::io::Error::from(std::io::ErrorKind::ConnectionReset)),
+            true,
         ),
+        (
+            tungstenite::Error::Io(std::io::Error::from(std::io::ErrorKind::InvalidData)),
+            false,
+        ),
+        (
+            tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
+            false,
+        ),
+        (
+            tungstenite::Error::Protocol(tungstenite::error::ProtocolError::HandshakeIncomplete),
+            true,
+        ),
+        (
+            tungstenite::Error::Protocol(
+                tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+            ),
+            true,
+        ),
+        (
+            tungstenite::Error::Protocol(tungstenite::error::ProtocolError::SendAfterClosing),
+            false,
+        ),
+        (
+            tungstenite::Error::WriteBufferFull(Box::new(tungstenite::Message::Text(
+                "queued".into(),
+            ))),
+            true,
+        ),
+        (tungstenite::Error::AttackAttempt, false),
+        (
+            tungstenite::Error::Url(tungstenite::error::UrlError::UnableToConnect(
+                "refused".into(),
+            )),
+            true,
+        ),
+        (
+            tungstenite::Error::Url(tungstenite::error::UrlError::NoPathOrQuery),
+            false,
+        ),
+        (tungstenite::Error::HttpFormat(header.into()), false),
     ];
 
-    for error in cases {
+    for (error, transient) in cases {
         let expected = error.to_string();
         let mapped = from_tungstenite(error);
 
+        assert_eq!(
+            matches!(mapped, Error::Transient(_)),
+            transient,
+            "a dropped or unmade connection is transient, anything else permanent: {mapped:?}"
+        );
         assert!(
-            matches!(mapped, Error::Instance(_)),
-            "a failure with no provider response must stay an Instance: {mapped:?}"
+            matches!(mapped, Error::Transient(_) | Error::Permanent(_)),
+            "a failure with no provider response has no status: {mapped:?}"
         );
         assert_eq!(mapped.non_success_status(), None);
         assert_eq!(mapped.non_success_body(), None);
@@ -137,7 +180,7 @@ fn every_transport_failure_is_left_alone() {
 /// MIGRATING.md). Pin it so a further change is deliberate.
 #[test]
 fn the_connect_timeout_names_itself_and_its_duration() {
-    let error = Error::instance(ConnectTimeout(Duration::from_secs(30)));
+    let error = Error::transient(ConnectTimeout(Duration::from_secs(30)));
 
     assert!(
         error

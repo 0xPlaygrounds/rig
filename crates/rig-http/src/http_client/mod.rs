@@ -21,8 +21,17 @@ pub use erased::DynHttpClient;
 pub use middleware::{Exchange, HttpMiddleware};
 pub use multipart::MultipartForm;
 
-/// Why an HTTP request failed: a protocol or header error, a non-success reply, the
-/// transport's own error, or a client that could not be built.
+/// A transport's own error, boxed.
+#[cfg(not(target_family = "wasm"))]
+type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+/// A transport's own error, boxed.
+#[cfg(target_family = "wasm")]
+type BoxError = Box<dyn std::error::Error + 'static>;
+
+/// Why an HTTP request failed: a protocol or header error, a non-success
+/// reply, or the transport's own error, which says whether sending the same
+/// request again may work.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -30,8 +39,8 @@ pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
     /// Failed HTTP response preserving its status, body, and headers.
-    /// Transport failures without a response use [`Self::Instance`], a
-    /// protocol variant, or [`Self::Unbuilt`] when no client could be built.
+    /// Transport failures without a response use [`Self::Transient`],
+    /// [`Self::Permanent`] or a protocol variant.
     #[error("Invalid status code {status} with message: {body}")]
     InvalidStatusCodeWithDetails {
         /// The non-success status.
@@ -53,27 +62,16 @@ pub enum Error {
     /// The response's content type was not the one expected.
     #[error("Invalid content type was returned: {0:?}")]
     InvalidContentType(HeaderValue),
-    /// The transport's own error, without a response.
-    #[cfg(not(target_family = "wasm"))]
+    /// The transport failed without a reply, and sending the same request
+    /// again may work: a refused or reset connection, a timeout, a body cut
+    /// short.
     #[error("Http client error: {0}")]
-    Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    /// The transport's own error, without a response.
-    #[cfg(target_family = "wasm")]
+    Transient(#[source] BoxError),
+    /// The transport failed without a reply, and sending the same request
+    /// again fails the same way: a request it cannot send as it is, missing
+    /// credentials, a client that could not be built.
     #[error("Http client error: {0}")]
-    Instance(#[from] Box<dyn std::error::Error + 'static>),
-
-    /// The transport's client could not be built, so nothing was sent.
-    /// Sending again fails the same way.
-    #[cfg(not(target_family = "wasm"))]
-    #[error("Http client unavailable: {0}")]
-    Unbuilt(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    /// The transport's client could not be built, so nothing was sent.
-    /// Sending again fails the same way.
-    #[cfg(target_family = "wasm")]
-    #[error("Http client unavailable: {0}")]
-    Unbuilt(#[source] Box<dyn std::error::Error + 'static>),
+    Permanent(#[source] BoxError),
 }
 
 impl Error {
@@ -137,33 +135,19 @@ impl Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
-    /// Wrap a transport's native error as [`Error::Instance`]. Transports use
-    /// this for response-less failures (connect, decode, timeout); non-success
-    /// responses go through [`Error::non_success_with_details`] instead so the
-    /// status stays inspectable.
-    #[cfg(not(target_family = "wasm"))]
-    pub fn instance<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
-        Self::Instance(error.into())
+    /// A transport's own error after which sending the same request again
+    /// may work, such as a reset connection or a timeout. A non-success
+    /// reply goes through [`Error::non_success_with_details`] instead, so its
+    /// status decides.
+    pub fn transient(error: impl Into<BoxError>) -> Self {
+        Self::Transient(error.into())
     }
 
-    /// Wrap a transport's native error as [`Error::Instance`].
-    #[cfg(target_family = "wasm")]
-    pub fn instance<E: std::error::Error + 'static>(error: E) -> Self {
-        Self::Instance(error.into())
-    }
-
-    /// Wrap why a transport's client could not be built as
-    /// [`Error::Unbuilt`].
-    #[cfg(not(target_family = "wasm"))]
-    pub fn unbuilt<E: std::error::Error + Send + Sync + 'static>(error: E) -> Self {
-        Self::Unbuilt(error.into())
-    }
-
-    /// Wrap why a transport's client could not be built as
-    /// [`Error::Unbuilt`].
-    #[cfg(target_family = "wasm")]
-    pub fn unbuilt<E: std::error::Error + 'static>(error: E) -> Self {
-        Self::Unbuilt(error.into())
+    /// A transport's own error that sending the same request again meets
+    /// again, such as a request it cannot send or a client it could not
+    /// build.
+    pub fn permanent(error: impl Into<BoxError>) -> Self {
+        Self::Permanent(error.into())
     }
 }
 
