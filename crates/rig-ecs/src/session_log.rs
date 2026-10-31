@@ -79,8 +79,10 @@ pub struct Never;
 pub(crate) enum Fork {
     /// The source's value.
     Copy,
-    /// What this leaves on the fork once it is spawned.
-    Set(fn(&mut EntityWorldMut)),
+    /// The default this inserts.
+    Reset(fn(&mut EntityWorldMut)),
+    /// What this removes.
+    Never(fn(&mut EntityWorldMut)),
 }
 
 impl ReflectSaved {
@@ -102,7 +104,7 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
 
 impl<T: Component + Reflect + TypePath + Default> CreateTypeData<T, Reset> for ReflectSaved {
     fn create_type_data(_: Reset) -> Self {
-        Self::of::<T>(Fork::Set(|fork| {
+        Self::of::<T>(Fork::Reset(|fork| {
             fork.insert(T::default());
         }))
     }
@@ -111,7 +113,7 @@ impl<T: Component + Reflect + TypePath + Default> CreateTypeData<T, Reset> for R
 impl<T: Component + Reflect + TypePath> CreateTypeData<T, Never> for ReflectSaved {
     fn create_type_data(_: Never) -> Self {
         // A required component may have put it on the fork.
-        Self::of::<T>(Fork::Set(|fork| {
+        Self::of::<T>(Fork::Never(|fork| {
             fork.remove::<T>();
         }))
     }

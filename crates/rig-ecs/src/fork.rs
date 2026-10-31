@@ -107,13 +107,20 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
         .fork_log(&id.0, &to.0, through)
         .map_err(|failure| failure.to_string())?;
     let registry = registry.read();
-    let mut set = Vec::new();
+    let (mut resets, mut removals) = (Vec::new(), Vec::new());
     let saved: Vec<(&ReflectComponent, Box<dyn PartialReflect>)> = registry
         .iter_with_data::<ReflectSaved>()
         .filter_map(|(registration, saved)| {
-            if let Fork::Set(rule) = saved.fork {
-                set.push(rule);
-                return None;
+            match saved.fork {
+                Fork::Copy => {}
+                Fork::Reset(reset) => {
+                    resets.push(reset);
+                    return None;
+                }
+                Fork::Never(remove) => {
+                    removals.push(remove);
+                    return None;
+                }
             }
             let component = registration.data::<ReflectComponent>()?;
             let value = component.reflect(world.get_entity(from).ok()?)?;
@@ -140,8 +147,9 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     if let Some(connection) = connection {
         spawned.insert(connection);
     }
-    // Last, so no component inserted above brings back a required one.
-    for rule in set {
+    // Removals last, so no component inserted before brings back a
+    // required one.
+    for rule in resets.into_iter().chain(removals) {
         rule(&mut spawned);
     }
     let fork = spawned.id();
