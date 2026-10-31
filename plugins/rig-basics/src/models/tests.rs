@@ -236,7 +236,10 @@ fn remembering(
     fs::create_dir_all(home.root()).ok();
     fs::write(home.defaults(), SAVED).ok();
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
-    let served = [("corpus-test/saved", &saved), ("corpus-test/chosen", chosen)];
+    let served = [
+        ("corpus-test/saved", &saved),
+        ("corpus-test/chosen", chosen),
+    ];
     app.insert_resource(scripted_models(served))
         .insert_resource(Invoked {
             args: Invocation {
@@ -260,7 +263,9 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
     let ended = app.world().resource::<Ended>().0.len();
     let world = app.world_mut();
     world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| world.resource::<Ended>().0.len() > ended);
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
 }
 
 /// What `defaults.json` in `home` holds.
@@ -295,7 +300,11 @@ fn a_model_picked_with_model_is_remembered_once_it_answered() {
     assert_eq!(model_of(&app, agent), Some("corpus-test/chosen"));
     assert_eq!(saved(&home), SAVED, "not before it answered");
     ask(&mut app, &wakes, agent, "Hello.");
-    assert!(saved(&home).contains("\"corpus-test/chosen\""), "{}", saved(&home));
+    assert!(
+        saved(&home).contains("\"corpus-test/chosen\""),
+        "{}",
+        saved(&home)
+    );
 }
 
 #[test]
@@ -306,11 +315,18 @@ fn a_model_picked_with_model_is_not_remembered_while_it_fails() {
     run(&mut app, agent, "model corpus-test/chosen");
     ask(&mut app, &wakes, agent, "Hello.");
     let ended = &app.world().resource::<Ended>().0;
-    assert!(matches!(ended.last(), Some(TurnOutcome::Failed(_))), "{ended:?}");
+    assert!(
+        matches!(ended.last(), Some(TurnOutcome::Failed(_))),
+        "{ended:?}"
+    );
     assert_eq!(saved(&home), SAVED);
     // Kept until it answers.
     ask(&mut app, &wakes, agent, "Again.");
-    assert!(saved(&home).contains("\"corpus-test/chosen\""), "{}", saved(&home));
+    assert!(
+        saved(&home).contains("\"corpus-test/chosen\""),
+        "{}",
+        saved(&home)
+    );
 }
 
 #[test]
@@ -318,15 +334,14 @@ fn a_model_picked_while_a_turn_runs_is_not_remembered() {
     let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
     let (mut app, wakes, home, agent) =
         remembering("defaults-busy", &chosen, Some("corpus-test/chosen"));
-    let world = app.world_mut();
-    world.trigger(Deliver::new(agent, "Hello.", DeliveryMode::Steer));
-    app.update();
+    // A turn runs, as one a resumed session continues.
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
     assert!(app.world().get::<ActiveTurn>(agent).is_some());
     // Refused: a model is not changed under a running turn.
     run(&mut app, agent, "model corpus-test/chosen");
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
+    app.world_mut().entity_mut(turn).despawn();
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(chosen.request_count(), 1);
     assert_eq!(saved(&home), SAVED);
 }
 
@@ -352,7 +367,10 @@ fn an_effort_picked_is_remembered_with_the_users_model_only() {
         return;
     };
     let effort = ReasoningSetting(level.reasoning);
-    for (name, users) in [("defaults-effort-own", true), ("defaults-effort-flag", false)] {
+    for (name, users) in [
+        ("defaults-effort-own", true),
+        ("defaults-effort-flag", false),
+    ] {
         let model = MockCompletionModel::from_stream_turns([reply("hi")]);
         let (mut app, wakes, home, agent) = remembering(name, &model, None);
         let saved_before = match users {
@@ -365,7 +383,9 @@ fn an_effort_picked_is_remembered_with_the_users_model_only() {
             return;
         };
         let choice = ModelChoice("deepseek/deepseek-flash".to_owned());
-        app.world_mut().entity_mut(agent).insert((connected, choice));
+        app.world_mut()
+            .entity_mut(agent)
+            .insert((connected, choice));
         app.world_mut().trigger(SetReasoning {
             entity: agent,
             effort,
@@ -431,4 +451,29 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_t
         .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))
         .collect();
     assert_eq!(offered, ["router", "rig-models-corp/big"]);
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_model_picker_opens_on_the_agents_model_and_says_it_is_current() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, agent) = routed();
+    let served = [("corpus-test/one", &model), ("corpus-test/two", &model)];
+    app.insert_resource(scripted_models(served));
+    let choice = ModelChoice("corpus-test/two".to_owned());
+    app.world_mut().entity_mut(agent).insert(choice);
+    run(&mut app, agent, "model");
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    let picker = pickers.iter(world).next();
+    let selected = picker.and_then(|picker| picker.items.get(picker.selected));
+    assert_eq!(
+        selected.map(|item| (item.command.as_str(), item.detail.as_deref())),
+        Some(("model corpus-test/two", Some("current")))
+    );
+    let marked = picker.map(|picker| {
+        let current = picker.items.iter().filter(|item| item.detail.is_some());
+        current.count()
+    });
+    assert_eq!(marked, Some(1));
 }

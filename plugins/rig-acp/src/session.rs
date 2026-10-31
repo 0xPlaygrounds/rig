@@ -23,7 +23,7 @@ use agent_client_protocol::schema::v1 as acp;
 use agent_client_protocol::{Agent, Client, ConnectionTo, Error};
 use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
-use rig_basics::models::TypedChoices;
+use rig_basics::models::{FirstPick, TypedChoices};
 use rig_basics::print::{Starting, Work};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::host::signals;
@@ -599,6 +599,7 @@ struct Opened<'w, 's> {
     slash: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
     models: Res<'w, Models>,
     options: options::Options<'w, 's>,
+    notices: MessageWriter<'w, Notice>,
     commands: Commands<'w, 's>,
 }
 
@@ -636,21 +637,29 @@ fn open(mut opened: Opened) {
         return;
     }
     // A new session's agent gets the first model it can reach, as a
-    // headless run's does; the answer waits a frame, so its options show it.
-    if !opened.session.chose {
-        opened.session.chose = true;
-        let reachable = opened.models.0.reachable();
-        if let (None, Some(model)) = (chosen, reachable.first()) {
-            let model = model.reference();
-            opened.commands.trigger(SetModel {
-                entity: agent,
-                model,
-                kind: ChoiceKind::ForThisRun,
-            });
-            opened.session.wake.wake();
-            return;
+    // headless run's does, once a sign-in knows what its account offers;
+    // the answer waits a frame, so its options show it.
+    if !opened.session.chose && chosen.is_none() {
+        match FirstPick::of(&opened.models) {
+            FirstPick::Checking => return,
+            FirstPick::Model(model) => {
+                opened.session.chose = true;
+                opened.commands.trigger(SetModel {
+                    entity: agent,
+                    model,
+                    kind: ChoiceKind::ForThisRun,
+                });
+                opened.session.wake.wake();
+                return;
+            }
+            FirstPick::Nothing(Some(why)) => {
+                let why = format!("No model can be reached: {why}.");
+                opened.notices.write(Notice::error(agent, why));
+            }
+            FirstPick::Nothing(None) => {}
         }
     }
+    opened.session.chose = true;
     let replay = opened.session.replay.take().unwrap_or_default();
     let config = opened.options.of(agent);
     let mut listed: Vec<_> = opened

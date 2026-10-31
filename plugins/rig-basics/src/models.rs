@@ -92,6 +92,50 @@ impl Default for TypedChoices {
     }
 }
 
+/// The model a run that names none starts on, such as a headless run's
+/// or an editor's new session in a home with no default.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FirstPick {
+    /// A sign-in is still finding out which of its models the account
+    /// offers: ask again once the [`Models`] changed.
+    Checking,
+    /// The first model that can be reached, by its reference.
+    Model(String),
+    /// None can be reached, with why a sign-in's models cannot be used
+    /// when that is why.
+    Nothing(Option<String>),
+}
+
+impl FirstPick {
+    /// The first pick among `models`, in the order [`Connector::reachable`]
+    /// gives.
+    ///
+    /// [`Connector::reachable`]: rig_harness::rig_core::catalog::Connector::reachable
+    pub fn of(models: &Models) -> Self {
+        use rig_harness::rig_core::catalog::ModelStatus;
+        let statuses = models.0.statuses();
+        if statuses
+            .iter()
+            .any(|(_, status)| *status == ModelStatus::Checking)
+        {
+            return Self::Checking;
+        }
+        if let Some((spec, _)) = statuses
+            .iter()
+            .find(|(_, status)| *status == ModelStatus::Usable)
+        {
+            return Self::Model(spec.reference());
+        }
+        let refused = statuses
+            .into_iter()
+            .find_map(|(spec, status)| match status {
+                ModelStatus::Unavailable(why) if models.0.plan(spec).is_some() => Some(why),
+                _ => None,
+            });
+        Self::Nothing(refused)
+    }
+}
+
 /// On an agent: what its model is, when no [`ModelChoice`] says it, such
 /// as `router` for a plugin that picks the model per request. The status
 /// line shows it in place of the choice. It never changes in place.

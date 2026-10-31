@@ -239,7 +239,11 @@ fn a_model_the_editor_or_a_typed_command_picks_is_never_the_default() {
         assert_eq!(typed.ok(), Some(acp::StopReason::EndTurn));
         let answer = driven.prompt(&id, "Read the other one.").await;
         assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
-        assert!(driven.said(&id).contains("not there"), "{}", driven.said(&id));
+        assert!(
+            driven.said(&id).contains("not there"),
+            "{}",
+            driven.said(&id)
+        );
     });
     assert!(router.is_some());
     let kept = std::fs::read_to_string(place.home.join("defaults.json"));

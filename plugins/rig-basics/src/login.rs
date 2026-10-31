@@ -19,14 +19,17 @@
 //!   has expired. Calls and sign-ins share one authenticator, and every rig
 //!   process holds the file's lock while it refreshes or signs in, so a
 //!   refresh never overwrites a newer sign-in. The file is replaced whole.
+//! - The plan's models are those the backend lists for the signed-in
+//!   account, asked once per run when first needed ([`offered`]).
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
-use rig_core::catalog::{ModelSpec, SignIn, Transport};
+use rig_core::catalog::{ModelSpec, ModelStatus, SignIn, Transport};
 use rig_core::client::signed_in::SignedInModel;
 use rig_core::providers::chatgpt::{
     self,
@@ -52,6 +55,9 @@ const PROVIDER: &str = chatgpt::PROVIDER_NAME;
 const TITLE: &str = chatgpt::PLAN_TITLE;
 
 mod keys;
+mod offered;
+
+use offered::Offered;
 
 /// Adds `/login` and `/logout`, and connects the plan's models with the
 /// signed-in credential and each provider's models with its saved key.
@@ -70,7 +76,12 @@ impl Plugin for LoginPlugin {
             DeviceCodeHandler::default(),
             false,
         );
-        let session = Session { auth, file };
+        let offered = Arc::new(Offered::default());
+        let session = Session {
+            auth,
+            file,
+            offered,
+        };
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
@@ -88,23 +99,33 @@ impl Plugin for LoginPlugin {
             "Remove what /login stored: pick it, or /logout chatgpt or /logout <provider>",
             on_logout,
         )
+        .add_systems(PreStartup, wake_on_answers)
         .add_systems(Update, show_login_prompts.in_set(PollTasks))
+        .add_systems(First, offered::show_answers)
         .add_observer(on_signed_in)
         .add_observer(on_signed_out)
         .add_observer(cancel_on_interrupt);
     }
 }
 
-/// The authenticator every call and sign-in of the plan goes through, and
-/// the file it keeps the credential in.
+/// The authenticator every call and sign-in of the plan goes through, the
+/// file it keeps the credential in, and the models the account may use.
 #[derive(Resource, Clone)]
 struct Session {
     auth: Authenticator,
     file: PathBuf,
+    offered: Arc<Offered>,
 }
 
-/// The plan's models, connected with the signed-in credential while it is
-/// kept.
+/// Has the app's loop woken when the account's models are known.
+fn wake_on_answers(session: Res<Session>, wake: Option<Res<Wake>>) {
+    if let Some(wake) = wake {
+        session.offered.wake_with(wake.clone());
+    }
+}
+
+/// The plan's models the account may use, connected with the signed-in
+/// credential while it is kept.
 struct ChatGptSignIn(Session);
 
 impl SignIn for ChatGptSignIn {
@@ -113,16 +134,35 @@ impl SignIn for ChatGptSignIn {
         spec: &ModelSpec,
         transport: &Transport,
     ) -> Option<Result<ErasedHandler, ConnectError>> {
-        let model = || {
-            let http = transport.shared().ok_or(ConnectError::NoHttpClient)?;
-            SignedInModel::new(spec.clone(), self.0.auth.clone(), http)
+        if self.plan(spec).is_none() || !self.0.file.is_file() {
+            return None;
+        }
+        let Some(http) = transport.shared() else {
+            return Some(Err(ConnectError::NoHttpClient));
         };
-        let signed_in = self.plan(spec).is_some() && self.0.file.is_file();
-        signed_in.then(|| model().map(ErasedHandler::new))
+        let Session { auth, offered, .. } = &self.0;
+        if let Some(why) = offered.refused(spec, auth, &http) {
+            return Some(Err(ConnectError::Provider(why)));
+        }
+        let model = SignedInModel::new(spec.clone(), auth.clone(), http.clone());
+        let gate = offered::Gate {
+            offered: Arc::clone(offered),
+            spec: spec.clone(),
+            auth: auth.clone(),
+            http,
+        };
+        Some(model.map(|model| ErasedHandler::new(model).layered(gate)))
     }
 
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
         (spec.provider.vendor() == PROVIDER).then_some(TITLE)
+    }
+
+    fn offers(&self, spec: &ModelSpec, transport: &Transport) -> ModelStatus {
+        match transport.shared() {
+            Some(http) => self.0.offered.status(spec, &self.0.auth, &http),
+            None => ModelStatus::Usable,
+        }
     }
 }
 
@@ -280,6 +320,7 @@ fn on_signed_in(
     };
     match result {
         Ok(()) => {
+            session.offered.forget();
             let model = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
             notices.write(Notice::info(
                 login.agent,
@@ -406,6 +447,7 @@ fn on_signed_out(
         return;
     };
     let agent = logout.agent;
+    session.offered.forget();
     notices.write(match ended {
         Ok(SignedOut::NotSignedIn) => Notice::info(agent, format!("Not signed in to {TITLE}.")),
         Ok(SignedOut::Forgotten { revoked: Ok(()) }) => Notice::info(
@@ -429,3 +471,6 @@ fn on_signed_out(
     });
     commands.entity(done.entity).despawn();
 }
+
+#[cfg(test)]
+mod tests;
