@@ -1054,6 +1054,13 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   message.
 - `MemoryStore::read_log` on an invalid log name returns `InvalidInput`, not
   `NotFound`.
+- `SummaryState::track` counts only calls whose paired result is not an
+  error. Calls with an error result or no result no longer count, so a summary
+  lists only files whose read, edit or write succeeded.
+- Two exhaustive enums gained variants in the middle, so their numeric values
+  moved: `rig_basics::compaction::Recovering::Compacted` is 2 (was 1), and
+  `rig_ecs::stage::PrepareSystems::Fit` is 5 (was 3). Code that stores or
+  compares `as` casts of them maps the variants explicitly instead.
 
 #### The coding agent
 
@@ -1350,7 +1357,10 @@ app.add_tool_per_call(Read::default(), ToolOptions::default(), move |place| Read
 // after (rig-tools' file tools and Shell implement PerCallTool)
 app.add_tool_per_call(Read { seen, ..Read::default() }, ToolOptions::default());
 
-// a tool of your own
+// a tool of your own: PerCallTool needs Tool + Clone + 'static
+#[derive(Clone)]
+struct WordCount { workspace: Arc<dyn Workspace>, base: Option<PathBuf>, confine: bool }
+
 impl PerCallTool for WordCount {
     fn at(&self, at: CallPlace) -> Self {
         WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
@@ -1506,7 +1516,15 @@ only has a `CLAUDE.md`. The MCP client, ACP and Claude Cloak plugins are
 optional (`rig plugin add rig_mcp_client::McpPlugin`,
 `rig plugin add rig_acp::AcpPlugin`,
 `rig plugin add rig_claude_cloak::ClaudeCloakPlugin`; in a fresh
-`plugins.toml` they are listed off, and `rig plugin enable` turns one on). If you used the
+`plugins.toml` they are listed off, and `rig plugin enable` turns one on).
+Code that reads the login flow's component imports it from the new module:
+
+```rust
+// before
+use rig_basics::login_chatgpt::PendingLogin;
+// after
+use rig_basics::login::PendingLogin;
+``` If you used the
 `claude-cloak` path crate from a 0.46.0-rc.1 checkout, replace its entry with
 `crate = "rig-claude-cloak"` and `plugin = "rig_claude_cloak::ClaudeCloakPlugin"`.
 An agent built with corpus-base's `corpus_base::mcp_client::McpClientPlugin`
@@ -6690,7 +6708,7 @@ Renamed or relocated items, for searching.
 | `add_tool_per_call(tool, options, closure)` | `add_tool_per_call(tool, options)` with `PerCallTool::at` | 0.46 |
 | `rig_tui::AppToolRenderersExt` and its `add_*_renderer` / `add_call_decorator` | systems in `TranscriptRender` writing `RenderBatch` | 0.46 |
 | `rig_tui::highlight::highlight`, `ToolCallView::header_spans` | `highlight::Code`, `ToolCallView::header_code` | 0.46 |
-| `rig_basics::login_chatgpt::ChatgptLoginPlugin` | `rig_basics::login::LoginPlugin` | 0.46 |
+| `rig_basics::login_chatgpt::{ChatgptLoginPlugin, PendingLogin}` | `rig_basics::login::{LoginPlugin, PendingLogin}` | 0.46 |
 | `rig_basics::coding_tools::ShellSettings`, `Shell::{max_timeout, quiet}`, `Ended::Quiet` | removed (no default shell timeout) | 0.46 |
 | `SessionPicker::show`, `SessionItem` | `ResumeLabel`, a system after `SessionPickerSystems` | 0.46 |
 | `rig_basics::reload::{SELF_EXTENSION_TAG, self_extension, ReloadAsked, MAX_RELOADS, ORIGIN}` | removed | 0.46 |
