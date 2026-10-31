@@ -377,7 +377,9 @@ fn launch(
         if !rejected {
             let log = Some(log.as_path()).filter(|log| log.exists());
             let refusal = refusal.as_deref();
-            let said = stopped(status, resume.as_deref(), refusal, kept_screen, log);
+            // A refusal said while a view had the screen was not seen.
+            let hidden = kept_screen || restore;
+            let said = stopped(status, resume.as_deref(), refusal, hidden, log);
             return Ok(Ended::new(status, said).restoring(restore));
         }
         if !home.good().exists() {
@@ -446,8 +448,9 @@ impl Ended {
 /// What the launcher says when the agent exited with `status`, not 0. A
 /// run a signal ended, which the agent was told of, gets the `resume`
 /// command as a quit does. A refused run said why itself: its `refusal`
-/// comes again only when a restarted view kept the screen
-/// (`kept_screen`), which hid it. Any other end is a failure: the agent
+/// comes again only when a view had the screen (`kept_screen`), which hid
+/// it, such as a restarted view, or one that took the screen before a
+/// `--tools` name was refused. Any other end is a failure: the agent
 /// stopped, where its log is when it kept one and, when the session can be
 /// resumed, the `resume` command.
 fn stopped(

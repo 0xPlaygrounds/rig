@@ -54,7 +54,7 @@ fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_resto
     }
     app.world_mut().entity_mut(source).insert((
         SystemPrompt("be brief".to_owned()),
-        ToolAccess::Only(vec!["read".to_owned()]),
+        ToolAccess::All.narrow(["read"]),
     ));
     app.update();
     app.world_mut().trigger(ForkAgent {

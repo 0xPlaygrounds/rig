@@ -13,7 +13,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use rig_ecs::agent::Notice;
-use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use rig_harness::commands::{AppCommandsExt, NoArgs, SlashCommand};
 use rig_harness::host::exit::{Exit, ExitReason};
 use unicode_width::UnicodeWidthStr;
 
@@ -51,7 +51,7 @@ impl Plugin for BasicCommandsPlugin {
 /// `/help`: every command with its help, the helps in one column after the
 /// widest name.
 fn help(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     commands: Query<(&Name, &SlashCommand)>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -71,7 +71,7 @@ fn help(
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
-fn quit(In(_): In<CommandArgs>, mut commands: Commands) {
+fn quit(In(_): In<NoArgs>, mut commands: Commands) {
     commands.trigger(Exit(ExitReason::Quit));
 }
 

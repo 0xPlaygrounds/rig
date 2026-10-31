@@ -28,6 +28,7 @@ use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
 use rig_harness::host::session::StoreOpener;
 use rig_harness::prelude::*;
+use rig_harness::run::TOOLS;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{oneshot, watch};
 
@@ -645,7 +646,7 @@ pub(crate) fn install(app: &mut App) {
             return;
         }
     };
-    let command = match world.get_resource::<SessionCommand>() {
+    let mut command = match world.get_resource::<SessionCommand>() {
         Some(command) => command.clone(),
         None => match own_command(&base) {
             Ok(command) => command,
@@ -655,6 +656,13 @@ pub(crate) fn install(app: &mut App) {
             }
         },
     };
+    // Each session checks the tools `rig acp --tools` gives against its own,
+    // the client's MCP servers' among them.
+    let invoked = app.world().get_resource::<Invoked>();
+    if let Some(tools) = invoked.filter(|invoked| invoked.flag(TOOLS)) {
+        let tools = tools.flag_value(TOOLS).unwrap_or_default();
+        command.args.push(format!("--{TOOLS}={tools}").into());
+    }
     let router = Arc::new(Router {
         home,
         stores,
@@ -726,8 +734,8 @@ fn runs(home: &Home) -> std::io::Result<Runs> {
 }
 
 /// This program, linked (else copied) into `runs` so a build that replaces
-/// it leaves one to start. A session takes its model and tools from the
-/// client's options and the session, not from `rig acp`'s.
+/// it leaves one to start. A session takes its model from the client's
+/// options and the session, not from `rig acp`'s.
 fn own_command(runs: &Runs) -> std::io::Result<SessionCommand> {
     let exe = std::env::current_exe()?;
     let program = runs

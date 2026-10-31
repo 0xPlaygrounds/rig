@@ -565,7 +565,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     let child = child.unwrap_or(Entity::PLACEHOLDER);
     let access = world.get::<ToolAccess>(child);
     let only_look =
-        matches!(access, Some(ToolAccess::Only(tools)) if tools == &["look", MESSAGE, WAIT]);
+        access.and_then(ToolAccess::names) == Some(&["look", MESSAGE, WAIT].map(str::to_owned)[..]);
     assert!(
         only_look,
         "its profile's tools, and those that reach agents"

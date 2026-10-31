@@ -96,8 +96,8 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     These host functions are defined; each one waits for its answer:\n\n\
     (spawn-agent name [options]) -> string\n    \
     Starts an idle agent spawned by you and returns its id. options is a hash with any of \
-    'model (\"vendor/model\"), 'system-prompt (string) and 'tools (list of tool names); unset \
-    settings are yours.\n\
+    'model (\"vendor/model\"), 'system-prompt (string) and 'tools (list of tool names, each one \
+    of yours); unset settings are yours.\n\
     (send agent text) -> string\n    \
     Sends text to an agent this program spawned, as a request, and returns the request's id \
     at once. The agent starts on it, or queues it when busy, and keeps its conversation \

@@ -26,7 +26,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 
 - `$RIG_HOME/mcp.json` (default `~/.rig/mcp.json`): yours, in every project.
 - `<project>/.rig/mcp.json`: the project's, unless the project is on another
-  host (`--remote`), whose `.rig` is not on this machine, or its `.rig` is
+  host, whose `.rig` is not on this machine, or its `.rig` is
   `RIG_HOME` itself, as in your home directory, or its path is not UTF-8
   (approvals could not tell it from another such path). Its servers start only once you
   approve them (below). Approved, one replaces a server of yours of the same
@@ -190,19 +190,23 @@ unfinished turn). Another server's word is a hint: such a call still runs
 beside the reply's other readers, but a restart never runs it again. A
 project's server is never trusted this way.
 
-## Headless runs
+## Waiting for the servers
 
 `rig -p` and `rig --json` wait, before the prompt and before any turn, for
 each server to connect or fail, each at most `connect_timeout_secs`. A
 `/command` prompt waits too, as one may start a turn (a skill's does), so
-`rig -p '/mcp approve files'` may wait for a server that does not answer. The
-terminal view does not wait: a turn it resumes at once may call a server's
-tool before the server is in, and the call is refused as an unknown tool. So
-`--tools` can name an MCP tool:
+`rig -p '/mcp approve files'` may wait for a server that does not answer.
+With `--tools`, every front waits the same way, the terminal view included,
+so `--tools` can name an MCP tool anywhere:
 
 ```sh
 rig -p --tools files__read_text_file 'Summarize README.md'
+rig --tools files__read_text_file,read
 ```
+
+Without `--tools` the terminal view does not wait: a turn it resumes at once
+may call a server's tool before the server is in, and the call is refused as
+an unknown tool.
 
 When a server fails, the run says why on stderr and refuses the name, with
 exit code 2:

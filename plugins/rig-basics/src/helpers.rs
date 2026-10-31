@@ -136,30 +136,29 @@ struct Args {
 /// A child's task, and its arguments and directory.
 type Planned = (String, (Vec<OsString>, PathBuf));
 
-/// What the caller lends its helpers.
+/// What the caller lends its helpers: its model, and its access to the
+/// tools a helper may have.
 struct Lent {
     model: Option<String>,
-    tools: Vec<String>,
+    access: ToolAccess,
+    lendable: Vec<String>,
     base: PathBuf,
 }
 
 impl Lent {
     /// The arguments and directory of `job`'s child, or why it cannot run.
     fn child(&self, job: &Job) -> Result<(Vec<OsString>, PathBuf), String> {
-        let tools = match &job.tools {
-            None => self
-                .tools
-                .iter()
-                .filter(|tool| *tool != HELPER)
-                .cloned()
+        let lendable = self.lendable.iter().map(String::as_str);
+        let tools: Vec<String> = match &job.tools {
+            None => lendable
+                .filter(|tool| *tool != HELPER && self.access.allows(tool))
+                .map(str::to_owned)
                 .collect(),
-            Some(asked) => match asked.iter().find(|tool| !self.tools.contains(tool)) {
-                Some(tool) => {
-                    let yours = self.tools.join(", ");
-                    return Err(format!("`{tool}` is not one of your tools ({yours})"));
-                }
-                None => asked.clone(),
-            },
+            Some(asked) => {
+                let granted = self.access.grant(asked, lendable);
+                let granted = granted.map_err(|refused| refused.to_string())?;
+                granted.names().unwrap_or_default().to_vec()
+            }
         };
         let dir = Local.join(&self.base, Path::new(job.dir.as_deref().unwrap_or(".")));
         let dir = dir
@@ -192,13 +191,12 @@ fn start(
     let Ok((model, access, dir)) = agents.get(called.agent) else {
         return;
     };
-    let names = lendable.iter().flat_map(|lendable| lendable.0.iter());
     let lent = Lent {
         model: model.map(|model| model.0.clone()),
-        tools: names
-            .filter(|name| access.is_none_or(|access| access.allows(name)))
-            .cloned()
-            .collect(),
+        access: access.cloned().unwrap_or_default(),
+        lendable: lendable
+            .map(|lendable| lendable.0.clone())
+            .unwrap_or_default(),
         base: dir.map_or(&root.0, |dir| &dir.0).clone(),
     };
     let args = called.args.clone();

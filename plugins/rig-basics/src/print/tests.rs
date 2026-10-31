@@ -531,6 +531,35 @@ fn an_exit_during_a_held_start_leaves_the_restored_turn() {
     }
 }
 
+/// At a terminal with `--tools`, the loop waits for the start too, and a
+/// signal meanwhile leaves the restored turn as a headless run does.
+#[test]
+fn an_exit_during_a_held_start_at_a_terminal_leaves_the_restored_turn() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let invoked = Invocation {
+        flags: vec![(rig_harness::run::TOOLS.to_owned(), Some(String::new()))],
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&store, invoked);
+    app.world_mut().resource_mut::<Invoked>().terminal = true;
+    app.add_front(Front::new("view").on_terminal())
+        .add_plugins((SessionLogPlugin, ExitPlugin, rig_harness::run::RunPlugin));
+    app.finish();
+    app.cleanup();
+    let starting = app.world_mut().spawn(Starting).id();
+    app.update();
+    app.world_mut().trigger(Exit(ExitReason::Signal));
+    app.world_mut().despawn(starting);
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+    drop(app);
+    let third = silent();
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+    let (mut app, _) = scripted(&store, (&third, false), None, in_place);
+    assert_eq!(ended(&mut app), answered("hello"));
+}
+
 /// A `/command` waits for the start as any prompt does: a skill's starts a
 /// turn, which must see the tools that come during it.
 #[test]
@@ -1796,4 +1825,40 @@ fn an_error_before_the_run_looked_fails_it_only_when_the_agent_never_connects() 
     let ends = &app.world().resource::<Ends>().0;
     let codes: Vec<u8> = ends.iter().map(|ended| ended.code).collect();
     assert_eq!(codes, [0], "{ends:?}");
+}
+
+/// Done item: `rig -p /model` and `/effort` exit 2 saying what to type,
+/// where they exited 0 having shown nothing.
+#[test]
+fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
+    for (command, said) in [
+        (
+            "/model",
+            "rig: Model: rig cannot show a list to pick from here; type one of: /model ",
+        ),
+        ("/effort", "rig: Reasoning for "),
+    ] {
+        let model = answering(&["unused"]);
+        let stderr = Lines::default();
+        let (app, _) = one_shot(command, Some(MODEL), &model, false, |app| {
+            app.insert_resource(Printed::to(stderr.clone()))
+                .add_plugins(rig_harness::pick::PickPlugin);
+        });
+        assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{command}");
+        let lines = stderr.text();
+        assert!(lines.iter().any(|line| line.starts_with(said)), "{lines:?}");
+        assert_eq!(model.request_count(), 0);
+    }
+    // Without a model, `/effort` is refused too.
+    let model = answering(&["unused"]);
+    let stderr = Lines::default();
+    let (app, _) = one_shot("/effort", None, &model, false, |app| {
+        app.insert_resource(Printed::to(stderr.clone()))
+            .insert_resource(scripted_models([]))
+            .add_plugins(crate::models::ModelsPlugin);
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    let lines = stderr.text();
+    let said = "rig: Pick a model with /model first.";
+    assert!(lines.iter().any(|line| line == said), "{lines:?}");
 }

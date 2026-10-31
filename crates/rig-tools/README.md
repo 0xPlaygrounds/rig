@@ -60,4 +60,7 @@ Every tool then takes such paths: `read`, `edit` and `write` a file there, `sear
 publish keep the `HOST:` form.
 
 The tools run on the file system and processes, so the crate is native only.
-The [`rig-harness`](../rig-harness) coding agent registers them.
+The stock coding agent registers `read`, `edit`, `write` and `shell` through
+[`rig-basics`](../../plugins/rig-basics). The library also provides `search`,
+`list`, `delete` and `move`. A custom plugin can register them with
+`AppPerCallExt::add_tool_per_call`.

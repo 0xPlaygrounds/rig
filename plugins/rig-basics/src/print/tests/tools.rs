@@ -1,3 +1,5 @@
+use rig_harness::run::TOOLS;
+
 use super::*;
 
 #[derive(Resource, Default)]
@@ -251,37 +253,8 @@ fn actual_tui_policy_compaction_and_persistence_have_no_stage_conflicts() {
     app.finish();
     app.cleanup();
     assert!(app.runs_front(rig_tui::FRONT));
-    assert!(app.world().contains_resource::<Tools>());
     let conflicts = rig_harness::stage_conflicts(app.world_mut());
     assert!(conflicts.is_empty(), "{conflicts:#?}");
-}
-
-/// The terminal view leaves the terminal alone for a run refused on an
-/// unknown `--tools` name: it exits 2 at the end of its first frame, its
-/// refusal on stderr. Here, with no terminal to open, a view that tried
-/// would exit 1 first.
-#[cfg(feature = "tui")]
-#[test]
-fn a_refused_terminal_run_never_opens_the_view() {
-    let (mut app, _) = noting(
-        &MemoryStore::default(),
-        Invocation {
-            flags: vec![(TOOLS.to_owned(), Some("shel".to_owned()))],
-            ..Invocation::default()
-        },
-    );
-    app.world_mut().resource_mut::<Invoked>().terminal = true;
-    app.add_plugins((
-        SessionLogPlugin,
-        ExitPlugin,
-        rig_tui::TuiPlugin,
-        PrintPlugin,
-    ));
-    recording(&mut app, &["shell"]);
-    app.finish();
-    app.cleanup();
-    run_until(&mut app, |_| false);
-    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
 }
 
 #[test]
@@ -292,19 +265,15 @@ fn policy_and_persistence_are_ordered_for_every_front() {
                 calls("c1", "denied", json!({})),
                 reply("done"),
             ]);
-            let (mut app, wakes, _lines, _input) = restricted_run_with(
-                &model,
-                tools,
-                ToolAccess::Only(vec!["denied".to_owned()]),
-                |app| {
+            let (mut app, wakes, _lines, _input) =
+                restricted_run_with(&model, tools, ToolAccess::All.narrow(["denied"]), |app| {
                     if front != JSON {
                         let mut invoked = app.world_mut().resource_mut::<Invoked>();
                         invoked.args.flags.retain(|(name, _)| name != JSON);
                         invoked.terminal = front == "tui";
                     }
                     app.add_front(Front::new("tui").on_terminal());
-                },
-            );
+                });
             let world = app.world_mut();
             let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
             if let Some(connection) = connect(&model) {
@@ -343,7 +312,7 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
     let (mut app, wakes, lines, input) = restricted_run(
         &model,
         Some("allowed,denied"),
-        ToolAccess::Only(vec!["allowed".to_owned()]),
+        ToolAccess::All.narrow(["allowed"]),
     );
     send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
@@ -366,7 +335,7 @@ fn restored_agents_cannot_broaden_the_cli_limit() {
         &store,
         &first,
         None,
-        ToolAccess::Only(vec!["allowed".to_owned()]),
+        ToolAccess::All.narrow(["allowed"]),
         |_| {},
     );
     send(&input, json!({"v": 1, "type": "send", "text": "Save it."}));
@@ -401,7 +370,8 @@ fn restored_agents_cannot_broaden_the_cli_limit() {
     let world = app.world_mut();
     let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
     assert!(
-        matches!(world.get::<ToolAccess>(agent), Some(ToolAccess::Only(names)) if names == &["allowed"])
+        world.get::<ToolAccess>(agent).and_then(ToolAccess::names)
+            == Some(&["allowed".to_owned()][..])
     );
     send(
         &input,
@@ -410,7 +380,10 @@ fn restored_agents_cannot_broaden_the_cli_limit() {
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     assert_eq!(second.request_count(), 1);
     assert!(
-        matches!(app.world().get::<ToolAccess>(agent), Some(ToolAccess::Only(names)) if names.is_empty())
+        app.world()
+            .get::<ToolAccess>(agent)
+            .and_then(ToolAccess::names)
+            == Some(&[][..])
     );
     assert!(
         second
@@ -511,7 +484,7 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
         let (mut app, wakes, lines, _input) = restricted_run_with(
             &parent_model,
             Some(tools),
-            ToolAccess::Only(vec!["allowed".to_owned(), "task".to_owned()]),
+            ToolAccess::All.narrow(["allowed", "task"]),
             |app| {
                 app.insert_resource(scripted_models([
                     (MODEL, &parent_model),
@@ -551,12 +524,9 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
             .map(|tool| tool.name.as_str())
             .collect();
         advertised.sort_unstable();
-        let expected = if executes {
-            vec!["allowed", "message", "task", "wait"]
-        } else {
-            vec!["allowed", "task"]
-        };
-        assert_eq!(advertised, expected, "{called}");
+        // The parent has neither `message` nor `wait`, so its child gets
+        // neither, whatever `--tools` allows.
+        assert_eq!(advertised, ["allowed", "task"], "{called}");
         let world = app.world_mut();
         let child = world
             .get::<Spawned>(parent)
@@ -577,35 +547,6 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
             "{called}"
         );
     }
-}
-
-#[test]
-fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
-    let mut app = App::new();
-    app.insert_resource(Tools(vec!["allowed".to_owned()]));
-    app.add_systems(
-        AgentPass,
-        (
-            (|mut commands: Commands| {
-                commands.spawn((Agent, ToolAccess::Only(vec!["denied".to_owned()])));
-                commands.spawn(Agent);
-            })
-            .in_set(Stage::Commit),
-            limit_tools
-                .after(Stage::Commit)
-                .in_set(PrepareSystems::Input),
-        ),
-    );
-    app.world_mut().run_schedule(AgentPass);
-    let world = app.world_mut();
-    let accesses: Vec<_> = world
-        .query::<&ToolAccess>()
-        .iter(world)
-        .map(|access| (access.allows("allowed"), access.allows("denied")))
-        .collect();
-    assert_eq!(accesses.len(), 2);
-    assert!(accesses.contains(&(false, false)));
-    assert!(accesses.contains(&(true, false)));
 }
 
 #[test]

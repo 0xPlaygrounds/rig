@@ -193,7 +193,7 @@ impl Plugin for TuiViewPlugin {
                 Update,
                 (HistorySystems::Record, HistorySystems::Save).chain(),
             );
-        app.add_front(Front::new(FRONT).on_terminal());
+        app.add_front(Front::new(FRONT).on_terminal().shows_pickers());
     }
 
     /// Owns the terminal when the run is the terminal view's: any other

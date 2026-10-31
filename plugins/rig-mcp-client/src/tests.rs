@@ -4,11 +4,12 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
-use rig_basics::print::{HeadlessEnded, PrintPlugin, TOOLS};
+use rig_basics::print::{HeadlessEnded, PrintPlugin};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness::rig_memory::DirFiles;
+use rig_harness::run::TOOLS;
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
     Collected, MemoryStore, app_on, calls, collect, connect, reply, run_until, scripted_models,
@@ -1168,5 +1169,45 @@ fn a_run_with_no_session_starts_no_server_of_the_files() {
     }
     assert!(status(app.world_mut(), "files").is_none());
     assert!(!mine.exists());
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// Done item: `--tools <server>__<tool>` at a terminal waits for the server
+/// as a headless run does, where it was refused before the server
+/// connected.
+#[test]
+fn a_terminal_run_can_name_a_servers_tool_in_its_tools() {
+    let project = project("terminal");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let invoked = Invocation {
+        flags: vec![(TOOLS.to_owned(), Some("stub__add".to_owned()))],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = app_in(&project, "", Some(invoked));
+    app.world_mut().resource_mut::<Invoked>().terminal = true;
+    app.insert_resource(scripted_models([(MODEL, &model)]))
+        .add_front(Front::new("view").on_terminal())
+        .add_plugins((ExitPlugin, PrintPlugin));
+    let agent = app.world_mut().spawn(Agent).id();
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, &wakes, |world| has(world, "stub__add"));
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: MODEL.to_owned(),
+    });
+    let ask = Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Steer);
+    app.world_mut().trigger(ask);
+    run_until(&mut app, &wakes, |_| model.request_count() > 0);
+    assert_eq!(app.should_exit(), None);
+    let first = model.requests().first().map(|request| {
+        let names = request.tools.iter().map(|tool| tool.name.to_string());
+        names.collect::<Vec<_>>()
+    });
+    assert_eq!(first, Some(vec!["stub__add".to_owned()]));
     std::fs::remove_dir_all(project).ok();
 }

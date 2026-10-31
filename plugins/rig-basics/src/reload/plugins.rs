@@ -52,7 +52,7 @@ struct PluginsPicker {
 
 /// `/plugins`: the picker on an interactive terminal, else the list.
 fn plugins(
-    In(args): In<CommandArgs>,
+    In(args): In<NoArgs>,
     invoked: Option<Res<Invoked>>,
     running: Query<&Name, With<PluginSource>>,
     mut commands: Commands,

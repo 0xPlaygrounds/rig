@@ -1,10 +1,14 @@
 use bevy_app::TaskPoolPlugin;
+use bevy_ecs::message::Messages;
 use rig_ecs::AgentPlugin;
 use rig_ecs::prelude::*;
+use rig_harness_protocol::Invocation;
 
 use super::*;
 use crate::ask::AskPlugin;
 use crate::commands::{AppCommandsExt, CommandArgs};
+use crate::host::cli::{AppCliExt, Front};
+use crate::host::launcher::Invoked;
 
 /// The command lines run, with the agent each ran for, and what each
 /// picker reported.
@@ -120,4 +124,88 @@ fn a_pick_answers_a_question_with_its_choices_and_a_note() {
             Some(Some(Answer::choices(["yes", "maybe"]))),
         ]
     );
+}
+
+/// Why each line was refused, in the order refused.
+fn refusals(app: &mut App) -> Vec<String> {
+    let mut recalled = app.world_mut().resource_mut::<Messages<Recalled>>();
+    recalled
+        .drain()
+        .filter_map(|recalled| recalled.why)
+        .collect()
+}
+
+/// The app of [`app`] run by the front `front`, chosen for a run on a
+/// terminal or not, with a `/size` command that opens a picker.
+fn run_by(front: Front, terminal: bool) -> (App, Entity) {
+    let (mut app, agent) = app();
+    app.insert_resource(Invoked {
+        args: Invocation::default(),
+        terminal,
+    })
+    .add_front(front)
+    .add_command(
+        "size",
+        "Picks a size",
+        |In(args): In<CommandArgs>, mut commands: Commands| {
+            let picker = Picker::new("Size").for_agent(args.agent);
+            commands.spawn(
+                picker
+                    .item("small", "note small")
+                    .item("large", "note large"),
+            );
+        },
+    );
+    let chosen = crate::host::cli::choose(app.world_mut());
+    assert!(chosen.is_some());
+    (app, agent)
+}
+
+#[test]
+fn a_picker_the_front_cannot_show_refuses_its_command_saying_what_to_type() {
+    let (mut app, agent) = run_by(Front::new("print").headless(), false);
+    app.world_mut().trigger(RunCommand::new(agent, "size"));
+    app.update();
+    let why = "Size: rig cannot show a list to pick from here; type one of: /note small, \
+               /note large";
+    assert_eq!(refusals(&mut app), [why]);
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Picker>().iter(world).count(), 0);
+    assert_eq!(world.resource::<Seen>().picked, [None]);
+    // A picker a plugin opens by itself, and one a plugin shows, stay.
+    world.spawn(Picker::new("Status").item("Skip", "note skip"));
+    world.spawn(ShowsPickers);
+    world.trigger(RunCommand::new(agent, "size"));
+    app.update();
+    assert!(refusals(&mut app).is_empty());
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Picker>().iter(world).count(), 2);
+
+    let shows = Front::new("tui").on_terminal().shows_pickers();
+    let (mut app, agent) = run_by(shows, true);
+    app.world_mut().trigger(RunCommand::new(agent, "size"));
+    app.update();
+    assert!(refusals(&mut app).is_empty());
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Picker>().iter(world).count(), 1);
+}
+
+#[test]
+fn a_refused_picker_lists_ten_commands_and_never_asks_for_a_secret_here() {
+    let models = (0..12).fold(Picker::new("Model"), |picker, n| {
+        picker.item(format!("model {n}"), format!("model m{n}"))
+    });
+    let note = unshown(&models);
+    assert!(
+        note.contains("/model m0, ") && note.contains("/model m9, …"),
+        "{note}"
+    );
+    assert!(!note.contains("/model m10"), "{note}");
+    let reading = unshown(&Picker::new("Resume a session"));
+    assert!(
+        reading.contains("give the command what to pick"),
+        "{reading}"
+    );
+    let key = unshown(&Picker::new("OpenAI API key").secret());
+    assert!(key.contains("Type it in `rig` in a terminal"), "{key}");
 }

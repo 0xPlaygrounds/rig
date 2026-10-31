@@ -139,7 +139,7 @@ on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
 `rig-tui` for a terminal panel) by version, and on `bevy_ecs` and
 `bevy_reflect` (or `bevy`) at the agent's exact version. A plugin that only
 uses rig-basics' services and contract types (`NeedsApproval`, `Preview`,
-`CheckpointAlso`, `KeepRunning`) depends on it with
+`CheckpointAlso`) depends on it with
 `default-features = false`: its default `tui` feature builds rig-tui and
 ratatui. The agent builds from
 a rig checkout (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
@@ -702,7 +702,12 @@ it in `Update` before `rig_tui::ChoiceSystems`, so the next key acts on
 the rows shown), and despawning it closes it. A front answers it, or an open `Ask`, with
 `Pick::person(entity, chosen)`, a `Chosen { items, text }`: a picker runs
 each chosen item's command, in list order, and gets `Picked` (`None` when
-closed), a question the chosen choices with the text as their note.
+closed), a question the chosen choices with the text as their note. A
+front that shows pickers says so (`Front::new(..).shows_pickers()`), and a
+plugin that shows them beside any front, such as to an attached client,
+spawns a `ShowsPickers` entity. Otherwise, as in `-p`, `--json` or ACP, the
+harness closes each picker a command opens at once, with an error notice
+listing the commands its items run, which refuses the command.
 `Picker::multiple()` (`.checked(true)`) and `Ask::multiple()` (with
 `.with(Choice::new(id, label).checked().more(text))`) take several. The
 terminal view ticks with Tab, shows a choice's `more` on Right, and once
@@ -719,7 +724,7 @@ use rig_harness::prelude::*;
 /// anything; `/uncompact` puts back what the last one replaced.
 fn build(app: &mut App) {
     app.add_systems(AgentPass, (answered, ask).chain().in_set(ReviewSystems::Act))
-        .add_command("uncompact", "Undo the last compaction", |In(args): In<CommandArgs>, mut commands: Commands| {
+        .add_command("uncompact", "Undo the last compaction", |In(args): In<NoArgs>, mut commands: Commands| {
             commands.trigger(Uncompact { entity: args.agent });
         });
 }
@@ -770,11 +775,14 @@ fn answered(
 
 A command is a one-shot system, `app.add_command(name, help, system)`,
 taking `In<CommandArgs>`: the `agent` it was typed for, the `args` after
-its name, and the `mode` its line was sent with; `RunCommand::new(agent,
-line)` runs one. An error notice about the agent while it runs refuses it:
-the line goes back in the input with the error, and Enter then sends it to
-the model as it is. A plugin that takes some `/` lines over orders its Gate
-system `.before(CommandSystems)`.
+its name, and the `mode` its line was sent with. A command that reads no
+text takes `In<NoArgs>`, with just `agent` and `mode`. Its input type sets
+`SlashCommand::args` to `Args::Text` or `Args::None`; extra text after a
+`NoArgs` command refuses the line before its system runs.
+`RunCommand::new(agent, line)` runs one. An error notice about the agent
+while it runs refuses it: the line goes back in the input with the error,
+and Enter then sends it to the model as it is. A plugin that takes some
+`/` lines over orders its Gate system `.before(CommandSystems)`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1521,7 +1529,7 @@ use rig_harness::prelude::*;
 
 /// `/undo`: the user's last message and everything after it go, unless a
 /// turn runs.
-fn undo(In(args): In<CommandArgs>, mut agents: Query<&mut Conversation, Without<ActiveTurn>>) {
+fn undo(In(args): In<NoArgs>, mut agents: Query<&mut Conversation, Without<ActiveTurn>>) {
     let Ok(mut conversation) = agents.get_mut(args.agent) else { return };
     let last = conversation.entries().rev().find(|entry| entry.is_users_own());
     if let Some(at) = last.map(|entry| entry.index) {
@@ -1843,7 +1851,7 @@ use rig_harness::prelude::*;
 /// `/fork-at`: the entries of the agent's conversation, previewed; the one
 /// picked ends a fork of the agent (`rig_basics::sessions`' `fork {entry}` as a
 /// `command` does the same).
-fn fork_at(In(args): In<CommandArgs>, mut commands: Commands) {
+fn fork_at(In(args): In<NoArgs>, mut commands: Commands) {
     let source = SessionSource::Entries { session: None, agent: None };
     let picker = Picker::new("Fork through which message?").for_agent(args.agent);
     let agent = args.agent;
@@ -2087,9 +2095,11 @@ fails a `--print` run or refuses a command), each agent's `Conversation` (or
 user looks at, and may spawn an `Answerer` and answer questions with
 [`Pick`](#asking-the-user-questions-and-pickers). A front nobody sits at
 drives its run with `rig_basics::print`'s `app.run_headless(Some(prompt))`,
-the loop of the `-p` and `--json` fronts too, which ends once no turn runs
-and nothing is held, unless an entity has `KeepRunning` (a file watcher's,
-say; the run may then start with `None`). `HeadlessTurnEnded` carries each
+the loop of the `-p` and `--json` fronts too, which starts once the run's
+start is over (`rig_harness::run`: no `Starting` entity left, `--tools`
+checked) and ends once no turn runs and nothing is held, unless an entity
+has `rig_harness::run::KeepRunning` (a file watcher's, say; the run may then
+start with `None`). `HeadlessTurnEnded` carries each
 answer, and `HeadlessEnded` comes last.
 
 A plugin's own options are declared with `app.add_flag(Flag::new(name,

@@ -3,6 +3,76 @@ use super::*;
 const LIST: &str = "# The plugins.\n\n# The tools.\n[[plugin]]\ncrate = \"rig-basics\"\nplugin = \"rig_basics::coding_tools::ReadTool\"\n\n# A crate.\n[[plugin]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n\n# The view.\n[[plugin]]\ncrate = \"rig-tui\"\nplugin = \"rig_tui::TuiPlugin\"\n\n# An example.\n# [[plugin]]\n";
 
 #[test]
+fn an_old_file_lists_missing_shipped_plugins_off_without_changing_the_file() {
+    let path = std::env::temp_dir().join(format!("rig-plugin-list-{}.toml", std::process::id()));
+    let result = (|| -> Result<_> {
+        fs::write(&path, LIST)?;
+        let available = available(&path)?;
+        let shipped = entries(TEMPLATE, Path::new("/"))?;
+        Ok((
+            available.iter().any(|listed| {
+                listed.entry.type_path == "rig_mcp_client::McpPlugin"
+                    && !listed.enabled
+                    && listed.description.contains("MCP servers:")
+                    && listed.description.contains("not in plugins.toml")
+                    && listed.description.contains("rig plugin enable")
+            }),
+            shipped.iter().all(|shipped| {
+                available
+                    .iter()
+                    .filter(|listed| listed.entry.type_path == shipped.entry.type_path)
+                    .count()
+                    == 1
+            }),
+            available.iter().any(|listed| {
+                listed.entry.type_path == "rig_tui::TuiPlugin"
+                    && listed.enabled
+                    && listed.description == "The view."
+            }),
+            available
+                .iter()
+                .any(|listed| listed.entry.type_path == "viz::VizPlugin"),
+            fs::read_to_string(&path)? == LIST,
+        ))
+    })();
+    fs::remove_file(&path).ok();
+    assert!(
+        matches!(result, Ok((true, true, true, true, true))),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn shipped_entries_keep_comment_lines_and_enable_only_the_requested_type() {
+    let listed = entries(TEMPLATE, Path::new("/home")).unwrap_or_default();
+    assert!(!listed.is_empty());
+    for listed in listed {
+        let type_path = &listed.entry.type_path;
+        let text = shipped_entry(type_path).ok().flatten().unwrap_or_default();
+        let copied = entries(&text, Path::new("/home")).unwrap_or_default();
+        assert_eq!(copied.len(), 1, "{type_path}");
+        assert!(
+            copied.first().is_some_and(|entry| {
+                entry.enabled
+                    && entry.entry.type_path == *type_path
+                    && entry.entry.package.name == listed.entry.package.name
+                    && entry.description == listed.description
+            }),
+            "{type_path}"
+        );
+    }
+    let multiline = shipped_entry("rig_basics::agents_md::AgentsMdPlugin")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    assert!(multiline.contains("# The AGENTS.md files of the working directory and the directories above it\n# up to the repository root"));
+    assert!(matches!(
+        shipped_entry("rig_basics::UnknownPlugin"),
+        Ok(None)
+    ));
+}
+
+#[test]
 fn removing_a_table_takes_its_comments_and_keeps_the_rest() {
     let base = Path::new("/home");
     assert_eq!(

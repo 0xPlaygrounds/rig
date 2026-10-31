@@ -311,7 +311,14 @@ fn sync(world: &mut World) {
         let help = template.help.clone();
         let system = world.register_system(command(template));
         let mut command = world.entity_mut(system.entity());
-        command.insert((Name::new(name), SlashCommand { help }, TemplateCommand));
+        command.insert((
+            Name::new(name),
+            SlashCommand {
+                help,
+                args: Args::Text,
+            },
+            TemplateCommand,
+        ));
         if let Some(plugin) = plugin {
             command.insert(ProvidedBy(plugin));
         }

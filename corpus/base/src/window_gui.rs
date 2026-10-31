@@ -50,7 +50,11 @@ impl Plugin for WindowGuiPlugin {
             .init_resource::<GuiInput>()
             .init_resource::<GuiDialogs>()
             .init_resource::<ShownAgent>()
-            .add_front(Front::new(FRONT).on_flag(FRONT, "Run the agent in a window"))
+            .add_front(
+                Front::new(FRONT)
+                    .on_flag(FRONT, "Run the agent in a window")
+                    .shows_pickers(),
+            )
             .configure_sets(PostUpdate, GuiSystems.after(ActivitySystems))
             .add_systems(Update, (collect_notices, recall))
             .add_systems(

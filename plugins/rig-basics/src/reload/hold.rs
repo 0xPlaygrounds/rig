@@ -3,7 +3,6 @@
 
 use rig_harness::prelude::*;
 
-use crate::print::KeepRunning;
 use crate::reload::ReloadStatus;
 
 pub(crate) fn add(app: &mut App) {
