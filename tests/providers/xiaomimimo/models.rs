@@ -1,7 +1,7 @@
 //! Xiaomi MiMo model listing smoke test.
 
 use rig::providers::xiaomimimo::{
-    self, MIMO_V2_5, MIMO_V2_5_PRO, MIMO_V2_FLASH, MIMO_V2_OMNI, MIMO_V2_PRO,
+    self, MIMO_V2_5, MIMO_V2_5_PRO, MIMO_V2_6_FLASH, MIMO_V2_6_PRO, MIMO_V2_6_PRO_ULTRASPEED,
 };
 
 #[tokio::test]
@@ -30,11 +30,11 @@ async fn list_models_smoke() {
     let model_ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
 
     for expected_id in [
-        MIMO_V2_FLASH,
-        MIMO_V2_OMNI,
-        MIMO_V2_PRO,
         MIMO_V2_5,
         MIMO_V2_5_PRO,
+        MIMO_V2_6_FLASH,
+        MIMO_V2_6_PRO,
+        MIMO_V2_6_PRO_ULTRASPEED,
     ] {
         assert!(
             model_ids.contains(&expected_id),

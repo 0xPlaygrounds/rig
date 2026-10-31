@@ -33,7 +33,7 @@ async fn extras_from_a_built_reply() {
 
 fn messages_wire() -> Messages {
     AnthropicConfig::with_key(&MESSAGES_XIAOMIMIMO, "sk-test")
-        .completion(crate::providers::xiaomimimo::MIMO_V2_FLASH)
+        .completion(crate::providers::xiaomimimo::MIMO_V2_6_FLASH)
 }
 
 /// The response `reply` folds into on Xiaomi MiMo's Messages wire.
@@ -52,7 +52,7 @@ fn folded(reply: &Value) -> CompletionResponse {
 #[test]
 fn extras_read_the_messages_stop_fields() {
     let reply = json!({
-        "type": "message", "id": "msg_1", "model": crate::providers::xiaomimimo::MIMO_V2_FLASH, "role": "assistant",
+        "type": "message", "id": "msg_1", "model": crate::providers::xiaomimimo::MIMO_V2_6_FLASH, "role": "assistant",
         "content": [{"type": "text", "text": "alpha"}],
         "stop_reason": "stop_sequence", "stop_sequence": "alpha",
         "usage": {"input_tokens": 1, "output_tokens": 1}

@@ -17,6 +17,13 @@ pub const GPT_6_ASTRA: &str = "gpt-6-astra";
 /// no sampling parameters, and tools only through Responses.
 pub const GPT_6_1_SOL: &str = "gpt-6.1-sol";
 
+/// GPT-6.1 Terra, API ID `gpt-6.1-terra`: a reasoning model that can turn
+/// reasoning off. Its catalog entry holds the rules the encoders check,
+/// through `on_unsupported`, for a request that sets generation options:
+/// sampling parameters only at effort `none`, and tools only through
+/// Responses, at any effort.
+pub const GPT_6_1_TERRA: &str = "gpt-6.1-terra";
+
 /// GPT-6 Sol, API ID `gpt-6-sol`: a reasoning model. Its catalog entry
 /// holds the rules the encoders check, through `on_unsupported`, for a
 /// request that sets generation options: sampling parameters only at effort
