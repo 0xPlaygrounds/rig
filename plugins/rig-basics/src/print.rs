@@ -1184,11 +1184,16 @@ fn front_writer(world: &World) -> Writer {
     Writer::spawn(std::io::stdout(), std::io::stderr(), wake, cut)
 }
 
-/// Whether the front's reader keeps up: its work goes on only then.
-fn output_has_room(json: Option<Res<JsonOut>>, printed: Option<Res<Printed>>) -> bool {
+/// Whether the front's work goes on: while its reader keeps up, and once
+/// the run exits, whose exit is an effect of the agent loop.
+fn output_has_room(
+    json: Option<Res<JsonOut>>,
+    printed: Option<Res<Printed>>,
+    exiting: Option<Res<ExitReason>>,
+) -> bool {
     let writer = json.map(|json| json.out.clone());
     let writer = writer.or_else(|| printed.map(|printed| printed.writer.clone()));
-    writer.is_none_or(|writer| writer.has_room())
+    exiting.is_some() || writer.is_none_or(|writer| writer.has_room())
 }
 
 /// Ends the run as cut off once more waits for the reader than

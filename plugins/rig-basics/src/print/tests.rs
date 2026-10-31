@@ -1209,6 +1209,45 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     assert!(unknown.contains("sned"), "{unknown}");
 }
 
+/// A reader that stopped reading: every write waits until `go`.
+struct Stalled(Arc<std::sync::atomic::AtomicBool>);
+
+impl Write for Stalled {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        while !self.0.load(std::sync::atomic::Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// While the reader is behind, the agent's work waits; a signal still ends
+/// the run, as its exit is an effect of the same loop.
+#[test]
+fn a_run_whose_reader_stalled_waits_and_still_exits() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = Writer::spawn(
+        Stalled(go.clone()),
+        std::io::sink(),
+        Wake::default(),
+        || true,
+    );
+    writer.write(Stream::Out, vec![b'x'; pipes::ROOM + 1]);
+    app.world_mut().resource_mut::<JsonOut>().out = writer;
+    let room = app.world_mut().run_system_cached(output_has_room);
+    assert_eq!(room.ok(), Some(false));
+    app.world_mut().trigger(Exit(ExitReason::Signal));
+    run_until(&mut app, |_| false);
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+}
+
 /// A request line past its limit is answered with why, and the driver's
 /// next line is still served.
 #[test]

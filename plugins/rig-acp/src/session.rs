@@ -517,9 +517,11 @@ async fn serve(
     post(Request::Ended).await;
 }
 
-/// Whether the router keeps up reading what the session writes.
-fn has_room(session: Res<Session>) -> bool {
-    session.writer.has_room()
+/// Whether the session's work goes on: while the router keeps up reading
+/// what it writes, and once the session exits, whose exit is an effect of
+/// the agent loop.
+fn has_room(session: Res<Session>, exiting: Option<Res<ExitReason>>) -> bool {
+    exiting.is_some() || session.writer.has_room()
 }
 
 /// The main agent, and what a request reads and changes of the app.
