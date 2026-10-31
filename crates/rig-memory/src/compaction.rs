@@ -1283,12 +1283,21 @@ impl ClearToolOutputs {
             .keys()
             .next_back()
             .and_then(|&at| conversation.id(at));
-        let targets = targets.into_iter();
-        let targets = targets.filter_map(|(at, items)| Some((conversation.id(at)?, items)));
+        let messages = conversation.messages();
+        let mut planned = Vec::new();
+        let mut by_id = BTreeMap::new();
+        for (at, items) in targets {
+            let (Some(id), Some(message)) = (conversation.id(at), messages.get(at)) else {
+                continue;
+            };
+            planned.push((id, message.clone()));
+            by_id.insert(id, items);
+        }
         ClearPlan {
             cleared,
             through,
-            targets: targets.collect(),
+            targets: by_id,
+            planned,
         }
     }
 
@@ -1329,7 +1338,7 @@ impl ClearToolOutputs {
 
 /// The tool outputs a clearing replaces ([`ClearToolOutputs::plan`]), by
 /// message id.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClearPlan {
     /// What applying it takes out, as planned.
     pub cleared: Cleared,
@@ -1337,9 +1346,24 @@ pub struct ClearPlan {
     /// notes go; `None` when it clears nothing.
     pub through: Option<MessageId>,
     targets: BTreeMap<MessageId, Vec<usize>>,
+    /// The messages it clears in, as they were when it was planned.
+    planned: Vec<(MessageId, Arc<Message>)>,
 }
 
 impl ClearPlan {
+    /// Whether every message it clears in, its notes' among them, is still
+    /// in `conversation` as it was when it was planned: what was read again
+    /// or noted is what it clears. Other changes, such as a message added
+    /// after them, leave it holding.
+    pub fn holds(&self, conversation: &Conversation) -> bool {
+        self.planned.iter().all(|(id, was)| {
+            let now = conversation
+                .index_of(*id)
+                .and_then(|at| conversation.messages().get(at));
+            now.is_some_and(|now| Arc::ptr_eq(now, was) || now == was)
+        })
+    }
+
     /// The tool results of `conversation` it clears, each with the call it
     /// answers: the one of its id in the newest reply before it, as call ids
     /// are unique only within a reply.

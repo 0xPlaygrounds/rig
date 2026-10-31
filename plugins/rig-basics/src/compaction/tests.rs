@@ -1000,7 +1000,7 @@ fn an_overflow_with_nothing_to_summarize_clears_only_what_reads_back_unchanged()
             assert!(
                 notices
                     .iter()
-                    .any(|it| it.contains("kept") && it.contains("read again unchanged")),
+                    .any(|it| it.contains("kept") && it.contains("read back unchanged")),
                 "{notices:?}"
             );
         }
@@ -1086,6 +1086,39 @@ fn an_agent_that_cannot_read_gets_notes_not_a_re_read() {
             "{no_tools}: {sent:?}"
         );
     }
+}
+
+/// Refuses every `read` call about to run, as a plugin guarding paths
+/// would.
+fn deny_reads(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>) {
+    for (request, mut decision) in &mut calls {
+        if request.call.function.name.as_str() == "read" {
+            decision.decide(Decider::plugin("deny"), Outcome::refused("denied"));
+        }
+    }
+}
+
+/// A read again is a call like the model's: a gate that refuses it leaves
+/// the output unproven, so notes are asked instead.
+#[test]
+fn a_gate_that_refuses_the_re_read_leaves_notes_to_do_it() {
+    let files = Arc::new(Files::default());
+    let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
+    app.add_systems(AgentPass, deny_reads.in_set(Stage::Gate));
+    let messages = files.read_all(5);
+    let model = MockCompletionModel::from_stream_turns([reply("- 0.rs: lines"), reply("done")]);
+    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+        return;
+    };
+    let reads = files.reads();
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(files.reads(), reads, "the gate refused every read");
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [notes, _] if notes.contains("replaced by a placeholder")),
+        "{sent:?}"
+    );
 }
 
 /// An output changed in the conversation while it was read again makes the
@@ -2837,6 +2870,56 @@ fn near_the_window_notes_keep_a_fact_that_clearing_drops() {
     assert_eq!(provider_scale(Some(250_000), 100_000), 2.5);
     assert_eq!(provider_scale(Some(900_000), 100_000), 4.0);
     assert_eq!(provider_scale(None, 100_000), 1.0);
+}
+
+/// A message the user sends while the notes are written changes no output
+/// they are on, so the notes still clear them.
+#[test]
+fn a_message_sent_while_the_notes_are_written_keeps_them() {
+    let notes = format!("- shell `readings`: calibration code {READING}");
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        shells(1, "readings", 0),
+        shells(2, "log", 640_000),
+        shells(3, "log", 160_000),
+        streamed(reasoned(8, &notes), None),
+        streamed(reasoned(9, "Done."), None),
+        streamed(reasoned(10, "Later done."), None),
+    ]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app).add_tool(Shell);
+    app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
+        return;
+    };
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        world.iter_entities().any(|e| e.contains::<Reviewing>())
+    });
+    let queued = Deliver::new(agent, "Then one more thing.", DeliveryMode::Queue);
+    app.world_mut().trigger(queued);
+    app.update();
+    let world = app.world_mut();
+    let held: Vec<(Entity, Entity)> = world
+        .query::<(Entity, &Reviewing)>()
+        .iter(world)
+        .map(|(hold, Reviewing(call))| (hold, *call))
+        .collect();
+    for (hold, call) in held {
+        world.entity_mut(call).insert(Reviewed);
+        world.despawn(hold);
+    }
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+    assert!(
+        live.contains(rig_memory::ClearToolOutputs::PLACEHOLDER) && live.contains(READING),
+        "{live}"
+    );
+    let notices = notices(&app);
+    assert!(notices.iter().any(|it| it.contains("noted")), "{notices:?}");
 }
 
 #[test]

@@ -1496,10 +1496,13 @@ its place, not an extension of it: rig's
 `corpus/ct/src/keep_last_compaction.rs` drops the oldest turns instead, on
 public API alone. A request that does not fit takes one recovery path, carried
 through retries (`Recovering`): old tool outputs cleared, then compacted, then
-the turn fails; a model reply starts it again. A summary that fails or is cut
-is never used: old tool outputs are cleared instead, and the call goes if it
-then fits (`Recovering::NotSummarized`, as for a cancelled summary or notes
-call); an overflow at that step fails the turn. A notes (`Noting`) or summary
+the turn fails; a model reply starts it again. Old tool outputs are cleared
+only after notes on them, or when every one is a `read` that, run again as a
+call of the turn (so gates decide it), gives the same output; failed notes
+clear nothing. A summary that fails or is cut is never used and clears
+nothing: the call goes if it fits as it is (`Recovering::NotSummarized`, as
+for a cancelled summary or notes call); an overflow at that step fails the
+turn. A notes (`Noting`) or summary
 call is the agent's request cut where its reading ends, plus one instruction,
 so the provider reads it from its cache; a Prepare edit of it costs that from
 the edit on. In `ReviewSystems::Act` `Summarizing.summary` and `Noting.notes`

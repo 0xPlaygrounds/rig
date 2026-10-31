@@ -22,9 +22,10 @@
 //!   20k tokens of them as the provider counts them, so a clearing, which
 //!   rewrites what the prompt cache holds, comes seldom. Before that the
 //!   model writes notes on them ([`Noting`]), which stay after them, unless
-//!   reading each again, off the frame, gives it back unchanged. An output
-//!   is never cleared otherwise: when its notes fail or would not fit, it
-//!   stays, and a notice says why. After an
+//!   reading every one again, off the frame, gives it back unchanged. An
+//!   output is never cleared otherwise: notes that would not fit give way
+//!   to a summary, and when notes fail, or neither can be asked, the
+//!   outputs stay and a notice says why. After an
 //!   overflow no notes are asked: outputs are cleared at once only when
 //!   each reads back unchanged, and the older messages summarized otherwise.
 //!   If clearing would still leave more than half the room used, the model
@@ -59,20 +60,18 @@ use std::sync::Arc;
 
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{Command, SystemParam};
-use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{self, CompletionRequest, tokens_label};
 use rig_core::conversation::{Entry, TurnEnd};
+use rig_core::effect::EffectId;
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::ToolResultContent;
-use rig_core::redact;
-use rig_core::tool::{Tool, ToolContext, ToolResult};
+use rig_core::message::{CallId, LocalCallId, ToolCall, ToolResultContent};
+use rig_core::tool::Tool;
 use rig_ecs::prelude::*;
 use rig_ecs::session_log::SessionStore;
 use rig_ecs::turn::RETRY_POLICY;
 use rig_harness::AppKeepsExt;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::per_call::{PerCallTool, PerCallTools};
 use rig_harness::services::ProjectRoot;
 use rig_harness::settings::AppSettingsExt;
 use rig_harness::successor::resend;
@@ -84,7 +83,7 @@ use rig_memory::{
     apply_summary, estimate_tokens, known_limits, next_request_tokens, undo_summary,
 };
 pub use rig_memory::{summarized_prefix, summary_author, summary_in, summary_state};
-use rig_tools::{Read, ReadArgs};
+use rig_tools::Read;
 use serde::{Deserialize, Deserializer};
 #[cfg(feature = "tui")]
 pub use tui::SummaryLooks;
@@ -128,7 +127,7 @@ impl Plugin for CompactionPlugin {
         .add_observer(follow_successor::<Summarizing>)
         .add_observer(follow_successor::<Noting>)
         .add_observer(carry_recovery)
-        .add_observer(take_reread)
+        .add_observer(take_read_again)
         .add_observer(provided_by_compaction::<Summarizing>)
         .add_observer(provided_by_compaction::<Noting>);
         #[cfg(feature = "tui")]
@@ -268,25 +267,19 @@ pub struct Summarizing {
 /// this plugin, when loaded as one.
 #[derive(Component, Clone, Debug)]
 pub struct Noting {
-    /// The outputs it clears.
+    /// The outputs it clears, unless one of them changed while the notes
+    /// were written ([`ClearPlan::holds`]).
     pub plan: ClearPlan,
-    /// The revision of the agent's conversation it was asked at: notes
-    /// that come once it changed clear nothing.
-    revision: u64,
     /// The notes, as [`Summarizing::summary`]: a reply with none, or `None`
     /// from a reviewer, clears nothing.
     pub notes: Option<String>,
 }
 
 impl Noting {
-    /// The notes call of `plan`, asked at the conversation's `revision`,
-    /// before any reply: with its name and purpose, `compaction`.
-    fn call(plan: ClearPlan, revision: u64) -> impl Bundle {
-        let noting = Self {
-            plan,
-            revision,
-            notes: None,
-        };
+    /// The notes call of `plan`, before any reply: with its name and
+    /// purpose, `compaction`.
+    fn call(plan: ClearPlan) -> impl Bundle {
+        let noting = Self { plan, notes: None };
         let effect = Effect::default().with_purpose(PURPOSE);
         (Name::new(NOTING), noting, effect)
     }
@@ -312,31 +305,28 @@ struct Compacting {
 /// needs notes.
 const MOST_REREAD: usize = 64;
 
-/// Re-reads, off the frame, the outputs a clearing drops, as only a read
-/// that gives the same output back proves an output can be had again.
+/// Reads again the outputs a clearing drops, as only a read that gives the
+/// same output back proves an output can be had again.
 #[derive(SystemParam)]
 struct Rereads<'w, 's> {
-    tools: PerCallTools<'w, 's>,
-    workspace: Res<'w, ProjectWorkspace>,
-    wake: Res<'w, Wake>,
+    tools: Query<'w, 's, &'static ToolDef>,
 }
 
 impl Rereads<'_, '_> {
     /// Starts reading again every output `plan` clears of `conversation`,
-    /// that of `agent`, which may call the tools `access` allows, each by a
-    /// fresh run of the
-    /// `read` call that made it, and holds `call` until the [`Reread`] is
-    /// in; says whether it started. Only the outputs of `read` calls can be
-    /// read again, at most [`MOST_REREAD`] of them, and only while the
-    /// built-in `read` tool is registered, the agent may call it and its
-    /// model, `spec`, calls tools, as the model must be able to read them
-    /// again itself. It always runs off the
-    /// frame, so a workspace on another host never blocks one, and it notes
-    /// nothing as seen.
+    /// that of `agent`, which may call the tools `access` allows: a new call
+    /// of each `read` call that made one, on the turn `turn` under its model
+    /// call `call`, the effect `parent`, which it holds until the [`Reread`]
+    /// is in; says whether it started. Only the outputs of `read` calls are
+    /// read again, at most [`MOST_REREAD`] of them, and only while `read` is
+    /// registered, the agent may call it and its model, `spec`, calls tools,
+    /// as the model must be able to read them again itself. Each read runs
+    /// as the model's would: gates decide it, it runs off the frame wherever
+    /// the file is, and `edit` takes what it shows as seen.
     fn start(
         &self,
         commands: &mut Commands,
-        (agent, call): (Entity, Entity),
+        (agent, turn, call, parent): (Entity, Entity, Entity, Option<EffectId>),
         plan: &ClearPlan,
         (conversation, access, spec): (
             &rig_core::conversation::Conversation,
@@ -344,9 +334,9 @@ impl Rereads<'_, '_> {
             &ModelSpec,
         ),
     ) -> bool {
-        let place = self.tools.place(Some(agent), self.workspace.0.clone());
+        let registered = self.tools.iter().any(|tool| tool.0.name == Read::NAME);
         let allowed = spec.tools && access.is_none_or(|access| access.allows(Read::NAME));
-        if !allowed || self.tools.build(Read::NAME, place.clone()).is_none() {
+        if !(registered && allowed) {
             return false;
         }
         let mut reads = Vec::new();
@@ -355,85 +345,103 @@ impl Rereads<'_, '_> {
             let Some(made) = made.filter(|_| reads.len() < MOST_REREAD) else {
                 return false;
             };
-            reads.push((made.function.arguments.clone(), result.content.clone()));
+            reads.push((made.function.clone(), result.content.clone()));
         }
-        // Its own `Seen`, so the model is never taken to have seen what it read.
-        let read = Read::default().at(place);
-        let revision = conversation.revision();
-        let work = async move {
-            let same = same_again(&read, reads).await;
-            Reread { same, revision }
+        if reads.is_empty() {
+            return false;
+        }
+        let rereading = Rereading {
+            left: reads.len(),
+            same: true,
+            plan: plan.clone(),
         };
-        let pool = IoTaskPool::get_or_init(TaskPool::default);
-        commands.spawn((
-            Name::new(REREADING),
-            Rereading,
-            HoldOf(call),
-            Running::spawn_into::<Reread, _>(pool, &self.wake, work),
-        ));
+        let rereading = commands
+            .spawn((Name::new(REREADING), rereading, HoldOf(call)))
+            .id();
+        for (function, content) in reads {
+            let call = ToolCall::new(CallId::Local(LocalCallId::new()), function);
+            commands.spawn((
+                ToolRequest { call },
+                Effect::with_parent_id(parent),
+                ForAgent(agent),
+                CallOf(turn),
+                ReadAgain {
+                    of: rereading,
+                    content,
+                },
+            ));
+        }
         true
     }
 }
 
-/// A tool call's arguments.
-type Arguments = serde_json::Map<String, serde_json::Value>;
-
-/// Whether `read` gives back each of `reads`, a `read` call's arguments
-/// and the content of its result, as it was, redacted as the kernel
-/// redacts a tool's answer; it stops at the first that differs.
-async fn same_again(read: &Read, reads: Vec<(Arguments, Vec<ToolResultContent>)>) -> bool {
-    for (arguments, content) in reads {
-        let arguments = serde_json::Value::Object(arguments);
-        let Ok(args) = serde_json::from_value::<ReadArgs>(arguments) else {
-            return false;
-        };
-        let Ok(output) = read.call(&mut ToolContext::default(), args).await else {
-            return false;
-        };
-        let result = ToolResult::success(output);
-        let result = redact::tool_result(&result).unwrap_or(result);
-        if result.output().as_content() != content.as_slice() {
-            return false;
-        }
-    }
-    true
+/// A re-read of the outputs a clearing drops ([`Rereads::start`]), holding
+/// the turn's call it is for until its reads are in: how many are left,
+/// whether every one so far gave its output back, and the plan it is for.
+#[derive(Component)]
+struct Rereading {
+    left: usize,
+    same: bool,
+    plan: ClearPlan,
 }
 
-/// A re-read of the outputs a clearing drops ([`Rereads::start`]), holding
-/// the turn's call it is for.
+/// One read of a re-read ([`Rereading`]), `of`, and the content of the
+/// output it reads again.
 #[derive(Component)]
-struct Rereading;
+struct ReadAgain {
+    of: Entity,
+    content: Vec<ToolResultContent>,
+}
 
-/// Whether a fresh `read` gave back every output a clearing drops as it
-/// was, when the agent's conversation was at `revision`: on the re-read
-/// ([`Rereading`]) once done, then on the call it held.
-#[derive(Component, Clone, Copy, Debug)]
+/// Whether reading again gave back every output `plan` clears as it was:
+/// on the call a re-read held, once its reads are in.
+#[derive(Component, Clone, Debug)]
 struct Reread {
     same: bool,
-    revision: u64,
+    plan: ClearPlan,
 }
 
 impl Reread {
-    /// Whether it proves the outputs of `conversation` can be had again:
-    /// all were the same, and the conversation has not changed since.
-    fn proves(reread: Option<&Self>, conversation: &rig_core::conversation::Conversation) -> bool {
-        reread.is_some_and(|it| it.same && it.revision == conversation.revision())
+    /// Whether it proves the outputs `plan` clears of `conversation` can be
+    /// had again: it read again this plan, every output came back the same,
+    /// and none of them changed since ([`ClearPlan::holds`]).
+    fn proves(
+        reread: Option<&Self>,
+        plan: &ClearPlan,
+        conversation: &rig_core::conversation::Conversation,
+    ) -> bool {
+        reread.is_some_and(|it| it.same && it.plan == *plan && plan.holds(conversation))
     }
 }
 
-/// Gives a finished re-read to the call it held, which it releases.
-fn take_reread(
-    done: On<Insert<Reread>>,
-    rereads: Query<(&Reread, Option<&HoldOf>), With<Rereading>>,
+/// Counts each read of a re-read as it settles, redacted as every tool
+/// answer is, and once all are in gives the [`Reread`] to the call it held,
+/// which it releases. A read whose re-read is gone, as after a stop, goes
+/// nowhere.
+fn take_read_again(
+    settled: On<Add<Settled>>,
+    reads: Query<(&ReadAgain, &Outcome)>,
+    mut rereads: Query<(&mut Rereading, &HoldOf)>,
     mut commands: Commands,
 ) {
-    let Ok((&reread, hold)) = rereads.get(done.entity) else {
+    let Ok((read, outcome)) = reads.get(settled.entity) else {
         return;
     };
-    if let Some(&HoldOf(call)) = hold {
+    let Ok((mut rereading, &HoldOf(call))) = rereads.get_mut(read.of) else {
+        return;
+    };
+    let result = outcome.tool_result();
+    let same = result.is_success() && result.output().as_content() == read.content.as_slice();
+    rereading.same &= same;
+    rereading.left = rereading.left.saturating_sub(1);
+    if rereading.left == 0 {
+        let reread = Reread {
+            same: rereading.same,
+            plan: rereading.plan.clone(),
+        };
         commands.entity(call).try_insert(reread);
+        commands.entity(read.of).despawn();
     }
-    commands.entity(done.entity).despawn();
 }
 
 /// The name of a re-read.
@@ -1092,15 +1100,9 @@ fn compact_near_the_window(
         let Ok((mut compacting, last, sent)) = agents.get_mut(agent) else {
             continue;
         };
-        if let Some(reread) = reread {
+        if reread.is_some() {
             // Read once: a later step reads again.
             commands.entity(call).try_remove::<Reread>();
-            // The conversation changed while it was read, so this request
-            // is stale: it is built again from the conversation.
-            if reread.revision != compacting.conversation.revision() {
-                supersede(&mut commands, (turn, agent, call), effect.parent, None);
-                continue;
-            }
         }
         let spec = &*connection.spec;
         let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
@@ -1170,7 +1172,7 @@ fn compact_near_the_window(
             if reread.is_none()
                 && rereads.start(
                     &mut commands,
-                    (agent, call),
+                    (agent, turn, call, Some(effect.id())),
                     &plan,
                     (conversation, compacting.access, spec),
                 )
@@ -1178,7 +1180,13 @@ fn compact_near_the_window(
                 // The call is held, and prepared again once the re-read is in.
                 continue;
             }
-            if !Reread::proves(reread, conversation) {
+            // What was read again changed meanwhile, so this request is
+            // stale: it is built again from the conversation.
+            if reread.is_some_and(|it| it.plan != plan || !plan.holds(conversation)) {
+                supersede(&mut commands, (turn, agent, call), effect.parent, None);
+                continue;
+            }
+            if !Reread::proves(reread, &plan, conversation) {
                 let kept = match (policy.near_window, plan.through) {
                     (NearWindow::Summarize, Some(through)) => {
                         let mut request = (*model).clone();
@@ -1186,9 +1194,8 @@ fn compact_near_the_window(
                         let ask = (&policy.summarizer, Asking::Notes);
                         match ask_for(&mut request, upto, ask, measured) {
                             Some(true) => {
-                                let at = conversation.revision();
                                 commands.spawn((
-                                    Noting::call(plan, at),
+                                    Noting::call(plan),
                                     request,
                                     ForAgent(agent),
                                     CallOf(turn),
@@ -1216,7 +1223,7 @@ fn compact_near_the_window(
                             None => "notes on them cannot be asked",
                         }
                     }
-                    _ => "they could not be read again unchanged",
+                    _ => "not every one could be shown to read back unchanged",
                 };
                 notices.write(kept_notice(
                     agent,
@@ -1326,7 +1333,7 @@ fn recover_from_overflow(
             && reread.is_none()
             && rereads.start(
                 &mut commands,
-                (agent, call),
+                (agent, turn, call, Some(effect.id())),
                 &plan,
                 (conversation, compacting.access, spec),
             )
@@ -1335,7 +1342,7 @@ fn recover_from_overflow(
             continue;
         }
         // A clearing the re-read proves comes first, as it costs no model call.
-        let proven = clears && Reread::proves(reread, conversation);
+        let proven = clears && Reread::proves(reread, &plan, conversation);
         let reason = (policy, CompactReason::Overflow);
         let held = ((model, spec), None);
         let at = (agent, turn, call);
@@ -1361,8 +1368,8 @@ fn recover_from_overflow(
             let successor = (turn, agent, call);
             supersede(&mut commands, successor, effect.parent, Recovering::Cleared);
         } else if clears {
-            let why = "nothing older is left to summarize and they could not be read again \
-                       unchanged";
+            let why = "nothing older is left to summarize and not every one could be shown to \
+                       read back unchanged";
             notices.write(kept_notice(
                 agent,
                 &CompactReason::Overflow,
@@ -1760,7 +1767,7 @@ fn take_notes(
     let reason = &CompactReason::Threshold;
     let kept = |why: &str| kept_notice(agent, reason, &plan.cleared, why);
     let step = match notes {
-        Ok(_) if conversation.revision() != noting.revision => {
+        Ok(_) if !plan.holds(&conversation) => {
             notices.write(kept(
                 "the conversation changed while the notes were written",
             ));
