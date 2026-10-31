@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.45.0...rig-mongodb-v0.46.0) - 2026-10-31
+
+### Fixed
+
+- *(rig-http)* dispatch an SSE event a final CR ends; tag rig-mongodb's handshake ([#2887](https://github.com/0xPlaygrounds/rig/pull/2887)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-mongodb-v0.43.0...rig-mongodb-v0.44.0) - 2026-10-07
 
 ### Other

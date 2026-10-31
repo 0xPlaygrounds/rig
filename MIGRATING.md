@@ -83,8 +83,8 @@ changes that still compile. All three inputs are required for each release.
 
 <!-- MIGRATING-GUIDE-INSTRUCTIONS:END -->
 
-This guide covers migration from 0.30 through 0.45.
-Releases 0.36, 0.37, 0.40, 0.41, 0.43, 0.44 and 0.45 were disruptive; 0.40
+This guide covers migration from 0.30 through 0.46.
+Releases 0.36, 0.37, 0.40, 0.41, 0.43, 0.44, 0.45 and 0.46 were disruptive; 0.40
 alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s library
 target.
 
@@ -95,6 +95,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.45 | [0.45 → 0.46](#045--046) |
 | 0.44 | [0.44 → 0.45](#044--045) |
 | 0.43 | [0.43 → 0.44](#043--044) |
 | 0.42 | [0.42 → 0.43](#042--043) |
@@ -981,6 +982,566 @@ waits briefly for piped input; JSON mode ends at EOF. Terminal state and
 styling changed, including nonzero-exit calls marked failed, NO_COLOR-aware
 selections and status in the input row; do not parse terminal rendering as a
 machine protocol.
+
+### 0.46
+
+#### JSON key order and float parsing follow your own serde_json features
+
+rig-core no longer turns on serde_json's `preserve_order` and
+`float_roundtrip`. Unless something else in your build enables them, schema
+properties are sorted, JSON text in prompts, embeddings and tool results can
+change order, and parsed floats can differ in their low bits. Generated text,
+embedding vectors and exact comparisons can change. See
+[serde_json features](#1-serde_json-features-are-yours-to-choose).
+
+#### Streams that go quiet fail after five minutes
+
+A streamed reply that sends nothing for 300 s now fails as the retryable
+`ProviderError::Stalled` instead of waiting forever. Any byte, `: ping`
+comments included, restarts the timer. Opt out per model:
+
+```rust
+let model = Model::new(wire, http).with_idle_timeout(None);
+```
+
+#### Provider requests that changed without an API change
+
+- On OpenAI Responses, `CacheRetention::Long` on GPT-5.6 and later asks for
+  the 12 hour prompt cache, which bills cache writes at 2.5x the input rate.
+  Use `Short` for the 30 minute default.
+- Requests that set `cache_points` against OpenAI GPT-5.6 or later carry
+  `prompt_cache_breakpoint` markers.
+- On MiniMax, Moonshot, Groq and Doubleword Responses, typed options that
+  were refused are now sent, and a `store: false` conversation sends earlier
+  reasoning items back.
+- MiniMax China callers reach `api.minimax.cn`; pin the old
+  `api.minimaxi.com` with `with_base_url` only if your network needs it.
+- On the ChatGPT backend, `Reasoning::Effort` also sends
+  `"summary": "auto"`. Set `additional_params` to
+  `{"reasoning":{"summary":"detailed"}}` for another summary.
+- Tools on Chat Completions are refused for GPT-6.1 Terra at every effort.
+- Catalog facts for the models listed in `crates/rig-core/TYPED_OPTIONS.md`
+  12.0 changed their reasoning and image support. Models models.dev retired
+  follow each provider's rule for an unlisted model.
+- `ProviderId::resolve("ollama")` is `SelectionError::Ambiguous`.
+- A catalog override file with an unknown key inside `provider`,
+  `experimental`, `cost.tiers`, `cost.context_over_200k` or `interleaved`
+  no longer loads, and the old `chat_tools_need_reasoning_off` key is
+  rejected.
+
+#### Costs, telemetry and error bodies
+
+- Native Anthropic completion cost estimates use the response's cache TTL
+  split. Nonzero writes with missing details give an incomplete estimate
+  (`Cost::is_complete()` is false); provider-reported costs still win.
+- Agents with `record_content_telemetry(true)` also export each completion's
+  tool names, descriptions and parameter schemas on
+  `gen_ai.tool.definitions`. Use `record_content_telemetry(false)` to keep
+  them out.
+- rig-reqwest keeps at most 64 KiB of a non-success response body in the
+  error, with a truncation notice. Use a custom transport if you need more.
+
+#### Stored data
+
+- Sessions saved before 0.46 load, but their reasoning blocks record no blob
+  slot: `Native::reasoning_blob()` returns `None` for them.
+- A saved session's stop note with the 0.45 wording of
+  `conversation::STOPPED` is no longer recognized and draws as a plain rig
+  message.
+- `MemoryStore::read_log` on an invalid log name returns `InvalidInput`, not
+  `NotFound`.
+
+#### The coding agent
+
+- The shell tool has no default timeout and no quiet limit: a command runs
+  until it ends, unless the call sets `timeout_secs` or the user interrupts.
+  A remote command stops when its transport's stdin closes, so a transport
+  must forward stdin (`ssh`, `koh exec`); `ssh -n` stops every command at once.
+- A tool path whose first component is `~` is the home directory. A session
+  whose history wrote into a project folder named `~` reaches the home
+  directory when the same call runs again.
+- Compaction measures against the model's input limit, not its context
+  window, so it starts earlier (for GPT-6, about 906K tokens instead of about
+  1,034K). After an overflow the older messages are summarized instead of
+  asking for notes. A request with no output limit asks for at most 64,000
+  tokens (plus any thinking budget) instead of the whole window left.
+- A reply stopped with Esc is sent back to the model as the text it had
+  written. Quitting mid-turn stops the turn as Esc does, and resuming after a
+  quit or a crash runs nothing until you send a message.
+- The prompt history moved to the project's
+  `$RIG_HOME/projects/<name>-<key>/tui/history.jsonl`; earlier prompts in
+  `$RIG_HOME/data/tui/history.jsonl` are not carried over.
+- A session that only changed settings is not saved and not listed in
+  `/resume`.
+- SIGTERM always stops the agent cleanly; SIGINT and SIGHUP do unless rig was
+  started with them ignored. The launcher kills tool process groups that a
+  dead agent left behind.
+- The default system prompt no longer forces a short status line at the end
+  of each turn, and an explicit request in the conversation beats a
+  conflicting `AGENTS.md` rule.
+- Headless exit codes and closing lines changed; see
+  [headless drivers](#9-headless-drivers-rig--p-rig--p---json-and-rig---json).
+
+---
+
+## 0.45 → 0.46
+
+0.46 is mostly a coding-agent release. Its plugin extension points become
+ordinary Bevy data and systems, the TUI draws through render systems, and the
+headless JSON protocol, the shell and file tools, compaction and session
+restore all change behavior. Four crates are new: `rig-mcp-client`,
+`rig-acp`, `rig-traffic` and `rig-claude-cloak`. The library changes are
+smaller: rig-core stops forcing two serde_json features, a few message,
+provider-dialect and catalog types gain or lose fields, and some constants
+move. Rust **1.97.1** and Bevy **`=0.20.0`** are unchanged.
+
+The examples below are **source-checked migration sketches, not compiled
+standalone programs**. Most are transcribed from the pull requests that made
+the change. They describe the final 0.46 API. If you tried `0.46.0-rc.1`,
+everything here still applies; the one rc-only change is that the
+unpublished `claude-cloak` path crate became the published
+`rig-claude-cloak` (see [section 8](#8-the-coding-agents-pluginstoml-and-settings)).
+
+### 1. serde_json features are yours to choose
+
+rig-core no longer forces serde_json's `preserve_order` and `float_roundtrip`
+features. Without them, schema properties use sorted keys, JSON text inside
+prompts, embeddings and tool results can change order, and parsed floats can
+differ in their low bits. To keep the 0.45 behavior, add a direct dependency:
+
+```toml
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+```
+
+Some rig builds still enable them: `rig-cassette` with `traffic` (and so
+`rig-traffic`) enables both, `rig-claude-cloak` enables `preserve_order`, and
+`rig-mongodb` enables it through BSON.
+
+### 2. Message data: `Native`, reasoning blobs and images
+
+`Native` has three new public fields: `blob_slot`, `baseline` and `edited`.
+Prefer `AssistantContent::with_native(item)`, which fills them, over a struct
+literal:
+
+```rust
+// before
+Native { item, fingerprint }
+// after
+Native { item, fingerprint, baseline: None, edited: false, blob_slot: None }
+```
+
+`Native::reasoning_blob` takes no `Api`; it reads `blob_slot`, which the
+reply fold records from the wire's `ReplayTarget::blob_slots`. `Blob::key` is
+now `&'a str`. A custom completion wire whose items carry a reasoning blob
+declares where:
+
+```rust
+// before
+let blob = native.reasoning_blob(&origin.api);
+// after
+let blob = native.reasoning_blob();
+
+impl ReplayTarget for MyWire {
+    // ...
+    fn blob_slots(&self) -> &'static [&'static str] {
+        &["/signature"]
+    }
+}
+```
+
+`Native` equality includes `blob_slot`, so a test comparing a decoded block
+with one built by `with_native` must set the wire's pointer.
+
+`history::IMAGE_OMITTED` replaces `USER_IMAGE_OMITTED` and
+`ASSISTANT_IMAGE_OMITTED`. `ImageDetail` no longer implements `FromStr`:
+
+```rust
+// before
+let detail: ImageDetail = "low".parse()?;
+// after
+let detail: ImageDetail = serde_json::from_value(serde_json::json!("low"))?;
+```
+
+`rig_tools::attach::attached_file` moved to
+`rig_core::conversation::attached_file`, with the `FILE_OPEN` and
+`FILE_CLOSE` markers. `Conversation::resume` is removed.
+
+### 3. Provider selection, dialects and the catalog
+
+Ollama is registered in two families, so the bare selection `ollama` is
+ambiguous. Model references such as `ollama/qwen3:4b` and serialized ids are
+unchanged.
+
+```rust
+// before
+ProviderId::resolve("ollama")?          // ollama/openai
+// after
+ProviderId::resolve("ollama/openai")?   // "ollama" is SelectionError::Ambiguous
+```
+
+A custom OpenAI-compatible dialect that set `Identity::session_ids` names the
+header on its quirks instead. `openai::wire::Quirks` also gains
+`catalog_priced` and `short_lived_key`; it is `#[non_exhaustive]`, so start
+from a shipped constant:
+
+```rust
+// before
+quirks.identity = Some(Identity { originator, originator_env, user_agent_env, session_ids: true });
+// after
+quirks.identity = Some(Identity { originator, originator_env, user_agent_env });
+quirks.session_header = Some("session-id");
+```
+
+`MessagesDecoder::new` takes the dialect's quirks:
+
+```rust
+// before
+MessagesDecoder::new(false)
+// after
+MessagesDecoder::new(anthropic::wire::Quirks::anthropic())
+```
+
+Catalog pricing is decided per wire through `ReplayTarget::catalog_priced`
+and the dialects' `Quirks::catalog_priced`, not a list of provider names.
+
+`Compat::chat_tools_need_reasoning_off: bool` becomes
+`Compat::chat_tools: Option<ChatTools>` (`Any`, `Never` or `ReasoningOff`).
+In an override file, `chat_tools_need_reasoning_off = true` becomes
+`chat_tools = "never"` or `"reasoning_off"`, and `false` becomes `"any"`;
+the old key is rejected. `ContextUse::window` is renamed `limit` and holds
+the model's input limit:
+
+```rust
+// before
+ContextUse { tokens, window: spec.context_window }
+// after
+ContextUse { tokens, limit: spec.input_limit() }
+```
+
+`xiaomimimo::MIMO_V2_FLASH`, `MIMO_V2_OMNI` and `MIMO_V2_PRO` are removed
+because Xiaomi retired them; use `MIMO_V2_6_FLASH` or `MIMO_V2_6_PRO`.
+`ModelSpec` and `ProviderError` are `#[non_exhaustive]`, so their new
+`max_input_tokens`, `details` and `Stalled` need no code change.
+
+### 4. Agent runs, observers and effect records
+
+`RunSpec` and `PreparedRequest` have a new `provider_tools` field, the
+provider-hosted tools `AgentBuilder::provider_tool` adds. A struct literal
+adds it:
+
+```rust
+// before
+RunSpec { preamble, tools, ..RunSpec::new() }   // unchanged when it already uses `..`
+PreparedRequest { chat_history, policy, /* every field */ }
+// after
+PreparedRequest { chat_history, policy, provider_tools: Vec::new(), /* ... */ }
+```
+
+`Observe::event` is called for every streamed item and `Recorder::event` also
+for a stream's first, even when `keep_events()` is false. An implementation
+that stores what it is given checks `keep_events()` itself. `EffectRecord`
+has a new `first_item_ms: Option<u64>`; build records with
+`EffectRecord::new(..)`.
+
+`TurnEnd::Stopped` has two new fields, `at: Option<MessageId>` and
+`calls: Vec<CallId>`. Use `at: None, calls: Vec::new()` for a turn your code
+ends itself, or `..` in patterns. `conversation::STOPPED` is reworded.
+
+### 5. Memory and compaction
+
+`Summarizer::request` takes the compaction's reason instead of a focus
+string, and `Summarizer::instruction` takes the token budget:
+
+```rust
+// before
+summarizer.request(older, previous, "keep the tests", &spec)?;
+summarizer.request(older, previous, "", &spec)?;
+let text = summarizer.instruction("keep the tests");
+// after
+let asked = CompactReason::Asked { focus: "keep the tests".to_owned() };
+summarizer.request(older, previous, &asked, &spec)?;
+summarizer.request(older, previous, &CompactReason::Threshold, &spec)?;
+let text = summarizer.instruction("keep the tests", tokens);
+```
+
+`rig_memory::output_room` is removed; output fitting lives in rig-basics'
+compaction. `SummaryLimits::DEFAULT.summary_tokens` is 32,000 (was 12,000).
+`SummaryError` has a new `Failed(String)` variant and rig-basics'
+`compaction::Recovering` a new `NotSummarized`; `Recovering` is exhaustive, so
+a `match` on it adds an arm.
+
+`MemoryStore::read_log` (and `read_log_async`) on a name that is no log name,
+such as `"a/b"` or `"../x"`, returns `io::ErrorKind::InvalidInput` instead of
+`NotFound`. Files under `rig/kept/` in a session's store are reserved for the
+copies `rig_memory::migration` keeps.
+
+New and optional: `SqliteSessionStore` and `PostgresSessionStore` behind each
+crate's `memory` feature (the facade's `memory` feature enables them with
+`sqlite` or `postgres`), and `rig_memory::conformance::check_store` behind
+`test-utils` for testing your own store.
+
+### 6. Cassette recording
+
+```rust
+// before
+let http = DirectRecordingHttpClient::new(cassette.direct_recorder());
+// after
+let http = cassette.direct_http();
+// a recorder for a transport that bypasses the proxy, such as Bedrock's
+recorder.record_http_interaction(request, response); // was `.await`ed
+```
+
+Proxy recording now goes through the traffic recorder. A recording is refused
+when a stream fails midway, a success's body is never read, a request gets no
+reply, or an exchange is still open 5 s after `finish`.
+
+### 7. Coding-agent plugin API
+
+These matter if you write plugins for `rig-harness`.
+
+**Model-call adapters are systems.** `Adapter`, `Adapters` and `ModelStarts`
+are removed. Change the call's `Adapted(Connection)` in
+`PrepareSystems::Adapt` (or `AdaptOutermost`):
+
+```rust
+// before
+fn tools_as_text(mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>) {
+    for mut adapters in &mut calls {
+        adapters.0.push(Adapter::new("text-tools", |mut connection: Connection| {
+            connection.handler = Handler(connection.handler.0.map_stream("text-tools", pass_on));
+            connection
+        }));
+    }
+}
+app.add_systems(AgentPass, tools_as_text.in_set(PrepareSystems::Edit));
+// after
+fn tools_as_text(mut calls: Query<&mut Adapted, (Added<Admitted>, With<TurnCall>)>) {
+    for mut adapted in &mut calls {
+        let handler = adapted.0.handler.0.clone().map_stream("text-tools", pass_on);
+        adapted.0.handler = Handler(handler);
+    }
+}
+app.add_systems(AgentPass, tools_as_text.in_set(PrepareSystems::Adapt));
+```
+
+What `ModelStarts::sent` and `dropped` gave is `adapted.sent(model)` and
+`adapted.dropped(model)`; after Start, read `SentTo`. A call's connection is
+chosen once, after `PrepareSystems::Edit`, so route in `Edit` or before.
+
+**Per-call tools implement `PerCallTool`.** `add_tool_per_call` and
+`add_live_tool_per_call` take the tool and its options, with no closure:
+
+```rust
+// before
+app.add_tool_per_call(Read::default(), ToolOptions::default(), move |place| Read {
+    workspace: place.workspace,
+    base: Some(place.base),
+    confine: place.confine,
+    seen: seen.clone(),
+});
+// after (rig-tools' file tools and Shell implement PerCallTool)
+app.add_tool_per_call(Read { seen, ..Read::default() }, ToolOptions::default());
+
+// a tool of your own
+impl PerCallTool for WordCount {
+    fn at(&self, at: CallPlace) -> Self {
+        WordCount { workspace: at.workspace, base: Some(at.base), confine: at.confine }
+    }
+}
+```
+
+**Retry, failure and restart.** The `Retry` event and
+`Conversation::resume` are removed; after a failed turn the user's message is
+back in the input. To send it again from code:
+
+```rust
+// before
+commands.trigger(Retry { entity: agent });
+// after
+commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue));
+```
+
+The kernel stops every restored turn. A plugin that wants a restored turn to
+go on, or a live turn to survive a quit, puts `rig_ecs::restore::CarryOn` on
+the turn by `Stage::Gate`. `SubagentSystems::StopRestored` is removed; order
+against `GateSystems::After`. `rig_ecs::turn::Exiting(String)` and
+`rig_ecs::restore::RESTARTED` are public. `rig_ecs::agent::ContextStale`
+marks an agent whose last context figure no longer applies.
+
+**rig-tui looks are render systems.** `add_tool_renderer`,
+`add_entry_renderer`, `add_content_renderer`, `add_aside_renderer`,
+`add_call_decorator`, their renderer components (`ToolRenderer`,
+`EntryRenderer`, `ContentRenderer`, `AsideRenderer`, `CallDecorator`,
+`MessageDecorator`) and `AppToolRenderersExt` are removed. Write systems in the `TranscriptRender`
+schedule that fill `RenderBatch`:
+
+```rust
+// before
+app.add_tool_renderer("probe", |call| vec![call.header("Probe", "")])
+    .add_call_decorator("duration", |call| {
+        call.took.map(|t| Line::from(format!("{t:?}"))).into_iter().collect()
+    });
+// after
+use rig_tui::{RenderBatch, RenderSystems, TranscriptRender};
+app.add_systems(TranscriptRender, draw.in_set(RenderSystems::Render))
+    .add_systems(TranscriptRender, duration.in_set(RenderSystems::Decorate));
+fn draw(mut batch: ResMut<RenderBatch>) {
+    for (input, output) in batch.tools_mut("probe") {
+        output.lines = vec![input.view().header("Probe", "").into()];
+    }
+}
+fn duration(mut batch: ResMut<RenderBatch>) {
+    for (input, output) in batch.calls_mut() {
+        output.decorate("duration", input.took.map(|t| Line::from(format!("{t:?}"))).into_iter().collect());
+    }
+}
+```
+
+Entry, content and aside renderers become loops over `entries_mut(plugin)`,
+`contents_mut(kind)` and `asides_mut(kind)`; message decorators loop over
+`messages_mut()`. To replace a shipped look, order after its public set
+(`CodingToolLooks`, `SummaryLooks`, `SubagentLooks`, `WelcomeLooks`,
+`BuildFailedLooks`) instead of disabling its renderer entity.
+`TranscriptLayout::lay_out` takes `&mut World`:
+
+```rust
+// before
+let rows = layout.lay_out(view, agent, 80);
+// after
+let rows: Option<DrawnTranscript> = TranscriptLayout::lay_out(world, view, agent, 80);
+```
+
+Looks return `LookLine`s instead of ratatui `Line`s. `highlight::highlight`
+and `ToolCallView::header_spans` are removed; `code_rows`,
+`markdown::render`, `render_marked`, `diff::unified_lines`,
+`ToolCallView::{result_lines, default_lines}` and
+`MessageView::default_lines` return `LookLine`s:
+
+```rust
+// before
+let colored = highlight(&text, Language::File(path)).unwrap_or_default();
+let rows = colored.into_iter().map(|spans| Line::from([vec![Span::from("   ")], spans].concat()));
+// after
+let code = Code::new(&text, Language::File(path));
+let rows = (0..code.len()).map(|index| code.line(index, vec![Span::from("   ")]));
+```
+
+A look that draws no code converts with `LookLine::from`; a panel outside the
+transcript draws `LookLine::colored()`. `header_code` replaces `header_spans`.
+
+**Other plugin-facing changes:**
+
+- `PickItem` gains `more: Option<String>` and `Picker` gains `secret: bool`;
+  literals add them (`Picker` has `Default`).
+- `CallState` gains `Stopped`; `EntryView` and `EntryRender` gain
+  `id: Option<MessageId>`. `ActivityStatus` gains `Writing`.
+- `SessionPicker::show` and `SessionItem` are removed: put labels in a
+  `ResumeLabel` or a listed saved value, or relabel the `Picker`'s items in a
+  system after `SessionPickerSystems`. `SessionEntry::label()` no longer holds
+  the directory: use `detail()` for the compact folder or `more()` for the
+  full one.
+- `rig_basics::reload::{SELF_EXTENSION_TAG, self_extension, ReloadAsked,
+  MAX_RELOADS, ORIGIN}` are removed, with nothing replacing them.
+- `rig_basics::coding_tools::ShellSettings` is removed. `rig_tools::Shell`
+  loses `max_timeout` and `quiet`, `Process::run(deadline, quiet, sink)` is
+  `run(deadline, sink)`, and `Ended::Quiet` and `Process::forced` are gone.
+- `rig_tools::Read`'s output is `ToolOutput`, not `String`:
+
+  ```rust
+  // before
+  let shown: String = read.call(&mut context, ReadArgs::new("a.txt")).await?;
+  // after
+  let shown = read.call(&mut context, ReadArgs::new("a.txt")).await?;
+  let text = shown.as_text(); // None for an image read
+  ```
+
+- A custom `Workspace` that should expand `~` overrides `join`, as `Local`
+  does; the trait's default `join` is unchanged.
+- `RunInTerminal`: when a program exits with a failure code on a terminal,
+  `TerminalExit` arrives after the user presses Enter, Ctrl+C or Ctrl+D. Use
+  `exit.failure()` to describe it.
+- The TUI's `Editor`: `clear()` keeps the text in `PromptHistory`, `take`
+  keeps a draft hidden behind a recalled prompt, and `up` on the first line
+  moves the cursor to its start before it browses. A filter of
+  `PromptHistory::entries` that should also hide seeded prompts runs after
+  `HistorySystems::Seed`.
+- `rig_harness::host::launcher::refuse` is replaced by `app.refuse_run(why)`.
+
+### 8. The coding agent's `plugins.toml` and settings
+
+The launcher does not rewrite an existing `RIG_HOME/plugins.toml`. Until the
+login entry is renamed the agent build fails with
+`cannot find login_chatgpt in rig_basics` and the previous build starts:
+
+```toml
+# before
+plugin = "rig_basics::login_chatgpt::ChatgptLoginPlugin"
+# after
+plugin = "rig_basics::login::LoginPlugin"
+```
+
+Add the new default plugins, then `rig build` or `/reload`:
+
+```sh
+rig plugin add rig_basics::agents_md::AgentsMdPlugin
+rig plugin add rig_basics::skills::SkillsPlugin
+rig plugin add rig_traffic::TrafficPlugin
+```
+
+Without `AgentsMdPlugin` the model is told nothing about `AGENTS.md`, and
+`CLAUDE.md` is no longer read: link `AGENTS.md` to it in a repository that
+only has a `CLAUDE.md`. The MCP client, ACP and Claude Cloak plugins are
+optional (`rig plugin add rig_mcp_client::McpPlugin`,
+`rig plugin add rig_acp::AcpPlugin`,
+`rig plugin add rig_claude_cloak::ClaudeCloakPlugin`; in a fresh
+`plugins.toml` they are listed off, and `rig plugin enable` turns one on). If you used the
+`claude-cloak` path crate from a 0.46.0-rc.1 checkout, replace its entry with
+`crate = "rig-claude-cloak"` and `plugin = "rig_claude_cloak::ClaudeCloakPlugin"`.
+An agent built with corpus-base's `corpus_base::mcp_client::McpClientPlugin`
+uses `rig_mcp_client::McpPlugin` instead.
+
+In `settings.toml`, `[shell] max_timeout` is no longer read; remove it. The
+OSC 133 mark nonce is opt-in:
+
+```toml
+[tui]
+mark_nonce_env = "FUX_MARK_NONCE"
+```
+
+`/retry` is gone: after a failed turn, the message is back in the input;
+press Enter to send it again. A key saved with `/login <provider>` is used
+before the provider's environment variable, and then the provider's other
+environment variables (such as a base URL) are not read for it. A project's
+`.rig/mcp.json` server waits for `/mcp approve <name>` once; move a server
+you always want into `$RIG_HOME/mcp.json` to skip that.
+
+### 9. Headless drivers: `rig -p`, `rig -p --json` and `rig --json`
+
+- Read to EOF. `exit` is the last line of `rig -p --json`, written after the
+  session log, and names its error for every non-zero code. After a signal,
+  the launcher's death or a closed stdin, every cut tool call gets a
+  `tool_result` with `"cancelled": true` and every cut turn a `turn_end`
+  `"stopped"` before it. Every `tool_result` has the `cancelled` field and
+  every line has `ms`; `turn_end` has `first_token_ms`.
+- Exit codes: an unknown `--tools` name or `--model` exits 2 (an unknown
+  `--model` was 1), before any model call, also at a terminal. A turn that
+  ends with no answer text fails (`turn_end` `"outcome": "failed"`, exit 1;
+  it was exit 0 with `"answer": null`). A run whose stdout nobody reads, such
+  as after `| head -1`, stops with 130. A signal also exits 130.
+- `--tools` can name a tool a plugin registers in the background, such as an
+  MCP server's `<server>__<tool>`: the run waits for every `print::Starting`
+  entity first. An empty `--tools` permits no tools, in every front.
+- A failed `rig -p` run names the unanswered message on stderr
+  (`rig: not answered: <text>`); `--json` writes it as a `recalled` event.
+- A resumed run no longer replays or finishes a turn an exit cut off.
+  `rig -r <id> -p "<prompt>"` answers the new prompt; with no prompt it exits
+  2. After a crash, the crashed turn's lines come first, ending in `turn_end`
+  stopped "the session restarted".
+- `rig -p` and piped runs keep the agent build's output in
+  `RIG_HOME/build.log`; stderr gets one line when cargo has work to do.
+
+`HeadlessEnded::why` is `Some` for every non-zero code.
 
 ---
 
@@ -6100,6 +6661,29 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `Native::reasoning_blob(&Api)` | `Native::reasoning_blob()`, with `ReplayTarget::blob_slots` | 0.46 |
+| `history::{USER_IMAGE_OMITTED, ASSISTANT_IMAGE_OMITTED}` | `history::IMAGE_OMITTED` | 0.46 |
+| `ImageDetail::from_str` | serde (`serde_json::from_value`) | 0.46 |
+| `rig_tools::attach::attached_file` | `rig_core::conversation::attached_file` | 0.46 |
+| `openai::wire::Identity::session_ids` | `Quirks::session_header` | 0.46 |
+| `MessagesDecoder::new(bool)` | `MessagesDecoder::new(anthropic::wire::Quirks)` | 0.46 |
+| `Compat::chat_tools_need_reasoning_off` | `Compat::chat_tools` (`ChatTools`) | 0.46 |
+| `ContextUse::window` | `ContextUse::limit` | 0.46 |
+| `xiaomimimo::{MIMO_V2_FLASH, MIMO_V2_OMNI, MIMO_V2_PRO}` | `MIMO_V2_6_FLASH`, `MIMO_V2_6_PRO` | 0.46 |
+| `Summarizer::request(.., focus: &str, ..)` | `Summarizer::request(.., &CompactReason, ..)` | 0.46 |
+| `rig_memory::output_room` | rig-basics compaction (no public replacement) | 0.46 |
+| `DirectRecordingHttpClient` | `ProviderCassette::direct_http()` | 0.46 |
+| `rig_ecs::turn::{Adapter, Adapters, ModelStarts}` | `turn::Adapted` in `PrepareSystems::{Adapt, AdaptOutermost}` | 0.46 |
+| `rig_ecs::agent::Retry`, `Conversation::resume` | `Deliver::new(agent, text, DeliveryMode::Queue)` | 0.46 |
+| `SubagentSystems::StopRestored` | `GateSystems::After`, `restore::CarryOn` | 0.46 |
+| `add_tool_per_call(tool, options, closure)` | `add_tool_per_call(tool, options)` with `PerCallTool::at` | 0.46 |
+| `rig_tui::AppToolRenderersExt` and its `add_*_renderer` / `add_call_decorator` | systems in `TranscriptRender` writing `RenderBatch` | 0.46 |
+| `rig_tui::highlight::highlight`, `ToolCallView::header_spans` | `highlight::Code`, `ToolCallView::header_code` | 0.46 |
+| `rig_basics::login_chatgpt::ChatgptLoginPlugin` | `rig_basics::login::LoginPlugin` | 0.46 |
+| `rig_basics::coding_tools::ShellSettings`, `Shell::{max_timeout, quiet}`, `Ended::Quiet` | removed (no default shell timeout) | 0.46 |
+| `SessionPicker::show`, `SessionItem` | `ResumeLabel`, a system after `SessionPickerSystems` | 0.46 |
+| `rig_basics::reload::{SELF_EXTENSION_TAG, self_extension, ReloadAsked, MAX_RELOADS, ORIGIN}` | removed | 0.46 |
+| `rig_harness::host::launcher::refuse` (crate-private) | `AppCliExt::refuse_run` | 0.46 |
 | `rig::core`, `rig_agent::core` | `rig`, `rig_core` | 0.45 |
 | `rig_core::memory`, `ConversationMemory` and policy wrappers | `rig_core::conversation` plus `rig_memory::{Store, AsyncStore}` | 0.45 |
 | `rig_core::transcript::{validate_canonical, TranscriptError}` | `conversation::pairing::{validate, PairingError}` | 0.45 |
