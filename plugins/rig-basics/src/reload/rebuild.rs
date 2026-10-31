@@ -2,13 +2,14 @@
 //! line, and the restart.
 
 use std::io::{BufRead, BufReader};
-use std::process::{Child, ChildStderr, Command, Stdio};
+use std::process::{ChildStderr, Command, Stdio};
+use std::sync::{Mutex, PoisonError};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
 use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
-use rig_tools::process::{detach, kill_group};
+use rig_tools::process::{Process, STOP_GRACE};
 
 use crate::reload::ReloadStatus;
 
@@ -29,11 +30,12 @@ pub(crate) fn stop(commands: &mut Commands) {
     commands.remove_resource::<ReloadBuild>();
 }
 
-/// The rebuild's process. Dropping it while the build runs kills the
+/// The rebuild's process. Dropping it while the build runs stops the
 /// build, as the app's runner does when it drops the app on exit.
 #[derive(Resource)]
 struct ReloadBuild {
-    child: Child,
+    /// In a mutex only to be `Sync`, as a resource is.
+    process: Mutex<Process>,
     /// The agent that asked, whose model is told when the build fails.
     agent: Entity,
     lines: Receiver<String>,
@@ -41,7 +43,6 @@ struct ReloadBuild {
     /// a build queued behind this one, or an older one when this one fails
     /// before it starts its log, may have written.
     output: Vec<String>,
-    exited: bool,
 }
 
 impl ReloadBuild {
@@ -60,18 +61,16 @@ impl ReloadBuild {
         }
         // Its own session and process group, so cancelling stops cargo and
         // rustc too, and a git prompt for a plugin cannot reach the screen.
-        detach(&mut command);
-        let mut child = command.spawn()?;
+        let mut process = Process::start_with_stdio(command)?;
         let (sender, lines) = crossbeam_channel::unbounded();
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(stderr) = process.take_stderr() {
             std::thread::spawn(move || forward(stderr, sender, wake));
         }
         Ok(Self {
-            child,
+            process: Mutex::new(process),
             agent,
             lines,
             output: Vec::new(),
-            exited: false,
         })
     }
 
@@ -90,11 +89,15 @@ impl ReloadBuild {
 }
 
 impl Drop for ReloadBuild {
+    /// Asks `rig build` to stop (`SIGTERM`) before it is killed: cargo runs
+    /// in a process group of its own, which the launcher kills only when
+    /// asked.
     fn drop(&mut self) {
-        if !self.exited {
-            kill_group(&mut self.child);
-            self.child.wait().ok();
-        }
+        let process = self
+            .process
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
+        process.stop(STOP_GRACE).ok();
     }
 }
 
@@ -171,7 +174,11 @@ fn drain_reload(
     if !ended {
         return;
     }
-    let exit = match build.child.try_wait() {
+    let process = build
+        .process
+        .get_mut()
+        .unwrap_or_else(PoisonError::into_inner);
+    let exit = match process.try_wait() {
         Ok(Some(exit)) => exit,
         Ok(None) => return,
         Err(failure) => {
@@ -184,7 +191,6 @@ fn drain_reload(
             return;
         }
     };
-    build.exited = true;
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
         *status = ReloadStatus::Ready;

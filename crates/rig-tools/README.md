@@ -34,8 +34,8 @@ let ssh = ["ssh", "-o", "BatchMode=yes", "dev@box"];
 let hosts = Hosts::new(
     Arc::new(Local),
     [
-        Remote::new("bench", koh, Launcher::default())?,
-        Remote::new("box", ssh, Launcher::default())?,
+        Remote::new("bench", koh, Launcher::default)?,
+        Remote::new("box", ssh, Launcher::default)?,
     ],
 );
 // `read` of `bench:~/strata/src/lib.rs` reads that file on bench.
@@ -45,7 +45,8 @@ let read = Read { workspace: Arc::new(hosts), ..Read::default() };
 Each file operation there is one short `sh` script through the transport, at most two at
 once per host; a read whose transport failed (exit 255) or was killed is sent once more, a write never: when a write's transport ends some other way, such as a
 link dropped mid-write, the file is hashed there again and the error says whether the write
-happened, and `edit` forgets the text it kept of that file. A `read` of some lines of a
+happened, and `edit` forgets the text it kept of that file. A write lands only once all its
+bytes arrived there, and an interrupted call starts no transport after the interrupt. A `read` of some lines of a
 file over 50 KB is sent only those lines; a smaller file comes whole. An
 `edit` of a file read (any part of it, when it is that small), or edited before, is one call that writes only if the file still
 holds the text it was made from. A `shell` command there runs under a short `sh` script that

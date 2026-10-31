@@ -136,13 +136,13 @@ fn point(world: &mut World) {
         .get_resource::<RemoteTarget>()
         .map(|target| target.target.clone())
         .unwrap_or_default();
-    let launcher = world
+    let processes = world
         .get_resource::<Processes>()
-        .map(Processes::launcher)
+        .cloned()
         .unwrap_or_default();
     let (remotes, _) = world
         .get_resource::<RemoteSettings>()
-        .map(|settings| settings.remotes(&launcher))
+        .map(|settings| settings.remotes(&processes))
         .unwrap_or_default();
     let target = Target::parse(&spec);
     let remote = target.as_ref().and_then(|target| {

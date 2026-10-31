@@ -10,7 +10,8 @@ use super::Result;
 use super::build::BuildOutput;
 
 /// This launcher's [`RunDir`], held locked while it lives. Dropping it
-/// removes the directory, unless it keeps the log of a run that failed.
+/// kills the process groups an agent left listed there and removes the
+/// directory, unless it keeps the log of a run that failed.
 pub struct Run {
     dir: RunDir,
     _lock: File,
@@ -25,6 +26,8 @@ impl Run {
 
 impl Drop for Run {
     fn drop(&mut self) {
+        // Jobs a reload kept for a restart that did not come.
+        self.dir.kill_left_groups().ok();
         if !self.dir.log().exists() {
             fs::remove_dir_all(self.dir.path()).ok();
         }

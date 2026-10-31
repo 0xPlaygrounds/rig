@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use bevy_app::prelude::*;
 use rig_harness_protocol::AgentDescription;
 

@@ -47,7 +47,7 @@ use rig_core::tool::{DynamicTool, Touches};
 use rig_harness::host::cli::Cli;
 use rig_harness::plugin_data::PluginData;
 use rig_harness::prelude::*;
-use rig_harness::rig_tools::process;
+use rig_harness::rig_tools::process::{self, Process};
 use rig_rmcp::{McpConnection, McpTool};
 use rmcp::model::{ClientCapabilities, ClientConfig, Implementation, Tool as McpDefinition};
 use rmcp::service::{NotificationContext, RoleClient};
@@ -645,15 +645,16 @@ async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) 
 
 /// The process groups of the stdio servers that run, each from the moment
 /// its process started: as the app exits all are killed at once, and none
-/// starts after. Starting, killing and closing each hold its lock, so no
-/// process is ever outside it.
+/// starts after. Starting and closing each hold its lock, so no process is
+/// ever outside it. Each server's [`Process`] kills its group as it is
+/// dropped, so nothing the server started outlives it.
 #[derive(Resource, Clone, Default)]
 struct Groups(Arc<Mutex<Live>>);
 
 #[derive(Default)]
 struct Live {
     closed: bool,
-    leaders: HashSet<u32>,
+    groups: Vec<process::Group>,
 }
 
 impl Groups {
@@ -662,68 +663,31 @@ impl Groups {
     }
 
     /// Starts `command`, its process in the registry; none once closed.
-    fn spawn(&self, command: &mut tokio::process::Command) -> io::Result<Group> {
+    fn spawn(&self, command: std::process::Command) -> io::Result<Process> {
         let mut live = self.live();
         if live.closed {
             return Err(io::Error::other("rig is exiting"));
         }
-        let child = command.spawn()?;
-        if let Some(leader) = child.id() {
-            live.leaders.insert(leader);
-            process::list_group(leader);
-        }
-        Ok(Group {
-            child,
-            groups: self.clone(),
-        })
+        let process = Process::start_with_stdio(command)?;
+        live.groups.retain(process::Group::running);
+        live.groups.push(process.group());
+        Ok(process)
     }
 
     /// Kills every group, and starts none from now on.
     fn close(&self) {
         let mut live = self.live();
         live.closed = true;
-        live.leaders.drain().for_each(|leader| {
-            kill_group(leader);
-            process::unlist_group(leader);
-        });
-    }
-}
-
-/// Kills the process group `leader` leads; elsewhere than unix, nothing,
-/// as a process is killed as it is dropped there.
-fn kill_group(leader: u32) {
-    #[cfg(unix)]
-    process::kill_group_of(leader);
-    #[cfg(not(unix))]
-    let _ = leader;
-}
-
-/// A stdio server's process, which leads a process group of its own: the
-/// group is killed as this is dropped, so nothing the server started
-/// outlives it.
-struct Group {
-    child: tokio::process::Child,
-    groups: Groups,
-}
-
-impl Drop for Group {
-    fn drop(&mut self) {
-        if let Some(leader) = self.child.id() {
-            let mut live = self.groups.live();
-            kill_group(leader);
-            if live.leaders.remove(&leader) {
-                process::unlist_group(leader);
-            }
-        }
+        live.groups.drain(..).for_each(|group| group.kill());
     }
 }
 
 /// A connection open, and the process it is to, which lives as long as
 /// this.
-type Reached = (McpConnection, Option<Group>);
+type Reached = (McpConnection, Option<Process>);
 
 /// [`Reached`], with the server's tools.
-type Opened = (McpConnection, Vec<McpDefinition>, Option<Group>);
+type Opened = (McpConnection, Vec<McpDefinition>, Option<Process>);
 
 impl Start {
     /// One connection to the server: `Ok` once it closed after answering.
@@ -784,29 +748,29 @@ impl Start {
                 env,
                 cwd,
             } => {
-                let launched = self.processes.launcher().command(command);
-                let mut process = tokio::process::Command::from(launched);
-                process
+                let mut launched = self.processes.launcher().command(command);
+                launched
                     .args(args)
                     .envs(env)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
-                    .stderr(Stdio::null())
-                    .kill_on_drop(true);
+                    .stderr(Stdio::null());
                 if let Some(cwd) = cwd {
-                    process.current_dir(self.root.join(cwd));
+                    launched.current_dir(self.root.join(cwd));
                 }
                 let mut child = self
                     .groups
-                    .spawn(&mut process)
+                    .spawn(launched)
                     .map_err(|error| format!("could not start `{command}`: {error}"))?;
-                if let Some(pid) = child.child.id() {
-                    outbox.send(ServerEvent::Started(pid));
-                }
-                let pipes = (child.child.stdout.take(), child.child.stdin.take());
+                outbox.send(ServerEvent::Started(child.id()));
+                let pipes = (child.take_stdout(), child.take_stdin());
                 let (Some(stdout), Some(stdin)) = pipes else {
                     return Err(format!("`{command}` has no pipes"));
                 };
+                let pipes = tokio::process::ChildStdout::from_std(stdout)
+                    .and_then(|stdout| Ok((stdout, tokio::process::ChildStdin::from_std(stdin)?)));
+                let (stdout, stdin) =
+                    pipes.map_err(|error| format!("`{command}`'s pipes: {error}"))?;
                 let service = client
                     .serve((stdout, stdin))
                     .await

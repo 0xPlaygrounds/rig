@@ -7,11 +7,11 @@
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rig_core::message::ImageMediaType;
 
-use crate::process::Launcher;
+use crate::process::{Launcher, Process, Spawn};
 
 /// What a clipboard program does.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -99,12 +99,10 @@ fn output_of(
 ) {
     let programs = programs(what);
     let printed = programs.iter().find_map(|(program, args)| {
-        let output = launcher
-            .command(program)
-            .args(*args)
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
+        let mut command = launcher.command(program);
+        command.args(*args);
+        let output = Process::start(command, Spawn::default())
+            .and_then(|process| process.output(None))
             .ok()?;
         output.status.success().then_some(output.stdout)
     });
@@ -163,23 +161,26 @@ pub fn write_text(launcher: &Launcher, text: &str) -> io::Result<()> {
     let programs = programs(Use::WriteText);
     let mut failed = none_of(&[], "");
     for (program, args) in programs {
-        let written = launcher
-            .command(program)
+        let mut command = launcher.command(program);
+        command
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(mut stdin) = child.stdin.take() {
-                    stdin.write_all(text.as_bytes())?;
+            .stderr(Stdio::null());
+        let written = Process::start_with_stdio(command).and_then(|mut process| {
+            if let Some(mut stdin) = process.take_stdin() {
+                stdin.write_all(text.as_bytes())?;
+            }
+            match process.wait_for(Duration::MAX)? {
+                // What it left behind serves the selection after rig.
+                Some(status) if status.success() => {
+                    process.release();
+                    Ok(())
                 }
-                let status = child.wait()?;
-                match status.success() {
-                    true => Ok(()),
-                    false => Err(io::Error::other(format!("{program} failed: {status}"))),
-                }
-            });
+                Some(status) => Err(io::Error::other(format!("{program} failed: {status}"))),
+                None => Err(io::Error::other(format!("{program} did not end"))),
+            }
+        });
         match written {
             Ok(()) => return Ok(()),
             Err(error) => failed = error,
