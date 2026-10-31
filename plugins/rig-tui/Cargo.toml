@@ -27,10 +27,10 @@ unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }
 ratatui = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs", version = "0.46.0" }
+rig-ecs = { path = "../../crates/rig-ecs", version = "0.47.0" }
 # The plugin API of the agent it is loaded into.
-rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
-rig-tools = { path = "../../crates/rig-tools", version = "0.46.0" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
+rig-tools = { path = "../../crates/rig-tools", version = "0.47.0" }
 # A status item's side read from settings.
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
