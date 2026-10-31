@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::path::PathBuf;
 
 use bevy_app::prelude::*;

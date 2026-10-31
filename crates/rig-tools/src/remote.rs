@@ -25,8 +25,8 @@
 //! let hosts = Hosts::new(
 //!     Arc::new(Local),
 //!     [
-//!         Remote::new("bench", bench, Launcher::default())?,
-//!         Remote::new("box", dev, Launcher::default())?,
+//!         Remote::new("bench", bench, Launcher::default)?,
+//!         Remote::new("box", dev, Launcher::default)?,
 //!     ],
 //! );
 //! let text = hosts.read(Path::new("bench:~/strata/src/lib.rs"), 4096)?;
@@ -36,17 +36,15 @@
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
-use std::io::{self, ErrorKind, Write as _};
+use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
-use std::process::Stdio;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
-use std::thread;
 
 use ignore::overrides::OverrideBuilder;
 
 use rig_core::tool::{ContentHash, content_hash};
 
-use crate::process::{Launcher, Process, STOP_GRACE, Spawn};
+use crate::process::{Launcher, NON_INTERACTIVE, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
     Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, not_text,
     read_file, too_large,
@@ -91,9 +89,9 @@ const GONE: &str = "gone() { d=$1; while case $d in ?*/) :;; *) false;; esac; do
 pub struct Remote {
     name: String,
     transport: Vec<OsString>,
-    /// How the transport starts for a file operation: in no directory of
-    /// its own.
-    launcher: Launcher,
+    /// How the transport starts for a file operation, asked for each one
+    /// (in no directory of its own).
+    launcher: Arc<dyn Fn() -> Launcher + Send + Sync>,
     /// The file operations running there now, shared by its clones.
     running: Arc<(Mutex<usize>, Condvar)>,
 }
@@ -159,8 +157,10 @@ impl fmt::Debug for Remote {
 
 impl Remote {
     /// The machine `name`, such as `bench`, reached through `transport`,
-    /// such as `["ssh", "dev@box"]`, which file operations start under
-    /// `launcher`'s policy (its wrapper and variables; not its directory).
+    /// such as `["ssh", "dev@box"]`, which each file operation starts under
+    /// the policy `launcher` gives at that moment (its wrapper and
+    /// variables; not its directory), so a policy that changes, such as a
+    /// sandbox's, holds from the next operation on.
     ///
     /// # Errors
     ///
@@ -169,7 +169,7 @@ impl Remote {
     pub fn new(
         name: impl Into<String>,
         transport: impl IntoIterator<Item = impl Into<OsString>>,
-        mut launcher: Launcher,
+        launcher: impl Fn() -> Launcher + Send + Sync + 'static,
     ) -> io::Result<Self> {
         let name = name.into();
         let transport: Vec<OsString> = transport.into_iter().map(Into::into).collect();
@@ -185,11 +185,10 @@ impl Remote {
                 format!("the transport of {name} is empty"),
             ));
         }
-        launcher.cwd = None;
         Ok(Self {
             name,
             transport,
-            launcher,
+            launcher: Arc::new(launcher),
             running: Arc::default(),
         })
     }
@@ -218,25 +217,17 @@ impl Remote {
     fn once(&self, script: &str, stdin: Option<&[u8]>) -> io::Result<Ran> {
         let (program, args) = self.command(script)?;
         let _turn = Turn::take(&self.running);
-        let mut command = self.launcher.command(&program);
-        command
-            .args(args)
-            .stdin(match stdin {
-                Some(_) => Stdio::piped(),
-                None => Stdio::null(),
-            })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .map_err(|error| self.unstarted(&program, error))?;
-        let pipe = child.stdin.take();
-        let output = thread::scope(|scope| {
-            if let (Some(mut pipe), Some(bytes)) = (pipe, stdin) {
-                scope.spawn(move || pipe.write_all(bytes).ok());
-            }
-            child.wait_with_output()
-        })?;
+        let mut launcher = (self.launcher)();
+        launcher.cwd = None;
+        let mut command = launcher.command(&program);
+        command.args(args);
+        let how = Spawn {
+            stdin: stdin.map(<[u8]>::to_vec),
+            merge_stderr: false,
+        };
+        let output = Process::start(command, how)
+            .map_err(|error| self.unstarted(&program, error))?
+            .output(None)?;
         #[cfg(unix)]
         let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
         #[cfg(not(unix))]
@@ -383,13 +374,22 @@ impl Remote {
         ))
     }
 
-    /// What a call fails with when its transport could not start.
+    /// What a call fails with when its transport could not start: never
+    /// an error of the file's own kind, such as `NotFound` for a missing
+    /// transport, unless the call was stopped.
     fn unstarted(&self, program: &OsStr, error: io::Error) -> io::Error {
-        io::Error::other(format!(
-            "could not start `{}`, the transport to {}: {error}",
-            program.to_string_lossy(),
-            self.name
-        ))
+        let kind = match error.kind() {
+            ErrorKind::Interrupted => ErrorKind::Interrupted,
+            _ => ErrorKind::Other,
+        };
+        io::Error::new(
+            kind,
+            format!(
+                "could not start `{}`, the transport to {}: {error}",
+                program.to_string_lossy(),
+                self.name
+            ),
+        )
     }
 }
 
@@ -568,11 +568,13 @@ impl Workspace for Remote {
         self.replace(path, bytes, 0).map(drop)
     }
 
-    /// Writes a temporary file beside it and moves it over the file, so a
-    /// lost connection never leaves it half written, keeping an existing
-    /// file's permissions; the copy the temporary file starts as is what
-    /// is sent back, in the same call.
+    /// Writes a temporary file beside it and moves it over the file only
+    /// once it holds all of `bytes`, so a lost connection or a stopped call
+    /// never leaves it half written, keeping an existing file's
+    /// permissions; the copy the temporary file starts as is what is sent
+    /// back, in the same call.
     fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
+        let size = bytes.len();
         let script = format!(
             "p={}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
@@ -580,7 +582,8 @@ impl Workspace for Remote {
              if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
              head -c {limit} -- \"$t\"; \
              else chmod \"$(printf %o $((0666 & ~$(umask))))\" \"$t\"; fi && \
-             cat > \"$t\" && mv -f -- \"$t\" \"$p\" || {{ rm -f -- \"$t\"; exit 1; }}",
+             cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" || \
+             {{ rm -f -- \"$t\"; exit 1; }}",
             quote_path(path)
         );
         let out = self.written(path, &script, bytes)?;
@@ -598,8 +601,8 @@ impl Workspace for Remote {
     }
 
     /// One script: a copy of the file is made beside it and hashed there,
-    /// then filled with `bytes` and moved over the file when the hash is
-    /// `held`, or sent back when it is not. A machine with neither
+    /// then filled with `bytes` and moved over the file, once it holds all
+    /// of them, when the hash is `held`, or sent back when it is not. A machine with neither
     /// `sha256sum` nor `shasum` always sends it back.
     fn write_if(
         &self,
@@ -607,6 +610,7 @@ impl Workspace for Remote {
         bytes: &[u8],
         held: &ContentHash,
     ) -> io::Result<Option<Contents>> {
+        let size = bytes.len();
         let script = format!(
             "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; \
@@ -614,7 +618,8 @@ impl Workspace for Remote {
              cp -p -- \"$p\" \"$t\" || {{ rm -f -- \"$t\"; exit 1; }}; \
              h=$({{ sha256sum || shasum -a 256; }} < \"$t\" 2>/dev/null); \
              if [ \"${{h%% *}}\" = {} ]; then \
-             cat > \"$t\" && mv -f -- \"$t\" \"$p\" && echo = || {{ rm -f -- \"$t\"; exit 1; }}; \
+             cat > \"$t\" && [ $(wc -c < \"$t\") -eq {size} ] && mv -f -- \"$t\" \"$p\" && echo = || \
+             {{ rm -f -- \"$t\"; exit 1; }}; \
              else wc -c < \"$t\" && head -c {MAX_FILE_BYTES} -- \"$t\"; s=$?; rm -f -- \"$t\"; exit $s; fi",
             quote_path(path),
             quote(&held.0)
@@ -759,7 +764,11 @@ impl Workspace for Remote {
     ) -> io::Result<Process> {
         let dir = dir.unwrap_or(Path::new("~"));
         let mut run = String::from("env");
-        for (name, value) in &launcher.env {
+        let quiet = NON_INTERACTIVE
+            .iter()
+            .filter(|(name, _)| launcher.env.iter().all(|(set, _)| set != name))
+            .map(|&(name, value)| (OsString::from(name), OsString::from(value)));
+        for (name, value) in quiet.chain(launcher.env.iter().cloned()) {
             let set = format!("{}={}", name.to_string_lossy(), value.to_string_lossy());
             run.push_str(&format!(" {}", quote(&set)));
         }

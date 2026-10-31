@@ -103,7 +103,25 @@ impl Plugin for ExitPlugin {
                     .chain()
                     .before(OnAppExitSystems)
                     .distributive_run_if(on_message::<AppExit>),
+            )
+            .add_systems(
+                Last,
+                end_left_jobs
+                    .in_set(OnAppExitSystems)
+                    .run_if(on_message::<AppExit>),
             );
+    }
+}
+
+/// Ends the jobs the agent's commands left running in the background as it
+/// exits for good; across a reload or a session switch they keep running,
+/// for the next agent to take over (`LauncherPlugin`).
+fn end_left_jobs(reason: Option<Res<ExitReason>>) {
+    if !matches!(
+        reason.as_deref(),
+        Some(ExitReason::Reload | ExitReason::Switch(_))
+    ) {
+        rig_tools::process::end_left();
     }
 }
 

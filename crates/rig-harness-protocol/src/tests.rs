@@ -407,3 +407,56 @@ fn a_group_whose_leader_left_is_killed_for_the_process_it_left() {
     assert!(!alive());
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The groups an agent left are asked to stop before they are killed, so
+/// one that ends on its own when asked, such as an agent that ends what it
+/// started, gets to; one that ignores the request is killed after the
+/// grace.
+#[cfg(unix)]
+#[test]
+fn groups_left_are_asked_to_stop_before_they_are_killed() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-protocol-term-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let run = super::RunDir::at(&root);
+    let (asked, stubborn) = (root.join("asked"), root.join("stubborn"));
+    let heeds = format!(
+        "trap 'touch \"{}\"; exit' TERM; while :; do sleep 0.05; done",
+        asked.display()
+    );
+    let ignores = format!(
+        "trap '' TERM; echo $$ > '{}'; exec sleep 60",
+        stubborn.display()
+    );
+    let mut leaders = Vec::new();
+    for script in [heeds, ignores] {
+        let leader = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .env(super::env::PROCESS_LEDGER, run.groups())
+            .process_group(0)
+            .spawn();
+        assert!(leader.is_ok());
+        leaders.extend(leader.ok());
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !stubborn.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let ids: String = leaders
+        .iter()
+        .map(|leader| format!("{}\n", leader.id()))
+        .collect();
+    std::fs::write(run.groups(), ids).ok();
+    let started = std::time::Instant::now();
+    assert!(run.kill_left_groups().is_ok());
+    let took = started.elapsed();
+    let ended: Vec<bool> = leaders
+        .iter_mut()
+        .map(|leader| leader.wait().is_ok())
+        .collect();
+    assert_eq!(ended, [true, true]);
+    assert!(asked.exists(), "the group was killed without being asked");
+    assert!(took >= super::RunDir::STOP_GRACE, "{took:?}");
+    std::fs::remove_dir_all(root).ok();
+}

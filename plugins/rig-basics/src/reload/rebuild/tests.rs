@@ -1,4 +1,7 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::os::unix::fs::PermissionsExt;
+use std::time::Duration;
 
 use super::*;
 
@@ -30,8 +33,13 @@ fn the_rebuild_gets_no_secret() {
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
     let build = ReloadBuild::start(launcher.as_os_str(), Entity::PLACEHOLDER, Wake::default());
     let exited = build.map(|mut build| {
-        build.exited = build.child.wait().is_ok();
-        build.exited
+        let process = build
+            .process
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
+        process
+            .wait_for(Duration::from_secs(10))
+            .is_ok_and(|status| status.is_some())
     });
     let seen = std::fs::read_to_string(dir.join("rig.seen")).ok();
     std::fs::remove_dir_all(&dir).ok();

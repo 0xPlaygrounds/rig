@@ -18,7 +18,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::process::{Ended, KillOnDrop, Launcher, OutputLine, Process, Spawn};
+use crate::process::{Ended, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
 use crate::{Excerpt, Live, MAX_LINE_CHARS, OutputLimit, Source, Spill, blocking, shell_path};
 
@@ -136,10 +136,8 @@ impl Shell {
         let timeout = args
             .timeout_secs
             .map(|secs| Duration::from_secs(secs.max(1)));
-        let process = self.start(&args)?;
-        let _stop = KillOnDrop(process.group());
         let shell = self.clone();
-        blocking(move || shell.finish(process, timeout)).await
+        blocking(move || shell.finish(shell.start(&args)?, timeout)).await
     }
 }
 
@@ -597,7 +595,7 @@ impl Kept {
         let Some(line) = self.held.get_mut(held) else {
             return;
         };
-        line.push_str(piece.text());
+        line.push_str(&piece.text());
         if line.ends_with('\n') || line.len() >= MAX_HELD {
             let line = std::mem::take(line);
             self.line(line);

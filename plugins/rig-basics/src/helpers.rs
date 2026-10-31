@@ -15,14 +15,13 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::UsageTotals;
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, ToolResult};
-use rig_tools::process::{Ended, KillOnDrop, OutputLine, Spawn};
+use rig_tools::process::{Ended, OutputLine, Scope, Spawn};
 use rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -223,16 +222,13 @@ fn start(
             .map(|job| Ok((job.task.clone(), lent.child(job)?)))
             .collect(),
     };
-    let children = Arc::new(Children::default());
     let runner = Runner {
         command: command.clone(),
         processes: processes.clone(),
         timeout: Duration::from_secs(args.timeout.unwrap_or(600).clamp(1, 3600)),
-        children: Arc::downgrade(&children),
     };
+    // Dropped with the call, as a stop drops it: every child dies.
     let work = async move {
-        // Dropped with the call, as a stop drops it: every child dies.
-        let _children = children;
         let planned = planned.map_err(ToolExecutionError::refused)?;
         let ran = rig_tools::blocking(move || Ok(runner.run(chain, planned))).await?;
         ran.map(|text| ToolResult::success(ToolOutput::text(text)))
@@ -245,17 +241,11 @@ fn start(
         .insert(Running::answering(pool, &wake, work));
 }
 
-/// The children of a call, killed when it is dropped; one that ended is
-/// left alone.
-#[derive(Default)]
-struct Children(Mutex<Vec<KillOnDrop>>);
-
 /// Runs a call's children, on a thread of its own.
 struct Runner {
     command: HelperCommand,
     processes: Processes,
     timeout: Duration,
-    children: Weak<Children>,
 }
 
 /// How a child ended: its answer or why it has none, and a note of its
@@ -279,11 +269,16 @@ impl Runner {
             return Ok(previous + &notes);
         }
         let mut reports: Vec<Report> = Vec::new();
+        // The call's, so a stop reaches the children of every thread.
+        let call = Scope::current().unwrap_or_default();
         for jobs in jobs.chunks(AT_ONCE) {
             std::thread::scope(|scope| {
                 let started: Vec<_> = jobs
                     .iter()
-                    .map(|(_, (args, dir))| scope.spawn(move || self.child(args, dir)))
+                    .map(|(_, (args, dir))| {
+                        let call = &call;
+                        scope.spawn(move || call.enter(|| self.child(args, dir)))
+                    })
                     .collect();
                 for thread in started {
                     let crashed = || (Err("its thread crashed".to_owned()), String::new());
@@ -321,20 +316,12 @@ impl Runner {
 
     /// Runs one child to its end.
     fn child(&self, args: &[OsString], dir: &Path) -> Report {
-        let Some(children) = self.children.upgrade() else {
-            return (Err("stopped".to_owned()), String::new());
-        };
         let args = self.command.args.iter().chain(args);
         let launcher = self.processes.launcher().in_dir(dir);
         let mut process = match launcher.spawn(&self.command.program, args, Spawn::default()) {
             Ok(process) => process,
             Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
         };
-        let mut held = children.0.lock().unwrap_or_else(PoisonError::into_inner);
-        held.push(KillOnDrop(process.group()));
-        drop(held);
-        // Only the call holds them, so that a stop drops them.
-        drop(children);
         let mut read = Read::default();
         let ended = process.run(Some(Instant::now() + self.timeout), |line| {
             read.line(line);
@@ -364,10 +351,10 @@ struct Read {
 
 impl Read {
     fn line(&mut self, line: OutputLine) {
-        let text = match line {
-            OutputLine::Out(text) => text,
-            OutputLine::Err(text) => {
-                self.stderr.push(text.trim_end().to_owned());
+        let text = match &line {
+            OutputLine::Out(_) => line.text(),
+            OutputLine::Err(_) => {
+                self.stderr.push(line.text().trim_end().to_owned());
                 let cut = self.stderr.len().saturating_sub(5);
                 self.stderr.drain(..cut);
                 return;

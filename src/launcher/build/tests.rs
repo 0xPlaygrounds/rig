@@ -172,6 +172,79 @@ fn a_log_only_build_shows_one_line_while_cargo_works_and_its_errors_once_it_fail
     let (shown, logged, _) = fake_build("noop", (BuildOutput::LogOnly, false), finished);
     assert_eq!(shown, "");
     assert!(logged.contains("Finished"), "{logged:?}");
+    // Nor does one that waited a moment for another cargo's lock.
+    let blocked = format!("    Blocking waiting for file lock on package cache\n{finished}");
+    let (shown, logged, _) = fake_build("blocked", (BuildOutput::LogOnly, false), &blocked);
+    assert_eq!(shown, "");
+    assert!(logged.contains("Blocking"), "{logged:?}");
+}
+
+/// A wait for another cargo's lock that lasts is said once it passes its
+/// time, while cargo still prints nothing.
+#[test]
+fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
+    let root = std::env::temp_dir().join(format!("rig-build-log-wait-{}", std::process::id()));
+    let home = Home::at(&root);
+    let shown = Shown::default();
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let mut cargo = Command::new("sh");
+    let script = "printf '    Blocking waiting for file lock on build directory\\n' >&2; \
+                  sleep 4; printf '    Finished in 4s\\n' >&2";
+    cargo.args(["-c", script]).stderr(Stdio::piped());
+    let started = Instant::now();
+    let ran = log.run(cargo);
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| status.success()));
+    assert!(started.elapsed() >= Duration::from_secs(4));
+    let text = shown.text();
+    assert!(
+        text.starts_with("rig: building the agent (output in "),
+        "{text:?}"
+    );
+    assert_eq!(text.lines().count(), 1, "{text:?}");
+}
+
+/// Stopping the build, as a signal that ends the launcher does, kills
+/// cargo's whole group: what cargo started too, as rustc.
+#[test]
+fn a_stopped_build_leaves_nothing_running() {
+    let root = std::env::temp_dir().join(format!("rig-build-stop-{}", std::process::id()));
+    fs::create_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let pid = root.join("compiler.pid");
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    let script = format!("sleep 60 & echo $! > '{}'; wait", pid.display());
+    cargo.args(["-c", &script]).stderr(Stdio::piped());
+    let watched = pid.clone();
+    let stopper = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !watched.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+        stop::kill();
+    });
+    let ran = log.run(cargo);
+    assert!(stopper.join().is_ok());
+    let compiler = fs::read_to_string(&pid).unwrap_or_default();
+    let alive = || {
+        fs::read_to_string(format!("/proc/{}/stat", compiler.trim())).is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while alive() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| !status.success()));
+    assert!(!compiler.trim().is_empty() && !alive());
 }
 
 #[test]

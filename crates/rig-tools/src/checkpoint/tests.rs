@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};

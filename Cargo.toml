@@ -105,8 +105,9 @@ features = [
 ]
 rustdoc-args = ["--cfg", "docsrs"]
 
-# The launcher of the rig-harness agent (`cargo install rig`). It uses only std,
-# so it adds no dependency. `doc = false`: it shares the library's name.
+# The launcher of the rig-harness agent (`cargo install rig`). It uses std, and
+# libc on unix to stop its build when it is told to end. `doc = false`: it
+# shares the library's name.
 [[bin]]
 name = "rig"
 path = "src/main.rs"
@@ -449,6 +450,10 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.46.0", optional = tr
 # TLS-less backend that fails every handshake at runtime.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.46.0", optional = true }
+
+# The launcher kills its cargo's process group when it is told to end.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }

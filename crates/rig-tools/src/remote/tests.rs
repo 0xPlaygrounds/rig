@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -54,7 +56,7 @@ fn tools_reach_a_host_path_through_its_transport() {
     let home = dir.join("home");
     std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
     std::fs::write(dir.join("local/notes.txt"), "here\n").ok();
-    let bench = Remote::new("bench", transport(&home), Launcher::default());
+    let bench = Remote::new("bench", transport(&home), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let base = Some(dir.join("local"));
     let file = "bench:~/strata/src/lib.rs";
@@ -138,7 +140,7 @@ fn a_failed_transport_fails_the_call() {
     let down = Remote::new(
         "down",
         ["sh", "-c", "echo 'no route to host' >&2; exit 255"],
-        Launcher::default(),
+        Launcher::default,
     );
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), down));
     let read = Read {
@@ -173,7 +175,7 @@ fn a_failed_transport_fails_the_call() {
 /// host its base is on. A confined call refuses another host's path.
 #[test]
 fn host_paths_fold_and_join_as_scp_reads_them() {
-    let bench = Remote::new("bench", ["true"], Launcher::default());
+    let bench = Remote::new("bench", ["true"], Launcher::default);
     let hosts: &dyn Workspace = &Hosts::new(Arc::new(Local), bench);
     let base = Path::new("/project");
     for (path, resolved) in [
@@ -196,7 +198,7 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
     // not wait; any other is this machine's.
     assert_eq!(hosts.host_for(&home), Some("bench"));
     assert_eq!(hosts.host_for(Path::new("/project/other:~/x")), None);
-    let alone = Remote::new("solo", ["true"], Launcher::default()).map(|remote| {
+    let alone = Remote::new("solo", ["true"], Launcher::default).map(|remote| {
         let remote: &dyn Workspace = &remote;
         remote.resolve(Some(Path::new("/srv")), "~/x")
     });
@@ -208,8 +210,8 @@ fn host_paths_fold_and_join_as_scp_reads_them() {
         .is_ok();
     let escaped = hosts.place(Some(remote_base), true, "../lib.rs").is_err();
     assert!(refused && kept && escaped, "{refused} {kept} {escaped}");
-    assert!(Remote::new("a:b", ["ssh"], Launcher::default()).is_err());
-    assert!(Remote::new("a", Vec::<String>::new(), Launcher::default()).is_err());
+    assert!(Remote::new("a:b", ["ssh"], Launcher::default).is_err());
+    assert!(Remote::new("a", Vec::<String>::new(), Launcher::default).is_err());
 }
 
 /// [`transport`], first appending a line to `log` for each call.
@@ -242,7 +244,7 @@ fn each_file_operation_is_one_transport_call() {
     let home = dir.join("home");
     let log = dir.join("calls.log");
     std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
-    let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let file = "bench:~/strata/src/lib.rs";
     let seen = crate::Seen::default();
@@ -350,7 +352,7 @@ fn a_read_of_some_lines_is_sent_only_those() {
     let long: String = (1..=20_000).map(|n| format!("line {n}\n")).collect();
     std::fs::write(home.join("strata/long.log"), &long).ok();
     std::fs::write(home.join("strata/short.txt"), "one\ntwo").ok();
-    let bench = Remote::new("bench", metered(&home, &log), Launcher::default());
+    let bench = Remote::new("bench", metered(&home, &log), Launcher::default);
     let read = Read {
         workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
         base: None,
@@ -390,7 +392,7 @@ fn an_edit_after_a_read_of_some_lines_of_a_small_file_is_one_call() {
     let log = dir.join("calls.log");
     let small: String = (1..=400).map(|n| format!("let x{n} = {n};\n")).collect();
     std::fs::write(home.join("strata/src/lib.rs"), &small).ok();
-    let bench = Remote::new("bench", counted(&home, &log), Launcher::default());
+    let bench = Remote::new("bench", counted(&home, &log), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let seen = crate::Seen::default();
     let read = Read {
@@ -446,7 +448,7 @@ fn a_host_runs_a_few_file_operations_at_once() {
         running.display().to_string(),
         seen.display().to_string(),
     ];
-    let bench = Remote::new("bench", transport, Launcher::default());
+    let bench = Remote::new("bench", transport, Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let read = Read {
         workspace,
@@ -513,7 +515,7 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
             log.display().to_string(),
             failed.display().to_string(),
         ];
-        let bench = Remote::new("bench", flaky, Launcher::default());
+        let bench = Remote::new("bench", flaky, Launcher::default);
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
         let read = Read {
             workspace,
@@ -531,7 +533,7 @@ fn a_failed_transport_is_tried_again_for_a_read_only() {
         "echo call >> \"$0\"; echo 'closed by peer' >&2; exit 255".to_owned(),
         log.display().to_string(),
     ];
-    let wrote = Remote::new("bench", down, Launcher::default())
+    let wrote = Remote::new("bench", down, Launcher::default)
         .and_then(|bench| bench.write(Path::new("~/strata/src/lib.rs"), b"fn new() {}\n"));
     let write_calls = calls(&log);
     let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs"));
@@ -589,7 +591,7 @@ fn a_write_cut_off_mid_way_says_whether_it_happened() {
             log.display().to_string(),
             armed.display().to_string(),
         ];
-        let bench = Remote::new("bench", transport, Launcher::default());
+        let bench = Remote::new("bench", transport, Launcher::default);
         let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
         let seen = crate::Seen::default();
         let read = Read {
@@ -679,7 +681,7 @@ fn a_command_there_stops_with_its_call() {
         (apart("sleep 1; kill -9 $$"), None),
     ] {
         std::fs::remove_file(&child).ok();
-        let bench = Remote::new("bench", transport, Launcher::default());
+        let bench = Remote::new("bench", transport, Launcher::default);
         let shell = Shell {
             workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
             ..Shell::default()
@@ -726,7 +728,7 @@ fn a_remote_home_file_is_listed_as_named() {
     let dir = scratch("list");
     let home = dir.join("home");
     std::fs::write(home.join("notes.txt"), "remote\n").ok();
-    let listed = Remote::new("solo", transport(&home), Launcher::default()).map(|remote| {
+    let listed = Remote::new("solo", transport(&home), Launcher::default).map(|remote| {
         let list = List {
             workspace: Arc::new(remote),
             base: None,
@@ -760,7 +762,7 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
             .to_owned(),
     ];
     refusing.push(home.display().to_string());
-    let bench = Remote::new("bench", refusing, Launcher::default());
+    let bench = Remote::new("bench", refusing, Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let search = Search {
         workspace: workspace.clone(),
@@ -829,7 +831,7 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
 #[test]
 fn a_cut_line_of_a_command_there_gives_no_command_for_the_spill_here() {
     let dir = scratch("spill");
-    let bench = Remote::new("bench", transport(&dir.join("home")), Launcher::default());
+    let bench = Remote::new("bench", transport(&dir.join("home")), Launcher::default);
     let shell = Shell {
         workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
         spill: Some(crate::Spill(dir.join("spill"))),
@@ -843,4 +845,161 @@ fn a_cut_line_of_a_command_there_gives_no_command_for_the_spill_here() {
         ran.contains("[… cut at byte 300 of 3007; `FAILED` is at bytes 3002-3007]"),
         "{ran:.600}"
     );
+}
+
+/// Whether the process `pid` runs: there and not a zombie.
+#[cfg(target_os = "linux")]
+fn alive(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        !stat
+            .rsplit(')')
+            .next()
+            .unwrap_or_default()
+            .trim_start()
+            .starts_with('Z')
+    })
+}
+
+/// Polls `future` once, as an executor that starts it does.
+fn start<F: std::future::Future>(future: &mut std::pin::Pin<Box<F>>) -> bool {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    future.as_mut().poll(&mut context).is_ready()
+}
+
+/// Waits at most five seconds for `done`; whether it came.
+fn soon(done: impl Fn() -> bool) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !done() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    done()
+}
+
+/// A write stopped while its transport is still on its way there, as Esc
+/// stops a call, never lands, and its transport is gone.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stopped_write_never_lands() {
+    let dir = scratch("stopped");
+    let home = dir.join("home");
+    let pid = dir.join("transport.pid");
+    let slow = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo $$ > \"$1\"; sleep 3; cd \"$0\" && HOME=\"$0\" exec sh -c \"$2\"".to_owned(),
+        home.display().to_string(),
+        pid.display().to_string(),
+    ];
+    let bench = Remote::new("bench", slow, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let mut writing = Box::pin(crate::blocking(move || {
+        let late = Path::new("bench:~/late.txt");
+        workspace
+            .write(late, b"AFTER_STOP")
+            .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))
+    }));
+    assert!(!start(&mut writing));
+    assert!(soon(|| pid.exists()));
+    drop(writing);
+    let transport = std::fs::read_to_string(&pid).ok();
+    let transport = transport.and_then(|pid| pid.trim().parse::<u32>().ok());
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    let landed = home.join("late.txt").exists();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(!landed, "the stopped write landed");
+    assert!(transport.is_some_and(|pid| !alive(pid)));
+}
+
+/// Reads stopped while two run and a third waits for its turn on the
+/// host, as Esc stops parallel calls: the third never starts.
+#[cfg(unix)]
+#[test]
+fn a_read_queued_behind_a_stop_never_starts() {
+    let dir = scratch("queued");
+    let home = dir.join("home");
+    let log = dir.join("calls.log");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let slow = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "echo call >> \"$1\"; sleep 3; cd \"$0\" && HOME=\"$0\" exec sh -c \"$2\"".to_owned(),
+        home.display().to_string(),
+        log.display().to_string(),
+    ];
+    let bench = Remote::new("bench", slow, Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let started = || std::fs::read_to_string(&log).map_or(0, |log| log.lines().count());
+    let mut reads: Vec<_> = (0..3)
+        .map(|_| {
+            let workspace = workspace.clone();
+            Box::pin(crate::blocking(move || {
+                let file = Path::new("bench:~/strata/src/lib.rs");
+                workspace
+                    .read(file, 4096)
+                    .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))
+            }))
+        })
+        .collect();
+    assert!(reads.iter_mut().all(|read| !start(read)));
+    assert!(soon(|| started() == super::CALLS_PER_HOST));
+    drop(reads);
+    std::thread::sleep(std::time::Duration::from_secs(4));
+    let count = started();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(count, super::CALLS_PER_HOST);
+}
+
+/// A write whose input reaches the host cut short, as when its call is
+/// stopped or the link drops while it is sent, never lands half written.
+#[cfg(unix)]
+#[test]
+fn a_write_cut_short_never_lands() {
+    let dir = scratch("short");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let short = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "head -c 3 | (cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\")".to_owned(),
+        home.display().to_string(),
+    ];
+    let wrote = Remote::new("bench", short, Launcher::default)
+        .and_then(|bench| bench.write(Path::new("~/strata/src/lib.rs"), b"fn new() {}\n"));
+    let on_disk = std::fs::read_to_string(home.join("strata/src/lib.rs"));
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(wrote.is_err());
+    assert_eq!(on_disk.ok().as_deref(), Some("fn old() {}\n"));
+}
+
+/// A host's transport starts under the policy of the moment, so one set
+/// after the host was made, such as a sandbox's, holds from the next
+/// operation on.
+#[cfg(unix)]
+#[test]
+fn a_policy_set_later_holds_from_the_next_operation() {
+    let dir = scratch("policy");
+    let home = dir.join("home");
+    let mark = dir.join("wrapped");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn old() {}\n").ok();
+    let policy = Arc::new(std::sync::Mutex::new(Launcher::default()));
+    let current = policy.clone();
+    let bench = Remote::new("bench", transport(&home), move || {
+        current
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    });
+    let Ok(bench) = bench else {
+        return assert!(bench.is_ok());
+    };
+    let file = Path::new("~/strata/src/lib.rs");
+    let before = bench.read(file, 4096).is_ok() && !mark.exists();
+    let wrapper = ["sh", "-c", "touch \"$0\"; exec \"$@\""].map(String::from);
+    let wrapper = wrapper.into_iter().chain([mark.display().to_string()]);
+    *policy
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Launcher::default().wrapped(wrapper);
+    let after = bench.read(file, 4096).is_ok() && mark.exists();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(before && after, "{before} {after}");
 }

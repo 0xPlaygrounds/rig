@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use super::*;
 use std::process::{Child, Command, ExitStatus};
 use std::time::Instant;

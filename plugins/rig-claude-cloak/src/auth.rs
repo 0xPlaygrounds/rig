@@ -4,6 +4,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use fs2::FileExt;
 use rand::RngCore;
 use rig_harness::rig_core::error::retryable_status;
+use rig_harness::rig_tools::process::Process;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -514,19 +515,41 @@ async fn callback_listeners(
     Err(AuthError::Callback)
 }
 
-fn browser_command(url: &Url) -> tokio::process::Command {
+fn browser_command(url: &Url) -> std::process::Command {
     #[cfg(target_os = "linux")]
     let opener = "xdg-open";
     #[cfg(target_os = "macos")]
     let opener = "/usr/bin/open";
-    let mut command = tokio::process::Command::new(opener);
+    let mut command = std::process::Command::new(opener);
     command
         .arg(url.as_str())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
+        .stderr(Stdio::null());
     command
+}
+
+/// Opens `url` in the browser: whether the opener said it did within 15 s.
+/// The browser it started stays when rig exits; an opener that took too
+/// long is killed.
+async fn open_browser(url: &Url) -> Result<(), AuthError> {
+    let mut opener =
+        Process::start_with_stdio(browser_command(url)).map_err(|_| AuthError::Browser)?;
+    let waited = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            match opener.try_wait() {
+                Ok(None) => tokio::time::sleep(Duration::from_millis(20)).await,
+                ended => return ended,
+            }
+        }
+    });
+    match waited.await {
+        Ok(Ok(Some(status))) if status.success() => {
+            opener.release();
+            Ok(())
+        }
+        _ => Err(AuthError::Browser),
+    }
 }
 
 /// Opens a browser for an explicit PKCE login and stores credentials privately.
@@ -544,13 +567,7 @@ pub async fn login(home: &Path) -> Result<(), AuthError> {
     let verifier = random_verifier();
     let state = random_state();
     let url = authorization_url(&redirect, &state, &verifier)?;
-    let status = tokio::time::timeout(Duration::from_secs(15), browser_command(&url).status())
-        .await
-        .map_err(|_| AuthError::Browser)?
-        .map_err(|_| AuthError::Browser)?;
-    if !status.success() {
-        return Err(AuthError::Browser);
-    }
+    open_browser(&url).await?;
     let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
     let client = OAuthClient::production()?;
     exchange_code(&dir, &client, &code, &state, &verifier, &redirect).await?;
