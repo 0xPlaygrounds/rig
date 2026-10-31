@@ -452,47 +452,59 @@ fn prioritized_tests_exist() {
     // A renamed test would silently restore the all-features tail.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let config = std::fs::read_to_string(root.join(".config/nextest.toml")).unwrap();
-    let block = config
+    let blocks: Vec<&str> = config
         .split("[[profile.default.overrides]]")
         .skip(1)
-        .find(|b| b.contains("priority = 100"))
-        .expect("a default-profile override with priority 100");
-    let config = block.split("\n[").next().unwrap();
+        .map(|b| b.split("\n[").next().unwrap())
+        .filter(|b| b.contains("priority = "))
+        .collect();
+    assert!(
+        !blocks.is_empty(),
+        "a default-profile override with a priority"
+    );
     let sources: Vec<String> = execute::tracked_inputs(root)
         .unwrap()
         .into_iter()
         .filter(|p| p.ends_with(".rs") && p.contains("tests/"))
         .collect();
     let mut checked = 0;
-    for line in config
-        .lines()
+    for line in blocks
+        .iter()
+        .flat_map(|b| b.lines())
         .filter(|l| l.trim_start().starts_with("filter = "))
     {
-        for (kind, rest) in ["test(", "binary("].into_iter().flat_map(|kind| {
-            line.match_indices(kind)
-                .map(move |(i, _)| (kind, &line[i + kind.len()..]))
-        }) {
+        for (kind, rest) in ["test(", "binary(", "binary_id("]
+            .into_iter()
+            .flat_map(|kind| {
+                line.match_indices(kind)
+                    .map(move |(i, _)| (kind, &line[i + kind.len()..]))
+            })
+        {
+            // `test(=a::b::name)` names the function `name`; `binary_id(package::name)`
+            // the binary `name`.
             let name = rest.split(')').next().unwrap();
+            let name = name.strip_prefix('=').unwrap_or(name);
+            let name = name.rsplit("::").next().unwrap();
             if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 continue;
             }
             checked += 1;
-            let found = if kind == "binary(" {
-                sources
-                    .iter()
-                    .any(|p| p.ends_with(&format!("/tests/{name}.rs")))
-            } else {
+            let found = if kind == "test(" {
                 sources.iter().any(|p| {
                     std::fs::read_to_string(root.join(p))
                         .is_ok_and(|text| text.contains(&format!("fn {name}(")))
+                })
+            } else {
+                sources.iter().any(|p| {
+                    p.ends_with(&format!("/tests/{name}.rs")) || p == &format!("tests/{name}.rs")
                 })
             };
             assert!(found, "{kind}{name}) names no tracked test");
         }
     }
     assert!(
-        checked >= 2,
-        "expected the prioritized nested-Cargo tests, found {checked}"
+        checked >= 4,
+        "expected the prioritized nested-Cargo and wire tests, found {checked}"
     );
 }
 

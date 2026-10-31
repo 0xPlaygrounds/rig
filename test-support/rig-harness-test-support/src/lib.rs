@@ -181,8 +181,8 @@ pub fn scripted_models<'a>(
 }
 
 /// The HTTP client of [`scripted_models`]: it refuses every request,
-/// naming its method, host and path, as a client that could not be built
-/// does.
+/// naming its method, host, port and path, as a client that could not be
+/// built does.
 #[derive(Clone, Copy, Debug)]
 pub struct Offline;
 
@@ -190,8 +190,13 @@ impl Offline {
     /// The refusal of a request to `uri` with `method`. The query is left
     /// out, as some providers put the key there.
     fn refuse<T>(method: &Method, uri: &Uri) -> http_client::Result<T> {
-        let (host, path) = (uri.host().unwrap_or_default(), uri.path());
-        let why = format!("a scripted test app sends no HTTP: {method} {host}{path}");
+        let host = uri.host().unwrap_or_default();
+        let port = uri
+            .port_u16()
+            .map(|port| format!(":{port}"))
+            .unwrap_or_default();
+        let path = uri.path();
+        let why = format!("a scripted test app sends no HTTP: {method} {host}{port}{path}");
         Err(http_client::Error::unbuilt(std::io::Error::other(why)))
     }
 }

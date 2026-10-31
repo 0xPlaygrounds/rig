@@ -145,8 +145,9 @@ fn the_refusal_names_the_request_but_not_its_query() {
     use rig_core::http_client::{HttpClientExt, Request};
     use rig_harness_test_support::Offline;
 
-    let request = Request::post("https://example.test/v1/models/m:generate?key=sentinel-secret")
-        .body(Vec::new());
+    let request =
+        Request::post("https://example.test:8443/v1/models/m:generate?key=sentinel-secret")
+            .body(Vec::new());
     assert!(request.is_ok());
     let Ok(request) = request else {
         return;
@@ -157,7 +158,7 @@ fn the_refusal_names_the_request_but_not_its_query() {
         Poll::Ready(Ok(_)) | Poll::Pending => String::new(),
     };
     assert!(
-        why.contains("POST example.test/v1/models/m:generate"),
+        why.contains("POST example.test:8443/v1/models/m:generate"),
         "{why}"
     );
     assert!(!why.contains("sentinel-secret"), "{why}");
