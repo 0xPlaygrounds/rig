@@ -26,14 +26,14 @@ use futures::future::{BoxFuture, Shared};
 use futures::{FutureExt, StreamExt};
 use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
-use rig_harness::host::pipes::{self, Writer};
+use rig_harness::host::pipes::{self, Stream, Writer};
 use rig_harness::host::session::StoreOpener;
 use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{oneshot, watch};
 
-use crate::{LINE_LIMIT, Pending, Reply, session};
+use crate::{Pending, Reply, session};
 
 /// How long a session process may take to end once asked, before it is
 /// killed.
@@ -70,6 +70,8 @@ struct Router {
     /// The writer of stdout: a session's output is read only while it
     /// keeps up.
     writer: Writer,
+    /// The most bytes of a line it reads ([`crate::LINE_LIMIT`]).
+    limit: usize,
 }
 
 /// A session's process, as the router runs it.
@@ -161,10 +163,10 @@ impl Router {
         let (stop, stopping) = watch::channel(false);
         let (router, key) = (self.clone(), id.as_str().to_owned());
         let pending = Pending::new();
-        let (transport, input) = lines(input, output, self.writer.clone());
+        let (transport, input) = lines(input, output, (self.writer.clone(), self.limit));
         let owed = pending.clone();
         let gone = tokio::spawn(async move {
-            let connection = forward(client, transport, ready, stopping.clone(), (input, owed));
+            let connection = forward(client, transport, ready, stopping.clone(), input, owed);
             tokio::pin!(connection);
             // Asked to end, the connection has its grace to close, as a
             // stopped process never drains what was written to it.
@@ -380,7 +382,8 @@ async fn forward(
     transport: impl agent_client_protocol::ConnectTo<Client> + 'static,
     ready: oneshot::Sender<ConnectionTo<Agent>>,
     stopping: watch::Receiver<bool>,
-    (input, owed): (Input, Pending),
+    input: Input,
+    owed: Pending,
 ) -> Result<(), Error> {
     let (updates, permissions, forms) = (client.clone(), client.clone(), client);
     Client
@@ -451,15 +454,15 @@ impl Input {
 }
 
 /// A session process's stdin and stdout as ACP lines, and its stdin to
-/// close. Its stdout is read at most [`LINE_LIMIT`] a line, and only while
-/// the client's `writer` keeps up, so a client that stopped reading holds
+/// close. Its stdout is read at most `limit` ([`crate::LINE_LIMIT`]) a line, and
+/// only while the client's `writer` keeps up, so a client that stopped reading holds
 /// the session back. A line it writes that is not a JSON object, such as a
 /// plugin's stray print, goes to stderr instead, so it never breaks the
 /// client's connection; a line past the limit ends its output.
 pub(crate) fn lines(
     input: tokio::process::ChildStdin,
     output: tokio::process::ChildStdout,
-    writer: Writer,
+    (writer, limit): (Writer, usize),
 ) -> (
     Lines<
         impl futures::Sink<String, Error = std::io::Error> + Send + 'static,
@@ -476,21 +479,26 @@ pub(crate) fn lines(
         }
         Ok::<_, std::io::Error>(input)
     });
-    let read = pipes::lines(output, LINE_LIMIT);
+    let read = pipes::lines(output, limit);
     let stream = futures::stream::unfold((read, writer), async |(mut read, writer)| {
         loop {
             writer.room().await;
             let line = match read.next().await? {
                 Ok(line) => String::from_utf8_lossy(&line).into_owned(),
                 Err(refused) => {
-                    eprintln!("rig acp: a session wrote a line of {refused}; its output ends");
+                    let said =
+                        format!("rig acp: a session wrote a line of {refused}; its output ends\n");
+                    writer.write(Stream::Err, said.into_bytes());
                     return None;
                 }
             };
             match line.trim_start() {
                 trimmed if trimmed.starts_with('{') => return Some((Ok(line), (read, writer))),
                 "" => {}
-                _ => eprintln!("rig acp: a session wrote a line that is not ACP: {line}"),
+                _ => {
+                    let said = format!("rig acp: a session wrote a line that is not ACP: {line}\n");
+                    writer.write(Stream::Err, said.into_bytes());
+                }
             }
         }
     });
@@ -615,7 +623,7 @@ async fn serve(router: Arc<Router>, stopped: oneshot::Receiver<()>) -> Result<()
             agent_client_protocol::on_receive_request!(),
         )
         .connect_with(
-            crate::stdio::stdio(router.writer.clone(), "rig acp"),
+            crate::stdio::stdio(router.writer.clone(), router.limit, "rig acp"),
             async move |cx: ConnectionTo<Client>| {
                 tokio::select! {
                     () = cx.incoming_closed() => {}
@@ -777,6 +785,7 @@ pub(crate) fn install(app: &mut App) {
         tasks: Pending::new(),
         stopping: AtomicBool::new(false),
         writer: writer.clone(),
+        limit: crate::LineLimit::of(app.world()),
     });
     let (stop, stopped) = oneshot::channel();
     let (done, finished) = async_channel::bounded(1);

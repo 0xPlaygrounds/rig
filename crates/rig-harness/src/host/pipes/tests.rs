@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use futures::StreamExt;
 use rig_ecs::tasks::Wake;
 
-use super::{DRAIN, ROOM, Stream, TooLarge, Writer, lines, read_lines};
+use super::{BACKLOG_LIMIT, DRAIN, ROOM, Stream, TooLarge, Writer, lines, read_lines};
 
 /// A reader that stopped reading: every write waits until `go`.
 struct Stalled(Arc<AtomicBool>);
@@ -35,6 +35,22 @@ impl Write for Slow {
             read.extend_from_slice(bytes);
         }
         Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A reader that reads into `1` once `0` lets it.
+struct Gated(Arc<AtomicBool>, Slow);
+
+impl Write for Gated {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        while !self.0.load(Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        self.1.write(bytes)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -84,27 +100,57 @@ fn a_stalled_reader_holds_no_write_and_an_interrupted_end_is_bounded() {
     go.store(true, Ordering::Release);
 }
 
-/// Without an interruption the end waits for a slow reader, so nothing is
-/// cut short, and the loop is woken once room came back.
+/// Without an interruption the end waits for a reader that is behind, so
+/// nothing is cut short; room wakes the loop and every task waiting for it.
 #[test]
-fn a_normal_end_waits_for_a_slow_reader_and_room_wakes_the_loop() {
+fn a_normal_end_waits_for_the_reader_and_room_wakes_every_waiter() {
     let woken = Arc::new(AtomicUsize::new(0));
     let counted = woken.clone();
     let wake = Wake::new(move || {
         counted.fetch_add(1, Ordering::AcqRel);
     });
-    let read = Slow::default();
-    let writer = Writer::spawn(read.clone(), Slow::default(), wake, || false);
+    let (go, read) = (Arc::new(AtomicBool::new(false)), Slow::default());
+    let reader = Gated(go.clone(), read.clone());
+    let writer = Writer::spawn(reader, Slow::default(), wake, || false);
     writer.write(Stream::Out, vec![b'a'; ROOM + 1]);
     writer.write(Stream::Out, b"end".to_vec());
     assert!(!writer.has_room());
+    let waiters: Vec<_> = (0..2)
+        .map(|_| {
+            let writer = writer.clone();
+            std::thread::spawn(move || futures::executor::block_on(writer.room()))
+        })
+        .collect();
+    // Both wait before room comes; one token would wake only one.
+    std::thread::sleep(Duration::from_millis(100));
+    go.store(true, Ordering::Release);
     writer.finish();
+    for waiter in waiters {
+        assert!(waiter.join().is_ok());
+    }
     let read = read.0.lock().map(|read| read.len()).unwrap_or_default();
     assert_eq!(read, ROOM + 4);
     assert!(writer.has_room());
     assert!(woken.load(Ordering::Acquire) >= 1);
-    writer.write(Stream::Out, b"late".to_vec());
-    assert!(writer.has_room());
+}
+
+/// More than `BACKLOG_LIMIT` waiting for a reader that never reads counts
+/// as the reader gone: the end waits at most `DRAIN`.
+#[test]
+fn a_backlog_past_its_limit_ends_within_the_drain() {
+    let go = Arc::new(AtomicBool::new(false));
+    let writer = Writer::spawn(
+        Stalled(go.clone()),
+        Slow::default(),
+        Wake::default(),
+        || false,
+    );
+    writer.write(Stream::Out, vec![b'x'; BACKLOG_LIMIT + 1]);
+    assert!(writer.overflowed());
+    let ending = Instant::now();
+    writer.finish();
+    assert!(ending.elapsed() < DRAIN + Duration::from_secs(1));
+    go.store(true, Ordering::Release);
 }
 
 /// A pipe that broke drops only its own bytes: the other one is written.

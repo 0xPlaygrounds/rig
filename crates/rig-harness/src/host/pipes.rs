@@ -52,14 +52,24 @@ pub enum Stream {
 struct Targets {
     out: Box<dyn Write + Send>,
     err: Box<dyn Write + Send>,
-    failed: [bool; 2],
+    out_failed: bool,
+    err_failed: bool,
 }
 
 impl Targets {
+    fn new(out: impl Write + Send + 'static, err: impl Write + Send + 'static) -> Self {
+        Self {
+            out: Box::new(out),
+            err: Box::new(err),
+            out_failed: false,
+            err_failed: false,
+        }
+    }
+
     fn write(&mut self, stream: Stream, bytes: &[u8]) {
         let (target, failed) = match stream {
-            Stream::Out => (&mut self.out, &mut self.failed[0]),
-            Stream::Err => (&mut self.err, &mut self.failed[1]),
+            Stream::Out => (&mut self.out, &mut self.out_failed),
+            Stream::Err => (&mut self.err, &mut self.err_failed),
         };
         if !*failed && (target.write_all(bytes).is_err() || target.flush().is_err()) {
             *failed = true;
@@ -88,8 +98,9 @@ struct Shared {
     inline: Option<Mutex<Targets>>,
     wake: Wake,
     interrupted: Box<dyn Fn() -> bool + Send + Sync>,
-    /// A token for each time the backlog came back under [`ROOM`].
-    roomy: (async_channel::Sender<()>, async_channel::Receiver<()>),
+    /// Counts the times the backlog came back under [`ROOM`], for every
+    /// task that waits for room.
+    roomy: tokio::sync::watch::Sender<u64>,
 }
 
 impl Shared {
@@ -146,19 +157,19 @@ impl Writer {
             inline,
             wake,
             interrupted,
-            roomy: async_channel::bounded(1),
+            roomy: tokio::sync::watch::Sender::new(0),
         }))
     }
 
     /// Hands `bytes` to `stream`; never waits. Nothing is written after
-    /// [`Writer::finish`].
+    /// [`Writer::finish`], or when no thread could write.
     pub fn write(&self, stream: Stream, bytes: Vec<u8>) {
         if let Some(targets) = &self.0.inline {
             let mut targets = targets.lock().unwrap_or_else(PoisonError::into_inner);
             return targets.write(stream, &bytes);
         }
         let mut queue = self.0.queue();
-        if queue.closed {
+        if queue.closed || queue.done {
             return;
         }
         queue.backlog = queue.backlog.saturating_add(bytes.len());
@@ -178,10 +189,11 @@ impl Writer {
         self.0.queue().backlog > BACKLOG_LIMIT
     }
 
-    /// Done once at most [`ROOM`] waits.
+    /// Done once at most [`ROOM`] waits; every task that waits is woken.
     pub async fn room(&self) {
+        let mut roomy = self.0.roomy.subscribe();
         while !self.has_room() {
-            if self.0.roomy.1.recv().await.is_err() {
+            if roomy.changed().await.is_err() {
                 return;
             }
         }
@@ -189,8 +201,8 @@ impl Writer {
 
     /// Writes nothing more after what it was handed, and waits until that
     /// is written: for as long as the reader takes, so a normal end never
-    /// cuts the output short, but once the run is interrupted for at most
-    /// [`DRAIN`] more.
+    /// cuts the output short, but once the run is interrupted, or more than
+    /// [`BACKLOG_LIMIT`] waits, for at most [`DRAIN`] more.
     pub fn finish(&self) {
         let mut queue = self.0.queue();
         queue.closed = true;
@@ -200,7 +212,7 @@ impl Writer {
         }
         let mut deadline: Option<Instant> = None;
         while !queue.done {
-            if deadline.is_none() && (self.0.interrupted)() {
+            if deadline.is_none() && (queue.backlog > BACKLOG_LIMIT || (self.0.interrupted)()) {
                 deadline = Some(Instant::now() + DRAIN);
             }
             let wait = match deadline {
@@ -212,16 +224,6 @@ impl Writer {
                 Ok((queue, _)) => queue,
                 Err(poisoned) => poisoned.into_inner().0,
             };
-        }
-    }
-}
-
-impl Targets {
-    fn new(out: impl Write + Send + 'static, err: impl Write + Send + 'static) -> Self {
-        Self {
-            out: Box::new(out),
-            err: Box::new(err),
-            failed: [false; 2],
         }
     }
 }
@@ -248,7 +250,7 @@ fn write_all(shared: &Shared, targets: &mut Targets) {
         queue.backlog = queue.backlog.saturating_sub(bytes.len());
         if queue.full && queue.backlog <= ROOM {
             queue.full = false;
-            shared.roomy.0.try_send(()).ok();
+            shared.roomy.send_modify(|times| *times += 1);
             shared.wake.wake();
         }
         shared.changed.notify_all();
@@ -273,24 +275,27 @@ pub fn read_lines(
     limit: usize,
 ) -> async_channel::Receiver<Result<Vec<u8>, TooLarge>> {
     let (sender, lines) = async_channel::bounded(READY_LINES);
-    std::thread::spawn(move || {
-        let mut framer = NdjsonFramer::with_limit(limit);
-        let mut chunk = vec![0; CHUNK];
-        loop {
-            let got = match read.read(&mut chunk) {
-                Ok(0) | Err(_) => break,
-                Ok(got) => got,
-            };
-            for line in framer.push(chunk.get(..got).unwrap_or_default()) {
-                if sender.send_blocking(line).is_err() {
-                    return;
+    // No thread: the channel closes at once, as at the end of the input.
+    let _ = std::thread::Builder::new()
+        .name("rig-input".to_owned())
+        .spawn(move || {
+            let mut framer = NdjsonFramer::with_limit(limit);
+            let mut chunk = vec![0; CHUNK];
+            loop {
+                let got = match read.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(got) => got,
+                };
+                for line in framer.push(chunk.get(..got).unwrap_or_default()) {
+                    if sender.send_blocking(line).is_err() {
+                        return;
+                    }
                 }
             }
-        }
-        if let Some(line) = framer.finish() {
-            sender.send_blocking(Ok(line)).ok();
-        }
-    });
+            if let Some(line) = framer.finish() {
+                sender.send_blocking(Ok(line)).ok();
+            }
+        });
     lines
 }
 

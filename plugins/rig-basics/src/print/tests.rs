@@ -853,7 +853,7 @@ fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
     let wait = Duration::from_millis(50);
     let on = || false;
     let piped = |prompt: &str, text: &'static [u8]| {
-        with_piped(prompt, text, (wait, PIPED_LIMIT), on)
+        with_piped(prompt, text, wait, PIPED_LIMIT, on)
             .ok()
             .flatten()
     };
@@ -865,7 +865,7 @@ fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
         return;
     };
     assert_eq!(
-        with_piped("Review", silent, (wait, PIPED_LIMIT), on)
+        with_piped("Review", silent, wait, PIPED_LIMIT, on)
             .ok()
             .flatten()
             .as_deref(),
@@ -883,7 +883,7 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
     };
     let since = std::time::Instant::now();
     let interrupted = move || since.elapsed() > Duration::from_millis(100);
-    let waited = with_piped("", silent, (Duration::MAX, PIPED_LIMIT), interrupted);
+    let waited = with_piped("", silent, Duration::MAX, PIPED_LIMIT, interrupted);
     assert_eq!(waited, Ok(None));
     drop(writer);
 }
@@ -893,7 +893,7 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
 #[test]
 fn piped_input_past_its_limit_is_refused() {
     let read = |prompt: &str, text: &'static [u8]| {
-        with_piped(prompt, text, (Duration::from_secs(5), 4), || false)
+        with_piped(prompt, text, Duration::from_secs(5), 4, || false)
     };
     assert_eq!(read("", b"abcd"), Ok(Some("abcd".to_owned())));
     assert_eq!(read("", b"abcde"), Err(TooLarge { limit: 4, asked: 5 }));

@@ -579,7 +579,7 @@ fn full_prompt(
         None if std::io::stdin().is_terminal() => return Ok(Some(prompt.to_owned())),
         None => Box::new(std::io::stdin()),
     };
-    with_piped(prompt, piped, (PIPED_WAIT, PIPED_LIMIT), interrupted)
+    with_piped(prompt, piped, PIPED_WAIT, PIPED_LIMIT, interrupted)
 }
 
 /// How often a wait for what is piped in looks whether the run was
@@ -594,7 +594,8 @@ const INTERRUPT_CHECK: Duration = Duration::from_millis(50);
 fn with_piped(
     prompt: &str,
     mut piped: impl Read + Send + 'static,
-    (wait, limit): (Duration, usize),
+    wait: Duration,
+    limit: usize,
     interrupted: impl Fn() -> bool,
 ) -> Result<Option<String>, TooLarge> {
     let (sender, read) = std::sync::mpsc::channel();
@@ -612,12 +613,11 @@ fn with_piped(
                 .read_to_end(&mut text)
                 .ok();
         }
-        let read = match text.len() > limit {
-            true => Err(TooLarge {
-                limit,
-                asked: text.len(),
-            }),
-            false => Ok(String::from_utf8_lossy(&text).into_owned()),
+        let read = if text.len() > limit {
+            let asked = text.len();
+            Err(TooLarge { limit, asked })
+        } else {
+            Ok(String::from_utf8_lossy(&text).into_owned())
         };
         rest.send(Some(read)).ok();
     });
@@ -1184,6 +1184,15 @@ fn front_writer(world: &World) -> Writer {
     Writer::spawn(std::io::stdout(), std::io::stderr(), wake, cut)
 }
 
+/// The front's writer: `--json`'s, else plain `-p`'s.
+fn writer_of<'a>(
+    json: &'a Option<Res<JsonOut>>,
+    printed: &'a Option<Res<Printed>>,
+) -> Option<&'a Writer> {
+    let json = json.as_ref().map(|json| &json.out);
+    json.or_else(|| printed.as_ref().map(|printed| &printed.writer))
+}
+
 /// Whether the front's work goes on: while its reader keeps up, and once
 /// the run exits, whose exit is an effect of the agent loop.
 fn output_has_room(
@@ -1191,9 +1200,7 @@ fn output_has_room(
     printed: Option<Res<Printed>>,
     exiting: Option<Res<ExitReason>>,
 ) -> bool {
-    let writer = json.map(|json| json.out.clone());
-    let writer = writer.or_else(|| printed.map(|printed| printed.writer.clone()));
-    exiting.is_some() || writer.is_none_or(|writer| writer.has_room())
+    exiting.is_some() || writer_of(&json, &printed).is_none_or(Writer::has_room)
 }
 
 /// Ends the run as cut off once more waits for the reader than
@@ -1204,9 +1211,7 @@ fn exit_when_backlogged(
     mut asked: Local<bool>,
     mut commands: Commands,
 ) {
-    let writer = json.map(|json| json.out.clone());
-    let writer = writer.or_else(|| printed.map(|printed| printed.writer.clone()));
-    if !*asked && writer.is_some_and(|writer| writer.overflowed()) {
+    if !*asked && writer_of(&json, &printed).is_some_and(Writer::overflowed) {
         *asked = true;
         commands.trigger(Exit(ExitReason::Signal));
     }
@@ -1923,14 +1928,16 @@ fn request(
     let Ok(Done(line)) = lines.get(line.entity) else {
         return;
     };
-    let line = match line.as_deref().map(std::str::from_utf8) {
-        Ok(Ok(line)) => line,
-        Ok(Err(error)) => {
-            let fields = json!({ "id": Value::Null, "ok": false, "error": format!("not a UTF-8 line: {error}") });
-            return out.emit(None, "reply", fields);
-        }
-        Err(refused) => {
-            let why = format!("the request line has {refused}, which is too much: send less");
+    let why = match line.as_deref().map(std::str::from_utf8) {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(error)) => Err(format!("not a UTF-8 line: {error}")),
+        Err(refused) => Err(format!(
+            "the request line has {refused}, which is too much: send less"
+        )),
+    };
+    let line = match why {
+        Ok(line) => line,
+        Err(why) => {
             let fields = json!({ "id": Value::Null, "ok": false, "error": why });
             return out.emit(None, "reply", fields);
         }

@@ -34,6 +34,9 @@ const UNREACHABLE: &str = "acp-unreachable/model";
 /// Set in the environment of the agent this test binary runs as.
 const AGENT: &str = "RIG_ACP_TEST_AGENT";
 
+/// When set, the line limit of the router and its sessions, in bytes.
+const LINE_LIMIT_BYTES: &str = "RIG_ACP_TEST_LINE_LIMIT";
+
 /// Set in the environment of the MCP server this test binary runs as.
 const STUB: &str = "RIG_ACP_TEST_MCP";
 
@@ -167,6 +170,10 @@ fn agent() {
     .add_observer(carry_on)
     .add_observer(release)
     .add_systems(AgentPass, guard.in_set(Stage::Gate).before(ApprovalSystems));
+    let limit = std::env::var(LINE_LIMIT_BYTES).ok();
+    if let Some(limit) = limit.and_then(|limit| limit.parse().ok()) {
+        app.insert_resource(crate::LineLimit(limit));
+    }
     if !session {
         let program = std::env::current_exe().unwrap_or_default();
         let args = libtest("agent");
@@ -354,6 +361,8 @@ struct Place {
     root: PathBuf,
     home: PathBuf,
     project: PathBuf,
+    /// The line limit `rig acp` reads with, when not its own.
+    limit: Option<usize>,
 }
 
 impl Place {
@@ -372,6 +381,7 @@ impl Place {
             root,
             home,
             project,
+            limit: None,
         }
     }
 }
@@ -582,6 +592,11 @@ impl Router {
             .env("RIG_HOME", &place.home)
             .env_remove("RIG_RUN")
             .env_remove("RIG_SESSION")
+            .envs(
+                place
+                    .limit
+                    .map(|limit| (LINE_LIMIT_BYTES, limit.to_string())),
+            )
             .current_dir(&place.project)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -682,7 +697,10 @@ fn drive(
                 lines(
                     input,
                     output,
-                    Writer::inline(std::io::sink(), std::io::sink()),
+                    (
+                        Writer::inline(std::io::sink(), std::io::sink()),
+                        crate::LINE_LIMIT,
+                    ),
                 )
                 .0,
                 async move |cx| {

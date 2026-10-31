@@ -267,6 +267,48 @@ fn sigterm_ends_the_router_its_sessions_and_their_tools() {
     assert!(eventually(|| processes_of(place).is_empty()));
 }
 
+/// A line past the limit from the editor, while a prompt runs, ends what
+/// the router reads as a closed stdin does: the running prompt is still
+/// answered `cancelled`, after its tool's closing update, and the router
+/// ends.
+#[test]
+fn a_line_past_the_limit_ends_the_input_and_the_open_prompt_is_answered() {
+    let mut place = Place::new("oversized");
+    place.limit = Some(16 * 1024);
+    let place = &place;
+    let mut pid = None;
+    let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/wait").await);
+        let request = acp::PromptRequest::new(id.clone(), vec!["Wait.".into()]);
+        let prompt = driven.cx.send_request(request);
+        assert!(driven.until(|_| sleeping(place)).await);
+        pid = driven.router;
+        let large = acp::PromptRequest::new(id.clone(), vec!["x".repeat(32 * 1024).into()]);
+        let refused = driven.cx.send_request(large);
+        let answer = prompt.block_task().await.map(|answer| answer.stop_reason);
+        assert!(
+            matches!(answer, Ok(acp::StopReason::Cancelled)),
+            "{answer:?}"
+        );
+        let steps = tool_steps(driven, &id);
+        let closed = steps.last().is_some_and(|(_, status)| {
+            matches!(
+                status,
+                acp::ToolCallStatus::Failed | acp::ToolCallStatus::Completed
+            )
+        });
+        assert!(closed, "{steps:?}");
+        drop(refused);
+    });
+    assert!(router.is_some());
+    assert!(pid.is_some_and(|pid| eventually(|| !alive(pid))));
+    assert!(eventually(|| processes_of(place).is_empty()));
+}
+
 #[test]
 fn a_stopped_session_process_closes_within_its_grace() {
     let place = Place::new("stopped");

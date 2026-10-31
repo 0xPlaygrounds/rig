@@ -43,6 +43,10 @@ const CHILD: &str = "RIG_MCP_CHILD";
 /// the next.
 const HANGS: &str = "RIG_MCP_HANGS";
 
+/// When set, the stub writes each answer after a byte-order mark, and its
+/// list of tools describes `add` at length.
+const LONG: &str = "RIG_MCP_LONG";
+
 /// The model a headless run chooses.
 const MODEL: &str = "test/model";
 
@@ -136,7 +140,10 @@ fn stub() {
             }
             Some("tools/list") => json!({ "tools": [{
                 "name": "add",
-                "description": "Adds two numbers.",
+                "description": match std::env::var_os(LONG) {
+                    Some(_) => "Adds two numbers. ".repeat(100),
+                    None => "Adds two numbers.".to_owned(),
+                },
                 "inputSchema": {
                     "type": "object",
                     "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
@@ -168,7 +175,12 @@ fn stub() {
             }),
             _ => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         };
-        if writeln!(out, "{answer}")
+        let bom = if std::env::var_os(LONG).is_some() {
+            "\u{feff}"
+        } else {
+            ""
+        };
+        if writeln!(out, "{bom}{answer}")
             .and_then(|()| out.flush())
             .is_err()
         {
@@ -1181,6 +1193,7 @@ fn a_server_line_past_the_limit_ends_its_connection_saying_why() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build();
+    assert!(runtime.is_ok(), "a tokio runtime");
     let Ok(runtime) = runtime else { return };
     let message = r#"{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}"#;
     let script = format!("printf '%s\\n' '{message}'; printf '%080d\\n' 0; sleep 5");
@@ -1192,9 +1205,9 @@ fn a_server_line_past_the_limit_ends_its_connection_saying_why() {
             .kill_on_drop(true)
             .spawn()
             .ok()?;
-        let pipes = (server.stdin.take()?, server.stdout.take()?);
+        let (stdin, stdout) = (server.stdin.take()?, server.stdout.take()?);
         let refused = Arc::new(Mutex::new(None));
-        let (_sink, messages) = stdio(pipes, message.len(), refused.clone());
+        let (_sink, messages) = stdio(stdin, stdout, message.len(), refused.clone());
         let messages: Vec<_> = messages.collect().await;
         let refused = *refused.lock().unwrap_or_else(PoisonError::into_inner);
         Some((messages.len(), refused))
@@ -1205,4 +1218,43 @@ fn a_server_line_past_the_limit_ends_its_connection_saying_why() {
         asked: limit + 1,
     };
     assert_eq!(read, Some((1, Some(refused))));
+}
+
+/// A server whose list of tools is past the limit, after an answer that
+/// starts with a byte-order mark, is lost saying so: the reason survives
+/// the list that ended the connection.
+#[test]
+fn a_tool_list_past_the_limit_loses_the_server_saying_why() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build();
+    assert!(runtime.is_ok(), "a tokio runtime");
+    let Ok(runtime) = runtime else { return };
+    let exe = std::env::current_exe().unwrap_or_default();
+    let module = module_path!().split_once("::").map_or("", |(_, path)| path);
+    let env = [(STUB, "1"), (LONG, "1")].map(|(key, value)| (key.to_owned(), value.to_owned()));
+    let start = Start {
+        spec: ServerSpec::Stdio {
+            command: exe.to_string_lossy().into_owned(),
+            args: vec![
+                format!("{module}::stub"),
+                "--exact".to_owned(),
+                "--ignored".to_owned(),
+                "--nocapture".to_owned(),
+                "--test-threads=1".to_owned(),
+            ],
+            env: env.into_iter().collect(),
+            cwd: None,
+        },
+        processes: Processes::default(),
+        groups: Groups::default(),
+        root: project("long-list"),
+        limit: Duration::from_secs(20),
+        line_limit: 1024,
+    };
+    let (sender, _events) = async_channel::bounded(EVENTS);
+    let ran = runtime.block_on(start.run(&Outbox(sender)));
+    let why = ran.err().unwrap_or_default();
+    assert!(why.contains("more than 1024 bytes"), "{why}");
 }

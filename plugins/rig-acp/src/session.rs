@@ -243,10 +243,11 @@ pub(crate) fn install(app: &mut App) {
         interrupted,
     );
     let (done, finished) = tokio::sync::oneshot::channel();
+    let limit = crate::LineLimit::of(app.world());
     let served = runtime.spawn(serve(
         sender.clone(),
         wake.clone(),
-        writer.clone(),
+        (writer.clone(), limit),
         finished,
     ));
     // A signal or the router gone ends the wait; the first frame then exits.
@@ -427,7 +428,7 @@ fn last_of<'a>(
 async fn serve(
     sender: Sender<Request>,
     wake: Wake,
-    writer: Writer,
+    (writer, limit): (Writer, usize),
     done: tokio::sync::oneshot::Receiver<()>,
 ) {
     let post = async |request| Session::post(&sender, &wake, request).await;
@@ -490,13 +491,15 @@ async fn serve(
         )
         .on_receive_request(
             async |_: acp::CloseSessionRequest, responder, _| {
-                post(Request::Close(Reply::new(responder))).await;
+                // Closed however the session ends.
+                let closed = Ok(acp::CloseSessionResponse::new());
+                post(Request::Close(Reply::owed(responder, closed, None))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .connect_with(
-            crate::stdio::stdio(writer, "rig acp-session"),
+            crate::stdio::stdio(writer, limit, "rig acp-session"),
             async |cx: ConnectionTo<Client>| {
                 let read = async {
                     cx.incoming_closed().await;
@@ -513,8 +516,8 @@ async fn serve(
         .await;
     if let Err(error) = result {
         eprintln!("rig acp-session: {error}");
+        post(Request::Ended).await;
     }
-    post(Request::Ended).await;
 }
 
 /// Whether the session's work goes on: while the router keeps up reading
@@ -813,11 +816,12 @@ fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::Stop
 }
 
 /// As the app exits, after the exit stopped the turns (each cut call's
-/// update is out already): sends the text streamed, answers the prompt
-/// `cancelled` unless its turn ended otherwise, every close, and every
-/// other request owed or still queued with why it was not carried out;
-/// then lets the connection end, waits (within [`GRACE`]) until what it
-/// was handed is sent, and until the writer wrote it.
+/// update is out already): sends the text streamed and answers the prompt
+/// `cancelled` unless its turn ended otherwise; every other request owed
+/// or still queued answers as it is dropped ([`Reply`]): a close that it
+/// closed, the rest that the session ended. Then it lets the connection
+/// end, waits (within [`GRACE`]) until what it was handed is sent, and
+/// until the writer wrote it.
 fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
     out.stream();
     let session = &mut *out.session;
@@ -828,9 +832,7 @@ fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
         };
         prompt.reply.send(answer.map(acp::PromptResponse::new));
     }
-    for close in session.closing.drain(..) {
-        close.send(Ok(acp::CloseSessionResponse::new()));
-    }
+    session.closing.clear();
     for (_, asking) in session.asking.drain() {
         asking.abort();
     }
@@ -839,16 +841,7 @@ fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
     }
     session.requests.close();
     let queued = std::iter::from_fn(|| session.requests.try_recv().ok());
-    let left: Vec<Request> = session.early.drain(..).chain(queued).collect();
-    for request in left {
-        match request {
-            Request::Prompt(_, reply) => reply.send(Err(crate::ended())),
-            Request::Config(_, reply) => reply.send(Err(crate::ended())),
-            Request::Close(reply) => reply.send(Ok(acp::CloseSessionResponse::new())),
-            // Each answers, dropped, that the session ended.
-            _ => {}
-        }
-    }
+    drop(session.early.drain(..).chain(queued).collect::<Vec<_>>());
     session.opening.take();
     session.done.take();
     if let Some(served) = session.served.take() {

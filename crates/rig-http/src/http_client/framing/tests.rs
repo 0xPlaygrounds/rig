@@ -343,4 +343,11 @@ fn an_sse_id_counts_for_each_event_it_is_copied_into() {
     assert!(events.last().is_some_and(Result::is_err));
     let mut framer = SseFramer::with_limit(64);
     assert_eq!(framer.push(body.as_bytes()).flatten().count(), 4);
+    // Many events in one chunk stop at the limit, not after all their copies.
+    let mut many = format!("id: {}\n", "x".repeat(1000));
+    many.push_str(&"data: a\n\n".repeat(10_000));
+    let mut framer = SseFramer::with_limit(4096);
+    let events: Vec<_> = framer.push(many.as_bytes()).collect();
+    assert!(events.len() <= 5, "{}", events.len());
+    assert!(events.last().is_some_and(Result::is_err));
 }

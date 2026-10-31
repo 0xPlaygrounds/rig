@@ -280,8 +280,8 @@ impl Outbox {
     }
 }
 
-/// The most bytes of one message a stdio server writes: codex takes 8 MiB;
-/// this is far above it, below what would exhaust memory.
+/// The most bytes of one message a stdio server writes: far above any
+/// real message, below what would exhaust memory.
 pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
 
 /// A server as the files name it.
@@ -510,6 +510,7 @@ impl Connect<'_> {
             groups: self.groups.clone(),
             root: self.root.0.clone(),
             limit: Duration::from_secs(self.settings.connect_timeout_secs.max(1)),
+            line_limit: LINE_LIMIT,
         };
         let first = Duration::from_secs(self.settings.first_retry_secs.max(1));
         // The connection lasts until nothing reads its events: until the
@@ -631,6 +632,8 @@ struct Start {
     root: PathBuf,
     /// How long an attempt may take to list the tools.
     limit: Duration,
+    /// The most bytes of a stdio server's message ([`LINE_LIMIT`]).
+    line_limit: usize,
 }
 
 /// Connects `name` again and again: lists its tools, waits for it to go,
@@ -684,7 +687,6 @@ impl Groups {
         Ok(Group {
             child,
             groups: self.clone(),
-            refused: Arc::default(),
         })
     }
 
@@ -714,25 +716,25 @@ fn kill_group(leader: u32) {
 struct Group {
     child: tokio::process::Child,
     groups: Groups,
-    /// The message its stdout refused, which ended its connection.
-    refused: Arc<Mutex<Option<TooLarge>>>,
 }
 
-impl Group {
-    /// The message its stdout refused, if one ended the connection.
-    fn refused(&self) -> Option<TooLarge> {
-        *self.refused.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-}
+/// The message a stdio server's stdout refused, which ended its
+/// connection, if one did.
+type Refused = Arc<Mutex<Option<TooLarge>>>;
+
+/// A byte-order mark, which a line may start with, as rmcp's own reader
+/// allows.
+const BOM: &[u8] = b"\xEF\xBB\xBF";
 
 /// A stdio server's pipes as MCP messages: its stdout read at most `limit`
-/// ([`LINE_LIMIT`]) a line, skipping a line that is not a message, as
-/// rmcp's own reader does; a longer line ends the connection, noted in
-/// `refused`.
+/// ([`LINE_LIMIT`]) a line, a byte-order mark taken off, skipping a line
+/// that is not a message, as rmcp's own reader does; a longer line ends
+/// the connection, noted in `refused`.
 fn stdio(
-    (stdin, stdout): (tokio::process::ChildStdin, tokio::process::ChildStdout),
+    stdin: tokio::process::ChildStdin,
+    stdout: tokio::process::ChildStdout,
     limit: usize,
-    refused: Arc<Mutex<Option<TooLarge>>>,
+    refused: Refused,
 ) -> (
     impl futures::Sink<TxJsonRpcMessage<RoleClient>, Error = io::Error> + Send + Unpin + 'static,
     impl futures::Stream<Item = RxJsonRpcMessage<RoleClient>> + Send + Unpin + 'static,
@@ -748,7 +750,10 @@ fn stdio(
         Ok::<_, io::Error>(stdin)
     });
     let lines = pipes::lines(stdout, limit).map(move |line| match line {
-        Ok(line) => Some(serde_json::from_slice::<RxJsonRpcMessage<RoleClient>>(&line).ok()),
+        Ok(line) => {
+            let line = line.strip_prefix(BOM).unwrap_or(&line);
+            Some(serde_json::from_slice::<RxJsonRpcMessage<RoleClient>>(line).ok())
+        }
         Err(too_large) => {
             *refused.lock().unwrap_or_else(PoisonError::into_inner) = Some(too_large);
             None
@@ -780,14 +785,25 @@ type Reached = (McpConnection, Option<Group>);
 type Opened = (McpConnection, Vec<McpDefinition>, Option<Group>);
 
 impl Start {
-    /// One connection to the server: `Ok` once it closed after answering.
-    /// Every list of its tools is asked for here, one at a time, so no
-    /// older list replaces a newer one.
+    /// One connection to the server: `Ok` once it closed after answering;
+    /// a message past the limit that ended it, at any point, is why it
+    /// failed.
     async fn run(&self, outbox: &Outbox) -> Result<(), String> {
+        let refused = Refused::default();
+        let ran = self.connection(outbox, &refused).await;
+        match *refused.lock().unwrap_or_else(PoisonError::into_inner) {
+            Some(too_large) => Err(format!("the server sent a message of {too_large}")),
+            None => ran,
+        }
+    }
+
+    /// [`Start::run`]'s connection. Every list of its tools is asked for
+    /// here, one at a time, so no older list replaces a newer one.
+    async fn connection(&self, outbox: &Outbox, refused: &Refused) -> Result<(), String> {
         let limit = self.limit.as_secs();
         let (changed, changes) = async_channel::bounded(1);
         let opened = async {
-            let (connection, child) = self.open(outbox, Listener(changed)).await?;
+            let (connection, child) = self.open(outbox, Listener(changed), refused).await?;
             // rmcp hands each notification to a task of its own, so a change
             // the server said before a list's answer may reach the listener
             // just after it: the tools count as in once a list stays quiet
@@ -827,16 +843,17 @@ impl Start {
             }
         }
         // A stdio server's process group is killed as it is dropped.
-        let refused = child.as_ref().and_then(Group::refused);
         drop(child);
-        match refused {
-            Some(refused) => Err(format!("the server sent a message of {refused}")),
-            None => Ok(()),
-        }
+        Ok(())
     }
 
     /// Starts or reaches the server, with `client` as its MCP client.
-    async fn open(&self, outbox: &Outbox, client: Listener) -> Result<Reached, String> {
+    async fn open(
+        &self,
+        outbox: &Outbox,
+        client: Listener,
+        refused: &Refused,
+    ) -> Result<Reached, String> {
         let (service, child) = match &self.spec {
             ServerSpec::Stdio {
                 command,
@@ -867,13 +884,11 @@ impl Start {
                 let (Some(stdout), Some(stdin)) = pipes else {
                     return Err(format!("`{command}` has no pipes"));
                 };
-                let transport = stdio((stdin, stdout), LINE_LIMIT, child.refused.clone());
-                let service = client.serve(transport).await.map_err(|error| {
-                    child.refused().map_or_else(
-                        || error.to_string(),
-                        |refused| format!("the server sent a message of {refused}"),
-                    )
-                })?;
+                let transport = stdio(stdin, stdout, self.line_limit, refused.clone());
+                let service = client
+                    .serve(transport)
+                    .await
+                    .map_err(|error| error.to_string())?;
                 (service, Some(child))
             }
             ServerSpec::Http { url, headers } => {

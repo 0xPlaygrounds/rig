@@ -18,7 +18,7 @@ One task:
   plain -p says on stderr. A reader that leaves while the final answer is
   written read what it wanted; the run keeps its code. The exit line's
   code is the agent's: a launcher told to end by a signal passes it on,
-  waits for its agent (at most 10 seconds), then ends as that signal says
+  waits for its agent (at most 15 seconds), then ends as that signal says
   (143 for SIGTERM) while its agent's exit line says 130, so a script's
   `wait`, or the shell's prompt after a Ctrl+C, comes after the agent's
   last line.

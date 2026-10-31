@@ -11,8 +11,9 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, Instant};
 
 /// How long the agent has to end once told to: its own clean exit takes
-/// at most a few seconds (an ACP router gives its sessions five).
-pub(super) const STOP_WAIT: Duration = Duration::from_secs(10);
+/// at most a few seconds, and an ACP router's at most about eleven, while
+/// its sessions answer and end.
+pub(super) const STOP_WAIT: Duration = Duration::from_secs(15);
 
 /// The first signal heard while the agent ran; 0 while none was.
 static HEARD: AtomicI32 = AtomicI32::new(0);

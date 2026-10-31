@@ -135,10 +135,10 @@ enum Lines {
 }
 
 impl Framer {
-    /// Feed one transport chunk; yields every frame it completed, then
-    /// [`TooLarge`] when a frame grew past the limit, after which it yields
-    /// nothing. An SSE event whose data is only whitespace is a heartbeat,
-    /// not a frame.
+    /// Feed one transport chunk; yields every frame it completed, and
+    /// [`TooLarge`] in the place of a frame past the limit: SSE yields
+    /// nothing after it, NDJSON reads on after that line. An SSE event whose
+    /// data is only whitespace is a heartbeat, not a frame.
     pub fn push(&mut self, chunk: &[u8]) -> impl Iterator<Item = Result<WireFrame, TooLarge>> + '_ {
         let (sse, ndjson) = match &mut self.lines {
             Lines::Sse(framer) => (Some(framer.push(chunk)), None),
@@ -414,6 +414,12 @@ impl SseFramer {
             self.since_dispatch = self.since_dispatch.saturating_add(rest.len() - next.len());
             self.after_cr = next.is_empty() && rest.last() == Some(&b'\r');
             let (field, value) = self.line(&String::from_utf8_lossy(line));
+            // Each event copies the last id: past the limit, read no further
+            // line, so `push` refuses before another copy is made.
+            if recording.is_none() && self.held() > self.limit {
+                rest = next;
+                break;
+            }
             if let Some(batch) = recording.as_deref_mut() {
                 batch.lines.push(SseLine {
                     span: start..self.offset,

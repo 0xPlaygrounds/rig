@@ -195,10 +195,10 @@ skills: each directory with a `SKILL.md` (the Agent Skills format, a `name`
 and a `description` in its frontmatter) under `.rig/skills` or
 `.agents/skills` of those same directories, `RIG_HOME/skills` or
 `~/.agents/skills`; each directory is searched once, and a link that leads
-back to one being searched is named once. The model reads a skill's file when a task matches its
-description, and `/skill:<name> [text]` sends one with your message. A skill
-with `disable-model-invocation: true` is left out of the list and only sent
-by hand. Both are read once, so an edit takes effect on `/reload` or `/new`.
+back to one being searched is named once. The model reads a skill's file
+when a task matches its description, and `/skill:<name> [text]` sends one
+with your message. A skill with `disable-model-invocation: true` is left
+out of the list and only sent by hand. Both are read once, so an edit takes effect on `/reload` or `/new`.
 
 When the conversation comes within 16k tokens of the model's window, older
 tool outputs are cleared and, if that is not enough, the older messages are

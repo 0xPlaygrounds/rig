@@ -41,7 +41,7 @@ rig-memory = { path = "../rig-memory", version = "0.46.0", features = ["fs"] }
 rig-tools = { path = "../rig-tools", version = "0.46.0" }
 # The tokio runtime rig's HTTP requests run on, shared with plugins.
 rig-http = { path = "../rig-http", version = "0.46.0", features = ["tokio"] }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 # Questions' answers, and the user's settings for plugins.
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

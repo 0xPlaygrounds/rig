@@ -981,3 +981,17 @@ async fn the_observed_usage_does_not_invent_a_total() {
     assert_eq!(totals, [None], "Cohere reports no total_tokens");
     assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
+
+/// Counts whose sum passes `u64::MAX` are an error, without a panic or a
+/// wrapped total.
+#[test]
+fn usage_counts_that_overflow_are_an_error() {
+    let usage = json!({"tokens": {"input_tokens": u64::MAX, "output_tokens": 1}});
+    let failed = usage_of(Some(&usage));
+    assert!(
+        failed
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("overflow")),
+        "{failed:?}"
+    );
+}

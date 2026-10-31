@@ -11,8 +11,9 @@ use crate::wire::document::{Reassemble, keep, slot};
 /// Rebuilds the `Message` a streamed Messages reply adds up to.
 ///
 /// `message_start.message` is the skeleton. Each `content_block_start`
-/// appends its block to `content`, whatever its wire index says. Text, thinking and signature
-/// deltas append; `input_json_delta` fragments are parsed into the block's
+/// appends its block to `content`, whatever its wire index says. Text,
+/// thinking and signature deltas append; `input_json_delta` fragments are
+/// parsed into the block's
 /// `input` at `content_block_stop` (`{}` when none streamed); a
 /// `citations_delta` appends to `citations`; any other delta merges into
 /// its block as the decoder merges it. `message_delta` folds its fields

@@ -8,17 +8,23 @@ use super::{Watch, heard};
 #[cfg(unix)]
 #[test]
 fn a_signal_is_passed_on_and_the_agent_is_waited_for() {
-    let agent = Command::new("sh")
-        .args([
-            "-c",
-            "trap 'sleep 0.3; exit 7' TERM; while :; do sleep 0.05; done",
-        ])
-        .spawn();
+    let exe = std::env::current_exe().unwrap_or_default();
+    let ready = exe.with_file_name(format!("rig-stop-ready-{}", std::process::id()));
+    let script = format!(
+        "trap 'sleep 0.3; exit 7' TERM; : > '{}'; while :; do sleep 0.05; done",
+        ready.display()
+    );
+    let agent = Command::new("sh").args(["-c", &script]).spawn();
+    assert!(agent.is_ok(), "sh starts");
     let Ok(mut agent) = agent else {
         return;
     };
-    // The shell sets its trap before the loop; give it the moment.
-    std::thread::sleep(Duration::from_millis(200));
+    // The agent says it is ready once its trap is set.
+    let since = Instant::now();
+    while !ready.exists() && since.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::fs::remove_file(&ready).ok();
     let mut watch = Watch::start();
     // SAFETY: the watch's handler only notes the signal.
     unsafe {
