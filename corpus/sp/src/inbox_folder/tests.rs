@@ -117,6 +117,7 @@ fn docs_model(added: On<Add<Helper>>, mut commands: Commands) {
     commands.trigger(SetModel {
         entity: added.entity,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 }
 
@@ -143,6 +144,7 @@ fn items_queue_per_agent_and_are_answered_beside_their_requests() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 
     let done = dir.join(DONE);
@@ -245,6 +247,7 @@ fn headless_items_fail_deny_approvals_and_retry_after_a_restart() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 
     let finished = |_: &World| {

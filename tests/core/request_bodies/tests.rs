@@ -7,6 +7,9 @@ use rig::catalog::Catalog;
 
 use super::*;
 
+// This is the model the fixtures were recorded with.
+const GPT_5_4: &str = "gpt-5.4";
+
 #[test]
 fn default_user_agent_fixture_is_independent_of_host_and_keeps_the_caller() {
     for (os, arch) in [
@@ -47,7 +50,7 @@ fn encoded_default_user_agent_reports_the_actual_host_before_fixture_normalizati
 
     let wire = Responses::new(
         openai::wire::OpenAIConfig::with_key(&chatgpt::DIALECT, "synthetic-key"),
-        chatgpt::GPT_5_4,
+        GPT_5_4,
     );
     let prepared = Completion::prepare(CompletionRequest::new("hi"), &wire.describe())?;
     let mut encoded = wire.encode(prepared, Mode::Unary)?;

@@ -321,7 +321,7 @@ fn a_forks_first_request_starts_with_the_bytes_of_its_sources_last() {
     use rig_core::providers::{chatgpt, openai};
     for (dialect, model) in [
         (&openai::wire::OPENAI, "gpt-5.4"),
-        (&chatgpt::DIALECT, "gpt-5.4"),
+        (&chatgpt::DIALECT, "gpt-6.1-sol"),
     ] {
         let name = dialect.name;
         let http = SequencedHttpClient::new([

@@ -492,3 +492,40 @@ fn an_error_event_projects_only_the_envelope_it_carries() {
 }
 
 mod provider_options;
+
+/// The model the ChatGPT wire sends is the one
+/// [`requested_model`](crate::providers::chatgpt::requested_model) reads,
+/// however the request names it, so the account check sees what is sent.
+#[test]
+fn the_chatgpt_body_sends_the_model_requested_model_reads() {
+    use serde_json::json;
+    let wire = OpenAIConfig::with_key(&CHATGPT, "test-token").responses("gpt-6.1-sol");
+    let options = |options: serde_json::Value| {
+        let mut request = prompt();
+        request.provider_options = serde_json::from_value(options).expect("the options read");
+        request
+    };
+    let terra = json!({ "model": "gpt-6.1-terra" });
+    let luna = json!({ "model": "gpt-6-luna" });
+    let requests = [
+        prompt(),
+        prompt().model("gpt-6.1-terra"),
+        prompt().additional_params(json!({ "model": "gpt-6.1-terra" })),
+        options(json!({ "chatgpt": { "openai.responses": terra } })),
+        options(json!({ "chatgpt": { "*": terra } })),
+        options(json!({ "chatgpt": { "*": luna, "openai.responses": terra } })),
+        options(json!({ "chatgpt": { "openai.chat": terra } })),
+        options(json!({ "openai": { "openai.responses": terra } })),
+        options(json!({ "chatgpt": { "openai.responses": luna } }))
+            .additional_params(json!({ "model": "gpt-6.1-terra" })),
+        options(json!({ "chatgpt": { "*": terra } })).model("gpt-6-luna"),
+        prompt().model(""),
+    ];
+    for request in requests {
+        let named = crate::providers::chatgpt::requested_model(&request)
+            .unwrap_or("gpt-6.1-sol")
+            .to_owned();
+        let body = prepared_body_of(&wire, request);
+        assert_eq!(body["model"], json!(named), "{body}");
+    }
+}

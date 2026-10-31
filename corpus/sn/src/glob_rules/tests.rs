@@ -137,6 +137,7 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     run_until(&mut app, &wakes, |world| section(world).contains("style"));
 

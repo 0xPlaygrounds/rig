@@ -76,6 +76,7 @@ fn agent_loop_sets_profile_default_before_explicit_edits() -> anyhow::Result<()>
         app.world_mut().trigger(SetModel {
             entity: agent,
             model: "claude-cloak/test".into(),
+            kind: ChoiceKind::ForThisRun,
         });
         for (index, text) in ["first human", "second human"].into_iter().enumerate() {
             if index == 1 {
@@ -179,6 +180,7 @@ fn started_fallback_recovers_omission_without_overriding_explicit_short() -> any
         app.world_mut().trigger(SetModel {
             entity: agent,
             model: "claude-cloak/test".into(),
+            kind: ChoiceKind::ForThisRun,
         });
         app.world_mut()
             .trigger(Deliver::new(agent, "human", DeliveryMode::Steer));
@@ -271,6 +273,7 @@ fn routing_and_cloned_fallbacks_do_not_carry_private_policy() -> anyhow::Result<
         app.world_mut().trigger(SetModel {
             entity: agent,
             model: source.into(),
+            kind: ChoiceKind::ForThisRun,
         });
         app.world_mut()
             .trigger(Deliver::new(agent, "human", DeliveryMode::Steer));
@@ -411,6 +414,7 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
     app.world_mut().trigger(SetModel {
         entity: child,
         model: "claude-cloak/test".into(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut().trigger(Deliver::new(
         child,

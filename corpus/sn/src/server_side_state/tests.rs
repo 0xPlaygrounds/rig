@@ -237,6 +237,7 @@ fn choose(app: &mut App, agent: Entity, model: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
 }
@@ -474,6 +475,7 @@ fn logged(home: &Home, id: &SessionId, server: &Server) -> (App, Receiver<()>) {
             commands.trigger(SetModel {
                 entity: agent.entity,
                 model,
+                kind: ChoiceKind::ForThisRun,
             });
         });
     (app, wakes)

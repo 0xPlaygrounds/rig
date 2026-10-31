@@ -43,9 +43,9 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_completion_parity_matrix/`.
 
+use super::GPT_5_4;
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::providers::chatgpt;
 use serde_json::{Value, json};
 
 use super::super::support::with_chatgpt_cassette;
@@ -55,7 +55,7 @@ use crate::support::{Observed, assert_matches_recorded_token};
 use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
-const MODEL: &str = chatgpt::GPT_5_4;
+const MODEL: &str = GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 const TOOL_PROMPT: &str = "Use the get_weather tool for the city Lisbon.";
 

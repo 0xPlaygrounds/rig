@@ -106,6 +106,7 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     let deliver = |app: &mut App, text: String| {
         let before = app.world().resource::<Ended>().0.len();

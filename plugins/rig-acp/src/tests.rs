@@ -165,6 +165,7 @@ fn agent() {
         AcpPlugin,
         ApprovalPlugin,
         rig_basics::models::ModelsPlugin,
+        rig_basics::models::defaults::DefaultsPlugin,
         rig_basics::sessions::SessionsPlugin,
         rig_basics::sessions::agents::AgentsPlugin,
         rig_basics::coding_tools::ReadTool,

@@ -8,8 +8,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use super::GPT_5_4;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::providers::chatgpt;
 use rig::tool::Tool;
 
 use super::super::support::with_chatgpt_cassette;
@@ -32,7 +32,7 @@ async fn specific_single_function_targets_named_tool() {
     with_chatgpt_cassette(
         "codex_tool_choice/specific_single_function_targets_named_tool",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = client.completion(GPT_5_4);
             let request = CompletionRequest::new("Compute 9 minus 4 using a tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
@@ -91,7 +91,7 @@ async fn specific_multiple_functions_use_allowed_tools() {
     with_chatgpt_cassette(
         "codex_tool_choice/specific_multiple_functions_use_allowed_tools",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = client.completion(GPT_5_4);
             let request = CompletionRequest::new("What is 2 plus 3? Use exactly one tool.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))

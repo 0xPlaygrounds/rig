@@ -151,6 +151,7 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let asks = ["Where does it start?", "Run cargo build.", LAST_ASK];
     for (turn, ask) in asks.into_iter().enumerate() {

@@ -101,6 +101,7 @@ fn session(
     world.trigger(SetModel {
         entity: agent,
         model: model.0.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Go.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {

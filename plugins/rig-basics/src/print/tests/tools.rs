@@ -625,6 +625,7 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         world.trigger(SetModel {
             entity: agent,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
         run_until(&mut app, |world| match pending_tool {

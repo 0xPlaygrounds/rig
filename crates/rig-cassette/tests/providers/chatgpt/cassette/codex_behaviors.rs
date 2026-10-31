@@ -6,8 +6,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use super::GPT_5_4;
 use rig::message::AssistantContent;
-use rig::providers::chatgpt;
 use rig::tool::Tool;
 use rig_test_support::cassette_models::MapWire;
 
@@ -24,7 +24,7 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
             let model = client
-                .completion(chatgpt::GPT_5_4)
+                .completion(GPT_5_4)
                 .map_wire(|wire| wire.with_strict_tools());
             let request = CompletionRequest::new("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())

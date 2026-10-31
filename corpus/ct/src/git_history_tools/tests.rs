@@ -124,6 +124,7 @@ fn history_tools_read_compactly_and_change_nothing() {
     world.trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(
         agent,

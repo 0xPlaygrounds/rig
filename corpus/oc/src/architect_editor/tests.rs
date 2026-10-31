@@ -114,6 +114,7 @@ fn the_architect_plans_and_the_editor_edits() {
     world.trigger(SetModel {
         entity: agent,
         model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(RunCommand::new(agent, "architect on".to_owned()));
     let asked = "Please rename it, ARCHITECT-ONLY-WORDS";

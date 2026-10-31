@@ -526,15 +526,20 @@ pub(crate) fn show_first(
             .filter(|(_, item)| shown.multiple && item.checked)
             .map(|(index, _)| index)
             .collect();
+        let selected = shown.selected.min(shown.items.len().saturating_sub(1));
+        // Noted at once, so a picker filled again before its first frame
+        // finds the item it opened on, not the row at that index.
+        let item = shown.items.get(selected).filter(|_| draft.is_none());
+        let picked = item.map(|item| (item.id.to_owned(), item.label.to_owned()));
         let state = PickerInput {
             filter: String::new(),
-            selected: shown.selected.min(shown.items.len().saturating_sub(1)),
+            selected,
             touched: !ticked.is_empty(),
             ticked,
             scroll: 0,
             draft,
             more: false,
-            picked: None,
+            picked,
         };
         Some((entity, state))
     });
