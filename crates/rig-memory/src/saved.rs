@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::session::skipped;
 use crate::{SavedAgent, Session};
 
 /// The key an agent's model is saved under: a string, `vendor/model`.
@@ -58,17 +57,10 @@ impl Session {
         value(&self.saved, key)
     }
 
-    /// The main agent: of the agents a restore brings back (not retired,
-    /// nor spawned by one retired) that nothing spawned, the one
-    /// [`CURRENT`] names, else the first by id.
+    /// The main agent: of the agents nothing spawned and not retired, the
+    /// one [`CURRENT`] names, else the first by id.
     pub fn main_agent(&self) -> Option<&SavedAgent> {
-        let logs = self.agents.iter().map(|agent| {
-            let parent = agent.parent.as_deref();
-            (agent.id.as_str(), parent, agent.retired)
-        });
-        let skipped = skipped(logs);
-        let top = (self.agents.iter())
-            .filter(|agent| agent.parent.is_none() && !skipped.contains(agent.id.as_str()));
+        let top = (self.agents.iter()).filter(|agent| agent.parent.is_none() && !agent.retired);
         let current = self.value::<String>(CURRENT).and_then(Result::ok);
         let named = top
             .clone()
