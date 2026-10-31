@@ -18,7 +18,10 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
         .add_observer(brief_subagent)
-        .add_systems(AgentPass, brief_peers.in_set(PrepareSystems::Input))
+        .add_observer(|added: On<Add<Peers>>, briefing: PeerBriefing| briefing.brief(added.entity))
+        .add_observer(|set: On<Insert<ToolAccess>>, briefing: PeerBriefing| {
+            briefing.brief(set.entity)
+        })
         .add_observer(brief_environment)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
@@ -209,25 +212,32 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
 }
 
-/// Tells each subagent with [`Peers`] about them, as [`brief_subagent`]
-/// does, while it has `message` and `wait` to reach them: looked at again
-/// whenever its access changes, as when a restore inserts the saved one, or
-/// the kernel keeps it within its parent's, before its request is composed.
-fn brief_peers(
-    peers: Query<(Entity, &ToolAccess), (With<Peers>, Or<(Added<Peers>, Changed<ToolAccess>)>)>,
-    roles: Query<(Entity, &Name, &SectionOf)>,
-    mut commands: Commands,
-) {
-    for (agent, access) in &peers {
+/// What telling a subagent about its [`Peers`] reads.
+#[derive(SystemParam)]
+struct PeerBriefing<'w, 's> {
+    peers: Query<'w, 's, &'static ToolAccess, With<Peers>>,
+    roles: Query<'w, 's, (Entity, &'static Name, &'static SectionOf)>,
+    commands: Commands<'w, 's>,
+}
+
+impl PeerBriefing<'_, '_> {
+    /// Tells `agent`, a subagent with [`Peers`], about them, as
+    /// [`brief_subagent`] does, while it has `message` and `wait` to reach
+    /// them: again whenever its access is set, as when a restore inserts the
+    /// saved one after its other components, or the kernel keeps it within
+    /// its parent's.
+    fn brief(mut self, agent: Entity) {
+        let Ok(access) = self.peers.get(agent) else {
+            return;
+        };
         let reaches = access.allows(MESSAGE) && access.allows(WAIT);
-        let shown = roles
-            .iter()
-            .find(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG);
+        let shown =
+            (self.roles.iter()).find(|(_, name, of)| of.0 == agent && name.as_str() == PEER_TAG);
         match (reaches, shown) {
             (true, None) => {
-                commands.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
+                self.commands.spawn(role(agent, 1, PEER_TAG, PEER_ROLE));
             }
-            (false, Some((section, ..))) => commands.entity(section).despawn(),
+            (false, Some((section, ..))) => self.commands.entity(section).despawn(),
             _ => {}
         }
     }

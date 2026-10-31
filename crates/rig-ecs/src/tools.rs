@@ -449,18 +449,19 @@ pub(crate) fn offered<'a>(
 /// its parent may not, however its access was made or restored. Looks only
 /// when an access or a parent changed.
 pub(crate) fn keep_within_parents(
-    mut agents: Query<(Entity, &mut ToolAccess, Option<Ref<SpawnedBy>>)>,
+    agents: Query<(Entity, Ref<ToolAccess>, Option<Ref<SpawnedBy>>)>,
+    mut commands: Commands,
 ) {
-    let changed = (agents.iter_mut())
+    let changed = (agents.iter())
         .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
     if !changed {
         return;
     }
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
-        .map(|(agent, access, parent)| (agent, (access.clone(), parent.map(|parent| parent.0))))
+        .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|parent| parent.0))))
         .collect();
-    for (_, mut access, parent) in &mut agents {
-        let mut within = access.clone();
+    for (agent, access, parent) in &agents {
+        let mut within = (*access).clone();
         let mut next = parent.map(|parent| parent.0);
         // A cycle of parents ends once every agent was passed.
         for _ in 0..above.len() {
@@ -470,8 +471,9 @@ pub(crate) fn keep_within_parents(
             within = within.within(upper);
             next = *parent;
         }
+        // Inserted, so what follows an agent's access sees it change.
         if within != *access {
-            *access = within;
+            commands.entity(agent).insert(within);
         }
     }
 }
