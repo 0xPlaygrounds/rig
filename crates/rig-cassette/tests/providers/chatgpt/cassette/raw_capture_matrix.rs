@@ -34,7 +34,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_capture_matrix/`.
 
-use rig::providers::chatgpt;
+use super::GPT_5_4;
 use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
@@ -46,7 +46,7 @@ use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw
 use rig::completion::CompletionRequest;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
-const MODEL: &str = chatgpt::GPT_5_4;
+const MODEL: &str = GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request() -> rig::completion::CompletionRequest {

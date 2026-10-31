@@ -8,9 +8,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use super::GPT_5_4;
 use rig::completion::{Message, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::providers::chatgpt;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -157,7 +157,7 @@ async fn zero_argument_tool_call_nonstreaming() {
     with_chatgpt_cassette(
         "codex_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = client.completion(GPT_5_4);
             let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.")
                 .tool(zero_arg_tool_definition("ping"));
@@ -191,7 +191,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
     with_chatgpt_cassette(
         "codex_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(chatgpt::GPT_5_4))
+            let agent = rig::AgentBuilder::new(client.completion(GPT_5_4))
                 .preamble(NESTED_ARGS_PREAMBLE)
                 .tool(PlanTrip)
                 .default_max_turns(4)
@@ -235,7 +235,7 @@ async fn unicode_arguments_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
+            let model = client.completion(GPT_5_4);
             let request = CompletionRequest::new(
                 "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",

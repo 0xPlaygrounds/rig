@@ -1,3 +1,6 @@
+// This is the model the fixtures were recorded with.
+const GPT_5_4: &str = "gpt-5.4";
+
 mod harness_switch {
     //! One `GenerationOptions` value, applied to five providers by a harness
     //! that switches between them, encodes to each provider's own JSON. The
@@ -860,7 +863,7 @@ mod option_matrix {
             (
                 // The backend gets the ciphertext asked for on every request.
                 "chatgpt",
-                responses(&chatgpt::DIALECT, chatgpt::GPT_5_4),
+                responses(&chatgpt::DIALECT, super::GPT_5_4),
                 [
                     Merge(json!({"reasoning": {"effort": "high", "summary": "auto"}})),
                     Refuse,
@@ -1315,7 +1318,7 @@ mod precedence {
     fn codex_still_omits_the_typed_fields_the_backend_refuses() {
         let wire = Responses::new(
             OpenAIConfig::with_key(&chatgpt::DIALECT, KEY),
-            chatgpt::GPT_5_4,
+            super::GPT_5_4,
         );
         let schema = schemars::json_schema!({
             "type": "object",

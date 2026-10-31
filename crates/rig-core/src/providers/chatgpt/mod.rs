@@ -8,7 +8,7 @@
 //! use rig_core::providers::chatgpt;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = chatgpt::from_env()?.completion(chatgpt::GPT_5_3_CODEX);
+//! let model = chatgpt::from_env()?.completion(chatgpt::DEFAULT_MODEL);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -25,17 +25,6 @@ use crate::providers::openai::wire::{
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_ORIGINATOR: &str = "rig";
 const DEFAULT_INSTRUCTIONS: &str = "You are ChatGPT, a helpful AI assistant.";
-
-/// `gpt-5.4`
-pub const GPT_5_4: &str = "gpt-5.4";
-/// `gpt-5.4-pro`
-pub const GPT_5_4_PRO: &str = "gpt-5.4-pro";
-/// `gpt-5.3-codex`
-pub const GPT_5_3_CODEX: &str = "gpt-5.3-codex";
-/// `gpt-5.3-codex-spark`
-pub const GPT_5_3_CODEX_SPARK: &str = "gpt-5.3-codex-spark";
-/// `gpt-5.3-instant`
-pub const GPT_5_3_INSTANT: &str = "gpt-5.3-instant";
 
 /// Stable descriptor name reported on normalized ChatGPT responses.
 pub const PROVIDER_NAME: &str = "chatgpt";

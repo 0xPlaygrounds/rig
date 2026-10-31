@@ -966,7 +966,7 @@ impl ConnectOptions {
     /// use rig_core::providers::registry::ConnectOptions;
     ///
     /// let options = ConnectOptions::new().api_key("access-token").account_id("account");
-    /// let model = Catalog::builtin().connect_with("chatgpt/gpt-5.5", options)?;
+    /// let model = Catalog::builtin().connect_with("chatgpt/gpt-6.1-sol", options)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn account_id(mut self, account_id: impl Into<String>) -> Self {
