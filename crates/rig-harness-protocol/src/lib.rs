@@ -530,20 +530,14 @@ impl RunDir {
     /// start until it is empty or the agent killed it. The launcher kills
     /// those left once the agent exits for anything but a reload, such as
     /// after `SIGKILL`; after a reload the next agent takes them over
-    /// ([`Self::listed_groups`]).
+    /// ([`Self::live_groups`]).
     pub fn groups(&self) -> PathBuf {
         self.0.join("groups")
     }
 
     /// The group ids listed in [`Self::groups`], none when there is no
-    /// list. An id whose group emptied may name another group since: an
-    /// agent that takes them over after a reload owns each only while it
-    /// has members ([`Self::live_groups`] checks more).
-    ///
-    /// # Errors
-    ///
-    /// When the list cannot be read.
-    pub fn listed_groups(&self) -> std::io::Result<Vec<i32>> {
+    /// list.
+    fn listed_groups(&self) -> std::io::Result<Vec<i32>> {
         let listed = match std::fs::read_to_string(self.groups()) {
             Ok(listed) => listed,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

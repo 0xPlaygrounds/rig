@@ -554,7 +554,10 @@ async fn open_browser(opener: std::process::Command, wait: Duration) -> Result<(
         Ok(Ok(Some(status))) if status.success() => Ok(()),
         Err(_) => {
             // Still waiting for its browser: reaped once it is done.
-            std::thread::spawn(move || opener.wait_for(Duration::MAX).ok());
+            let reaper = std::thread::Builder::new();
+            reaper
+                .spawn(move || opener.wait_for(Duration::MAX).ok())
+                .ok();
             Err(AuthError::Browser)
         }
         _ => Err(AuthError::Browser),
