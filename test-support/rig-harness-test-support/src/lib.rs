@@ -197,7 +197,7 @@ impl Offline {
             .unwrap_or_default();
         let path = uri.path();
         let why = format!("a scripted test app sends no HTTP: {method} {host}{port}{path}");
-        Err(http_client::Error::unbuilt(std::io::Error::other(why)))
+        Err(http_client::Error::permanent(why))
     }
 }
 
