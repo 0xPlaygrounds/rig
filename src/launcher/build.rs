@@ -796,6 +796,9 @@ mod stop {
     /// Whether that group is the launcher's own.
     static OWN: AtomicBool = AtomicBool::new(false);
 
+    /// cargo's own id, killed outright when the group is the launcher's.
+    static CARGO: AtomicI32 = AtomicI32::new(0);
+
     /// The actions [`spawn`] replaced, which [`forget`] puts back.
     static BEFORE: Mutex<Vec<(libc::c_int, libc::sigaction)>> = Mutex::new(Vec::new());
 
@@ -851,6 +854,7 @@ mod stop {
                 i32::try_from(child.id()).unwrap_or(0)
             };
             OWN.store(leads, Ordering::SeqCst);
+            CARGO.store(i32::try_from(child.id()).unwrap_or(0), Ordering::SeqCst);
             GROUP.store(group, Ordering::SeqCst);
         }
         // SAFETY: restores the mask saved above.
@@ -863,6 +867,7 @@ mod stop {
     /// The build ended: the ending signals act as they did before it.
     pub(super) fn forget() {
         GROUP.store(0, Ordering::SeqCst);
+        CARGO.store(0, Ordering::SeqCst);
         let replaced = std::mem::take(
             &mut *BEFORE
                 .lock()
@@ -889,17 +894,21 @@ mod stop {
     }
 
     /// Kills the build's group, then ends the launcher as `signal` would
-    /// have; when the group is the launcher's own, sends `signal` to all of
-    /// it, so the launcher too ends as that signal says once this returns.
-    /// Only async-signal-safe calls.
+    /// have. When the group is the launcher's own, it sends `signal` to all
+    /// of it and kills cargo outright, so the launcher too ends as that
+    /// signal says once this returns, and a cargo that ignores the signal
+    /// does not outlive it. Only async-signal-safe calls.
     extern "C" fn on_signal(signal: libc::c_int) {
-        let group = GROUP.load(Ordering::SeqCst);
+        let (group, cargo) = (GROUP.load(Ordering::SeqCst), CARGO.load(Ordering::SeqCst));
         // SAFETY: `signal`, `kill` and `raise` are async-signal-safe and take
         // plain integers.
         unsafe {
             libc::signal(signal, libc::SIG_DFL);
             if OWN.load(Ordering::SeqCst) && group > 0 {
                 libc::kill(-group, signal);
+                if cargo > 0 {
+                    libc::kill(cargo, libc::SIGKILL);
+                }
             } else {
                 kill();
                 libc::raise(signal);

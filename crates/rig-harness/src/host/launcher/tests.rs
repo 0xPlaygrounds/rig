@@ -6,7 +6,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_harness_protocol::{Home, Invocation, SIGNAL_EXIT_CODE};
 
-use super::{Invoked, LauncherPlugin, LauncherRun, own_groups, refuse};
+use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
 use crate::host::exit::{Exit, ExitPlugin, ExitReason};
 use crate::host::session::Scratch;
 
@@ -215,7 +215,7 @@ fn jobs_a_reload_kept_are_taken_over_while_marked() {
     };
     let listed = format!("{}\n{}\n", kept.id(), stranger.id());
     std::fs::write(run.groups(), listed).ok();
-    own_groups(&run);
+    super::own_groups(&run);
     let owned = std::fs::read_to_string(run.groups()).unwrap_or_default();
     for job in [&mut kept, &mut stranger] {
         job.kill().ok();

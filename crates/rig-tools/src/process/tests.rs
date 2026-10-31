@@ -349,26 +349,28 @@ fn a_sink_that_stops_after_the_exit_gets_nothing_more() {
     assert!(taken <= LIMIT + super::MAX_PIECE, "{taken} bytes taken");
 }
 
-/// Output that comes past the deadline is not taken, also once the
-/// process exited with it still queued: the wait ends as timed out.
+/// A process that exited before its deadline has everything it printed
+/// taken, though the sink works through it past the deadline.
 #[cfg(unix)]
 #[test]
-fn output_past_the_deadline_after_the_exit_is_a_timeout() {
+fn output_of_a_process_that_ended_in_time_is_all_taken() {
     let script = "head -c 12582912 /dev/zero | tr '\\000' x";
     let process = Launcher::default().spawn("sh", ["-c", script], Spawn::default());
     let Ok(mut process) = process else {
         return assert!(process.is_ok());
     };
-    let mut first = true;
-    let deadline = Instant::now() + Duration::from_millis(200);
-    let ended = process.run(Some(deadline), |_| {
-        if std::mem::take(&mut first) {
+    let mut taken = 0;
+    let deadline = Instant::now() + Duration::from_millis(400);
+    let ended = process.run(Some(deadline), |line| {
+        if taken == 0 {
             // The producer ends meanwhile, its output still queued.
-            std::thread::sleep(Duration::from_millis(500));
+            std::thread::sleep(Duration::from_millis(600));
         }
+        taken += line.bytes().len();
         true
     });
-    assert!(matches!(ended, Ok(Ended::TimedOut)), "{ended:?}");
+    assert!(matches!(ended, Ok(Ended::Exited(_))), "{ended:?}");
+    assert_eq!(taken, 12582912);
 }
 
 /// `output` stops at its timeout though output keeps coming.
@@ -413,6 +415,27 @@ fn output_keeps_every_byte() {
     let process = Launcher::default().spawn("printf", ["a\\000\\377b"], Spawn::default());
     let output = process.and_then(|process| process.output(Some(Duration::from_secs(5))));
     assert!(output.is_ok_and(|output| output.stdout == b"a\0\xffb"));
+}
+
+/// Exiting for good ends a group a stopped call asked to stop and would
+/// only kill later, though its leader ignores the request.
+#[cfg(target_os = "linux")]
+#[test]
+fn exiting_ends_what_a_stopped_call_still_stops() {
+    let scope = super::Scope::default();
+    let script = "trap '' TERM; echo $$; exec sleep 30";
+    let started = scope.enter(|| Launcher::default().spawn("sh", ["-c", script], Spawn::default()));
+    let Ok(mut process) = started else {
+        return assert!(started.is_ok());
+    };
+    let leader = printed_pid(&process);
+    let waiting = std::thread::spawn(move || process.run(None, |_| true));
+    scope.stop();
+    let stopping = leader.is_some_and(|id| super::ledger().stopping.contains(&id));
+    super::end_left();
+    let dead = within(Duration::from_millis(200), || !leader.is_some_and(alive));
+    assert!(waiting.join().is_ok());
+    assert!(stopping && dead, "{stopping} {dead}");
 }
 
 /// A process handed over is off the ledger, and what it left running
