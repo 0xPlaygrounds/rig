@@ -16,7 +16,7 @@ use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
-use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
+use super::{AttachPlugin, ReadTool, SharedShell, ShellOutput, ShellTool};
 
 /// The shell tool on `processes`, cutting as `output` says.
 fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
@@ -153,17 +153,46 @@ fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace()
     assert!(read.contains("served text"), "{read}");
 }
 
-/// The labels of the files attached to each message, as a plugin after
-/// [`AttachSystems`] sees them.
-#[derive(Resource, Default)]
-struct Labels(Vec<String>);
+/// An app with [`AttachPlugin`] in `workspace` at `root`, its loop's
+/// wakes, and an agent whose model answers every message, so each stays in
+/// the conversation, with the notices kept.
+fn attaching(
+    workspace: Option<Arc<dyn Workspace>>,
+    root: &Path,
+    settings: &str,
+) -> (App, std::sync::mpsc::Receiver<()>, Entity) {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    if let Some(workspace) = workspace {
+        app.insert_resource(ProjectWorkspace(workspace));
+    }
+    app.insert_resource(Settings::from_toml(settings))
+        .insert_resource(ProjectRoot(root.to_path_buf()))
+        .add_plugins((AgentPlugin, AttachPlugin, RemoteHostsPlugin));
+    collect::<Notice>(&mut app);
+    collect::<Recalled>(&mut app);
+    app.finish();
+    app.update();
+    let model = MockCompletionModel::from_stream_turns([reply("read"), reply("read")]);
+    let agent = app.world_mut().spawn(Agent).id();
+    if let Some(connection) = connect(&model) {
+        app.world_mut().entity_mut(agent).insert(connection);
+    }
+    (app, wakes, agent)
+}
 
-fn read_labels(messages: Query<&Incoming, Added<Admitted>>, mut labels: ResMut<Labels>) {
-    let attached = messages.iter().flat_map(|message| &message.parts);
-    labels.0.extend(attached.filter_map(|part| match part {
-        MessagePart::Attachment(attached) => Some(attached.label.clone()),
-        MessagePart::Text(_) => None,
-    }));
+/// What `agent`'s conversation holds, as text.
+fn said(world: &World, agent: Entity) -> String {
+    format!("{:?}", world.get::<Conversation>(agent))
+}
+
+/// The texts of the warnings the app showed.
+fn warned(world: &World) -> Vec<&str> {
+    let notices = &world.resource::<Collected<Notice>>().0;
+    notices
+        .iter()
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text.as_str())
+        .collect()
 }
 
 #[test]
@@ -172,50 +201,25 @@ fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
     let dir = exe.with_file_name(format!("attach-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
     std::fs::write(dir.join("a.txt"), "attached text").ok();
-    let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, AttachPlugin))
-        .init_resource::<Labels>()
-        .add_systems(
-            AgentPass,
-            read_labels
-                .in_set(PrepareSystems::Compose)
-                .after(AttachSystems),
-        );
-    collect::<Notice>(&mut app);
-    app.finish();
-    app.update();
+    let (mut app, wakes, agent) = attaching(None, Path::new("/nowhere"), "");
     let world = app.world_mut();
-    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
+    world.entity_mut(agent).insert(WorkDir(dir.clone()));
     let text = "compare @a.txt with @gone/x.rs, @alice";
     world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
-    app.update();
-    assert_eq!(app.world().resource::<Labels>().0, ["a.txt"]);
-    let notices = &app.world().resource::<Collected<Notice>>().0;
-    let warned: Vec<&str> = notices
-        .iter()
-        .filter(|notice| notice.level == NoticeLevel::Warn)
-        .map(|notice| notice.text.as_str())
-        .collect();
-    assert_eq!(warned, ["@gone/x.rs: no such file"]);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("attached text")
+    });
+    assert!(said(app.world(), agent).contains("attached text"));
+    assert_eq!(warned(app.world()), ["@gone/x.rs: no such file"]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn in_another_workspace_a_message_waits_for_its_files() {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(ProjectWorkspace(Arc::new(Served)))
-        .insert_resource(ProjectRoot("/served".into()))
-        .add_plugins((AgentPlugin, AttachPlugin));
-    app.finish();
-    app.update();
-    let world = app.world_mut();
-    // A model answers it, so the message stays in the conversation.
-    let model = MockCompletionModel::from_stream_turns([reply("read")]);
-    let agent = world.spawn(Agent).id();
-    if let Some(connection) = connect(&model) {
-        world.entity_mut(agent).insert(connection);
-    }
-    let message = world
+    let served: Arc<dyn Workspace> = Arc::new(Served);
+    let (mut app, wakes, agent) = attaching(Some(served), Path::new("/served"), "");
+    let message = app
+        .world_mut()
         .spawn((
             Incoming::new("read @note.txt", DeliveryMode::Steer),
             ForAgent(agent),
@@ -224,17 +228,130 @@ fn in_another_workspace_a_message_waits_for_its_files() {
     app.update();
     let held = app.world().get::<Holds>(message).is_some();
     assert!(held, "the message waits for its files");
-    let said = |world: &World| {
-        let conversation = world.get::<Conversation>(agent);
-        format!("{conversation:?}")
-    };
     run_until(&mut app, &wakes, |world| {
-        said(world).contains("served text")
+        said(world, agent).contains("served text")
     });
     assert!(
-        said(app.world()).contains("served text"),
+        said(app.world(), agent).contains("served text"),
         "{}",
-        said(app.world())
+        said(app.world(), agent)
+    );
+}
+
+/// `@HOST:PATH` attaches that host's file through its transport, even with
+/// a file at the same path here.
+#[test]
+fn a_host_reference_attaches_the_hosts_file() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-host-{}", std::process::id()));
+    let home = dir.join("home");
+    std::fs::create_dir_all(&home).ok();
+    std::fs::write(home.join("note.txt"), "ON_THE_HOST").ok();
+    std::fs::create_dir_all(dir.join("bench:~")).ok();
+    std::fs::write(dir.join("bench:~").join("note.txt"), "WRONG_LOCAL_SHADOW").ok();
+    let settings = format!(
+        "[remote.hosts]\nbench = ['sh', '-c', 'cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\"', '{}']\n",
+        home.display()
+    );
+    let (mut app, wakes, agent) = attaching(None, &dir, &settings);
+    let text = "quote @bench:~/note.txt";
+    let world = app.world_mut();
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("ON_THE_HOST")
+    });
+    let said = said(app.world(), agent);
+    assert!(
+        said.contains("ON_THE_HOST") && !said.contains("WRONG_LOCAL_SHADOW"),
+        "{said}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// This machine, where every look at a path waits until `released` (at
+/// most 5 s), as a host behind a slow transport would.
+#[derive(Debug, Default)]
+struct Slow {
+    released: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Workspace for Slow {
+    fn stat(&self, path: &Path) -> io::Result<Stat> {
+        let started = std::time::Instant::now();
+        while !self.released.load(std::sync::atomic::Ordering::Relaxed)
+            && started.elapsed() < std::time::Duration::from_secs(5)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        rig_tools::workspace::Local.stat(path)
+    }
+
+    fn read(&self, path: &Path, limit: u64) -> io::Result<Contents> {
+        rig_tools::workspace::Local.read(path, limit)
+    }
+
+    fn write(&self, _: &Path, _: &[u8]) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn remove(&self, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn canonical(&self, path: &Path) -> PathBuf {
+        path.to_path_buf()
+    }
+
+    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
+        Ok(Vec::new())
+    }
+
+    fn spawn(
+        &self,
+        _: &Launcher,
+        _: Option<&Path>,
+        _: &OsStr,
+        _: &[OsString],
+        _: Spawn,
+    ) -> io::Result<Process> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+}
+
+/// While a slow workspace reads a message's files the frame goes on, and
+/// stopping the turn puts the message back in the input instead of sending
+/// it.
+#[test]
+fn a_slow_read_holds_the_message_and_a_stop_recalls_it() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, _wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let text = "read @notes.txt";
+    let message = app
+        .world_mut()
+        .spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)))
+        .id();
+    let started = std::time::Instant::now();
+    app.update();
+    let waited = started.elapsed();
+    let held = app.world().get::<Holds>(message).is_some();
+    assert!(held, "the message waits for its files");
+    assert!(waited < std::time::Duration::from_secs(2), "{waited:?}");
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    app.update();
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let back: Vec<&str> = recalled.iter().map(|back| back.text.as_str()).collect();
+    assert_eq!(back, [text]);
+    let conversation = app.world().get::<Conversation>(agent);
+    assert!(
+        conversation.is_none_or(|conversation| conversation.messages().is_empty()),
+        "{conversation:?}"
     );
 }
 

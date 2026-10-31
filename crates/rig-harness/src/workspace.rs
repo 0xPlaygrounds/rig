@@ -17,10 +17,12 @@ use rig_tools::workspace::{Local, Workspace};
 ///
 /// **The main-thread rule.** Tools call it inside
 /// [`blocking`](rig_tools::blocking). A system calls it inline only when
-/// `host()` is `None`; for another workspace it reads as
+/// `host()` is `None` and the path is its own, not one a user or a model
+/// wrote: a workspace such as [`Hosts`](rig_tools::remote::Hosts) is this
+/// machine but routes `HOST:` paths to another. Otherwise it reads as
 /// [`Running::spawn`](rig_ecs::tasks::Running::spawn) work, under a hold
 /// ([`HoldOf`](rig_ecs::stage::HoldOf)) on what waits for it, so a remote
-/// workspace never blocks a frame and a local one keeps its timing.
+/// path never blocks a frame.
 ///
 /// ```
 /// use std::sync::Arc;

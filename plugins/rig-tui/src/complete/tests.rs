@@ -120,3 +120,76 @@ fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     assert_eq!(items(&app), ["src/b_new.rs"]);
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// A picked path that a space would cut is put in quoted, so it attaches
+/// that file, not one named by its first word; a directory stays open for
+/// the path below it, and Enter closes an open quote before it sends.
+#[test]
+fn a_picked_path_with_a_space_is_quoted() {
+    use crate::KeyInput;
+    use crate::tests::push;
+    use crossterm::event::Event;
+
+    let root = scratch("complete-space");
+    std::fs::create_dir_all(root.join("my dir")).ok();
+    std::fs::write(root.join("attach notes.txt"), "").ok();
+    std::fs::write(root.join("attach"), "").ok();
+    std::fs::write(root.join("my dir").join("inner file.txt"), "").ok();
+    let (mut app, _) = view_app();
+    app.insert_resource(ProjectRoot(root.clone()));
+    let walked = |app: &mut App| {
+        let started = std::time::Instant::now();
+        while !open(app) && started.elapsed() < std::time::Duration::from_secs(10) {
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    type_text(&mut app, "@att");
+    walked(&mut app);
+    press(&mut app, "down");
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"attach notes.txt\" ");
+    press(&mut app, "ctrl+c");
+    type_text(&mut app, "@my");
+    walked(&mut app);
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"my dir/");
+    type_text(&mut app, "inn");
+    walked(&mut app);
+    press(&mut app, "tab");
+    assert_eq!(typed_text(&app), "@\"my dir/inner file.txt\" ");
+    press(&mut app, "ctrl+c");
+    push(
+        &mut app,
+        KeyInput::Event(Event::Paste("@\"my dir/inner file.txt".to_owned())),
+    );
+    app.update();
+    walked(&mut app);
+    press(&mut app, "enter");
+    assert_eq!(typed_text(&app), "@\"my dir/inner file.txt\" ");
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A dropped image whose path has a space becomes a quoted reference.
+#[test]
+fn a_dropped_image_with_a_space_is_typed_quoted() {
+    use crate::KeyInput;
+    use crate::tests::push;
+    use crossterm::event::Event;
+
+    let root = scratch("drop-space");
+    let image = root.join("shot 1.png");
+    std::fs::write(&image, b"\x89PNG\r\n\x1a\n").ok();
+    let (mut app, _) = view_app();
+    for pasted in [
+        format!("'{}'", image.display()),
+        image.display().to_string().replace(' ', "\\ "),
+    ] {
+        press(&mut app, "ctrl+c");
+        type_text(&mut app, "see");
+        push(&mut app, KeyInput::Event(Event::Paste(pasted)));
+        app.update();
+        assert_eq!(typed_text(&app), format!("see @\"{}\" ", image.display()));
+    }
+    std::fs::remove_dir_all(&root).ok();
+}

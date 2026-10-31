@@ -19,15 +19,16 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, AuthorKind, CallPlace, Commands,
-    Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessagePart,
-    MessageWriter, Name, Notice, On, PerCallTool, Plugin, PrepareSystems, Processes, ProjectRoot,
-    ProjectWorkspace, Query, Res, Resource, Running, Started, SystemSet, Tool, ToolOptions, Wake,
+    Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, Author, AuthorKind, CallPlace,
+    Commands, Component, Decider, Decision, Effect, Entity, ForAgent, HoldOf, Incoming, Insert,
+    IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome, PerCallTool,
+    Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled, Res,
+    Resource, Running, Spawned, Started, StopTurn, SystemSet, Tool, ToolOptions, Wake, With,
     Without, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
-use rig_tools::attach::{Attached, attachments};
+use rig_tools::attach::{Attached, Reference, attachments};
 use rig_tools::{Edit, OutputLimit, Read, Seen, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::{RenderSystems, TranscriptRender};
@@ -267,17 +268,19 @@ impl Tool for SharedShell {
 /// only to a model that reads images, telling the user otherwise; any
 /// other file as its text, capped the way `read` shows it.
 /// Paths resolve from the agent's [`WorkDir`], else the [`ProjectRoot`],
-/// in the app's [`ProjectWorkspace`]; a path with no file there is warned
-/// about. It runs in [`AttachSystems`].
+/// in the app's [`ProjectWorkspace`], as the file tools resolve them; a
+/// path with no file there, or one that could not be looked at, is warned
+/// about. The files are read off the main thread while the message waits
+/// ([`HoldOf`]); stopping the agent's turn meanwhile puts the message back
+/// in the input. It runs in [`AttachSystems`].
 #[derive(Default)]
 pub struct AttachPlugin;
 
-/// Where [`AttachPlugin`] reads the files a user's message names into its
-/// attachments, in [`PrepareSystems::Compose`]: a plugin that rewrites the
-/// text goes before, in `Input`; one that reads or edits the attachments
-/// goes `.after(AttachSystems)`. In a workspace that is not this machine,
-/// the files are read off the main thread under a hold on the message, so
-/// they come later than this set.
+/// Where [`AttachPlugin`] starts reading the files a user's message names,
+/// in [`PrepareSystems::Compose`]: a plugin that rewrites the text goes
+/// before, in `Input`. The files are read off the main thread under a hold
+/// on the message, so they are in its attachments only once it is
+/// released, later than this set.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttachSystems;
 
@@ -287,9 +290,14 @@ impl Plugin for AttachPlugin {
             .init_resource::<ProjectWorkspace>()
             .configure_sets(AgentPass, AttachSystems.in_set(PrepareSystems::Compose))
             .add_systems(AgentPass, attach.in_set(AttachSystems))
-            .add_observer(attach_read);
+            .add_observer(attach_read)
+            .add_observer(stop_reading);
     }
 }
+
+/// The hold ([`HoldOf`]) on a message while the files it names are read.
+#[derive(Component)]
+struct Reading;
 
 /// The files a message names, read off the main thread, on the hold that
 /// keeps the message ([`HoldOf`]) until they are attached.
@@ -302,35 +310,32 @@ impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
     }
 }
 
-/// Reads the files each user's message names into its attachments as it
-/// comes in, with a notice about each that could not be, and a warning
-/// about each that is not there: inline in this machine's workspace, else
-/// as work off the main thread that holds the message. A message a restart
-/// put back in the inbox ([`Started`]) has them already.
+/// Starts reading the files each user's message names as it comes in, off
+/// the main thread, under a hold on the message: any path may be on
+/// another machine. A message a restart put back in the inbox
+/// ([`Started`]) has them already.
 fn attach(
-    mut typed: Query<(Entity, &mut Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
+    typed: Query<(Entity, &Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
     dirs: Query<&WorkDir>,
     workspace: Res<ProjectWorkspace>,
     root: Res<ProjectRoot>,
     wake: Res<Wake>,
-    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    for (message, mut typed, &ForAgent(agent)) in &mut typed {
-        if typed.author.kind != AuthorKind::User || typed.command().is_some() {
+    for (message, typed, &ForAgent(agent)) in &typed {
+        if typed.author.kind != AuthorKind::User
+            || typed.command().is_some()
+            || Reference::parse(typed.text()).next().is_none()
+        {
             continue;
         }
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
-        if workspace.0.host().is_none() {
-            let attached = attachments(typed.text(), &base, &*workspace.0);
-            add_attached(&mut typed, agent, attached, &mut notices);
-            continue;
-        }
         let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
         let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         commands.spawn((
             Name::new("attachments"),
+            Reading,
             HoldOf(message),
             Running::spawn_into::<ReadFiles, _>(pool, &wake, read),
         ));
@@ -338,7 +343,8 @@ fn attach(
 }
 
 /// Attaches the files read off the main thread to the message they were
-/// read for, and releases it.
+/// read for, with a notice about each that could not be and a warning
+/// about each that is not there, and releases it.
 fn attach_read(
     read: On<Insert<ReadFiles>>,
     holds: Query<(&HoldOf, &ReadFiles)>,
@@ -360,8 +366,50 @@ fn attach_read(
     commands.entity(read.entity).despawn();
 }
 
+/// Stops reading the files of the user's messages to the stopped agent and
+/// the agents below it, which go back to the input instead of to the
+/// model, in the order they were sent, as a stopped turn's do.
+fn stop_reading(
+    stop: On<StopTurn>,
+    spawned: Query<&Spawned>,
+    reading: Query<(Entity, &HoldOf), With<Reading>>,
+    mut messages: Query<(&Effect, &Incoming, &ForAgent, &mut Decision)>,
+    mut recalled: MessageWriter<Recalled>,
+    mut commands: Commands,
+) {
+    let below = spawned.iter_descendants::<Spawned>(stop.entity);
+    let stopped: Vec<Entity> = std::iter::once(stop.entity).chain(below).collect();
+    let mut back = Vec::new();
+    for (read, &HoldOf(message)) in &reading {
+        let Ok((effect, typed, &ForAgent(agent), mut decision)) = messages.get_mut(message) else {
+            continue;
+        };
+        if !stopped.contains(&agent) || typed.author != Author::user() {
+            continue;
+        }
+        if decision.decide(Decider::plugin("attach"), Outcome::custom("recalled")) {
+            back.push((effect.id(), agent, typed.text().trim().to_owned()));
+        }
+        commands.entity(read).despawn();
+    }
+    back.sort_unstable();
+    for agent in stopped {
+        let texts: Vec<&str> = (back.iter())
+            .filter(|(_, to, _)| *to == agent)
+            .map(|(_, _, text)| text.as_str())
+            .collect();
+        if !texts.is_empty() {
+            recalled.write(Recalled {
+                agent,
+                text: texts.join("\n\n"),
+                why: None,
+            });
+        }
+    }
+}
+
 /// Puts `attached` before the message's text, with a notice about each
-/// file that could not be attached and a warning about each missing one.
+/// file that could not be attached and a warning for each other line.
 fn add_attached(
     typed: &mut Incoming,
     agent: Entity,
@@ -371,8 +419,8 @@ fn add_attached(
     for note in attached.notes {
         notices.write(Notice::info(agent, note));
     }
-    for missing in attached.missing {
-        notices.write(Notice::warn(agent, format!("@{missing}: no such file")));
+    for warning in attached.warnings {
+        notices.write(Notice::warn(agent, warning));
     }
     // Before the text, which names them.
     let attachments = attached

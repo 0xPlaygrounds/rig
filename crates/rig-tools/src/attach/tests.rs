@@ -4,7 +4,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{Author, Conversation, Entry, attached_file};
 use rig_core::message::UserContent;
 
-use super::{attachments, first_typed, typed};
+use super::{Reference, attachments, first_typed, typed};
 use crate::workspace::Local;
 
 /// The crate's own directory, where its manifest is.
@@ -49,7 +49,10 @@ fn references_resolve_from_the_base_and_missing_paths_are_reported() {
         .map(|(label, _)| label.as_str())
         .collect();
     assert_eq!(labels, ["Cargo.toml"]);
-    assert_eq!(attached.missing, ["missing/x.rs", "gone.rs"]);
+    assert_eq!(
+        attached.warnings,
+        ["@missing/x.rs: no such file", "@gone.rs: no such file"]
+    );
     assert!(attached.notes.is_empty(), "{:?}", attached.notes);
 }
 
@@ -67,8 +70,107 @@ fn an_extensionless_file_that_is_there_is_attached() {
         .map(|(label, _)| label.as_str())
         .collect();
     assert_eq!(labels, ["Makefile"]);
-    assert!(attached.missing.is_empty(), "{:?}", attached.missing);
+    assert!(attached.warnings.is_empty(), "{:?}", attached.warnings);
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// A path is written so it reads back whole, quoted only when a space, a
+/// leading quote or trailing punctuation would cut it; every other
+/// reference reads as before.
+#[test]
+fn a_formatted_path_reads_back_whole() {
+    for path in [
+        "notes.md",
+        "src/lib.rs",
+        "~/x",
+        "bench:~/a b/c.txt",
+        "attach notes.txt",
+        "say \"hi\".txt",
+        "\"quoted",
+        "ends.",
+        r"C:\Users\me\my file.png",
+    ] {
+        let text = format!("look at {}, then", Reference::format(path));
+        let paths: Vec<_> = Reference::parse(&text).map(|found| found.path).collect();
+        assert_eq!(paths, [path], "{text}");
+    }
+    assert_eq!(Reference::format("notes.md"), "@notes.md");
+    assert_eq!(Reference::format("my file.txt"), "@\"my file.txt\"");
+    let text = "@notes.md, @~/x and @alice; mail a@b.c, @\"\" or @\"unclosed @a.rs";
+    let paths: Vec<_> = Reference::parse(text).map(|found| found.path).collect();
+    assert_eq!(paths, ["notes.md", "~/x", "alice", "unclosed @a.rs"]);
+    let typing = |text| Reference::typing(text).map(|found| found.path.into_owned());
+    assert_eq!(typing("see @\"my fi").as_deref(), Some("my fi"));
+    assert_eq!(typing("see @src/li").as_deref(), Some("src/li"));
+    assert_eq!(typing("see @\"my file.txt\""), None);
+    assert_eq!(typing("see @src/lib.rs "), None);
+}
+
+/// A temporary directory of its own for `name`, empty.
+fn scratch(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("rig-tools-{name}-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// The text of each file attached.
+fn texts(attached: &super::Attached) -> Vec<&str> {
+    attached
+        .files
+        .iter()
+        .filter_map(|(_, content)| match content {
+            UserContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A picked name with a space attaches that file, not a file named by its
+/// first word, and is warned about by its whole name when it is gone.
+#[test]
+fn a_name_with_a_space_attaches_that_file() {
+    let dir = scratch("attach-space");
+    std::fs::write(dir.join("attach notes.txt"), "INTENDED").ok();
+    std::fs::write(dir.join("attach"), "WRONG_PREFIX_FILE").ok();
+    let text = format!("quote {}", Reference::format("attach notes.txt"));
+    let attached = attachments(&text, &dir, &Local);
+    let quoted = texts(&attached);
+    assert!(
+        quoted.len() == 1 && quoted.iter().all(|text| text.contains("INTENDED")),
+        "{quoted:?}"
+    );
+    std::fs::remove_file(dir.join("attach notes.txt")).ok();
+    let attached = attachments(&text, &dir, &Local);
+    assert!(attached.files.is_empty(), "{:?}", attached.files);
+    assert_eq!(attached.warnings, ["@\"attach notes.txt\": no such file"]);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A path that cannot be looked at is reported with why, not as missing.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_path_says_why() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = scratch("attach-locked");
+    let locked = dir.join("locked");
+    std::fs::create_dir_all(&locked).ok();
+    std::fs::write(locked.join("x.txt"), "secret").ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    // Root reads it anyway: nothing to check there.
+    let readable = std::fs::metadata(locked.join("x.txt")).is_ok();
+    let attached = attachments("read @locked/x.txt", &dir, &Local);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    if readable {
+        return;
+    }
+    assert!(attached.files.is_empty(), "{:?}", attached.files);
+    let said = attached.warnings.join("\n");
+    assert!(
+        said.starts_with("could not read locked/x.txt: ") && said.contains("ermission denied"),
+        "{said}"
+    );
 }
 
 #[test]

@@ -794,7 +794,9 @@ impl Workspace for Remote {
 /// stays there.
 ///
 /// Its [`host`](Workspace::host) is the inner workspace's, as its project
-/// is there; a call on a `HOST:` path waits for the transport.
+/// is there; a call on a `HOST:` path waits for the transport, so code on
+/// a thread that must not wait reads a path a user or a model wrote off
+/// that thread even when `host` is `None`.
 #[derive(Clone, Debug)]
 pub struct Hosts {
     inner: Arc<dyn Workspace>,

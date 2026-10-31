@@ -1,5 +1,6 @@
 //! Completion in the input.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -13,9 +14,11 @@ use super::editor::{Editor, MainEditor};
 use super::view::TuiView;
 use rig_ecs::tasks::{Running, Wake};
 use rig_harness::commands::SlashCommand;
-use rig_harness::services::ProjectRoot;
+use rig_harness::main_agent::ShownAgent;
+use rig_harness::services::{ProjectRoot, WorkDir};
 use rig_harness::watch::{FileChanges, FileWatch};
 use rig_harness::workspace::ProjectWorkspace;
+use rig_tools::attach::Reference;
 use rig_tools::blocking;
 use rig_tools::workspace::{Listing, Local, Workspace};
 
@@ -181,24 +184,43 @@ pub struct Completion {
     pub selected: usize,
     /// Whether the items came from a finished walk.
     complete: bool,
+    /// Whether the token is a quoted path not closed yet, which Enter
+    /// completes and closes before it sends.
+    open: bool,
 }
 
 impl Completion {
     /// What accepting the selected item puts in place of the token: the
-    /// marker, the item, and a space unless it is a directory.
+    /// marker, the item, and a space unless it is a directory. A path is
+    /// written as a [`Reference`] reads it back, a directory's left open
+    /// for the path below it.
     pub(crate) fn chosen(&self) -> Option<String> {
         let item = self.items.get(self.selected)?;
+        if self.kind == CompletionKind::Path {
+            let reference = Reference::format(&item.text);
+            return Some(match item.text.ends_with('/') {
+                true => reference.strip_suffix('"').unwrap_or(&reference).to_owned(),
+                false => format!("{reference} "),
+            });
+        }
         let space = if item.text.ends_with('/') { "" } else { " " };
         let marker = self.kind.marker().map(String::from).unwrap_or_default();
         Some(format!("{marker}{}{space}", item.text))
     }
 
     /// Whether the token already is the selected item exactly, so Enter
-    /// sends rather than completes.
+    /// sends rather than completes: for a path, as its [`Reference`]
+    /// writes it.
     pub(crate) fn is_exact(&self) -> bool {
-        self.items
-            .get(self.selected)
-            .is_some_and(|item| item.text == self.query)
+        let Some(item) = self.items.get(self.selected) else {
+            return false;
+        };
+        match self.kind {
+            CompletionKind::Path => {
+                !self.open && Reference::format(&item.text) == format!("@{}", self.query)
+            }
+            _ => item.text == self.query,
+        }
     }
 
     pub(crate) fn select(&mut self, step: isize) {
@@ -229,17 +251,20 @@ pub(crate) struct FileIndex {
     walking: bool,
     /// Whether the paths are the project's as its watch last saw it.
     fresh: bool,
-    /// The watch of the project's root, from the first `@` on.
+    /// The watch of the root walked, from the first `@` on.
     watch: Option<Entity>,
+    /// The root the paths are relative to.
+    root: Option<PathBuf>,
 }
 
-/// The paths a walk of the project found, on the walk's entity.
+/// The root a walk went through and the paths it found, on the walk's
+/// entity.
 #[derive(Component)]
-pub(crate) struct WalkedPaths(Arc<Vec<String>>);
+pub(crate) struct WalkedPaths(PathBuf, Arc<Vec<String>>);
 
-impl From<Vec<String>> for WalkedPaths {
-    fn from(paths: Vec<String>) -> Self {
-        Self(Arc::new(paths))
+impl From<(PathBuf, Vec<String>)> for WalkedPaths {
+    fn from((root, paths): (PathBuf, Vec<String>)) -> Self {
+        Self(root, Arc::new(paths))
     }
 }
 
@@ -252,6 +277,13 @@ impl FileIndex {
         (workspace, root): (Arc<dyn Workspace>, PathBuf),
         commands: &mut Commands,
     ) {
+        if self.root.as_ref() != Some(&root) {
+            if let Some(watch) = self.watch.take() {
+                commands.entity(watch).despawn();
+            }
+            (self.paths, self.fresh) = (Arc::default(), false);
+            self.root = Some(root.clone());
+        }
         if self.watch.is_none() {
             let watch = (Name::new("rig-tui: @ paths"), FileWatch::tree(&root));
             self.watch = Some(commands.spawn(watch).id());
@@ -259,12 +291,14 @@ impl FileIndex {
         if self.walking || self.fresh {
             return;
         }
+        let walked = root.clone();
         let walk = blocking(move || Ok(walk(&*workspace, &root)));
         let walk = async move {
-            walk.await.unwrap_or_else(|failure| {
+            let paths = walk.await.unwrap_or_else(|failure| {
                 warn!("could not list the project's files: {failure}");
                 Vec::new()
-            })
+            });
+            (walked, paths)
         };
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         let walking = Running::spawn_into::<WalkedPaths, _>(pool, wake, walk);
@@ -311,8 +345,12 @@ fn token<'a>(
     text: &'a str,
     cursor: usize,
     markers: &[char],
-) -> Option<(CompletionKind, usize, &'a str, &'a str)> {
+) -> Option<(CompletionKind, usize, Cow<'a, str>, &'a str)> {
     let before = text.get(..cursor)?;
+    if let Some(reference) = Reference::typing(before) {
+        let start = reference.span.start;
+        return Some((CompletionKind::Path, start, reference.path, ""));
+    }
     let start = before
         .char_indices()
         .rfind(|(_, character)| character.is_whitespace())
@@ -321,14 +359,11 @@ fn token<'a>(
     if let Some(query) = word.strip_prefix('/')
         && start == 0
     {
-        return Some((CompletionKind::Command, start, query, ""));
-    }
-    if let Some(query) = word.strip_prefix('@') {
-        return Some((CompletionKind::Path, start, query, ""));
+        return Some((CompletionKind::Command, start, query.into(), ""));
     }
     if let Some(marker) = word.chars().next().filter(|first| markers.contains(first)) {
         let query = word.get(marker.len_utf8()..)?;
-        return Some((CompletionKind::Marker(marker), start, query, ""));
+        return Some((CompletionKind::Marker(marker), start, query.into(), ""));
     }
     let command = text.strip_prefix('/')?.split_whitespace().next()?;
     let position = before
@@ -336,7 +371,7 @@ fn token<'a>(
         .split_whitespace()
         .count()
         .checked_sub(1)?;
-    Some((CompletionKind::Arg(position), start, word, command))
+    Some((CompletionKind::Arg(position), start, word.into(), command))
 }
 
 /// What completion lists: the slash commands, and the candidates plugins
@@ -347,20 +382,26 @@ pub(crate) struct Sources<'w, 's> {
     added: Query<'w, 's, &'static CompletionSource>,
     workspace: Option<Res<'w, ProjectWorkspace>>,
     root: Option<Res<'w, ProjectRoot>>,
+    shown: Option<Res<'w, ShownAgent>>,
+    dirs: Query<'w, 's, &'static WorkDir>,
 }
 
 impl Sources<'_, '_> {
-    /// Where `@` paths are: the app's workspace, else this machine, and the
-    /// project's root, else the working directory.
+    /// Where `@` paths are: the app's workspace, else this machine, and
+    /// where the shown agent's references resolve from, its [`WorkDir`],
+    /// else the project's root, else the working directory.
     fn project(&self) -> (Arc<dyn Workspace>, PathBuf) {
         let workspace = self.workspace.as_ref();
         let workspace =
             workspace.map_or_else(|| Arc::new(Local) as Arc<dyn Workspace>, |it| it.0.clone());
-        let root = self.root.as_ref();
-        (
-            workspace,
-            root.map_or_else(|| PathBuf::from("."), |root| root.0.clone()),
-        )
+        let shown = self.shown.as_ref().and_then(|shown| shown.0);
+        let dir = shown.and_then(|agent| self.dirs.get(agent).ok());
+        let root = match (dir, self.root.as_ref()) {
+            (Some(dir), _) => dir.0.clone(),
+            (None, Some(root)) => root.0.clone(),
+            (None, None) => PathBuf::from("."),
+        };
+        (workspace, root)
     }
 }
 
@@ -382,7 +423,7 @@ pub(crate) fn typed(
     sources: &Query<&CompletionSource>,
 ) -> Option<(CompletionKind, String)> {
     let (kind, _, query, _) = token(input.text(), input.cursor(), &markers(sources))?;
-    Some((kind, query.to_owned()))
+    Some((kind, query.into_owned()))
 }
 
 /// Opens, updates or closes the completion after the input, the paths or
@@ -408,6 +449,10 @@ pub(crate) fn update(
         view.dismissed = None;
         return;
     };
+    let query = &*query;
+    let open = (input.text().get(..input.cursor()))
+        .and_then(Reference::typing)
+        .is_some_and(|reference| reference.quoted);
     if view.dismissed == Some(start) {
         view.completion = None;
         return;
@@ -473,6 +518,7 @@ pub(crate) fn update(
         items,
         selected,
         complete,
+        open,
     });
 }
 
@@ -523,8 +569,12 @@ pub(crate) fn receive_paths(
         index.fresh = false;
     }
     let received = walked.map(|walked| walked.into_inner());
-    if let Some((walk, WalkedPaths(paths))) = received {
-        (index.paths, index.walking) = (paths.clone(), false);
+    if let Some((walk, WalkedPaths(root, paths))) = received {
+        // A walk of a root since left behind is stale.
+        if index.root.as_ref() == Some(root) {
+            index.paths = paths.clone();
+        }
+        index.walking = false;
         commands.entity(walk).despawn();
     }
     if changed || received.is_some() {

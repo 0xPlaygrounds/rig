@@ -29,7 +29,9 @@ use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
 /// Synchronous, as the rest of rig-tools: the tools call it inside
 /// [`blocking`](crate::blocking). Code on a thread that must not wait, such
 /// as an app's main thread, calls it inline only when [`host`](Self::host)
-/// is `None`, and otherwise off that thread.
+/// is `None` and the path is not one a user or a model wrote, which a
+/// workspace such as [`Hosts`](crate::remote::Hosts) may route to another
+/// machine; otherwise off that thread.
 ///
 /// A workspace of your own implements every method; [`Local`] is the
 /// reference for what each does.
