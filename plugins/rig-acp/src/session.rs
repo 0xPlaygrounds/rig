@@ -636,12 +636,17 @@ fn open(mut opened: Opened) {
     if !opened.starting.is_empty() {
         return;
     }
-    // A new session's agent gets the first model it can reach, as a
-    // headless run's does, once a sign-in knows what its account offers;
-    // the answer waits a frame, so its options show it.
+    // The answer lists the models the client can pick, so it waits until
+    // each sign-in knows what its account offers. A new session's agent then
+    // gets the first model it can reach, as a headless run's does; the
+    // answer waits a frame, so its options show it.
+    let pick = FirstPick::of(&opened.models);
+    if pick == FirstPick::Checking {
+        return;
+    }
     if !opened.session.chose && chosen.is_none() {
-        match FirstPick::of(&opened.models) {
-            FirstPick::Checking => return,
+        match pick {
+            FirstPick::Checking | FirstPick::Nothing(None) => {}
             FirstPick::Model(model) => {
                 opened.session.chose = true;
                 opened.commands.trigger(SetModel {
@@ -656,7 +661,6 @@ fn open(mut opened: Opened) {
                 let why = format!("No model can be reached: {why}.");
                 opened.notices.write(Notice::error(agent, why));
             }
-            FirstPick::Nothing(None) => {}
         }
     }
     opened.session.chose = true;
