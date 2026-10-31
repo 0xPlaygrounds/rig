@@ -628,6 +628,11 @@ fn a_gained_capability_is_reported() {
             json!({"modalities": {"input": ["text", "pdf"]}}),
             "input: pdf",
         ),
+        (
+            json!({"structured_output": false}),
+            json!({"structured_output": true}),
+            "structured output",
+        ),
     ] {
         let comparison = compared(
             &one("venice", "m", before),
@@ -641,6 +646,29 @@ fn a_gained_capability_is_reported() {
             [("venice/m".to_owned(), vec![gained.to_owned()])]
         );
     }
+    // OpenRouter translates effort for every reasoning model, so `low` is
+    // not lost though its list drops it, and the toggle is gained.
+    let routed = |options: serde_json::Value| {
+        one(
+            "openrouter",
+            "qwen/x",
+            json!({"reasoning": true, "reasoning_options": options}),
+        )
+    };
+    let comparison = compared(
+        &routed(effort(json!(["low"]))),
+        &json!({}),
+        &routed(json!([{"type": "toggle"}])),
+        &json!({}),
+    );
+    assert_eq!(comparison.refusal(), None);
+    assert_eq!(
+        comparison.gains,
+        [(
+            "openrouter/qwen/x".to_owned(),
+            vec!["can turn reasoning off".to_owned()]
+        )]
+    );
 }
 
 /// What rig reads the same is no change: a list in another order, `toggle`
@@ -863,6 +891,14 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
         "openai/o-x: reasoning controls become unknown (were no control) (answer with \
          `rig.reasoning_control`)"
     )));
+    let comparison = compared(
+        &o_x,
+        &reviewed(Some("none")),
+        &o_x,
+        &reviewed(Some("unknown")),
+    );
+    assert_eq!(comparison.refusal(), None);
+    assert_eq!(comparison.answered.len(), 1);
 }
 
 /// A removed row, limit and budget changes and a price change are reported,
@@ -1040,10 +1076,17 @@ fn sync_and_check_refuse_without_writing() {
     assert_ne!(read(super::GENERATED_AT), "2026-10-30T00:00:00Z\n");
     assert_eq!(super::check(&root), Ok(()));
 
-    write(super::REVIEW, &answered(None));
+    // `check` reports every problem at once: here a missing source and a key
+    // the review does not take.
+    write(
+        super::REVIEW,
+        &answered(None).replacen("\"tool_call\"", "\"limits\":{},\"tool_call\"", 1),
+    );
+    let error = super::check(&root).err().unwrap_or_default();
     assert!(
-        super::check(&root)
-            .is_err_and(|error| error.contains("venice/m: sets reasoning_options, tool_call"))
+        error.contains("venice/m: sets reasoning_options, tool_call")
+            && error.contains("unknown key `limits`"),
+        "{error}"
     );
     std::fs::remove_dir_all(&root).expect("clean up");
 }
@@ -1144,6 +1187,10 @@ fn a_new_or_changed_review_row_needs_a_source() {
     assert!(
         guard::provenance(&review(json!({})), &twice)
             .is_err_and(|error| error.contains("venice/old is listed twice"))
+    );
+    assert!(
+        guard::provenance(&review(json!({})), "venice/old")
+            .is_err_and(|error| error.contains("is not `<fingerprint> <vendor>/<id>`"))
     );
 }
 

@@ -654,8 +654,8 @@ impl Comparison {
             return None;
         }
         let mut out = format!(
-            "catalog sync: {} rows lose a capability; nothing written.\n",
-            self.refused.len()
+            "catalog sync: {} lose a capability; nothing written.\n",
+            rows(self.refused.len())
         );
         for (key, losses) in &self.refused {
             let losses: Vec<String> = losses
@@ -851,10 +851,10 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
     match errors.is_empty() {
         true => Ok(()),
         false => Err(format!(
-            "{REVIEW}: {} rows need a \"source\" or their line in {UNSOURCED} changed:\n{}\n\
+            "{REVIEW}: {} need a \"source\" or their line in {UNSOURCED} changed:\n{}\n\
              Say what proved each fact (a doc URL, a cassette, a live check), or write \
              \"unverified: <where it came from>\". Never claim a check that was not made.",
-            errors.len(),
+            rows(errors.len()),
             errors.join("\n")
         )),
     }
@@ -870,4 +870,12 @@ pub(super) fn fingerprint(row: &Map<String, Value>) -> String {
             (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
         });
     format!("{hash:016x}")
+}
+
+/// `count` rows, spelled for a message.
+fn rows(count: usize) -> String {
+    match count {
+        1 => "1 row".to_owned(),
+        _ => format!("{count} rows"),
+    }
 }
