@@ -22,8 +22,9 @@
 //!   20k tokens of them as the provider counts them, so a clearing, which
 //!   rewrites what the prompt cache holds, comes seldom. Before that the
 //!   model writes notes on them ([`Noting`]), which stay after them, unless
-//!   reading each again, off the frame, gives it back unchanged. An output is never cleared otherwise: when its notes
-//!   fail or would not fit, it stays, and a notice says why. After an
+//!   reading each again, off the frame, gives it back unchanged. An output
+//!   is never cleared otherwise: when its notes fail or would not fit, it
+//!   stays, and a notice says why. After an
 //!   overflow no notes are asked: outputs are cleared at once only when
 //!   each reads back unchanged, and the older messages summarized otherwise.
 //!   If clearing would still leave more than half the room used, the model
@@ -327,8 +328,9 @@ impl Rereads<'_, '_> {
     /// `read` call that made it, and holds `call` until the [`Reread`] is
     /// in; says whether it started. Only the outputs of `read` calls can be
     /// read again, at most [`MOST_REREAD`] of them, and only while the
-    /// built-in `read` tool is registered and the agent may call it, as the
-    /// model must be able to read them again itself. It always runs off the
+    /// built-in `read` tool is registered, the agent may call it and its
+    /// model, `spec`, calls tools, as the model must be able to read them
+    /// again itself. It always runs off the
     /// frame, so a workspace on another host never blocks one, and it notes
     /// nothing as seen.
     fn start(
@@ -336,10 +338,14 @@ impl Rereads<'_, '_> {
         commands: &mut Commands,
         (agent, call): (Entity, Entity),
         plan: &ClearPlan,
-        (conversation, access): (&rig_core::conversation::Conversation, Option<&ToolAccess>),
+        (conversation, access, spec): (
+            &rig_core::conversation::Conversation,
+            Option<&ToolAccess>,
+            &ModelSpec,
+        ),
     ) -> bool {
         let place = self.tools.place(Some(agent), self.workspace.0.clone());
-        let allowed = access.is_none_or(|access| access.allows(Read::NAME));
+        let allowed = spec.tools && access.is_none_or(|access| access.allows(Read::NAME));
         if !allowed || self.tools.build(Read::NAME, place.clone()).is_none() {
             return false;
         }
@@ -1057,8 +1063,7 @@ fn compact_near_the_window(
     mut calls: Query<
         (
             Entity,
-            &mut ModelRequest,
-            &Adapted,
+            (&mut ModelRequest, &Adapted, &Effect),
             &CallOf,
             &ForAgent,
             (Option<&Recovering>, Option<&Reread>),
@@ -1076,15 +1081,26 @@ fn compact_near_the_window(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, mut model, Adapted(connection), &CallOf(turn), &ForAgent(agent), (step, reread)) in
-        &mut calls
+    for (
+        call,
+        (mut model, Adapted(connection), effect),
+        &CallOf(turn),
+        &ForAgent(agent),
+        (step, reread),
+    ) in &mut calls
     {
         let Ok((mut compacting, last, sent)) = agents.get_mut(agent) else {
             continue;
         };
-        if reread.is_some() {
+        if let Some(reread) = reread {
             // Read once: a later step reads again.
             commands.entity(call).try_remove::<Reread>();
+            // The conversation changed while it was read, so this request
+            // is stale: it is built again from the conversation.
+            if reread.revision != compacting.conversation.revision() {
+                supersede(&mut commands, (turn, agent, call), effect.parent, None);
+                continue;
+            }
         }
         let spec = &*connection.spec;
         let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
@@ -1156,7 +1172,7 @@ fn compact_near_the_window(
                     &mut commands,
                     (agent, call),
                     &plan,
-                    (conversation, compacting.access),
+                    (conversation, compacting.access, spec),
                 )
             {
                 // The call is held, and prepared again once the re-read is in.
@@ -1302,7 +1318,7 @@ fn recover_from_overflow(
         let Ok(mut compacting) = agents.get_mut(agent) else {
             continue;
         };
-        let policy = &default.0;
+        let (policy, spec) = (&default.0, &*connection.spec);
         let conversation = &compacting.conversation;
         let plan = policy.clearing.plan(conversation);
         let clears = step.is_none() && plan.cleared.results > 0;
@@ -1312,7 +1328,7 @@ fn recover_from_overflow(
                 &mut commands,
                 (agent, call),
                 &plan,
-                (conversation, compacting.access),
+                (conversation, compacting.access, spec),
             )
         {
             // The call is held, and taken up again once the re-read is in.
@@ -1321,7 +1337,7 @@ fn recover_from_overflow(
         // A clearing the re-read proves comes first, as it costs no model call.
         let proven = clears && Reread::proves(reread, conversation);
         let reason = (policy, CompactReason::Overflow);
-        let held = ((model, &*connection.spec), None);
+        let held = ((model, spec), None);
         let at = (agent, turn, call);
         if !proven && compacting.start(at, reason, held, &mut commands, &mut notices) {
             notices.write(Notice::warn(
@@ -1455,22 +1471,23 @@ struct TimedOutBefore;
 
 /// Spawns the call that supersedes `call`, a turn's model call held while
 /// the conversation was compacted for it, built anew from the conversation
-/// on the recovery path's `step`, under the effect `parent`.
+/// on the recovery path's `step`, if any, under the effect `parent`.
 fn supersede(
     commands: &mut Commands,
     (turn, agent, call): (Entity, Entity, Entity),
     parent: Option<rig_core::effect::EffectId>,
-    step: Recovering,
+    step: impl Into<Option<Recovering>>,
 ) {
-    commands
-        .spawn((
-            TurnCall,
-            CallOf(turn),
-            ForAgent(agent),
-            Effect::with_parent_id(parent),
-            step,
-        ))
-        .add_related::<SupersededBy>(&[call]);
+    let mut successor = commands.spawn((
+        TurnCall,
+        CallOf(turn),
+        ForAgent(agent),
+        Effect::with_parent_id(parent),
+    ));
+    if let Some(step) = step.into() {
+        successor.insert(step);
+    }
+    successor.add_related::<SupersededBy>(&[call]);
 }
 
 /// Asks each summary call the kernel built like a turn's request

@@ -814,8 +814,9 @@ impl SummaryPrompts {
              user. Stop here: do not continue the work, do not answer and do not call any tool. \
              Instead write a structured checkpoint of the conversation above. It replaces that \
              conversation, so another model must be able to continue the work from it and the \
-             messages kept after it alone. Nothing in this message is the user's: never record \
-             it as a constraint, a preference or a next step.",
+             messages kept after it alone. Apart from the user's focus, if it quotes one, \
+             nothing in this message is the user's: never record it as a constraint, a \
+             preference or a next step.",
         ),
         notes: Cow::Borrowed(
             "This message is from rig, the program that runs this conversation, not from the \

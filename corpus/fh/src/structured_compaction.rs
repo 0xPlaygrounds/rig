@@ -55,8 +55,8 @@ const TEMPLATE: SummaryPrompts = SummaryPrompts {
     ),
     initial: Cow::Borrowed("Summarize the conversation."),
     update: Cow::Borrowed(
-        "Its earlier part may be summarized already, in <previous-summary> or in a summary the \
-         conversation opens with. Then write one summary of both: keep everything in the \
+        "An earlier part of the conversation may be summarized already, in <previous-summary> \
+         or in a summary the conversation opens with. Then write one summary of both: keep everything in the \
          previous summary that still holds, above all the user's constraints and the reasons \
          for decisions, add what is new, and drop only what no longer matters.",
     ),

@@ -1053,28 +1053,93 @@ fn notes_too_big_with_nothing_to_summarize_keep_the_outputs() {
 }
 
 /// Outputs are never proven by reading them again for an agent that may
-/// not call `read`, as its model could not read them again itself: notes
-/// are asked instead.
+/// not call `read`, or whose model calls no tools, as its model could not
+/// read them again itself: notes are asked instead.
 #[test]
-fn an_agent_without_read_gets_notes_not_a_re_read() {
+fn an_agent_that_cannot_read_gets_notes_not_a_re_read() {
+    for no_tools in [false, true] {
+        let files = Arc::new(Files::default());
+        let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
+        let messages = files.read_all(5);
+        let replies = [reply("- 0.rs: lines"), reply("done")];
+        let model = MockCompletionModel::from_stream_turns(replies);
+        let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+            return;
+        };
+        let world = app.world_mut();
+        if no_tools {
+            if let Some(mut connection) = world.get_mut::<Connection>(agent) {
+                let mut spec = connection.spec.as_ref().clone();
+                spec.tools = false;
+                connection.spec = Arc::new(spec);
+            }
+        } else {
+            world.entity_mut(agent).insert(ToolAccess::Only(Vec::new()));
+        }
+        let reads = files.reads();
+        ask(&mut app, &wakes, agent);
+        assert_eq!(answer(&app).as_deref(), Some("done"));
+        assert_eq!(files.reads(), reads, "nothing read again");
+        let sent = sent(&model);
+        assert!(
+            matches!(sent.as_slice(), [notes, _] if notes.contains("replaced by a placeholder")),
+            "{no_tools}: {sent:?}"
+        );
+    }
+}
+
+/// An output changed in the conversation while it was read again makes the
+/// held request stale: it is built again, so the notes are asked of what
+/// the conversation holds now, not of the old output.
+#[test]
+fn a_conversation_changed_during_the_re_read_is_noted_as_it_is_now() {
     let files = Arc::new(Files::default());
     let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
     let messages = files.read_all(5);
-    let model = MockCompletionModel::from_stream_turns([reply("- 0.rs: lines"), reply("done")]);
+    let model = MockCompletionModel::from_stream_turns([reply("- 0.rs: bravo"), reply("done")]);
     let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
         return;
     };
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(ToolAccess::Only(Vec::new()));
-    let reads = files.reads();
-    ask(&mut app, &wakes, agent);
+    let release = files.hold();
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    run_until(&mut app, &wakes, |world| {
+        let mut rereads = world.iter_entities();
+        rereads.any(|entity| entity.contains::<Rereading>())
+    });
+    // A plugin rewrites the oldest output, keeping its id.
+    let bravo = format!("bravo {}", "y".repeat(50_000));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        let mut first = true;
+        conversation.edit_each(Author::plugin("test"), |entry| {
+            let Message::User { content } = entry.message else {
+                return None;
+            };
+            let edited = content
+                .iter()
+                .any(|item| matches!(item, UserContent::ToolResult(_)));
+            if !(edited && std::mem::take(&mut first)) {
+                return None;
+            }
+            let mut message = entry.message.clone();
+            if let Message::User { content } = &mut message
+                && let Some(UserContent::ToolResult(result)) = content.first_mut()
+            {
+                result.content = vec![rig_core::message::ToolResultContent::text(&bravo)];
+            }
+            Some(message)
+        });
+    }
+    drop(release);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
     assert_eq!(answer(&app).as_deref(), Some("done"));
-    assert_eq!(files.reads(), reads, "nothing read again");
     let sent = sent(&model);
     assert!(
-        matches!(sent.as_slice(), [notes, _] if notes.contains("replaced by a placeholder")),
-        "{sent:?}"
+        matches!(sent.as_slice(), [notes, _]
+            if notes.contains("replaced by a placeholder") && notes.contains("bravo yyy")),
+        "the notes are asked of the output as it is now: {sent:?}"
     );
 }
 
