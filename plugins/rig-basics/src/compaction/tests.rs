@@ -1121,58 +1121,186 @@ fn a_gate_that_refuses_the_re_read_leaves_notes_to_do_it() {
     );
 }
 
-/// An output changed in the conversation while it was read again makes the
-/// held request stale: it is built again, so the notes are asked of what
-/// the conversation holds now, not of the old output.
-#[test]
-fn a_conversation_changed_during_the_re_read_is_noted_as_it_is_now() {
-    let files = Arc::new(Files::default());
-    let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
-    let messages = files.read_all(5);
-    let model = MockCompletionModel::from_stream_turns([reply("- 0.rs: bravo"), reply("done")]);
-    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+/// Rewrites the tool outputs of `agent`'s conversation, keeping their ids,
+/// as a plugin would: each to what `to` makes of its index, `only` the
+/// first one or all of them.
+fn rewrite_outputs(world: &mut World, agent: Entity, only: bool, to: impl Fn(usize) -> String) {
+    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
         return;
     };
-    let release = files.hold();
+    let mut seen = 0;
+    conversation.edit_each(Author::plugin("test"), |entry| {
+        let Message::User { content } = entry.message else {
+            return None;
+        };
+        let results = content
+            .iter()
+            .any(|item| matches!(item, UserContent::ToolResult(_)));
+        if !results || (only && seen > 0) {
+            return None;
+        }
+        let mut message = entry.message.clone();
+        if let Message::User { content } = &mut message
+            && let Some(UserContent::ToolResult(result)) = content.first_mut()
+        {
+            result.content = vec![rig_core::message::ToolResultContent::text(to(seen))];
+        }
+        seen += 1;
+        Some(message)
+    });
+}
+
+/// An output changed in the conversation while it was read again makes the
+/// held request stale: it is built again from the conversation, so the
+/// model sees the outputs as they are now. Changed to a long one, its
+/// notes are asked of it; all changed to short ones, nothing is left to
+/// clear and the request goes, with them.
+#[test]
+fn a_conversation_changed_during_the_re_read_is_seen_as_it_is_now() {
+    for only in [true, false] {
+        let files = Arc::new(Files::default());
+        let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
+        let messages = files.read_all(5);
+        let replies = match only {
+            true => vec![reply("- 0.rs: bravo"), reply("done")],
+            false => vec![reply("done")],
+        };
+        let model = MockCompletionModel::from_stream_turns(replies);
+        let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+            return;
+        };
+        let release = files.hold();
+        let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+        app.world_mut().trigger(steer);
+        run_until(&mut app, &wakes, |world| {
+            let mut rereads = world.iter_entities();
+            rereads.any(|entity| entity.contains::<Rereading>())
+        });
+        rewrite_outputs(app.world_mut(), agent, only, |n| match only {
+            true => format!("bravo {}", "y".repeat(50_000)),
+            false => format!("bravo {n}"),
+        });
+        drop(release);
+        run_until(&mut app, &wakes, |world| {
+            !world.resource::<Ended>().0.is_empty()
+        });
+        assert_eq!(answer(&app).as_deref(), Some("done"));
+        let sent = sent(&model);
+        let first = sent.first().map(String::as_str).unwrap_or_default();
+        assert!(
+            first.contains("bravo") && !first.contains("0.rs line 0000"),
+            "{only}: {sent:?}"
+        );
+        match only {
+            true => assert!(first.contains("replaced by a placeholder"), "{sent:?}"),
+            false => assert_eq!(sent.len(), 1, "{sent:?}"),
+        }
+    }
+}
+
+/// Holds the first answered notes call for review, once.
+fn hold_notes_once(
+    calls: Query<Entity, (With<Noting>, ReadyToSettle)>,
+    mut done: Local<bool>,
+    mut commands: Commands,
+) {
+    if let Some(call) = calls.iter().next()
+        && !std::mem::replace(&mut *done, true)
+    {
+        commands.spawn((Reviewing(call), HoldOf(call)));
+    }
+}
+
+/// Notes on outputs that changed while they were written clear nothing:
+/// the outputs stay as they are now, and a notice says why.
+#[test]
+fn notes_on_outputs_that_changed_meanwhile_clear_nothing() {
+    let notes = format!("- shell `readings`: calibration code {READING}");
+    let http = rig_core::test_utils::SequencedHttpClient::new([
+        shells(1, "readings", 0),
+        shells(2, "log", 640_000),
+        shells(3, "log", 160_000),
+        streamed(reasoned(8, &notes), None),
+        streamed(reasoned(9, "## Goal\nRead the logs."), None),
+        streamed(reasoned(10, "Done."), None),
+    ]);
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app).add_tool(Shell);
+    app.add_systems(AgentPass, hold_notes_once.in_set(ReviewSystems::Act));
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
+        return;
+    };
     let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
     app.world_mut().trigger(steer);
     run_until(&mut app, &wakes, |world| {
-        let mut rereads = world.iter_entities();
-        rereads.any(|entity| entity.contains::<Rereading>())
+        world.iter_entities().any(|e| e.contains::<Reviewing>())
     });
-    // A plugin rewrites the oldest output, keeping its id.
-    let bravo = format!("bravo {}", "y".repeat(50_000));
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        let mut first = true;
-        conversation.edit_each(Author::plugin("test"), |entry| {
-            let Message::User { content } = entry.message else {
-                return None;
-            };
-            let edited = content
-                .iter()
-                .any(|item| matches!(item, UserContent::ToolResult(_)));
-            if !(edited && std::mem::take(&mut first)) {
-                return None;
-            }
-            let mut message = entry.message.clone();
-            if let Message::User { content } = &mut message
-                && let Some(UserContent::ToolResult(result)) = content.first_mut()
-            {
-                result.content = vec![rig_core::message::ToolResultContent::text(&bravo)];
-            }
-            Some(message)
-        });
+    let world = app.world_mut();
+    rewrite_outputs(world, agent, false, |n| {
+        format!("bravo {n} {}", "y".repeat(20_000))
+    });
+    let held: Vec<Entity> = world
+        .query_filtered::<Entity, With<Reviewing>>()
+        .iter(world)
+        .collect();
+    for hold in held {
+        world.despawn(hold);
     }
-    drop(release);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
+    let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+    assert!(!live.contains("cleared-output-notes"), "{live}");
+    let notices = notices(&app);
+    assert!(
+        notices
+            .iter()
+            .any(|it| it.contains("changed while the notes were written")),
+        "{notices:?}"
+    );
+}
+
+/// Sends the first read of a re-read again, once, as a plugin retrying a
+/// call would.
+fn resend_a_read(
+    reads: Query<(Entity, &ToolRequest, &Effect, &ForAgent), (With<ReadAgain>, ReadyToStart)>,
+    mut done: Local<bool>,
+    mut commands: Commands,
+) {
+    let Some((read, request, effect, &ForAgent(agent))) = reads.iter().next() else {
+        return;
+    };
+    if std::mem::replace(&mut *done, true) {
+        return;
+    }
+    commands
+        .spawn((
+            request.clone(),
+            Effect::with_parent_id(effect.parent),
+            ForAgent(agent),
+        ))
+        .add_related::<SupersededBy>(&[read]);
+}
+
+/// A read of a re-read sent again counts by its successor: the re-read
+/// still ends, and the outputs are cleared.
+#[test]
+fn a_read_sent_again_still_ends_the_re_read() {
+    let files = Arc::new(Files::default());
+    let (mut app, wakes) = start_on(&MemoryStore::default(), &files);
+    app.add_systems(AgentPass, resend_a_read.in_set(Stage::Gate));
+    let messages = files.read_all(5);
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let Some(agent) = agent(&mut app, &model, 80_000, messages) else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
     let sent = sent(&model);
     assert!(
-        matches!(sent.as_slice(), [notes, _]
-            if notes.contains("replaced by a placeholder") && notes.contains("bravo yyy")),
-        "the notes are asked of the output as it is now: {sent:?}"
+        matches!(sent.as_slice(), [only] if only.contains(rig_memory::ClearToolOutputs::PLACEHOLDER)),
+        "{sent:?}"
     );
 }
 

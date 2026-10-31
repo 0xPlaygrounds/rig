@@ -128,6 +128,7 @@ impl Plugin for CompactionPlugin {
         .add_observer(follow_successor::<Noting>)
         .add_observer(carry_recovery)
         .add_observer(take_read_again)
+        .add_observer(follow_successor::<ReadAgain>)
         .add_observer(provided_by_compaction::<Summarizing>)
         .add_observer(provided_by_compaction::<Noting>);
         #[cfg(feature = "tui")]
@@ -315,8 +316,8 @@ struct Rereads<'w, 's> {
 impl Rereads<'_, '_> {
     /// Starts reading again every output `plan` clears of `conversation`,
     /// that of `agent`, which may call the tools `access` allows: a new call
-    /// of each `read` call that made one, on the turn `turn` under its model
-    /// call `call`, the effect `parent`, which it holds until the [`Reread`]
+    /// of each `read` call that made one, under the turn's model call `call`,
+    /// the effect `parent`, which it holds until the [`Reread`]
     /// is in; says whether it started. Only the outputs of `read` calls are
     /// read again, at most [`MOST_REREAD`] of them, and only while `read` is
     /// registered, the agent may call it and its model, `spec`, calls tools,
@@ -326,7 +327,7 @@ impl Rereads<'_, '_> {
     fn start(
         &self,
         commands: &mut Commands,
-        (agent, turn, call, parent): (Entity, Entity, Entity, Option<EffectId>),
+        (agent, call, parent): (Entity, Entity, Option<EffectId>),
         plan: &ClearPlan,
         (conversation, access, spec): (
             &rig_core::conversation::Conversation,
@@ -360,11 +361,12 @@ impl Rereads<'_, '_> {
             .id();
         for (function, content) in reads {
             let call = ToolCall::new(CallId::Local(LocalCallId::new()), function);
+            // Not a call of the turn: the model never made it, so nothing
+            // counts it with the turn's calls.
             commands.spawn((
                 ToolRequest { call },
                 Effect::with_parent_id(parent),
                 ForAgent(agent),
-                CallOf(turn),
                 ReadAgain {
                     of: rereading,
                     content,
@@ -386,7 +388,7 @@ struct Rereading {
 }
 
 /// One read of a re-read ([`Rereading`]), `of`, and the content of the
-/// output it reads again.
+/// output it reads again; a read sent again carries it to its successor.
 #[derive(Component)]
 struct ReadAgain {
     of: Entity,
@@ -402,15 +404,11 @@ struct Reread {
 }
 
 impl Reread {
-    /// Whether it proves the outputs `plan` clears of `conversation` can be
-    /// had again: it read again this plan, every output came back the same,
-    /// and none of them changed since ([`ClearPlan::holds`]).
-    fn proves(
-        reread: Option<&Self>,
-        plan: &ClearPlan,
-        conversation: &rig_core::conversation::Conversation,
-    ) -> bool {
-        reread.is_some_and(|it| it.same && it.plan == *plan && plan.holds(conversation))
+    /// Whether it proves the outputs `plan` clears can be had again: it read
+    /// again this very plan, messages and all, and every output came back
+    /// the same.
+    fn proves(reread: Option<&Self>, plan: &ClearPlan) -> bool {
+        reread.is_some_and(|it| it.same && it.plan == *plan)
     }
 }
 
@@ -1100,9 +1098,15 @@ fn compact_near_the_window(
         let Ok((mut compacting, last, sent)) = agents.get_mut(agent) else {
             continue;
         };
-        if reread.is_some() {
+        if let Some(reread) = reread {
             // Read once: a later step reads again.
             commands.entity(call).try_remove::<Reread>();
+            // What was read again changed meanwhile, so this request is
+            // stale: it is built again from the conversation.
+            if !reread.plan.holds(&compacting.conversation) {
+                supersede(&mut commands, (turn, agent, call), effect.parent, None);
+                continue;
+            }
         }
         let spec = &*connection.spec;
         let prompt = model.prompt.as_ref().map(|prompt| prompt.text());
@@ -1172,7 +1176,7 @@ fn compact_near_the_window(
             if reread.is_none()
                 && rereads.start(
                     &mut commands,
-                    (agent, turn, call, Some(effect.id())),
+                    (agent, call, Some(effect.id())),
                     &plan,
                     (conversation, compacting.access, spec),
                 )
@@ -1180,13 +1184,13 @@ fn compact_near_the_window(
                 // The call is held, and prepared again once the re-read is in.
                 continue;
             }
-            // What was read again changed meanwhile, so this request is
-            // stale: it is built again from the conversation.
-            if reread.is_some_and(|it| it.plan != plan || !plan.holds(conversation)) {
+            // The conversation moved on while it was read, so the clearing is
+            // another: it is built again from the conversation.
+            if reread.is_some_and(|it| it.plan != plan) {
                 supersede(&mut commands, (turn, agent, call), effect.parent, None);
                 continue;
             }
-            if !Reread::proves(reread, &plan, conversation) {
+            if !Reread::proves(reread, &plan) {
                 let kept = match (policy.near_window, plan.through) {
                     (NearWindow::Summarize, Some(through)) => {
                         let mut request = (*model).clone();
@@ -1333,7 +1337,7 @@ fn recover_from_overflow(
             && reread.is_none()
             && rereads.start(
                 &mut commands,
-                (agent, turn, call, Some(effect.id())),
+                (agent, call, Some(effect.id())),
                 &plan,
                 (conversation, compacting.access, spec),
             )
@@ -1342,7 +1346,7 @@ fn recover_from_overflow(
             continue;
         }
         // A clearing the re-read proves comes first, as it costs no model call.
-        let proven = clears && Reread::proves(reread, &plan, conversation);
+        let proven = clears && Reread::proves(reread, &plan);
         let reason = (policy, CompactReason::Overflow);
         let held = ((model, spec), None);
         let at = (agent, turn, call);

@@ -418,6 +418,15 @@ fn a_clear_plan_pairs_outputs_with_their_reply_and_clears_nothing_without_notes(
         .map(|(call, _)| call.and_then(|call| call.function.arguments.get("path")?.as_str()))
         .collect();
     assert_eq!(paths, [Some("a.rs"), Some("b.rs")]);
+    // It holds while its messages stay, whatever is added after them.
+    let mut later = conversation.clone();
+    later.push(Entry::new(Message::user("more")));
+    assert!(plan.holds(&conversation) && plan.holds(&later));
+    let mut edited = conversation.clone();
+    edited.edit_each(summary_author(), |entry| {
+        (entry.index == 2).then(|| Message::user("rewritten"))
+    });
+    assert!(!plan.holds(&edited));
     let mut blank = conversation.clone();
     assert_eq!(
         plan.apply(&mut blank, Some(" \n"), summary_author()),
