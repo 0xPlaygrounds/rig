@@ -359,12 +359,14 @@ fn output_of_a_process_that_ended_in_time_is_all_taken() {
     let Ok(mut process) = process else {
         return assert!(process.is_ok());
     };
+    // It ends before the wait starts; its output waits, queued.
+    let exited = process.wait_for(Duration::from_secs(20));
+    assert!(exited.is_ok_and(|status| status.is_some()));
     let mut taken = 0;
-    let deadline = Instant::now() + Duration::from_millis(400);
+    let deadline = Instant::now() + Duration::from_millis(100);
     let ended = process.run(Some(deadline), |line| {
         if taken == 0 {
-            // The producer ends meanwhile, its output still queued.
-            std::thread::sleep(Duration::from_millis(600));
+            std::thread::sleep(Duration::from_millis(300));
         }
         taken += line.bytes().len();
         true
