@@ -203,8 +203,13 @@ When the conversation comes within 16k tokens of the model's window, older
 tool outputs are cleared and, if that is not enough, the older messages are
 summarized by the model into a structured checkpoint (goal, progress,
 decisions, next steps, files read and changed) that requests send in their
-place; the newest 20k tokens stay as they are. When the conversation outgrows
-the window anyway, older tool outputs are cleared and the call is sent again.
+place; the newest 20k tokens stay as they are. Old outputs are cleared only
+after the model wrote notes on them, or when every one is a `read` whose
+file reads back unchanged; notes that would not fit give way to a summary,
+and when notes fail the outputs stay, a notice says why, and the older
+messages are summarized next. When the conversation outgrows the window
+anyway, the outputs are cleared if every one reads back unchanged, and the
+older messages summarized otherwise, and the call is sent again.
 `/compact` compacts now, and `/compact <focus>` says what the summary should
 keep. The summarized messages stay in the transcript, under a line that shows
 the summary; a resumed session starts from the messages the summary kept.

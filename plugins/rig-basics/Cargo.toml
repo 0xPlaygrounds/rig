@@ -47,6 +47,8 @@ rig-tui = { path = "../rig-tui", version = "0.46.0", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# The key path of a `[compaction]` value that does not fit.
+serde_path_to_error = { workspace = true }
 # A skill's frontmatter.
 serde_yaml = { workspace = true }
 # The width of a command's name in `/help`.

@@ -14018,6 +14018,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "serde_yaml",
  "unicode-width 0.2.2",
 ]
