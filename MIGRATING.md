@@ -1524,7 +1524,9 @@ Code that reads the login flow's component imports it from the new module:
 use rig_basics::login_chatgpt::PendingLogin;
 // after
 use rig_basics::login::PendingLogin;
-``` If you used the
+```
+
+If you used the
 `claude-cloak` path crate from a 0.46.0-rc.1 checkout, replace its entry with
 `crate = "rig-claude-cloak"` and `plugin = "rig_claude_cloak::ClaudeCloakPlugin"`.
 An agent built with corpus-base's `corpus_base::mcp_client::McpClientPlugin`
