@@ -157,8 +157,15 @@ impl ToolResultContext {
 /// [`redact::json`]: crate::redact::json
 fn redact_hunks(hunks: &mut Vec<super::Hunk>) {
     use super::HunkLine;
-    let lines = hunks.iter().flat_map(|hunk| &hunk.lines);
-    let joined: String = lines.map(HunkLine::text).collect();
+    // Each line ends in a break, so one without its ending (the file's
+    // last) does not run into the next.
+    let mut joined = String::new();
+    for line in hunks.iter().flat_map(|hunk| &hunk.lines) {
+        joined.push_str(line.text());
+        if !line.text().ends_with(['\n', '\r']) {
+            joined.push('\n');
+        }
+    }
     let across = crate::redact::find(&joined).any(|found| {
         let text = joined.get(found.range).unwrap_or_default();
         text.trim_end().contains(['\n', '\r'])

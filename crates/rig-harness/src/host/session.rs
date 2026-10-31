@@ -76,8 +76,8 @@ impl Deref for SessionPaths {
 /// once its log wrote and an agent's conversation has a user or assistant
 /// message, so `/resume` lists it (not a sessionless run's), and unmarks
 /// it while none has; a program that saves a new session through this
-/// marks it itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing of a
-/// session no rig runs current.
+/// marks it itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps
+/// the listing of a session no rig runs current.
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
     /// How a store is opened.

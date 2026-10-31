@@ -175,12 +175,13 @@ fn kept_facts_are_redacted_without_old_text_and_bounded() {
             "MIIEowIBAAKCAQEAabc",
             "-----END RSA PRIVATE KEY-----",
         ];
+        // The old file's last line had no ending.
+        let old = HunkLine::Removed("old".to_owned());
+        let added = block.map(|line| HunkLine::Added(format!("{line}{end}")));
         let hunk = Hunk {
-            old: Lines { start: 1, count: 0 },
+            old: Lines { start: 1, count: 1 },
             new: Lines { start: 1, count: 3 },
-            lines: block
-                .map(|line| HunkLine::Added(format!("{line}{end}")))
-                .to_vec(),
+            lines: [old].into_iter().chain(added).collect(),
         };
         let mut keyed = ToolContext::new();
         let change = FileChange::created("id_rsa", 3).with_hunks(vec![hunk]);

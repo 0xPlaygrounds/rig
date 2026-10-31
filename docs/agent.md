@@ -125,9 +125,9 @@ and every note, nothing cut or folded. A diff is drawn from what the session
 keeps of it, so a secret in it shows as `[REDACTED]`, and an edit whose diff
 holds a private key block or passes 256 KiB shows its reply instead. A call's
 row is tinted by where it stands (waiting, running, done, failed). Code is
-highlighted in the terminal's own palette, so it follows the terminal's theme. PageUp, PageDown and
-Shift+Up/Down scroll the transcript. With `NO_COLOR` set, nothing is drawn in
-color. A plugin draws its tools' calls with ordinary systems in
+highlighted in the terminal's own palette, so it follows the terminal's theme.
+PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
+nothing is drawn in color. A plugin draws its tools' calls with ordinary systems in
 `rig_tui::TranscriptRender`, selecting inputs through
 `rig_tui::RenderBatch::tools_mut` and writing their output lines.
 
@@ -149,9 +149,10 @@ with what its call published for its row, such as an edit's diff, a read's
 lines and a command's exit status, so a resumed session draws its calls as
 they were drawn), settings, usage and compactions, appended to as it runs and
 rewritten only through rig-memory (a plugin's redaction, say, keeps each
-record's place and time). Images are stored once in `files/blobs/`, and `files/meta.json` caches what
-`/resume` lists. An older session format is resumed and written on in its
-own; one from before `rig-session/2` is refused, unchanged.
+record's place and time). Images are stored once in `files/blobs/`, and
+`files/meta.json` caches what `/resume` lists. An older session format is
+resumed and written on in its own; one from before `rig-session/2` is refused,
+unchanged.
 
 Quitting mid-turn (Ctrl+D, `/quit`, closing the terminal, or a signal to a
 headless run) stops the turn as Esc does: the reply so far is kept, each

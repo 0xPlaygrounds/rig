@@ -438,10 +438,11 @@ pub(crate) fn live_call(
 
 /// Effects that settled before this run, such as a resumed session's, for
 /// [`ToolCallView::children`] and each call's running time: read as the
-/// kernel's [`EffectRecorded`] records are. `rig_basics::telemetry` sends the session's
-/// effect log once it was restored. [`PastEffects::new`] does all the work
-/// per record, so make it where the records are read, off the main thread
-/// for a long log: the view only takes it over. A later one replaces it.
+/// kernel's [`EffectRecorded`] records are. `rig_basics::telemetry` sends
+/// the session's effect log once it was restored. [`PastEffects::new`]
+/// does all the work per record, so make it where the records are read,
+/// off the main thread for a long log: the view only takes it over. A
+/// later one replaces it.
 #[derive(Message, Clone)]
 pub struct PastEffects(Arc<Settled>);
 
