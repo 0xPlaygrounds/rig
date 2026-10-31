@@ -5,9 +5,11 @@ use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::{AssistantContent, Message, Usage};
 use rig_core::conversation::{self, MessageId, short_id};
 use rig_core::effect::EffectId;
+use rig_core::message::{CallId, LocalCallId, ToolCall, ToolFunction, ToolName};
+use rig_core::streaming::{Part, PartKind, StreamEvent, parse_partial_arguments};
 use rig_memory::Anchor;
 use serde::{Deserialize, Serialize};
 
@@ -311,10 +313,12 @@ pub struct CallOf(pub Entity);
 #[relationship_target(relationship = CallOf, linked_spawn)]
 pub struct Calls(Vec<Entity>);
 
-/// Text streamed so far by an in-flight model call, for views. A plugin
-/// that continues a reply in a successor call may start the successor's
-/// `Partial` with the text so far: views show one growing reply, and a
-/// stop saves what the user saw.
+/// What an in-flight model call streamed so far: its text, reasoning and
+/// tool calls, the one record of the reply in flight that views, the
+/// status and a stop read. The kernel follows the stream into it
+/// ([`Partial::follow`]). A plugin that continues a reply in a successor
+/// call may start the successor's `Partial` with what came so far: views
+/// show one growing reply, and a stop saves what the user saw.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Default)]
 pub struct Partial {
@@ -322,6 +326,124 @@ pub struct Partial {
     pub text: String,
     /// Reasoning text.
     pub reasoning: String,
+    /// The tool calls the reply opened, in the order they opened.
+    #[reflect(ignore)]
+    pub calls: Vec<PartialCall>,
+}
+
+impl Partial {
+    /// Adds what `event` streamed: a text or reasoning fragment, a tool
+    /// call opening under its tool's name, a fragment of its arguments, or
+    /// its end with the finished call.
+    pub fn follow(&mut self, event: &StreamEvent) {
+        match event {
+            StreamEvent::Text { text, .. } => self.text.push_str(text),
+            StreamEvent::Reasoning { text, .. } => self.reasoning.push_str(text),
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            } => self.calls.push(PartialCall::new(*part, name.clone())),
+            StreamEvent::Arguments { part, json } => {
+                let call = self.calls.iter_mut().find(|call| call.streams_in(*part));
+                if let Some((_, arguments)) = call.and_then(|call| call.streaming.as_mut()) {
+                    arguments.push_str(json);
+                }
+            }
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(done),
+            } => {
+                if let Some(call) = self.calls.iter_mut().find(|call| call.streams_in(*part)) {
+                    call.call = done.clone();
+                    call.streaming = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// What a stop keeps of the reply, as an aborted message's content: the
+    /// reasoning and text unless blank, then each tool call as
+    /// [`PartialCall::stopped`] keeps it. None of the calls ever runs.
+    pub fn stopped(&self) -> Vec<AssistantContent> {
+        let reasoning = (!self.reasoning.trim().is_empty())
+            .then(|| AssistantContent::reasoning(self.reasoning.clone()));
+        let text =
+            (!self.text.trim().is_empty()).then(|| AssistantContent::text(self.text.clone()));
+        let calls = self.calls.iter().map(PartialCall::stopped);
+        reasoning
+            .into_iter()
+            .chain(text)
+            .chain(calls.map(AssistantContent::ToolCall))
+            .collect()
+    }
+}
+
+/// A tool call of a reply in flight ([`Partial::calls`]). One a plugin
+/// carries over from an earlier reply, such as a continuation's, is
+/// `PartialCall::from` the finished call.
+#[derive(Clone, Debug)]
+pub struct PartialCall {
+    /// While it streams, its tool's name, no arguments and an id rig
+    /// issued, as the provider's comes with its end; once it ended, the
+    /// finished call.
+    pub call: ToolCall,
+    /// While it streams, the part of the reply it streams in and its
+    /// argument JSON so far, as the provider sent it; `None` once it ended.
+    pub streaming: Option<(Part, String)>,
+}
+
+impl PartialCall {
+    /// A call to `name` that opened in `part`, with no arguments yet.
+    pub fn new(part: Part, name: ToolName) -> Self {
+        let id = CallId::Local(LocalCallId::new());
+        let function = ToolFunction::new(name, serde_json::Value::Null);
+        Self {
+            call: ToolCall::new(id, function),
+            streaming: Some((part, String::new())),
+        }
+    }
+
+    /// Whether it is still streaming in `part`.
+    fn streams_in(&self, part: Part) -> bool {
+        self.streaming.as_ref().is_some_and(|(at, _)| *at == part)
+    }
+
+    /// The call as a view shows it: while it streams, with the arguments
+    /// that its JSON so far states. For display only.
+    pub fn shown(&self) -> ToolCall {
+        let mut call = self.call.clone();
+        if let Some((_, arguments)) = &self.streaming {
+            call.function.arguments = parse_partial_arguments(arguments);
+        }
+        call
+    }
+
+    /// The call as a stop keeps it, never run: while it streams, its
+    /// arguments read from the JSON so far by [`ToolFunction::parse`], with
+    /// the text as it came in `invalid_arguments` unless it is a whole
+    /// object, even when none came, so nothing is invented; once it ended,
+    /// as it ended.
+    pub fn stopped(&self) -> ToolCall {
+        let mut call = self.call.clone();
+        if let Some((_, arguments)) = &self.streaming {
+            call.function = ToolFunction::parse(call.function.name.clone(), arguments);
+            if arguments.trim().is_empty() {
+                call.function.invalid_arguments = Some(arguments.clone());
+            }
+        }
+        call
+    }
+}
+
+impl From<ToolCall> for PartialCall {
+    fn from(call: ToolCall) -> Self {
+        Self {
+            call,
+            streaming: None,
+        }
+    }
 }
 
 /// Stop the agent's running turn at once, and the running turns of every

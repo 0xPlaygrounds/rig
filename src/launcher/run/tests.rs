@@ -2,21 +2,41 @@ use super::*;
 
 #[cfg(unix)]
 #[test]
-fn only_a_session_with_a_conversation_is_offered_to_resume() {
+fn only_a_failure_says_the_agent_stopped_and_only_a_saved_session_is_offered_to_resume() {
     use std::os::unix::process::ExitStatusExt;
 
-    let status = ExitStatus::from_raw(2 << 8);
+    let failed = ExitStatus::from_raw(1 << 8);
     let log = Some(Path::new("/home/.rig/sessions/s/agent.log"));
-    let saved = stopped(status, Some("rig --resume 1-2"), None, log);
-    assert!(saved.contains("`rig --resume 1-2` resumes"), "{saved}");
-    let empty = stopped(status, None, None, log);
-    let expected = "The agent stopped (exit status: 2). Log: /home/.rig/sessions/s/agent.log";
-    assert_eq!(empty, expected);
-    // A refusal said where a restarted view kept the screen comes again.
-    let refused = stopped(status, None, Some("rig: plain.\n"), log);
-    assert_eq!(refused, format!("rig: plain.\n{expected}"));
-    let no_log = stopped(status, None, None, None);
-    assert_eq!(no_log, "The agent stopped (exit status: 2).");
+    let saved = stopped(failed, Some("rig --resume 1-2"), None, log);
+    assert!(
+        saved.is_some_and(|saved| saved.contains("`rig --resume 1-2` resumes")),
+        "a failure offers to resume"
+    );
+    let expected = "The agent stopped (exit status: 1). Log: /home/.rig/sessions/s/agent.log";
+    assert_eq!(stopped(failed, None, None, log).as_deref(), Some(expected));
+    let no_log = stopped(failed, None, None, None);
+    assert_eq!(
+        no_log.as_deref(),
+        Some("The agent stopped (exit status: 1).")
+    );
+    let crashed = stopped(ExitStatus::from_raw(9), None, None, log);
+    assert!(crashed.is_some_and(|said| said.starts_with("The agent stopped (signal: 9")));
+    // A refusal is said once: again only where a restarted view kept the
+    // screen, and never as the agent stopping.
+    let refused = ExitStatus::from_raw(i32::from(REFUSED_EXIT_CODE) << 8);
+    let refusal = |lost| Some(("rig: plain.\n".to_owned(), lost));
+    assert_eq!(stopped(refused, None, refusal(false), log), None);
+    assert_eq!(
+        stopped(refused, None, refusal(true), log).as_deref(),
+        Some("rig: plain.")
+    );
+    // A signal the agent was told of ends the run as a quit does.
+    let signalled = ExitStatus::from_raw(i32::from(SIGNAL_EXIT_CODE) << 8);
+    assert_eq!(
+        stopped(signalled, Some("rig --resume 1-2"), None, log).as_deref(),
+        Some("To resume this session: rig --resume 1-2")
+    );
+    assert_eq!(stopped(signalled, None, None, log), None);
 }
 
 /// The resume command for a session named `name`, beside a second saved

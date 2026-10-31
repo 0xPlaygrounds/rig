@@ -79,6 +79,23 @@ pub fn output_limit_feedback(tool: &str, raw: &str) -> String {
     )
 }
 
+/// What the model reads, in place of its call `call`, of a reply that was
+/// stopped before the call ran, such as while its arguments streamed: the
+/// call never ran. Its arguments are echoed up to [`ECHOED_CHARS`]: as the
+/// model sent them when they are cut off (not a whole object), else whole.
+pub fn stopped_call_note(call: &ToolCall) -> String {
+    let tool = call.function.name.as_str();
+    let arguments = match &call.function.invalid_arguments {
+        Some(raw) if !raw.trim().is_empty() => format!(" Its arguments began: {}", echoed(raw)),
+        Some(_) => " It had no arguments yet.".to_owned(),
+        None => format!(
+            " Its arguments were: {}",
+            echoed(&call.function.arguments_json())
+        ),
+    };
+    format!("[This reply was stopped before its call to `{tool}` ran.{arguments}]")
+}
+
 /// How much of a call's raw arguments its feedback echoes, in characters.
 pub const ECHOED_CHARS: usize = 200;
 

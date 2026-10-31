@@ -39,6 +39,7 @@ fn stream(app: &mut App, agent: Entity, text: &str) {
     let partial = Partial {
         text: text.to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     world.spawn((CallOf(turn), partial));
 }

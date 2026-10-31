@@ -304,6 +304,14 @@ fn pending_calls_are_the_last_turns_unanswered_calls() {
         .collect();
     assert_eq!(pending, vec![id("c1"), id("c3")]);
     assert!(pending_calls(&[Message::user("hi")]).is_empty());
+    // A stopped or failed turn's calls never run, so it owes nothing.
+    for stop in [
+        StopReason::Aborted("stopped".into()),
+        StopReason::Error("lost".into()),
+    ] {
+        let cut = AssistantMessage::new(vec![call("cut")]).with_stop(stop);
+        assert!(pending_calls(&[Message::Assistant(cut)]).is_empty());
+    }
 }
 
 #[test]

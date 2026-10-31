@@ -1,5 +1,6 @@
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
+use rig_harness::rig_core::streaming::{Part, PartKind, StreamEvent};
 
 use super::*;
 
@@ -103,14 +104,28 @@ fn a_turn_is_writing_once_its_answer_streams() {
     let reasoning = Partial {
         text: " \n".to_owned(),
         reasoning: "Weighing it.".to_owned(),
+        calls: Vec::new(),
     };
     app.world_mut().entity_mut(call).insert(reasoning);
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));
     let answer = Partial {
         text: "Hello".to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     app.world_mut().entity_mut(call).insert(answer);
+    assert_eq!(status(&mut app, agent), Some(ActivityStatus::Writing));
+    // A tool call streaming its arguments is written too, text or none.
+    let Ok(write) = ToolName::new("write") else {
+        return;
+    };
+    let mut writing = Partial::default();
+    writing.follow(&StreamEvent::Start {
+        part: Part::new(0),
+        kind: PartKind::ToolCall,
+        name: Some(write),
+    });
+    app.world_mut().entity_mut(call).insert(writing);
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Writing));
 
     // The next model call has written nothing yet.
@@ -123,6 +138,7 @@ fn a_turn_is_writing_once_its_answer_streams() {
     let streaming = Partial {
         text: "Reading it.".to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     app.world_mut().entity_mut(next).insert(streaming);
     let Ok(name) = ToolName::new("read") else {

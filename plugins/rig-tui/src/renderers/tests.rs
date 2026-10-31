@@ -282,7 +282,6 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
     );
     use rig_core::streaming::{Part, PartKind, StreamEvent};
     use rig_ecs::agent::{CallOf, Partial, TurnOf};
-    use rig_ecs::turn::StreamDelta;
     let turn = app.world_mut().spawn(TurnOf(agent)).id();
     let effect = app
         .world_mut()
@@ -304,11 +303,9 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
         },
     ] {
         app.world_mut().resource_mut::<RequestsSeen>().0.clear();
-        app.world_mut().write_message(StreamDelta {
-            effect,
-            agent: Some(agent),
-            event,
-        });
+        if let Some(mut partial) = app.world_mut().get_mut::<Partial>(effect) {
+            partial.follow(&event);
+        }
         app.world_mut().write_message(crate::RequestRedraw);
         app.update();
         let seen = &app.world().resource::<RequestsSeen>().0;
@@ -550,7 +547,6 @@ fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
     use rig_core::completion::AssistantContent;
     use rig_core::streaming::{Part, PartKind, StreamEvent};
     use rig_ecs::agent::{CallOf, Partial, TurnOf};
-    use rig_ecs::turn::StreamDelta;
 
     let (mut app, agent) = crate::tests::view_app();
     let name = ToolName::new("probe");
@@ -586,11 +582,9 @@ fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
                 content: AssistantContent::ToolCall(done),
             },
         ] {
-            app.world_mut().write_message(StreamDelta {
-                effect,
-                agent: Some(agent),
-                event,
-            });
+            if let Some(mut partial) = app.world_mut().get_mut::<Partial>(effect) {
+                partial.follow(&event);
+            }
         }
     }
     app.world_mut().write_message(crate::RequestRedraw);

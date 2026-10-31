@@ -75,9 +75,10 @@ fn an_app_whose_output_is_unread_exits_as_on_a_signal() {
     use bevy_app::TaskPoolPlugin;
     use bevy_app::prelude::*;
     use rig_ecs::AgentPlugin;
+    use rig_harness_protocol::SIGNAL_EXIT_CODE;
 
     use super::{ExitOnSignalPlugin, ExitWhenUnread};
-    use crate::host::exit::{ExitPlugin, SIGNAL_EXIT_CODE};
+    use crate::host::exit::ExitPlugin;
 
     fn gone() -> bool {
         true

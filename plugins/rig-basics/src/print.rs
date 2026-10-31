@@ -49,6 +49,7 @@ use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::edit_distance;
 use rig_harness::rig_core::redact;
@@ -889,7 +890,7 @@ fn drive(
         return;
     }
     for why in recalled.read().filter_map(|recalled| recalled.why.clone()) {
-        run.fail(2, why, true);
+        run.fail(REFUSED_EXIT_CODE, why, true);
     }
     // A command such as `/login` runs without a model.
     let command = run
@@ -917,7 +918,7 @@ fn drive(
                 return;
             };
             if let Some(why) = run.refused.take() {
-                let ended = ended(Some(agent), 2);
+                let ended = ended(Some(agent), REFUSED_EXIT_CODE);
                 return end(&mut run, (ended, Reason::Said(&why)), commands);
             }
             let Ok((chosen, connected)) = agents.choices.get(agent) else {
@@ -1042,7 +1043,7 @@ fn send(
         None if restarted => return Some((ended(Some(agent), 0), Reason::Worst)),
         None => {
             let why = "no prompt: give one after --print, or pipe it in";
-            return Some((ended(Some(agent), 2), Reason::Said(why)));
+            return Some((ended(Some(agent), REFUSED_EXIT_CODE), Reason::Said(why)));
         }
     }
     None

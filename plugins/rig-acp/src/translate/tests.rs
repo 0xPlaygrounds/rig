@@ -305,3 +305,22 @@ fn rigs_file_tools_have_their_acp_kinds_and_a_move_both_its_files() {
         ]
     );
 }
+
+#[test]
+fn a_saved_call_of_a_stopped_reply_is_shown_failed_not_pending() {
+    let Ok(write) = ToolName::new("write") else {
+        return;
+    };
+    let cut = ToolCall::from_wire("c1", ToolFunction::parse(write, r#"{"path": "big.py""#));
+    let stopped = AssistantMessage::aborted(None, vec![AssistantContent::ToolCall(cut)], "stopped");
+    let conversation = Conversation::from_messages([
+        message::Message::user("Write big.py."),
+        message::Message::Assistant(stopped),
+    ]);
+    let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
+    let closed = updates.iter().find_map(|update| match update {
+        acp::SessionUpdate::ToolCallUpdate(update) => update.fields.status,
+        _ => None,
+    });
+    assert_eq!(closed, Some(acp::ToolCallStatus::Failed));
+}

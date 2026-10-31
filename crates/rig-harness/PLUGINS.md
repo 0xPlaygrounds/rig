@@ -1055,9 +1055,12 @@ Every model call streams, a turn's and a plugin's own alike. Each event is a
 with its id); `part` tells parallel tool calls apart. It is written in
 Arrive in order, after the call's adapted handler rewrote it, and kept two frames,
 so a reader in `PostUpdate` gets a reply's last events even when it settled
-that frame. A turn's call also adds its text and reasoning up in its
-`Partial` (a successor continuing a reply may start it with the text so
-far), and from its first item has a `StreamTiming { first, last, items }`
+that frame. A turn's call also adds each event up in its `Partial`, the
+one record of the reply in flight: its text, reasoning and tool calls,
+each call with its arguments so far until it ends (a successor continuing
+a reply may start it with what came so far). Views, the status and a stop
+read it; a stop keeps it, its calls never run. The call from its first
+item has a `StreamTiming { first, last, items }`
 beside its `Started { at }`. A delta moves no stage: a reader spawning
 effects runs `.before(AgentLoop)` or calls `Wake::wake`.
 

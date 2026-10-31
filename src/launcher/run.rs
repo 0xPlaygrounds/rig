@@ -36,8 +36,8 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig_harness_protocol::{
-    AgentDescription, DescribedSecret, Home, Invocation, RELOAD_EXIT_CODE, RunDir, SessionDir,
-    SessionId, StartReason, env, secret_variable,
+    AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
+    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, Staging, child};
@@ -45,9 +45,6 @@ use super::{Result, locks};
 
 /// How often the launcher looks for the ready file while the agent runs.
 const POLL: Duration = Duration::from_millis(100);
-
-/// The exit code of a run the user stopped with Ctrl+C at a prompt.
-const INTERRUPTED: u8 = 130;
 
 /// Which session `rig` runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,7 +127,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         Err(why) => {
             claimed.discard_if_unsaved(home);
             eprintln!("rig: {why}");
-            return Ok(ExitCode::from(2));
+            return Ok(ExitCode::from(REFUSED_EXIT_CODE));
         }
     };
     let command = invocation
@@ -168,7 +165,7 @@ fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, Str
 /// Says why the command line is refused, and returns its exit code.
 fn refused(why: &str) -> ExitCode {
     eprintln!("rig: {why}\nRun `rig help` for usage.");
-    ExitCode::from(2)
+    ExitCode::from(REFUSED_EXIT_CODE)
 }
 
 /// What the plugins of the build the launcher of `session` starts next add
@@ -252,7 +249,7 @@ fn launch(
                 }
                 let Some(answer) = ask_secret(&secret)? else {
                     claimed.discard_if_unsaved(home);
-                    return Ok(Ended::quiet(ExitCode::from(INTERRUPTED)));
+                    return Ok(Ended::quiet(ExitCode::from(SIGNAL_EXIT_CODE)));
                 };
                 answers.insert(variable, answer);
             }
@@ -378,10 +375,10 @@ fn launch(
         }
         let restore = std::mem::take(&mut screen);
         if !rejected {
-            let lost = refusal.filter(|_| kept_screen);
+            let refusal = refusal.map(|refusal| (refusal, kept_screen));
             let log = Some(log.as_path()).filter(|log| log.exists());
-            let said = stopped(status, resume.as_deref(), lost.as_deref(), log);
-            return Ok(Ended::new(status, Some(said)).restoring(restore));
+            let said = stopped(status, resume.as_deref(), refusal, log);
+            return Ok(Ended::new(status, said).restoring(restore));
         }
         if !home.good().exists() {
             let said = format!(
@@ -446,22 +443,35 @@ impl Ended {
     }
 }
 
-/// What the launcher says when the agent stopped with a failure: the
-/// `refusal` the agent said where it is no longer seen, where its log is
-/// when it kept one and, when the session can be resumed, the `resume`
-/// command.
+/// What the launcher says when the agent exited with `status`, not 0. A
+/// run a signal ended, which the agent was told of, gets the `resume`
+/// command as a quit does. A refused run said why itself: its `refusal`
+/// comes again only when the screen was kept since (`.1`), so it is no
+/// longer seen. Any other end is a failure: the agent stopped, where its
+/// log is when it kept one and, when the session can be resumed, the
+/// `resume` command.
 fn stopped(
     status: ExitStatus,
     resume: Option<&str>,
-    refusal: Option<&str>,
+    refusal: Option<(String, bool)>,
     log: Option<&Path>,
-) -> String {
-    let refusal = refusal.unwrap_or_default();
-    let resume = resume.map_or_else(String::new, |resume| {
-        format!(" `{resume}` resumes the session where it stopped.")
-    });
-    let log = log.map_or_else(String::new, |log| format!(" Log: {}", log.display()));
-    format!("{refusal}The agent stopped ({status}).{resume}{log}")
+) -> Option<String> {
+    let code = status.code().and_then(|code| u8::try_from(code).ok());
+    match (code, refusal) {
+        (Some(SIGNAL_EXIT_CODE), _) => {
+            resume.map(|resume| format!("To resume this session: {resume}"))
+        }
+        (Some(REFUSED_EXIT_CODE), Some((refusal, lost))) => {
+            lost.then(|| refusal.trim_end().to_owned())
+        }
+        _ => {
+            let resume = resume.map_or_else(String::new, |resume| {
+                format!(" `{resume}` resumes the session where it stopped.")
+            });
+            let log = log.map_or_else(String::new, |log| format!(" Log: {}", log.display()));
+            Some(format!("The agent stopped ({status}).{resume}{log}"))
+        }
+    }
 }
 
 /// The command that resumes `session`, when it is saved and was not

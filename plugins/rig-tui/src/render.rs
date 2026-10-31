@@ -38,7 +38,7 @@ use super::terminal::{Tui, TuiTestScreen};
 use super::theme::Theme;
 use super::transcript::{
     CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, Replaced, ShownAside, ShownEntries,
-    Stops, StreamingCalls, Transcript, live_call, notice_lines, on_band, plain_lines,
+    Stops, Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
     DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
@@ -46,8 +46,8 @@ use super::view::{
 };
 use super::wrap::wrap_all;
 use rig_core::conversation;
-use rig_core::message::{CallId, ToolCall};
-use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
+use rig_core::message::CallId;
+use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial, PartialCall};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::ToolRequest;
@@ -103,7 +103,7 @@ pub(crate) fn needs_redraw(
             Changed<Picker>,
         )>,
     >,
-    partials: Query<(), Or<(Changed<Partial>, Changed<StreamingCalls>)>>,
+    partials: Query<(), Changed<Partial>>,
     messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
     calls: Query<
         (),
@@ -365,8 +365,6 @@ pub(crate) struct ShownConversation<'a> {
     pub(crate) outputs: BTreeMap<CallId, String>,
     /// The reply streaming in, if any, and the call streaming it.
     pub(crate) partial: Option<(Entity, &'a Partial)>,
-    /// The tool calls it streams.
-    pub(crate) streaming: Vec<ToolCall>,
     /// The asides in its conversation, in the order put.
     pub(crate) asides: Vec<ShownAside<'a>>,
     /// The calls under each of its tool calls that started any.
@@ -387,7 +385,6 @@ impl<'a> ShownConversation<'a> {
             calls: BTreeMap::new(),
             outputs: BTreeMap::new(),
             partial: None,
-            streaming: Vec::new(),
             asides: asides(conversation),
             children: ChildCalls::default(),
         }
@@ -555,7 +552,6 @@ pub(crate) struct LayoutSources<'w, 's> {
     live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
     facts: Res<'w, CallFacts>,
-    streaming: Query<'w, 's, &'static StreamingCalls>,
     notices: Res<'w, Notices>,
     theme: Res<'w, Theme>,
 }
@@ -575,7 +571,6 @@ impl LayoutSources<'_, '_> {
                 streams.filter_map(|call| Some((call, self.partials.get(call).ok()?)));
             streams.next_back()
         });
-        let streaming = partial.and_then(|(call, _)| self.streaming.get(call).ok());
         let mut inbox: Vec<(&Effect, &Incoming)> = self
             .accepted
             .iter()
@@ -593,10 +588,6 @@ impl LayoutSources<'_, '_> {
             calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
-            streaming: streaming
-                .into_iter()
-                .flat_map(StreamingCalls::calls)
-                .collect(),
             asides: asides(conversation),
             children: self.facts.children(&self.live_calls(), &id.0),
         })
@@ -787,8 +778,13 @@ pub(crate) fn lay_out_transcript(
                     extra.extend(view(Role::Assistant, &partial.text, &marks).default_lines());
                 }
             }
-            for (at, call) in shown.streaming.iter().enumerate() {
+            let streaming = shown
+                .partial
+                .into_iter()
+                .flat_map(|(_, partial)| &partial.calls);
+            for (at, call) in streaming.map(PartialCall::shown).enumerate() {
                 sources.renderers.at(Place::Outside(at));
+                let call = &call;
                 let mut view = ToolCallView::new(call, None, CallState::Streaming);
                 view.theme = *sources.theme;
                 let start = extra.len();

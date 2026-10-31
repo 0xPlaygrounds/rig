@@ -1085,6 +1085,12 @@ impl Summarizer {
                     }
                 }
                 Message::Assistant(reply) => {
+                    // A failed or stopped reply's calls never ran.
+                    let call_label = match reply.stop.as_ref().is_some_and(|stop| stop.is_failure())
+                    {
+                        true => "Assistant tool call, never ran",
+                        false => "Assistant tool call",
+                    };
                     for item in &reply.content {
                         match item {
                             AssistantContent::Text(text) => {
@@ -1098,7 +1104,7 @@ impl Summarizer {
                             AssistantContent::ToolCall(call) => {
                                 let arguments = serde_json::to_string(&call.function.arguments);
                                 parts.push(format!(
-                                    "[Assistant tool call]: {}({})",
+                                    "[{call_label}]: {}({})",
                                     call.function.name.as_str(),
                                     snippet(&arguments.unwrap_or_default())
                                 ));

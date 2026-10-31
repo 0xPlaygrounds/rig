@@ -7,9 +7,10 @@ input), and the default screen is built from the same public widgets a plugin
 places in panels of its own.
 
 The view tells the terminal when a turn of an agent nothing spawned runs, as a
-shell does a command: OSC 133 marks (`C` as it starts, `D;0` or `D;1` as it
-ends, then `A` and `B`), a state report (`133;S;activity=busy` or `reading`)
-for a multiplexer such as fux, and the title (`rig · working`, `rig · idle`).
+shell does a command: OSC 133 marks (`C` as it starts, `D;1` as it fails or
+`D;0` as it answers or stops, then `A` and `B`), a state report
+(`133;S;activity=busy` or `reading`) for a multiplexer such as fux, and the
+title (`rig · working`, `rig · idle`, `rig · error` only after a failed turn).
 When the shell's marks carry a nonce, `mark_nonce_env` under `[tui]` in
 `settings.toml` names the variable holding it (for fux, `FUX_MARK_NONCE`).
 

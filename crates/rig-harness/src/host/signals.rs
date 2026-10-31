@@ -24,8 +24,9 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 
 use rig_ecs::tasks::Wake;
+use rig_harness_protocol::SIGNAL_EXIT_CODE;
 
-use super::exit::{Exit, ExitReason, SIGNAL_EXIT_CODE};
+use super::exit::{Exit, ExitReason};
 use super::launcher::LauncherGone;
 
 /// How long a clean exit may take before a repeat signal forces it; the

@@ -25,7 +25,7 @@ use std::sync::{Arc, OnceLock};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{error, warn};
-use rig_harness_protocol::{Home, Invocation, RunDir, env};
+use rig_harness_protocol::{Home, Invocation, REFUSED_EXIT_CODE, RunDir, env};
 
 use super::cli;
 use super::exit::{Exit, ExitReason, reason_from_exit};
@@ -273,7 +273,7 @@ pub(crate) fn refuse(app: &mut App, why: String) {
 /// is not rolled back.
 fn exit_refused(mut commands: Commands) {
     commands.remove_resource::<Refused>();
-    commands.trigger(Exit(ExitReason::Failed(2)));
+    commands.trigger(Exit(ExitReason::Failed(REFUSED_EXIT_CODE)));
 }
 
 /// The failed build the launcher started after, until the primary agent
