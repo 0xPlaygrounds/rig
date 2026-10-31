@@ -480,19 +480,24 @@ fn prioritized_tests_exist() {
                     .map(move |(i, _)| (kind, &line[i + kind.len()..]))
             })
         {
-            // `test(=a::b::name)` names the function `name`; `binary_id(package::name)`
-            // the binary `name`.
+            // `test(=a::b::name)` names the function `name` in the module file
+            // `a/b.rs` (or `a/b/mod.rs`); `binary_id(package::name)` the binary `name`.
             let name = rest.split(')').next().unwrap();
             let name = name.strip_prefix('=').unwrap_or(name);
-            let name = name.rsplit("::").next().unwrap();
+            let (module, name) = name.rsplit_once("::").unwrap_or(("", name));
             if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 continue;
             }
             checked += 1;
             let found = if kind == "test(" {
+                let file = module.replace("::", "/");
                 sources.iter().any(|p| {
-                    std::fs::read_to_string(root.join(p))
-                        .is_ok_and(|text| text.contains(&format!("fn {name}(")))
+                    let in_module = file.is_empty()
+                        || p.ends_with(&format!("{file}.rs"))
+                        || p.ends_with(&format!("{file}/mod.rs"));
+                    in_module
+                        && std::fs::read_to_string(root.join(p))
+                            .is_ok_and(|text| text.contains(&format!("fn {name}(")))
                 })
             } else {
                 sources.iter().any(|p| {
