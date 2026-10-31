@@ -70,10 +70,10 @@ const FOLD_SUMMARIZER: Summarizer = Summarizer {
              agent, so the agent can go on without reading it. Output only the summary.",
         ),
         initial: std::borrow::Cow::Borrowed(
-            "The conversation above is one finished chapter of the session. Summarize it.",
+            "The conversation is one finished chapter of the session. Summarize it.",
         ),
         update: std::borrow::Cow::Borrowed(
-            "The conversation above is one finished chapter of the session. Summarize it.",
+            "The conversation is one finished chapter of the session. Summarize it.",
         ),
         format: std::borrow::Cow::Borrowed(
             "\n\nUse exactly this format, short, keeping exact paths and names:\n\n\
