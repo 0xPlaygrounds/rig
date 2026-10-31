@@ -152,8 +152,8 @@ struct Meter(u32);
 struct Duty(u32);
 
 /// A fork copies a saved component, starts a `Reset` one at its default
-/// and never has a `Never` one, even one every agent requires, and so it
-/// is restored.
+/// and does not get a `Never` one, even one every agent requires, and so
+/// it is restored, where it has the `Never` one only as a new agent would.
 #[test]
 fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
     let store = MemoryStore::default();
@@ -199,7 +199,7 @@ fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
     let fork = agent(&mut again, &fork_id);
     assert!(fork.is_some(), "the fork is restored");
     let Some(fork) = fork else { return };
-    // Restored, it has the duty every agent requires, never the source's.
+    // Restored, it has the duty every agent requires, not the source's.
     let restored = (forked.0, forked.1, Some(Duty(0)), forked.3);
     assert_eq!(read(again.world(), fork), restored);
 }

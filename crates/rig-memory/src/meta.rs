@@ -68,13 +68,16 @@ impl SessionMeta {
     /// `updated` set to now, and each listed value (keys in `listed`, plus
     /// those already listed), taken from the session's own values, else from
     /// the main agent ([`Session::main_agent`]) and then the first other
-    /// agent started that has one. A value that is gone is unlisted. The
-    /// title and labels stay.
+    /// agent that has one, those nothing spawned first, each group by id, as
+    /// a running rig lists them. A value that is gone is unlisted. The title
+    /// and labels stay.
     pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
         let main = session.main_agent();
         let is_main = |agent: &SavedAgent| main.is_some_and(|main| std::ptr::eq(agent, main));
-        let others = (session.agents.iter()).filter(|agent| !agent.retired && !is_main(agent));
-        let agents: Vec<_> = main.into_iter().chain(others).collect();
+        let mut agents: Vec<_> = (session.agents.iter())
+            .filter(|agent| !agent.retired)
+            .collect();
+        agents.sort_by_key(|agent| (!is_main(agent), agent.parent.is_some(), &agent.id));
         self.messages = main.map_or(0, |main| main.conversation.messages().len());
         self.model = main.and_then(|main| main.model()).unwrap_or_default();
         let keys: BTreeSet<String> = listed.iter().chain(self.listed.keys()).cloned().collect();

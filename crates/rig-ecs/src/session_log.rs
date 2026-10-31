@@ -53,7 +53,8 @@ use super::{SaveSystems, WriteLogs};
 ///   its type is reported and not inserted; its next save replaces it.
 /// - A fork ([`ForkAgent`](super::fork::ForkAgent)) copies an agent's
 ///   value, unless the type says otherwise as `Saved(Reset)` ([`Reset`]) or
-///   `Saved(Never)` ([`Never`]).
+///   `Saved(Never)` ([`Never`]); either is saved with the fork, so a restore
+///   brings the fork back the same.
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
@@ -66,8 +67,9 @@ pub struct ReflectSaved {
 /// `#[reflect(Component, Saved(Reset))]`.
 pub struct Reset;
 
-/// A saved agent component a fork never has, such as a duty the source
-/// owes: `#[reflect(Component, Saved(Never))]`.
+/// A saved agent component a fork does not get, such as a duty the source
+/// owes: `#[reflect(Component, Saved(Never))]`. The fork has it only as a
+/// new agent would, when every agent requires it.
 pub struct Never;
 
 /// What a fork gets of a saved component.

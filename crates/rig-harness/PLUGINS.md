@@ -1413,7 +1413,7 @@ says. A resource that says `#[reflect(Resource, Saved)]` and is inserted in
 `build` is kept the same way, and one holding rig-core data, such as a
 `MessageId`, is saved through serde. A fork copies an agent's value unless
 its type says `Saved(Reset)` (the fork gets its `Default`, as a meter of the
-agent's own calls) or `Saved(Never)` (the fork never has it, as a duty the
+agent's own calls) or `Saved(Never)` (the fork does not get it, as a duty the
 source owes), from `rig_ecs::session_log`. A plugin says what it keeps
 (`keeps_saved::<T>()`, `keeps_files("vim")`) as `Keeps` on its entity. A
 changed type needs no upgrade step ([saved value](#words)).
