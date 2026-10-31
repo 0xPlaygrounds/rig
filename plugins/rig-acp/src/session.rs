@@ -640,28 +640,24 @@ fn open(mut opened: Opened) {
     // each sign-in knows what its account offers. A new session's agent then
     // gets the first model it can reach, as a headless run's does; the
     // answer waits a frame, so its options show it.
-    let pick = FirstPick::of(&opened.models);
-    if pick == FirstPick::Checking {
-        return;
-    }
-    if !opened.session.chose && chosen.is_none() {
-        match pick {
-            FirstPick::Checking | FirstPick::Nothing(None) => {}
-            FirstPick::Model(model) => {
-                opened.session.chose = true;
-                opened.commands.trigger(SetModel {
-                    entity: agent,
-                    model,
-                    kind: ChoiceKind::ForThisRun,
-                });
-                opened.session.wake.wake();
-                return;
-            }
-            FirstPick::Nothing(Some(why)) => {
-                let why = format!("No model can be reached: {why}.");
-                opened.notices.write(Notice::error(agent, why));
-            }
+    let picks = !opened.session.chose && chosen.is_none();
+    match FirstPick::of(&opened.models) {
+        FirstPick::Checking => return,
+        FirstPick::Model(model) if picks => {
+            opened.session.chose = true;
+            opened.commands.trigger(SetModel {
+                entity: agent,
+                model,
+                kind: ChoiceKind::ForThisRun,
+            });
+            opened.session.wake.wake();
+            return;
         }
+        FirstPick::Nothing(Some(why)) if picks => {
+            let why = format!("No model can be reached: {why}.");
+            opened.notices.write(Notice::error(agent, why));
+        }
+        _ => {}
     }
     opened.session.chose = true;
     let replay = opened.session.replay.take().unwrap_or_default();

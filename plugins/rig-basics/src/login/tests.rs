@@ -333,27 +333,73 @@ fn a_credential_refresh_that_never_answers_ends_with_the_lists_deadline() {
 }
 
 #[test]
-fn a_model_the_list_asked_again_leaves_out_is_refused_unsent() {
+fn a_model_the_list_asked_again_leaves_out_is_refused_and_so_is_choosing_it_again() {
     let backend = Backend::default();
     let lists = [(200, SOL), (200, NONE)];
     let (mut app, wakes, agent) = signed_in("login-again", (&backend, &lists), NEVER, |_| {});
     on_sol(&mut app, agent);
     ask(&mut app, &wakes, agent, "Hello.");
     assert_eq!(backend.sent.load(Ordering::SeqCst), 1);
+    // The second list leaves Sol out: the agent's connection is refused.
     run_until(&mut app, &wakes, |world| {
-        matches!(
-            status(world, "gpt-6.1-sol"),
-            Some(ModelStatus::NotOffered(_))
-        )
+        world.get::<ModelRefused>(agent).is_some()
     });
-    ask(&mut app, &wakes, agent, "Again.");
-    let ended = &app.world().resource::<Ended>().0;
-    let refused = ended.last();
+    let refused = |app: &App| {
+        let refused = app.world().get::<ModelRefused>(agent);
+        refused.map(|ModelRefused(why)| why.clone())
+    };
+    let said = "Cannot use chatgpt/gpt-6.1-sol: not offered to this ChatGPT account.";
+    assert_eq!(refused(&app).as_deref(), Some(said));
+    assert!(app.world().get::<Connection>(agent).is_none());
+    // Choosing it again, as an editor may, is refused too.
+    on_sol(&mut app, agent);
+    app.update();
+    assert!(app.world().get::<Connection>(agent).is_none());
+    let again = refused(&app).unwrap_or_default();
     assert!(
-        matches!(refused, Some(TurnOutcome::Failed(why)) if why.contains("not offered to this ChatGPT account")),
-        "{ended:?}"
+        again.contains("not offered to this ChatGPT account"),
+        "{again}"
     );
     assert_eq!(backend.sent.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_request_for_another_model_than_the_connected_one_is_checked_too() {
+    use rig_core::completion::CompletionRequest;
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_core::serve::{BeforeServe, Intercept};
+
+    let backend = Backend::default();
+    let lists = [(200, SOL)];
+    let (app, _, _) = signed_in("login-override", (&backend, &lists), NEVER, |_| {});
+    let session = app.world().resource::<super::Session>();
+    let Some(sol) = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok() else {
+        return;
+    };
+    let gate = offered::Gate {
+        offered: Arc::clone(&session.offered),
+        spec: sol.spec.clone(),
+        auth: session.auth.clone(),
+        http: DynHttpClient::new(backend.clone()),
+    };
+    let asking = |model: Option<&str>| EffectKind::Completion {
+        request: Arc::new(
+            CompletionRequest::new("Hello.").model::<String>(model.map(str::to_owned)),
+        ),
+        stream: true,
+    };
+    let before = |kind: &EffectKind| bevy_tasks::block_on(gate.before(EffectId::from_raw(1), kind));
+    assert!(matches!(before(&asking(None)), BeforeServe::Proceed));
+    let terra = before(&asking(Some("gpt-6.1-terra")));
+    let said = match &terra {
+        BeforeServe::Deny(report) => report.message.clone(),
+        _ => String::new(),
+    };
+    assert_eq!(
+        said,
+        "chatgpt/gpt-6.1-terra is not offered to this ChatGPT account"
+    );
+    assert_eq!(backend.sent.load(Ordering::SeqCst), 0);
 }
 
 #[test]

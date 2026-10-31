@@ -112,15 +112,6 @@ impl<A: CredentialSource> SignedInModel<A> {
         {
             return Ok(Arc::clone(model));
         }
-        let mut options = ConnectOptions::new()
-            .api_key(context.api_key.clone())
-            .http(self.http.clone());
-        if let Some(account_id) = &context.account_id {
-            options = options.account_id(account_id);
-        }
-        if let Some(api_base) = &context.api_base {
-            options = options.base_url(api_base);
-        }
         let model = if self.spec.provider.vendor() == chatgpt::PROVIDER_NAME {
             chatgpt::signed_in_config(&context)
                 .map(|config| {
@@ -132,6 +123,15 @@ impl<A: CredentialSource> SignedInModel<A> {
                 })
                 .map_err(ConnectError::from)
         } else {
+            let mut options = ConnectOptions::new()
+                .api_key(context.api_key.clone())
+                .http(self.http.clone());
+            if let Some(account_id) = &context.account_id {
+                options = options.account_id(account_id);
+            }
+            if let Some(api_base) = &context.api_base {
+                options = options.base_url(api_base);
+            }
             Catalog::builtin().connect_with(&self.spec, options)
         }
         .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))?;

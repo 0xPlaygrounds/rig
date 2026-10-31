@@ -18,10 +18,11 @@ use rig_core::providers::chatgpt::auth::Authenticator;
 use rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_core::wasm_compat::timeout;
 
-use rig_ecs::model::Models;
+use rig_ecs::agent::{ActiveTurn, Notice};
+use rig_ecs::model::{Connection, ModelRefused, Models};
 use rig_ecs::tasks::Wake;
 
-use super::TITLE;
+use super::{PROVIDER, TITLE};
 
 /// What the backend answered: the slugs the account may use, or why it
 /// could not be asked.
@@ -84,7 +85,7 @@ impl Offered {
             Asking::Answered(asked) => Some(asked.clone()),
             Asking::Running(_) => None,
             Asking::NotYet => {
-                self.start(&mut state, auth, http);
+                self.start(&mut state, (auth, http), Vec::new());
                 None
             }
         }
@@ -100,16 +101,21 @@ impl Offered {
     ) -> ModelStatus {
         match self.now(auth, http) {
             None => ModelStatus::Checking,
-            Some(asked) => match refusal(&asked, spec) {
+            Some(asked) => match refusal(&asked, &spec.id) {
                 None => ModelStatus::Usable,
-                Some(Refusal::NotOffered(why)) => ModelStatus::NotOffered(why),
-                Some(Refusal::Unasked(why)) => ModelStatus::Unavailable(why),
+                Some(why @ Refusal::NotOffered) => {
+                    ModelStatus::NotOffered(why.text(&spec.reference()))
+                }
+                Some(why @ Refusal::Unasked(_)) => {
+                    ModelStatus::Unavailable(why.text(&spec.reference()))
+                }
             },
         }
     }
 
-    /// Why `spec` is refused, once the answer is known; `None` while it is
-    /// not, so a model can connect and its request waits.
+    /// Why a model of the plan `spec` names is refused, once the answer is
+    /// known, worded after `Cannot use <model>:`; `None` while it is not, so
+    /// a model can connect and its request waits.
     pub(super) fn refused(
         self: &Arc<Self>,
         spec: &ModelSpec,
@@ -117,26 +123,28 @@ impl Offered {
         http: &DynHttpClient,
     ) -> Option<String> {
         let asked = self.now(auth, http)?;
-        refusal(&asked, spec).map(Refusal::into_text)
+        refusal(&asked, &spec.id).map(Refusal::reason)
+    }
+
+    /// Why the model `slug` is refused, if the answer came and refuses it.
+    fn known_refusal(&self, slug: &str) -> Option<Refusal> {
+        match &self.state().asked {
+            Asking::Answered(asked) => refusal(asked, slug),
+            _ => None,
+        }
     }
 
     /// The answer, waiting for it, asking first if nobody had.
     async fn answer(self: &Arc<Self>, auth: &Authenticator, http: &DynHttpClient) -> Asked {
-        let waiting = {
+        let (sender, waiting) = async_channel::bounded(1);
+        {
             let mut state = self.state();
-            if let Asking::NotYet = state.asked {
-                self.start(&mut state, auth, http);
-            }
             match &mut state.asked {
                 Asking::Answered(asked) => return asked.clone(),
-                Asking::Running(waiting) => {
-                    let (sender, receiver) = async_channel::bounded(1);
-                    waiting.push(sender);
-                    receiver
-                }
-                Asking::NotYet => return Err("the model list was not asked for".to_owned()),
+                Asking::Running(waiting) => waiting.push(sender),
+                Asking::NotYet => self.start(&mut state, (auth, http), vec![sender]),
             }
-        };
+        }
         waiting
             .recv()
             .await
@@ -151,7 +159,7 @@ impl Offered {
             return;
         }
         state.again = true;
-        self.start(&mut state, auth, http);
+        self.start(&mut state, (auth, http), Vec::new());
     }
 
     /// Forgets the answer, as a sign-in or sign-out may change the account,
@@ -166,9 +174,14 @@ impl Offered {
         self.answers.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Starts the one request on the IO pool.
-    fn start(self: &Arc<Self>, state: &mut State, auth: &Authenticator, http: &DynHttpClient) {
-        state.asked = Asking::Running(Vec::new());
+    /// Starts the one request on the IO pool, which answers `waiting` too.
+    fn start(
+        self: &Arc<Self>,
+        state: &mut State,
+        (auth, http): (&Authenticator, &DynHttpClient),
+        waiting: Vec<async_channel::Sender<Asked>>,
+    ) {
+        state.asked = Asking::Running(waiting);
         let (epoch, offered) = (state.epoch, Arc::clone(self));
         let (auth, http) = (auth.clone(), http.clone());
         let pool = IoTaskPool::get_or_init(TaskPool::default);
@@ -221,27 +234,34 @@ impl Offered {
 /// Why a model is refused by an answer.
 enum Refusal {
     /// The account does not offer it.
-    NotOffered(String),
-    /// The backend could not be asked.
+    NotOffered,
+    /// The backend could not be asked, for this reason.
     Unasked(String),
 }
 
 impl Refusal {
-    fn into_text(self) -> String {
+    /// The reason, worded after `Cannot use <model>:`.
+    fn reason(self) -> String {
         match self {
-            Self::NotOffered(why) | Self::Unasked(why) => why,
+            Self::NotOffered => format!("not offered to this {TITLE} account"),
+            Self::Unasked(why) => why,
+        }
+    }
+
+    /// The refusal of the model `reference`, whole.
+    fn text(self, reference: &str) -> String {
+        match self {
+            Self::NotOffered => format!("{reference} is {}", self.reason()),
+            Self::Unasked(why) => why,
         }
     }
 }
 
-/// Why `asked` refuses `spec`, if it does.
-fn refusal(asked: &Asked, spec: &ModelSpec) -> Option<Refusal> {
+/// Why `asked` refuses the model `slug`, if it does.
+fn refusal(asked: &Asked, slug: &str) -> Option<Refusal> {
     match asked {
-        Ok(listed) if listed.contains(&spec.id) => None,
-        Ok(_) => Some(Refusal::NotOffered(format!(
-            "{} is not offered to this {TITLE} account",
-            spec.reference()
-        ))),
+        Ok(listed) if listed.iter().any(|listed| listed == slug) => None,
+        Ok(_) => Some(Refusal::NotOffered),
         Err(why) => Some(Refusal::Unasked(format!(
             "could not ask {TITLE} which models this account may use ({why}); /login asks again"
         ))),
@@ -263,13 +283,21 @@ impl Intercept for Gate {
         "account-models".to_owned()
     }
 
-    async fn before(&self, _: EffectId, _: &EffectKind) -> BeforeServe {
+    /// Checks the model the request is sent to: its own override, else the
+    /// connected one.
+    async fn before(&self, _: EffectId, kind: &EffectKind) -> BeforeServe {
         let asked = self.offered.answer(&self.auth, &self.http).await;
-        match refusal(&asked, &self.spec) {
+        let overridden = match kind {
+            EffectKind::Completion { request, .. } => request.model.as_deref(),
+            _ => None,
+        };
+        let sent = overridden.unwrap_or(&self.spec.id);
+        match refusal(&asked, sent) {
             None => BeforeServe::Proceed,
-            Some(why) => BeforeServe::Deny(
-                ErrorReport::new(ErrorKind::Provider, why.into_text()).with_retryable(false),
-            ),
+            Some(why) => {
+                let why = why.text(&format!("{PROVIDER}/{sent}"));
+                BeforeServe::Deny(ErrorReport::new(ErrorKind::Provider, why).with_retryable(false))
+            }
         }
     }
 
@@ -292,13 +320,40 @@ impl Intercept for Gate {
 /// and editors list what the account offers, and agents refused before
 /// connect again.
 pub(super) fn show_answers(
-    offered: Res<super::Session>,
+    session: Res<super::Session>,
     mut models: ResMut<Models>,
     mut seen: Local<u64>,
 ) {
-    let answers = offered.offered.answers();
+    let answers = session.offered.answers();
     if answers != *seen {
         *seen = answers;
         models.set_changed();
+    }
+}
+
+/// Refuses, with an error notice, the connection of an idle agent to one
+/// of the plan's models the answer refuses, such as after a model was not
+/// found and the list was asked again: its front shows the model refused,
+/// and choosing it again is refused too. An agent whose turn runs is
+/// refused once it ends; its request is refused unsent meanwhile.
+pub(super) fn refuse_unoffered(
+    session: Res<super::Session>,
+    agents: Query<(Entity, &Connection), (Without<ActiveTurn>, Without<ModelRefused>)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (agent, Connection { spec, .. }) in &agents {
+        if spec.provider.vendor() != PROVIDER {
+            continue;
+        }
+        let Some(why) = session.offered.known_refusal(&spec.id) else {
+            continue;
+        };
+        let why = format!("Cannot use {}: {}.", spec.reference(), why.reason());
+        commands
+            .entity(agent)
+            .remove::<Connection>()
+            .insert(ModelRefused(why.clone()));
+        notices.write(Notice::error(agent, why));
     }
 }
