@@ -222,19 +222,7 @@ impl fmt::Display for ErrorReport {
 
 impl std::error::Error for ErrorReport {}
 
-/// The one status → retryable table.
-///
-/// Request Timeout (408), Too Early (425), Too Many Requests (429) and every
-/// server error (5xx) are retryable; every other status is not. A missing
-/// status decides nothing here: a failure with no status is classified by
-/// what it is ([`transient_transport`]), not by what it lacks.
-pub const fn retryable_status(status: Option<u16>) -> bool {
-    match status {
-        None => false,
-        Some(408 | 425 | 429) => true,
-        Some(s) => s >= 500 && s <= 599,
-    }
-}
+pub use crate::http_client::retryable_status;
 
 /// Whether a transport failure may pass on a second send: `StreamEnded` and
 /// what the transport itself called [`Transient`](http_client::Error::Transient)

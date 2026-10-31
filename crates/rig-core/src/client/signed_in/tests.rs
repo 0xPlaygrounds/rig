@@ -1,6 +1,7 @@
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::effect::EffectId;
+use crate::http_client;
 use crate::providers::chatgpt::auth::{
     AuthSource, Authenticator, DeviceCodeHandler, MemoryTokenStore, TokenStore,
 };
@@ -26,7 +27,10 @@ async fn refreshed_with(reply: MockHttpResponse) -> anyhow::Result<ErrorReport> 
         false,
     );
     let http = DynHttpClient::new(SequencedHttpClient::new([reply]));
-    let spec = Catalog::builtin().resolve("chatgpt/gpt-5.5")?.spec.clone();
+    let spec = Catalog::builtin()
+        .resolve("chatgpt/gpt-6.1-sol")?
+        .spec
+        .clone();
     let model = SignedInModel::new(spec, auth, http)?;
     let kind = EffectKind::Completion {
         request: Arc::new(CompletionRequest::new("hi")),
@@ -75,6 +79,37 @@ async fn a_failed_refresh_keeps_the_class_of_its_reply() -> anyhow::Result<()> {
             "{message}"
         );
         anyhow::ensure!(message.ends_with("sign in again") != retryable, "{message}");
+    }
+    Ok(())
+}
+
+/// A sign-in that failed without a reply keeps its transport's class: a
+/// dropped connection is retried, a request the transport refused and a
+/// failure of the sign-in itself are final.
+#[test]
+fn a_failed_sign_in_without_a_reply_keeps_its_class() -> anyhow::Result<()> {
+    let reset = || std::io::Error::from(std::io::ErrorKind::ConnectionReset);
+    for (error, retryable) in [
+        (
+            AuthError::Http(http_client::Error::transient(reset())),
+            true,
+        ),
+        (
+            AuthError::Http(http_client::Error::permanent(reset())),
+            false,
+        ),
+        (
+            AuthError::Message("ChatGPT sign-in required.".into()),
+            false,
+        ),
+    ] {
+        let report = failed_sign_in(error);
+        anyhow::ensure!(report.retryable == retryable, "{report:?}");
+        anyhow::ensure!(
+            report.message.ends_with("sign in again") != retryable,
+            "{}",
+            report.message
+        );
     }
     Ok(())
 }

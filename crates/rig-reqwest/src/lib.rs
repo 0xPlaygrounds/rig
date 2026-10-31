@@ -143,7 +143,7 @@ impl From<reqwest::Client> for ReqwestClient {
 use bytes::Bytes;
 use rig_http::http_client::{
     DynHttpClient, Error, HttpClientExt, LazyBody, MultipartForm, Request, Response, Result,
-    StreamingResponse, multipart::PartContent,
+    StreamingResponse, multipart::PartContent, retryable_status,
 };
 use rig_http::wasm_compat::*;
 use std::pin::Pin;
@@ -186,18 +186,20 @@ impl std::error::Error for TransportBuildError {
 }
 
 /// Classify a reqwest error, retaining it as the source. A request reqwest
-/// could not build or a redirect it would not follow is
-/// [`Error::Permanent`]; an error that names a status is a non-success
-/// reply, which its status classifies; every other failure (connecting, a
-/// timeout, a body cut short) is [`Error::Transient`].
+/// could not build, a redirect it would not follow, and an error naming a
+/// status [`retryable_status`] does not retry (from `error_for_status`) are
+/// [`Error::Permanent`]; every other failure (connecting, a timeout, a body
+/// cut short, a retried status) is [`Error::Transient`].
 ///
 /// A non-success reply this transport reads itself goes through
-/// [`non_success_body_error`] instead, which keeps its headers and body.
+/// [`non_success_body_error`] instead, which keeps its status, headers and
+/// body.
 pub fn from_reqwest(err: reqwest::Error) -> Error {
-    if let Some(status) = err.status() {
-        return Error::non_success_with_details(status, http::HeaderMap::new(), err.to_string());
-    }
-    if err.is_builder() || err.is_redirect() {
+    let permanent = match err.status() {
+        Some(status) => !retryable_status(Some(status.as_u16())),
+        None => err.is_builder() || err.is_redirect(),
+    };
+    if permanent {
         Error::permanent(err)
     } else {
         Error::transient(err)

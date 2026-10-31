@@ -95,10 +95,9 @@ fn every_rejection_status_survives() {
 /// never existed.
 ///
 /// Each also says whether a second send may pass: only a connection that
-/// dropped or could not be made may.
+/// dropped or could not be made may, and a TLS failure.
 ///
-/// `Tls` is absent because it cannot be constructed without a TLS backend
-/// in scope.
+/// `Tls` is absent because its variants depend on the TLS backend.
 #[test]
 fn every_transport_failure_keeps_no_response_and_says_its_retry_class() {
     let header = http::header::HeaderName::from_bytes(b"not a header")

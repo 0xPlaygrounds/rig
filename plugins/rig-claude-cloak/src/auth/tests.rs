@@ -286,3 +286,22 @@ fn errors_do_not_include_secrets_or_response_bodies() -> anyhow::Result<()> {
     anyhow::ensure!(!AuthError::Http(401).to_string().contains("https://"));
     Ok(())
 }
+
+/// Only a lock another refresh holds, the network, or a status the retry
+/// table retries may pass on a second try.
+#[test]
+fn only_waits_the_network_and_retried_statuses_are_transient() -> anyhow::Result<()> {
+    for (error, transient) in [
+        (AuthError::Busy, true),
+        (AuthError::Network, true),
+        (AuthError::Http(429), true),
+        (AuthError::Http(503), true),
+        (AuthError::Http(401), false),
+        (AuthError::NotLoggedIn, false),
+        (AuthError::Client, false),
+        (AuthError::Storage, false),
+    ] {
+        anyhow::ensure!(error.is_transient() == transient, "{error}");
+    }
+    Ok(())
+}

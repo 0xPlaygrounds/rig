@@ -78,3 +78,53 @@ async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
         assert!(client.send_streaming(request()).await.is_err());
     }
 }
+
+/// A status error, as a middleware's `error_for_status` makes one, keeps
+/// reqwest's error and is retried only for a status the table retries.
+#[test]
+fn a_status_error_is_classified_by_its_status() {
+    for (status, transient) in [
+        (StatusCode::SERVICE_UNAVAILABLE, true),
+        (StatusCode::BAD_REQUEST, false),
+    ] {
+        let error = from_reqwest(status_error(status));
+        assert_eq!(matches!(error, Error::Transient(_)), transient, "{error:?}");
+        assert!(
+            matches!(&error, Error::Transient(inner) | Error::Permanent(inner)
+                if inner.downcast_ref::<reqwest::Error>().is_some()),
+            "{error:?}"
+        );
+    }
+}
+
+/// The error `error_for_status` makes of a `status` reply.
+fn status_error(status: StatusCode) -> reqwest::Error {
+    let response = http::Response::builder()
+        .status(status)
+        .body("")
+        .expect("a response");
+    reqwest::Response::from(response)
+        .error_for_status()
+        .expect_err("a non-success status")
+}
+
+/// A middleware's own failure says nothing about a second send, so it is
+/// not retried; a reqwest error it passed on is classified as reqwest's.
+#[cfg(any(
+    feature = "reqwest-middleware-rustls",
+    feature = "reqwest-middleware-native-tls"
+))]
+#[test]
+fn a_middleware_error_is_permanent_unless_reqwest_classifies_it() {
+    let own = reqwest_middleware::Error::middleware(std::io::Error::other("no key"));
+    assert!(matches!(
+        middleware::from_middleware(own),
+        Error::Permanent(_)
+    ));
+    let unavailable = status_error(StatusCode::SERVICE_UNAVAILABLE);
+    let passed_on = reqwest_middleware::Error::middleware(unavailable);
+    assert!(matches!(
+        middleware::from_middleware(passed_on),
+        Error::Transient(_)
+    ));
+}

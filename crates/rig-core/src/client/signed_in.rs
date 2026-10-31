@@ -137,21 +137,16 @@ impl<A: CredentialSource> SignedInModel<A> {
 /// failure is final and asks to sign in again.
 fn failed_sign_in(error: AuthError) -> ErrorReport {
     let message = format!("the sign-in gave no credential ({error})");
-    let report = match error {
-        AuthError::Http(source) | AuthError::Reply { source, .. } => {
-            ProviderError::from_transport_error(source).report()
-        }
-        _ => ErrorReport::new(ErrorKind::Provider, ""),
+    let (AuthError::Http(source) | AuthError::Reply { source, .. }) = error else {
+        return ErrorReport::new(ErrorKind::Provider, format!("{message}; sign in again"));
     };
-    let advice = if report.retryable {
-        ""
+    let report = ProviderError::from_transport_error(source).report();
+    let message = if report.retryable {
+        message
     } else {
-        "; sign in again"
+        format!("{message}; sign in again")
     };
-    ErrorReport {
-        message: format!("{message}{advice}"),
-        ..report
-    }
+    ErrorReport { message, ..report }
 }
 
 impl<A: CredentialSource> Serve for SignedInModel<A> {

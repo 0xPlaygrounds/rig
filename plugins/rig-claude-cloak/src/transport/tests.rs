@@ -790,13 +790,11 @@ fn a_turn_without_a_login_fails_after_one_attempt_that_sends_nothing() -> anyhow
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    let home = std::env::current_exe()?.with_file_name("cloak-never-logged-in");
-    std::fs::remove_dir_all(&home).ok();
-    std::fs::create_dir_all(&home)?;
+    let home = tempfile::tempdir()?;
     let network = RecordingHttpClient::new("");
     let attempts = Arc::new(AtomicUsize::new(0));
     let client = DynHttpClient::new(OAuthTransport {
-        home,
+        home: home.path().to_path_buf(),
         inner: DynHttpClient::new(network.clone()),
         device: "offline-device".into(),
         session: "offline-session".into(),

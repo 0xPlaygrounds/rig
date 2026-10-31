@@ -121,36 +121,34 @@ async fn handshake(
 #[cfg(not(target_family = "wasm"))]
 /// Convert a tungstenite failure to a transport error, preserving the status,
 /// headers, and body of a rejected upgrade. A connection that dropped or
-/// could not be made is [`Error::Transient`]; a URL, request, message or
-/// protocol error that the same send meets again is [`Error::Permanent`].
+/// could not be made, and any TLS failure, is [`Error::Transient`]; a URL,
+/// request, message or protocol error that the same send meets again is
+/// [`Error::Permanent`].
 fn from_tungstenite(error: tungstenite::Error) -> Error {
     use tungstenite::error::{ProtocolError, UrlError};
-    let transient = match &error {
-        tungstenite::Error::Http(_) => false,
+    match error {
+        tungstenite::Error::Http(response) => {
+            let (parts, body) = (*response).into_parts();
+            let body = body
+                .map(|body| String::from_utf8_lossy(&body).into_owned())
+                .unwrap_or_default();
+            Error::non_success_with_details(parts.status, parts.headers, body)
+        }
         tungstenite::Error::ConnectionClosed
         | tungstenite::Error::WriteBufferFull(_)
         | tungstenite::Error::Url(UrlError::UnableToConnect(_))
         | tungstenite::Error::Protocol(
             ProtocolError::HandshakeIncomplete | ProtocolError::ResetWithoutClosingHandshake,
-        ) => true,
+        ) => Error::transient(error),
         // rustls reports a certificate it rejects as invalid data.
-        tungstenite::Error::Io(error) => error.kind() != std::io::ErrorKind::InvalidData,
-        _ => false,
-    };
-    let tungstenite::Error::Http(response) = error else {
-        return if transient {
+        tungstenite::Error::Io(ref io) if io.kind() != std::io::ErrorKind::InvalidData => {
             Error::transient(error)
-        } else {
-            Error::permanent(error)
-        };
-    };
-
-    let (parts, body) = (*response).into_parts();
-    let body = body
-        .map(|body| String::from_utf8_lossy(&body).into_owned())
-        .unwrap_or_default();
-
-    Error::non_success_with_details(parts.status, parts.headers, body)
+        }
+        // native-tls reports a handshake the peer reset as it reports a
+        // certificate it refused.
+        tungstenite::Error::Tls(_) => Error::transient(error),
+        error => Error::permanent(error),
+    }
 }
 
 #[cfg(all(test, not(target_family = "wasm")))]

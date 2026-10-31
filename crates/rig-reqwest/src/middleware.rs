@@ -63,19 +63,16 @@ impl Execute for ReqwestMiddlewareClient {
     }
 }
 
-/// Classify a middleware client's error: reqwest's own as [`from_reqwest`]
-/// does, an [`Error`] a middleware returned as it is, and any other
-/// middleware failure as [`Error::Permanent`], since nothing says that
-/// sending again would help.
-fn from_middleware(error: reqwest_middleware::Error) -> Error {
+/// Classify a middleware client's error: reqwest's own, also one a
+/// middleware passed on, as [`from_reqwest`] does, and any other middleware
+/// failure as [`Error::Permanent`], since nothing says that sending again
+/// would help.
+pub(crate) fn from_middleware(error: reqwest_middleware::Error) -> Error {
     match error {
         reqwest_middleware::Error::Reqwest(error) => from_reqwest(error),
         reqwest_middleware::Error::Middleware(error) => match error.downcast::<reqwest::Error>() {
             Ok(error) => from_reqwest(error),
-            Err(error) => match error.downcast::<Error>() {
-                Ok(error) => error,
-                Err(error) => Error::permanent(error),
-            },
+            Err(error) => Error::permanent(error),
         },
     }
 }
