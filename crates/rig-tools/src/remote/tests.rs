@@ -777,12 +777,15 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     std::fs::write(locked.join("a.txt"), "a\n").ok();
     let link = home.join("strata/link.txt");
     std::os::unix::fs::symlink("../locked/a.txt", &link).ok();
+    std::fs::create_dir_all(locked.join("inner")).ok();
+    std::os::unix::fs::symlink("locked/inner", home.join("hidden")).ok();
     // A link to a directory that may be searched hides nothing.
     std::os::unix::fs::symlink("strata", home.join("alias")).ok();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
     let hidden = std::fs::read(locked.join("a.txt")).is_err();
     let stat = workspace.stat(Path::new("bench:~/locked/a.txt"));
     let linked = workspace.stat(Path::new("bench:~/strata/link.txt"));
+    let slashed = workspace.stat(Path::new("bench:~/hidden/"));
     let gone = workspace.stat(Path::new("bench:~/strata/gone/a.txt"));
     let aliased = workspace.stat(Path::new("bench:~/alias/gone.txt"));
     let all = crate::workspace::Listing::All;
@@ -802,6 +805,11 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
         // Nor a link there whose target such a directory hides.
         assert_eq!(
             linked.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        // Written with a trailing `/` too.
+        assert_eq!(
+            slashed.err().map(|error| error.kind()),
             Some(std::io::ErrorKind::PermissionDenied)
         );
         // A directory there that may not be entered is no missing one.

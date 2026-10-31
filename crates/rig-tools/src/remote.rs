@@ -76,7 +76,8 @@ const ROOT_IS_A_FILE: i32 = 6;
 /// neither it nor a directory on the way is a link that does not resolve.
 /// A directory that may not be searched hides what is in it, and a link
 /// may point into one, which is not absence.
-const GONE: &str = "gone() { d=$1; [ -L \"$d\" ] && return 1; while :; do \
+const GONE: &str = "gone() { d=$1; while case $d in ?*/) :;; *) false;; esac; do \
+    d=${d%/}; done; [ -L \"$d\" ] && return 1; while :; do \
     d=$(dirname -- \"$d\"; echo .); d=${d%??}; \
     if [ -e \"$d\" ]; then [ ! -d \"$d\" ] || [ -x \"$d\" ]; return; fi; \
     [ -L \"$d\" ] && return 1; case $d in /|.) return 0;; esac; done; }";
