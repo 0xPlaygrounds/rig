@@ -121,7 +121,9 @@ or `pngpaste`) as such a path, and a dropped image file becomes one too.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
 in its own way, always whole: every call's arguments and result, every diff
-and every note, nothing cut or folded. A call's row is tinted by where it
+and every note, nothing cut or folded. A diff is drawn from what the session
+keeps of it, so a secret in it shows as `[REDACTED]`, and an edit whose diff
+holds a private key block or passes 256 KiB shows its reply instead. A call's row is tinted by where it
 stands (waiting, running, done, failed). Code is highlighted in the terminal's
 own palette, so it follows the terminal's theme. PageUp, PageDown and
 Shift+Up/Down scroll the transcript. With `NO_COLOR` set, nothing is drawn in

@@ -124,19 +124,19 @@ impl ToolResultContext {
             // A value that decoded encodes again; one that did not stays.
             insert_slot(&mut kept, changed).ok();
         }
+        // Each entry's JSON with its `:` and a `,`; the map's braces first.
         let mut sized: Vec<(usize, String, serde_json::Value)> = kept
             .into_iter()
             .filter_map(|(key, mut value)| {
                 crate::redact::json(&mut value);
-                let size = serde_json::to_vec(&value)
-                    .ok()?
-                    .len()
-                    .saturating_add(key.len());
-                Some((size, key, value))
+                let key_size = serde_json::to_vec(&key).ok()?.len();
+                let size = serde_json::to_vec(&value).ok()?.len();
+                Some((key_size.saturating_add(size).saturating_add(2), key, value))
             })
             .collect();
         sized.sort_by_key(|(size, ..)| *size);
-        let (mut room, mut fits) = (MAX_KEPT_FACTS_BYTES, BTreeMap::new());
+        let mut room = MAX_KEPT_FACTS_BYTES.saturating_sub(2);
+        let mut fits = BTreeMap::new();
         for (size, key, value) in sized {
             if size <= room {
                 room = room.saturating_sub(size);
@@ -161,7 +161,7 @@ fn redact_hunks(hunks: &mut Vec<super::Hunk>) {
     let joined: String = lines.map(HunkLine::text).collect();
     let across = crate::redact::find(&joined).any(|found| {
         let text = joined.get(found.range).unwrap_or_default();
-        text.trim_end().contains('\n')
+        text.trim_end().contains(['\n', '\r'])
     });
     if across {
         hunks.clear();

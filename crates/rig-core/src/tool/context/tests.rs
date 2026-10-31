@@ -167,28 +167,33 @@ fn kept_facts_are_redacted_without_old_text_and_bounded() {
         "{removed}"
     );
 
-    // A key block is in no one line: the change keeps no hunks.
-    let block = [
-        "-----BEGIN RSA PRIVATE KEY-----\n",
-        "MIIEowIBAAKCAQEAabc\n",
-        "-----END RSA PRIVATE KEY-----\n",
-    ];
-    let hunk = Hunk {
-        old: Lines { start: 1, count: 0 },
-        new: Lines { start: 1, count: 3 },
-        lines: block.map(|line| HunkLine::Added(line.to_owned())).to_vec(),
-    };
-    let mut keyed = ToolContext::new();
-    let change = FileChange::created("id_rsa", 3).with_hunks(vec![hunk]);
-    assert!(keyed.insert_result(FilesChanged(vec![change])).is_ok());
-    let kept = keyed.result_context().kept();
-    let changed = kept
-        .get::<FilesChanged>()
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-    let hunks = changed.0.first().map(|change| change.hunks.len());
-    assert_eq!(hunks, Some(0));
+    // A key block is in no one line, whichever its line ends: the change
+    // keeps no hunks.
+    for end in ["\n", "\r\n", "\r"] {
+        let block = [
+            "-----BEGIN RSA PRIVATE KEY-----",
+            "MIIEowIBAAKCAQEAabc",
+            "-----END RSA PRIVATE KEY-----",
+        ];
+        let hunk = Hunk {
+            old: Lines { start: 1, count: 0 },
+            new: Lines { start: 1, count: 3 },
+            lines: block
+                .map(|line| HunkLine::Added(format!("{line}{end}")))
+                .to_vec(),
+        };
+        let mut keyed = ToolContext::new();
+        let change = FileChange::created("id_rsa", 3).with_hunks(vec![hunk]);
+        assert!(keyed.insert_result(FilesChanged(vec![change])).is_ok());
+        let kept = keyed.result_context().kept();
+        let changed = kept
+            .get::<FilesChanged>()
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let hunks = changed.0.first().map(|change| change.hunks.len());
+        assert_eq!(hunks, Some(0), "{end:?}");
+    }
 
     let huge = FileRead::new("x".repeat(MAX_KEPT_FACTS_BYTES), content_hash(b""));
     assert!(context.insert_result(FilesRead(vec![huge])).is_ok());
@@ -198,4 +203,29 @@ fn kept_facts_are_redacted_without_old_text_and_bounded() {
         kept.get::<ExitStatus>().ok().flatten(),
         Some(ExitStatus::Exited(3))
     );
+
+    // Two values that each fit but not together: one goes, and what stays
+    // is within the budget as JSON.
+    #[derive(Serialize, Deserialize)]
+    struct Note(String);
+    impl ContextValue for Note {
+        const KEY: &'static str = "test.note";
+    }
+    let mut two = ToolContext::new();
+    let most = MAX_KEPT_FACTS_BYTES * 3 / 5;
+    assert!(two.insert_result(RequestId("x".repeat(most))).is_ok());
+    assert!(two.insert_result(Note("y".repeat(most))).is_ok());
+    let kept = two.result_context().kept();
+    let request = kept.get::<RequestId>().ok().flatten().is_some();
+    let note = kept.get::<Note>().ok().flatten().is_some();
+    assert!(request != note, "one of the two stays");
+    let size = serde_json::to_vec(&kept).map_or(usize::MAX, |json| json.len());
+    assert!(size <= MAX_KEPT_FACTS_BYTES, "{size}");
+    // At the edge, the key's quotes and the map's braces count too.
+    let mut edge = ToolContext::new();
+    let fill = MAX_KEPT_FACTS_BYTES - RequestId::KEY.len() - 2;
+    assert!(edge.insert_result(RequestId("x".repeat(fill))).is_ok());
+    let kept = edge.result_context().kept();
+    let size = serde_json::to_vec(&kept).map_or(usize::MAX, |json| json.len());
+    assert!(size <= MAX_KEPT_FACTS_BYTES, "{size}");
 }

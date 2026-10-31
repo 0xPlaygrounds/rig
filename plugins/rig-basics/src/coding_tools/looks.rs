@@ -94,14 +94,15 @@ fn span(shown: LinesShown) -> String {
 
 /// The reply without the file's lines it shows, then the hunks of each
 /// change the call published, as a diff under the header that names the
-/// file; just the reply when it published none, or a change too large for
-/// the session to keep.
+/// file; just the reply when it published no hunks, such as for a change
+/// too large for the session to keep or one with a secret across lines.
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "").into()];
     let changed = view
         .facts
-        .and_then(|facts| facts.get::<FilesChanged>().ok().flatten());
+        .and_then(|facts| facts.get::<FilesChanged>().ok().flatten())
+        .filter(|changed| changed.0.iter().any(|change| !change.hunks.is_empty()));
     match (view.result_text(), changed) {
         (Some(reply), Some(FilesChanged(changes))) if !view.failed() => {
             // The file's lines the reply shows the model are in the diff.
