@@ -135,6 +135,21 @@ impl Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
+    /// Whether sending the same request again may pass: after `StreamEnded`
+    /// and what the transport called [`Error::Transient`] it may, a status
+    /// decides through [`retryable_status`], and after anything else
+    /// (protocol, header and content-type errors, [`Error::Permanent`]) it
+    /// does not. A retry may repeat a request the server already processed.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Self::StreamEnded | Self::Transient(_) => true,
+            Self::InvalidStatusCodeWithDetails { status, .. } => {
+                retryable_status(Some(status.as_u16()))
+            }
+            _ => false,
+        }
+    }
+
     /// A transport's own error after which sending the same request again
     /// may work, such as a reset connection or a timeout. A non-success
     /// reply goes through [`Error::non_success_with_details`] instead, so its

@@ -1,6 +1,6 @@
 use super::*;
 
-/// A transport whose one text fails with `error`.
+/// A transport whose one text fails with its error.
 #[derive(Clone)]
 struct Failing(ProviderError);
 

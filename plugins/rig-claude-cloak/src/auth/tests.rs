@@ -290,7 +290,7 @@ fn errors_do_not_include_secrets_or_response_bodies() -> anyhow::Result<()> {
 /// Only a lock another refresh holds, the network, or a status the retry
 /// table retries may pass on a second try.
 #[test]
-fn only_waits_the_network_and_retried_statuses_are_transient() -> anyhow::Result<()> {
+fn only_a_held_lock_the_network_and_retried_statuses_are_transient() -> anyhow::Result<()> {
     for (error, transient) in [
         (AuthError::Busy, true),
         (AuthError::Network, true),

@@ -224,22 +224,6 @@ impl std::error::Error for ErrorReport {}
 
 pub use crate::http_client::retryable_status;
 
-/// Whether a transport failure may pass on a second send: `StreamEnded` and
-/// what the transport itself called [`Transient`](http_client::Error::Transient)
-/// are, a status decides through [`retryable_status`], and everything else
-/// (protocol, header and content-type errors,
-/// [`Permanent`](http_client::Error::Permanent)) is not. A retry may repeat a
-/// request the server already processed.
-pub fn transient_transport(error: &http_client::Error) -> bool {
-    match error {
-        http_client::Error::StreamEnded | http_client::Error::Transient(_) => true,
-        http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
-            retryable_status(Some(status.as_u16()))
-        }
-        _ => false,
-    }
-}
-
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
 pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
@@ -469,13 +453,14 @@ impl ProviderError {
         }
     }
 
-    /// Classifies transport failures with [`transient_transport`] and
+    /// Classifies transport failures with
+    /// [`http_client::Error::is_transient`] and
     /// preserved replies with [`ProviderResponseError::is_retryable`]; a
     /// truncated or stalled reply is retryable. Every other failure, rejected
     /// credentials and expired caches included, is not retryable.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Http(error) => transient_transport(error),
+            Self::Http(error) => error.is_transient(),
             Self::ProviderResponse(response) => response.is_retryable(),
             Self::Relayed(report) => report.retryable,
             // A reply cut short, by its transport or its runtime, may end on
@@ -867,7 +852,7 @@ impl From<&VectorStoreError> for ErrorReport {
             .as_ref()
             .and_then(|response| response.status.map(|status| status.as_u16()));
         let retryable = match error {
-            VectorStoreError::Http(inner) => transient_transport(inner),
+            VectorStoreError::Http(inner) => inner.is_transient(),
             VectorStoreError::ExternalAPIError(..) => retryable_status(http_status),
             _ => false,
         };

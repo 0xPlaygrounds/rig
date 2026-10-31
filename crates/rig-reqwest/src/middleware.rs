@@ -8,7 +8,7 @@ use rig_http::wasm_compat::WasmCompatSend;
 
 use super::{
     Bytes, Error, Execute, Payload, from_reqwest, into_response, into_streaming_response,
-    multipart_form, send_with,
+    is_transient, multipart_form, send_with,
 };
 
 /// A configured middleware client implementing [`HttpClientExt`].
@@ -63,26 +63,24 @@ impl Execute for ReqwestMiddlewareClient {
     }
 }
 
-/// Classify a middleware client's error: reqwest's own, also one a
-/// middleware passed on, as [`from_reqwest`] does; an [`Error`] a middleware
-/// passed on as it is; and any other middleware failure as
-/// [`Error::Permanent`], since nothing says that sending again would help.
+/// Classify a middleware client's error: reqwest's own as [`from_reqwest`]
+/// does. A middleware's error, with any context it added, is classified as
+/// the reqwest or rig error it wraps, and is [`Error::Permanent`] when it
+/// wraps neither, since nothing says that sending again would help.
 pub(crate) fn from_middleware(error: reqwest_middleware::Error) -> Error {
     let error = match error {
         reqwest_middleware::Error::Reqwest(error) => return from_reqwest(error),
         reqwest_middleware::Error::Middleware(error) => error,
     };
-    let error = match error.downcast::<reqwest::Error>() {
-        Ok(error) => return from_reqwest(error),
-        Err(error) => error,
-    };
+    let transient = error.downcast_ref::<reqwest::Error>().map(is_transient);
     // `anyhow` holds only `Send` errors, which rig's is not on wasm.
     #[cfg(not(target_family = "wasm"))]
-    let error = match error.downcast::<Error>() {
-        Ok(error) => return error,
-        Err(error) => error,
-    };
-    Error::permanent(error)
+    let transient = transient.or_else(|| error.downcast_ref::<Error>().map(Error::is_transient));
+    if transient.unwrap_or(false) {
+        Error::transient(error)
+    } else {
+        Error::permanent(error)
+    }
 }
 
 http_client_ext!(ReqwestMiddlewareClient);

@@ -195,14 +195,19 @@ impl std::error::Error for TransportBuildError {
 /// [`non_success_body_error`] instead, which keeps its status, headers and
 /// body.
 pub fn from_reqwest(err: reqwest::Error) -> Error {
-    let permanent = match err.status() {
-        Some(status) => !retryable_status(Some(status.as_u16())),
-        None => err.is_builder() || err.is_redirect(),
-    };
-    if permanent {
-        Error::permanent(err)
-    } else {
+    if is_transient(&err) {
         Error::transient(err)
+    } else {
+        Error::permanent(err)
+    }
+}
+
+/// Whether sending again may pass a request that failed with `err`, as
+/// [`from_reqwest`] classifies it.
+fn is_transient(err: &reqwest::Error) -> bool {
+    match err.status() {
+        Some(status) => retryable_status(Some(status.as_u16())),
+        None => !(err.is_builder() || err.is_redirect()),
     }
 }
 
