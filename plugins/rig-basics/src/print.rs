@@ -44,12 +44,13 @@ use std::io::{IsTerminal, Read, Write};
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::Instant;
 
-use async_channel::{Receiver, Sender};
+use async_channel::Receiver;
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
+use rig_harness::host::pipes::{self, Stream, TooLarge, Writer};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::edit_distance;
 use rig_harness::rig_core::redact;
@@ -205,7 +206,8 @@ impl Plugin for PrintPlugin {
         let prompt = invoked.and_then(|invoked| invoked.args.print);
         if json {
             if !app.world().contains_resource::<JsonOut>() {
-                app.insert_resource(JsonOut::new(std::io::stdout()));
+                let writer = front_writer(app.world());
+                app.insert_resource(JsonOut::to(writer));
             }
             app.add_observer(turn_started)
                 .add_observer(started)
@@ -223,7 +225,7 @@ impl Plugin for PrintPlugin {
                     Last,
                     (
                         note_cut_off.after(keep_restored).before(StopTurnsOnExit),
-                        json_exit.after(WriteLogs),
+                        (json_exit, finish_json).chain().after(WriteLogs),
                     )
                         .in_set(OnAppExitSystems)
                         .distributive_run_if(on_message::<AppExit>),
@@ -233,36 +235,44 @@ impl Plugin for PrintPlugin {
             }
         } else {
             let command = prompt.as_deref().unwrap_or_default().trim_start();
-            app.init_resource::<Printed>()
-                .add_systems(
-                    Update,
-                    (
-                        // Before the run can end on what they say, so its
-                        // why knows them.
-                        print_notices(command.starts_with('/'))
-                            .after(AgentLoop)
-                            .before(drive),
-                        print_progress,
-                    ),
-                )
-                .add_observer(print_answer)
-                .add_observer(print_ended)
-                .add_systems(
-                    Last,
-                    print_interrupted
-                        .in_set(OnAppExitSystems)
-                        .run_if(on_message::<AppExit>),
-                );
+            if !app.world().contains_resource::<Printed>() {
+                let writer = front_writer(app.world());
+                app.insert_resource(Printed::by(writer));
+            }
+            app.add_systems(
+                Update,
+                (
+                    // Before the run can end on what they say, so its
+                    // why knows them.
+                    print_notices(command.starts_with('/'))
+                        .after(AgentLoop)
+                        .before(drive),
+                    print_progress,
+                ),
+            )
+            .add_observer(print_answer)
+            .add_observer(print_ended)
+            .add_systems(
+                Last,
+                (print_interrupted, finish_printed)
+                    .chain()
+                    .after(WriteLogs)
+                    .in_set(OnAppExitSystems)
+                    .run_if(on_message::<AppExit>),
+            );
         }
+        // The front's work waits while its reader is behind; requests, a
+        // stop and the exit go on.
+        app.configure_sets(Update, AgentLoop.run_if(output_has_room))
+            .add_systems(First, exit_when_backlogged);
         if json && prompt.is_none() {
             // A long-lived `--json` run: the driver answers questions, and
             // stdin keeps it going until it ends.
             app.world_mut()
                 .spawn((Answerer::default(), Requests, KeepRunning));
             if !app.world().contains_resource::<JsonIn>() {
-                let (sender, input) = JsonIn::channel();
-                read_stdin(sender);
-                app.insert_resource(input);
+                let lines = pipes::read_lines(std::io::stdin(), REQUEST_LIMIT);
+                app.insert_resource(JsonIn(lines));
             }
             app.add_systems(Startup, listen)
                 .add_observer(request)
@@ -280,7 +290,14 @@ impl Plugin for PrintPlugin {
         let signalled = signals::interruption(app.world());
         let interrupted = move || signalled() || unread.is_some_and(|unread| unread());
         let piped = app.world_mut().remove_resource::<PipedIn>();
-        let prompt = full_prompt(&prompt, piped, interrupted);
+        // Refused input holds the run as an interrupted one is held: the
+        // refusal ends it with code 2 after the first frame.
+        let prompt = full_prompt(&prompt, piped, interrupted).unwrap_or_else(|refused| {
+            app.refuse_run(format!(
+                "stdin: {refused} were piped in, which is too much: pipe in less"
+            ));
+            None
+        });
         let interrupted = prompt.is_none();
         if interrupted {
             app.insert_resource(HoldCalls);
@@ -532,6 +549,13 @@ fn answer(
     }
 }
 
+/// The most bytes a one-shot run takes piped in on stdin with its prompt:
+/// far above a large diff or log, below what would exhaust memory.
+pub const PIPED_LIMIT: usize = 64 * 1024 * 1024;
+
+/// The most bytes of one request line of a long-lived `--json` run.
+pub const REQUEST_LIMIT: usize = 64 * 1024 * 1024;
+
 /// How long a prompt waits for the first of what is piped in on stdin: a
 /// pipe its driver never writes to nor closes, as an agent's shell may
 /// leave stdin, must not hold the run.
@@ -543,17 +567,19 @@ const PIPED_WAIT: Duration = Duration::from_secs(1);
 struct PipedIn(Box<dyn Read + Send + Sync>);
 
 /// The prompt with what was piped in after it, on stdin or `piped`;
-/// `None` once `interrupted` says the run is.
+/// `None` once `interrupted` says the run is, and [`TooLarge`] past
+/// [`PIPED_LIMIT`].
 fn full_prompt(
     prompt: &str,
     piped: Option<PipedIn>,
     interrupted: impl Fn() -> bool,
-) -> Option<String> {
-    match piped {
-        Some(PipedIn(piped)) => with_piped(prompt, piped, PIPED_WAIT, interrupted),
-        None if std::io::stdin().is_terminal() => Some(prompt.to_owned()),
-        None => with_piped(prompt, std::io::stdin(), PIPED_WAIT, interrupted),
-    }
+) -> Result<Option<String>, TooLarge> {
+    let piped = match piped {
+        Some(PipedIn(piped)) => piped,
+        None if std::io::stdin().is_terminal() => return Ok(Some(prompt.to_owned())),
+        None => Box::new(std::io::stdin()),
+    };
+    with_piped(prompt, piped, PIPED_WAIT, PIPED_LIMIT, interrupted)
 }
 
 /// How often a wait for what is piped in looks whether the run was
@@ -562,14 +588,16 @@ const INTERRUPT_CHECK: Duration = Duration::from_millis(50);
 
 /// `prompt` with what `piped` holds after it. Without a prompt, `piped` is
 /// the prompt, read to its end; with one, it is read only when something
-/// comes within `wait`. `None` once `interrupted` says the run is, however
-/// long the wait was.
+/// comes within `wait`. At most `limit` bytes are read: more is refused
+/// ([`TooLarge`]) without holding more than one byte past it. `None` once
+/// `interrupted` says the run is, however long the wait was.
 fn with_piped(
     prompt: &str,
     mut piped: impl Read + Send + 'static,
     wait: Duration,
+    limit: usize,
     interrupted: impl Fn() -> bool,
-) -> Option<String> {
+) -> Result<Option<String>, TooLarge> {
     let (sender, read) = std::sync::mpsc::channel();
     let (first, rest) = (sender.clone(), sender);
     std::thread::spawn(move || {
@@ -579,19 +607,28 @@ fn with_piped(
         first.send(None).ok();
         text.extend(byte.get(..got).unwrap_or_default());
         if got > 0 {
-            piped.read_to_end(&mut text).ok();
+            let room = u64::try_from(limit.saturating_sub(got)).unwrap_or(u64::MAX);
+            piped
+                .take(room.saturating_add(1))
+                .read_to_end(&mut text)
+                .ok();
         }
-        rest.send(Some(String::from_utf8_lossy(&text).into_owned()))
-            .ok();
+        let read = if text.len() > limit {
+            let asked = text.len();
+            Err(TooLarge { limit, asked })
+        } else {
+            Ok(String::from_utf8_lossy(&text).into_owned())
+        };
+        rest.send(Some(read)).ok();
     });
     let deadline = (!prompt.trim().is_empty()).then(|| Instant::now() + wait);
     let mut came = false;
     let piped = loop {
         if interrupted() {
-            return None;
+            return Ok(None);
         }
         match read.recv_timeout(INTERRUPT_CHECK) {
-            Ok(Some(piped)) => break piped,
+            Ok(Some(piped)) => break piped?,
             Ok(None) => came = true,
             Err(RecvTimeoutError::Disconnected) => break String::new(),
             Err(RecvTimeoutError::Timeout) => {
@@ -603,16 +640,16 @@ fn with_piped(
                          -p stdin from /dev/null, or pipe in what goes with it",
                         wait.as_secs_f32()
                     );
-                    return Some(prompt.to_owned());
+                    return Ok(Some(prompt.to_owned()));
                 }
             }
         }
     };
-    Some(match piped {
+    Ok(Some(match piped {
         piped if piped.trim().is_empty() => prompt.to_owned(),
         piped if prompt.trim().is_empty() => piped,
         piped => format!("{prompt}\n\n{piped}"),
-    })
+    }))
 }
 
 /// Starts a run nobody sits at on an [`App`].
@@ -1134,27 +1171,71 @@ fn end(run: &mut Run, (mut ended, reason): (HeadlessEnded, Reason), mut commands
     commands.trigger(ended);
 }
 
-/// Whether the run wrote anything to stdout yet, and where its notices
-/// go: stderr unless the app inserted another.
-#[derive(Resource)]
-struct Printed {
-    out: bool,
-    err: Box<dyn Write + Send + Sync>,
+/// The front's writer of stdout and stderr, on a thread of its own: the
+/// frame hands it lines and never waits on a reader. Once the run is
+/// interrupted, as by a signal, its last lines get [`pipes::DRAIN`].
+fn front_writer(world: &World) -> Writer {
+    let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
+    let interrupted = signals::interruption(world);
+    let unread = world
+        .get_resource::<ExitWhenUnread>()
+        .map(|unread| unread.0);
+    let cut = move || interrupted() || unread.is_some_and(|unread| unread());
+    Writer::spawn(std::io::stdout(), std::io::stderr(), wake, cut)
 }
 
-impl Default for Printed {
-    fn default() -> Self {
-        Self::to(std::io::stderr())
+/// The front's writer: `--json`'s, else plain `-p`'s.
+fn writer_of<'a>(
+    json: &'a Option<Res<JsonOut>>,
+    printed: &'a Option<Res<Printed>>,
+) -> Option<&'a Writer> {
+    let json = json.as_ref().map(|json| &json.out);
+    json.or_else(|| printed.as_ref().map(|printed| &printed.writer))
+}
+
+/// Whether the front's work goes on: while its reader keeps up, and once
+/// the run exits, whose exit is an effect of the agent loop.
+fn output_has_room(
+    json: Option<Res<JsonOut>>,
+    printed: Option<Res<Printed>>,
+    exiting: Option<Res<ExitReason>>,
+) -> bool {
+    exiting.is_some() || writer_of(&json, &printed).is_none_or(Writer::has_room)
+}
+
+/// Ends the run as cut off once more waits for the reader than
+/// [`pipes::BACKLOG_LIMIT`]: in effect nobody reads.
+fn exit_when_backlogged(
+    json: Option<Res<JsonOut>>,
+    printed: Option<Res<Printed>>,
+    mut asked: Local<bool>,
+    mut commands: Commands,
+) {
+    if !*asked && writer_of(&json, &printed).is_some_and(Writer::overflowed) {
+        *asked = true;
+        commands.trigger(Exit(ExitReason::Signal));
     }
 }
 
+/// Whether the run wrote anything to stdout yet, and the writer of its
+/// answer and notices.
+#[derive(Resource)]
+struct Printed {
+    out: bool,
+    writer: Writer,
+}
+
 impl Printed {
-    /// Notices written to `err`.
-    fn to(err: impl Write + Send + Sync + 'static) -> Self {
-        Self {
-            out: false,
-            err: Box::new(err),
-        }
+    /// The answer and notices written by `writer`.
+    fn by(writer: Writer) -> Self {
+        Self { out: false, writer }
+    }
+
+    /// The answer written in place to stdout, the notices to `err`, which
+    /// never blocks, such as a test's buffer.
+    #[cfg(test)]
+    fn to(err: impl Write + Send + 'static) -> Self {
+        Self::by(Writer::inline(std::io::stdout(), err))
     }
 
     /// Writes `block` to stdout, after an empty line when something came
@@ -1162,16 +1243,16 @@ impl Printed {
     fn print(&mut self, block: Option<String>) {
         if let Some(block) = block {
             let gap = if self.out { "\n" } else { "" };
-            // A reader gone ends the run on its own; nobody is left to tell.
-            let _ = writeln!(std::io::stdout(), "{gap}{block}");
+            let line = format!("{gap}{block}\n");
+            self.writer.write(Stream::Out, line.into_bytes());
             self.out = true;
         }
     }
 
     /// Writes the notice `text` to stderr.
     fn note(&mut self, text: &str) {
-        // A closed stderr leaves nothing to tell it on.
-        let _ = writeln!(self.err, "{text}");
+        self.writer
+            .write(Stream::Err, format!("{text}\n").into_bytes());
     }
 
     /// Writes the error or warning `text` to stderr.
@@ -1297,10 +1378,17 @@ fn print_interrupted(reason: Option<Res<ExitReason>>, mut printed: ResMut<Printe
     }
 }
 
-/// Where `--json` lines go: stdout unless the app inserted another.
+/// On the exit frame, last: waits for the answer and notices to be written
+/// ([`Writer::finish`]).
+fn finish_printed(printed: Res<Printed>) {
+    printed.writer.finish();
+}
+
+/// Where `--json` lines go: the front's writer of stdout unless the app
+/// inserted another.
 #[derive(Resource)]
 struct JsonOut {
-    out: Box<dyn Write + Send + Sync>,
+    out: Writer,
     /// The time of the last line, so `ms` never goes back.
     ms: u64,
     /// Whether the `exit` line was written, after which nothing is.
@@ -1319,9 +1407,17 @@ struct JsonOut {
 }
 
 impl JsonOut {
-    fn new(out: impl Write + Send + Sync + 'static) -> Self {
+    /// Lines written in place to `out`, which never blocks, such as a
+    /// test's buffer.
+    #[cfg(test)]
+    fn new(out: impl Write + Send + 'static) -> Self {
+        Self::to(Writer::inline(out, std::io::sink()))
+    }
+
+    /// Lines written by `out`.
+    fn to(out: Writer) -> Self {
         Self {
-            out: Box::new(out),
+            out,
             ms: 0,
             closed: false,
             one_shot: false,
@@ -1332,14 +1428,19 @@ impl JsonOut {
     }
 }
 
-/// The request lines of a long-lived `--json` run: stdin's unless the app
+/// A request line, or why it was refused.
+type RequestLine = Result<Vec<u8>, TooLarge>;
+
+/// The request lines of a long-lived `--json` run: stdin's, at most
+/// [`REQUEST_LIMIT`] bytes each ([`pipes::read_lines`]), unless the app
 /// inserted another. They end when every sender dropped.
 #[derive(Resource)]
-struct JsonIn(Receiver<String>);
+struct JsonIn(Receiver<RequestLine>);
 
 impl JsonIn {
-    fn channel() -> (Sender<String>, Self) {
-        let (sender, receiver) = async_channel::unbounded();
+    #[cfg(test)]
+    fn channel() -> (async_channel::Sender<RequestLine>, Self) {
+        let (sender, receiver) = async_channel::bounded(64);
         (sender, Self(receiver))
     }
 }
@@ -1430,8 +1531,8 @@ impl Out<'_, '_> {
         if let Some(AgentId(id)) = agent.and_then(|agent| self.ids.get(agent).ok()) {
             line.insert("agent".to_owned(), id.clone().into());
         }
-        writeln!(self.out.out, "{}", Value::Object(line)).ok();
-        self.out.out.flush().ok();
+        let line = format!("{}\n", Value::Object(line));
+        self.out.out.write(Stream::Out, line.into_bytes());
     }
 }
 
@@ -1589,6 +1690,12 @@ fn json_exit(
     out.out.closed = true;
 }
 
+/// On the exit frame, last: waits for the lines to be written
+/// ([`Writer::finish`]).
+fn finish_json(out: Res<JsonOut>) {
+    out.out.finish();
+}
+
 fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
     if let Ok(&TurnOf(agent)) = turns.get(turn.entity) {
         out.emit(Some(agent), "turn_start", json!({}));
@@ -1696,20 +1803,6 @@ fn flush(mut out: Out) {
 /// The request lines of a long-lived run, a stream on this entity.
 #[derive(Component)]
 struct Requests;
-
-/// Starts the thread that sends stdin's lines to `sender`.
-fn read_stdin(sender: Sender<String>) {
-    std::thread::spawn(move || {
-        for line in std::io::stdin().lines() {
-            let Ok(line) = line else {
-                break;
-            };
-            if sender.send_blocking(line).is_err() {
-                break;
-            }
-        }
-    });
-}
 
 /// Reads the request lines as a stream on the [`Requests`] entity.
 fn listen(
@@ -1824,15 +1917,30 @@ impl Requested<'_, '_> {
     }
 }
 
-/// Carries out a request line and answers it with a `reply`.
+/// Carries out a request line and answers it with a `reply`; a line past
+/// [`REQUEST_LIMIT`], or not UTF-8, is answered with why it was refused.
 fn request(
-    line: On<Insert<Done<String>>>,
-    lines: Query<&Done<String>, With<Requests>>,
+    line: On<Insert<Done<RequestLine>>>,
+    lines: Query<&Done<RequestLine>, With<Requests>>,
     mut requested: Requested,
     mut out: Out,
 ) {
     let Ok(Done(line)) = lines.get(line.entity) else {
         return;
+    };
+    let why = match line.as_deref().map(std::str::from_utf8) {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(error)) => Err(format!("not a UTF-8 line: {error}")),
+        Err(refused) => Err(format!(
+            "the request line has {refused}, which is too much: send less"
+        )),
+    };
+    let line = match why {
+        Ok(line) => line,
+        Err(why) => {
+            let fields = json!({ "id": Value::Null, "ok": false, "error": why });
+            return out.emit(None, "reply", fields);
+        }
     };
     if line.trim().is_empty() {
         return;

@@ -6,6 +6,7 @@ One task:
                           final answer, stderr its progress. Text piped in
                           follows the task: give stdin /dev/null otherwise
                           (an open stdin that stays silent costs a second).
+                          More than 64 MiB piped in is refused (exit 2).
   rig -p --json "task"    The same run as JSON lines (below); its last line
                           is {"v":1,"type":"exit","ms":…,"code":0,
                           "answer":"…","error":null,"session":"…",
@@ -16,8 +17,11 @@ One task:
   launcher's death, or nobody reading stdout any more (`| head -1`), which
   plain -p says on stderr. A reader that leaves while the final answer is
   written read what it wanted; the run keeps its code. The exit line's
-  code is the agent's: a launcher killed by a signal itself ends as that
-  signal says (143 for SIGTERM) while its agent's exit line says 130.
+  code is the agent's: a launcher told to end by a signal passes it on,
+  waits for its agent (at most 15 seconds), then ends as that signal says
+  (143 for SIGTERM) while its agent's exit line says 130, so a script's
+  `wait`, or the shell's prompt after a Ctrl+C, comes after the agent's
+  last line.
   A failed turn hands its unanswered task back: stderr says "rig: not
   answered: <task>", its first lines (with --json, a recalled event with
   all of it), and the session no longer holds it; a turn that ended with
@@ -30,6 +34,8 @@ One task:
 A conversation:
   rig --json              Reads one request per line on stdin and writes
                           events on stdout. Closing stdin ends rig at once.
+                          A line of more than 64 MiB is answered with an
+                          error reply, and the next line is read.
 
 Both take --model vendor/model, --tools read,shell (only those tools; a
 name no tool has is refused, before any model or tool call; with the MCP
@@ -98,7 +104,11 @@ request does and still closes what it started: a tool_result
 tool_result ("Not run: …") for each call of the cut reply that had not
 started, a turn_end ("stopped") for each turn, and with -p the exit line
 (code 130). Read stdout to its end
-to get them. The session keeps those results and turns as stopped:
+to get them. While stdout's reader is more than 1 MiB behind, the agent's
+work waits for it (requests, a stop and the exit go on); once a signal
+ends the run, the lines get half a second more, and those the reader did
+not take by then are dropped, so a reader that stopped reading never
+holds rig. The session keeps those results and turns as stopped:
 `rig -r <id>` runs nothing of them and goes on with the next message. A
 plugin may carry a turn across the exit instead, such as one waiting on
 a batch API: its turn_end and its running calls' lines are written the

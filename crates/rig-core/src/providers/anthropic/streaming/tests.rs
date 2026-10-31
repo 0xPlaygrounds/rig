@@ -1664,3 +1664,22 @@ fn cache_lifetime_pricing_does_not_apply_to_gateways() {
         pricing.and_then(|pricing| pricing.cost(&usage))
     );
 }
+
+/// Counts whose sum passes `u64::MAX` fail the reply, without a panic or a
+/// wrapped total.
+#[test]
+fn usage_counts_that_overflow_fail_the_reply() {
+    let mut frames = reply(Vec::new(), "end_turn");
+    if let Some(start) = frames.first_mut() {
+        start["message"]["usage"] = json!({
+            "input_tokens": u64::MAX, "cache_read_input_tokens": 1, "output_tokens": 1
+        });
+    }
+    let failed = streamed(&frames).map(|response| response.usage);
+    assert!(
+        failed
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("overflow")),
+        "{failed:?}"
+    );
+}

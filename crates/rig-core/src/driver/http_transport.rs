@@ -240,6 +240,17 @@ impl HttpExchange {
                     }
                 };
                 for frame in framer.push(&chunk) {
+                    let frame = match frame {
+                        Ok(frame) => frame,
+                        Err(refused) => {
+                            if let Some(slot) = &slot {
+                                slot.error_boundary(AdapterErrorBoundary::Decode);
+                            }
+                            let why = format!("the reply sent a frame of {refused}");
+                            yield Err(ProviderError::Response(why));
+                            return;
+                        }
+                    };
                     project(slot.as_ref(), projector, frame.as_bytes());
                     yield Ok(frame);
                 }

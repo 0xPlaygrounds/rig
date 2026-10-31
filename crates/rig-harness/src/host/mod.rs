@@ -6,6 +6,7 @@
 pub mod cli;
 pub mod exit;
 pub mod launcher;
+pub mod pipes;
 pub mod runner;
 pub mod session;
 pub mod signals;

@@ -18,6 +18,8 @@ bevy_ecs = { workspace = true }
 # Named by Bevy's derives.
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
+# A stdio server's messages as a sink and a bounded stream.
+futures = { workspace = true }
 # A streamable HTTP server's headers.
 http = { workspace = true }
 # `Starting`, which holds a headless run until the servers answered.
@@ -31,7 +33,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_path_to_error = { workspace = true }
 # `preserve_order`: an mcp.json keeps its keys' order when /mcp writes it.
 serde_json = { workspace = true, features = ["preserve_order"] }
-tokio = { workspace = true, features = ["rt", "process", "time"] }
+tokio = { workspace = true, features = ["rt", "process", "time", "io-util"] }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }

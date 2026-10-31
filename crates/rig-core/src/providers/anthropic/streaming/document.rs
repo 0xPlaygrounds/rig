@@ -11,8 +11,9 @@ use crate::wire::document::{Reassemble, keep, slot};
 /// Rebuilds the `Message` a streamed Messages reply adds up to.
 ///
 /// `message_start.message` is the skeleton. Each `content_block_start`
-/// places its block at its index in `content`. Text, thinking and signature
-/// deltas append; `input_json_delta` fragments are parsed into the block's
+/// appends its block to `content`, whatever its wire index says. Text,
+/// thinking and signature deltas append; `input_json_delta` fragments are
+/// parsed into the block's
 /// `input` at `content_block_stop` (`{}` when none streamed); a
 /// `citations_delta` appends to `citations`; any other delta merges into
 /// its block as the decoder merges it. `message_delta` folds its fields
@@ -49,24 +50,13 @@ impl Message {
             .as_object_mut()
     }
 
-    /// Place a new block in `content`, appending when its wire index was
-    /// already occupied and retaining the mapping for subsequent deltas.
+    /// Append a new block to `content`, mapping its wire index to where it
+    /// went for subsequent deltas. The wire index never sizes `content`.
     fn place(&mut self, index: usize, block: Map<String, Value>) {
-        let position = match self.message().get("content").and_then(Value::as_array) {
-            Some(content) if content.get(index).is_some_and(|item| !item.is_null()) => {
-                content.len()
-            }
-            _ => index,
-        };
-        self.positions.insert(index, position);
-        let index = position;
         if let Value::Array(content) = slot(self.message(), "content", Value::Array) {
-            if content.len() <= index {
-                content.resize(index + 1, Value::Null);
-            }
-            if let Some(slot) = content.get_mut(index) {
-                *slot = Value::Object(block);
-            }
+            let position = content.len();
+            content.push(Value::Object(block));
+            self.positions.insert(index, position);
         }
     }
 

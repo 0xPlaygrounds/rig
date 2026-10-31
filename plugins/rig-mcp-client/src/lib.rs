@@ -45,12 +45,13 @@ use rig_core::message::ToolName;
 use rig_core::serve::{self, BeforeServe, ErasedHandler, Intercept};
 use rig_core::tool::{DynamicTool, Touches};
 use rig_harness::host::cli::Cli;
+use rig_harness::host::pipes::{self, TooLarge};
 use rig_harness::plugin_data::PluginData;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process;
 use rig_rmcp::{McpConnection, McpTool};
 use rmcp::model::{ClientCapabilities, ClientConfig, Implementation, Tool as McpDefinition};
-use rmcp::service::{NotificationContext, RoleClient};
+use rmcp::service::{NotificationContext, RoleClient, RxJsonRpcMessage, TxJsonRpcMessage};
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{ClientHandler, ServiceExt};
@@ -265,15 +266,23 @@ enum ServerEvent {
 struct McpLink(McpConnection);
 
 /// A server task's way to its entity, where each event arrives as a
-/// `Done<ServerEvent>` (a [`Running::stream`] of the channel).
+/// `Done<ServerEvent>` (a [`Running::stream`] of the channel), which holds
+/// at most [`EVENTS`]: the task waits for room.
 #[derive(Clone)]
 struct Outbox(Sender<ServerEvent>);
 
+/// The most events of a server that wait for its entity.
+const EVENTS: usize = 16;
+
 impl Outbox {
-    fn send(&self, event: ServerEvent) {
-        self.0.try_send(event).ok();
+    async fn send(&self, event: ServerEvent) {
+        self.0.send(event).await.ok();
     }
 }
+
+/// The most bytes of one message a stdio server writes: far above any
+/// real message, below what would exhaust memory.
+pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
 
 /// A server as the files name it.
 struct Configured {
@@ -494,13 +503,14 @@ impl Connect<'_> {
         let Some(runtime) = &self.runtime else {
             return Err("MCP is off: rig has no tokio runtime.".to_owned());
         };
-        let (sender, events) = async_channel::unbounded();
+        let (sender, events) = async_channel::bounded(EVENTS);
         let start = Start {
             spec,
             processes: self.processes.clone(),
             groups: self.groups.clone(),
             root: self.root.0.clone(),
             limit: Duration::from_secs(self.settings.connect_timeout_secs.max(1)),
+            line_limit: LINE_LIMIT,
         };
         let first = Duration::from_secs(self.settings.first_retry_secs.max(1));
         // The connection lasts until nothing reads its events: until the
@@ -622,6 +632,8 @@ struct Start {
     root: PathBuf,
     /// How long an attempt may take to list the tools.
     limit: Duration,
+    /// The most bytes of a stdio server's message ([`LINE_LIMIT`]).
+    line_limit: usize,
 }
 
 /// Connects `name` again and again: lists its tools, waits for it to go,
@@ -629,7 +641,7 @@ struct Start {
 async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) {
     let mut wait = first;
     loop {
-        outbox.send(ServerEvent::Connecting);
+        outbox.send(ServerEvent::Connecting).await;
         let lost = match start.run(&outbox).await {
             Ok(()) => {
                 wait = first;
@@ -637,7 +649,7 @@ async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) 
             }
             Err(error) => error,
         };
-        outbox.send(ServerEvent::Lost(lost));
+        outbox.send(ServerEvent::Lost(lost)).await;
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(MAX_RETRY.max(first));
     }
@@ -706,6 +718,53 @@ struct Group {
     groups: Groups,
 }
 
+/// The message a stdio server's stdout refused, which ended its
+/// connection, if one did.
+type Refused = Arc<Mutex<Option<TooLarge>>>;
+
+/// A byte-order mark, which a line may start with, as rmcp's own reader
+/// allows.
+const BOM: &[u8] = b"\xEF\xBB\xBF";
+
+/// A stdio server's pipes as MCP messages: its stdout read at most `limit`
+/// ([`LINE_LIMIT`]) a line, a byte-order mark taken off, skipping a line
+/// that is not a message, as rmcp's own reader does; a longer line ends
+/// the connection, noted in `refused`.
+fn stdio(
+    stdin: tokio::process::ChildStdin,
+    stdout: tokio::process::ChildStdout,
+    limit: usize,
+    refused: Refused,
+) -> (
+    impl futures::Sink<TxJsonRpcMessage<RoleClient>, Error = io::Error> + Send + Unpin + 'static,
+    impl futures::Stream<Item = RxJsonRpcMessage<RoleClient>> + Send + Unpin + 'static,
+) {
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let sink = futures::sink::unfold(stdin, async |mut stdin, message| {
+        let mut line = serde_json::to_vec(&message).map_err(io::Error::other)?;
+        line.push(b'\n');
+        stdin.write_all(&line).await?;
+        stdin.flush().await?;
+        Ok::<_, io::Error>(stdin)
+    });
+    let lines = pipes::lines(stdout, limit).map(move |line| match line {
+        Ok(line) => {
+            let line = line.strip_prefix(BOM).unwrap_or(&line);
+            Some(serde_json::from_slice::<RxJsonRpcMessage<RoleClient>>(line).ok())
+        }
+        Err(too_large) => {
+            *refused.lock().unwrap_or_else(PoisonError::into_inner) = Some(too_large);
+            None
+        }
+    });
+    let messages = lines
+        .take_while(|line| std::future::ready(line.is_some()))
+        .filter_map(|line| std::future::ready(line.flatten()));
+    (Box::pin(sink), messages.boxed())
+}
+
 impl Drop for Group {
     fn drop(&mut self) {
         if let Some(leader) = self.child.id() {
@@ -726,14 +785,25 @@ type Reached = (McpConnection, Option<Group>);
 type Opened = (McpConnection, Vec<McpDefinition>, Option<Group>);
 
 impl Start {
-    /// One connection to the server: `Ok` once it closed after answering.
-    /// Every list of its tools is asked for here, one at a time, so no
-    /// older list replaces a newer one.
+    /// One connection to the server: `Ok` once it closed after answering;
+    /// a message past the limit that ended it, at any point, is why it
+    /// failed.
     async fn run(&self, outbox: &Outbox) -> Result<(), String> {
+        let refused = Refused::default();
+        let ran = self.connection(outbox, &refused).await;
+        match *refused.lock().unwrap_or_else(PoisonError::into_inner) {
+            Some(too_large) => Err(format!("the server sent a message of {too_large}")),
+            None => ran,
+        }
+    }
+
+    /// [`Start::run`]'s connection. Every list of its tools is asked for
+    /// here, one at a time, so no older list replaces a newer one.
+    async fn connection(&self, outbox: &Outbox, refused: &Refused) -> Result<(), String> {
         let limit = self.limit.as_secs();
         let (changed, changes) = async_channel::bounded(1);
         let opened = async {
-            let (connection, child) = self.open(outbox, Listener(changed)).await?;
+            let (connection, child) = self.open(outbox, Listener(changed), refused).await?;
             // rmcp hands each notification to a task of its own, so a change
             // the server said before a list's answer may reach the listener
             // just after it: the tools count as in once a list stays quiet
@@ -752,7 +822,9 @@ impl Start {
         let (connection, tools, child) = tokio::time::timeout(self.limit, opened)
             .await
             .map_err(|_| format!("no answer within {limit}s"))??;
-        outbox.send(ServerEvent::Connected(connection.clone(), tools));
+        outbox
+            .send(ServerEvent::Connected(connection.clone(), tools))
+            .await;
         loop {
             let closed = async {
                 connection.closed().await;
@@ -766,8 +838,8 @@ impl Start {
             // back the next change.
             let listed = tokio::time::timeout(self.limit, list(&connection, &changes)).await;
             match listed.map_err(|_| format!("no answer within {limit}s")) {
-                Ok(Ok(tools)) => outbox.send(ServerEvent::Listed(tools)),
-                Ok(Err(error)) | Err(error) => outbox.send(ServerEvent::Unlisted(error)),
+                Ok(Ok(tools)) => outbox.send(ServerEvent::Listed(tools)).await,
+                Ok(Err(error)) | Err(error) => outbox.send(ServerEvent::Unlisted(error)).await,
             }
         }
         // A stdio server's process group is killed as it is dropped.
@@ -776,7 +848,12 @@ impl Start {
     }
 
     /// Starts or reaches the server, with `client` as its MCP client.
-    async fn open(&self, outbox: &Outbox, client: Listener) -> Result<Reached, String> {
+    async fn open(
+        &self,
+        outbox: &Outbox,
+        client: Listener,
+        refused: &Refused,
+    ) -> Result<Reached, String> {
         let (service, child) = match &self.spec {
             ServerSpec::Stdio {
                 command,
@@ -801,14 +878,15 @@ impl Start {
                     .spawn(&mut process)
                     .map_err(|error| format!("could not start `{command}`: {error}"))?;
                 if let Some(pid) = child.child.id() {
-                    outbox.send(ServerEvent::Started(pid));
+                    outbox.send(ServerEvent::Started(pid)).await;
                 }
                 let pipes = (child.child.stdout.take(), child.child.stdin.take());
                 let (Some(stdout), Some(stdin)) = pipes else {
                     return Err(format!("`{command}` has no pipes"));
                 };
+                let transport = stdio(stdin, stdout, self.line_limit, refused.clone());
                 let service = client
-                    .serve((stdout, stdin))
+                    .serve(transport)
                     .await
                     .map_err(|error| error.to_string())?;
                 (service, Some(child))

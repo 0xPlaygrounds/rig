@@ -20,17 +20,41 @@ mod router;
 #[cfg(not(target_family = "wasm"))]
 mod session;
 #[cfg(not(target_family = "wasm"))]
+mod stdio;
+#[cfg(not(target_family = "wasm"))]
 mod translate;
 
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests;
 
 #[cfg(not(target_family = "wasm"))]
-use reply::{Reply, error, initialized};
+use reply::{Pending, Reply, ended, error, initialized};
 #[cfg(not(target_family = "wasm"))]
 use rig_harness::prelude::*;
 #[cfg(not(target_family = "wasm"))]
 use rig_mcp_client::McpCorePlugin;
+
+/// The most bytes of one ACP line, read by the router from the client and
+/// from each session's process, and by a session's process from the
+/// router: far above an image a prompt carries, below what would exhaust
+/// memory.
+pub const LINE_LIMIT: usize = 64 * 1024 * 1024;
+
+/// The line limit the router and a session read with, [`LINE_LIMIT`]
+/// unless the app inserted another, as the tests do.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Resource, Clone, Copy, Debug)]
+pub(crate) struct LineLimit(pub(crate) usize);
+
+#[cfg(not(target_family = "wasm"))]
+impl LineLimit {
+    /// The app's line limit.
+    fn of(world: &World) -> usize {
+        world
+            .get_resource::<Self>()
+            .map_or(LINE_LIMIT, |limit| limit.0)
+    }
+}
 
 #[cfg(not(target_family = "wasm"))]
 /// `rig acp`: ACP v1 on stdin and stdout, each session in a process of
