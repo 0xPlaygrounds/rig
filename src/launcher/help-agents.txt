@@ -43,7 +43,8 @@ works in its current directory. RIG_HOME (default ~/.rig) holds its
 builds, settings and sessions. The first start builds the agent, which
 takes minutes, and a start waits for another rig's build; stderr says
 so in one line once the wait passes 3 seconds, and is otherwise quiet
-about the build unless it fails.
+about the build unless it fails. A job a shell command leaves running in the
+background ends when rig exits; `setsid` keeps it running after.
 
 Every line, both ways, is a JSON object with "v":1. A line of another
 version is refused with a reply saying whether rig or the driver needs

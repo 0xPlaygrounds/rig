@@ -349,6 +349,41 @@ fn a_sink_that_stops_after_the_exit_gets_nothing_more() {
     assert!(taken <= LIMIT + super::MAX_PIECE, "{taken} bytes taken");
 }
 
+/// Output that comes past the deadline is not taken, also once the
+/// process exited with it still queued: the wait ends as timed out.
+#[cfg(unix)]
+#[test]
+fn output_past_the_deadline_after_the_exit_is_a_timeout() {
+    let script = "head -c 12582912 /dev/zero | tr '\\000' x";
+    let process = Launcher::default().spawn("sh", ["-c", script], Spawn::default());
+    let Ok(mut process) = process else {
+        return assert!(process.is_ok());
+    };
+    let mut first = true;
+    let deadline = Instant::now() + Duration::from_millis(200);
+    let ended = process.run(Some(deadline), |_| {
+        if std::mem::take(&mut first) {
+            // The producer ends meanwhile, its output still queued.
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        true
+    });
+    assert!(matches!(ended, Ok(Ended::TimedOut)), "{ended:?}");
+}
+
+/// `output` stops at its timeout though output keeps coming.
+#[cfg(unix)]
+#[test]
+fn output_stops_at_its_timeout_while_output_flows() {
+    let flowing = "while :; do echo x; done";
+    let process = Launcher::default().spawn("sh", ["-c", flowing], Spawn::default());
+    let started = Instant::now();
+    let output = process.and_then(|process| process.output(Some(Duration::from_millis(200))));
+    let kind = output.err().map(|error| error.kind());
+    assert_eq!(kind, Some(std::io::ErrorKind::TimedOut));
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
 /// `output` keeps every byte as it was printed, not only text.
 #[cfg(unix)]
 #[test]

@@ -530,23 +530,21 @@ impl RunDir {
     /// start until it is empty or the agent killed it. The launcher kills
     /// those left once the agent exits for anything but a reload, such as
     /// after `SIGKILL`; after a reload the next agent takes them over
-    /// ([`Self::live_groups`]).
+    /// ([`Self::listed_groups`]).
     pub fn groups(&self) -> PathBuf {
         self.0.join("groups")
     }
 
-    /// The groups listed in [`Self::groups`] that still have a process
-    /// carrying [`env::PROCESS_LEDGER`] naming the list, its leader or one
-    /// the leader left behind as it exited: so an id the system gave
-    /// another process since is not among them. None when there is no
-    /// list.
+    /// The group ids listed in [`Self::groups`], none when there is no
+    /// list. An id whose group emptied may name another group since: an
+    /// agent that takes them over after a reload owns each only while it
+    /// has members ([`Self::live_groups`] checks more).
     ///
     /// # Errors
     ///
     /// When the list cannot be read.
-    pub fn live_groups(&self) -> std::io::Result<Vec<i32>> {
-        let ledger = self.groups();
-        let listed = match std::fs::read_to_string(&ledger) {
+    pub fn listed_groups(&self) -> std::io::Result<Vec<i32>> {
+        let listed = match std::fs::read_to_string(self.groups()) {
             Ok(listed) => listed,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error),
@@ -556,7 +554,24 @@ impl RunDir {
         Ok(listed
             .lines()
             .filter_map(|id| id.trim().parse::<i32>().ok())
-            .filter(|&id| id > 1 && members(id).into_iter().any(|pid| marked(pid, &ledger)))
+            .filter(|&id| id > 1)
+            .collect())
+    }
+
+    /// The groups listed in [`Self::groups`] that still have a process
+    /// carrying [`env::PROCESS_LEDGER`] naming the list, its leader or one
+    /// the leader left behind as it exited: so an id the system gave
+    /// another process since is not among them.
+    ///
+    /// # Errors
+    ///
+    /// When the list cannot be read.
+    pub fn live_groups(&self) -> std::io::Result<Vec<i32>> {
+        let ledger = self.groups();
+        Ok(self
+            .listed_groups()?
+            .into_iter()
+            .filter(|&id| members(id).into_iter().any(|pid| marked(pid, &ledger)))
             .collect())
     }
 

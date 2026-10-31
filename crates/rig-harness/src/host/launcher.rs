@@ -100,8 +100,9 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
-            // Jobs the agent before a reload left running stay owned.
-            let adopted = run.live_groups().unwrap_or_default();
+            // Jobs the agent before a reload left running stay owned, also
+            // one that dropped the ledger's mark from its environment.
+            let adopted = run.listed_groups().unwrap_or_default();
             let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
             rig_tools::process::record_groups(run.groups(), adopted);
             app.insert_resource(LauncherRun(run));
