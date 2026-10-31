@@ -127,12 +127,17 @@ impl<'a> Reference<'a> {
     }
 
     /// `path` written as a reference: `@path`, quoted when it is empty,
-    /// holds whitespace, starts with `"` or ends in punctuation.
+    /// holds whitespace, starts with `"`, ends in punctuation, or ends in
+    /// what a plugin may read as a line range (`notes.md:2`, `a:10-40`).
     pub fn format(path: &str) -> String {
+        let ranged = path.rsplit_once(':').is_some_and(|(_, range)| {
+            !range.is_empty() && range.chars().all(|c| c.is_ascii_digit() || c == '-')
+        });
         let plain = !path.is_empty()
             && !path.starts_with('"')
             && !path.contains(char::is_whitespace)
-            && !path.ends_with(TRAILING);
+            && !path.ends_with(TRAILING)
+            && !ranged;
         match plain {
             true => format!("@{path}"),
             false => format!("@\"{}\"", path.replace('"', "\"\"")),

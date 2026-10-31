@@ -22,7 +22,7 @@ use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, Author, AuthorKind, CallPlace,
     Commands, Component, Decider, Decision, Effect, Entity, ForAgent, HoldOf, Incoming, Insert,
     IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome, PerCallTool,
-    Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled, Res,
+    Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled, Remove, Res,
     Resource, Running, Spawned, Started, StopTurn, SystemSet, Tool, ToolOptions, Wake, Without,
     WorkDir, blocking,
 };
@@ -292,6 +292,7 @@ impl Plugin for AttachPlugin {
             .configure_sets(AgentPass, AttachSystems.in_set(PrepareSystems::Compose))
             .add_systems(AgentPass, attach.in_set(AttachSystems))
             .add_observer(release_read)
+            .add_observer(release_removed)
             .add_observer(stop_reading);
     }
 }
@@ -313,12 +314,11 @@ impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
 }
 
 /// Reads the files each user's message names into its attachments as it
-/// comes in: inline when every one is on this machine, else off the main
-/// thread under a hold on the message ([`Workspace::host_for`]). While a
-/// message to an agent is held, a later one of the user's own, or one that
-/// names files, is held behind it, so it does not pass it; its files on
-/// this machine are attached at once all the same. A message a
-/// restart put back in the inbox ([`Started`]) has them already.
+/// comes in: those on this machine inline, at once, those on another off
+/// the main thread under a hold on the message ([`Workspace::host_for`]).
+/// While a message to an agent is held, a later one is held behind it, so
+/// it does not pass it. A
+/// message a restart put back in the inbox ([`Started`]) has them already.
 ///
 /// [`Workspace::host_for`]: rig_tools::workspace::Workspace::host_for
 fn attach(
@@ -343,24 +343,31 @@ fn attach(
         let hold = (Name::new("attachments"), Reading(agent), HoldOf(message));
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let workspace = workspace.0.clone();
-        let (names, remote) = {
-            let mut named = Reference::parse(typed.text()).peekable();
-            let names = named.peek().is_some();
-            let remote = named.any(|reference| {
-                let path = workspace.join(&base, Path::new(&*reference.path));
-                workspace.host_for(&path).is_some()
-            });
-            (names, remote)
-        };
-        if !names {
-            // Only the user's own, which a stop puts back in the input.
-            if waiting.contains(&agent) && typed.author == Author::user() {
+        // Its references, each written as a reference reads it back: those
+        // on this machine, and those on another.
+        let (mut here, mut there) = (Vec::new(), Vec::new());
+        for reference in Reference::parse(typed.text()) {
+            let path = workspace.join(&base, Path::new(&*reference.path));
+            let written = Reference::format(&reference.path);
+            match workspace.host_for(&path) {
+                Some(_) => there.push(written),
+                None => here.push(written),
+            }
+        }
+        if here.is_empty() && there.is_empty() {
+            if waiting.contains(&agent) {
                 commands.spawn((hold, ReadFiles::from(Ok(Attached::default()))));
             }
             continue;
         }
-        if remote {
-            let text = typed.text().to_owned();
+        // Attached now, for the plugins after this set, even when the
+        // message waits.
+        if !here.is_empty() {
+            let attached = attachments(&here.join(" "), &base, &*workspace);
+            add_attached(&mut typed, agent, attached, &mut notices);
+        }
+        if !there.is_empty() {
+            let text = there.join(" ");
             let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
             let pool = IoTaskPool::get_or_init(TaskPool::default);
             let running = Running::spawn_into::<ReadFiles, _>(pool, &wake, read);
@@ -368,10 +375,6 @@ fn attach(
             waiting.push(agent);
             continue;
         }
-        // Attached now, for the plugins after this set; only its delivery
-        // waits.
-        let attached = attachments(typed.text(), &base, &*workspace);
-        add_attached(&mut typed, agent, attached, &mut notices);
         if waiting.contains(&agent) {
             commands.spawn((hold, ReadFiles::from(Ok(Attached::default()))));
         }
@@ -457,23 +460,41 @@ fn release(
     }
 }
 
+/// Releases what waited behind a hold that is removed, whoever removes
+/// it, such as a stop or the kernel dropping its message ([`release`]).
+fn release_removed(
+    removed: On<Remove<Reading>>,
+    mut holds: ReadHolds,
+    mut messages: HeldMessages,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let gone = [removed.entity];
+    release(
+        &mut holds,
+        &mut messages,
+        &gone,
+        &mut notices,
+        &mut commands,
+    );
+}
+
 /// Stops reading the files of the user's messages to the stopped agent and
 /// the agents below it, which go back to the input instead of to the
-/// model, in the order they were sent, as a stopped turn's do; a message
-/// that is not the user's own goes on once the messages before it are
-/// read ([`release`]).
+/// model, in the order they were sent, as a stopped turn's do; what waited
+/// behind them goes on ([`release_removed`]).
 fn stop_reading(
     stop: On<StopTurn>,
     spawned: Query<&Spawned>,
-    mut holds: ReadHolds,
+    holds: Query<(Entity, &Reading, &HoldOf)>,
     mut messages: HeldMessages,
-    (mut recalled, mut notices): (MessageWriter<Recalled>, MessageWriter<Notice>),
+    mut recalled: MessageWriter<Recalled>,
     mut commands: Commands,
 ) {
     let below = spawned.iter_descendants::<Spawned>(stop.entity);
     let stopped: Vec<Entity> = std::iter::once(stop.entity).chain(below).collect();
-    let (mut back, mut gone) = (Vec::new(), Vec::new());
-    for (hold, &Reading(agent), &HoldOf(message), _) in &holds {
+    let mut back = Vec::new();
+    for (hold, &Reading(agent), &HoldOf(message)) in &holds {
         let Ok((effect, typed, mut decision)) = messages.get_mut(message) else {
             continue;
         };
@@ -484,15 +505,7 @@ fn stop_reading(
             back.push((effect.id(), agent, typed.text().trim().to_owned()));
         }
         commands.entity(hold).despawn();
-        gone.push(hold);
     }
-    release(
-        &mut holds,
-        &mut messages,
-        &gone,
-        &mut notices,
-        &mut commands,
-    );
     back.sort_unstable();
     for agent in stopped {
         let texts: Vec<&str> = (back.iter())

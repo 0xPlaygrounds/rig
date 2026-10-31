@@ -231,4 +231,13 @@ fn a_quoted_mention_is_its_path_with_its_range_after_the_quote() {
             ("my notes.md".to_owned(), Some((3, 4))),
         ]
     );
+    // A picked file whose name reads as a range is the file, as written.
+    let picked = format!("see {}", Reference::format("notes.md:2"));
+    let picked: Vec<_> = mentions(&picked).iter().map(Mention::written).collect();
+    assert_eq!(picked, [r#"@"notes.md:2""#]);
+    let written: Vec<_> = mentions(r#"@"my notes.md":3-4 @notes.md:2"#)
+        .iter()
+        .map(Mention::written)
+        .collect();
+    assert_eq!(written, [r#"@"my notes.md":3-4"#, "@notes.md:2"]);
 }

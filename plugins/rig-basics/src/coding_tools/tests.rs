@@ -680,9 +680,9 @@ fn a_stop_recalls_every_held_message_in_order() {
     assert_eq!(back, ["FIRST_MESSAGE @notes.txt\n\nSECOND_MESSAGE"]);
 }
 
-/// A message that is not the user's own, such as a skill's, does not wait
-/// behind one whose files are read, so a stop that puts the user's back
-/// in the input leaves none of it waiting.
+/// A message that is not the user's own, such as a skill's, waiting behind
+/// one whose files are read, goes on when a stop puts the user's back in
+/// the input.
 #[test]
 fn a_skills_message_is_not_left_waiting_by_a_stop() {
     let slow = Slow::default();
@@ -773,4 +773,69 @@ fn a_held_messages_local_files_are_attached_at_once() {
         said(world, agent).contains("SECOND_MESSAGE")
     });
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A message naming a file here and one on a host has the one here
+/// attached at once, for the plugins after [`AttachSystems`]; the one on
+/// the host follows when it is read.
+#[test]
+fn a_mixed_messages_local_file_is_attached_at_once() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-mixed-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("fast_local.txt"), "LOCAL_TEXT").ok();
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), &dir, "");
+    let text = "MIXED @fast_local.txt @notes.txt";
+    let message = (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+    let message = app.world_mut().spawn(message).id();
+    app.update();
+    let labels = |world: &World| -> Vec<String> {
+        let message = world.get::<Incoming>(message);
+        let parts = message.into_iter().flat_map(|message| &message.parts);
+        (parts.filter_map(|part| match part {
+            MessagePart::Attachment(attached) => Some(attached.label.clone()),
+            MessagePart::Text(_) => None,
+        }))
+        .collect()
+    };
+    let held = app.world().get::<Holds>(message).is_some();
+    let attached = labels(app.world());
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(held, "it waits for the host's file");
+    assert_eq!(attached, ["fast_local.txt"]);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("MIXED")
+    });
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A message waiting behind one the kernel drops while its files are
+/// read, such as one a plugin replaced, goes on.
+#[test]
+fn a_message_goes_on_when_the_one_before_is_dropped() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = (
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    let first = app.world_mut().spawn(first).id();
+    app.update();
+    let second = (
+        Incoming::new("SECOND_MESSAGE", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    let second = app.world_mut().spawn(second).id();
+    app.update();
+    let held = app.world().get::<Holds>(second).is_some();
+    app.world_mut().despawn(first);
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SECOND_MESSAGE")
+    });
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
+    assert!(held, "the second message waited for the first");
+    assert!(said(app.world(), agent).contains("SECOND_MESSAGE"));
 }

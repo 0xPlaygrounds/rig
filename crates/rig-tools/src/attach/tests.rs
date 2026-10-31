@@ -90,6 +90,7 @@ fn a_formatted_path_reads_back_whole() {
         "say \"hi\".txt",
         "\"quoted",
         "ends.",
+        "notes.md:2",
         r"C:\Users\me\my file.png",
     ] {
         let text = format!("look at {}, then", Reference::format(path));
@@ -98,6 +99,8 @@ fn a_formatted_path_reads_back_whole() {
     }
     assert_eq!(Reference::format("notes.md"), "@notes.md");
     assert_eq!(Reference::format("my file.txt"), "@\"my file.txt\"");
+    assert_eq!(Reference::format("notes.md:2"), "@\"notes.md:2\"");
+    assert_eq!(Reference::format("bench:~/x"), "@bench:~/x");
     let text = "@notes.md, @~/x and @alice; mail a@b.c, @\"\" or @\"unclosed @a.rs";
     let paths: Vec<_> = Reference::parse(text).map(|found| found.path).collect();
     assert_eq!(paths, ["notes.md", "~/x", "alice", "unclosed @a.rs"]);
