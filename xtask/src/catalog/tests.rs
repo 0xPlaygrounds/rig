@@ -628,6 +628,12 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
         "m",
         json!({"temperature": true, "rig": {"sampling": "never"}}),
     );
+    // A `null` rule is no rule, so `temperature` decides.
+    let no_rule = one(
+        "venice",
+        "m",
+        json!({"temperature": false, "rig": {"sampling": null}}),
+    );
     let venice = |row: serde_json::Value| one("venice", "m", row);
     for (before, after, review, unanswered) in [
         (
@@ -671,14 +677,20 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
             venice(json!({"source": "https://example.com/m", "temperature": true})),
             vec!["venice/m: sampling any -> never"],
         ),
+        (
+            &sampled,
+            &no_rule,
+            venice(json!({"source": "https://example.com/m", "temperature": false})),
+            vec![],
+        ),
     ] {
         let comparison = compared(before, &json!({}), after, &review);
         assert_eq!(refused(&comparison), unanswered, "{review}");
     }
 }
 
-/// A removed row, a smaller output limit and a price change are reported,
-/// not refused; the limit is called out where it narrows a reasoning budget.
+/// A removed row, limit and budget changes and a price change are reported,
+/// not refused; a narrower reasoning budget is called out.
 #[test]
 fn removals_limits_and_prices_are_reported_not_refused() {
     let thinker = |output: u64| {
@@ -688,15 +700,23 @@ fn removals_limits_and_prices_are_reported_not_refused() {
             "limit": {"context": 200000, "output": output}
         })
     };
+    let budget = |max: u64| {
+        json!({
+            "reasoning": true,
+            "reasoning_options": [{"type": "budget_tokens", "min": 1024, "max": max}]
+        })
+    };
     let before = json!({"venice": {"models": {
         "kept": {"name": "Kept", "cost": {"input": 1, "output": 2}},
         "gone": {"name": "Gone", "tool_call": true},
-        "thinker": thinker(64000)
+        "thinker": thinker(64000),
+        "wider": budget(4096)
     }}});
     let after = json!({"venice": {"models": {
         "kept": {"name": "Kept", "cost": {"input": 1, "output": 3}},
         "new": {"name": "New"},
-        "thinker": thinker(32000)
+        "thinker": thinker(32000),
+        "wider": budget(8192)
     }}});
     let comparison = compared(&before, &json!({}), &after, &json!({}));
     assert_eq!(comparison.refusal(), None);
@@ -705,13 +725,19 @@ fn removals_limits_and_prices_are_reported_not_refused() {
     assert!(comparison.gains.is_empty());
     assert_eq!(
         comparison.limits,
-        [(
-            "venice/thinker".to_owned(),
-            vec![
-                "output 64000 -> 32000".to_owned(),
-                "**reasoning budget narrows 1024..64000 -> 1024..32000**".to_owned()
-            ]
-        )]
+        [
+            (
+                "venice/thinker".to_owned(),
+                vec![
+                    "output 64000 -> 32000".to_owned(),
+                    "**reasoning budget 1024..64000 -> 1024..32000, narrower**".to_owned()
+                ]
+            ),
+            (
+                "venice/wider".to_owned(),
+                vec!["reasoning budget 1024..4096 -> 1024..8192".to_owned()]
+            )
+        ]
     );
     assert_eq!(
         comparison.counted.into_iter().collect::<Vec<_>>(),
@@ -719,9 +745,32 @@ fn removals_limits_and_prices_are_reported_not_refused() {
     );
 }
 
+/// Each value a review row sets on a model models.dev lists, a `from`
+/// row's own included, is listed as agreeing with models.dev or not.
+#[test]
+fn reviewed_values_are_compared_with_models_dev() {
+    let models_dev = json!({"venice": {"models": {
+        "base": {"name": "Base", "tool_call": false, "limit": {"context": 8192, "output": 1024}},
+        "alias": {"name": "Alias", "tool_call": false}
+    }}});
+    let review = json!({"venice": {"models": {
+        "base": {"source": "https://example.com/m", "limit": {"output": 1024}, "tool_call": true},
+        "alias": {"from": "venice/base", "source": "https://example.com/m", "tool_call": true}
+    }}});
+    let comparison = compared(&models_dev, &review, &models_dev, &review);
+    assert_eq!(comparison.agrees, ["`venice/base` `limit.output`"]);
+    assert_eq!(
+        comparison.disagrees,
+        [
+            "`venice/alias` `tool_call`: review true, models.dev false",
+            "`venice/base` `tool_call`: review true, models.dev false"
+        ]
+    );
+}
+
 /// A review row needs a source when it sets a capability or a `rig` fact,
-/// unless the unsourced list holds it as it was; a `from` row takes its
-/// origin's. A listed row that changes, or gains a source, leaves the list.
+/// or copies a row with `from`, unless the unsourced list holds it as it
+/// was; a `from` row takes its origin review's. A listed row that changes, or gains a source, leaves the list.
 #[test]
 fn a_new_or_changed_review_row_needs_a_source() {
     let base = json!({"venice": {"models": {
@@ -750,6 +799,11 @@ fn a_new_or_changed_review_row_needs_a_source() {
         (
             json!({"copy": {"from": "venice/sourced", "rig": {"cache": ["short"]}}}),
             None,
+        ),
+        (json!({"copy": {"from": "venice/sourced"}}), None),
+        (
+            json!({"copy": {"from": "venice/unreviewed"}}),
+            Some("venice/copy: sets from"),
         ),
         (
             json!({"new": {"source": "unverified: copied from venice/old", "tool_call": true}}),

@@ -232,8 +232,9 @@ cargo xtask catalog sync --from ../api.json
   check. Or it starts with `unverified:` and says where the fact came from
   (`unverified: copied from openai/gpt-6.1-sol`). Never claim a check that was
   not made. Every review row a change adds or edits needs one when it sets a
-  capability, `limit` or a `rig` fact; the old rows `unsourced.txt` lists are
-  held to it once they change.
+  capability, `limit` or a `rig` fact, or copies a row with `from` (a copy of
+  a reviewed row with a source takes that one); the old rows `unsourced.txt`
+  lists are held to it once they change.
 - **Paste the report** sync prints into the PR under "Catalog changes". A
   later sync reports only what changed since the last one; to see the whole
   refresh again, restore main's catalog first:

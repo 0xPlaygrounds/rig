@@ -32,8 +32,9 @@
 //! sampling it took) that the row's own review does not answer by setting
 //! the deciding key with a `source`. Otherwise it prints a markdown report of
 //! every change, for the refresh PR. A review row that sets a capability,
-//! `limit` or a `rig` fact names a `source`, or its `from` row does, unless
-//! `unsourced.txt` lists it unchanged. DEVELOPING.md's "Refreshing the model
+//! `limit` or a `rig` fact, or copies a row with `from`, names a `source`,
+//! or the review of the row it copies does, unless `unsourced.txt` lists it
+//! unchanged. DEVELOPING.md's "Refreshing the model
 //! catalog" is the procedure.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the

@@ -416,6 +416,7 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
         let sampling_fact = now
             .get("rig")
             .and_then(|facts| facts.get("sampling"))
+            .and_then(Value::as_str)
             .is_some();
         let (losses, gains) = changes(&old_reading, &new_reading, sampling_fact);
         let mut refused = Vec::new();
@@ -450,8 +451,9 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
     comparison
 }
 
-/// The limit and status changes of a row, and a narrower reasoning budget
-/// range, whose ceiling follows `limit.output` unless the row sets its own.
+/// The limit and status changes of a row, and a change to its reasoning
+/// budget range, whose ceiling follows `limit.output` unless the row sets
+/// its own. A narrower range is called out.
 fn limit_changes(
     was: &Map<String, Value>,
     now: &Map<String, Value>,
@@ -476,11 +478,13 @@ fn limit_changes(
             ..
         },
     ) = (&old.reasoning, &new.reasoning)
-        && (min > was_min || max < was_max)
+        && (was_min, was_max) != (min, max)
     {
-        changes.push(format!(
-            "**reasoning budget narrows {was_min}..{was_max} -> {min}..{max}**"
-        ));
+        let change = format!("reasoning budget {was_min}..{was_max} -> {min}..{max}");
+        changes.push(match min > was_min || max < was_max {
+            true => format!("**{change}, narrower**"),
+            false => change,
+        });
     }
     if was.get("status") != now.get("status") {
         changes.push(format!(
@@ -578,10 +582,11 @@ fn count(
 }
 
 /// List each reviewed value of a row models.dev lists as agreeing or not
-/// with models.dev's own value: an object's values part by part.
+/// with models.dev's own value: an object's values part by part, and a
+/// `from` row's own values.
 fn reviewed_facts(comparison: &mut Comparison, review: &Rows, models_dev: &Rows) {
     for (vendor, models) in review {
-        for (id, reviewed) in models.iter().filter(|(_, row)| !row.contains_key("from")) {
+        for (id, reviewed) in models {
             let Some(upstream) = models_dev.get(vendor).and_then(|models| models.get(id)) else {
                 continue;
             };
@@ -624,21 +629,18 @@ impl Comparison {
             self.refused.len()
         );
         for (key, losses) in &self.refused {
-            let mut answers: Vec<&str> = Vec::new();
-            for path in losses.iter().flat_map(|loss| loss.answers) {
-                if !answers.contains(path) {
-                    answers.push(path);
-                }
-            }
-            out.push_str(&format!(
-                "  {key}: {} (answer with {})\n",
-                spell_losses(losses),
-                answers
-                    .iter()
-                    .map(|path| format!("`{path}`"))
-                    .collect::<Vec<_>>()
-                    .join(" or ")
-            ));
+            let losses: Vec<String> = losses
+                .iter()
+                .map(|loss| {
+                    let answers: Vec<String> = loss
+                        .answers
+                        .iter()
+                        .map(|path| format!("`{path}`"))
+                        .collect();
+                    format!("{} (answer with {})", loss.what, answers.join(" or "))
+                })
+                .collect();
+            out.push_str(&format!("  {key}: {}\n", losses.join("; ")));
         }
         out.push_str(&format!(
             "Answer each in {REVIEW}: set that key on the row, with a \"source\", to the old \
@@ -752,16 +754,9 @@ impl Comparison {
     }
 }
 
-fn spell_losses(losses: &[Loss]) -> String {
-    losses
-        .iter()
-        .map(|loss| loss.what.as_str())
-        .collect::<Vec<_>>()
-        .join("; ")
-}
-
-/// Fail on a review row that sets a [`SOURCED`] key with no `source` of
-/// its own or of the row it copies with `from`, unless `unsourced` (the
+/// Fail on a review row that sets a [`SOURCED`] key, or copies a row's
+/// facts with `from`, with no `source` of its own or of the review of the
+/// row it copies, unless `unsourced` (the
 /// text of [`UNSOURCED`]) lists it as it was when sources became required:
 /// a line `<fingerprint> <vendor>/<id>`. A listed row that changed, gained a
 /// source or left the review fails too, so the list only shrinks.
@@ -783,6 +778,7 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
             let key = format!("{vendor}/{id}");
             let sets: Vec<&str> = SOURCED
                 .into_iter()
+                .chain(["from"])
                 .filter(|field| row.contains_key(*field))
                 .collect();
             let needs = !sets.is_empty()

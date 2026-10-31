@@ -1,7 +1,8 @@
-# The rows of review.json that set a capability or a `rig` fact without a
-# "source" when sources became required, each with the fingerprint of the
-# row as it was then (`cargo xtask catalog check` reads it). A row that
-# changes needs a source and leaves this list; nothing joins it.
+# The rows of review.json that set a capability or a `rig` fact, or copy a
+# row with `from`, without a "source" when sources became required, each
+# with the fingerprint of the row as it was then (`cargo xtask catalog check`
+# reads it). A row that changes needs a source and leaves this list; nothing
+# joins it.
 771c1a65836c14dd aws_bedrock/amazon.nova-canvas-v1:0
 824872c3ba592085 aws_bedrock/amazon.titan-embed-image-v1
 9fde15d75038d8b7 aws_bedrock/amazon.titan-embed-text-v1
@@ -145,6 +146,7 @@ cfd9ba1c3d7d131d openrouter/openai/whisper-1
 f9b8505175b0fa95 openrouter/openai/whisper-large-v3
 11f219d05d0e0629 openrouter/openai/whisper-large-v3-turbo
 d713db326a5b9b62 openrouter/qwen/qwq-32b
+3289ce39899c9ac3 perplexity/sonar_pro
 dc0c0877e3ed3b2d together/BAAI/bge-base-en-v1.5
 94caf3be54733e53 together/BAAI/bge-large-en-v1.5
 ada09e3f7cb5d3c5 together/Qwen/Qwen2.5-72B-Instruct-Turbo
