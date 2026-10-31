@@ -343,6 +343,8 @@ impl BuildLog {
     /// bar's tail on screen, so on a terminal each `\r` but a `\r\n` erases
     /// it.
     fn pass_on(&mut self, child: &mut Child) {
+        // A wait of an earlier command is over.
+        self.blocked_since = None;
         let Some(mut stderr) = child.stderr.take() else {
             return;
         };
@@ -437,6 +439,9 @@ impl BuildLog {
             self.say_building();
         } else if line.starts_with("Blocking ") && !self.announced {
             self.blocked_since.get_or_insert_with(Instant::now);
+        } else {
+            // Any other line means the wait is over.
+            self.blocked_since = None;
         }
     }
 

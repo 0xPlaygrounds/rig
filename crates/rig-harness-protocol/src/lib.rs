@@ -592,13 +592,14 @@ impl RunDir {
                     .ok();
             }
         };
-        let groups = self.live_groups()?;
-        signal("TERM", &groups);
+        let mut left = self.live_groups()?;
+        signal("TERM", &left);
+        // From here on a group is ended once it is empty: one that holds
+        // processes is never given to another, marked or not.
         let deadline = std::time::Instant::now() + Self::STOP_GRACE;
-        let mut left = groups;
         while !left.is_empty() && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(20));
-            left = self.live_groups()?;
+            left.retain(|&id| exists(id));
         }
         signal("KILL", &left);
         match std::fs::remove_file(self.groups()) {
@@ -611,6 +612,16 @@ impl RunDir {
     /// stop: longer than an agent among them takes to end its own (it gives
     /// them 2 s).
     pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+}
+
+/// Whether the process group `group` has a process: `kill -0` to it
+/// succeeds.
+fn exists(group: i32) -> bool {
+    child("kill")
+        .args(["-0", "--", &format!("-{group}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 /// The processes of the group `group`, its leader first: Linux reads each
