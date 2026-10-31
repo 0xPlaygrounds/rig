@@ -11,8 +11,8 @@ use crate::{CURRENT, SessionError, Store};
 
 /// The conversation of `agent` (the main agent when `None`, found from the
 /// session's own log and the agent logs' headers) of the session in
-/// `store`, folded from that agent's log only, writing nothing. Returns the agent's id and its
-/// conversation, with ids and made-times kept.
+/// `store`, folded from that agent's log only, writing nothing. Returns
+/// the agent's id and its conversation, with ids and made-times kept.
 ///
 /// # Errors
 ///

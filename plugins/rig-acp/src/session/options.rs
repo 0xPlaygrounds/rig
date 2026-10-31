@@ -175,7 +175,7 @@ pub(super) fn changed(
             Changed<ModelRefused>,
         )>,
     >,
-    (refusals, current): (Query<&ModelRefused>, Option<Res<CurrentAgent>>),
+    (refusals, main): (Query<&ModelRefused>, Option<Res<CurrentAgent>>),
     mut notices: MessageReader<Notice>,
     options: Options,
     mut session: ResMut<Session>,
@@ -192,7 +192,7 @@ pub(super) fn changed(
         .map(|notice| notice.text.clone());
     // The options change with the main agent, its model and level, and
     // with what can be reached, such as after a sign-in.
-    let switched = current.is_some_and(|current| current.is_changed());
+    let switched = main.is_some_and(|main| main.is_changed());
     if changing.is_none() && !moved.contains(agent) && !options.models.is_changed() && !switched {
         return;
     }

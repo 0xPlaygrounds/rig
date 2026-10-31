@@ -15,9 +15,13 @@ fn app() -> (App, Entity) {
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, CurrentAgentPlugin))
         .init_resource::<Main>()
-        .add_systems(Update, |agents: MainAgentQuery, mut main: ResMut<Main>| {
-            main.0 = main_agent(&agents);
-        });
+        .add_systems(
+            Update,
+            (|agents: MainAgentQuery, mut main: ResMut<Main>| {
+                main.0 = main_agent(&agents);
+            })
+            .after(CurrentAgentSystems),
+        );
     app.update();
     let first = app.world().resource::<Main>().0;
     (app, first.unwrap_or(Entity::PLACEHOLDER))
@@ -26,7 +30,6 @@ fn app() -> (App, Entity) {
 /// Shows `agent` and runs a frame.
 fn show(app: &mut App, agent: Entity) -> Option<Entity> {
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
-    app.update();
     app.update();
     app.world().resource::<Main>().0
 }

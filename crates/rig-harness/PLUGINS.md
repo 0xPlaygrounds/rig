@@ -696,8 +696,10 @@ to Alt+9 pick, Alt+0 dismisses).
 A choice from a list is a `Picker` entity: a title, a body, items that
 each may run a command line and show a `detail` and a `more` (the
 terminal view shows it on Right, else the detail), and whether typed text
-answers it (`free_text`); a new `Picker` inserted replaces it, and
-despawning it closes it. A front answers it, or an open `Ask`, with
+answers it (`free_text`); a new `Picker` inserted replaces it, changing
+its `items` fills it again (the terminal view keeps the item selected; do
+it in `Update` before `rig_tui::ChoiceSystems`, so the next key acts on
+the rows shown), and despawning it closes it. A front answers it, or an open `Ask`, with
 `Pick::person(entity, chosen)`, a `Chosen { items, text }`: a picker runs
 each chosen item's command, in list order, and gets `Picked` (`None` when
 closed), a question the chosen choices with the text as their note.
