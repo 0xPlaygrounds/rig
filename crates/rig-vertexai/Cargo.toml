@@ -17,7 +17,7 @@ google-cloud-aiplatform-v1 = { workspace = true }
 google-cloud-auth = { workspace = true }
 google-cloud-gax = { workspace = true }
 http = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false }
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false }
 rig-reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -27,7 +27,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", features = ["reqwest", "test-utils"] }
+rig-core = { path = "../rig-core", version = "0.46.0", features = ["reqwest", "test-utils"] }
 anyhow = { workspace = true }
 rig-agent.workspace = true
 schemars = { workspace = true }

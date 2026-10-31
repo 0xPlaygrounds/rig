@@ -8,8 +8,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-vertexai = "0.42.0"
-rig-core = "0.42.0"
+rig-vertexai = "0.46.0"
+rig-core = "0.46.0"
 ```
 
 You can also run `cargo add rig-vertexai rig-core` to add the most recent versions of the dependencies to your project.

@@ -23,8 +23,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-core = "0.36.0"
-rig-postgres = "0.2.5"
+rig-core = "0.46.0"
+rig-postgres = "0.46.0"
 ```
 
 You can also run `cargo add rig-core rig-postgres` to add the most recent versions of the dependencies to your project.
@@ -39,7 +39,7 @@ to an agent with `AgentBuilder::memory`. It needs no extension.
 
 ```toml
 [dependencies]
-rig-postgres = { version = "0.46.0-rc.1", features = ["memory"] }
+rig-postgres = { version = "0.46.0", features = ["memory"] }
 ```
 
 `PostgresSessionStore::open(pool)` makes three tables in the connection's

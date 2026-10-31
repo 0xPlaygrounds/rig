@@ -6,8 +6,8 @@ Vector store integration for [Cloudflare Vectorize](https://developers.cloudflar
 
 ```toml
 [dependencies]
-rig-vectorize = "0.2.5"
-rig-core = "0.36.0"
+rig-vectorize = "0.46.0"
+rig-core = "0.46.0"
 ```
 
 The root `rig` facade also exposes this crate behind the `vectorize` feature.

@@ -21,9 +21,9 @@ bevy_tasks = { workspace = true }
 # A streamable HTTP server's headers.
 http = { workspace = true }
 # `Starting`, which holds a headless run until the servers answered.
-rig-basics = { path = "../rig-basics", version = "0.46.0-rc.1", default-features = false }
+rig-basics = { path = "../rig-basics", version = "0.46.0", default-features = false }
 rig-core = { workspace = true }
-rig-harness = { path = "../../crates/rig-harness", version = "0.46.0-rc.1" }
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
 rig-rmcp = { workspace = true }
 rmcp = { workspace = true, features = ["client", "transport-async-rw", "transport-streamable-http-client-reqwest", "reqwest"] }
 serde = { workspace = true, features = ["derive"] }

@@ -21,7 +21,7 @@ ignore = { workspace = true }
 # `Local::watch` hears of changes from the system instead of polling.
 notify = { workspace = true }
 regex = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false }
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false }
 # Each tool's parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
