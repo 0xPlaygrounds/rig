@@ -34,7 +34,10 @@ const SOURCED: [&str; 8] = [
 
 /// What rig-core reads from a finished row, by the rules of `Row::spec` in
 /// `crates/rig-core/src/catalog/row.rs`. Keep the two in step;
-/// `the_reading_is_rig_cores` checks them over the checked-in catalog.
+/// `the_reading_is_rig_cores` checks them over the checked-in catalog. It
+/// reads a row rig-core can load; a value of the wrong type, which makes
+/// rig-core skip the row, fails that test and rig-core's
+/// `the_checked_in_catalog_loads_whole` instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Reading {
     pub(super) reasoning: Reasoning,
@@ -146,14 +149,13 @@ fn reasoning(row: &Map<String, Value>, no_control: bool) -> Reasoning {
     }
 }
 
-/// A capability a row loses, and the review keys that answer it.
+/// A capability a row loses, and the review key that answers it: the one
+/// that decides the lost value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Loss {
     pub(super) what: String,
-    pub(super) answers: &'static [&'static str],
+    pub(super) answer: &'static str,
 }
-
-const REASONING_OPTIONS: &[&str] = &["reasoning_options"];
 
 /// What `new` loses and gains against `old`. `sampling_fact` says whether
 /// the new row's `rig` facts name its sampling rule, which then decides it;
@@ -161,15 +163,14 @@ const REASONING_OPTIONS: &[&str] = &["reasoning_options"];
 fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec<String>) {
     let mut losses = Vec::new();
     let mut gains = Vec::new();
-    let mut lose =
-        |what: String, answers: &'static [&'static str]| losses.push(Loss { what, answers });
+    let mut lose = |what: String, answer: &'static str| losses.push(Loss { what, answer });
     match (&old.reasoning, &new.reasoning) {
         (Reasoning::None, Reasoning::None) | (Reasoning::Unknown, Reasoning::Unknown) => {}
-        (_, Reasoning::None) => lose("stops reasoning".to_owned(), &["reasoning"]),
+        (_, Reasoning::None) => lose("stops reasoning".to_owned(), "reasoning"),
         (Reasoning::None, now) => gains.push(format!("reasons ({})", controls(now))),
         (was @ Reasoning::Listed { .. }, Reasoning::Unknown) => lose(
             format!("reasoning controls become unknown (were {})", controls(was)),
-            REASONING_OPTIONS,
+            "reasoning_options",
         ),
         (Reasoning::Unknown, now) => {
             gains.push(format!("reasoning controls listed ({})", controls(now)))
@@ -190,7 +191,7 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
             if !lost.is_empty() {
                 lose(
                     format!("effort lost: {}", lost.join(", ")),
-                    REASONING_OPTIONS,
+                    "reasoning_options",
                 );
             }
             let gained = missing(now, was);
@@ -200,13 +201,13 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
             match (was_off, now_off) {
                 (true, false) => lose(
                     "can no longer turn reasoning off".to_owned(),
-                    REASONING_OPTIONS,
+                    "reasoning_options",
                 ),
                 (false, true) => gains.push("can turn reasoning off".to_owned()),
                 _ => {}
             }
             match (was_budget, now_budget) {
-                (Some(_), None) => lose("reasoning budget lost".to_owned(), REASONING_OPTIONS),
+                (Some(_), None) => lose("reasoning budget lost".to_owned(), "reasoning_options"),
                 (None, Some(_)) => gains.push("reasoning budget".to_owned()),
                 _ => {}
             }
@@ -216,25 +217,25 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
     if !lost.is_empty() {
         lose(
             format!("input lost: {}", lost.join(", ")),
-            &["modalities.input"],
+            "modalities.input",
         );
     }
     let gained = missing(&new.input, &old.input);
     if !gained.is_empty() {
         gains.push(format!("input: {}", gained.join(", ")));
     }
-    let flags: [(&str, bool, bool, &'static [&'static str]); 2] = [
-        ("tool calls", old.tools, new.tools, &["tool_call"]),
+    let flags = [
+        ("tool calls", old.tools, new.tools, "tool_call"),
         (
             "structured output",
             old.structured_output,
             new.structured_output,
-            &["structured_output"],
+            "structured_output",
         ),
     ];
-    for (name, was, now, answers) in flags {
+    for (name, was, now, answer) in flags {
         match (was, now) {
-            (true, false) => lose(format!("{name} lost"), answers),
+            (true, false) => lose(format!("{name} lost"), answer),
             (false, true) => gains.push(name.to_owned()),
             _ => {}
         }
@@ -246,11 +247,11 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
         now.unwrap_or("unknown")
     );
     if samples_less(was, now) {
-        let answers: &'static [&'static str] = match sampling_fact {
-            true => &["rig.sampling"],
-            false => &["temperature"],
+        let answer = match sampling_fact {
+            true => "rig.sampling",
+            false => "temperature",
         };
-        lose(sampling, answers);
+        lose(sampling, answer);
     } else if samples_less(now, was) {
         gains.push(sampling);
     }
@@ -303,17 +304,15 @@ fn controls(reasoning: &Reasoning) -> String {
     }
 }
 
-/// The `source` that answers a loss of `vendor/id` with one of `paths`:
-/// the row's own review when it sets one, else the review of the row it
+/// The `source` that answers a loss of `vendor/id` with the key `path`:
+/// the row's own review when it sets it, else the review of the row it
 /// copies with `from` when that one does. A key a join sets is no answer.
-fn answer(review: &Rows, vendor: &str, id: &str, paths: &[&str]) -> Option<String> {
+fn answer(review: &Rows, vendor: &str, id: &str, path: &str) -> Option<String> {
     let row = review.get(vendor)?.get(id)?;
     let origin = origin(review, row);
-    let answering = match paths.iter().any(|path| sets(row, path)) {
+    let answering = match sets(row, path) {
         true => source(row).or_else(|| origin.and_then(source)),
-        false => origin
-            .filter(|origin| paths.iter().any(|path| sets(origin, path)))
-            .and_then(source),
+        false => origin.filter(|origin| sets(origin, path)).and_then(source),
     };
     answering.map(str::to_owned)
 }
@@ -421,7 +420,7 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
         let (losses, gains) = changes(&old_reading, &new_reading, sampling_fact);
         let mut refused = Vec::new();
         for loss in losses {
-            match answer(review, vendor, id, loss.answers) {
+            match answer(review, vendor, id, loss.answer) {
                 Some(source) => comparison.answered.push((key.clone(), loss, source)),
                 None => refused.push(loss),
             }
@@ -631,14 +630,7 @@ impl Comparison {
         for (key, losses) in &self.refused {
             let losses: Vec<String> = losses
                 .iter()
-                .map(|loss| {
-                    let answers: Vec<String> = loss
-                        .answers
-                        .iter()
-                        .map(|path| format!("`{path}`"))
-                        .collect();
-                    format!("{} (answer with {})", loss.what, answers.join(" or "))
-                })
+                .map(|loss| format!("{} (answer with `{}`)", loss.what, loss.answer))
                 .collect();
             out.push_str(&format!("  {key}: {}\n", losses.join("; ")));
         }
