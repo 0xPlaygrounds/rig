@@ -128,7 +128,7 @@ impl Launcher {
     /// let status = process.wait_for(std::time::Duration::from_secs(5))?;
     /// assert!(status.is_some_and(|status| status.success()));
     /// let lines: Vec<OutputLine> = process.lines().iter().collect();
-    /// assert_eq!(lines, [OutputLine::Out("hello\n".to_owned())]);
+    /// assert_eq!(lines, [OutputLine::Out(b"hello\n".to_vec())]);
     /// # }
     /// # Ok::<(), std::io::Error>(())
     /// ```
@@ -542,7 +542,7 @@ impl Process {
     /// How it ended, if it has.
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
         let status = self.child.try_wait();
-        if !matches!(status, Ok(None)) {
+        if !matches!(status, Ok(None)) && self.group.running() {
             // Reaped, or about to be: its id may be reused.
             self.group.0.store(0, Ordering::SeqCst);
             if !self.released {
@@ -645,7 +645,8 @@ impl Process {
     /// after it exited. After an exit, something it left running that still
     /// holds its output gets a moment (100 ms) to finish, then the rest of
     /// its group is killed, as it is when `sink` stops taking output then
-    /// (which ends the wait as [`Ended::Stopped`]); past the deadline or
+    /// (which ends the wait as [`Ended::Stopped`]) or output comes past the
+    /// deadline (as [`Ended::TimedOut`]); past the deadline or
     /// stopped while it runs, the group is [stopped](Self::stop) with
     /// [`STOP_GRACE`]. Its pipes are read to their end for that moment
     /// after a kill: a process that left the group survives the kill and may
@@ -681,17 +682,24 @@ impl Process {
             self.read_rest(&mut drop);
             return Ok(ended);
         }
-        let more = Cell::new(more);
+        let (more, late) = (Cell::new(more), Cell::new(false));
         let mut take = |line| {
-            if more.get() && deadline.is_none_or(|deadline| Instant::now() < deadline) {
-                more.set(sink(line));
+            if !more.get() {
+                return;
             }
+            let past = deadline.is_some_and(|deadline| Instant::now() >= deadline);
+            late.set(past);
+            more.set(!past && sink(line));
         };
         if !self.read_rest(&mut take) || !more.get() {
             self.kill().ok();
             self.read_rest(&mut take);
         }
-        Ok(if more.get() { ended } else { Ended::Stopped })
+        Ok(match (late.get(), more.get()) {
+            (true, _) => Ended::TimedOut,
+            (false, false) => Ended::Stopped,
+            (false, true) => ended,
+        })
     }
 
     /// Reads its output until the pipes' end, for at most [`PIPE_GRACE`],
@@ -724,12 +732,16 @@ impl Process {
     }
 
     /// Kills its group (`SIGKILL`), also what is left of it after the
-    /// process itself ended, and says how the process ended. Kill within
-    /// moments of the end: once the group is empty its id is free again.
+    /// process itself ended while the ledger still lists it, and says how
+    /// the process ended. A group taken off the list is empty, and its id
+    /// may name another group, so it is left alone.
     pub fn kill(&mut self) -> io::Result<ExitStatus> {
+        let running = self.group.running();
         self.group.0.store(0, Ordering::SeqCst);
         #[cfg(unix)]
-        kill_group_of(self.child.id());
+        if running || ledger().listed.contains(&self.child.id()) {
+            kill_group_of(self.child.id());
+        }
         #[cfg(not(unix))]
         if self.child.try_wait()?.is_none() {
             self.child.kill()?;
@@ -1107,9 +1119,10 @@ pub(crate) const NON_INTERACTIVE: [(&str, &str); 8] = [
     ("GH_PAGER", "cat"),
 ];
 
-/// The editor [`NON_INTERACTIVE`] names, run with `sh` by the programs
-/// that start one.
-const NO_EDITOR: &str = "echo 'no editor here: pass -m or --no-edit' >&2; false";
+/// The editor [`NON_INTERACTIVE`] names: run with `sh`, as git runs one,
+/// it says why it fails; split into words and run, as some programs do,
+/// it is `false` and fails too.
+const NO_EDITOR: &str = "false || echo 'no editor here: pass -m or --no-edit' >&2 && false";
 
 /// Starts `command` in a new session, which also makes it the leader of a
 /// new process group, with nobody at its terminal: with no controlling

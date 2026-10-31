@@ -529,13 +529,13 @@ fn browser_command(url: &Url) -> std::process::Command {
     command
 }
 
-/// Opens `url` in the browser: whether the opener said it did within 15 s.
-/// The browser it started stays when rig exits; an opener that took too
-/// long is killed.
-async fn open_browser(url: &Url) -> Result<(), AuthError> {
-    let mut opener =
-        Process::start_with_stdio(browser_command(url)).map_err(|_| AuthError::Browser)?;
-    let waited = tokio::time::timeout(Duration::from_secs(15), async {
+/// Runs `opener`, which opens the browser: whether it said it did within
+/// `wait`. It is handed over as it starts, so the browser it starts, and
+/// an opener that waits for that browser, stay as rig goes on or exits.
+async fn open_browser(opener: std::process::Command, wait: Duration) -> Result<(), AuthError> {
+    let mut opener = Process::start_with_stdio(opener).map_err(|_| AuthError::Browser)?;
+    opener.release();
+    let waited = tokio::time::timeout(wait, async {
         loop {
             match opener.try_wait() {
                 Ok(None) => tokio::time::sleep(Duration::from_millis(20)).await,
@@ -544,10 +544,7 @@ async fn open_browser(url: &Url) -> Result<(), AuthError> {
         }
     });
     match waited.await {
-        Ok(Ok(Some(status))) if status.success() => {
-            opener.release();
-            Ok(())
-        }
+        Ok(Ok(Some(status))) if status.success() => Ok(()),
         _ => Err(AuthError::Browser),
     }
 }
@@ -567,7 +564,7 @@ pub async fn login(home: &Path) -> Result<(), AuthError> {
     let verifier = random_verifier();
     let state = random_state();
     let url = authorization_url(&redirect, &state, &verifier)?;
-    open_browser(&url).await?;
+    open_browser(browser_command(&url), Duration::from_secs(15)).await?;
     let code = receive_code(&listener, ipv6.as_ref(), &state).await?;
     let client = OAuthClient::production()?;
     exchange_code(&dir, &client, &code, &state, &verifier, &redirect).await?;

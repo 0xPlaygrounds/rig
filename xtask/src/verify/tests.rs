@@ -1382,7 +1382,9 @@ fn member_dirs(folder: &str) -> Vec<String> {
     std::fs::read_dir(dir)
         .into_iter()
         .flatten()
-        .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect()
 }
 

@@ -9,7 +9,7 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::harness_protocol;
 use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
-use rig_tools::process::Process;
+use rig_tools::process::{Process, STOP_GRACE};
 
 use crate::reload::ReloadStatus;
 
@@ -30,7 +30,7 @@ pub(crate) fn stop(commands: &mut Commands) {
     commands.remove_resource::<ReloadBuild>();
 }
 
-/// The rebuild's process. Dropping it while the build runs kills the
+/// The rebuild's process. Dropping it while the build runs stops the
 /// build, as the app's runner does when it drops the app on exit.
 #[derive(Resource)]
 struct ReloadBuild {
@@ -85,6 +85,19 @@ impl ReloadBuild {
                 .collect();
         }
         shown.join("\n")
+    }
+}
+
+impl Drop for ReloadBuild {
+    /// Asks `rig build` to stop (`SIGTERM`) before it is killed: cargo runs
+    /// in a process group of its own, which the launcher kills only when
+    /// asked.
+    fn drop(&mut self) {
+        let process = self
+            .process
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner);
+        process.stop(STOP_GRACE).ok();
     }
 }
 

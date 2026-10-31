@@ -1,9 +1,7 @@
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
-use super::{
-    Ended, LEDGER_VARIABLE, Launcher, OutputLine, Process, Scope, Spawn, piece_end, record_groups,
-};
+use super::{Ended, LEDGER_VARIABLE, Launcher, OutputLine, Spawn, piece_end, record_groups};
 
 /// What a process reads on stdin reaches it, and its stdout and stderr
 /// lines arrive tagged, each with its `\n`.
@@ -244,6 +242,7 @@ fn alive(pid: u32) -> bool {
 }
 
 /// Waits at most `limit` for `done`; whether it came.
+#[cfg(target_os = "linux")]
 fn within(limit: Duration, done: impl Fn() -> bool) -> bool {
     let deadline = Instant::now() + limit;
     while !done() && Instant::now() < deadline {
@@ -253,7 +252,8 @@ fn within(limit: Duration, done: impl Fn() -> bool) -> bool {
 }
 
 /// The first line `process` prints, as a pid.
-fn printed_pid(process: &Process) -> Option<u32> {
+#[cfg(target_os = "linux")]
+fn printed_pid(process: &super::Process) -> Option<u32> {
     let line = process.lines().recv_timeout(Duration::from_secs(5)).ok()?;
     line.text().trim().parse().ok()
 }
@@ -295,13 +295,25 @@ fn a_job_left_in_the_background_stays_listed_until_it_ends() {
 #[cfg(target_os = "linux")]
 #[test]
 fn a_stopped_scope_stops_its_processes_and_starts_no_more() {
-    let scope = Scope::default();
-    let script = "(trap '' TERM; exec sleep 30) >/dev/null 2>&1 & echo $!; exec sleep 30";
-    let started = scope.enter(|| Launcher::default().spawn("sh", ["-c", script], Spawn::default()));
+    let scope = super::Scope::default();
+    let ready = std::env::temp_dir().join(format!("rig-stubborn-{}", std::process::id()));
+    // The member says its id once it ignores SIGTERM; its output is
+    // elsewhere, so only the scope can end it.
+    let script = format!(
+        "sh -c 'trap \"\" TERM; echo $$ > \"$0\"; exec sleep 30' '{}' >/dev/null 2>&1 & \
+         exec sleep 30",
+        ready.display()
+    );
+    let started =
+        scope.enter(|| Launcher::default().spawn("sh", ["-c", &script], Spawn::default()));
     let Ok(mut process) = started else {
         return assert!(started.is_ok());
     };
-    let stubborn = printed_pid(&process);
+    assert!(within(Duration::from_secs(5), || ready.exists()));
+    std::thread::sleep(Duration::from_millis(50));
+    let stubborn = std::fs::read_to_string(&ready).ok();
+    let stubborn = stubborn.and_then(|pid| pid.trim().parse::<u32>().ok());
+    std::fs::remove_file(&ready).ok();
     assert!(stubborn.is_some_and(alive));
     // The thread that waits for it goes on reaping it, as a call's does.
     let waiting = std::thread::spawn(move || process.run(None, |_| true));
@@ -353,7 +365,7 @@ fn output_keeps_every_byte() {
 fn a_released_process_is_not_stopped_with_its_scope() {
     let path = std::env::temp_dir().join(format!("rig-released-{}", std::process::id()));
     record_groups(&path, []);
-    let scope = Scope::default();
+    let scope = super::Scope::default();
     let script = "sleep 30 >/dev/null 2>&1 & echo $!";
     let started = scope.enter(|| Launcher::default().spawn("sh", ["-c", script], Spawn::default()));
     let Ok(mut process) = started else {

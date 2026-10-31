@@ -183,7 +183,11 @@ impl Router {
             {
                 process.kill().ok();
             }
-            run.kill_left_groups().ok();
+            // It waits for the groups it asks to stop, so off the runtime.
+            let left = run.clone();
+            tokio::task::spawn_blocking(move || left.kill_left_groups())
+                .await
+                .ok();
             std::fs::remove_dir_all(run.path()).ok();
             drop((run_lock, lock));
             let mut sessions = locked(&router.sessions);

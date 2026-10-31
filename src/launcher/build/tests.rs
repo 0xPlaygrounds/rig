@@ -204,6 +204,28 @@ fn a_long_wait_for_cargos_lock_is_said_while_it_lasts() {
     assert_eq!(text.lines().count(), 1, "{text:?}");
 }
 
+/// cargo starts with no signal blocked, though the launcher blocks the
+/// ending ones while it starts it.
+#[cfg(target_os = "linux")]
+#[test]
+fn cargo_starts_with_no_signal_blocked() {
+    let root = std::env::temp_dir().join(format!("rig-build-mask-{}", std::process::id()));
+    let home = Home::at(&root);
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    cargo
+        .args(["-c", "grep SigBlk /proc/self/status >&2"])
+        .stderr(Stdio::piped());
+    let ran = log.run(cargo);
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| status.success()));
+    let blocked = logged
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("SigBlk:"));
+    assert_eq!(blocked.map(str::trim), Some("0000000000000000"), "{logged}");
+}
+
 /// Stopping the build, as a signal that ends the launcher does, kills
 /// cargo's whole group: what cargo started too, as rustc.
 #[test]
