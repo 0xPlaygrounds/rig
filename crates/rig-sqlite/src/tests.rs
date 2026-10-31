@@ -3011,3 +3011,97 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
         ])))
     }
 }
+
+#[tokio::test]
+async fn failed_initialization_rolls_back_and_allows_retry() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let result = SqliteVectorStore::<TestDocument>::new(conn.clone(), 0).await;
+    anyhow::ensure!(result.is_err(), "zero-dimensional vec0 must fail");
+    let (autocommit, partial_tables) = conn
+        .call(|conn| {
+            Ok((
+                conn.is_autocommit(),
+                conn.query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE name LIKE 'live_test_documents%'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?,
+            ))
+        })
+        .await?;
+    anyhow::ensure!(autocommit, "failed initialization left a transaction open");
+    anyhow::ensure!(
+        partial_tables == 0,
+        "partial schema survived failed initialization"
+    );
+    let store = SqliteVectorStore::<TestDocument>::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![row("after-retry", "docs", "usable", vec![1.0, 0.0])])
+        .await?;
+    let index = store.index(TestEmbeddingModel::model());
+    let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(1)
+        .build();
+    let ids = index.top_n_ids(req).await?;
+    anyhow::ensure!(
+        ids.first().is_some_and(|r| r.id == "after-retry"),
+        "retry must support writes and search"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn failed_initialization_preserves_existing_data_and_caller_transaction() -> anyhow::Result<()>
+{
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    conn.call(|conn| {
+        conn.execute_batch(
+            "CREATE TABLE unrelated(value TEXT); INSERT INTO unrelated VALUES ('kept')",
+        )?;
+        Ok(())
+    })
+    .await?;
+    let failed = SqliteVectorStore::<TestDocument>::new(conn.clone(), 0).await;
+    anyhow::ensure!(failed.is_err());
+    conn.call(|conn| {
+        conn.execute_batch("BEGIN; INSERT INTO unrelated VALUES ('pending')")?;
+        Ok(())
+    })
+    .await?;
+    let nested = SqliteVectorStore::<TestDocument>::new(conn.clone(), 2).await;
+    anyhow::ensure!(
+        nested.is_err(),
+        "a caller transaction must not be committed"
+    );
+    let (autocommit, count) = conn
+        .call(|conn| {
+            let state = (
+                conn.is_autocommit(),
+                conn.query_row("SELECT COUNT(*) FROM unrelated", [], |row| {
+                    row.get::<_, i64>(0)
+                })?,
+            );
+            conn.execute_batch("ROLLBACK")?;
+            Ok(state)
+        })
+        .await?;
+    anyhow::ensure!(
+        !autocommit && count == 2,
+        "constructor changed the caller's transaction"
+    );
+    let kept = conn
+        .call(|conn| {
+            Ok(conn.query_row("SELECT value FROM unrelated", [], |row| {
+                row.get::<_, String>(0)
+            })?)
+        })
+        .await?;
+    anyhow::ensure!(
+        kept == "kept",
+        "failed initialization changed existing data"
+    );
+    Ok(())
+}
