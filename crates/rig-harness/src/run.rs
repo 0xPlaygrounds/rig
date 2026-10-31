@@ -3,21 +3,22 @@
 //! sits at has work left. [`RunPlugin`] owns it.
 //!
 //! A plugin whose tools come in the background, such as an MCP client,
-//! holds the start with a [`Starting`] entity for each source and removes
-//! it once their tools are in or it gave up, bounding that wait itself.
-//! Once none is left, [`RunStart`] checks the names `--tools` gives against
-//! the tools registered then, once, in every front: while `--tools` is
-//! given, the agent loop waits for that check, so no turn, request or tool
-//! call sees the tools still coming; a front nobody sits at makes it wait
-//! for the start in any case ([`AppRunExt::run_after_start`]). A run asked
-//! to exit meanwhile exits without the agent loop, its restored work as the
-//! session has it. A name no tool has refuses the run
-//! with exit code 2, every agent's access as the session has it. A run
-//! that keeps no session runs no agent of its own and checks nothing, as
-//! `rig acp`'s router, which hands `--tools` to its sessions. A front that says why a run
+//! holds the start with a [`Starting`] entity for each source. It removes
+//! it once their tools are in or it gave up, and bounds that wait itself.
+//! Once none is left, [`RunStart`] checks the names `--tools` gives
+//! against the tools registered then, once, in every front. While
+//! `--tools` is given, the agent loop waits for that check, so no turn,
+//! request or tool call sees the tools still coming; a front nobody sits
+//! at makes it wait in any case ([`AppRunExt::run_after_start`]). A run
+//! asked to exit meanwhile exits without the agent loop.
+//!
+//! A name no tool has refuses the run with exit code 2, and every agent
+//! keeps its access as the session has it. A front that says why a run
 //! failed itself, such as `--json`'s `exit` line, takes the refusal
 //! ([`RunStart::take_refusal`]) in `Update`; else the harness refuses the
-//! run, on stderr and through the launcher once the screen is back.
+//! run on stderr, and the launcher says it again once the screen is back.
+//! A run that keeps no session runs no agent and checks nothing: `rig
+//! acp`'s router hands `--tools` to its sessions.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -148,11 +149,11 @@ impl Plugin for RunPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        if cli::choose(app.world_mut()).is_some()
-            && app
-                .world()
-                .get_resource::<Cli>()
-                .is_some_and(Cli::sessionless)
+        cli::choose(app.world_mut());
+        if app
+            .world()
+            .get_resource::<Cli>()
+            .is_some_and(Cli::sessionless)
         {
             return;
         }
@@ -213,7 +214,11 @@ fn start(app: &mut App) {
         .add_systems(Update, check_start.in_set(RunStartSystems))
         .add_systems(PostUpdate, refuse_untaken)
         // The frame after the last start ended looks again.
-        .add_observer(|_: On<Remove<Starting>>, wake: Res<Wake>| wake.wake());
+        .add_observer(|_: On<Remove<Starting>>, wake: Option<Res<Wake>>| {
+            if let Some(wake) = wake {
+                wake.wake();
+            }
+        });
 }
 
 /// That the agent loop waits for the start.

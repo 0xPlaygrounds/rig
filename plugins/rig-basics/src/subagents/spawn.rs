@@ -304,7 +304,8 @@ fn inherit_settings(
             asked.clone()
         }
     };
-    // A task reaches its parent with these, when the parent has them.
+    // A task reaches its parent with these, when the parent has them: left
+    // out rather than refused by the grant below.
     let reaching = [MESSAGE, WAIT]
         .into_iter()
         .filter(|tool| request.role == Role::Task && access.allows(tool))

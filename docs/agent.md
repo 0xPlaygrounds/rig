@@ -433,6 +433,7 @@ processes can share one:
 | Path | What it holds |
 | --- | --- |
 | `plugins.toml` | The plugin list. |
+| `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
 | `settings.toml` | Settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |

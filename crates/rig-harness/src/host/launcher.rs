@@ -124,7 +124,8 @@ impl Plugin for LauncherPlugin {
     /// launcher when the run's front takes the terminal's screen
     /// ([`RunDir::screen`]).
     fn cleanup(&self, app: &mut App) {
-        // So every table of a file no plugin reads is checked too.
+        // Read even when no plugin read a table, so the file's tables are
+        // checked at startup all the same.
         let world = app.world_mut();
         if !world.contains_resource::<Settings>() {
             let settings = Settings::read(&RigHome::of(world).settings());
@@ -270,8 +271,8 @@ pub(crate) fn refuse(app: &mut App, why: String) {
 /// Refuses this run once it runs, as for a `--tools` name no tool has
 /// once its start is over: says `why` on stderr and in the launcher's
 /// [`RunDir::refusal`], which the launcher says again once a front that
-/// took the screen gave it back, and exits with [`REFUSED_EXIT_CODE`]. The session keeps
-/// what it has.
+/// took the screen gave it back, and exits with [`REFUSED_EXIT_CODE`].
+/// The session keeps what it has.
 pub(crate) fn refuse_running(world: &mut World, why: &str) {
     tell_refusal(world, why);
     world.trigger(Exit(ExitReason::Failed(REFUSED_EXIT_CODE)));

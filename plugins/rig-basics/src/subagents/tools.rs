@@ -59,7 +59,7 @@ const WAIT_DESCRIPTION: &str = "Wait, without ending your turn, until the agent 
 pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave you the task in the \
     first message and expects your answer. Decide what you can yourself and say what you \
     assumed; when you cannot go on without that agent, `message` it your question and `wait` \
-    for its answer. A message is not your report: your final answer, when your turn ends, is \
+    for its answer, or, without those tools, say what you need in your final answer. A message is not your report: your final answer, when your turn ends, is \
     sent to that agent as the task's result, so make it complete on its own, with file paths, \
     findings and what you changed, and keep it short. That agent may send you corrections \
     while you work and follow-ups later; answer each in your final answer. If you start \
@@ -108,8 +108,8 @@ struct TaskArgs {
     /// absent and the model is yours, else the model's default.
     effort: Option<String>,
     /// The tools the subagent may use, from yours, besides `message` and
-    /// `wait`, which it always has. All of yours when absent; an empty list
-    /// gives it no others.
+    /// `wait`, which it has whenever you do. All of yours when absent; an
+    /// empty list gives it no others.
     tools: Option<Vec<String>>,
     /// What the subagent must know of its environment that it cannot see:
     /// where the work is, how to reach other machines (the exact command),

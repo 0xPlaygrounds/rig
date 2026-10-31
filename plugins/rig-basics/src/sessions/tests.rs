@@ -421,9 +421,10 @@ fn naming_another_session_refuses_the_current_sessions_pending_name() {
     let world = app.world_mut();
     world.trigger(RunCommand::new(agent, "name  Own\n name"));
     world.flush();
+    // Written as it is taken, so no other rig takes it meanwhile.
     assert_eq!(
         world.resource::<SessionPaths>().name().as_deref(),
-        Some("Old")
+        Some("Own name")
     );
     world.trigger(NameSession {
         session: other.clone(),
@@ -542,5 +543,31 @@ fn name_refuses_the_name_of_a_session_another_rig_runs_unsaved() {
     world.trigger(RunCommand::new(agent, "name alpha"));
     world.flush();
     assert!(world.resource::<Messages<Recalled>>().is_empty());
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Two rigs naming their sessions alike at once: the second sees the first's
+/// name, written as it was taken, not at the end of the frame.
+#[test]
+fn two_sessions_named_alike_in_one_frame_never_share_the_name() {
+    let home = home("unique-at-once");
+    let (first, second) = (running(&home, "1-1"), running(&home, "1-2"));
+    assert!(first.is_some() && second.is_some());
+    let (Some(mut first), Some(mut second)) = (first, second) else {
+        return;
+    };
+    let name = |app: &mut App| {
+        app.update();
+        let world = app.world_mut();
+        let agent = world.spawn(Agent).id();
+        world.trigger(RunCommand::new(agent, "name alpha"));
+        world.flush();
+        let mut recalled = world.resource_mut::<Messages<Recalled>>();
+        let refused = recalled.drain().filter_map(|recalled| recalled.why);
+        refused.collect::<Vec<_>>()
+    };
+    assert!(name(&mut first).is_empty());
+    let refused = name(&mut second);
+    assert!(refused.iter().any(|why| why.contains("1-1")), "{refused:?}");
     fs::remove_dir_all(home.root()).ok();
 }

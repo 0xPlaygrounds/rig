@@ -24,7 +24,7 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use bevy_reflect::serde::TypedReflectSerializer;
 use rig_core::serde_json;
-use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId, lock_file};
 use rig_harness::rig_memory::{SessionMeta, title_of};
 
 use crate::session_picker::{SessionPicker, SessionPickerPlugin};
@@ -461,7 +461,8 @@ fn name(
     let name = title_of(&args.args);
     let session = paths.as_ref().and_then(|paths| paths.id());
     let current = paths.as_ref().map(|paths| (&paths.0, &*title));
-    if let Some(refusal) = name_conflict(&home.0, current, session.as_ref(), &name) {
+    let mine = paths.as_ref().map(|paths| &paths.0);
+    if let Err(refusal) = claim_name(&home.0, current, session.as_ref(), mine, &name) {
         notices.write(refusal);
         return;
     }
@@ -497,30 +498,62 @@ fn name_session(
 ) {
     let name = title_of(&named.name);
     let current = paths.as_ref().map(|paths| (&paths.0, &*title));
-    if let Some(refusal) = name_conflict(&home.0, current, Some(&named.session), &name) {
+    let this = paths.as_ref().and_then(|paths| paths.id()).as_ref() == Some(&named.session);
+    let dir = home.0.session(&named.session);
+    if !this && !dir.path().is_dir() {
+        let why = format!(
+            "Could not name session {}: there is no such session.",
+            named.session
+        );
+        notices.write(Notice::error(None, why));
+        return;
+    }
+    let target = match this {
+        true => paths.as_ref().map(|paths| &paths.0),
+        false => Some(&dir),
+    };
+    if let Err(refusal) = claim_name(&home.0, current, Some(&named.session), target, &name) {
         notices.write(refusal);
         return;
     }
-    if paths.as_ref().and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
+    if this {
         title.name = Some(name);
-        return;
-    }
-    let dir = home.0.session(&named.session);
-    let written = if dir.path().is_dir() {
-        dir.set_name(Some(&name))
-            .map_err(|failure| failure.to_string())
-    } else {
-        Err("there is no such session".to_owned())
-    };
-    if let Err(why) = written {
-        let why = format!("Could not name session {}: {why}.", named.session);
-        notices.write(Notice::error(None, why));
     }
 }
 
+/// Gives `target`, the directory of `session`, the name `name` unless
+/// another session holds it ([`name_conflict`]): checked and written while
+/// holding the home's name lock, so two rigs naming sessions at once never
+/// both take one name. An error notice says why not.
+fn claim_name(
+    home: &Home,
+    current: Option<(&SessionDir, &SessionTitle)>,
+    session: Option<&SessionId>,
+    target: Option<&SessionDir>,
+    name: &str,
+) -> Result<(), Notice> {
+    let failed = |failure: std::io::Error| {
+        let why = format!("Could not name the session “{name}”: {failure}.");
+        Notice::error(None, why)
+    };
+    let lock = lock_file(&home.root().join(NAMES_LOCK), true).map_err(failed)?;
+    lock.lock().map_err(failed)?;
+    if let Some(refusal) = name_conflict(home, current, session, name) {
+        return Err(refusal);
+    }
+    match target {
+        Some(target) => target.set_name(Some(name)).map_err(failed),
+        None => Ok(()),
+    }
+}
+
+/// The file in `RIG_HOME` a rig holds locked while it checks and writes a
+/// session's name.
+const NAMES_LOCK: &str = "names.lock";
+
 /// Refuses a name held by another session that is saved or that another
 /// rig runs, which may be saved later, using the running session's title
-/// while its name file waits for `Last`.
+/// for its own directory.
 fn name_conflict(
     home: &Home,
     current: Option<(&SessionDir, &SessionTitle)>,
