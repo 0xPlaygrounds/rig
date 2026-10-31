@@ -132,9 +132,6 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     for (component, value) in &saved {
         component.insert(&mut spawned, value.as_ref(), &registry);
     }
-    for rule in set {
-        rule(&mut spawned);
-    }
     spawned.insert((key, ForkedFrom(id.0.clone())));
     // No reply of the fork measured the conversation it starts with.
     if !empty {
@@ -142,6 +139,10 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     }
     if let Some(connection) = connection {
         spawned.insert(connection);
+    }
+    // Last, so no component inserted above brings back a required one.
+    for rule in set {
+        rule(&mut spawned);
     }
     let fork = spawned.id();
     // A value the copied log holds that the source has no more is gone in

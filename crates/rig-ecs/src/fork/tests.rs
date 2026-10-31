@@ -16,12 +16,14 @@ use crate::session_log::{Never, ReflectSaved, Reset, SessionLogPlugin, SessionSt
 struct Forks(Vec<AgentForked>);
 
 /// An app on `store`, keeping the forks made, after its first frame
-/// restored the session. Every agent requires a [`Duty`].
+/// restored the session. Every agent, and every fork again, requires a
+/// [`Duty`].
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, SessionLogPlugin))
         .register_required_components::<Agent, Duty>()
+        .register_required_components::<ForkedFrom, Duty>()
         .insert_resource(SessionStore::new(store.clone()))
         .init_resource::<Forks>()
         .add_observer(|forked: On<AgentForked>, mut forks: ResMut<Forks>| {
