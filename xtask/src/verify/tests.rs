@@ -100,6 +100,25 @@ fn planner_and_dependency_edits_cannot_skip_checks() {
 }
 
 #[test]
+fn memory_tests_run_in_the_default_sweep() {
+    let all = checks::all();
+    let default = all.iter().find(|check| check.id == "default-tests");
+    assert!(default.is_some_and(|check| {
+        check.steps.iter().any(|step| {
+            step.args
+                .iter()
+                .map(String::as_str)
+                .take(2)
+                .eq(["nextest", "run"])
+                && step
+                    .args
+                    .windows(2)
+                    .any(|args| args == ["-p", "rig-memory"])
+        })
+    }));
+}
+
+#[test]
 fn full_and_floor_lanes_select_independently() {
     // A storage-suite edit runs the service suites, not the floors.
     for p in [
