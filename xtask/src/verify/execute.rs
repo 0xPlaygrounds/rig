@@ -48,6 +48,7 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             crate::bevy::check(&serde_json::from_str(&metadata)?)
                 .map_err(|error| invalid(error.to_string()))
         }
+        "@catalog" => crate::catalog::check(root).map_err(invalid),
         "@layout" => crate::test_layout::check(root).map_err(invalid),
         "@packaging" => crate::packaging::check(root).map_err(invalid),
         "@wires" => crate::wires::check(root).map_err(invalid),

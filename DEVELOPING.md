@@ -214,6 +214,53 @@ shell out to a nested Cargo build (the facade guard, macro hygiene) get a
 nextest priority so they start first, and every nested-Cargo or trybuild test
 belongs in the `local` profile's filter in `.config/nextest.toml`.
 
+## Refreshing the model catalog
+
+`cargo xtask catalog sync` regenerates `crates/rig-core/src/catalog/models.json`
+from models.dev and `xtask/src/catalog/review.json` (module docs:
+`xtask/src/catalog.rs`; the schema: `crates/rig-core/TYPED_OPTIONS.md`
+section 8). Save models.dev once, so every run reads the same data:
+
+```sh
+curl -sSfL https://models.dev/api.json -o ../api.json   # curl.exe in PowerShell
+cargo xtask catalog sync --from ../api.json
+```
+
+- **A lost capability stops the sync**, which then writes nothing and names
+  each row and the key that answers it. Answer it in review.json on that row:
+  set the key to the old value if models.dev is wrong, or to the new one if it
+  is right, with a `source`. A value a join copies (Bedrock and Vertex from
+  Anthropic, OpenRouter's reasoning translation, `gemini-grpc` from Gemini)
+  is no answer, so each of those rows needs its own. Keeping the old value
+  makes the loss disappear. For a row models.dev lists, a kept value that
+  differs from models.dev's shows under "Reviewed values models.dev
+  disagrees with"; a mirror row's or a `rig` fact's does not.
+- **A `source`** says what proved the fact: a doc URL, a cassette, a live
+  check. Or it starts with `unverified:` and says where the fact came from
+  (`unverified: copied from openai/gpt-6.1-sol`). Never claim a check that was
+  not made. Every review row a change adds or edits needs its own when it
+  sets a capability, `limit` or a `rig` fact; one that only copies a row with
+  `from` may take the copied row's. The old rows `unsourced.txt` lists are
+  held to it once they change.
+- **Check each list under "Reasoning controls now listed"**: rig sent any
+  reasoning control to those models before and now refuses what the list
+  lacks, so a wrong list there is a new refusal.
+- **Paste the report** sync prints into the PR under "Catalog changes". It
+  goes to stdout and refusals to stderr, so
+  `cargo xtask catalog sync --from ../api.json > ../catalog-changes.md`
+  captures the report alone. A later sync reports only what changed since
+  the last one; to see the whole refresh again, restore main's catalog
+  first: `git checkout origin/main -- crates/rig-core/src/catalog/models.json`.
+- **Decide every removed row in the PR**: retired (say how you know), or kept
+  with a review row that carries its facts and a `name`. A public model
+  constant naming it is deleted or kept to match;
+  `tests/core/catalog_constants.rs` enforces it.
+- **A reviewed fact that changes what rig sends or refuses** gets a focused
+  behaviour test.
+- **Review the request-body golden against the report** before regenerating
+  it (`tests/core/request_bodies.rs`): every change there should trace to a
+  line of the report.
+
 ## PR completion
 
 Finish implementation, examples, tests, migration notes, and scope review.

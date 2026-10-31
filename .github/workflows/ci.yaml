@@ -27,9 +27,9 @@ concurrency:
 jobs:
   # Formatting, the migration-guide preamble, CWD-independent fixture paths,
   # the browser worker's JavaScript test, sibling-file test layout, the
-  # scenario catalog, xtask's own tests, the cassette acceptance index and
-  # the reply bank.
-  # Compiles only xtask.
+  # model catalog and its review, the scenario catalog, xtask's own tests,
+  # the cassette acceptance index and the reply bank.
+  # Compiles only xtask, and rig-core for xtask's tests.
   guards:
     name: stable / guards
     runs-on: ubuntu-latest
