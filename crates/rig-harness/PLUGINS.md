@@ -1059,8 +1059,8 @@ that frame. A turn's call also adds each event up in its `Partial`, the
 one record of the reply in flight: its text, reasoning and tool calls,
 each call with its arguments so far until it ends (a successor continuing
 a reply may start it with what came so far). Views, the status and a stop
-read it; a stop keeps it, its calls never run. The call from its first
-item has a `StreamTiming { first, last, items }`
+read it; a stop keeps it, its calls never run. From its first item, the
+call also has a `StreamTiming { first, last, items }`
 beside its `Started { at }`. A delta moves no stage: a reader spawning
 effects runs `.before(AgentLoop)` or calls `Wake::wake`.
 

@@ -109,9 +109,11 @@ message goes to the model with its next call, after the tool results it waits
 for) and Tab queues a follow-up that is sent when the turn would end. Both
 wait under the transcript. Esc stops the turn and puts them back in the input
 (a plugin may keep them for the next turn instead); what the reply had
-streamed stays in the transcript, saved as stopped, and is not sent to the
-model again. Messages still waiting when the agent exits come back when the
-session is resumed.
+streamed stays in the transcript, saved as stopped. A tool call cut while its
+arguments streamed stays as a row that says it never ran; the model later
+reads the reply's text and a note that the call never ran, never the call.
+Messages still waiting when the agent exits come back when the session is
+resumed.
 
 `@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
 reads images. Ctrl+V pastes the clipboard's image (through `wl-paste`, `xclip`
