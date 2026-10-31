@@ -229,6 +229,7 @@ fn a_model_the_editor_or_a_typed_command_picks_is_never_the_default() {
     std::fs::write(place.home.join("defaults.json"), saved).ok();
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
         let Some(new) = new else { return };
         let id = new.session_id;
         assert!(driven.model(&id, "test/read").await);

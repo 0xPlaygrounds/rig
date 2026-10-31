@@ -127,12 +127,22 @@ impl FirstPick {
         {
             return Self::Model(spec.reference());
         }
-        let refused = statuses
-            .into_iter()
-            .find_map(|(spec, status)| match status {
-                ModelStatus::Unavailable(why) if models.0.plan(spec).is_some() => Some(why),
+        // Why a sign-in's models cannot be used: it could not ask its
+        // account, else the account offers none of them.
+        let signed_in = || {
+            let statuses = statuses.iter();
+            statuses.filter(|(spec, _)| models.0.plan(spec).is_some())
+        };
+        let unasked = signed_in().find_map(|(_, status)| match status {
+            ModelStatus::Unavailable(why) => Some(why.clone()),
+            _ => None,
+        });
+        let refused = unasked.or_else(|| {
+            signed_in().find_map(|(_, status)| match status {
+                ModelStatus::NotOffered(why) => Some(why.clone()),
                 _ => None,
-            });
+            })
+        });
         Self::Nothing(refused)
     }
 }

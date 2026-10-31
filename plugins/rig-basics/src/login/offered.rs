@@ -14,8 +14,9 @@ use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::http_client::DynHttpClient;
 use rig_core::providers::chatgpt::auth::Authenticator;
-use rig_core::providers::chatgpt::models::account_models;
+use rig_core::providers::chatgpt::models::{LIST_TIMEOUT, account_models};
 use rig_core::serve::{AfterServe, BeforeServe, Intercept};
+use rig_core::wasm_compat::timeout;
 
 use rig_ecs::model::Models;
 use rig_ecs::tasks::Wake;
@@ -153,7 +154,8 @@ impl Offered {
         self.start(&mut state, auth, http);
     }
 
-    /// Forgets the answer, as a sign-in or sign-out may change the account.
+    /// Forgets the answer, as a sign-in or sign-out may change the account,
+    /// so listings are built again.
     pub(super) fn forget(&self) {
         let mut state = self.state();
         let epoch = state.epoch.wrapping_add(1);
@@ -161,6 +163,7 @@ impl Offered {
             epoch,
             ..State::default()
         };
+        self.answers.fetch_add(1, Ordering::AcqRel);
     }
 
     /// Starts the one request on the IO pool.
@@ -170,13 +173,20 @@ impl Offered {
         let (auth, http) = (auth.clone(), http.clone());
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         let asking = async move {
-            let asked = match auth.auth_context(&http).await {
-                Ok(context) => account_models(&context, &http)
-                    .await
-                    .map(Arc::from)
-                    .map_err(|error| error.to_string()),
-                Err(error) => Err(format!("the sign-in gave no credential ({error})")),
-            };
+            // The credential may need a refresh, which waits for other rig
+            // processes too: one deadline covers it and the list.
+            let asked = timeout(LIST_TIMEOUT, async {
+                match auth.auth_context(&http).await {
+                    Ok(context) => account_models(&context, &http)
+                        .await
+                        .map(Arc::from)
+                        .map_err(|error| error.to_string()),
+                    Err(error) => Err(format!("the sign-in gave no credential ({error})")),
+                }
+            });
+            let asked = asked
+                .await
+                .unwrap_or_else(|_| Err(format!("no answer in {} s", LIST_TIMEOUT.as_secs())));
             offered.answered(epoch, asked);
         };
         pool.spawn(asking).detach();
