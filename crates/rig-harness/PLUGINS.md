@@ -803,10 +803,9 @@ What the user types, in any front, is a message to its agent from
 an `Incoming` effect `ForAgent` the agent. A Prepare system may change it
 (`Added<Admitted>`): its `parts`, text and attachments in the order the model
 reads them (`text()`, `text_mut()` the first text); `rig_basics::coding_tools`
-starts reading the `@path` files it names in its public set `AttachSystems`
-(in `PrepareSystems::Compose`) and attaches them later, off the main thread,
-under a hold on the message, so a system that reads them looks at the
-message once it is `Started`. A Gate system may take it over by deciding it
+attaches the `@path` files it names in its public set `AttachSystems` (in
+`PrepareSystems::Compose`), and those on another machine later, under a
+hold on the message. A Gate system may take it over by deciding it
 (`Outcome::custom(..)`), as the harness runs a `/` line as a command. At Start
 the kernel gives the rest to the agent, which starts a turn with it or keeps
 it for its running turn as its `mode` says: accepted and not sent yet, it is

@@ -16,7 +16,7 @@ use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
-use super::{AttachPlugin, ReadTool, SharedShell, ShellOutput, ShellTool};
+use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
 
 /// The shell tool on `processes`, cutting as `output` says.
 fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
@@ -185,14 +185,17 @@ fn said(world: &World, agent: Entity) -> String {
     format!("{:?}", world.get::<Conversation>(agent))
 }
 
-/// The texts of the warnings the app showed.
-fn warned(world: &World) -> Vec<&str> {
-    let notices = &world.resource::<Collected<Notice>>().0;
-    notices
-        .iter()
-        .filter(|notice| notice.level == NoticeLevel::Warn)
-        .map(|notice| notice.text.as_str())
-        .collect()
+/// The labels of the files attached to each message, as a plugin after
+/// [`AttachSystems`] sees them.
+#[derive(Resource, Default)]
+struct Labels(Vec<String>);
+
+fn read_labels(messages: Query<&Incoming, Added<Admitted>>, mut labels: ResMut<Labels>) {
+    let attached = messages.iter().flat_map(|message| &message.parts);
+    labels.0.extend(attached.filter_map(|part| match part {
+        MessagePart::Attachment(attached) => Some(attached.label.clone()),
+        MessagePart::Text(_) => None,
+    }));
 }
 
 #[test]
@@ -201,16 +204,31 @@ fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
     let dir = exe.with_file_name(format!("attach-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
     std::fs::write(dir.join("a.txt"), "attached text").ok();
-    let (mut app, wakes, agent) = attaching(None, Path::new("/nowhere"), "");
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, AttachPlugin))
+        .init_resource::<Labels>()
+        .add_systems(
+            AgentPass,
+            read_labels
+                .in_set(PrepareSystems::Compose)
+                .after(AttachSystems),
+        );
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.update();
     let world = app.world_mut();
-    world.entity_mut(agent).insert(WorkDir(dir.clone()));
+    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
     let text = "compare @a.txt with @gone/x.rs, @alice";
     world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
-    run_until(&mut app, &wakes, |world| {
-        said(world, agent).contains("attached text")
-    });
-    assert!(said(app.world(), agent).contains("attached text"));
-    assert_eq!(warned(app.world()), ["@gone/x.rs: no such file"]);
+    app.update();
+    assert_eq!(app.world().resource::<Labels>().0, ["a.txt"]);
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let warned: Vec<&str> = notices
+        .iter()
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text.as_str())
+        .collect();
+    assert_eq!(warned, ["@gone/x.rs: no such file"]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -282,17 +300,24 @@ fn a_host_reference_attaches_the_hosts_file() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// This machine, where every look at a path waits until `released` (at
-/// most 5 s), as a host behind a slow transport would.
+/// This machine's disk behind a slow transport: every path is said to be
+/// on a host, and every look at one but one named `fast…` waits until
+/// `released` (at most 5 s).
 #[derive(Debug, Default)]
 struct Slow {
     released: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Workspace for Slow {
+    fn host_for(&self, _: &Path) -> Option<&str> {
+        Some("test://slow")
+    }
+
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         let started = std::time::Instant::now();
-        while !self.released.load(std::sync::atomic::Ordering::Relaxed)
+        let fast = path.to_string_lossy().contains("fast");
+        while !fast
+            && !self.released.load(std::sync::atomic::Ordering::Relaxed)
             && started.elapsed() < std::time::Duration::from_secs(5)
         {
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -665,6 +690,7 @@ fn a_skills_message_is_not_left_waiting_by_a_stop() {
     let mut skill = Incoming::new("SKILL_BODY", DeliveryMode::Steer);
     skill.author = Author::user().titled("skill");
     let skill = app.world_mut().spawn((skill, ForAgent(agent))).id();
+    app.update();
     app.world_mut().trigger(StopTurn::new(agent));
     app.update();
     released.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -672,5 +698,36 @@ fn a_skills_message_is_not_left_waiting_by_a_stop() {
     run_until(&mut app, &wakes, |world| {
         said(world, agent).contains("SKILL_BODY")
     });
+    assert!(said(app.world(), agent).contains("SKILL_BODY"));
+}
+
+/// A skill's message whose own files were read while it waited behind a
+/// user's message goes on once a stop puts the user's back in the input.
+#[test]
+fn a_read_skills_message_goes_on_after_a_stop() {
+    let slow = Slow::default();
+    let released = slow.released.clone();
+    let (mut app, wakes, agent) = attaching(Some(Arc::new(slow)), Path::new("/nowhere"), "");
+    let first = (
+        Incoming::new("FIRST_MESSAGE @notes.txt", DeliveryMode::Steer),
+        ForAgent(agent),
+    );
+    app.world_mut().spawn(first);
+    app.update();
+    let mut skill = Incoming::new("SKILL_BODY @fast.txt", DeliveryMode::Steer);
+    skill.author = Author::user().titled("skill");
+    let skill = app.world_mut().spawn((skill, ForAgent(agent))).id();
+    // Its own files are read; it waits only for the first.
+    let read = |world: &World| {
+        let holds = world.try_query::<(&HoldOf, &super::ReadFiles)>();
+        holds.is_some_and(|mut holds| holds.iter(world).any(|(&HoldOf(on), _)| on == skill))
+    };
+    run_until(&mut app, &wakes, read);
+    assert!(app.world().get::<Holds>(skill).is_some(), "it waits");
+    app.world_mut().trigger(StopTurn::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        said(world, agent).contains("SKILL_BODY")
+    });
+    released.store(true, std::sync::atomic::Ordering::Relaxed);
     assert!(said(app.world(), agent).contains("SKILL_BODY"));
 }

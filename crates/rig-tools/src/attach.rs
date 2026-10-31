@@ -30,7 +30,7 @@ const EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
 
 /// What may follow an unquoted reference without being part of its path,
 /// as in `see @notes.md, then`.
-const TRAILING: [char; 10] = [',', '.', ';', ':', '!', '?', ')', '"', '\'', '`'];
+pub const TRAILING: [char; 10] = [',', '.', ';', ':', '!', '?', ')', '"', '\'', '`'];
 
 /// Whether `path` names an image by its extension.
 pub fn is_image_path(path: &Path) -> bool {

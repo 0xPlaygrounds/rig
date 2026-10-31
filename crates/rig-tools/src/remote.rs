@@ -794,9 +794,8 @@ impl Workspace for Remote {
 /// stays there.
 ///
 /// Its [`host`](Workspace::host) is the inner workspace's, as its project
-/// is there; a call on a `HOST:` path waits for the transport, so code on
-/// a thread that must not wait reads a path a user or a model wrote off
-/// that thread even when `host` is `None`.
+/// is there; a call on a `HOST:` path waits for the transport, which
+/// [`host_for`](Workspace::host_for) that path tells.
 #[derive(Clone, Debug)]
 pub struct Hosts {
     inner: Arc<dyn Workspace>,
@@ -836,6 +835,14 @@ impl Hosts {
 impl Workspace for Hosts {
     fn host(&self) -> Option<&str> {
         self.inner.host()
+    }
+
+    /// The remote's for a `HOST:` path, else the inner workspace's.
+    fn host_for(&self, path: &Path) -> Option<&str> {
+        match self.route(path) {
+            Some((remote, _)) => remote.host(),
+            None => self.inner.host_for(path),
+        }
     }
 
     /// A `HOST:` path stays whole; a path starting with `~` joined onto a

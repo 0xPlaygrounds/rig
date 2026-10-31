@@ -319,10 +319,21 @@ fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
             return Vec::new();
         }
     };
-    // `/` between directories; on Unix a `\` is part of a name.
-    let text = |path: &Path| match cfg!(windows) {
-        true => path.to_string_lossy().replace('\\', "/"),
-        false => path.to_string_lossy().into_owned(),
+    // `/` between directories; on Unix a `\` is part of a name. A first
+    // name with a `:` goes after `./`, so it is not read as `HOST:PATH`.
+    let text = |path: &Path| {
+        let text = match cfg!(windows) {
+            true => path.to_string_lossy().replace('\\', "/"),
+            false => path.to_string_lossy().into_owned(),
+        };
+        match text
+            .split('/')
+            .next()
+            .is_some_and(|first| first.contains(':'))
+        {
+            true => format!("./{text}"),
+            false => text,
+        }
     };
     let mut paths = Vec::new();
     let mut directories = HashSet::new();

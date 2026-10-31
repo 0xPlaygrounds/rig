@@ -126,6 +126,10 @@ impl Workspace for Overlay {
         self.inner.host()
     }
 
+    fn host_for(&self, path: &Path) -> Option<&str> {
+        self.inner.host_for(path)
+    }
+
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         match self.held(path) {
             Some(Some(bytes)) => Ok(Stat::File {

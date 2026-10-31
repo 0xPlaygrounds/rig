@@ -43,7 +43,7 @@ use rig_harness::rig_core::message::{Message as ChatMessage, UserContent};
 use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
 };
-use rig_tools::attach::{Reference, is_image_path, is_path_reference, read_image};
+use rig_tools::attach::{Reference, TRAILING, is_image_path, is_path_reference, read_image};
 use rig_tools::workspace::{Listing, Local, Stat, Workspace};
 use rig_tools::{blocking, show_lines};
 use rig_tui::{
@@ -177,8 +177,7 @@ fn mentions(text: &str) -> Vec<Mention> {
                 let after = text.get(reference.span.end..).unwrap_or_default();
                 let range = after.split(char::is_whitespace).next().unwrap_or_default();
                 let range = range.strip_prefix(':').unwrap_or_default();
-                let range =
-                    range.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'', '`']);
+                let range = range.trim_end_matches(TRAILING);
                 let path = reference.path.into_owned();
                 match lines(range) {
                     Some(lines) => Mention {

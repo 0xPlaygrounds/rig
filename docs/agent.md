@@ -121,10 +121,10 @@ resumed.
 the image when the model reads images. It resolves as the tools resolve a
 path, so `@bench:~/notes.md` is the host `bench`'s file. A reference that
 looks like a path (it has a `/` or an extension) with no file there, or one
-that cannot be read, is warned about with the reason. Esc while
-the files are still being read puts the message back in the input. Ctrl+V
-pastes the clipboard's image (through `wl-paste`, `xclip` or `pngpaste`) as
-such a path, and a dropped image file becomes one too.
+that cannot be read, is warned about with the reason. Esc while the files
+are still being read puts the message back in the input. Ctrl+V pastes the
+clipboard's image (through `wl-paste`, `xclip` or `pngpaste`) as such a
+path, and a dropped image file becomes one too.
 
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
 in its own way, always whole: every call's arguments and result, every diff

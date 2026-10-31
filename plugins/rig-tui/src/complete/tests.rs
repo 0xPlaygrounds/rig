@@ -166,6 +166,7 @@ fn a_picked_path_with_a_space_is_quoted() {
     std::fs::write(root.join("my dir").join("inner file.txt"), "").ok();
     if cfg!(unix) {
         std::fs::write(root.join("back\\slash.txt"), "").ok();
+        std::fs::write(root.join("loop:notes.txt"), "").ok();
     }
     let (mut app, _) = view_app();
     app.insert_resource(ProjectRoot(root.clone()));
@@ -197,6 +198,12 @@ fn a_picked_path_with_a_space_is_quoted() {
         walked(&mut app);
         press(&mut app, "tab");
         assert_eq!(typed_text(&app), "@back\\slash.txt ");
+        // A local name that reads as `HOST:PATH` stays local.
+        press(&mut app, "ctrl+c");
+        type_text(&mut app, "@loop:");
+        walked(&mut app);
+        press(&mut app, "tab");
+        assert_eq!(typed_text(&app), "@./loop:notes.txt ");
     }
     press(&mut app, "ctrl+c");
     push(

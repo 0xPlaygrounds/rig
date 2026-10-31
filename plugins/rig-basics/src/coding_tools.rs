@@ -14,7 +14,7 @@
 //! makes a path written `HOST:PATH` another machine's, for every tool, by
 //! the transports `[remote.hosts]` names ([`remote::RemoteSettings`]).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
@@ -23,8 +23,8 @@ use rig_harness::prelude::{
     Commands, Component, Decider, Decision, Effect, Entity, ForAgent, HoldOf, Incoming, Insert,
     IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome, PerCallTool,
     Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled, Res,
-    Resource, Running, Spawned, Started, StopTurn, SystemSet, Tool, ToolOptions, Wake, With,
-    Without, WorkDir, blocking,
+    Resource, Running, Spawned, Started, StopTurn, SystemSet, Tool, ToolOptions, Wake, Without,
+    WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
@@ -270,17 +270,18 @@ impl Tool for SharedShell {
 /// Paths resolve from the agent's [`WorkDir`], else the [`ProjectRoot`],
 /// in the app's [`ProjectWorkspace`], as the file tools resolve them; a
 /// path with no file there, or one that could not be looked at, is warned
-/// about. The files are read off the main thread while the message waits
-/// ([`HoldOf`]); stopping the agent's turn meanwhile puts the message back
-/// in the input. It runs in [`AttachSystems`].
+/// about. Files on another machine are read off the main thread while the
+/// message waits ([`HoldOf`]); stopping the agent's turn meanwhile puts the
+/// message back in the input. It runs in [`AttachSystems`].
 #[derive(Default)]
 pub struct AttachPlugin;
 
-/// Where [`AttachPlugin`] starts reading the files a user's message names,
-/// in [`PrepareSystems::Compose`]: a plugin that rewrites the text goes
-/// before, in `Input`. The files are read off the main thread under a hold
-/// on the message, so they are in its attachments only once it is
-/// released, later than this set.
+/// Where [`AttachPlugin`] reads the files a user's message names into its
+/// attachments, in [`PrepareSystems::Compose`]: a plugin that rewrites the
+/// text goes before, in `Input`; one that reads or edits the attachments
+/// goes `.after(AttachSystems)`. Files on another machine are read off the
+/// main thread under a hold on the message, so they come later than this
+/// set, as do those of a message held behind one that waits for them.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AttachSystems;
 
@@ -311,60 +312,121 @@ impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
     }
 }
 
-/// Starts reading the files each user's message names as it comes in, off
-/// the main thread, under a hold on the message: any path may be on
-/// another machine. A message of the user's own that names none is held
-/// too while one sent before it to the same agent is, so it does not pass
-/// it. A message a
+/// Reads the files each user's message names into its attachments as it
+/// comes in: inline when every one is on this machine, else off the main
+/// thread under a hold on the message ([`Workspace::host_for`]). While a
+/// message to an agent is held, a later one of the user's own, or one that
+/// names files, is held behind it, so it does not pass it. A message a
 /// restart put back in the inbox ([`Started`]) has them already.
+///
+/// [`Workspace::host_for`]: rig_tools::workspace::Workspace::host_for
 fn attach(
-    typed: Query<(Entity, &Effect, &Incoming, &ForAgent), (Added<Admitted>, Without<Started>)>,
+    mut typed: Query<
+        (Entity, &Effect, &mut Incoming, &ForAgent),
+        (Added<Admitted>, Without<Started>),
+    >,
     reading: Query<&Reading>,
     dirs: Query<&WorkDir>,
-    workspace: Res<ProjectWorkspace>,
-    root: Res<ProjectRoot>,
+    (workspace, root): (Res<ProjectWorkspace>, Res<ProjectRoot>),
     wake: Res<Wake>,
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     let mut waiting: Vec<Entity> = reading.iter().map(|&Reading(agent)| agent).collect();
-    let mut typed: Vec<_> = (typed.iter())
+    let mut typed: Vec<_> = (typed.iter_mut())
         .filter(|(_, _, typed, _)| typed.author.kind == AuthorKind::User)
         .filter(|(_, _, typed, _)| typed.command().is_none())
         .collect();
     typed.sort_unstable_by_key(|(_, effect, ..)| effect.id());
-    for (message, _, typed, &ForAgent(agent)) in typed {
+    for (message, _, mut typed, &ForAgent(agent)) in typed {
         let hold = (Name::new("attachments"), Reading(agent), HoldOf(message));
-        if Reference::parse(typed.text()).next().is_none() {
+        let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
+        let workspace = workspace.0.clone();
+        let (names, remote) = {
+            let mut named = Reference::parse(typed.text()).peekable();
+            let names = named.peek().is_some();
+            let remote = named.any(|reference| {
+                let path = workspace.join(&base, Path::new(&*reference.path));
+                workspace.host_for(&path).is_some()
+            });
+            (names, remote)
+        };
+        if !names {
             // Only the user's own, which a stop puts back in the input.
             if waiting.contains(&agent) && typed.author == Author::user() {
                 commands.spawn((hold, ReadFiles::from(Ok(Attached::default()))));
             }
             continue;
         }
-        let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
-        let (text, workspace) = (typed.text().to_owned(), workspace.0.clone());
-        let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
-        let pool = IoTaskPool::get_or_init(TaskPool::default);
-        let running = Running::spawn_into::<ReadFiles, _>(pool, &wake, read);
-        commands.spawn((hold, running));
-        waiting.push(agent);
+        if remote {
+            let text = typed.text().to_owned();
+            let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
+            let pool = IoTaskPool::get_or_init(TaskPool::default);
+            let running = Running::spawn_into::<ReadFiles, _>(pool, &wake, read);
+            commands.spawn((hold, running));
+            waiting.push(agent);
+            continue;
+        }
+        let attached = attachments(typed.text(), &base, &*workspace);
+        match waiting.contains(&agent) {
+            true => {
+                commands.spawn((hold, ReadFiles::from(Ok(attached))));
+            }
+            false => add_attached(&mut typed, agent, attached, &mut notices),
+        }
     }
 }
 
-/// Attaches the files read off the main thread to each message, with a
-/// notice about each that could not be and a warning about each that is
-/// not there, and releases it, in the order the messages to an agent were
-/// sent: one waits until those before it are read.
+/// The holds on messages while their files are read, with what was read.
+type ReadHolds<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Reading,
+        &'static HoldOf,
+        Option<&'static mut ReadFiles>,
+    ),
+>;
+
+/// The messages held, as [`release`] and [`stop_reading`] edit them.
+type HeldMessages<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Effect,
+        &'static mut Incoming,
+        &'static mut Decision,
+    ),
+>;
+
+/// Attaches the files read off the main thread, as [`release`] does, each
+/// time a read ends.
 fn release_read(
     _: On<Insert<ReadFiles>>,
-    mut holds: Query<(Entity, &Reading, &HoldOf, Option<&mut ReadFiles>)>,
-    mut messages: Query<(&Effect, &mut Incoming)>,
+    mut holds: ReadHolds,
+    mut messages: HeldMessages,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
+    release(&mut holds, &mut messages, &[], &mut notices, &mut commands);
+}
+
+/// Attaches what was read to each held message, with a notice about each
+/// file that could not be and a warning about each that is not there, and
+/// releases it, in the order the messages to an agent were sent: one waits
+/// until those before it are read. The holds in `gone` are being removed.
+fn release(
+    holds: &mut ReadHolds,
+    messages: &mut HeldMessages,
+    gone: &[Entity],
+    notices: &mut MessageWriter<Notice>,
+    commands: &mut Commands,
+) {
     let mut holds: Vec<_> = (holds.iter_mut())
+        .filter(|(hold, ..)| !gone.contains(hold))
         .map(|(hold, &Reading(agent), &HoldOf(message), read)| {
-            let sent = messages.get(message).ok().map(|(effect, _)| effect.id());
+            let sent = messages.get(message).ok().map(|(effect, ..)| effect.id());
             (agent, sent, hold, message, read)
         })
         .collect();
@@ -382,9 +444,9 @@ fn release_read(
         let Some(read) = read.0.take() else {
             continue;
         };
-        if let Ok((_, mut typed)) = messages.get_mut(message) {
+        if let Ok((_, mut typed, _)) = messages.get_mut(message) {
             match read {
-                Ok(attached) => add_attached(&mut typed, agent, attached, &mut notices),
+                Ok(attached) => add_attached(&mut typed, agent, attached, notices),
                 Err(failure) => {
                     notices.write(Notice::warn(agent, format!("No files attached: {failure}")));
                 }
@@ -396,20 +458,22 @@ fn release_read(
 
 /// Stops reading the files of the user's messages to the stopped agent and
 /// the agents below it, which go back to the input instead of to the
-/// model, in the order they were sent, as a stopped turn's do.
+/// model, in the order they were sent, as a stopped turn's do; a message
+/// that is not the user's own goes on once the messages before it are
+/// read ([`release`]).
 fn stop_reading(
     stop: On<StopTurn>,
     spawned: Query<&Spawned>,
-    reading: Query<(Entity, &HoldOf), With<Reading>>,
-    mut messages: Query<(&Effect, &Incoming, &ForAgent, &mut Decision)>,
-    mut recalled: MessageWriter<Recalled>,
+    mut holds: ReadHolds,
+    mut messages: HeldMessages,
+    (mut recalled, mut notices): (MessageWriter<Recalled>, MessageWriter<Notice>),
     mut commands: Commands,
 ) {
     let below = spawned.iter_descendants::<Spawned>(stop.entity);
     let stopped: Vec<Entity> = std::iter::once(stop.entity).chain(below).collect();
-    let mut back = Vec::new();
-    for (read, &HoldOf(message)) in &reading {
-        let Ok((effect, typed, &ForAgent(agent), mut decision)) = messages.get_mut(message) else {
+    let (mut back, mut gone) = (Vec::new(), Vec::new());
+    for (hold, &Reading(agent), &HoldOf(message), _) in &holds {
+        let Ok((effect, typed, mut decision)) = messages.get_mut(message) else {
             continue;
         };
         if !stopped.contains(&agent) || typed.author != Author::user() {
@@ -418,8 +482,16 @@ fn stop_reading(
         if decision.decide(Decider::plugin("attach"), Outcome::custom("recalled")) {
             back.push((effect.id(), agent, typed.text().trim().to_owned()));
         }
-        commands.entity(read).despawn();
+        commands.entity(hold).despawn();
+        gone.push(hold);
     }
+    release(
+        &mut holds,
+        &mut messages,
+        &gone,
+        &mut notices,
+        &mut commands,
+    );
     back.sort_unstable();
     for agent in stopped {
         let texts: Vec<&str> = (back.iter())
