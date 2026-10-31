@@ -109,8 +109,9 @@ fn status_error(status: StatusCode) -> reqwest::Error {
 }
 
 /// A middleware's own failure says nothing about a second send, so it is
-/// not retried; a reqwest or rig error it passed on keeps its class, and
-/// the context the middleware added stays in the message.
+/// not retried; a reqwest or rig error it passed on keeps its class, also
+/// one that came back from the middleware chain, and the context the
+/// middleware added stays in the message.
 #[cfg(any(
     feature = "reqwest-middleware-rustls",
     feature = "reqwest-middleware-native-tls"
@@ -122,14 +123,24 @@ fn a_middleware_error_is_permanent_unless_reqwest_classifies_it() {
         middleware::from_middleware(own),
         Error::Permanent(_)
     ));
-    let unavailable = anyhow::Error::new(status_error(StatusCode::SERVICE_UNAVAILABLE));
-    let mut passed_on = vec![unavailable];
+    let sent = |status| reqwest_middleware::Error::Reqwest(status_error(status));
+    let mut passed_on = vec![
+        (
+            anyhow::Error::new(status_error(StatusCode::SERVICE_UNAVAILABLE)),
+            true,
+        ),
+        (
+            anyhow::Error::new(sent(StatusCode::SERVICE_UNAVAILABLE)),
+            true,
+        ),
+        (anyhow::Error::new(sent(StatusCode::BAD_REQUEST)), false),
+    ];
     #[cfg(not(target_family = "wasm"))]
-    passed_on.push(anyhow::Error::new(Error::transient("reset")));
-    for error in passed_on {
+    passed_on.push((anyhow::Error::new(Error::transient("reset")), true));
+    for (error, transient) in passed_on {
         let error = reqwest_middleware::Error::Middleware(error.context("refreshing the key"));
         let error = middleware::from_middleware(error);
-        assert!(matches!(error, Error::Transient(_)), "{error:?}");
+        assert_eq!(error.is_transient(), transient, "{error:?}");
         assert!(error.to_string().contains("refreshing the key"), "{error}");
     }
 }

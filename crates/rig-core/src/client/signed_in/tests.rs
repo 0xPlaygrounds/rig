@@ -73,6 +73,8 @@ async fn a_failed_refresh_keeps_the_class_of_its_reply() -> anyhow::Result<()> {
         let report = refreshed_with(reply).await?;
         let message = &report.message;
         anyhow::ensure!(report.retryable == retryable, "{report:?}");
+        anyhow::ensure!(report.kind == ErrorKind::ProviderResponse, "{report:?}");
+        anyhow::ensure!(report.http_status.is_some(), "{report:?}");
         anyhow::ensure!(report.retry_after(SystemTime::now()) == asked, "{report:?}");
         anyhow::ensure!(
             message.contains("ChatGPT token refresh failed"),
