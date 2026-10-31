@@ -186,9 +186,21 @@ fn cut_at(
 ) -> Option<usize> {
     let mut kept = 0;
     let mut newest = None;
+    let mut needs_call = false;
     for (index, message) in messages.iter().enumerate().skip(from + 1).rev() {
         kept += counter.count(message);
-        if !can_start_live(message) {
+        // Results may span several user messages with system messages between them.
+        // Keep their preceding assistant turn, not just the nearest result message.
+        match message.as_ref() {
+            Message::User { content } => {
+                needs_call |= content
+                    .iter()
+                    .any(|item| matches!(item, UserContent::ToolResult(_)));
+            }
+            Message::Assistant(_) => needs_call = false,
+            Message::System { .. } => {}
+        }
+        if needs_call {
             continue;
         }
         newest.get_or_insert(index);
@@ -197,17 +209,6 @@ fn cut_at(
         }
     }
     newest.filter(|_| force)
-}
-
-/// Whether the messages a request sends as they are may start with
-/// `message`: a reply, or a user message that answers no tool call.
-fn can_start_live(message: &Message) -> bool {
-    match message {
-        Message::User { content } => !content
-            .iter()
-            .any(|item| matches!(item, UserContent::ToolResult(_))),
-        Message::Assistant(_) | Message::System { .. } => true,
-    }
 }
 
 /// Why a conversation is compacted.
