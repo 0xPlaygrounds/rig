@@ -91,7 +91,8 @@ impl ToolResultContext {
     /// These values as a conversation keeps them with the call's result
     /// ([`ResultFacts`](crate::conversation::ResultFacts)), for a view to
     /// draw the call from after a resume: every secret in their strings
-    /// redacted ([`redact::json`](crate::redact::json)), the whole old
+    /// redacted ([`redact::json`](crate::redact::json); each diff line on
+    /// its own, and no hunks for a change with a secret across lines), the whole old
     /// text of each changed file ([`FileChange::before_text`]) left out,
     /// since the hunks show the change, and, past [`MAX_KEPT_FACTS_BYTES`]
     /// of JSON, the largest values left out, so a small one such as an
@@ -118,6 +119,7 @@ impl ToolResultContext {
         if let Ok(Some(mut changed)) = get_slot::<super::FilesChanged>(&kept) {
             for change in &mut changed.0 {
                 change.before_text = None;
+                redact_hunks(&mut change.hunks);
             }
             // A value that decoded encodes again; one that did not stays.
             insert_slot(&mut kept, changed).ok();
@@ -142,6 +144,28 @@ impl ToolResultContext {
             }
         }
         Self(fits)
+    }
+}
+
+/// Redacts each line of `hunks` on its own, as [`redact::text`] would its
+/// text: its JSON form starts with the line's diff sign, which would hide
+/// a secret at the line's start from [`redact::json`]. A secret no one
+/// line holds, such as a private key block, takes every hunk with it.
+///
+/// [`redact::text`]: crate::redact::text
+/// [`redact::json`]: crate::redact::json
+fn redact_hunks(hunks: &mut Vec<super::Hunk>) {
+    use super::HunkLine;
+    for line in hunks.iter_mut().flat_map(|hunk| &mut hunk.lines) {
+        let (HunkLine::Same(text) | HunkLine::Removed(text) | HunkLine::Added(text)) = line;
+        if let std::borrow::Cow::Owned(redacted) = crate::redact::text(text) {
+            *text = redacted;
+        }
+    }
+    let lines = hunks.iter().flat_map(|hunk| &hunk.lines);
+    let joined: String = lines.map(HunkLine::text).collect();
+    if crate::redact::has_secret(&joined) {
+        hunks.clear();
     }
 }
 
