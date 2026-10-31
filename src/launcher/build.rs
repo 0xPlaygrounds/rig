@@ -349,17 +349,21 @@ impl BuildLog {
         // Read on a thread, so a wait for cargo's lock is announced once it
         // passes its time even while cargo prints nothing.
         let (sender, chunks) = mpsc::channel();
-        std::thread::spawn(move || {
-            let mut buffer = [0_u8; 8192];
-            while let Ok(read @ 1..) = stderr.read(&mut buffer) {
-                if sender
-                    .send(buffer.get(..read).unwrap_or_default().to_vec())
-                    .is_err()
-                {
-                    return;
+        // A thread that cannot start drops the pipe, which fails the build.
+        let reading = std::thread::Builder::new();
+        reading
+            .spawn(move || {
+                let mut buffer = [0_u8; 8192];
+                while let Ok(read @ 1..) = stderr.read(&mut buffer) {
+                    if sender
+                        .send(buffer.get(..read).unwrap_or_default().to_vec())
+                        .is_err()
+                    {
+                        return;
+                    }
                 }
-            }
-        });
+            })
+            .ok();
         let mut segment: Vec<u8> = Vec::new();
         loop {
             let chunk = match self.blocked_since {
@@ -781,13 +785,16 @@ mod stop {
     use std::os::unix::process::CommandExt;
     use std::process::{Child, Command};
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
     /// The signals a terminal or a supervisor ends the launcher with.
     const ENDING: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
 
     /// The build's process group; 0 while none runs.
     static GROUP: AtomicI32 = AtomicI32::new(0);
+
+    /// Whether that group is the launcher's own.
+    static OWN: AtomicBool = AtomicBool::new(false);
 
     /// The actions [`spawn`] replaced, which [`forget`] puts back.
     static BEFORE: Mutex<Vec<(libc::c_int, libc::sigaction)>> = Mutex::new(Vec::new());
@@ -843,6 +850,7 @@ mod stop {
             } else {
                 i32::try_from(child.id()).unwrap_or(0)
             };
+            OWN.store(leads, Ordering::SeqCst);
             GROUP.store(group, Ordering::SeqCst);
         }
         // SAFETY: restores the mask saved above.
@@ -881,13 +889,21 @@ mod stop {
     }
 
     /// Kills the build's group, then ends the launcher as `signal` would
-    /// have. Only async-signal-safe calls.
+    /// have; when the group is the launcher's own, sends `signal` to all of
+    /// it, so the launcher too ends as that signal says once this returns.
+    /// Only async-signal-safe calls.
     extern "C" fn on_signal(signal: libc::c_int) {
-        kill();
-        // SAFETY: `signal` and `raise` are async-signal-safe.
+        let group = GROUP.load(Ordering::SeqCst);
+        // SAFETY: `signal`, `kill` and `raise` are async-signal-safe and take
+        // plain integers.
         unsafe {
             libc::signal(signal, libc::SIG_DFL);
-            libc::raise(signal);
+            if OWN.load(Ordering::SeqCst) && group > 0 {
+                libc::kill(-group, signal);
+            } else {
+                kill();
+                libc::raise(signal);
+            }
         }
     }
 }

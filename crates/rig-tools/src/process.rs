@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use std::process::{
     Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio,
 };
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -267,7 +267,9 @@ impl Process {
                 let sender = sender.clone();
                 thread::Builder::new()
                     .name("rig-process-output".to_owned())
-                    .spawn(move || forward_both(stdout, stderr, &sender))?;
+                    .spawn(reading(process.reading.clone(), move || {
+                        forward_both(stdout, stderr, &sender);
+                    }))?;
                 (None, None)
             }
             apart => apart,
@@ -282,7 +284,9 @@ impl Process {
             let sender = sender.clone();
             thread::Builder::new()
                 .name("rig-process-output".to_owned())
-                .spawn(move || forward(pipe, tag, &sender))?;
+                .spawn(reading(process.reading.clone(), move || {
+                    forward(pipe, tag, &sender)
+                }))?;
         }
         if let Some(bytes) = how.stdin
             && let Some(mut stdin) = process.child.stdin.take()
@@ -417,6 +421,15 @@ fn piece_end(bytes: &[u8]) -> Option<usize> {
     }
 }
 
+/// `read`, counted in `reading` while it runs.
+fn reading(reading: Arc<AtomicUsize>, read: impl FnOnce()) -> impl FnOnce() {
+    reading.fetch_add(1, Ordering::SeqCst);
+    move || {
+        read();
+        reading.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// A process [`Process::start`] started, the leader of a process group of
 /// its own. Dropping it while it runs kills the group and reaps it.
 pub struct Process {
@@ -427,6 +440,9 @@ pub struct Process {
     remote: Option<String>,
     /// Whether it was [handed over](Self::release).
     released: bool,
+    /// How many threads still read its pipes: none once every process
+    /// holding them closed them.
+    reading: Arc<AtomicUsize>,
 }
 
 impl Process {
@@ -475,6 +491,7 @@ impl Process {
             group,
             remote: None,
             released: false,
+            reading: Arc::default(),
         };
         Ok((process, sender))
     }
@@ -648,9 +665,9 @@ impl Process {
     /// (which ends the wait as [`Ended::Stopped`]) or output comes past the
     /// deadline (as [`Ended::TimedOut`]); past the deadline or
     /// stopped while it runs, the group is [stopped](Self::stop) with
-    /// [`STOP_GRACE`]. Its pipes are read to their end for that moment
-    /// after a kill: a process that left the group survives the kill and may
-    /// hold them for good. Something a command left running with its output
+    /// [`STOP_GRACE`]. Output that came before a kill is still read, and
+    /// the pipes for that moment after it: a process that left the group
+    /// survives the kill and may hold them for good. Something a command left running with its output
     /// elsewhere, in its group, lives on until it ends or rig exits.
     pub fn run(
         &mut self,
@@ -679,7 +696,7 @@ impl Process {
         };
         if !matches!(ended, Ended::Exited(_)) {
             self.stop(STOP_GRACE).ok();
-            self.read_rest(&mut drop);
+            self.read_rest(&mut drop, false);
             return Ok(ended);
         }
         let (more, late) = (Cell::new(more), Cell::new(false));
@@ -691,9 +708,9 @@ impl Process {
             late.set(past);
             more.set(!past && sink(line));
         };
-        if !self.read_rest(&mut take) || !more.get() {
+        if !self.read_rest(&mut take, false) || !more.get() {
             self.kill().ok();
-            self.read_rest(&mut take);
+            self.read_rest(&mut take, false);
         }
         Ok(match (late.get(), more.get()) {
             (true, _) => Ended::TimedOut,
@@ -702,17 +719,23 @@ impl Process {
         })
     }
 
-    /// Reads its output until the pipes' end, for at most [`PIPE_GRACE`],
-    /// handing each piece to `take`; whether the end came.
-    fn read_rest(&self, take: &mut impl FnMut(OutputLine)) -> bool {
+    /// Hands its output to `take` until the pipes' end: all of it once
+    /// every process holding them closed them within [`PIPE_GRACE`] (or
+    /// had, `closed`), however long `take` takes; else what came within
+    /// that moment, while something still writes. Whether the end came.
+    fn read_rest(&self, take: &mut impl FnMut(OutputLine), closed: bool) -> bool {
         let end = Instant::now() + PIPE_GRACE;
         loop {
-            match self
-                .lines
-                .recv_timeout(end.saturating_duration_since(Instant::now()))
-            {
+            let open = !closed && self.reading.load(Ordering::SeqCst) > 0;
+            let left = end.saturating_duration_since(Instant::now());
+            if open && left.is_zero() {
+                return false;
+            }
+            let wait = if open { left.min(POLL) } else { PIPE_GRACE };
+            match self.lines.recv_timeout(wait) {
                 Ok(line) => take(line),
                 Err(RecvTimeoutError::Disconnected) => return true,
+                Err(RecvTimeoutError::Timeout) if open => {}
                 Err(RecvTimeoutError::Timeout) => return false,
             }
         }
@@ -1211,6 +1234,7 @@ fn signal_group(leader: u32, signal: Signal) {
     }
 }
 
+/// Kills `child`; elsewhere than unix there are no process groups.
 #[cfg(not(unix))]
 pub fn kill_group(child: &mut Child) {
     child.kill().ok();

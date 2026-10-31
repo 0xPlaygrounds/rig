@@ -79,6 +79,16 @@ impl Invoked {
     }
 }
 
+/// Keeps the process groups the agent owns in `run`'s list, taking over
+/// those the agent before a reload left running: each only while one of
+/// its processes carries the list's mark, so an id the system gave another
+/// group while the launcher restarted, however long that took, is not.
+fn own_groups(run: &RunDir) {
+    let adopted = run.live_groups().unwrap_or_default();
+    let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
+    rig_tools::process::record_groups(run.groups(), adopted);
+}
+
 /// The run directory of the launcher that started this agent, from
 /// [`env::RUN`]. [`LauncherPlugin`] inserts it unless the app inserted one
 /// before.
@@ -99,11 +109,7 @@ impl Plugin for LauncherPlugin {
         if !app.world().contains_resource::<LauncherRun>()
             && let Some(run) = RunDir::from_env()
         {
-            // Jobs the agent before a reload left running stay owned, also
-            // one that dropped the ledger's mark from its environment.
-            let adopted = run.listed_groups().unwrap_or_default();
-            let adopted = adopted.into_iter().filter_map(|id| u32::try_from(id).ok());
-            rig_tools::process::record_groups(run.groups(), adopted);
+            own_groups(&run);
             app.insert_resource(LauncherRun(run));
         }
         watch_launcher(app);

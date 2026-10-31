@@ -384,6 +384,28 @@ fn output_stops_at_its_timeout_while_output_flows() {
     assert!(started.elapsed() < Duration::from_secs(5));
 }
 
+/// The moment after the exit for what a descendant still prints is a
+/// moment, though it prints without end: then its group is killed.
+#[cfg(unix)]
+#[test]
+fn a_descendant_that_keeps_printing_does_not_hold_the_wait() {
+    let process = Launcher::default().spawn("sh", ["-c", "cat /dev/zero &"], Spawn::default());
+    let Ok(mut process) = process else {
+        return assert!(process.is_ok());
+    };
+    let (sender, ended) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        // Slower than the descendant prints.
+        let ended = process.run(None, |_| {
+            std::thread::sleep(Duration::from_millis(1));
+            true
+        });
+        sender.send(ended.ok()).ok();
+    });
+    let ended = ended.recv_timeout(Duration::from_secs(10));
+    assert!(matches!(ended, Ok(Some(Ended::Exited(_)))), "{ended:?}");
+}
+
 /// `output` keeps every byte as it was printed, not only text.
 #[cfg(unix)]
 #[test]

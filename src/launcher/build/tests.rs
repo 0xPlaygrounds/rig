@@ -279,8 +279,81 @@ fn an_ignored_hangup_stays_ignored_through_a_build() {
     assert_eq!(after, libc::SIG_IGN);
 }
 
+/// A launcher that leads a session of its own, as an agent's `/reload`
+/// starts it, keeps cargo in its own group, which the agent kills as a
+/// whole; told to end mid-build, it and cargo's children end by that
+/// signal (143 for SIGTERM).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
+    use std::os::unix::process::ExitStatusExt;
+
+    const PROBE: &str = "RIG_SESSION_LEADER_PROBE";
+    let seen = std::env::temp_dir().join(format!("rig-build-leader-{}", std::process::id()));
+    if let Some(seen) = std::env::var_os(PROBE) {
+        let seen = std::path::PathBuf::from(seen);
+        let root = seen.with_extension("home");
+        let home = Home::at(&root);
+        let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+        let mut cargo = Command::new("sh");
+        let script = "sleep 30 & echo $(ps -o pgid= -p $$) $! > \"$0\"; wait";
+        cargo.args(["-c", script]).arg(&seen).stderr(Stdio::piped());
+        let watched = seen.clone();
+        std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !watched.exists() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            // SAFETY: plain integers; this run of the test binary is its own.
+            unsafe {
+                libc::kill(libc::getpid(), libc::SIGTERM);
+            }
+        });
+        log.run(cargo).ok();
+        return;
+    }
+    let name = "launcher::build::tests::a_launcher_leading_its_session_keeps_cargo_in_its_group";
+    let launcher = std::env::current_exe().and_then(|test| {
+        Command::new("setsid")
+            .arg(test)
+            .args(["--exact", name, "--test-threads", "1"])
+            .env(PROBE, &seen)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    });
+    let Ok(mut launcher) = launcher else {
+        return assert!(launcher.is_ok());
+    };
+    let status = launcher.wait();
+    let ids = fs::read_to_string(&seen).unwrap_or_default();
+    fs::remove_file(&seen).ok();
+    fs::remove_dir_all(seen.with_extension("home")).ok();
+    let mut ids = ids.split_whitespace();
+    let (group, sleep) = (
+        ids.next().unwrap_or_default(),
+        ids.next().unwrap_or_default(),
+    );
+    let alive = fs::read_to_string(format!("/proc/{sleep}/stat")).is_ok_and(|stat| {
+        !stat
+            .rsplit(')')
+            .next()
+            .unwrap_or_default()
+            .trim_start()
+            .starts_with('Z')
+    });
+    assert_eq!(
+        status.ok().and_then(|status| status.signal()),
+        Some(libc::SIGTERM)
+    );
+    assert_eq!(group, launcher.id().to_string());
+    assert!(!sleep.is_empty() && !alive);
+}
+
 /// Stopping the build, as a signal that ends the launcher does, kills
 /// cargo's whole group: what cargo started too, as rustc.
+#[cfg(target_os = "linux")]
 #[test]
 fn a_stopped_build_leaves_nothing_running() {
     let root = std::env::temp_dir().join(format!("rig-build-stop-{}", std::process::id()));
