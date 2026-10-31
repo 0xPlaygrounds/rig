@@ -82,6 +82,35 @@ fn at_completes_the_paths_of_the_project_root() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// `@` lists the paths of the shown agent's work directory, where its
+/// references resolve, not the project root's.
+#[test]
+fn at_completes_the_paths_of_the_shown_agents_work_dir() {
+    let root = scratch("complete-workdir-root");
+    let dir = scratch("complete-workdir-dir");
+    std::fs::write(root.join("only_in_root.rs"), "").ok();
+    std::fs::write(dir.join("only_in_dir.rs"), "").ok();
+    let (mut app, agent) = view_app();
+    app.insert_resource(ProjectRoot(root.clone()));
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(WorkDir(dir.clone()));
+    type_text(&mut app, "@only_in");
+    let started = std::time::Instant::now();
+    while !open(&app) && started.elapsed() < std::time::Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let completion = app.world().resource::<TuiView>().completion.as_ref();
+    let items: Vec<&str> = (completion.into_iter())
+        .flat_map(|open| &open.items)
+        .map(|item| item.text.as_str())
+        .collect();
+    assert_eq!(items, ["only_in_dir.rs"]);
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn a_file_made_while_at_is_typed_is_listed_without_waiting() {
     use super::FileIndex;

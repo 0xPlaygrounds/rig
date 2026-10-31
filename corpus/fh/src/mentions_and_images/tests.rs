@@ -213,3 +213,22 @@ fn a_model_that_reads_no_images_gets_a_description() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(MentionsPlugin);
 }
+
+/// A quoted path is taken as written, its range after the closing quote,
+/// so it never mixes up with an unquoted path and range.
+#[test]
+fn a_quoted_mention_is_its_path_with_its_range_after_the_quote() {
+    let found: Vec<(String, Option<(usize, usize)>)> =
+        mentions(r#"see @notes.md:2, @"notes.md:2" and @"my notes.md":3-4 and @notes.md:2"#)
+            .into_iter()
+            .map(|mention| (mention.path, mention.lines))
+            .collect();
+    assert_eq!(
+        found,
+        [
+            ("notes.md".to_owned(), Some((2, 2))),
+            ("notes.md:2".to_owned(), None),
+            ("my notes.md".to_owned(), Some((3, 4))),
+        ]
+    );
+}

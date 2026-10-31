@@ -166,7 +166,8 @@ struct Mention {
     lines: Option<(usize, usize)>,
 }
 
-/// The mentions in `text` ([`Reference::parse`]), each once, in order. A
+/// The mentions in `text` ([`Reference::parse`]), each path and range
+/// once, in order. A
 /// quoted path is taken as written, its lines following the closing quote
 /// (`@"my notes.md":10-40`).
 fn mentions(text: &str) -> Vec<Mention> {
@@ -204,7 +205,8 @@ fn mentions(text: &str) -> Vec<Mention> {
                 Mention { label, path, lines }
             }
         };
-        if !found.iter().any(|seen| seen.label == mention.label) {
+        let seen = |seen: &Mention| seen.path == mention.path && seen.lines == mention.lines;
+        if !found.iter().any(seen) {
             found.push(mention);
         }
     }

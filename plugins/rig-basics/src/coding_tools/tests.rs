@@ -344,7 +344,13 @@ fn a_slow_read_holds_the_message_and_a_stop_recalls_it() {
     app.world_mut().trigger(StopTurn::new(agent));
     app.update();
     app.update();
+    // The read it left, once it ends, sends nothing.
     released.store(true, std::sync::atomic::Ordering::Relaxed);
+    let after = std::time::Instant::now();
+    while after.elapsed() < std::time::Duration::from_millis(300) {
+        app.update();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     let recalled = &app.world().resource::<Collected<Recalled>>().0;
     let back: Vec<&str> = recalled.iter().map(|back| back.text.as_str()).collect();
     assert_eq!(back, [text]);
