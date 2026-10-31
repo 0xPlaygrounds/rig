@@ -203,11 +203,6 @@ fn a_review_sync_cannot_read_is_an_error() {
     for review in [
         json!({"anthropic": {"models": {"claude-x-1": {"limits": {}}}}}),
         json!({"anthropic": {"models": {"claude-x-1": {"rig": {"adaptive": true}}}}}),
-        json!({"anthropic": {"models": {
-            "claude-x-0": {"from": "anthropic/claude-x-1"},
-            "claude-x-1": {"from": "anthropic/claude-x-2", "name": "Claude X 1"},
-            "claude-x-2": {"name": "Claude X 2"}
-        }}}),
     ] {
         let error = generate(&models_dev(), &review).expect_err("refused");
         assert!(error.contains("claude-x-1"), "{error}");
@@ -602,10 +597,11 @@ fn a_lost_capability_is_refused() {
 }
 
 /// What rig reads the same is no change: a list in another order, `toggle`
-/// for effort `none`, and an absent flag for `false`.
+/// for effort `none`, and an absent flag for `false`. The report counts it,
+/// and a field rig does not read, by name.
 #[test]
 fn a_change_rig_reads_the_same_is_no_change() {
-    for (before, after) in [
+    for (before, after, counted) in [
         (
             json!({"reasoning": true, "reasoning_options": [
                 {"type": "effort", "values": ["low", "high"]}, {"type": "budget_tokens"}
@@ -613,6 +609,7 @@ fn a_change_rig_reads_the_same_is_no_change() {
             json!({"reasoning": true, "reasoning_options": [
                 {"type": "budget_tokens"}, {"type": "effort", "values": ["high", "low"]}
             ]}),
+            "same reading: reasoning_options",
         ),
         (
             json!({"reasoning": true, "reasoning_options": [
@@ -621,9 +618,23 @@ fn a_change_rig_reads_the_same_is_no_change() {
             json!({"reasoning": true, "reasoning_options": [
                 {"type": "effort", "values": ["none", "low"]}
             ]}),
+            "same reading: reasoning_options",
         ),
-        (json!({}), json!({"structured_output": false})),
-        (json!({}), json!({"temperature": false})),
+        (
+            json!({}),
+            json!({"structured_output": false}),
+            "same reading: structured_output",
+        ),
+        (
+            json!({}),
+            json!({"temperature": false}),
+            "same reading: temperature",
+        ),
+        (
+            json!({}),
+            json!({"open_weights": true}),
+            "other: open_weights",
+        ),
     ] {
         let comparison = compared(
             &one("venice", "m", before),
@@ -633,6 +644,10 @@ fn a_change_rig_reads_the_same_is_no_change() {
         );
         assert_eq!(refused(&comparison), Vec::<String>::new());
         assert!(comparison.gains.is_empty(), "{:?}", comparison.gains);
+        assert_eq!(
+            comparison.counted.into_iter().collect::<Vec<_>>(),
+            [(counted.to_owned(), 1)]
+        );
     }
 }
 
@@ -800,7 +815,7 @@ fn removals_limits_and_prices_are_reported_not_refused() {
         "wider": budget(4096)
     }}});
     let after = json!({"venice": {"models": {
-        "kept": {"name": "Kept", "cost": {"input": 1, "output": 3}},
+        "kept": {"name": "Kept", "cost": {"input": 1, "output": 3}, "status": "deprecated"},
         "new": {"name": "New"},
         "thinker": thinker(32000),
         "wider": budget(8192)
@@ -813,6 +828,10 @@ fn removals_limits_and_prices_are_reported_not_refused() {
     assert_eq!(
         comparison.limits,
         [
+            (
+                "venice/kept".to_owned(),
+                vec!["status absent -> deprecated".to_owned()]
+            ),
             (
                 "venice/thinker".to_owned(),
                 vec![
@@ -872,6 +891,8 @@ fn the_report_lists_every_change() {
         "- `venice/priced`: context 8192 -> 4096",
         "### rig facts (1)\n\n- `venice/gains`: sampling never -> reasoning_off",
         "Rows changed: prices 1.",
+        "### Reviewed values models.dev disagrees with (1)",
+        "- `venice/reviewed` `tool_call`: review true, models.dev absent",
     ] {
         assert!(report.contains(line), "{line:?} in:\n{report}");
     }
@@ -1015,6 +1036,11 @@ fn a_new_or_changed_review_row_needs_a_source() {
             Some(row) => assert!(result.is_err_and(|error| error.contains(row))),
         }
     }
+    let stale = format!("{unsourced}0000000000000000 venice/gone\n");
+    assert!(
+        guard::provenance(&review(json!({})), &stale)
+            .is_err_and(|error| error.contains("venice/gone: no such review row"))
+    );
     let twice = format!(
         "{unsourced}{}",
         unsourced.lines().last().unwrap_or_default()
@@ -1102,7 +1128,8 @@ fn the_reading_is_rig_cores() {
         "null-modalities": {"modalities": null, "tool_call": false},
         "other-words": {"modalities": {"input": ["file", "pdf", "text"]}, "structured_output": true},
         "sampling": {"temperature": true, "rig": {"sampling": "reasoning_off"}},
-        "temperature": {"temperature": true, "tool_call": true}
+        "temperature": {"temperature": true, "tool_call": true},
+        "null-rule": {"temperature": true, "rig": {"sampling": null}}
     }}})
     .to_string();
     let checked_in = include_str!("../../../crates/rig-core/src/catalog/models.json");

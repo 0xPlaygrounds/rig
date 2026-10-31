@@ -228,7 +228,9 @@ cargo xtask catalog sync --from ../api.json
   set the key to the old value if models.dev is wrong, or to the new one if it
   is right, with a `source`. A value a join copies (Bedrock and Vertex from
   Anthropic, OpenRouter's reasoning translation, `gemini-grpc` from Gemini)
-  is no answer, so each of those rows needs its own.
+  is no answer, so each of those rows needs its own. Keeping the old value
+  makes the loss disappear; the report then lists the row under "Reviewed
+  values models.dev disagrees with".
 - **A `source`** says what proved the fact: a doc URL, a cassette, a live
   check. Or it starts with `unverified:` and says where the fact came from
   (`unverified: copied from openai/gpt-6.1-sol`). Never claim a check that was
@@ -236,7 +238,10 @@ cargo xtask catalog sync --from ../api.json
   sets a capability, `limit` or a `rig` fact; one that only copies a row with
   `from` may take the copied row's. The old rows `unsourced.txt` lists are
   held to it once they change.
-- **Paste the report** sync prints into the PR under "Catalog changes". A
+- **Paste the report** sync prints into the PR under "Catalog changes": it
+  goes to stdout and refusals to stderr, so
+  `cargo xtask catalog sync --from ../api.json > ../catalog-changes.md`
+  captures exactly it. A
   later sync reports only what changed since the last one; to see the whole
   refresh again, restore main's catalog first:
   `git checkout origin/main -- crates/rig-core/src/catalog/models.json`.

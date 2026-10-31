@@ -282,7 +282,8 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
 /// Whether a model whose sampling rule was `was` takes sampling parameters
 /// in fewer cases under `now`: a documented `any` that becomes anything
 /// else, no rule (which refuses nothing) that becomes a restriction, or
-/// `reasoning_off` that becomes `never`.
+/// `reasoning_off` that becomes `never`. `any` that becomes no rule counts,
+/// as OpenAI's wires then fall back to the model-name rule.
 fn samples_less(was: Option<&str>, now: Option<&str>) -> bool {
     match (was, now) {
         (Some("any"), now) => now != Some("any"),
@@ -641,9 +642,10 @@ impl Comparison {
             out.push_str(&format!("  {key}: {}\n", losses.join("; ")));
         }
         out.push_str(&format!(
-            "Answer each in {REVIEW}: set that key on the row, with a \"source\", to the old \
-             value if models.dev is wrong or to the new one if it is right. Then run sync again \
-             with the same `--from` file."
+            "Answer each in {REVIEW}: set that key on the row (add the row if the review lacks \
+             it; `modalities.input` is written `\"modalities\": {{\"input\": [...]}}`), with a \
+             \"source\", to the old value if models.dev is wrong or to the new one if it is right. \
+             Then run sync again with the same `--from` file."
         ));
         Some(out)
     }
