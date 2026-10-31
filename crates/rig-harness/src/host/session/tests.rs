@@ -700,9 +700,10 @@ fn a_session_that_only_changed_a_setting_is_removed_on_exit() {
 
 /// The running session's store comes from the app's stores; the session
 /// is marked saved once its log wrote and a conversation has a message,
-/// and stays saved after the conversation is emptied and a clean exit.
+/// stays saved through a clean exit, and has no files of the store's own
+/// beside the store.
 #[test]
-fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved() {
+fn a_session_opened_by_the_stores_is_saved_by_its_first_message() {
     let home = scratch_home("rig-session-saved");
     let Some((mut app, session)) = new_session(&home, "1700000000-5") else {
         return;
@@ -716,16 +717,6 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved(
     assert_eq!(said, Some(Ok(())));
     app.update();
     assert!(session.is_saved());
-    let mut conversation = agent.and_then(|agent| app.world_mut().get_mut::<Conversation>(agent));
-    if let Some(conversation) = conversation.as_mut() {
-        conversation.splice(0.., [], Author::plugin("undo"));
-    }
-    app.update();
-    let left = agent.and_then(|agent| app.world().get::<Conversation>(agent));
-    assert_eq!(
-        left.map(|conversation| conversation.messages().len()),
-        Some(0)
-    );
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
@@ -737,6 +728,33 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_message_and_stays_saved(
     let files = store.and_then(|store| store.files().ok());
     assert!(session.started().exists());
     assert_eq!(files, Some(Vec::new()));
+    std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// A session whose only message is taken out again, as a failed first
+/// turn gives it back, is no longer saved: the launcher offers no resume
+/// for it, and its exit removes it.
+#[test]
+fn a_session_whose_only_message_is_taken_out_is_not_kept() {
+    let home = scratch_home("rig-session-emptied");
+    let Some((mut app, session)) = new_session(&home, "1700000000-6") else {
+        return;
+    };
+    let agent = first_agent(app.world_mut());
+    let said = agent.map(|agent| commit_message(app.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    app.update();
+    assert!(session.is_saved());
+    let mut conversation = agent.and_then(|agent| app.world_mut().get_mut::<Conversation>(agent));
+    if let Some(conversation) = conversation.as_mut() {
+        conversation.splice(0.., [], Author::plugin("undo"));
+    }
+    app.update();
+    assert!(!session.is_saved());
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    assert!(!session.path().exists());
     std::fs::remove_dir_all(home.root()).ok();
 }
 

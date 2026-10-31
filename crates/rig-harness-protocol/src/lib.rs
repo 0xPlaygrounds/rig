@@ -670,8 +670,8 @@ impl SessionDir {
     }
 
     /// Whether the session holds a conversation, so it can be resumed:
-    /// the session has the marker [`Self::mark_saved`] writes and
-    /// is not being deleted.
+    /// the session has the marker [`Self::mark_saved`] writes (and
+    /// [`Self::unmark_saved`] takes away) and is not being deleted.
     pub fn is_saved(&self) -> bool {
         self.saved().exists() && !self.is_deleting()
     }
@@ -707,6 +707,20 @@ impl SessionDir {
     /// When the marker cannot be written.
     pub fn mark_saved(&self) -> std::io::Result<()> {
         std::fs::write(self.saved(), b"")
+    }
+
+    /// Takes away the marker [`Self::mark_saved`] writes, as the harness
+    /// does once no agent's conversation has a user or assistant message;
+    /// a session without it stays as it is.
+    ///
+    /// # Errors
+    ///
+    /// When the marker is there and cannot be removed.
+    pub fn unmark_saved(&self) -> std::io::Result<()> {
+        match std::fs::remove_file(self.saved()) {
+            Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            removed => removed,
+        }
     }
 
     /// The plain, empty marker of a saved session.

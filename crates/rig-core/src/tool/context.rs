@@ -70,10 +70,115 @@ impl std::fmt::Debug for ToolResultContext {
     }
 }
 
+/// The most bytes of JSON a call's published values may take together to
+/// be kept with a conversation ([`ToolResultContext::kept`]): room for the
+/// diff of a large edit, while a value past it, such as the diff of a
+/// rewritten generated file, is left out rather than grow the session by
+/// as much.
+pub const MAX_KEPT_FACTS_BYTES: usize = 256 * 1024;
+
 impl ToolResultContext {
     /// Read a published value without exposing ambient execution inputs.
     pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
         get_slot(&self.0)
+    }
+
+    /// Whether nothing was published.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// These values as a conversation keeps them with the call's result
+    /// ([`ResultFacts`](crate::conversation::ResultFacts)), for a view to
+    /// draw the call from after a resume: every secret in their strings
+    /// redacted ([`redact::json`](crate::redact::json), each diff line on
+    /// its own, and no hunks for a change with a secret across lines), the
+    /// whole old text of each changed file ([`FileChange::before_text`])
+    /// left out, since the hunks show the change, and, past
+    /// [`MAX_KEPT_FACTS_BYTES`] of JSON, the largest values left out, so a
+    /// small one such as an exit status stays.
+    ///
+    /// ```
+    /// use rig_core::tool::{ExitStatus, FileChange, FilesChanged, ToolContext};
+    ///
+    /// let mut context = ToolContext::new();
+    /// context.insert_result(ExitStatus::Exited(0))?;
+    /// let change = FileChange::modified("a.rs", 1, 1).with_before_text("old\n");
+    /// context.insert_result(FilesChanged(vec![change]))?;
+    /// let kept = context.result_context().kept();
+    /// assert_eq!(kept.get::<ExitStatus>()?, Some(ExitStatus::Exited(0)));
+    /// let changed = kept.get::<FilesChanged>()?.unwrap_or_default();
+    /// assert_eq!(changed.0.first().map(|change| change.before_text.is_none()), Some(true));
+    /// # Ok::<(), rig_core::tool::ToolContextError>(())
+    /// ```
+    ///
+    /// [`FileChange::before_text`]: super::FileChange::before_text
+    #[must_use]
+    pub fn kept(&self) -> Self {
+        let mut kept = self.0.clone();
+        if let Ok(Some(mut changed)) = get_slot::<super::FilesChanged>(&kept) {
+            for change in &mut changed.0 {
+                change.before_text = None;
+                redact_hunks(&mut change.hunks);
+            }
+            // A value that decoded encodes again; one that did not stays.
+            insert_slot(&mut kept, changed).ok();
+        }
+        // Each entry's JSON with its `:` and a `,`; the map's braces first.
+        let mut sized: Vec<(usize, String, serde_json::Value)> = kept
+            .into_iter()
+            .filter_map(|(key, mut value)| {
+                crate::redact::json(&mut value);
+                let key_size = serde_json::to_vec(&key).ok()?.len();
+                let size = serde_json::to_vec(&value).ok()?.len();
+                Some((key_size.saturating_add(size).saturating_add(2), key, value))
+            })
+            .collect();
+        sized.sort_by_key(|(size, ..)| *size);
+        let mut room = MAX_KEPT_FACTS_BYTES.saturating_sub(2);
+        let mut fits = BTreeMap::new();
+        for (size, key, value) in sized {
+            if size <= room {
+                room = room.saturating_sub(size);
+                fits.insert(key, value);
+            }
+        }
+        Self(fits)
+    }
+}
+
+/// Redacts each line of `hunks` on its own, as [`redact::text`] would its
+/// text: its JSON form starts with the line's diff sign, which would hide
+/// a secret at the line's start from [`redact::json`]. A secret across
+/// lines, such as a private key block, is found in the lines together
+/// first, and takes every hunk with it.
+///
+/// [`redact::text`]: crate::redact::text
+/// [`redact::json`]: crate::redact::json
+fn redact_hunks(hunks: &mut Vec<super::Hunk>) {
+    use super::HunkLine;
+    // Each line ends in a break, so one without its ending (the file's
+    // last) does not run into the next.
+    let mut joined = String::new();
+    for line in hunks.iter().flat_map(|hunk| &hunk.lines) {
+        joined.push_str(line.text());
+        if !line.text().ends_with(['\n', '\r']) {
+            joined.push('\n');
+        }
+    }
+    let across = crate::redact::find(&joined).any(|found| {
+        let text = joined.get(found.range).unwrap_or_default();
+        text.trim_end().contains(['\n', '\r'])
+    });
+    if across {
+        hunks.clear();
+        return;
+    }
+    for line in hunks.iter_mut().flat_map(|hunk| &mut hunk.lines) {
+        let (HunkLine::Same(text) | HunkLine::Removed(text) | HunkLine::Added(text)) = line;
+        if let std::borrow::Cow::Owned(redacted) = crate::redact::text(text) {
+            *text = redacted;
+        }
     }
 }
 

@@ -345,6 +345,7 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
         author: None,
         id: Some(MessageId(id)),
         made: Some(id * 10),
+        facts: Default::default(),
     };
     let first_turn = assistant(vec![AssistantContent::text("a")]);
     let Message::Assistant(second_turn) = assistant(vec![AssistantContent::text("b"), call("c1")])
@@ -402,7 +403,8 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
 }
 
 /// A system entry that arrives while calls wait goes after the entry that
-/// answers them, keeping its id, as `repair` places a held system message.
+/// answers them, keeping its id, as `repair` places a held system message;
+/// the results keep what their calls published.
 #[test]
 fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
     let entry = |id: u64, message: Message| Entry {
@@ -410,12 +412,22 @@ fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
         author: None,
         id: Some(MessageId(id)),
         made: None,
+        facts: Default::default(),
     };
+    let mut context = crate::tool::ToolContext::new();
+    assert!(
+        context
+            .insert_result(crate::tool::ExitStatus::Exited(3))
+            .is_ok()
+    );
+    let facts: ResultFacts = [(id("c1"), context.result_context())].into_iter().collect();
     let normalized = normalize(vec![
         entry(0, assistant(vec![call("c1")])),
         entry(1, Message::system("note")),
-        entry(2, results(&["c1"])),
+        entry(2, results(&["c1"])).with_facts(facts.clone()),
     ]);
+    let kept = normalized.entries.get(1).map(|entry| &entry.facts);
+    assert_eq!(kept, Some(&facts));
     let order: Vec<(Option<MessageId>, &Message)> = normalized
         .entries
         .iter()

@@ -33,10 +33,12 @@ pub struct ToolCallView<'a> {
     /// The transcript's colors.
     pub theme: Theme,
     /// What the call published, such as rig-core's `ExitStatus` and
-    /// `FilesChanged`, once it settled: in this run, or in an earlier one
-    /// of a resumed session whose effect log was kept.
+    /// `FilesChanged`, as the session keeps it with the call's result:
+    /// once the result is in the conversation, in this run or an earlier
+    /// one alike.
     pub facts: Option<&'a ToolResultContext>,
-    /// How long it ran, once it settled, as for [`facts`](Self::facts).
+    /// How long it ran, once it settled: in this run, or in an earlier one
+    /// of a resumed session whose effect log was kept.
     pub took: Option<Duration>,
     /// The output so far of a running call whose tool reports it as it
     /// runs ([`CallOutput`]), such as a command's: cut as tool output is
@@ -241,8 +243,9 @@ impl<'a> ToolCallView<'a> {
 
     /// The lines of `text`, the result, without the line that says the
     /// tool cut its output, and that line with the end it is on, when the
-    /// call published [`OutputCut`] (a call of an earlier run has no facts,
-    /// so its marker is a line like any other).
+    /// call published [`OutputCut`] (a call without it, such as one saved
+    /// before calls kept their facts, has its marker as a line like any
+    /// other).
     fn cut_marker<'t>(&self, text: &'t str) -> (Vec<&'t str>, Option<(&'t str, KeptEnd)>) {
         let mut lines: Vec<&str> = text.lines().collect();
         let cut = self

@@ -37,7 +37,9 @@ use rig_core::completion::{
     UnsupportedOption,
 };
 use rig_core::conversation::pairing::close_pending_with;
-use rig_core::conversation::{Author, AuthorKind, Halt, TurnEnd, attached_file};
+use rig_core::conversation::{
+    Author, AuthorKind, Entry, Halt, ResultFacts, TurnEnd, attached_file,
+};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{
@@ -59,14 +61,16 @@ use super::agent::{
 use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver, keep_on_the_way};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf};
-use super::restore::{CarryOn, Interrupted, RESTARTED, Restored, commit_results, mark_settled};
+use super::restore::{
+    CarryOn, Interrupted, KeptFacts, RESTARTED, Restored, commit_results, mark_settled,
+};
 use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
 #[cfg(doc)]
 use super::stage::Stage;
 use super::stage::{
-    Admitted, Decision, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Started,
-    SupersededBy, Waiting, apply_decision, cancel, release,
+    Admitted, Decision, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Published, Settled,
+    Started, SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
 use super::tools::{Footprint, ToolDef, ToolRequest, offered, redacted};
@@ -769,12 +773,17 @@ pub(crate) fn not_finished(why: &str, started: bool, footprint: Option<&Footprin
 
 /// The results of a reply's tool calls, in call order: each answered
 /// call's result, else what it says its result is if stopped
-/// ([`IfStopped`]), else what `missing` gives it, else nothing for it.
+/// ([`IfStopped`]), else what `missing` gives it, else nothing for it;
+/// with what each call published ([`ReplyCallItem::facts`]).
 /// `None` when that leaves no result.
 fn reply_results(
     calls: Vec<ReplyCallItem>,
     missing: impl Fn(&ReplyCallItem) -> Option<ToolResult>,
-) -> Option<Message> {
+) -> Option<Entry> {
+    let facts: ResultFacts = calls
+        .iter()
+        .filter_map(|call| Some((call.request.call.id.clone(), call.facts()?)))
+        .collect();
     let results: Vec<_> = calls
         .into_iter()
         .filter_map(|call| {
@@ -793,7 +802,7 @@ fn reply_results(
             Some(call.request.call.answer(&result))
         })
         .collect();
-    (!results.is_empty()).then(|| Message::tool_results(results))
+    (!results.is_empty()).then(|| Entry::new(Message::tool_results(results)).with_facts(facts))
 }
 
 /// How long exit waits for running calls to be cancelled. A cancellation
@@ -1593,6 +1602,8 @@ pub(crate) struct ReplyCall {
     request: &'static ToolRequest,
     outcome: Option<&'static Outcome>,
     if_stopped: Option<&'static IfStopped>,
+    published: Option<&'static Published>,
+    kept: Option<&'static KeptFacts>,
     successor: Option<&'static SupersededBy>,
     footprint: Option<&'static Footprint>,
     decision: &'static Decision,
@@ -1602,6 +1613,16 @@ pub(crate) struct ReplyCall {
     started: Has<Started>,
     waiting: Has<Waiting>,
     entity: Entity,
+}
+
+impl ReplyCallItem<'_, '_> {
+    /// What the call published, as a conversation keeps it
+    /// ([`ToolResultContext::kept`](rig_core::tool::ToolResultContext::kept)),
+    /// or, restored, as its mark kept it.
+    fn facts(&self) -> Option<rig_core::tool::ToolResultContext> {
+        let published = self.published.map(|published| published.0.kept());
+        published.or_else(|| self.kept.map(|kept| kept.0.clone()))
+    }
 }
 
 /// The calls of the reply `reply` among `calls`, in the reply's order:
@@ -1694,7 +1715,8 @@ pub(crate) fn commit_replies(
             for call in calls.iter().filter(|call| call.settled) {
                 if let Some(outcome) = call.outcome {
                     let result = outcome.tool_result();
-                    mark_settled(&mut conversation, &call.request.call.id, &result);
+                    let facts = || call.facts().unwrap_or_default();
+                    mark_settled(&mut conversation, &call.request.call.id, &result, facts);
                 }
             }
             continue;

@@ -6,7 +6,7 @@ use std::io;
 use std::sync::Arc;
 
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage};
+use rig_core::conversation::{Aside, Author, Change, Conversation, Lineage, ResultFacts};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,6 +60,13 @@ pub trait Rewrite: Send + Sync {
         false
     }
 
+    /// What the tool calls of an entry of a push, a splice or a reset
+    /// published, kept beside its message.
+    fn facts(&self, at: &Place<'_>, facts: &mut ResultFacts) -> bool {
+        let _ = (at, facts);
+        false
+    }
+
     /// A saved value under `key`, or a JSON value of a file (`key` is its
     /// name). A value made `null` is removed.
     fn value(&self, at: &Place<'_>, key: &str, value: &mut Value) -> bool {
@@ -79,11 +86,11 @@ pub trait Rewrite: Send + Sync {
     }
 }
 
-/// Every string, keys included, of every value: messages and asides through
-/// their serde form, saved values, text and every file. Redaction and path
-/// remapping are this. A string that is part of a message's or an aside's
-/// form, such as a field name or a tag, is left as it is where changing it
-/// would make the value unreadable.
+/// Every string, keys included, of every value: messages, their tool
+/// calls' facts and asides through their serde form, saved values, text and
+/// every file. Redaction and path remapping are this. A string that is part
+/// of a message's or an aside's form, such as a field name or a tag, is
+/// left as it is where changing it would make the value unreadable.
 ///
 /// ```
 /// use rig_core::conversation::Author;
@@ -116,6 +123,10 @@ impl<F: Fn(&mut String) -> bool + Send + Sync> Rewrite for Strings<F> {
 
     fn aside(&self, _: &Place<'_>, aside: &mut Aside) -> bool {
         map_serde(aside, &self.0)
+    }
+
+    fn facts(&self, _: &Place<'_>, facts: &mut ResultFacts) -> bool {
+        map_serde(facts, &self.0)
     }
 
     fn value(&self, _: &Place<'_>, _: &str, value: &mut Value) -> bool {
@@ -541,8 +552,8 @@ pub(crate) fn map_record(
     Ok(Some(line))
 }
 
-/// Maps the messages and asides of `change` through `with`; whether any
-/// changed.
+/// Maps the messages, facts and asides of `change` through `with`;
+/// whether any changed.
 pub(crate) fn map_change(
     change: &mut Change,
     at: &Place<'_>,
@@ -551,7 +562,8 @@ pub(crate) fn map_change(
     Ok(match change {
         Change::Push { entries } | Change::Splice { with: entries, .. } => {
             entries.iter_mut().fold(false, |changed, entry| {
-                with.message(at, Arc::make_mut(&mut entry.message)) | changed
+                let message = with.message(at, Arc::make_mut(&mut entry.message));
+                message | with.facts(at, &mut entry.facts) | changed
             })
         }
         Change::Aside {
@@ -562,8 +574,8 @@ pub(crate) fn map_change(
     })
 }
 
-/// Maps the messages and saved asides of a reset's `state` through `with`,
-/// by its serde form; whether any changed.
+/// Maps the messages, facts and saved asides of a reset's `state` through
+/// `with`, by its serde form; whether any changed.
 fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Result<bool, String> {
     let fail = |failure: serde_json::Error| failure.to_string();
     let mut value = serde_json::to_value(&*state).map_err(fail)?;
@@ -573,6 +585,15 @@ fn map_state(state: &mut Conversation, at: &Place<'_>, with: &dyn Rewrite) -> Re
             let mut typed = Message::deserialize(&*message).map_err(fail)?;
             if with.message(at, &mut typed) {
                 *message = serde_json::to_value(&typed).map_err(fail)?;
+                changed = true;
+            }
+        }
+    }
+    if let Some(Value::Array(metas)) = value.get_mut("meta") {
+        for facts in metas.iter_mut().filter_map(|meta| meta.get_mut("facts")) {
+            let mut typed = ResultFacts::deserialize(&*facts).map_err(fail)?;
+            if with.facts(at, &mut typed) {
+                *facts = serde_json::to_value(&typed).map_err(fail)?;
                 changed = true;
             }
         }
