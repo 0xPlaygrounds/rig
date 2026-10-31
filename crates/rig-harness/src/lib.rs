@@ -158,7 +158,7 @@ pub mod prelude {
 /// the launcher protocol, and the services every agent uses: slash
 /// commands, the clock the loop sleeps by, file watches, the questions and
 /// pickers every front answers, the run's start and `--tools`
-/// ([`run`]), and tool progress. Everything else is a
+/// ([`run`](mod@run)), and tool progress. Everything else is a
 /// plugin `plugins.toml` lists, which can leave it out.
 pub struct RigHarnessPlugins;
 

@@ -698,3 +698,38 @@ fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
     });
     assert!(router.is_some());
 }
+
+/// `rig acp --tools` reaches each session, which checks it against its own
+/// tools: a name none has refuses the session as it opens, and a known
+/// list keeps the session to it.
+#[test]
+fn rig_acp_tools_limit_each_session_and_an_unknown_name_refuses_it() {
+    let place = Place::new("tools-bogus").with_tools("read,bogus");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let request = acp::NewSessionRequest::new(&driven.project);
+        let refused = driven.cx.send_request(request).block_task().await;
+        let why = refused.err().map(|error| format!("{error:?}"));
+        let unknown = "--tools: unknown tool `bogus`";
+        assert!(
+            why.as_ref().is_some_and(|why| why.contains(unknown)),
+            "{why:?}"
+        );
+    });
+    assert!(router.is_some());
+    let place = Place::new("tools-read").with_tools("read");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        // The model calls `shell`, which `--tools read` leaves out.
+        assert!(driven.model(&id, "test/wait").await);
+        assert_eq!(
+            driven.prompt(&id, "Wait.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+        let last = tool_steps(driven, &id).last().map(|(_, status)| *status);
+        assert_eq!(last, Some(acp::ToolCallStatus::Failed));
+    });
+    assert!(router.is_some());
+}

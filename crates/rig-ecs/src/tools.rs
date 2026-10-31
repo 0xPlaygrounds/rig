@@ -451,15 +451,14 @@ pub(crate) fn offered<'a>(
 pub(crate) fn keep_within_parents(
     mut agents: Query<(Entity, &mut ToolAccess, Option<Ref<SpawnedBy>>)>,
 ) {
-    let mut changed = false;
-    let mut above: HashMap<Entity, (ToolAccess, Option<Entity>)> = HashMap::new();
-    for (agent, access, parent) in &mut agents {
-        changed |= access.is_changed() || parent.as_ref().is_some_and(Ref::is_changed);
-        above.insert(agent, (access.clone(), parent.map(|parent| parent.0)));
-    }
+    let changed = (agents.iter_mut())
+        .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
     if !changed {
         return;
     }
+    let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
+        .map(|(agent, access, parent)| (agent, (access.clone(), parent.map(|parent| parent.0))))
+        .collect();
     for (_, mut access, parent) in &mut agents {
         let mut within = access.clone();
         let mut next = parent.map(|parent| parent.0);

@@ -514,3 +514,33 @@ fn an_unopened_or_refused_store_keeps_the_session_name_untouched()
     fs::remove_dir_all(home.root())?;
     Ok(())
 }
+
+/// Another rig's session that is not saved yet holds its name too: it may
+/// be saved later, and then two sessions would share it.
+#[test]
+fn name_refuses_the_name_of_a_session_another_rig_runs_unsaved() {
+    let home = home("unique-unsaved-name");
+    let made = home.new_session();
+    assert!(made.is_ok());
+    let Ok((other, dir)) = made else { return };
+    assert!(dir.set_name(Some("alpha")).is_ok());
+    let held = dir.hold().ok().flatten();
+    assert!(held.is_some(), "the other rig runs it");
+    let running = running(&home, "1-1");
+    assert!(running.is_some());
+    let Some(mut app) = running else { return };
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    world.trigger(RunCommand::new(agent, "name alpha"));
+    world.flush();
+    let recalled: Vec<_> = world.resource_mut::<Messages<Recalled>>().drain().collect();
+    let why = recalled.first().and_then(|recalled| recalled.why.clone());
+    assert!(why.is_some_and(|why| why.contains(other.as_str())));
+    drop(held);
+    // Once nobody runs it and it was never saved, the name is free.
+    world.trigger(RunCommand::new(agent, "name alpha"));
+    world.flush();
+    assert!(world.resource::<Messages<Recalled>>().is_empty());
+    fs::remove_dir_all(home.root()).ok();
+}

@@ -29,6 +29,7 @@ mod tests;
 use reply::{Reply, error, initialized};
 #[cfg(not(target_family = "wasm"))]
 use rig_harness::prelude::*;
+#[cfg(not(target_family = "wasm"))]
 use rig_harness::run::RunPlugin;
 #[cfg(not(target_family = "wasm"))]
 use rig_mcp_client::McpCorePlugin;

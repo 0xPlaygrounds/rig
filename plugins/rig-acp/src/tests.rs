@@ -136,8 +136,14 @@ fn agent() {
         let spec = ModelSpec::new(nowhere, "model").with_tools(true);
         models.0.catalog_mut().insert(spec);
     }
+    // `--tools`, which the router hands each session after `--`.
+    let tools = std::env::args().filter_map(|arg| {
+        let tools = arg.strip_prefix(&format!("--{}=", rig_harness::run::TOOLS))?;
+        Some((rig_harness::run::TOOLS.to_owned(), Some(tools.to_owned())))
+    });
     let invoked = Invocation {
         command: Some(command.to_owned()),
+        flags: tools.collect(),
         ..Invocation::default()
     };
     let mut app = App::new();
@@ -168,7 +174,9 @@ fn agent() {
     .add_systems(AgentPass, guard.in_set(Stage::Gate).before(ApprovalSystems));
     if !session {
         let program = std::env::current_exe().unwrap_or_default();
-        let args = libtest("agent");
+        // What the router adds after them is no test's filter.
+        let mut args = libtest("agent");
+        args.push("--".into());
         app.insert_resource(SessionCommand { program, args });
     }
     let exit = rig_harness::run(app);
@@ -353,6 +361,8 @@ struct Place {
     root: PathBuf,
     home: PathBuf,
     project: PathBuf,
+    /// The router's `--tools`, if any.
+    tools: Option<String>,
 }
 
 impl Place {
@@ -371,7 +381,14 @@ impl Place {
             root,
             home,
             project,
+            tools: None,
         }
+    }
+
+    /// The same place, its router started with `--tools tools`.
+    fn with_tools(mut self, tools: &str) -> Self {
+        self.tools = Some(tools.to_owned());
+        self
     }
 }
 
@@ -575,8 +592,13 @@ impl Router {
         tokio::process::ChildStdin,
         tokio::process::ChildStdout,
     )> {
+        let tools = place.tools.iter().flat_map(|tools| {
+            let flag = format!("--{}={tools}", rig_harness::run::TOOLS);
+            [OsString::from("--"), OsString::from(flag)]
+        });
         let mut process = tokio::process::Command::new(std::env::current_exe().ok()?)
             .args(libtest("agent"))
+            .args(tools)
             .env(AGENT, "1")
             .env("RIG_HOME", &place.home)
             .env_remove("RIG_RUN")

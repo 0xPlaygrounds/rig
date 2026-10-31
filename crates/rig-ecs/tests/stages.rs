@@ -4342,6 +4342,34 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     assert!(said.is_some_and(|said| said.contains("\"go\"") && !said.contains("[Output of")));
 }
 
+/// A child saved wider than its parent, as an older build could, is kept
+/// within its parent before its first call: it is neither offered nor runs
+/// a tool its parent lacks.
+#[test]
+fn a_child_never_calls_or_is_offered_a_tool_its_parent_lacks() {
+    let mut app = app();
+    let model =
+        MockCompletionModel::from_stream_turns([reply(&[("touch", "forbidden")]), answer("done")]);
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let child = connected(&mut app, &model);
+    let world = app.world_mut();
+    let parent = world.spawn((Agent, ToolAccess::All.narrow(["look"]))).id();
+    world.entity_mut(child).insert(SpawnedBy(parent));
+    world.trigger(Deliver::new(child, "go", DeliveryMode::Steer));
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let offered = model.requests().first().map(|request| {
+        let names = request.tools.iter().map(|tool| tool.name.to_string());
+        names.collect::<Vec<_>>()
+    });
+    assert_eq!(offered, Some(vec!["look".to_owned()]));
+    let touched = records(&app).into_iter().find(
+        |record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == "touch"),
+    );
+    let refused = touched.and_then(|record| record.outcome.err().map(|report| report.kind));
+    assert_eq!(refused, Some(ErrorKind::Denied));
+}
+
 #[test]
 fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
     let mut app = app();

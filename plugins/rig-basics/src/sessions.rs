@@ -518,16 +518,20 @@ fn name_session(
     }
 }
 
-/// Refuses a name held by another saved session, using the running
-/// session's title while its name file waits for `Last`.
+/// Refuses a name held by another session that is saved or that another
+/// rig runs, which may be saved later, using the running session's title
+/// while its name file waits for `Last`.
 fn name_conflict(
     home: &Home,
     current: Option<(&SessionDir, &SessionTitle)>,
     session: Option<&SessionId>,
     name: &str,
 ) -> Option<Notice> {
-    let (other, _) = home.saved_sessions().into_iter().find(|(id, dir)| {
-        if Some(id) == session {
+    let entries = std::fs::read_dir(home.sessions()).into_iter().flatten();
+    let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
+    let mut sessions = ids.map(|id: SessionId| (home.session(&id), id));
+    let (_, other) = sessions.find(|(dir, id)| {
+        if Some(id) == session || !(dir.is_saved() || dir.runs_elsewhere()) {
             return false;
         }
         let stored = match current.filter(|(paths, _)| paths.path() == dir.path()) {

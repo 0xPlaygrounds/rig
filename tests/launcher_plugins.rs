@@ -15,7 +15,7 @@ fn plugin(home: &Path, args: &[&str]) -> std::io::Result<Output> {
 fn help_and_refused_commands_use_their_streams_and_leave_the_home_untouched() {
     let result = (|| -> anyhow::Result<()> {
         let root = assert_fs::TempDir::new()?;
-        let home = root.join("home");
+        let home = root.path().join("home");
         for args in [
             vec!["--help"],
             vec!["add", "--help"],
