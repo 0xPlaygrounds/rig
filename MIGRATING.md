@@ -1040,6 +1040,10 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   them out.
 - rig-reqwest keeps at most 64 KiB of a non-success response body in the
   error, with a truncation notice. Use a custom transport if you need more.
+- `Observe::event` is called for every streamed item, and `Recorder::event`
+  also for a stream's first, even when `keep_events()` is false. An existing
+  observer that stores everything it is given now stores those items too; check
+  `keep_events()` in it (see [agent runs](#4-agent-runs-observers-and-effect-records)).
 
 #### Stored data
 
@@ -1231,11 +1235,12 @@ provider-hosted tools `AgentBuilder::provider_tool` adds. A struct literal
 adds it:
 
 ```rust
-// before
-RunSpec { preamble, tools, ..RunSpec::new() }   // unchanged when it already uses `..`
-PreparedRequest { chat_history, policy, /* every field */ }
+// unchanged: a literal that fills the rest from `RunSpec::new()`
+RunSpec { preamble: Some(preamble), max_turns: Some(8), ..RunSpec::new() }
+// before: a literal that lists every field
+PreparedRequest { chat_history, documents, tools, temperature, max_tokens, additional_params, /* ... */ }
 // after
-PreparedRequest { chat_history, policy, provider_tools: Vec::new(), /* ... */ }
+PreparedRequest { chat_history, documents, tools, temperature, max_tokens, additional_params, provider_tools: Vec::new(), /* ... */ }
 ```
 
 `Observe::event` is called for every streamed item and `Recorder::event` also
