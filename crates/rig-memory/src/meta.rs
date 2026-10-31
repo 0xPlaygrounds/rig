@@ -13,7 +13,7 @@ use rig_core::message::{AssistantContent, UserContent};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{Files, Session, main_order};
+use crate::{Files, SavedAgent, Session};
 use rig_core::now_ms;
 
 /// The file of a session's store that holds its [`SessionMeta`].
@@ -67,14 +67,14 @@ impl SessionMeta {
     /// session no rig is running: the main agent's model and message count,
     /// `updated` set to now, and each listed value (keys in `listed`, plus
     /// those already listed), taken from the session's own values, else from
-    /// the first agent by [`main_order`] that has one. A value that is gone
-    /// is unlisted. The title and labels stay.
+    /// the main agent ([`Session::main_agent`]) and then the first other
+    /// agent started that has one. A value that is gone is unlisted. The
+    /// title and labels stay.
     pub fn relist(&mut self, session: &Session, listed: &BTreeSet<String>) {
-        let mut agents: Vec<_> = session.agents.iter().filter(|a| !a.retired).collect();
-        agents.sort_by(|a, b| {
-            main_order(a.parent.is_some(), &a.id).cmp(&main_order(b.parent.is_some(), &b.id))
-        });
-        let main = agents.first();
+        let main = session.main_agent();
+        let is_main = |agent: &SavedAgent| main.is_some_and(|main| std::ptr::eq(agent, main));
+        let others = (session.agents.iter()).filter(|agent| !agent.retired && !is_main(agent));
+        let agents: Vec<_> = main.into_iter().chain(others).collect();
         self.messages = main.map_or(0, |main| main.conversation.messages().len());
         self.model = main.and_then(|main| main.model()).unwrap_or_default();
         let keys: BTreeSet<String> = listed.iter().chain(self.listed.keys()).cloned().collect();

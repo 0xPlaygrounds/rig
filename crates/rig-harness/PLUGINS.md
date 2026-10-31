@@ -51,9 +51,10 @@ each plugin added): ask it before reading rig's source.
   the default plugins, `plugins/<name>` for rig-tui and the optional ones.
 - **Agents.** An **agent** is an entity with `Agent`, a conversation and a
   model; a **subagent** is one another agent spawned (`SpawnedBy`). The **main
-  agent** is the first unspawned one (`main_order`), the **shown agent** the one
-  a front shows and sends typed text to (`ShownAgent`); "focus" is only keyboard
-  focus.
+  agent** is the session's **current agent** (`CurrentAgent`, saved), always an
+  unspawned one; the **shown agent** is the one a front shows and sends typed
+  text to (`ShownAgent`), and showing it makes its top-level agent current;
+  "focus" is only keyboard focus.
 - **Conversations.** A **conversation** is ordered entries, asides and a halt
   (rig-core's `Conversation`). An **entry** is one message with a `MessageId`,
   an author and a made-time. An **aside** is a typed side value after an entry,
@@ -1410,7 +1411,10 @@ once registered): each change is logged, and a restart, `/reload` or
 `SessionRestored` exists, so an `On<Insert<T>>` observer can re-arm what it
 says. A resource that says `#[reflect(Resource, Saved)]` and is inserted in
 `build` is kept the same way, and one holding rig-core data, such as a
-`MessageId`, is saved through serde. A plugin says what it keeps
+`MessageId`, is saved through serde. A fork copies an agent's value unless
+its type says `Saved(Reset)` (the fork gets its `Default`, as a meter of the
+agent's own calls) or `Saved(Never)` (the fork never has it, as a duty the
+source owes), from `rig_ecs::session_log`. A plugin says what it keeps
 (`keeps_saved::<T>()`, `keeps_files("vim")`) as `Keeps` on its entity. A
 changed type needs no upgrade step ([saved value](#words)).
 
@@ -1745,10 +1749,12 @@ effect, which a holder may take as "stop waiting".
 - **Fork an agent:** `ForkAgent { agent, through }` makes a new agent in this
   session, no restart: its log is a copy of `agent`'s up to a turn boundary at
   or before `through` (`None` for the end), so a compaction made before the
-  cut is undone in it too; it has every saved component `agent` has now
-  (model, reasoning, tools, prompt, working directory), its connection and its
-  prompt-cache key (`CacheKey`). `AgentForked { from, fork, through }` names
-  it. `rig_basics::sessions`' `/fork`, `/agents` and rewind are built on it.
+  cut is undone in it too; it has the saved components `agent` has now
+  (model, reasoning, tools, prompt, working directory), its connection, its
+  prompt-cache key (`CacheKey`) and a `ForkedFrom` naming `agent`.
+  `AgentForked { from, fork, through }` names it. `rig_basics::sessions`'
+  `/fork`, `/agents` and rewind are built on it, and show the fork, which
+  makes it the session's `CurrentAgent`.
 - **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
   ..)` under its lock; `PluginData::of(&stores, &dir)` opens its plugin files.
 - **Delete:** `DeleteSession(id)`, finished by the next start if a crash cut

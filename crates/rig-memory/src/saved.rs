@@ -1,6 +1,7 @@
 //! A saved agent's values read without the host that saved them: the keys
-//! rig saves an agent's model and title under, typed reads of any saved
-//! value, and which agent of a session is its main one.
+//! rig saves an agent's model and title and the session's current agent
+//! under, typed reads of any saved value, and which agent of a session is
+//! its main one.
 
 use std::collections::BTreeMap;
 
@@ -16,6 +17,11 @@ pub const MODEL: &str = "rig::model";
 /// The key an agent's title is saved under, such as a subagent's task: a
 /// string.
 pub const TITLE: &str = "rig::title";
+
+/// The key the session's current agent is saved under, the agent the user
+/// talks to when none is named: a string, the agent's id. One of the
+/// session's own values.
+pub const CURRENT: &str = "rig::current_agent";
 
 impl SavedAgent {
     /// Its saved value under `key`, such as a plugin's `goals.goal`, read
@@ -44,13 +50,6 @@ fn value<T: DeserializeOwned>(
     state.get(key).map(T::deserialize)
 }
 
-/// Where an agent sorts among the agents of a session: those nothing
-/// spawned first, each group by id. The first is the main agent, the one
-/// the user talks to when none is named.
-pub fn main_order(spawned: bool, id: &str) -> (bool, &str) {
-    (spawned, id)
-}
-
 impl Session {
     /// The session's own saved value under `key` (the [`SESSION`](crate::SESSION)
     /// log's), read as a `T`: `None` when it has none, an error when the
@@ -59,18 +58,22 @@ impl Session {
         value(&self.saved, key)
     }
 
-    /// The main agent: the first by [`main_order`] of the agents a restore
-    /// brings back (not retired, nor spawned by one retired).
+    /// The main agent: of the agents a restore brings back (not retired,
+    /// nor spawned by one retired) that nothing spawned, the one
+    /// [`CURRENT`] names, else the first by id.
     pub fn main_agent(&self) -> Option<&SavedAgent> {
         let logs = self.agents.iter().map(|agent| {
             let parent = agent.parent.as_deref();
             (agent.id.as_str(), parent, agent.retired)
         });
         let skipped = skipped(logs);
-        self.agents
-            .iter()
-            .filter(|agent| !skipped.contains(agent.id.as_str()))
-            .min_by_key(|agent| main_order(agent.parent.is_some(), &agent.id))
+        let top = (self.agents.iter())
+            .filter(|agent| agent.parent.is_none() && !skipped.contains(agent.id.as_str()));
+        let current = self.value::<String>(CURRENT).and_then(Result::ok);
+        let named = top
+            .clone()
+            .find(|agent| Some(&agent.id) == current.as_ref());
+        named.or_else(|| top.min_by_key(|agent| &agent.id))
     }
 }
 

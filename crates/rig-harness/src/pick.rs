@@ -42,7 +42,7 @@ use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
 use crate::commands::RunCommand;
-use crate::main_agent::{ShownAgent, keep_shown};
+use crate::main_agent::{CurrentAgentPlugin, ShownAgent};
 
 /// One choice of a picker: what it shows, and the command line, without
 /// its `/`, that choosing it runs for the agent, such as
@@ -275,9 +275,10 @@ pub struct PickPlugin;
 
 impl Plugin for PickPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ShownAgent>()
-            .add_systems(First, keep_shown)
-            .add_observer(pick);
+        if !app.is_plugin_added::<CurrentAgentPlugin>() {
+            app.add_plugins(CurrentAgentPlugin);
+        }
+        app.add_observer(pick);
     }
 }
 

@@ -51,19 +51,65 @@ use super::{SaveSystems, WriteLogs};
 /// - A generic type is saved only once registered. A logged type no build
 ///   registers is reported and kept in the log. A value that no longer fits
 ///   its type is reported and not inserted; its next save replaces it.
+/// - A fork ([`ForkAgent`](super::fork::ForkAgent)) copies an agent's
+///   value, unless the type says otherwise as `Saved(Reset)` ([`Reset`]) or
+///   `Saved(Never)` ([`Never`]).
 #[derive(Clone)]
 pub struct ReflectSaved {
     watch: fn(&mut App),
+    /// What a fork gets of the type.
+    pub(crate) fork: Fork,
 }
 
-impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
-    fn create_type_data(_: ()) -> Self {
+/// A saved agent component a fork starts afresh with, as its `Default`,
+/// such as a meter of the agent's own calls:
+/// `#[reflect(Component, Saved(Reset))]`.
+pub struct Reset;
+
+/// A saved agent component a fork never has, such as a duty the source
+/// owes: `#[reflect(Component, Saved(Never))]`.
+pub struct Never;
+
+/// What a fork gets of a saved component.
+#[derive(Clone, Copy)]
+pub(crate) enum Fork {
+    /// The source's value.
+    Copy,
+    /// What this leaves on the fork once it is spawned.
+    Set(fn(&mut EntityWorldMut)),
+}
+
+impl ReflectSaved {
+    fn of<T: Component + Reflect + TypePath>(fork: Fork) -> Self {
         // `Changed` also sees an immutable value inserted in place of
         // another.
         let watch = |app: &mut App| {
             app.add_systems(Last, log_changed::<T>.in_set(SaveSystems));
         };
-        Self { watch }
+        Self { watch, fork }
+    }
+}
+
+impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
+    fn create_type_data(_: ()) -> Self {
+        Self::of::<T>(Fork::Copy)
+    }
+}
+
+impl<T: Component + Reflect + TypePath + Default> CreateTypeData<T, Reset> for ReflectSaved {
+    fn create_type_data(_: Reset) -> Self {
+        Self::of::<T>(Fork::Set(|fork| {
+            fork.insert(T::default());
+        }))
+    }
+}
+
+impl<T: Component + Reflect + TypePath> CreateTypeData<T, Never> for ReflectSaved {
+    fn create_type_data(_: Never) -> Self {
+        // A required component may have put it on the fork.
+        Self::of::<T>(Fork::Set(|fork| {
+            fork.remove::<T>();
+        }))
     }
 }
 

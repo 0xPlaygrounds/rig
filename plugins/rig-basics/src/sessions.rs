@@ -25,7 +25,7 @@ use bevy_reflect::prelude::*;
 use bevy_reflect::serde::TypedReflectSerializer;
 use rig_core::serde_json;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
-use rig_harness::rig_memory::{SessionMeta, main_order, title_of};
+use rig_harness::rig_memory::{SessionMeta, title_of};
 
 use crate::session_picker::{SessionPicker, SessionPickerPlugin};
 use rig_ecs::WriteLogs;
@@ -35,7 +35,10 @@ use rig_ecs::prelude::{SavedKeys, now_ms};
 use rig_ecs::session_log::{ConversationChanged, SessionStore};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::Picker;
-use rig_harness::prelude::{Exit, ExitReason, Files, RigHome, SessionPaths, first_typed};
+use rig_harness::prelude::{
+    CurrentAgent, Exit, ExitReason, Files, MainAgentQuery, RigHome, SessionPaths, first_typed,
+    main_agent,
+};
 
 pub mod agents;
 #[cfg(feature = "tui")]
@@ -78,7 +81,8 @@ impl Plugin for SessionsPlugin {
                             .or_eager(resource_changed::<SessionTitle>)
                             .or_eager(labels_changed)
                             .or_eager(models_changed)
-                            .or_eager(resource_changed::<ListedValues>),
+                            .or_eager(resource_changed::<ListedValues>)
+                            .or_eager(resource_exists_and_changed::<CurrentAgent>),
                     ),
                 )
                     .chain()
@@ -203,24 +207,24 @@ struct ListedType {
     reflect: ReflectComponent,
 }
 
-/// Reads each listed value that changed since it was last read: a saved
-/// resource's, else the main agent's. Every saved value is listed or not
-/// once the app is built, so the listed types are found once.
+/// Reads each listed value that changed since it was last read, or whose
+/// holder changed: a saved resource's, else the main agent's, else another
+/// agent's. Every saved value is listed or not once the app is built, so
+/// the listed types are found once.
 fn read_listed(
     world: &mut World,
     mut types: Local<Option<Vec<ListedType>>>,
-    mut seen: Local<BTreeMap<String, Tick>>,
+    mut seen: Local<BTreeMap<String, (Entity, Tick)>>,
 ) {
     let types = types.get_or_insert_with(|| listed_types(world));
     if types.is_empty() {
         return;
     }
+    let main = world.run_system_cached(main_of).ok().flatten();
     let mut agents = world.query_filtered::<(Entity, &AgentId, Has<SpawnedBy>), With<Agent>>();
-    let mut agents: Vec<_> = agents
-        .iter(world)
-        .map(|(entity, id, spawned)| (entity, id.0.clone(), spawned))
-        .collect();
-    agents.sort_by(|a, b| main_order(a.2, &a.1).cmp(&main_order(b.2, &b.1)));
+    let mut agents: Vec<_> = agents.iter(world).collect();
+    agents.sort_by_key(|&(entity, id, spawned)| (Some(entity) != main, spawned, &id.0));
+    let agents: Vec<Entity> = agents.into_iter().map(|(entity, ..)| entity).collect();
     let mut values = world.resource::<ListedValues>().0.clone();
     let Some(registry) = world.get_resource::<AppTypeRegistry>().cloned() else {
         return;
@@ -230,7 +234,7 @@ fn read_listed(
         let component = world.components().get_id(listed.id);
         let holder = component.and_then(|component| {
             let resource = world.resource_entities().get(component);
-            let agent = agents.iter().map(|(entity, ..)| *entity);
+            let agent = agents.iter().copied();
             let mut holders = resource.into_iter().chain(agent);
             let holder = holders.find(|entity| world.entity(*entity).contains_id(component))?;
             let ticks = world.entity(holder).get_change_ticks_by_id(component)?;
@@ -241,10 +245,10 @@ fn read_listed(
             seen.remove(&listed.key);
             continue;
         };
-        if seen.get(&listed.key) == Some(&changed) {
+        if seen.get(&listed.key) == Some(&(holder, changed)) {
             continue;
         }
-        seen.insert(listed.key.clone(), changed);
+        seen.insert(listed.key.clone(), (holder, changed));
         let Some(reflect) = listed.reflect.reflect(world.entity(holder)) else {
             continue;
         };
@@ -303,6 +307,11 @@ fn restore_title(
     }
 }
 
+/// The main agent ([`main_agent`]).
+fn main_of(agents: MainAgentQuery) -> Option<Entity> {
+    main_agent(&agents)
+}
+
 /// Whether a [`ResumeLabel`] changed, came or went.
 fn labels_changed(
     labels: Query<(), Changed<ResumeLabel>>,
@@ -325,25 +334,29 @@ fn update_meta(
     (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
     (mut title, mut listed): (ResMut<SessionTitle>, ResMut<Listed>),
     mut committed: MessageReader<ConversationChanged>,
-    agents: Query<
-        (
-            &AgentId,
-            &Conversation,
-            Has<SpawnedBy>,
-            Option<&ModelChoice>,
-        ),
-        With<Agent>,
-    >,
+    (agents, main): (
+        Query<
+            (
+                (Entity, &AgentId),
+                &Conversation,
+                Has<SpawnedBy>,
+                Option<&ModelChoice>,
+            ),
+            With<Agent>,
+        >,
+        MainAgentQuery,
+    ),
     (labels, values): (Query<&ResumeLabel>, Res<ListedValues>),
 ) {
     let changed = committed.read().count() > 0;
     let (Some(_), Some(store)) = (paths.filter(|paths| paths.is_saved()), store) else {
         return;
     };
-    // The agents the user started come first: the title is theirs, not a
-    // spawned agent's.
+    // The main agent comes first, then the other agents the user started:
+    // the title is theirs, not a spawned agent's.
+    let main = main_agent(&main);
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| main_order(a.2, &a.0.0).cmp(&main_order(b.2, &b.0.0)));
+    agents.sort_by_key(|&((entity, id), _, spawned, _)| (Some(entity) != main, spawned, &id.0));
     if title.typed.is_empty()
         && let Some(typed) = agents
             .iter()

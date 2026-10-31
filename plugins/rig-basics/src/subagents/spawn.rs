@@ -14,6 +14,7 @@ use super::{
     Environment, Helper, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentSystems,
     SubagentsPlugin, Subtask, answered, refused,
 };
+use rig_ecs::session_log::Never;
 use rig_harness::prelude::*;
 
 /// The kind of a [`SpawnSubagent`] effect in the record.
@@ -145,9 +146,10 @@ impl SpawnSubagent {
     }
 }
 
-/// On a helper that does one job ([`SpawnSubagent::once`]).
+/// On a helper that does one job ([`SpawnSubagent::once`]); a fork of it
+/// goes on.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[reflect(Component, Saved(Never), Default, Clone, Debug)]
 pub(super) struct Once;
 
 /// On an answered [`SpawnSubagent`]: the agent it spawned.

@@ -33,6 +33,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::session_log::Never;
 
 /// The tool that hands a member an assignment.
 pub const DELEGATE: &str = "delegate";
@@ -173,7 +174,7 @@ pub struct Member {
 /// On an agent: it is the team member of this name. Saved with the
 /// session, so a restored member takes its next assignment.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[reflect(Component, Saved(Never), Default, Clone, Debug)]
 pub struct TeamMember(pub String);
 
 /// The arguments of `delegate`.

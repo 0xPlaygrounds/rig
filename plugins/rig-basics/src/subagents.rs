@@ -83,6 +83,7 @@
 //! ));
 //! ```
 
+use rig_ecs::session_log::{Never, Reset};
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -142,9 +143,9 @@ impl Plugin for SubagentsPlugin {
 }
 
 /// On a subagent: it runs a task, whose short title is its
-/// [`AgentTitle`], which names it.
+/// [`AgentTitle`], which names it. A fork of it is no subagent.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[reflect(Component, Saved(Never), Default, Clone, Debug)]
 pub struct Subtask;
 
 /// On a helper a plugin spawned ([`Role::Helper`]); its title is its
@@ -165,13 +166,13 @@ pub struct Report;
 pub struct Peers;
 
 /// On an agent: the requests other agents sent it, oldest first, until it
-/// reports on them. Each gets exactly one report, to its asker.
-/// Saved through serde, as it holds rig-core's [`RequestId`].
+/// reports on them. Each gets exactly one report, to its asker, so a fork
+/// owes none. Saved through serde, as it holds rig-core's [`RequestId`].
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(
     opaque,
     Component,
-    Saved,
+    Saved(Reset),
     Default,
     Clone,
     Debug,

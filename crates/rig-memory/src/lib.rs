@@ -83,7 +83,7 @@ pub use rewrite::{
     Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite, rewrite_file,
     rewrite_value,
 };
-pub use saved::{MODEL, TITLE, main_order};
+pub use saved::{CURRENT, MODEL, TITLE};
 pub use session::{
     LogRecord, SavedAgent, Session, Unreadable, as_of, history, load, load_async, save, save_async,
 };

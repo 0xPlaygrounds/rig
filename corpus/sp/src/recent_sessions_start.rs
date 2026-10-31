@@ -564,15 +564,12 @@ fn read_only_closed(
 /// Keeps [`SessionShape`] as the main agent's conversation has it, from
 /// its first turn on: nothing is saved before.
 fn track_shape(
-    agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
+    (main, conversations): (MainAgentQuery, Query<&Conversation>),
     shape: Option<ResMut<SessionShape>>,
     mut commands: Commands,
 ) {
-    let main = agents.iter().min_by(|a, b| {
-        rig_harness::rig_memory::main_order(a.2, &a.0.0)
-            .cmp(&rig_harness::rig_memory::main_order(b.2, &b.0.0))
-    });
-    let Some((_, conversation, _)) = main else {
+    let main = main_agent(&main).and_then(|agent| conversations.get(agent).ok());
+    let Some(conversation) = main else {
         return;
     };
     let now = SessionShape {

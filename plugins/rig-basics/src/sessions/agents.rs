@@ -2,20 +2,24 @@
 //! (the kernel's [`ForkAgent`]), `/agents` lists them and shows one, and,
 //! with the `tui` feature, rewind: select an earlier message of yours with
 //! Alt+Up and press Enter, and the shown agent forks just before it, the
-//! fork is shown and the message is back in the input. The shown agent is
-//! saved by id ([`ShownId`]), so a resumed session shows it again.
+//! fork is shown and the message is back in the input. Showing an agent
+//! makes its top-level agent the session's current one (the harness's
+//! `CurrentAgent`), which a resumed session shows again.
 
 use crate::session_picker::{SessionPicker, SessionPickerPlugin, SessionSource};
 use bevy_ecs::query::QueryData;
+use bevy_ecs::system::SystemParam;
+use rig_core::conversation::short_id;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
-use rig_ecs::fork::{AgentForked, ForkAgent};
+use rig_ecs::fork::{AgentForked, ForkAgent, ForkedFrom};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::MessageId;
-use rig_ecs::session_log::ReflectSaved;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{PickItem, Picker};
-use rig_harness::prelude::{AppKeepsExt, ShownAgent};
+use rig_harness::prelude::{
+    CurrentAgentPlugin, CurrentAgentSystems, MainAgentQuery, ShownAgent, main_agent,
+};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -24,8 +28,7 @@ use bevy_reflect::prelude::*;
 #[cfg(feature = "tui")]
 mod rewind;
 
-/// `/fork`, `/agents` and, with the `tui` feature, rewind; the shown agent
-/// kept by id.
+/// `/fork`, `/agents` and, with the `tui` feature, rewind.
 #[derive(Default)]
 pub struct AgentsPlugin;
 
@@ -34,10 +37,10 @@ impl Plugin for AgentsPlugin {
         if !app.is_plugin_added::<SessionPickerPlugin>() {
             app.add_plugins(SessionPickerPlugin);
         }
-        app.init_resource::<ShownId>()
-            .init_resource::<ShownAgent>()
-            .init_resource::<Forking>()
-            .keeps_saved::<ShownId>()
+        if !app.is_plugin_added::<CurrentAgentPlugin>() {
+            app.add_plugins(CurrentAgentPlugin);
+        }
+        app.init_resource::<Forking>()
             .add_command(
                 "fork",
                 "Fork the shown agent into a new one and show it: /fork at the end, \
@@ -50,18 +53,14 @@ impl Plugin for AgentsPlugin {
                 agents,
             )
             .add_observer(forked)
-            .add_systems(Startup, show_saved)
-            .add_systems(Last, keep_shown.run_if(resource_changed::<ShownAgent>));
+            .add_systems(
+                Last,
+                (relist.run_if(any_with_component::<AgentList>)).after(CurrentAgentSystems),
+            );
         #[cfg(feature = "tui")]
         rewind::add(app);
     }
 }
-
-/// The id of the agent the user looks at, saved with the session so a
-/// resume shows the same one; empty for the main agent.
-#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Resource, Saved, Default, Clone, Debug, PartialEq)]
-pub struct ShownId(pub String);
 
 /// A column of an agent's line in `/agents`, such as what it spent or why
 /// it waits: spawn one with a [`ColumnOf`] the agent and keep its `text`
@@ -207,26 +206,92 @@ struct Listed {
     name: &'static Name,
     model: Option<&'static ModelChoice>,
     busy: Has<ActiveTurn>,
+    from: Option<&'static ForkedFrom>,
     columns: Option<&'static AgentColumns>,
 }
 
+/// What `/agents` lists: every agent, each under the agent that spawned
+/// it, with the main agent and its columns.
+#[derive(SystemParam)]
+struct Agents<'w, 's> {
+    agents: Query<'w, 's, Listed, With<Agent>>,
+    main: MainAgentQuery<'w, 's>,
+    columns: Query<'w, 's, &'static AgentColumn>,
+    spawned: Query<'w, 's, &'static Spawned>,
+    parents: Query<'w, 's, &'static SpawnedBy>,
+}
+
+impl Agents<'_, '_> {
+    /// A line per agent, top-level agents by id with the agents each
+    /// spawned below it, and the position of `agent`'s line.
+    fn items(&self, agent: Option<Entity>) -> (Vec<PickItem>, usize) {
+        let main = main_agent(&self.main);
+        let mut roots: Vec<_> = (self.agents.iter())
+            .filter(|agent| !self.parents.contains(agent.entity))
+            .collect();
+        roots.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+        let listed = roots.iter().flat_map(|root| {
+            let spawned = self.spawned.iter_descendants_depth_first(root.entity);
+            std::iter::once(root.entity).chain(spawned)
+        });
+        let (mut items, mut selected) = (Vec::new(), 0);
+        for listed in listed.filter_map(|listed| self.agents.get(listed).ok()) {
+            if Some(listed.entity) == agent {
+                selected = items.len();
+            }
+            let depth = self.parents.iter_ancestors(listed.entity).count();
+            let from = (listed.from)
+                .map(|from| format!(" · fork of {}", short_id(&from.0)))
+                .unwrap_or_default();
+            let current = if Some(listed.entity) == main {
+                " · current"
+            } else {
+                ""
+            };
+            let model = listed.model.map_or("no model", |model| model.0.as_str());
+            let state = if listed.busy { "working" } else { "idle" };
+            let mut own: Vec<&AgentColumn> = (listed.columns.into_iter())
+                .flat_map(|of| of.iter())
+                .filter_map(|column| self.columns.get(column).ok())
+                .filter(|column| !column.text.is_empty())
+                .collect();
+            own.sort_by(|a, b| a.tag.cmp(&b.tag));
+            let own: String = own
+                .iter()
+                .map(|column| format!(" · {}", column.text))
+                .collect();
+            items.push(PickItem {
+                label: format!(
+                    "{}{} {}{from}{current} · {model} · {state}{own}",
+                    "  ".repeat(depth),
+                    listed.name,
+                    listed.id.short(),
+                ),
+                command: format!("agents {}", listed.id.0),
+                detail: None,
+                more: None,
+                checked: false,
+            });
+        }
+        (items, selected)
+    }
+}
+
+/// On the picker `/agents` opened, whose lines follow the agents.
+#[derive(Component)]
+struct AgentList;
+
 /// `/agents`: picks an agent to show, each listed under the agent that
-/// spawned it with its [`AgentColumn`]s, or shows the one whose id starts
-/// with the argument.
+/// spawned it, marked when it is current or a fork, with its
+/// [`AgentColumn`]s, or shows the one whose id starts with the argument.
 fn agents(
     In(args): In<CommandArgs>,
-    agents: Query<Listed, With<Agent>>,
-    columns: Query<&AgentColumn>,
-    spawned: Query<&Spawned>,
-    parents: Query<&SpawnedBy>,
+    agents: Agents,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     if !args.args.is_empty() {
-        match agents
-            .iter()
-            .find(|agent| agent.id.0.starts_with(&args.args))
-        {
+        match (agents.agents.iter()).find(|agent| agent.id.0.starts_with(&args.args)) {
             Some(agent) => show(agent.entity, &mut commands),
             None => {
                 let why = format!("No agent's id starts with `{}`.", args.args);
@@ -235,74 +300,25 @@ fn agents(
         }
         return;
     }
-    let mut roots: Vec<_> = agents
-        .iter()
-        .filter(|agent| !parents.contains(agent.entity))
-        .collect();
-    roots.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-    let listed = roots.iter().flat_map(|root| {
-        std::iter::once(root.entity).chain(spawned.iter_descendants_depth_first(root.entity))
-    });
-    let (mut items, mut selected) = (Vec::new(), 0);
-    for agent in listed.filter_map(|agent| agents.get(agent).ok()) {
-        if agent.entity == args.agent {
-            selected = items.len();
+    let (items, selected) = agents.items(Some(args.agent));
+    commands.spawn((
+        Picker {
+            items,
+            selected,
+            ..Picker::new("Show an agent").for_agent(args.agent)
+        },
+        AgentList,
+    ));
+}
+
+/// Keeps the lines of an open `/agents` picker current, such as an agent's
+/// state once its turn ended.
+fn relist(mut lists: Query<&mut Picker, With<AgentList>>, agents: Agents) {
+    for mut picker in &mut lists {
+        let (items, _) = agents.items(picker.agent);
+        if picker.items != items {
+            picker.items = items;
         }
-        let depth = parents.iter_ancestors(agent.entity).count();
-        let model = agent.model.map_or("no model", |model| model.0.as_str());
-        let state = if agent.busy { "working" } else { "idle" };
-        let mut own: Vec<&AgentColumn> = agent
-            .columns
-            .into_iter()
-            .flat_map(|of| of.iter())
-            .filter_map(|column| columns.get(column).ok())
-            .filter(|column| !column.text.is_empty())
-            .collect();
-        own.sort_by(|a, b| a.tag.cmp(&b.tag));
-        let own: String = own
-            .iter()
-            .map(|column| format!(" · {}", column.text))
-            .collect();
-        items.push(PickItem {
-            label: format!(
-                "{}{} {} · {model} · {state}{own}",
-                "  ".repeat(depth),
-                agent.name,
-                agent.id.short(),
-            ),
-            command: format!("agents {}", agent.id.0),
-            detail: None,
-            more: None,
-            checked: false,
-        });
-    }
-    commands.spawn(Picker {
-        items,
-        selected,
-        ..Picker::new("Show an agent").for_agent(args.agent)
-    });
-}
-
-/// Shows the agent the session showed when it was saved, once it is
-/// restored; the main agent when it is gone.
-fn show_saved(
-    saved: Res<ShownId>,
-    agents: Query<(Entity, &AgentId)>,
-    mut shown: ResMut<ShownAgent>,
-) {
-    let id = AgentId(saved.0.clone());
-    if let Some(agent) = id.find_in(agents) {
-        shown.set_if_neq(ShownAgent(Some(agent)));
-    }
-}
-
-/// Keeps the id of the shown agent as it changes.
-fn keep_shown(shown: Res<ShownAgent>, ids: Query<&AgentId>, mut saved: ResMut<ShownId>) {
-    let id = shown.0.and_then(|agent| ids.get(agent).ok());
-    if let Some(id) = id
-        && saved.0 != id.0
-    {
-        saved.0.clone_from(&id.0);
     }
 }
 

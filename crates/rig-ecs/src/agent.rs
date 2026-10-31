@@ -12,7 +12,7 @@ use rig_memory::Anchor;
 use serde::{Deserialize, Serialize};
 
 use super::model::ReasoningSetting;
-use super::session_log::{ReflectSaved, save_discarded};
+use super::session_log::{ReflectSaved, Reset, save_discarded};
 use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
 
@@ -169,9 +169,18 @@ impl From<conversation::Conversation> for Conversation {
 /// The usage of the agent's last model reply that reported its tokens,
 /// with the last entry of the conversation it counts (rig-memory's
 /// [`Anchor`]), `None` before one did. Only the kernel writes it, from
-/// what the provider reported. Saved with the session.
+/// what the provider reported. Saved with the session; a fork starts
+/// without one, as its next request is its own.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved(Reset),
+    Default,
+    Clone,
+    Serialize,
+    Deserialize
+)]
 #[serde(transparent)]
 pub struct LastUsage(pub Option<Anchor>);
 

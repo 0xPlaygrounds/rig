@@ -2,13 +2,14 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockHttpResponse, SequencedHttpClient};
 use rig_ecs::AgentPlugin;
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::model::{Connection, ModelChoice};
-use rig_ecs::prelude::{Agent, AgentId, Conversation, MessageId, TurnOutcome};
+use rig_ecs::prelude::{Agent, AgentId, Conversation, MessageId, TurnOf, TurnOutcome};
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::Picker;
-use rig_harness::prelude::ShownAgent;
+use rig_harness::prelude::{MainAgentQuery, ShownAgent, main_agent};
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, log_ended, press, reply, run_until, scripted_models, tui_view,
@@ -39,8 +40,65 @@ fn agents_shows_the_columns_other_plugins_add_to_an_agents_line() {
     let short = short.unwrap_or_default();
     assert_eq!(
         labels,
-        [format!("main {short} · no model · idle · 2 queued · $0.10")]
+        [format!(
+            "main {short} · current · no model · idle · 2 queued · $0.10"
+        )]
     );
+}
+
+/// The lines of an open `/agents` follow the agents: which is current,
+/// which a fork came from, and whether one works.
+#[test]
+fn agents_marks_the_current_agent_and_forks_and_follows_their_state() {
+    let mut app = App::new();
+    app.add_plugins((AgentPlugin, AgentsPlugin));
+    let first = AgentId("00000000-0000-4000-8000-000000000000".to_owned());
+    let source = app
+        .world_mut()
+        .spawn((Agent, Name::new("agent"), first))
+        .id();
+    let id = |app: &App, agent: Entity| {
+        let id = app.world().get::<AgentId>(agent);
+        id.map(|id| (id.0.clone(), id.short().to_owned()))
+            .unwrap_or_default()
+    };
+    let (source_id, source_short) = id(&app, source);
+    let fork = (app.world_mut())
+        .spawn((Agent, Name::new("agent"), ForkedFrom(source_id)))
+        .id();
+    let (_, fork_short) = id(&app, fork);
+    app.update();
+    app.world_mut()
+        .trigger(RunCommand::new(source, "agents".to_owned()));
+    let labels = |app: &mut App| {
+        app.update();
+        let world = app.world_mut();
+        let mut pickers = world.query::<&Picker>();
+        let mut labels: Vec<String> = (pickers.iter(world))
+            .flat_map(|picker| &picker.items)
+            .map(|item| item.label.clone())
+            .collect();
+        labels.sort();
+        labels
+    };
+    let line =
+        |short: &str, more: &str, state: &str| format!("agent {short}{more} · no model · {state}");
+    let lines = |more: [&str; 2], state: &str| {
+        let fork_of = format!(" · fork of {source_short}{}", more[1]);
+        let mut lines = vec![
+            line(&source_short, more[0], "idle"),
+            line(&fork_short, &fork_of, state),
+        ];
+        lines.sort();
+        lines
+    };
+    assert_eq!(labels(&mut app), lines([" · current", ""], "idle"));
+
+    app.world_mut().resource_mut::<ShownAgent>().0 = Some(fork);
+    let turn = app.world_mut().spawn(TurnOf(fork)).id();
+    assert_eq!(labels(&mut app), lines(["", " · current"], "working"));
+    app.world_mut().despawn(turn);
+    assert_eq!(labels(&mut app), lines(["", " · current"], "idle"));
 }
 
 /// Sends `text` to `agent` and runs frames until its turn, the `n`th of
@@ -71,18 +129,20 @@ fn on(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) {
 
 /// Enter on an earlier message of the user's forks the shown agent just
 /// before it, shows the fork with the message back in the input, and a
-/// resumed session shows the fork again.
+/// resumed session shows the fork again and sends to it, though the
+/// source's id sorts first.
 #[test]
-fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_shows_it_again() {
+fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_continues_it() {
     let model = MockCompletionModel::from_stream_turns([reply("One."), reply("Two.")]);
     let store = MemoryStore::default();
     let (mut app, wakes) = on(&store, &model);
     app.insert_resource(TuiTestScreen::new(100, 30));
     tui_view(&mut app);
     app.add_plugins(AgentsPlugin);
+    let first = AgentId("00000000-0000-4000-8000-000000000000".to_owned());
     let agent = app
         .world_mut()
-        .spawn((Agent, ModelChoice("test/model".to_owned())))
+        .spawn((Agent, first, ModelChoice("test/model".to_owned())))
         .id();
     app.finish();
     app.cleanup();
@@ -129,13 +189,21 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_shows_it_again() {
     app.update();
     drop(app);
 
-    // The session resumed shows the agent shown when it stopped.
+    // The session resumed shows the agent shown when it stopped, and talks
+    // to it.
     let (mut again, _wakes) = on(&store, &model);
     again.add_plugins(AgentsPlugin);
     again.finish();
     again.update();
-    let shown = shown(&again).and_then(|agent| again.world().get::<AgentId>(agent).cloned());
-    assert_eq!(shown, fork_id);
+    let id = |agent: Option<Entity>| agent.and_then(|agent| again.world().get::<AgentId>(agent));
+    assert_eq!(id(shown(&again)), fork_id.as_ref());
+    let main = again
+        .world_mut()
+        .run_system_cached(|agents: MainAgentQuery| main_agent(&agents))
+        .ok()
+        .flatten();
+    let id = |agent: Option<Entity>| agent.and_then(|agent| again.world().get::<AgentId>(agent));
+    assert_eq!(id(main), fork_id.as_ref());
 }
 
 /// A Responses reply streamed with `items` as its output.
