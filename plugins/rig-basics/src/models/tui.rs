@@ -27,11 +27,11 @@ struct Listed {
     line: String,
 }
 
-/// Every catalog model: first those that can be reached, as rig-core
-/// orders them, then the others with why not.
+/// Catalog models except those a signed-in account does not offer: first
+/// those that can be reached, as rig-core orders them, then why the rest cannot.
 fn catalog(models: &Connector) -> Vec<Listed> {
     let statuses = models.statuses().into_iter();
-    let listed = statuses.map(|(spec, status)| {
+    let listed = statuses.filter_map(|(spec, status)| {
         let note = match status {
             ModelStatus::Usable => match models.plan(spec) {
                 Some(plan) => format!("  ({plan} plan)"),
@@ -41,8 +41,10 @@ fn catalog(models: &Connector) -> Vec<Listed> {
             ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
             ModelStatus::NoTools => "  (calls no tools)".to_owned(),
             ModelStatus::Unavailable(why) => format!("  (unavailable: {why})"),
+            ModelStatus::Checking => "  (checking whether your plan offers it)".to_owned(),
+            ModelStatus::NotOffered(_) => return None,
         };
-        listing(spec, &note)
+        Some(listing(spec, &note))
     });
     listed.collect()
 }

@@ -5,14 +5,14 @@
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
-use crate::catalog::{Catalog, ModelSpec};
+use crate::catalog::{Catalog, ModelFacts, ModelSpec};
 use crate::completion::UnsupportedOption;
 use crate::effect::{EffectKind, HandlerDescriptor, family};
 use crate::error::{ErrorKind, ErrorReport, ProviderError};
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::internal::auth::{AuthContext, AuthError};
-use crate::providers::registry::{ConnectError, ConnectOptions};
+use crate::providers::registry::{ConnectError, ConnectOptions, ProviderConfig};
 use crate::providers::{chatgpt, copilot};
 use crate::serve::adapters::ModelAdapter;
 use crate::serve::{Dispatch, Reply, Serve};
@@ -51,6 +51,7 @@ impl CredentialSource for copilot::auth::Authenticator {
 /// when it has expired: the key, the account it belongs to, and the API root the
 /// sign-in names. The model connected with a credential serves every
 /// request until the credential changes, so its memos last across turns.
+/// ChatGPT also reads its dialect's endpoint and caller identity overrides.
 /// Described as [`ModelAdapter`] describes the model, under its
 /// [`reference`](ModelSpec::reference).
 ///
@@ -120,9 +121,20 @@ impl<A: CredentialSource> SignedInModel<A> {
         if let Some(api_base) = &context.api_base {
             options = options.base_url(api_base);
         }
-        let model = Catalog::builtin()
-            .connect_with(&self.spec, options)
-            .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))?;
+        let model = if self.spec.provider.vendor() == chatgpt::PROVIDER_NAME {
+            chatgpt::signed_in_config(&context)
+                .map(|config| {
+                    ProviderConfig::OpenAi(config).completion_model(
+                        &self.spec.id,
+                        self.http.clone(),
+                        ModelFacts::new(self.spec.clone()).with_catalog(Catalog::builtin()),
+                    )
+                })
+                .map_err(ConnectError::from)
+        } else {
+            Catalog::builtin().connect_with(&self.spec, options)
+        }
+        .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))?;
         let model = Arc::new(ModelAdapter::new(self.spec.reference(), model));
         if let Ok(mut connected) = self.connected.lock() {
             *connected = Some((context, Arc::clone(&model)));

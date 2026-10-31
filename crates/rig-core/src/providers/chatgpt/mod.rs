@@ -16,6 +16,7 @@
 
 pub mod auth;
 pub mod extension;
+pub mod models;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
@@ -71,3 +72,22 @@ pub const DIALECT: Dialect = Dialect {
 };
 
 crate::client::macros::openai_vendor!(DIALECT, "ChatGPT");
+
+/// The dialect's environment settings with the signed-in credential,
+/// account, and endpoint taking precedence.
+pub(crate) fn signed_in_config(
+    context: &auth::AuthContext,
+) -> Result<crate::providers::openai::OpenAIConfig, crate::client::env::EnvError> {
+    let mut config = crate::providers::openai::OpenAIConfig::from_env_with_credential(
+        &DIALECT,
+        context.api_key.expose().to_owned(),
+        DIALECT.quirks.auth,
+    )?;
+    if let Some(account_id) = &context.account_id {
+        config = config.with_account_id(account_id);
+    }
+    if let Some(base) = &context.api_base {
+        config = config.with_base_url(base);
+    }
+    Ok(config)
+}
