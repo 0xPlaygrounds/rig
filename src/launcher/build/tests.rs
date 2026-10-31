@@ -226,6 +226,59 @@ fn cargo_starts_with_no_signal_blocked() {
     assert_eq!(blocked.map(str::trim), Some("0000000000000000"), "{logged}");
 }
 
+/// A signal the launcher was started ignoring, as `nohup` starts it with
+/// SIGHUP, stays ignored by cargo during a build and by the launcher after
+/// it. Checked in a run of its own, so no other test shares the change.
+#[cfg(target_os = "linux")]
+#[test]
+fn an_ignored_hangup_stays_ignored_through_a_build() {
+    const PROBE: &str = "RIG_IGNORED_HANGUP_PROBE";
+    if std::env::var_os(PROBE).is_none() {
+        let name = "launcher::build::tests::an_ignored_hangup_stays_ignored_through_a_build";
+        let output = std::env::current_exe().and_then(|test| {
+            Command::new(test)
+                .args(["--exact", name, "--test-threads", "1"])
+                .env(PROBE, "1")
+                .output()
+        });
+        let ran = output.is_ok_and(|output| {
+            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
+        });
+        assert!(ran, "the run with SIGHUP ignored failed");
+        return;
+    }
+    // SAFETY: plain calls; this run of the test binary is this test's own.
+    unsafe {
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
+    }
+    let root = std::env::temp_dir().join(format!("rig-build-hangup-{}", std::process::id()));
+    let home = Home::at(&root);
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
+    let mut cargo = Command::new("sh");
+    cargo
+        .args(["-c", "grep SigIgn /proc/self/status >&2"])
+        .stderr(Stdio::piped());
+    let ran = log.run(cargo);
+    let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
+    fs::remove_dir_all(&root).ok();
+    assert!(ran.is_ok_and(|status| status.success()));
+    let ignored = logged
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("SigIgn:"))
+        .and_then(|mask| u64::from_str_radix(mask.trim(), 16).ok());
+    assert!(
+        ignored.is_some_and(|mask| mask & 1 << (libc::SIGHUP - 1) != 0),
+        "{logged}"
+    );
+    // SAFETY: reads the action into a zeroed struct this test owns.
+    let after = unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        libc::sigaction(libc::SIGHUP, std::ptr::null(), &raw mut action);
+        action.sa_sigaction
+    };
+    assert_eq!(after, libc::SIG_IGN);
+}
+
 /// Stopping the build, as a signal that ends the launcher does, kills
 /// cargo's whole group: what cargo started too, as rustc.
 #[test]

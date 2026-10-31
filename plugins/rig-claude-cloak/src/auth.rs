@@ -4,7 +4,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use fs2::FileExt;
 use rand::RngCore;
 use rig_harness::rig_core::error::retryable_status;
-use rig_harness::rig_tools::process::Process;
+use rig_harness::rig_tools::process::{self, Process};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -526,6 +526,13 @@ fn browser_command(url: &Url) -> std::process::Command {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // A browser it starts outlives rig with the user's own editor and pager.
+    for (name, _) in process::NON_INTERACTIVE {
+        match std::env::var_os(name) {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
     command
 }
 
@@ -545,6 +552,11 @@ async fn open_browser(opener: std::process::Command, wait: Duration) -> Result<(
     });
     match waited.await {
         Ok(Ok(Some(status))) if status.success() => Ok(()),
+        Err(_) => {
+            // Still waiting for its browser: reaped once it is done.
+            std::thread::spawn(move || opener.wait_for(Duration::MAX).ok());
+            Err(AuthError::Browser)
+        }
         _ => Err(AuthError::Browser),
     }
 }

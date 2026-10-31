@@ -751,9 +751,10 @@ fn package(line: &str) -> Option<(&str, &str)> {
     Some((name, version))
 }
 
-/// cargo, running in a process group of its own, which is killed should
-/// the launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`) meanwhile, so
-/// no cargo or rustc outlives it. Elsewhere than unix, cargo alone.
+/// cargo, running in a process group of its own (or the launcher's, when
+/// the launcher leads a session of its own), which is killed should the
+/// launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`) meanwhile, so no
+/// cargo or rustc outlives it. Elsewhere than unix, cargo alone.
 struct Build(Child);
 
 impl Build {
@@ -792,10 +793,16 @@ mod stop {
     static BEFORE: Mutex<Vec<(libc::c_int, libc::sigaction)>> = Mutex::new(Vec::new());
 
     /// Starts `command` as the leader of a new process group and makes it
-    /// the group the ending signals kill. The signals wait while it starts,
-    /// so one that comes meanwhile finds the group.
+    /// the group the ending signals kill. A launcher that leads a session of
+    /// its own, as an agent's `/reload` starts it, keeps cargo in its own
+    /// group instead, which the agent kills as a whole. The signals wait
+    /// while it starts, so one that comes meanwhile finds the group.
     pub(super) fn spawn(command: &mut Command) -> std::io::Result<Child> {
-        command.process_group(0);
+        // SAFETY: plain calls without arguments that can fail.
+        let (leads, own) = unsafe { (libc::getsid(0) == libc::getpid(), libc::getpgrp()) };
+        if !leads {
+            command.process_group(0);
+        }
         let mut replaced = Vec::new();
         // SAFETY: plain calls on zeroed signal sets and actions this
         // function owns; the closure runs in the forked child before `exec`
@@ -831,7 +838,12 @@ mod stop {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = replaced;
         let spawned = command.spawn();
         if let Ok(child) = &spawned {
-            GROUP.store(i32::try_from(child.id()).unwrap_or(0), Ordering::SeqCst);
+            let group = if leads {
+                own
+            } else {
+                i32::try_from(child.id()).unwrap_or(0)
+            };
+            GROUP.store(group, Ordering::SeqCst);
         }
         // SAFETY: restores the mask saved above.
         unsafe {

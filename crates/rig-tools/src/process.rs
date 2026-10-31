@@ -609,14 +609,14 @@ impl Process {
             let left = deadline.map_or(POLL, |deadline| {
                 deadline.saturating_duration_since(Instant::now())
             });
+            if left.is_zero() {
+                self.stop(STOP_GRACE).ok();
+                return Err(timed_out());
+            }
             match self.lines.recv_timeout(left.min(POLL)) {
                 Ok(OutputLine::Out(bytes)) => stdout.extend(bytes),
                 Ok(OutputLine::Err(bytes)) => stderr.extend(bytes),
                 Err(RecvTimeoutError::Disconnected) => break,
-                Err(RecvTimeoutError::Timeout) if left.is_zero() => {
-                    self.stop(STOP_GRACE).ok();
-                    return Err(timed_out());
-                }
                 Err(RecvTimeoutError::Timeout) => {}
             }
         }
@@ -736,6 +736,7 @@ impl Process {
     /// the process ended. A group taken off the list is empty, and its id
     /// may name another group, so it is left alone.
     pub fn kill(&mut self) -> io::Result<ExitStatus> {
+        #[cfg(unix)]
         let running = self.group.running();
         self.group.0.store(0, Ordering::SeqCst);
         #[cfg(unix)]
@@ -998,14 +999,14 @@ impl Ledger {
 /// process [`Process::start`] starts with [`LEDGER_VARIABLE`] set to
 /// `path`. `adopted` are groups an earlier agent listed there and left
 /// running on purpose, such as across a reload: owned from now on, as
-/// groups whose leader exited. A supervisor that outlives this process,
+/// groups whose leader exited, until they are empty. A supervisor that outlives this process,
 /// such as rig's launcher, kills the groups listed once it ended, each only
 /// while one of its processes still carries the mark, so an id that names
 /// another process by then is left alone.
 pub fn record_groups(path: impl Into<PathBuf>, adopted: impl IntoIterator<Item = u32>) {
     let mut ledger = ledger();
     ledger.path = Some(path.into());
-    for id in adopted {
+    for id in adopted.into_iter().filter(|&id| has_members(id)) {
         ledger.keep_left(id);
     }
     ledger.write();
@@ -1107,8 +1108,8 @@ fn has_members(id: u32) -> bool {
 
 /// What a command a tool starts finds for programs that would wait for a
 /// person: an editor that fails at once saying what to pass instead, and
-/// pagers that print.
-pub(crate) const NON_INTERACTIVE: [(&str, &str); 8] = [
+/// pagers that print. [`detach`] sets each the command does not set itself.
+pub const NON_INTERACTIVE: [(&str, &str); 8] = [
     ("GIT_TERMINAL_PROMPT", "0"),
     ("GIT_EDITOR", NO_EDITOR),
     ("GIT_SEQUENCE_EDITOR", NO_EDITOR),

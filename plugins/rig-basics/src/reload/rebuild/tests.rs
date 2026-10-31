@@ -68,8 +68,8 @@ fn a_stopped_rebuild_leaves_no_cargo() {
     std::fs::create_dir_all(&dir).ok();
     let launcher = dir.join("rig");
     // Its "cargo" is a sleep in a session of its own, killed on SIGTERM.
-    let script = "#!/bin/sh\nsetsid sleep 60 & echo $! > \"$0.pid\"\n\
-                  trap 'kill $!; exit 143' TERM\nwait\n";
+    let script = "#!/bin/sh\ntrap 'kill $!; exit 143' TERM\n\
+                  setsid sleep 60 & echo $! > \"$0.pid\"\nwait\n";
     std::fs::write(&launcher, script).ok();
     std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
     let build = ReloadBuild::start(launcher.as_os_str(), Entity::PLACEHOLDER, Wake::default());
