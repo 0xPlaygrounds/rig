@@ -9,6 +9,7 @@
 //! instead, with the closest text to an `old_text` that was not found.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -23,8 +24,8 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::fs::{diff, io_error};
-use crate::workspace::{Local, Workspace, text_error, text_of};
-use crate::{Seen, blocking, clip};
+use crate::workspace::{Endings, Local, Workspace, text_error, text_of};
+use crate::{Seen, Source, blocking, excerpt, shell_path};
 
 /// Most matches an ambiguity error lists by line, and most changed places
 /// a reply lists.
@@ -223,7 +224,9 @@ fn reply(seen: &Seen, resolved: &Path, args: &EditArgs, applied: Applied) -> (St
     for note in applied.notes {
         let _ = write!(out, "\nNote: {note}");
     }
-    out.push_str(&around(&applied.text, &places));
+    let path = shell_path(&resolved.to_string_lossy());
+    let changed = changed_spans(&applied.change);
+    out.push_str(&around(&applied.text, &places, &changed, path.as_deref()));
     (out, applied.change)
 }
 
@@ -236,9 +239,18 @@ const MAX_PLACE: usize = 30;
 
 /// The lines of `text`, the file after an edit, at and around each of
 /// `places`, as they are now: each run of them under a `[lines A-B]` line,
-/// with long lines cut, so the reply shows the result without a new read.
-fn around(text: &str, places: &[Place]) -> String {
-    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+/// so the reply shows the result without a new read. A long line is cut;
+/// one cut before the text the edit `changed` in it says where that text
+/// is, with a command that shows it in the file at `path` (quoted for
+/// `sh`), when given.
+fn around(
+    text: &str,
+    places: &[Place],
+    changed: &BTreeMap<usize, Range<usize>>,
+    path: Option<&str>,
+) -> String {
+    let bom = text.strip_prefix('\u{feff}');
+    let text = bom.unwrap_or(text);
     let lines: Vec<&str> = text.lines().collect();
     let mut runs: Vec<(usize, usize)> = Vec::new();
     for place in places {
@@ -275,8 +287,19 @@ fn around(text: &str, places: &[Place]) -> String {
             if count > MAX_PLACE && number >= first + half && number <= last - half {
                 continue;
             }
+            let cut = excerpt(line, changed.get(&number).cloned(), MAX_CLOSEST_CHARS);
+            let source = path.map(|path| Source {
+                path,
+                line: number,
+                before: if number == 1 && bom.is_some() {
+                    '\u{feff}'.len_utf8()
+                } else {
+                    0
+                },
+            });
             out.push('\n');
-            out.push_str(clip(line, MAX_CLOSEST_CHARS));
+            out.push_str(cut.kept());
+            out.push_str(&cut.mark("the change", source));
             shown += 1;
         }
     }
@@ -330,6 +353,63 @@ enum Place {
     Lines(usize, usize),
     /// It only removed lines, where this line now is.
     Removed(usize),
+}
+
+/// The bytes of each line `change` added, by its number in the file after
+/// it, that differ from the line it replaced: a line that replaced one
+/// (the lines of a run of changes paired in order) is changed between
+/// what the two start and end with alike; a line added beside none, all
+/// of it.
+fn changed_spans(change: &FileChange) -> BTreeMap<usize, Range<usize>> {
+    let mut spans = BTreeMap::new();
+    for hunk in &change.hunks {
+        let kept = |line: &HunkLine| matches!(line, HunkLine::Same(_));
+        let mut at = hunk.new.start;
+        for run in hunk.lines.chunk_by(|a, b| kept(a) == kept(b)) {
+            let text = |line: &HunkLine| line.text().trim_end_matches(['\n', '\r']).to_owned();
+            let removed: Vec<String> = run
+                .iter()
+                .filter(|line| matches!(line, HunkLine::Removed(_)))
+                .map(text)
+                .collect();
+            let added = run
+                .iter()
+                .filter(|line| !matches!(line, HunkLine::Removed(_)));
+            for (index, line) in added.enumerate() {
+                if !kept(line) {
+                    let new = text(line);
+                    let span = match removed.get(index) {
+                        Some(old) => differs(old, &new),
+                        None => 0..new.len(),
+                    };
+                    spans.insert(at, span);
+                }
+                at += 1;
+            }
+        }
+    }
+    spans
+}
+
+/// The bytes of `new` that differ from `old`: after what both start with
+/// and before what both then end with.
+fn differs(old: &str, new: &str) -> Range<usize> {
+    let start: usize = old
+        .chars()
+        .zip(new.chars())
+        .take_while(|(a, b)| a == b)
+        .map(|(a, _)| a.len_utf8())
+        .sum();
+    let (old, rest) = (old.get(start..), new.get(start..));
+    let end: usize = old
+        .unwrap_or_default()
+        .chars()
+        .rev()
+        .zip(rest.unwrap_or_default().chars().rev())
+        .take_while(|(a, b)| a == b)
+        .map(|(a, _)| a.len_utf8())
+        .sum();
+    start..new.len() - end
 }
 
 /// Each run of changed lines in `change`'s hunks, in order.
@@ -564,8 +644,7 @@ impl<'a> Decoded<'a> {
         };
         // Only a file whose every line ends in CRLF is converted; a mixed
         // one is edited as it is, and loose matching ignores its `\r`s.
-        let newlines = body.matches('\n').count();
-        let crlf = newlines > 0 && body.matches("\r\n").count() == newlines;
+        let crlf = Endings::of(body) == Endings::Crlf;
         let text = if crlf {
             Cow::Owned(body.replace("\r\n", "\n"))
         } else {
@@ -661,10 +740,14 @@ impl Miss {
                 } else {
                     String::new()
                 };
+                // `replace_all` takes exact matches only.
+                let all = match loose {
+                    true => "",
+                    false => ", or set `replace_all` to change every one",
+                };
                 format!(
                     "`old_text` {}matches {} places, starting at lines {}{more}; add the lines \
-                     around the one to change so it matches once, or set `replace_all` to \
-                     change every one",
+                     around the one to change so it matches once{all}",
                     if *loose {
                         "does not match exactly, and loosely "
                     } else {
@@ -742,7 +825,10 @@ fn nearest(text: &str, old: &str) -> Option<Near> {
     }
     let shown: Vec<String> = (start..start + size)
         .take(MAX_CLOSEST)
-        .map(|index| clip(file.line(index), MAX_CLOSEST_CHARS).to_owned())
+        .map(|index| {
+            let cut = excerpt(file.line(index), None, MAX_CLOSEST_CHARS);
+            format!("{}{}", cut.kept(), cut.mark("", None))
+        })
         .collect();
     let mut text = shown.join("\n");
     if size > MAX_CLOSEST {

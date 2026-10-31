@@ -285,3 +285,67 @@ fn edits_apply_in_order_even_where_they_overlap() {
         "{refused}"
     );
 }
+
+/// A change past the 300 characters a reply shows of a line is not lost:
+/// the cut says where the change is, and the command it gives shows it,
+/// on a line of 350 characters and of 4,000.
+#[cfg(unix)]
+#[test]
+fn a_change_past_the_cut_says_where_it_is() {
+    let edit_tool = Edit::default();
+    let path = std::env::temp_dir().join(format!("rig-tools-wide-{}.txt", std::process::id()));
+    let cases = [
+        (340, 7, "the change is at bytes 341-343", "301-350"),
+        (4000, 0, "the change is at bytes 4001-4003", "301-4003"),
+    ];
+    for (before, after, at, window) in cases {
+        let line = |middle: &str| format!("{}{middle}{}\n", "0".repeat(before), "0".repeat(after));
+        std::fs::write(&path, format!("first\n{}", line("OLD"))).ok();
+        let mut context = ToolContext::new();
+        let args = EditArgs::new(path.to_string_lossy(), [Replacement::new("OLD", "NEW")]);
+        let reply = futures::executor::block_on(Tool::call(&edit_tool, &mut context, args))
+            .unwrap_or_default();
+        let mark = format!(
+            "{} [… cut at byte 300 of {}; {at}: in `shell`, `",
+            "0".repeat(300),
+            before + after + 3
+        );
+        let shown = reply
+            .split_once(&mark)
+            .and_then(|(_, rest)| rest.split_once(&format!("` shows bytes {window}]")))
+            .map(|(command, _)| {
+                let ran = crate::ShellArgs::new(command);
+                futures::executor::block_on(crate::Shell::default().run(ran))
+                    .map(|ran| ran.output)
+                    .unwrap_or_default()
+            });
+        assert!(
+            shown.is_some_and(|shown| shown.contains("NEW")),
+            "{reply:.600}"
+        );
+    }
+    std::fs::remove_file(&path).ok();
+}
+
+/// A loose match found at several places is not told to use `replace_all`,
+/// which takes exact matches only.
+#[test]
+fn a_loose_ambiguous_match_is_not_sent_to_replace_all() {
+    let text = "a = 1  \nb\na = 1\t\nb\n";
+    let loose = apply("a.txt", text, &[Replacement::new("a = 1\nb", "a = 2\nb")]);
+    let why = loose
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(why.contains("loosely matches 2 places"), "{why}");
+    assert!(!why.contains("replace_all"), "{why}");
+    let exact = apply("a.txt", "x\nx\n", &[Replacement::new("x", "y")]);
+    let why = exact
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(
+        why.contains("or set `replace_all` to change every one"),
+        "{why}"
+    );
+}

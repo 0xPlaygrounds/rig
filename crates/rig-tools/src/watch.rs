@@ -106,7 +106,10 @@ fn look<W: Workspace + ?Sized>(
     recursive: bool,
     listing: Listing,
 ) -> BTreeMap<PathBuf, Mark> {
-    let files = workspace.files(root, None, listing).unwrap_or_default();
+    let files = workspace
+        .files(root, None, listing)
+        .map(|listed| listed.files)
+        .unwrap_or_default();
     files
         .into_iter()
         .filter(|path| recursive || path == root || path.parent() == Some(root))

@@ -199,7 +199,7 @@ fn the_command_starts_through_the_workspace_in_the_calls_directory() {
             root: &Path,
             glob: Option<&str>,
             listing: crate::workspace::Listing,
-        ) -> std::io::Result<Vec<PathBuf>> {
+        ) -> std::io::Result<crate::workspace::Listed> {
             Local.files(root, glob, listing)
         }
         fn spawn(
@@ -415,12 +415,59 @@ fn a_long_line_keeps_its_start_and_the_spill_keeps_it_whole() {
         ),
         "{output:.300}"
     );
+    // The error word past the cut says where it is, and how to show it.
+    let picked = format!(
+        "\n{} [… cut at byte 300 of 5012; `FAILED` is at bytes 5007-5012: in `shell`, `sed -n \
+         '3001p;3001q' ",
+        "x".repeat(300)
+    );
+    let shows = "| cut -b 301-5012 | LC_ALL=C fold -b -w 2000` shows bytes 301-5012]\n";
     assert!(
-        output.contains(&format!("\n{} […]\n", "x".repeat(300))),
+        output.contains(&picked) && output.contains(shows),
         "{output:.300}"
     );
     assert!(output.contains(&format!("\n{} […]\n", "é".repeat(2000))));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// T-work's long log: a test's failure at the end of a 3000-character line
+/// in the cut middle of a long output. The line kept says where its
+/// failure word is, and the command it gives shows the test's name.
+#[cfg(unix)]
+#[test]
+fn a_failure_past_the_cut_says_where_it_is_and_its_command_shows_it() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-failure-{}", std::process::id()));
+    let command = "seq 1 1500; printf 'checking '; head -c 3000 /dev/zero | tr '\\0' x; \
+                   echo ' => test parse_header FAILED'; seq 1 1500";
+    let output = shell(command, Some(crate::Spill(dir.clone())));
+    let mark = "[… cut at byte 300 of 3037; `FAILED` is at bytes 3032-3037: in `shell`, `";
+    let shown = output
+        .split_once(mark)
+        .and_then(|(_, rest)| rest.split_once("` shows bytes 301-3037]"))
+        .map(|(command, _)| shell(command, None));
+    assert!(
+        shown
+            .as_ref()
+            .is_some_and(|shown| shown.contains("=> test parse_header FAILED")),
+        "{output:.1000}\n{shown:?}"
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A line naming an error anywhere in it, such as git's `fatal:` or a
+/// log's `build error:`, is kept from the cut middle of an output.
+#[test]
+fn fatal_and_error_lines_are_kept_from_the_middle() {
+    let output = shell(
+        "seq 1 1500; echo '2026-10-31 build error: checksum mismatch'; seq 1 1500; \
+         echo 'fatal: unable to read object database'; seq 1 1500",
+        None,
+    );
+    assert!(
+        output.contains("\n2026-10-31 build error: checksum mismatch\n")
+            && output.contains("\nfatal: unable to read object database\n"),
+        "{output:.300}"
+    );
 }
 
 /// The cut note's offset and limit name the first lines missing, past an

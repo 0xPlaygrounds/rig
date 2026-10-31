@@ -48,7 +48,8 @@ use rig_core::tool::{ContentHash, content_hash};
 
 use crate::process::{Launcher, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
-    Contents, Excerpt, Listing, Stat, Workspace, excerpt_of, not_text, read_file, too_large,
+    Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, not_text,
+    read_file, too_large,
 };
 use crate::{MAX_BYTES, MAX_FILE_BYTES, quote};
 
@@ -68,6 +69,14 @@ const NOT_A_FILE: i32 = 3;
 const READ_ONLY: i32 = 4;
 const A_DIRECTORY: i32 = 5;
 const ROOT_IS_A_FILE: i32 = 6;
+
+/// A shell function for the scripts below: whether the path `$1`, which
+/// the shell does not see, is truly not there, since the nearest of its
+/// directories that is there may be searched (or is no directory). One that
+/// may not be searched hides what is in it, which is not absence.
+const GONE: &str = "gone() { d=$1; while :; do d=$(dirname -- \"$d\"); \
+    if [ -e \"$d\" ]; then [ ! -d \"$d\" ] || [ -x \"$d\" ]; return; fi; \
+    case $d in /|.) return 0;; esac; done; }";
 
 /// Another machine, reached through a transport (see the [module](self)
 /// docs). Its paths are that machine's: absolute, or under `~`, its user's
@@ -388,9 +397,10 @@ impl Workspace for Remote {
 
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         let script = format!(
-            "p={}; if [ -f \"$p\" ]; then wc -c < \"$p\" || exit 1; \
+            "{GONE}; p={}; if [ -f \"$p\" ]; then wc -c < \"$p\" || exit 1; \
              if [ -w \"$p\" ]; then echo w; else echo r; fi; \
-             elif [ -d \"$p\" ]; then echo d; elif [ -e \"$p\" ]; then echo o; else echo m; fi",
+             elif [ -d \"$p\" ]; then echo d; elif [ -e \"$p\" ]; then echo o; \
+             elif gone \"$p\"; then echo m; else echo u; fi",
             quote_path(path)
         );
         let out = String::from_utf8_lossy(&self.checked(&script, None, Again::Once)?).into_owned();
@@ -399,6 +409,7 @@ impl Workspace for Remote {
             (Some("d"), _) => Stat::Dir,
             (Some("o"), _) => Stat::Other,
             (Some("m"), _) => Stat::Missing,
+            (Some("u"), _) => return Err(hidden()),
             (Some(size), Some(access)) => Stat::File {
                 size: size.parse().map_err(io::Error::other)?,
                 read_only: access == "r",
@@ -472,44 +483,76 @@ impl Workspace for Remote {
             total: newlines + usize::from(unended),
             hash: ContentHash(hash.to_ascii_lowercase()),
             whole: None,
+            endings: None,
         })
     }
 
     /// The files in scripts of 100 each, every file copied
     /// aside before it is sent, so one that changes meanwhile is sent whole
-    /// as it was.
-    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+    /// as it was. Each file of a script that failed is
+    /// [`Failed`](Observation::Failed) with its error.
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         let mut read = Vec::with_capacity(paths.len());
         for chunk in paths.chunks(FILES_PER_CALL) {
             let quoted: Vec<String> = chunk.iter().map(|path| quote_path(path)).collect();
+            // Each file is its size and bytes, else a letter: `m` missing,
+            // `x` excluded, `d` denied, `h` hidden by its directory, `f`
+            // failed.
             let script = format!(
-                "t=$(mktemp) || exit 1; trap 'rm -f \"$t\"' EXIT; for p in {}; do \
-                 if [ -f \"$p\" ] && n=$(wc -c < \"$p\") && [ $((n)) -le {limit} ] && \
-                 cat -- \"$p\" > \"$t\" 2>/dev/null; then wc -c < \"$t\"; cat \"$t\"; \
-                 else echo -; fi; done",
+                "{GONE}; t=$(mktemp) || exit 1; trap 'rm -f \"$t\"' EXIT; for p in {}; do \
+                 if [ -f \"$p\" ]; then if [ ! -r \"$p\" ]; then echo d; \
+                 elif ! n=$(wc -c < \"$p\"); then echo f; elif [ $((n)) -gt {limit} ]; then echo x; \
+                 elif cat -- \"$p\" > \"$t\" 2>/dev/null; then wc -c < \"$t\"; cat \"$t\"; \
+                 else echo f; fi; elif [ -e \"$p\" ]; then echo x; elif gone \"$p\"; then echo m; \
+                 else echo h; fi; done",
                 quoted.join(" ")
             );
             let out = match self.run(&script, None, Again::Once) {
                 Ok(ran) if ran.code == Some(0) => ran.out,
-                _ => Vec::new(),
+                Ok(ran) => {
+                    let error = self.failed(&ran, Again::Once);
+                    read.extend(chunk.iter().map(|_| failed_like(&error)));
+                    continue;
+                }
+                Err(error) => {
+                    read.extend(chunk.iter().map(|_| failed_like(&error)));
+                    continue;
+                }
             };
             let mut rest = out.as_slice();
             for _ in chunk {
-                let file = split_line(rest).and_then(|(size, after)| {
-                    let size: usize = size.trim().parse().ok()?;
-                    let (bytes, after) = after.split_at_checked(size)?;
-                    Some((bytes, after))
+                let Some((first, after)) = split_line(rest) else {
+                    read.push(Observation::Failed(io::Error::other(
+                        "the remote read stopped short",
+                    )));
+                    continue;
+                };
+                rest = after;
+                read.push(match first.trim() {
+                    "m" => Observation::Missing,
+                    "x" => Observation::Excluded,
+                    "d" => Observation::Failed(io::Error::new(
+                        ErrorKind::PermissionDenied,
+                        "it may not be read there",
+                    )),
+                    "h" => Observation::Failed(hidden()),
+                    "f" => Observation::Failed(io::Error::other("it could not be read there")),
+                    size => {
+                        let file = size
+                            .parse::<usize>()
+                            .ok()
+                            .and_then(|size| after.split_at_checked(size));
+                        match file {
+                            Some((bytes, after)) => {
+                                rest = after;
+                                Observation::Found(bytes.to_vec())
+                            }
+                            None => Observation::Failed(io::Error::other(
+                                "the remote read said no size",
+                            )),
+                        }
+                    }
                 });
-                match file {
-                    Some((bytes, after)) => {
-                        read.push(Some(bytes.to_vec()));
-                        rest = after;
-                    }
-                    None => {
-                        read.push(None);
-                        rest = split_line(rest).map_or(&[][..], |(_, after)| after);
-                    }
-                }
             }
         }
         read
@@ -640,7 +683,7 @@ impl Workspace for Remote {
     /// As git lists them there in a git work tree (unless `listing` is
     /// [`All`](Listing::All)), else as `find` does, then filtered by
     /// [`Listing::keeps`] and `glob`.
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
         let globs = glob
             .map(|glob| {
                 OverrideBuilder::new(root)
@@ -665,7 +708,12 @@ impl Workspace for Remote {
         );
         let ran = self.run(&script, None, Again::Once)?;
         match ran.code {
-            Some(ROOT_IS_A_FILE) => return Ok(vec![root.to_path_buf()]),
+            Some(ROOT_IS_A_FILE) => {
+                return Ok(Listed {
+                    files: vec![root.to_path_buf()],
+                    failed: Vec::new(),
+                });
+            }
             Some(0) => {}
             Some(NOT_FOUND) => return Err(ErrorKind::NotFound.into()),
             _ => return Err(self.failed(&ran, Again::Once)),
@@ -682,7 +730,10 @@ impl Workspace for Remote {
             })
             .collect();
         files.sort();
-        Ok(files)
+        Ok(Listed {
+            files,
+            failed: Vec::new(),
+        })
     }
 
     /// Runs `program` there in `dir` (`None`: the remote home) with `sh -l`,
@@ -806,7 +857,7 @@ impl Workspace for Hosts {
 
     /// All in one go on their host when every path is on one, else one by
     /// one.
-    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Option<Vec<u8>>> {
+    fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         let first = paths.first().and_then(|path| self.route(path));
         let there = first.and_then(|(remote, _)| {
             let there: Option<Vec<PathBuf>> = paths
@@ -889,13 +940,18 @@ impl Workspace for Hosts {
         }
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
         match self.route(root) {
-            Some((remote, root)) => Ok(remote
-                .files(&root, glob, listing)?
-                .iter()
-                .map(|path| Self::named(remote, path))
-                .collect()),
+            Some((remote, root)) => {
+                let listed = remote.files(&root, glob, listing)?;
+                let named = |path: &Path| Self::named(remote, path);
+                Ok(Listed {
+                    files: listed.files.iter().map(|path| named(path)).collect(),
+                    failed: (listed.failed.into_iter())
+                        .map(|(path, error)| (named(&path), error))
+                        .collect(),
+                })
+            }
             None => self.inner.files(root, glob, listing),
         }
     }
@@ -971,6 +1027,21 @@ fn quote_path(path: &Path) -> String {
         None if path == "~" => "\"$HOME\"".to_owned(),
         None => quote(&path),
     }
+}
+
+/// The error for a path in a directory that may not be searched, which
+/// hides whether it is there.
+fn hidden() -> io::Error {
+    io::Error::new(
+        ErrorKind::PermissionDenied,
+        "a directory it is in may not be read there",
+    )
+}
+
+/// An error of the kind and message of `error`, for one more path it
+/// stands for.
+fn failed_like(error: &io::Error) -> Observation<Vec<u8>> {
+    Observation::Failed(io::Error::new(error.kind(), error.to_string()))
 }
 
 #[cfg(test)]

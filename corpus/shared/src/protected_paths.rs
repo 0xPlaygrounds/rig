@@ -378,6 +378,13 @@ fn filter_searches(
                 None => kept.hits.push(hit),
             }
         }
+        // A protected path it could not read is not named either.
+        kept.unread = (found.unread.into_iter())
+            .filter(|unread| {
+                let path = unread.path.to_string_lossy();
+                policy.check(Access::Read, &path).is_none()
+            })
+            .collect();
         if hidden.is_empty() {
             continue;
         }

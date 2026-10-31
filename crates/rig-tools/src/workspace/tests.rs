@@ -8,7 +8,7 @@ use rig_core::tool::{
     ChangeKind, ContentHash, FilesChanged, Tool, ToolContext, ToolOutput, content_hash,
 };
 
-use super::{Contents, Listing, Stat, Workspace};
+use super::{Contents, Listed, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
 use crate::{
     Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Read, ReadArgs, Replacement, Search,
@@ -86,15 +86,19 @@ impl Workspace for Memory {
         out
     }
 
-    fn files(&self, root: &Path, glob: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
+    fn files(&self, root: &Path, glob: Option<&str>, _: Listing) -> io::Result<Listed> {
         let suffix = glob.map(|glob| glob.trim_start_matches('*'));
-        Ok(self
+        let files = self
             .files()
             .keys()
             .filter(|path| path.starts_with(root))
             .filter(|path| suffix.is_none_or(|suffix| path.to_string_lossy().ends_with(suffix)))
             .cloned()
-            .collect())
+            .collect();
+        Ok(Listed {
+            files,
+            failed: Vec::new(),
+        })
     }
 
     fn spawn(

@@ -233,7 +233,11 @@ fn search(view: &ToolCallView<'_>) -> Vec<LookLine> {
         (count, false) => format!("{count} matches"),
         (count, true) => format!("{count}+ matches"),
     };
-    let hits: Vec<String> = found.hits.iter().map(ToString::to_string).collect();
+    let mut hits: Vec<String> = found.hits.iter().map(ToString::to_string).collect();
+    hits.extend(
+        (found.unread.iter())
+            .map(|unread| format!("could not read {}: {}", unread.path.display(), unread.error)),
+    );
     let mut lines = vec![LookLine::from(view.header(title, count))];
     lines.extend(looked(text_rows(&hits.join("\n"), Style::new().dim())));
     lines

@@ -174,6 +174,7 @@ fn files_now(workspace: &dyn Workspace, watch: &FileWatch) -> Vec<PathBuf> {
     let root = watch.path.as_path();
     let mut files = workspace
         .files(root, None, watch.listing)
+        .map(|listed| listed.files)
         .unwrap_or_default();
     files.retain(|path| watch.recursive || path == root || path.parent() == Some(root));
     files.sort();

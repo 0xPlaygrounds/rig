@@ -11,7 +11,7 @@ use rig_core::tool::{FileChange, content_hash};
 
 use crate::fs::Previous;
 use crate::process::{Launcher, Process, Spawn};
-use crate::workspace::{Contents, Excerpt, Listing, Stat, Workspace, excerpt_of};
+use crate::workspace::{Contents, Excerpt, Listed, Listing, Stat, Workspace, excerpt_of};
 
 /// A [`Workspace`] over another that reads through to it and keeps every
 /// write, removal and rename to itself: run a file tool on it to learn what
@@ -217,8 +217,11 @@ impl Workspace for Overlay {
     /// The files under it, as listed there, without those removed here,
     /// then the files created here that `listing` keeps by their names
     /// ([`Listing::keeps`]; ignore files are not read for them).
-    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Vec<PathBuf>> {
-        let listed = self.inner.files(root, glob, listing)?;
+    fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
+        let Listed {
+            files: listed,
+            failed,
+        } = self.inner.files(root, glob, listing)?;
         let matcher = glob
             .map(|glob| OverrideBuilder::new(root).add(glob)?.build())
             .transpose()
@@ -243,7 +246,7 @@ impl Workspace for Overlay {
             .cloned()
             .collect();
         files.extend(created);
-        Ok(files)
+        Ok(Listed { files, failed })
     }
 
     fn spawn(

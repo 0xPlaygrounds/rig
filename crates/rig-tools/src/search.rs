@@ -13,9 +13,9 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::{listed, shown};
-use crate::workspace::{Listing, Local, Workspace};
-use crate::{MAX_FILE_BYTES, blocking, clip};
+use crate::fs::{listed, shown, unread};
+use crate::workspace::{Listing, Local, Observation, Workspace};
+use crate::{MAX_FILE_BYTES, Source, blocking, excerpt, shell_path};
 
 /// Most matches a search returns.
 pub const MAX_MATCHES: usize = 200;
@@ -126,7 +126,8 @@ pub struct Hit {
     pub path: PathBuf,
     /// The line's number, from 1.
     pub line: usize,
-    /// The line, cut at 300 characters.
+    /// The line, cut at 300 characters; a line cut before its match says
+    /// where the match is.
     pub text: String,
 }
 
@@ -161,6 +162,21 @@ pub struct Found {
     /// searched.
     #[serde(default)]
     pub files: Vec<FileRead>,
+    /// The files and directories it could not read, so did not search,
+    /// as [`Hit::path`] names them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unread: Vec<Unread>,
+}
+
+/// A path a search could not read, and why.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Unread {
+    /// The file or directory, as the walk from the searched path reached
+    /// it.
+    #[serde(serialize_with = "lossy")]
+    pub path: PathBuf,
+    /// Why, such as `Permission denied (os error 13)`.
+    pub error: String,
 }
 
 /// What a [`Search`] call found, as it published it beside the text.
@@ -229,7 +245,8 @@ impl Tool for Search {
         let mut found = blocking(move || find(&*workspace, &args)).await?;
         if let Some(base) = &base {
             let paths = found.hits.iter_mut().map(|hit| &mut hit.path);
-            for path in paths.chain(&mut found.names) {
+            let unread = found.unread.iter_mut().map(|unread| &mut unread.path);
+            for path in paths.chain(&mut found.names).chain(unread) {
                 if let Ok(below) = path.strip_prefix(base) {
                     *path = shown(below);
                 }
@@ -245,8 +262,9 @@ impl Tool for Search {
 }
 
 /// `found` as [`Search`] shows it: a `path:line: text` line per hit, or a
-/// path per file of a search for file names, and a last line when it
-/// stopped at [`MAX_MATCHES`] or [`MAX_FILES`].
+/// path per file of a search for file names, a line when it stopped at
+/// [`MAX_MATCHES`] or [`MAX_FILES`], and a last line naming the paths it
+/// could not read.
 pub fn render(found: &Found) -> String {
     let (mut lines, stop): (Vec<String>, _) = match found.names.is_empty() {
         true => (
@@ -262,11 +280,21 @@ pub fn render(found: &Found) -> String {
             format!("[stopped at {MAX_FILES} files; narrow the search with path or glob]"),
         ),
     };
-    if lines.is_empty() {
+    if lines.is_empty() && found.unread.is_empty() {
         return "No matches.".to_owned();
+    }
+    if lines.is_empty() {
+        lines.push("No matches in the files read.".to_owned());
     }
     if found.stopped {
         lines.push(stop);
+    }
+    if !found.unread.is_empty() {
+        let unread_paths = found
+            .unread
+            .iter()
+            .map(|unread| (unread.path.display().to_string(), unread.error.clone()));
+        lines.push(unread(unread_paths, "they were not searched"));
     }
     lines.join("\n")
 }
@@ -287,13 +315,18 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
     let whole = whole_text(&args.pattern);
     let root = args.path.as_deref().unwrap_or(".");
-    let files = listed(
+    let listed = listed(
         workspace,
         Path::new(root),
         args.glob.as_deref(),
         args.listing(),
     )?;
     let mut found = Found::default();
+    let failed = listed.failed.into_iter();
+    found.unread = failed
+        .map(|(path, error)| Unread::of(&path, &error))
+        .collect();
+    let files = listed.files;
     if args.files && args.pattern.is_empty() {
         for file in files {
             found.names.push(walked(&file).to_path_buf());
@@ -308,8 +341,18 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
         let read = workspace.read_files(chunk, MAX_FILE_BYTES);
         chunk.iter().zip(read)
     });
-    for (file, bytes) in read {
-        let Some(text) = bytes.and_then(|bytes| String::from_utf8(bytes).ok()) else {
+    for (file, seen) in read {
+        let bytes = match seen {
+            Observation::Found(bytes) => bytes,
+            Observation::Failed(error) => {
+                found.unread.push(Unread::of(file, &error));
+                continue;
+            }
+            // Gone since the walk, larger than the limit or no regular file.
+            Observation::Missing | Observation::Excluded => continue,
+        };
+        // Not text, as `rg` skips a binary file.
+        let Ok(text) = String::from_utf8(bytes) else {
             continue;
         };
         if let Some(whole) = &whole
@@ -339,11 +382,18 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
             }
             continue;
         }
+        let resolved = found.files.last().and_then(|read| shell_path(&read.path));
         for (number, line) in lines {
+            let cut = excerpt(line, pattern.find(line).map(|at| at.range()), MAX_LINE);
+            let source = resolved.as_deref().map(|path| Source {
+                path,
+                line: number + 1,
+                before: 0,
+            });
             found.hits.push(Hit {
                 path: path.to_path_buf(),
                 line: number + 1,
-                text: clip(line, MAX_LINE).to_owned(),
+                text: format!("{}{}", cut.kept(), cut.mark("the match", source)),
             });
             if found.hits.len() == MAX_MATCHES {
                 found.stopped = true;
@@ -376,6 +426,16 @@ fn whole_text(pattern: &str) -> Option<Regex> {
 /// `.` does not match it, though a line's does.
 fn lone_cr(text: &str) -> bool {
     text.contains('\r') && text.matches('\r').count() != text.matches("\r\n").count()
+}
+
+impl Unread {
+    /// `path`, as the walk reached it, unread for `error`.
+    fn of(path: &Path, error: &std::io::Error) -> Self {
+        Self {
+            path: walked(path).to_path_buf(),
+            error: error.to_string(),
+        }
+    }
 }
 
 /// `path` as the walk reached it, without a leading `./` unless it is

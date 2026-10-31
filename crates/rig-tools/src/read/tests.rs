@@ -242,7 +242,14 @@ fn a_command_is_given_only_for_a_path_shell_reaches() {
     let long = "x".repeat(640);
     let lines: Vec<String> = (0..475).map(|n| format!("{n:03} {long}")).collect();
     let asked: Vec<&str> = lines.iter().map(String::as_str).collect();
-    let (shown, _) = super::show(asked.clone(), 1, 475, crate::MAX_BYTES, Some("/w/data.txt"));
+    let (shown, _) = super::show(
+        asked.clone(),
+        1,
+        475,
+        crate::MAX_BYTES,
+        Some("/w/data.txt"),
+        None,
+    );
     let note = shown.lines().last().unwrap_or_default();
     let width: usize = note
         .split_once("cut at ")
@@ -260,7 +267,14 @@ fn a_command_is_given_only_for_a_path_shell_reaches() {
         )),
         "{note}"
     );
-    let (remote, _) = super::show(asked, 1, 475, crate::MAX_BYTES, Some("bench:~/data.txt"));
+    let (remote, _) = super::show(
+        asked,
+        1,
+        475,
+        crate::MAX_BYTES,
+        Some("bench:~/data.txt"),
+        None,
+    );
     let note = remote.lines().last().unwrap_or_default();
     assert!(
         note.ends_with("a smaller limit shows more of each]"),
@@ -343,5 +357,29 @@ fn a_cut_line_can_be_read_on_in_shell() {
         assert!(characters >= 3320, "{characters} {chunk:.60}");
         assert!(chunk.lines().all(|line| line.len() <= 2000 * 3));
     }
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A file whose lines end in CRLF says so, since the lines come without
+/// their ends; a file with both endings says that, and an LF file says
+/// nothing.
+#[test]
+fn line_endings_other_than_lf_are_named() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-crlf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let read = |name: &str, bytes: &str| {
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).ok();
+        text(ReadArgs::new(path.to_string_lossy()))
+    };
+    assert_eq!(
+        read("crlf.txt", "one\r\ntwo\r\n"),
+        "one\ntwo\n[CRLF line endings; edit keeps them]\n"
+    );
+    assert_eq!(
+        read("mixed.txt", "one\r\ntwo\n"),
+        "one\ntwo\n[mixed line endings: some lines end in CRLF, the others in LF]\n"
+    );
+    assert_eq!(read("lf.txt", "one\ntwo\n"), "one\ntwo\n");
     std::fs::remove_dir_all(dir).ok();
 }

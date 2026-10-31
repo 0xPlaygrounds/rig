@@ -12,7 +12,7 @@ use rig_harness_test_support::{
     run_until, start_call,
 };
 use rig_tools::process::{Launcher, Process, Spawn};
-use rig_tools::workspace::{Contents, Listing, Stat, Workspace};
+use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
 use super::remote::RemoteHostsPlugin;
@@ -118,8 +118,8 @@ impl Workspace for Served {
         path.to_path_buf()
     }
 
-    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Vec<PathBuf>> {
-        Ok(Vec::new())
+    fn files(&self, _: &Path, _: Option<&str>, _: Listing) -> io::Result<Listed> {
+        Ok(Listed::default())
     }
 
     fn spawn(

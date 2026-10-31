@@ -521,3 +521,49 @@ fn git_starts_through_the_launcher() {
     assert!(is_git(taking(Launcher::default())));
     assert!(!is_git(taking(Launcher::default().wrapped(["false"]))));
 }
+
+/// A scan that could not `stat` a file, in a directory it may list but not
+/// search, does not take it for deleted, and neither a file in a directory
+/// it could not list at all; its content is not known rather than missing.
+#[cfg(unix)]
+#[test]
+fn a_file_a_scan_could_not_look_at_is_not_deleted() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("checkpoint-scan-unknown");
+    let keep = scratch("checkpoint-scan-unknown-keep");
+    let (listed, closed) = (dir.join("listed"), dir.join("closed"));
+    for sub in [&listed, &closed] {
+        std::fs::create_dir_all(sub).ok();
+        std::fs::write(sub.join("a.txt"), "one\n").ok();
+    }
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first = snapshot(&Local, &dir, &taking, None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    let mode = |path: &Path, mode| {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).ok()
+    };
+    mode(&listed, 0o600);
+    mode(&closed, 0o000);
+    let second = snapshot(&Local, &dir, &taking, Some(&first));
+    mode(&listed, 0o755);
+    mode(&closed, 0o755);
+    let changes = second.as_ref().map_err(|error| error.kind());
+    let changes = changes.map(|second| second.changes_since(&first).map(|changes| changes.len()));
+    let unknown = second
+        .ok()
+        .and_then(|second| second.content(&closed.join("a.txt")));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(&keep).ok();
+    assert_eq!(changes.map(Result::ok), Ok(Some(0)));
+    // Not known, or, to one who may read anything, as it was.
+    let content = unknown.map(|read| read.map_err(|error| error.kind()));
+    assert!(
+        matches!(&content, Some(Err(kind)) if *kind != std::io::ErrorKind::NotFound)
+            || content == Some(Ok(b"one\n".to_vec())),
+        "{content:?}"
+    );
+}

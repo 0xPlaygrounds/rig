@@ -254,7 +254,8 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
 fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<String, String> {
     let files = workspace
         .files(path, None, Listing::Visible)
-        .map_err(|failure| failure.to_string())?;
+        .map_err(|failure| failure.to_string())?
+        .files;
     let mut list = String::new();
     for (at, file) in files.iter().enumerate() {
         let line = format!("{}\n", file.strip_prefix(path).unwrap_or(file).display());

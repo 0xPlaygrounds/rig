@@ -736,3 +736,56 @@ fn a_remote_home_file_is_listed_as_named() {
         Some("~/notes.txt\n")
     );
 }
+
+/// A failed batch read there names each file it was to read, so a search
+/// says what it could not read rather than "No matches."; a file under a
+/// directory there that may not be searched is not taken for missing.
+#[cfg(unix)]
+#[test]
+fn what_could_not_be_read_there_is_not_taken_for_absent() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = scratch("unread");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/lib.rs"), "fn needle() {}\n").ok();
+    // Every script that copies files aside, as a batch read does, fails.
+    let mut refusing = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "case \"$1\" in *mktemp*) echo 'reads refused' >&2; exit 1;; esac; \
+         cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\""
+            .to_owned(),
+    ];
+    refusing.push(home.display().to_string());
+    let bench = Remote::new("bench", refusing, Launcher::default());
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let search = Search {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+    };
+    let (found, _) = call(&search, SearchArgs::new("needle").in_path("bench:~/strata"));
+    let found = found.unwrap_or_default();
+    assert!(
+        found.starts_with(
+            "No matches in the files read.\n[could not read 1 path, so they were not searched: \
+             bench:~/strata/src/lib.rs ("
+        ) && found.contains("reads refused"),
+        "{found}"
+    );
+    let locked = home.join("locked");
+    std::fs::create_dir_all(&locked).ok();
+    std::fs::write(locked.join("a.txt"), "a\n").ok();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
+    let hidden = std::fs::read(locked.join("a.txt")).is_err();
+    let stat = workspace.stat(Path::new("bench:~/locked/a.txt"));
+    let gone = workspace.stat(Path::new("bench:~/strata/gone/a.txt"));
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(gone.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    if hidden {
+        assert_eq!(
+            stat.err().map(|error| error.kind()),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+    }
+}

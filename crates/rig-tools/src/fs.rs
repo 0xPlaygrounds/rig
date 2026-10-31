@@ -13,7 +13,7 @@ use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecution
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::workspace::{Contents, Listing, Local, Stat, Workspace};
+use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace};
 
 /// Reads `path` as text after checking, without opening it, that it is a
 /// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
@@ -196,7 +196,7 @@ pub(crate) fn listed(
     root: &Path,
     glob: Option<&str>,
     listing: Listing,
-) -> Result<Vec<PathBuf>, ToolExecutionError> {
+) -> Result<Listed, ToolExecutionError> {
     let shown = root.to_string_lossy();
     let missing = || {
         let missing = io::Error::new(ErrorKind::NotFound, "no such file or directory");
@@ -210,7 +210,8 @@ pub(crate) fn listed(
             _ => io_error(&shown, error),
         })?;
     // Only an empty listing asks whether `root` is there at all.
-    if files.is_empty()
+    if files.files.is_empty()
+        && files.failed.is_empty()
         && workspace
             .stat(root)
             .map_err(|error| io_error(&shown, error))?
@@ -219,6 +220,28 @@ pub(crate) fn listed(
         return Err(missing());
     }
     Ok(files)
+}
+
+/// Most paths a tool's note on what it could not read names.
+const MAX_UNREAD: usize = 20;
+
+/// A tool's last line on the paths it could not read, each shown with why,
+/// at most [`MAX_UNREAD`] of them: `[could not read 2 paths, so {what}:
+/// a (Permission denied), b (…)]`.
+pub(crate) fn unread(paths: impl ExactSizeIterator<Item = (String, String)>, what: &str) -> String {
+    let count = paths.len();
+    let noun = if count == 1 { "path" } else { "paths" };
+    let mut named: Vec<String> = paths
+        .take(MAX_UNREAD)
+        .map(|(path, why)| format!("{path} ({why})"))
+        .collect();
+    if count > MAX_UNREAD {
+        named.push(format!("and {} more", count - MAX_UNREAD));
+    }
+    format!(
+        "[could not read {count} {noun}, so {what}: {}]",
+        named.join(", ")
+    )
 }
 
 /// `path` as the file tools open it: made absolute against `base` (`None`:

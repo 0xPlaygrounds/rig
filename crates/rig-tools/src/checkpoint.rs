@@ -20,7 +20,7 @@ use rig_core::tool::{
 
 use crate::fs::Previous;
 use crate::process::Launcher;
-use crate::workspace::{Listing, Stat, Workspace};
+use crate::workspace::{Listed, Listing, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking};
 
 /// The files under a root at one moment, to diff against a later one.
@@ -44,10 +44,12 @@ pub struct Snapshot(Taken);
 enum Taken {
     /// A git tree in a private object directory.
     Git { git: Git, tree: String },
-    /// Each file's [`Seen`], by path, when the scan began, and the
+    /// Each file's [`Seen`], by path, when the scan began, the paths it
+    /// could not look at, what is at or under which is not known, and the
     /// directory its content is kept in, by hash, when it is.
     Scan {
         files: Arc<BTreeMap<PathBuf, Seen>>,
+        unknown: Arc<Vec<PathBuf>>,
         began: SystemTime,
         blobs: Option<PathBuf>,
     },
@@ -148,10 +150,10 @@ pub fn snapshot(
             };
             let blobs = keep.map(|keep| private(keep, root).join("blobs"));
             let began = SystemTime::now();
-            let files = scan(workspace, root, &also, before, blobs.as_deref())?;
-            let files = Arc::new(files);
+            let (files, unknown) = scan(workspace, root, &also, before, blobs.as_deref())?;
             Ok(Snapshot(Taken::Scan {
-                files,
+                files: Arc::new(files),
+                unknown: Arc::new(unknown),
                 began,
                 blobs,
             }))
@@ -192,6 +194,8 @@ impl Snapshot {
     /// created, modified and deleted, with the [`FileState`] of each side.
     /// A snapshot that kept content also gives each change's diff and line
     /// counts; a scan that kept none gives a modified file's states only.
+    /// A path a scan of either could not look at is left out, never taken
+    /// for created or deleted.
     ///
     /// # Errors
     ///
@@ -201,8 +205,21 @@ impl Snapshot {
             (Taken::Git { tree: before, .. }, Taken::Git { git, tree }) => {
                 git.changes(before, tree)
             }
-            (Taken::Scan { files: before, .. }, Taken::Scan { files, blobs, .. }) => {
-                Ok(scan_changes(before, files, blobs.as_deref()))
+            (
+                Taken::Scan {
+                    files: before,
+                    unknown: was_unknown,
+                    ..
+                },
+                Taken::Scan {
+                    files,
+                    unknown,
+                    blobs,
+                    ..
+                },
+            ) => {
+                let known = |path: &Path| !under(was_unknown, path) && !under(unknown, path);
+                Ok(scan_changes(before, files, blobs.as_deref(), known))
             }
             _ => Err(io::Error::new(
                 ErrorKind::InvalidInput,
@@ -216,13 +233,21 @@ impl Snapshot {
     pub fn content(&self, path: &Path) -> Option<io::Result<Vec<u8>>> {
         match &self.0 {
             Taken::Git { git, tree } => Some(git.content(tree, path)),
-            Taken::Scan { files, blobs, .. } => {
+            Taken::Scan {
+                files,
+                unknown,
+                blobs,
+                ..
+            } => {
                 let blobs = blobs.as_deref()?;
                 Some(match files.get(path).map(|seen| &seen.hash) {
                     Some(Some(hash)) => std::fs::read(blobs.join(&hash.0)),
                     Some(None) => Err(io::Error::new(
                         ErrorKind::FileTooLarge,
                         "the file was too large to keep",
+                    )),
+                    None if under(unknown, path) => Err(io::Error::other(
+                        "the scan could not look at the file, so whether it was there is not known",
                     )),
                     None => Err(ErrorKind::NotFound.into()),
                 })
@@ -236,28 +261,43 @@ impl Snapshot {
 /// and when it began) for a file whose size and change time are the same
 /// and that had not just changed when it began ([`snapshot`]); with
 /// `blobs`, the content of each file it read is kept there, by hash, once.
+/// Also the paths it could not look at: a directory it could not list, a
+/// file it could not `stat` or read.
 fn scan(
     workspace: &dyn Workspace,
     root: &Path,
     also: &[PathBuf],
     earlier: Option<(&BTreeMap<PathBuf, Seen>, SystemTime)>,
     blobs: Option<&Path>,
-) -> io::Result<BTreeMap<PathBuf, Seen>> {
+) -> io::Result<(BTreeMap<PathBuf, Seen>, Vec<PathBuf>)> {
     if let Some(blobs) = blobs {
         std::fs::create_dir_all(blobs)?;
     }
-    let mut listed = workspace.files(root, None, Listing::Visible)?;
+    let Listed {
+        files: mut listed,
+        failed,
+    } = workspace.files(root, None, Listing::Visible)?;
+    let mut unknown: Vec<PathBuf> = failed.into_iter().map(|(path, _)| path).collect();
     for path in also {
-        listed.extend(
-            workspace
-                .files(path, None, Listing::All)
-                .unwrap_or_default(),
-        );
+        match workspace.files(path, None, Listing::All) {
+            Ok(also) => {
+                listed.extend(also.files);
+                unknown.extend(also.failed.into_iter().map(|(path, _)| path));
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(_) => unknown.push(path.clone()),
+        }
     }
     let mut seen = BTreeMap::new();
     for path in listed {
-        let Ok(Stat::File { size, modified, .. }) = workspace.stat(&path) else {
-            continue;
+        let (size, modified) = match workspace.stat(&path) {
+            Ok(Stat::File { size, modified, .. }) => (size, modified),
+            // Gone, or no file any more: what it was is gone.
+            Ok(Stat::Missing | Stat::Dir | Stat::Other) => continue,
+            Err(_) => {
+                unknown.push(path);
+                continue;
+            }
         };
         let same = earlier.and_then(|(files, began)| {
             let was = files.get(&path)?;
@@ -267,10 +307,16 @@ fn scan(
         let file = match same {
             Some(was) => was.clone(),
             None => {
-                let bytes = (size <= MAX_FILE_BYTES)
-                    .then(|| workspace.read(&path, MAX_FILE_BYTES).ok())
-                    .flatten()
-                    .map(|contents| contents.bytes);
+                let bytes =
+                    match (size <= MAX_FILE_BYTES).then(|| workspace.read(&path, MAX_FILE_BYTES)) {
+                        Some(Ok(contents)) => Some(contents.bytes),
+                        None => None,
+                        Some(Err(error)) if error.kind() == ErrorKind::NotFound => continue,
+                        Some(Err(_)) => {
+                            unknown.push(path);
+                            continue;
+                        }
+                    };
                 let hash = bytes.as_deref().map(content_hash);
                 if let (Some(blobs), Some(bytes), Some(hash)) = (blobs, &bytes, &hash) {
                     let blob = blobs.join(&hash.0);
@@ -288,7 +334,13 @@ fn scan(
         };
         seen.insert(path, file);
     }
-    Ok(seen)
+    Ok((seen, unknown))
+}
+
+/// Whether `path` is at or under one of the paths a scan could not look
+/// at.
+fn under(unknown: &[PathBuf], path: &Path) -> bool {
+    unknown.iter().any(|unknown| path.starts_with(unknown))
 }
 
 /// Whether a file last changed at `modified` had not just changed when a
@@ -313,17 +365,19 @@ fn settled_before(modified: SystemTime, began: SystemTime) -> bool {
         .is_some_and(|settled| modified < settled)
 }
 
-/// What changed from the scan `before` to the scan `after`; with `blobs`,
-/// where both kept their content, each change with its hunks and text
-/// before.
+/// What changed from the scan `before` to the scan `after` at the paths
+/// both scans could look at (`known`); with `blobs`, where both kept their
+/// content, each change with its hunks and text before.
 fn scan_changes(
     before: &BTreeMap<PathBuf, Seen>,
     after: &BTreeMap<PathBuf, Seen>,
     blobs: Option<&Path>,
+    known: impl Fn(&Path) -> bool,
 ) -> Vec<FileChange> {
     let paths: BTreeSet<&PathBuf> = before.keys().chain(after.keys()).collect();
     paths
         .into_iter()
+        .filter(|path| known(path))
         .filter_map(|path| {
             let shown = path.to_string_lossy();
             let (was, now) = (before.get(path), after.get(path));
