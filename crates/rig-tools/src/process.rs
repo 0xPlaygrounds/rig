@@ -742,10 +742,13 @@ impl Process {
     /// once.
     pub fn stop(&mut self, grace: Duration) -> io::Result<ExitStatus> {
         drop(self.child.stdin.take());
+        #[cfg(unix)]
         if self.try_wait()?.is_none() {
             self.group.terminate();
             self.wait_for(grace)?;
         }
+        #[cfg(not(unix))]
+        let _ = grace;
         self.kill()
     }
 

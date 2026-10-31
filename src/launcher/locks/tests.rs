@@ -29,6 +29,42 @@ fn the_sweep_removes_the_unsaved_sessions_of_gone_launchers() {
     assert_eq!(left.ok(), Some([false, true, true, true]));
 }
 
+/// The sweep ends a job a gone launcher's agent left listed, as one a
+/// reload kept when that launcher was killed before the restart.
+#[cfg(target_os = "linux")]
+#[test]
+fn the_sweep_ends_the_jobs_gone_launchers_left() {
+    use std::os::unix::process::CommandExt;
+
+    let root = std::env::temp_dir().join(format!("rig-sweep-jobs-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    // A pid no launcher of this test has.
+    let run = home.run(u32::MAX - 7);
+    fs::create_dir_all(run.path()).ok();
+    let job = std::process::Command::new("sleep")
+        .arg("60")
+        .env(rig_harness_protocol::env::PROCESS_LEDGER, run.groups())
+        .process_group(0)
+        .spawn();
+    let Ok(mut job) = job else {
+        return assert!(job.is_ok());
+    };
+    fs::write(run.groups(), format!("{}\n", job.id())).ok();
+    let swept = sweep(&home);
+    let ended = job.try_wait().ok().flatten().is_some() || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        job.try_wait().ok().flatten().is_some()
+    };
+    job.kill().ok();
+    job.wait().ok();
+    fs::remove_dir_all(&root).ok();
+    assert!(
+        swept.is_ok() && ended,
+        "the job outlived its launcher's sweep"
+    );
+}
+
 /// A wait for the build lock shorter than its quiet time says nothing; a
 /// longer one says so once.
 #[test]

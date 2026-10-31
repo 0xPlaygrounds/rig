@@ -929,20 +929,24 @@ fn a_read_queued_behind_a_stop_never_starts() {
     let bench = Remote::new("bench", slow, Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
     let started = || std::fs::read_to_string(&log).map_or(0, |log| log.lines().count());
-    let mut reads: Vec<_> = (0..3)
-        .map(|_| {
-            let workspace = workspace.clone();
-            Box::pin(crate::blocking(move || {
-                let file = Path::new("bench:~/strata/src/lib.rs");
-                workspace
-                    .read(file, 4096)
-                    .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))
-            }))
-        })
-        .collect();
-    assert!(reads.iter_mut().all(|read| !start(read)));
+    let read = || {
+        let workspace = workspace.clone();
+        Box::pin(crate::blocking(move || {
+            let file = Path::new("bench:~/strata/src/lib.rs");
+            workspace
+                .read(file, 4096)
+                .map_err(|error| rig_core::tool::ToolExecutionError::other(error.to_string()))
+        }))
+    };
+    // Two take the host's turns, then the third waits for one.
+    let mut running = [read(), read()];
+    assert!(running.iter_mut().all(|read| !start(read)));
     assert!(soon(|| started() == super::CALLS_PER_HOST));
-    drop(reads);
+    let mut queued = read();
+    assert!(!start(&mut queued));
+    // Stopped while it waits, before the turns are given back.
+    drop(queued);
+    drop(running);
     std::thread::sleep(std::time::Duration::from_secs(4));
     let count = started();
     std::fs::remove_dir_all(&dir).ok();

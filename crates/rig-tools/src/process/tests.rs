@@ -336,12 +336,11 @@ fn a_sink_that_stops_after_the_exit_gets_nothing_more() {
     let Ok(mut process) = process else {
         return assert!(process.is_ok());
     };
+    // It ends before the wait starts; its output waits, queued.
+    let exited = process.wait_for(Duration::from_secs(20));
+    assert!(exited.is_ok_and(|status| status.is_some()));
     let mut taken = 0;
     let ended = process.run(None, |line| {
-        if taken == 0 {
-            // The producer ends meanwhile, its output still queued.
-            std::thread::sleep(Duration::from_millis(500));
-        }
         taken += line.bytes().len();
         taken <= LIMIT
     });
