@@ -20126,6 +20126,7 @@ version = "0.46.0-rc.1"
 dependencies = [
  "proc-macro2",
  "quote",
+ "rig-core",
  "serde",
  "serde_json",
  "serde_yaml",

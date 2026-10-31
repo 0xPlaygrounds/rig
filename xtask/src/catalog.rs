@@ -24,14 +24,26 @@
 //!    rig-core's `Catalog::with_models_dev` keeps them when an application
 //!    lays a newer copy of models.dev over the built-in catalog.
 //!
+//! Before it writes, sync compares what rig-core reads from each row of the
+//! checked-in catalog and of the new one ([`guard`]). It writes nothing
+//! while a row loses a capability (it stops reasoning; loses an effort
+//! level, the off switch or its budget; its reasoning controls become
+//! unknown; it loses tool calls, an input modality, structured output, or
+//! sampling it took) that the row's own review does not answer by setting
+//! the deciding key with a `source`. Otherwise it prints a markdown report of
+//! every change, for the refresh PR. A review row that sets a capability,
+//! `limit` or a `rig` fact names a `source`, or its `from` row does, unless
+//! `unsourced.txt` lists it unchanged. DEVELOPING.md's "Refreshing the model
+//! catalog" is the procedure.
+//!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
 //! command fetches <https://models.dev/api.json> with `curl`. Sync also
 //! writes when that data was read (the file's modification time, or now)
 //! to `crates/rig-core/src/catalog/generated_at`. `--check`
 //! writes nothing and fails when the checked-in file differs from what sync
-//! would write. `catalog check` runs offline: it fails when the checked-in
-//! file is not in the form sync writes, or a reviewed fact is missing from
-//! it.
+//! would write. `catalog check` runs offline, in CI's `tooling` check: it
+//! fails when the checked-in file is not in the form sync writes, a reviewed
+//! fact is missing from it, or a review row lacks the `source` it needs.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -39,14 +51,19 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
+mod guard;
+
 pub(crate) const USAGE: &str = "\
   catalog sync [--from FILE] [--check]
                               regenerate crates/rig-core/src/catalog/models.json
                               from models.dev (fetched, or a saved api.json) and
-                              xtask/src/catalog/review.json; with --check fail
-                              when the checked-in file differs
+                              xtask/src/catalog/review.json, refusing a lost
+                              capability the review does not answer, and print
+                              the changes as markdown; with --check fail when
+                              the checked-in file differs
   catalog check               fail when models.json is not in sync's form or
-                              lacks a reviewed fact (offline)
+                              lacks a reviewed fact, or a review row lacks its
+                              source (offline)
 ";
 
 /// The generated catalog, relative to the workspace root.
@@ -57,6 +74,10 @@ const OUTPUT: &str = "crates/rig-core/src/catalog/models.json";
 const GENERATED_AT: &str = "crates/rig-core/src/catalog/generated_at";
 /// The reviewed facts, relative to the workspace root.
 const REVIEW: &str = "xtask/src/catalog/review.json";
+/// The review rows that set a fact without a `source` when sources became
+/// required, each with the fingerprint of the row as it was then, relative
+/// to the workspace root.
+const UNSOURCED: &str = "xtask/src/catalog/unsourced.txt";
 /// Where models.dev publishes its catalog.
 const MODELS_DEV: &str = "https://models.dev/api.json";
 
@@ -289,9 +310,8 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
     }
     let written = render(&rows);
     let path = root.join(OUTPUT);
+    let current = read_text(&path)?;
     if check {
-        let current = std::fs::read_to_string(&path)
-            .map_err(|error| format!("{}: {error}", path.display()))?;
         return match current == written {
             true => Ok(()),
             false => Err(format!(
@@ -299,14 +319,34 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
             )),
         };
     }
+    let review = read_rows(&review)?;
+    let comparison = guard::compare(
+        &read_rows(&serde_json::from_str(&current).map_err(|e| format!("{OUTPUT}: {e}"))?)?,
+        &rows,
+        &review,
+        &models_dev_rows(&models_dev)?,
+    );
+    let refusals: Vec<String> = [
+        guard::provenance(&review, &read_text(&root.join(UNSOURCED))?).err(),
+        comparison.refusal(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !refusals.is_empty() {
+        return Err(refusals.join("\n\n"));
+    }
+    let read_at = rfc3339(read_at)?;
     std::fs::write(&path, written).map_err(|error| format!("{}: {error}", path.display()))?;
     let stamp = root.join(GENERATED_AT);
-    std::fs::write(&stamp, format!("{}\n", rfc3339(read_at)?))
-        .map_err(|error| format!("{}: {error}", stamp.display()))
+    std::fs::write(&stamp, format!("{read_at}\n"))
+        .map_err(|error| format!("{}: {error}", stamp.display()))?;
+    print!("{}", comparison.markdown(&read_at));
+    Ok(())
 }
 
-/// Check the checked-in catalog offline.
-fn check(root: &Path) -> Result<(), String> {
+/// Check the checked-in catalog and the review's sources offline.
+pub(crate) fn check(root: &Path) -> Result<(), String> {
     let path = root.join(OUTPUT);
     let current =
         std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
@@ -326,6 +366,7 @@ fn check(root: &Path) -> Result<(), String> {
         ));
     }
     let review = read_json(&root.join(REVIEW))?;
+    guard::provenance(&read_rows(&review)?, &read_text(&root.join(UNSOURCED))?)?;
     let mut pinned = catalog.clone();
     pin(&mut pinned, &read_rows(&review)?);
     if pinned != catalog {
@@ -385,14 +426,37 @@ pub(crate) fn is_rfc3339_utc(text: &str) -> bool {
         })
 }
 
+fn read_text(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))
+}
+
 fn read_json(path: &Path) -> Result<Value, String> {
-    let text =
-        std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
-    serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))
+    serde_json::from_str(&read_text(path)?).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 /// The catalog models.dev and the review give.
 pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, String> {
+    let mut rows = models_dev_rows(models_dev)?;
+    let review = read_rows(review)?;
+    validate_review(&review)?;
+    gone_from_models_dev(&rows, &review)?;
+    apply(&mut rows, &review)?;
+    serve(&mut rows);
+    translate_reasoning(&mut rows);
+    for (origin, mirror) in MIRRORS {
+        if let Some(models) = rows.get(origin).cloned() {
+            rows.insert(mirror.to_owned(), models);
+        }
+    }
+    apply(&mut rows, &review)?;
+    rows.retain(|_, models| !models.is_empty());
+    pin(&mut rows, &review);
+    Ok(rows)
+}
+
+/// The rows of the models.dev providers rig serves, under rig's vendor
+/// names, before the review.
+fn models_dev_rows(models_dev: &Value) -> Result<Rows, String> {
     let mut rows = Rows::new();
     let providers = models_dev.as_object().ok_or("models.dev: not an object")?;
     for (key, vendor) in KEYS {
@@ -414,20 +478,6 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
             }
         }
     }
-    let review = read_rows(review)?;
-    validate_review(&review)?;
-    gone_from_models_dev(&rows, &review)?;
-    apply(&mut rows, &review)?;
-    serve(&mut rows);
-    translate_reasoning(&mut rows);
-    for (origin, mirror) in MIRRORS {
-        if let Some(models) = rows.get(origin).cloned() {
-            rows.insert(mirror.to_owned(), models);
-        }
-    }
-    apply(&mut rows, &review)?;
-    rows.retain(|_, models| !models.is_empty());
-    pin(&mut rows, &review);
     Ok(rows)
 }
 
@@ -545,10 +595,24 @@ fn read_rows(document: &Value) -> Result<Rows, String> {
     Ok(rows)
 }
 
-/// Fail on a reviewed row with a key the catalog does not read.
+/// Fail on a reviewed row with a key the catalog does not read, or that
+/// copies with `from` a row that copies another: sync lays copies once in
+/// review order, and the guard looks one copy back.
 fn validate_review(review: &Rows) -> Result<(), String> {
     for (vendor, models) in review {
         for (id, row) in models {
+            let from = row.get("from").and_then(Value::as_str);
+            let copied = from
+                .and_then(|from| from.split_once('/'))
+                .and_then(|(from_vendor, from_id)| review.get(from_vendor)?.get(from_id));
+            if let (Some(from), Some(copied)) = (from, copied)
+                && let Some(origin) = copied.get("from").and_then(Value::as_str)
+            {
+                return Err(format!(
+                    "{REVIEW}: {vendor}/{id}: `from` names {from}, which copies {origin}; name \
+                     that one"
+                ));
+            }
             for key in row.keys() {
                 if !ROW_KEYS.contains(&key.as_str()) && !REVIEW_KEYS.contains(&key.as_str()) {
                     return Err(format!("{REVIEW}: {vendor}/{id}: unknown key `{key}`"));
