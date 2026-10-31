@@ -209,3 +209,25 @@ fn a_refused_picker_lists_ten_commands_and_never_asks_for_a_secret_here() {
     let key = unshown(&Picker::new("OpenAI API key").secret());
     assert!(key.contains("Type it in `rig` in a terminal"), "{key}");
 }
+
+#[test]
+fn a_picker_a_command_opens_after_a_nested_command_ran_is_refused_too() {
+    let (mut app, agent) = run_by(Front::new("print").headless(), false);
+    app.add_command(
+        "outer",
+        "Runs /note, then opens a picker",
+        |In(args): In<CommandArgs>, mut commands: Commands| {
+            commands.queue(move |world: &mut World| {
+                world.trigger(RunCommand::new(args.agent, "note first"));
+                world.flush();
+                world.spawn(Picker::new("Size").item("small", "note small"));
+            });
+        },
+    );
+    app.world_mut().trigger(RunCommand::new(agent, "outer"));
+    app.update();
+    let refused = refusals(&mut app);
+    assert_eq!(refused.len(), 1, "{refused:?}");
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Picker>().iter(world).count(), 0);
+}

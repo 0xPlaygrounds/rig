@@ -13,8 +13,8 @@ workspace = true
 
 [features]
 default = ["tui"]
-# The plugins' parts in the terminal view: status line items, pickers and
-# how tool calls are drawn. An app without the terminal view leaves them out
+# The plugins' parts in the terminal view: status line items, how pickers
+# and tool calls are drawn. An app without the terminal view leaves them out
 # with `default-features = false`.
 tui = ["dep:rig-tui"]
 

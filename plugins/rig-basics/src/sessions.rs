@@ -574,10 +574,13 @@ fn name_conflict(home: &Home, session: Option<&SessionId>, name: &str) -> Option
     let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
     let mut sessions = ids.map(|id: SessionId| (home.session(&id), id));
     let (_, other) = sessions.find(|(dir, id)| {
-        if Some(id) == session || !(dir.is_saved() || dir.runs_elsewhere()) {
+        if Some(id) == session {
             return false;
         }
-        dir.name().is_some_and(|stored| title_of(&stored) == name)
+        // The name first: probing the lock of every session would race a
+        // launcher taking one.
+        let named = dir.name().is_some_and(|stored| title_of(&stored) == name);
+        named && (dir.is_saved() || dir.runs_elsewhere())
     })?;
     Some(Notice::error(
         None,

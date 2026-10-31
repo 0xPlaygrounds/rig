@@ -274,12 +274,16 @@ fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMod
                 args: args.to_owned(),
                 mode,
             };
+            // A command a command runs leaves the outer one's mark.
+            let outer = world.contains_resource::<CommandRuns>();
             world.insert_resource(CommandRuns);
             let ran = match kind {
                 Args::None => run::<NoArgs>(world, system, args),
                 Args::Text => run::<CommandArgs>(world, system, args),
             };
-            world.remove_resource::<CommandRuns>();
+            if !outer {
+                world.remove_resource::<CommandRuns>();
+            }
             let mut reply = swap_notices(world, earlier);
             let mut refusals: Vec<String> =
                 ran.err().map(|ran| ran.to_string()).into_iter().collect();
