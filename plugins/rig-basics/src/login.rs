@@ -20,7 +20,7 @@
 //!   process holds the file's lock while it refreshes or signs in, so a
 //!   refresh never overwrites a newer sign-in. The file is replaced whole.
 //! - The plan's models are those the backend lists for the signed-in
-//!   account, asked once per run when first needed ([`offered`]).
+//!   account, asked once per run when first needed.
 
 use std::path::PathBuf;
 use std::sync::Arc;

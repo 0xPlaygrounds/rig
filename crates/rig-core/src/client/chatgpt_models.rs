@@ -2,7 +2,8 @@
 //!
 //! ```no_run
 //! use rig_core::http_client::DynHttpClient;
-//! use rig_core::providers::chatgpt::{auth::AuthContext, models::account_models};
+//! use rig_core::client::chatgpt_models::account_models;
+//! use rig_core::providers::chatgpt::auth::AuthContext;
 //!
 //! # async fn example(context: &AuthContext, http: &DynHttpClient)
 //! # -> Result<(), rig_core::error::ProviderError> {
@@ -18,9 +19,10 @@ use bytes::Bytes;
 use futures::StreamExt;
 use serde::Deserialize;
 
-use super::auth::AuthContext;
 use crate::error::ProviderError;
 use crate::http_client::{DynHttpClient, HttpClientExt};
+use crate::providers::chatgpt::auth::AuthContext;
+use crate::providers::chatgpt::signed_in_config;
 
 /// The Codex release whose request contract the ChatGPT dialect follows.
 /// The backend lists only the models a client this new may use.
@@ -50,7 +52,7 @@ pub(crate) async fn account_models_with_limits(
     timeout: Duration,
 ) -> Result<Vec<String>, ProviderError> {
     rig_http::wasm_compat::timeout(timeout, async {
-        let config = super::signed_in_config(context).map_err(ProviderError::request)?;
+        let config = signed_in_config(context).map_err(ProviderError::request)?;
         let uri = config.uri(&format!("/models?client_version={CLIENT_VERSION}"), None);
         let request = config
             .headers_in_session(http::Request::get(uri), None)

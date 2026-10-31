@@ -10,11 +10,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::catalog::{ModelSpec, ModelStatus};
+use rig_core::client::chatgpt_models::{LIST_TIMEOUT, account_models};
 use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::http_client::DynHttpClient;
 use rig_core::providers::chatgpt::auth::Authenticator;
-use rig_core::providers::chatgpt::models::{LIST_TIMEOUT, account_models};
 use rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_core::wasm_compat::timeout;
 
