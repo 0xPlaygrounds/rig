@@ -14,6 +14,7 @@ use agent_client_protocol::{Agent, Client, ConnectionTo};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
+use rig_harness::host::pipes::Writer;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
 use rig_harness::rig_core::providers::registry::ProviderId;
@@ -677,19 +678,27 @@ fn drive(
                 },
                 agent_client_protocol::on_receive_request!(),
             )
-            .connect_with(lines(input, output), async move |cx| {
-                let init = acp::InitializeRequest::new(ProtocolVersion::V1)
-                    .client_capabilities(capabilities);
-                cx.send_request(init).block_task().await?;
-                let driven = Driven {
-                    cx,
-                    seen,
-                    project,
-                    router: pid,
-                };
-                test(&driven).await;
-                Ok(())
-            })
+            .connect_with(
+                lines(
+                    input,
+                    output,
+                    Writer::inline(std::io::sink(), std::io::sink()),
+                )
+                .0,
+                async move |cx| {
+                    let init = acp::InitializeRequest::new(ProtocolVersion::V1)
+                        .client_capabilities(capabilities);
+                    cx.send_request(init).block_task().await?;
+                    let driven = Driven {
+                        cx,
+                        seen,
+                        project,
+                        router: pid,
+                    };
+                    test(&driven).await;
+                    Ok(())
+                },
+            )
             .await;
         driven.ok()?;
         Some(router)

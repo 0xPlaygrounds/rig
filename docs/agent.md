@@ -194,7 +194,8 @@ that has only one can link `AGENTS.md` to it. `SkillsPlugin` lists your
 skills: each directory with a `SKILL.md` (the Agent Skills format, a `name`
 and a `description` in its frontmatter) under `.rig/skills` or
 `.agents/skills` of those same directories, `RIG_HOME/skills` or
-`~/.agents/skills`. The model reads a skill's file when a task matches its
+`~/.agents/skills`; each directory is searched once, and a link that leads
+back to one being searched is named once. The model reads a skill's file when a task matches its
 description, and `/skill:<name> [text]` sends one with your message. A skill
 with `disable-model-invocation: true` is left out of the list and only sent
 by hand. Both are read once, so an edit takes effect on `/reload` or `/new`.

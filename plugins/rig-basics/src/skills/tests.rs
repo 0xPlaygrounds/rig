@@ -48,6 +48,28 @@ fn roots_with_skills(name: &str) -> Option<[PathBuf; 2]> {
     Some([first, second])
 }
 
+/// A skill folder whose links lead back up (`loop/{a,b} -> .`) is searched
+/// once: the walk ends, finds the skill beside the links once, and names
+/// the loop once.
+#[cfg(unix)]
+#[test]
+fn a_link_back_up_is_searched_once_and_named_once() {
+    let root = scratch_home("skills-loop").root().join("skills");
+    let dir = root.join("loop");
+    assert!(skill(&dir.join("inside"), "---\ndescription: Inside.\n---\n").is_some());
+    for link in ["a", "b"] {
+        assert!(std::os::unix::fs::symlink(".", dir.join(link)).is_ok());
+    }
+    let (skills, problems) = discover(&[root]);
+    let names: Vec<&str> = skills.iter().map(|skill| skill.name.as_str()).collect();
+    assert_eq!(names, ["inside"]);
+    let looped: Vec<&String> = problems
+        .iter()
+        .filter(|problem| problem.contains("leads back"))
+        .collect();
+    assert_eq!(looped.len(), 1, "{problems:?}");
+}
+
 #[test]
 fn discovery_takes_the_first_of_a_name_and_skips_skills_without_a_description() {
     let made = roots_with_skills("skills-discover");

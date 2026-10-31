@@ -16,7 +16,7 @@
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use crate::completion::{FinishReason, Usage};
+use crate::completion::{FinishReason, Usage, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, ToolName};
@@ -150,7 +150,10 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
         let usage = Usage {
             input_tokens: input,
             output_tokens: output,
-            total_tokens: input.zip(output).map(|(input, output)| input + output),
+            total_tokens: input
+                .zip(output)
+                .map(|(input, output)| token_sum([input, output]))
+                .transpose()?,
             cached_input_tokens: record.u64("prompt_eval_cached_count"),
             ..Usage::default()
         };

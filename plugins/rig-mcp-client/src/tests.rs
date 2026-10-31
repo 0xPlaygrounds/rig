@@ -1170,3 +1170,39 @@ fn a_run_with_no_session_starts_no_server_of_the_files() {
     assert!(!mine.exists());
     std::fs::remove_dir_all(project).ok();
 }
+
+/// A stdio server's line past the limit ends its connection, noting what
+/// was refused for the server's loss; the messages before it still come.
+#[cfg(unix)]
+#[test]
+fn a_server_line_past_the_limit_ends_its_connection_saying_why() {
+    use futures::StreamExt;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build();
+    let Ok(runtime) = runtime else { return };
+    let message = r#"{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}"#;
+    let script = format!("printf '%s\\n' '{message}'; printf '%080d\\n' 0; sleep 5");
+    let read = runtime.block_on(async {
+        let mut server = tokio::process::Command::new("sh")
+            .args(["-c", &script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .ok()?;
+        let pipes = (server.stdin.take()?, server.stdout.take()?);
+        let refused = Arc::new(Mutex::new(None));
+        let (_sink, messages) = stdio(pipes, message.len(), refused.clone());
+        let messages: Vec<_> = messages.collect().await;
+        let refused = *refused.lock().unwrap_or_else(PoisonError::into_inner);
+        Some((messages.len(), refused))
+    });
+    let limit = message.len();
+    let refused = TooLarge {
+        limit,
+        asked: limit + 1,
+    };
+    assert_eq!(read, Some((1, Some(refused))));
+}

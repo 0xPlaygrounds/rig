@@ -105,8 +105,13 @@ tools), additional directories, session modes, audio, and ACP v2.
 stdout carries only ACP; logs go to stderr. A line a session's process
 writes on stdout that is not ACP, such as a plugin's stray print, goes to
 stderr instead. `rig acp` ends when the editor closes its connection, or on
-SIGTERM, SIGINT or SIGHUP: it closes each session, which stops its turn and
-its tools, and kills what a session that does not end in five seconds left.
+SIGTERM, SIGINT or SIGHUP: it opens no more sessions and closes each one,
+which stops its turn and its tools, answers its open prompt `cancelled`
+after each cut tool call's closing update, and answers every other open
+request; then it kills what a session that does not end in five seconds
+left. A line of more than 64 MiB, either way, ends the input it came on,
+as a closed pipe does. While the editor is behind reading, the sessions'
+work waits for it.
 A session's process that dies (a crash, or `kill -9`) fails its open prompt;
 its tools' processes and MCP servers are killed with it on Linux and macOS,
 as the launcher kills what a crashed agent left (on Windows only the

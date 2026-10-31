@@ -359,7 +359,8 @@ fn finish_reasons_map_to_rig_endings() {
 fn usage_falls_back_to_billed_units() {
     let usage = usage_of(Some(
         &json!({"billed_units": {"input_tokens": 3, "output_tokens": 4}}),
-    ));
+    ))
+    .expect("the counts fit");
     assert_eq!(usage.input_tokens, Some(3));
     assert_eq!(usage.output_tokens, Some(4));
     assert_eq!(usage.total_tokens, Some(7));

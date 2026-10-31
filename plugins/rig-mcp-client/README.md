@@ -50,7 +50,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 
 | Field | Meaning |
 | --- | --- |
-| `command`, `args` | A stdio server: the program rig starts, speaking MCP on its stdin and stdout, in a process group of its own that is killed when the server is stopped, removed or replaced, or rig exits (on Linux and macOS). Its stderr is dropped. |
+| `command`, `args` | A stdio server: the program rig starts, speaking MCP on its stdin and stdout, in a process group of its own that is killed when the server is stopped, removed or replaced, or rig exits (on Linux and macOS). Its stderr is dropped. A message of more than 64 MiB ends the connection, which says so. |
 | `env` | Variables added to its environment. The server gets rig's environment without rig's secrets (API keys); name a key here to give it one. |
 | `cwd` | Its working directory, relative to the project. |
 | `url`, `headers` | A streamable HTTP server, and headers sent with each request. |

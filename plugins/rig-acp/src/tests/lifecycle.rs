@@ -219,6 +219,8 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
     assert!(router.is_some());
 }
 
+/// SIGTERM ends the router, its sessions and their tools, and first
+/// answers the open prompt `cancelled`, after its tool's closing update.
 #[test]
 fn sigterm_ends_the_router_its_sessions_and_their_tools() {
     let place = Place::new("sigterm");
@@ -247,7 +249,19 @@ fn sigterm_ends_the_router_its_sessions_and_their_tools() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(!alive(router) && processes_of(place).is_empty());
-        prompt.block_task().await.ok();
+        let answer = prompt.block_task().await.map(|answer| answer.stop_reason);
+        assert!(
+            matches!(answer, Ok(acp::StopReason::Cancelled)),
+            "{answer:?}"
+        );
+        let steps = tool_steps(driven, &id);
+        let closed = steps.last().is_some_and(|(_, status)| {
+            matches!(
+                status,
+                acp::ToolCallStatus::Failed | acp::ToolCallStatus::Completed
+            )
+        });
+        assert!(closed, "{steps:?}");
     });
     assert!(pid.is_some() && router.is_some());
     assert!(eventually(|| processes_of(place).is_empty()));

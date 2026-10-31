@@ -1,15 +1,35 @@
 //! Incremental SSE and newline-delimited framing of response bytes.
 //! SSE dispatch requires a blank line; incomplete events are not flushed at EOF.
 //! NDJSON permits a final unterminated line through [`NdjsonFramer::finish`].
+//! A framer holds at most its limit ([`FRAME_LIMIT`] unless given another)
+//! plus one byte of a frame: a larger frame is refused as [`TooLarge`].
 //!
 //! ```
 //! use rig_http::http_client::framing::NdjsonFramer;
 //!
 //! let mut framer = NdjsonFramer::new();
-//! assert_eq!(framer.push(b"{}\n").collect::<Vec<_>>(), vec![b"{}".to_vec()]);
+//! assert_eq!(framer.push(b"{}\n").collect::<Vec<_>>(), vec![Ok(b"{}".to_vec())]);
 //! ```
 
 use std::borrow::Cow;
+
+/// The most bytes one frame of a streamed reply may hold: an SSE event's
+/// lines since the last blank line that a framer keeps (its data and any
+/// unfinished line), or an NDJSON line. Far above any real frame, and
+/// below what would exhaust memory.
+pub const FRAME_LIMIT: usize = 64 * 1024 * 1024;
+
+/// A frame, line or input larger than its reader's limit, refused before
+/// the reader's buffer grew past it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("more than {limit} bytes")]
+pub struct TooLarge {
+    /// The most bytes the reader takes.
+    pub limit: usize,
+    /// The bytes it held when it refused: past `limit`, and the whole size
+    /// only when the input ended there.
+    pub asked: usize,
+}
 
 /// How a reply's bytes are split into wire frames.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,7 +56,8 @@ impl Framing {
 
     /// Split a whole reply body into the frames a decoder reads: one per SSE
     /// event with a non-blank `data` field, one per NDJSON line, or the
-    /// whole body.
+    /// whole body. The body is in memory already, so no frame of it is
+    /// refused for its size.
     ///
     /// ```
     /// use rig_http::http_client::framing::{Framing, WireFrame};
@@ -46,13 +67,18 @@ impl Framing {
     /// assert_eq!(frames[1].as_str(), "[DONE]");
     /// ```
     pub fn split(&self, bytes: &[u8]) -> Vec<WireFrame> {
-        let Some(mut framer) = self.framer() else {
-            return (!bytes.is_empty())
-                .then(|| WireFrame::from_bytes(bytes.to_vec()))
-                .into_iter()
-                .collect();
+        let lines = match self {
+            Self::Sse => Lines::Sse(SseFramer::with_limit(usize::MAX)),
+            Self::Ndjson => Lines::Ndjson(NdjsonFramer::with_limit(usize::MAX)),
+            Self::Whole => {
+                return (!bytes.is_empty())
+                    .then(|| WireFrame::from_bytes(bytes.to_vec()))
+                    .into_iter()
+                    .collect();
+            }
         };
-        let mut frames: Vec<WireFrame> = framer.push(bytes).collect();
+        let mut framer = Framer { lines };
+        let mut frames: Vec<WireFrame> = framer.push(bytes).flatten().collect();
         frames.extend(framer.finish());
         frames
     }
@@ -109,17 +135,24 @@ enum Lines {
 }
 
 impl Framer {
-    /// Feed one transport chunk; yields every frame it completed. An SSE
-    /// event whose data is only whitespace is a heartbeat, not a frame.
-    pub fn push(&mut self, chunk: &[u8]) -> impl Iterator<Item = WireFrame> + '_ {
+    /// Feed one transport chunk; yields every frame it completed, then
+    /// [`TooLarge`] when a frame grew past the limit, after which it yields
+    /// nothing. An SSE event whose data is only whitespace is a heartbeat,
+    /// not a frame.
+    pub fn push(&mut self, chunk: &[u8]) -> impl Iterator<Item = Result<WireFrame, TooLarge>> + '_ {
         let (sse, ndjson) = match &mut self.lines {
             Lines::Sse(framer) => (Some(framer.push(chunk)), None),
             Lines::Ndjson(framer) => (None, Some(framer.push(chunk))),
         };
         let events = sse.into_iter().flatten();
-        let events = events.filter(|event| !event.data.trim().is_empty());
-        let lines = ndjson.into_iter().flatten().map(WireFrame::from_bytes);
-        events.map(|event| WireFrame::Text(event.data)).chain(lines)
+        let events = events.filter(|event| {
+            event
+                .as_ref()
+                .map_or(true, |event| !event.data.trim().is_empty())
+        });
+        let events = events.map(|event| event.map(|event| WireFrame::Text(event.data)));
+        let lines = ndjson.into_iter().flatten();
+        events.chain(lines.map(|line| line.map(WireFrame::from_bytes)))
     }
 
     /// The stream ended: NDJSON's unterminated last line. SSE dispatches
@@ -205,8 +238,9 @@ pub struct SseBatch {
 /// The optional leading byte-order mark, which the grammar ignores.
 const BOM: [u8; 3] = [0xef, 0xbb, 0xbf];
 
-/// A push parser for the WHATWG `text/event-stream` grammar.
-#[derive(Debug, Default)]
+/// A push parser for the WHATWG `text/event-stream` grammar, which holds at
+/// most its limit plus one byte of an event ([`TooLarge`]).
+#[derive(Debug)]
 pub struct SseFramer {
     /// Bytes not yet consumed as a complete line.
     buffer: Vec<u8>,
@@ -215,8 +249,8 @@ pub struct SseFramer {
     /// The last line ended at a CR that was the last byte pushed, so an LF
     /// opening the next chunk completes that CRLF.
     after_cr: bool,
-    /// Events completed by the current `push`.
-    ready: Vec<SseEvent>,
+    /// Events completed by the current `push`, and its refusal.
+    ready: Vec<Result<SseEvent, TooLarge>>,
     event_type: String,
     data: String,
     last_event_id: String,
@@ -228,18 +262,91 @@ pub struct SseFramer {
     since_dispatch: usize,
     /// Absolute byte position after the last consumed line or BOM.
     offset: usize,
+    /// The most bytes of an event it holds: its unfinished line and its data.
+    limit: usize,
+    /// Whether it refused an event, after which it reads nothing more.
+    refused: bool,
+}
+
+impl Default for SseFramer {
+    fn default() -> Self {
+        Self::with_limit(FRAME_LIMIT)
+    }
 }
 
 impl SseFramer {
-    /// A framer at the start of a stream.
+    /// A framer at the start of a stream, refusing an event past
+    /// [`FRAME_LIMIT`].
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Feed one transport chunk; yields every event it completed.
-    pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, SseEvent> {
-        self.push_inner(chunk, None);
+    /// A framer at the start of a stream, refusing an event that holds more
+    /// than `limit` bytes.
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            buffer: Vec::new(),
+            scanned: 0,
+            after_cr: false,
+            ready: Vec::new(),
+            event_type: String::new(),
+            data: String::new(),
+            last_event_id: String::new(),
+            retry: None,
+            bom_prefix: 0,
+            bom_done: false,
+            since_dispatch: 0,
+            offset: 0,
+            limit,
+            refused: false,
+        }
+    }
+
+    /// Feed one transport chunk; yields every event it completed, then
+    /// [`TooLarge`] once an event holds more than the limit, after which it
+    /// yields nothing. The chunk goes in by pieces no larger than the room
+    /// left, so the framer never holds more than one byte past the limit.
+    /// An event holds its unfinished line, data, type and its copies of the
+    /// last id; comments and heartbeats hold nothing.
+    pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, Result<SseEvent, TooLarge>> {
+        let mut rest = chunk;
+        while !self.refused && !rest.is_empty() {
+            let room = self.limit.saturating_sub(self.held()).saturating_add(1);
+            let (piece, after) = rest.split_at(room.min(rest.len()));
+            self.push_inner(piece, None);
+            rest = after;
+            if self.held() > self.limit {
+                self.refuse();
+            }
+        }
         self.ready.drain(..)
+    }
+
+    /// The bytes of the current event it holds: its unfinished line, its
+    /// data and type, and the last id once for itself and once for each
+    /// event of this push it was copied into.
+    fn held(&self) -> usize {
+        let ids = self
+            .last_event_id
+            .len()
+            .saturating_mul(self.ready.len() + 1);
+        self.buffer
+            .len()
+            .saturating_add(self.data.len())
+            .saturating_add(self.event_type.len())
+            .saturating_add(ids)
+    }
+
+    /// Refuses the current event, keeping the events before it.
+    fn refuse(&mut self) {
+        let asked = self.held();
+        self.refused = true;
+        self.buffer = Vec::new();
+        self.data = String::new();
+        self.ready.push(Err(TooLarge {
+            limit: self.limit,
+            asked,
+        }));
     }
 
     /// Feed a chunk and retain parsed events with source ranges for recording.
@@ -272,7 +379,7 @@ impl SseFramer {
             });
         }
         self.dispatch();
-        if let Some(event) = self.ready.pop() {
+        if let Some(Ok(event)) = self.ready.pop() {
             batch.events.push(RecordedSseEvent {
                 event,
                 end: self.offset,
@@ -315,7 +422,7 @@ impl SseFramer {
                         .map(|at| start.saturating_add(at)..start.saturating_add(line.len())),
                     field,
                 });
-                if let Some(event) = self.ready.pop() {
+                if let Some(Ok(event)) = self.ready.pop() {
                     batch.events.push(RecordedSseEvent {
                         event,
                         end: self.offset,
@@ -426,53 +533,117 @@ impl SseFramer {
         } else {
             Cow::Owned(std::mem::take(&mut self.event_type))
         };
-        self.ready.push(SseEvent {
+        self.ready.push(Ok(SseEvent {
             event,
             data: std::mem::take(&mut self.data),
             id: self.last_event_id.clone(),
             retry: self.retry.take(),
-        });
+        }));
         self.event_type.clear();
     }
 }
 
 /// Splits nonempty newline-delimited payloads without validating JSON.
 /// A nonempty unterminated last line is available through [`Self::finish`].
-#[derive(Debug, Default)]
+/// A line counts its bytes before its line end, LF or CRLF.
+#[derive(Debug)]
 pub struct NdjsonFramer {
     buffer: Vec<u8>,
     /// How many bytes at the start of `buffer` hold no line end.
     scanned: usize,
-    ready: Vec<Vec<u8>>,
+    ready: Vec<Result<Vec<u8>, TooLarge>>,
+    /// The most bytes of a line it holds.
+    limit: usize,
+    /// Whether it refused the line it reads, whose rest it skips.
+    skipping: bool,
+}
+
+impl Default for NdjsonFramer {
+    fn default() -> Self {
+        Self::with_limit(FRAME_LIMIT)
+    }
 }
 
 impl NdjsonFramer {
-    /// A framer at the start of a stream.
+    /// A framer at the start of a stream, refusing a line past
+    /// [`FRAME_LIMIT`].
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Feed one transport chunk; yields every line it completed. Blank lines
-    /// are not frames.
-    pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, Vec<u8>> {
+    /// A framer at the start of a stream, refusing a line of more than
+    /// `limit` bytes.
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            buffer: Vec::new(),
+            scanned: 0,
+            ready: Vec::new(),
+            limit,
+            skipping: false,
+        }
+    }
+
+    /// Feed one transport chunk; yields every line it completed, and
+    /// [`TooLarge`] in the place of a line longer than the limit, whose
+    /// rest up to its LF it skips. Blank lines are not frames. The chunk
+    /// goes in by pieces no larger than the room left, so the framer never
+    /// holds more than one byte past the limit.
+    pub fn push(&mut self, chunk: &[u8]) -> std::vec::Drain<'_, Result<Vec<u8>, TooLarge>> {
+        let mut rest = chunk;
+        while !rest.is_empty() {
+            if self.skipping {
+                let Some(end) = rest.iter().position(|byte| *byte == b'\n') else {
+                    break;
+                };
+                self.skipping = false;
+                rest = rest.get(end + 1..).unwrap_or_default();
+                continue;
+            }
+            let room = self.limit.saturating_sub(self.held()).saturating_add(1);
+            let (piece, after) = rest.split_at(room.min(rest.len()));
+            self.lines(piece);
+            rest = after;
+            if self.held() > self.limit {
+                let asked = self.held();
+                self.buffer = Vec::new();
+                self.scanned = 0;
+                self.skipping = true;
+                self.ready.push(Err(TooLarge {
+                    limit: self.limit,
+                    asked,
+                }));
+            }
+        }
+        self.ready.drain(..)
+    }
+
+    /// The bytes of the line it holds; a CR at its end may be half of its
+    /// line end, so it does not count yet.
+    fn held(&self) -> usize {
+        let cr = self.buffer.last() == Some(&b'\r');
+        self.buffer.len() - usize::from(cr)
+    }
+
+    /// Takes the lines `chunk` completes, keeping its unterminated end.
+    fn lines(&mut self, chunk: &[u8]) {
         self.buffer.extend_from_slice(chunk);
         let mut rest = self.buffer.as_slice();
         while let Some((line, end)) = split_line(rest, self.scanned, |byte| *byte == b'\n') {
             self.scanned = 0;
             let line = line.strip_suffix(b"\r").unwrap_or(line);
             if !line.is_empty() {
-                self.ready.push(line.to_vec());
+                self.ready.push(Ok(line.to_vec()));
             }
             rest = end.get(1..).unwrap_or_default();
         }
         self.scanned = rest.len();
         let consumed = self.buffer.len() - rest.len();
         self.buffer.drain(..consumed);
-        self.ready.drain(..)
     }
 
-    /// The unterminated last line, if the stream ended with a nonempty one.
-    /// A CR ending it is part of the line end, as in [`Self::push`].
+    /// The unterminated last line, if the stream ended with a nonempty one,
+    /// none after a refused one. A CR ending it is part of the line end, as
+    /// in [`Self::push`].
     pub fn finish(&mut self) -> Option<Vec<u8>> {
         let mut line = std::mem::take(&mut self.buffer);
         if line.last() == Some(&b'\r') {

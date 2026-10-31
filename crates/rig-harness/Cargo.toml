@@ -16,6 +16,8 @@ workspace = true
 trace = ["bevy_ecs/trace"]
 
 [dependencies]
+# The front's output queue and line readers.
+async-channel = { workspace = true }
 # `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
 bevy = { workspace = true }
 bevy_app = { workspace = true }
@@ -26,6 +28,7 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
+futures = { workspace = true }
 # The launcher protocol, shared with the `rig` binary.
 rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.

@@ -486,3 +486,24 @@ fn a_call_reads_arguments_a_delta_sends_as_json_or_omits() {
         .collect();
     assert_eq!(arguments, [json!({"x": 17})]);
 }
+
+/// Counts whose sum passes `u64::MAX` are an error, without a panic or a
+/// wrapped total, on either side and in the total.
+#[test]
+fn usage_counts_that_overflow_are_an_error() {
+    for usage in [
+        json!({"total_input_tokens": u64::MAX, "total_tool_use_tokens": 1}),
+        json!({"total_output_tokens": u64::MAX, "total_thought_tokens": 1}),
+        json!({"total_input_tokens": u64::MAX, "total_output_tokens": 1}),
+    ] {
+        let failed = usage_of(&usage);
+        assert!(
+            failed
+                .as_ref()
+                .is_err_and(|error| error.to_string().contains("overflow")),
+            "{failed:?}"
+        );
+    }
+    let fits = usage_of(&json!({"total_input_tokens": 2, "total_output_tokens": 3}));
+    assert_eq!(fits.map(|usage| usage.total_tokens).ok(), Some(Some(5)));
+}
