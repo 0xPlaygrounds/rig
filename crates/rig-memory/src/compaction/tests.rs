@@ -68,6 +68,122 @@ fn a_cut_never_separates_a_call_from_its_result() {
     assert_eq!(cut_at(&messages, 0, usize::MAX, true, &counter), Some(3));
 }
 
+fn compact_across_system_message(reason: CompactReason) {
+    let tool_result = result("1", &"valuable result ".repeat(10_000));
+    let mut conversation = Conversation::from_messages(vec![
+        Message::user("Check the status"),
+        call("1", "read", "a.rs"),
+        Message::system("Keep following the user's instructions"),
+        tool_result.clone(),
+    ]);
+    assert!(pairing::validate(conversation.messages()).is_ok());
+    let at = CompactionPolicy::default().cut(conversation.messages(), 0, &reason, None);
+    assert_eq!(at, Some(1), "{reason:?}");
+    let keep_from = at.and_then(|at| conversation.id(at));
+    assert!(keep_from.is_some());
+    let state = SummaryState {
+        summary: "The user asked for the status.".to_owned(),
+        ..SummaryState::default()
+    };
+    assert!(apply_summary(&mut conversation, keep_from, &state).is_some());
+    assert!(pairing::validate(conversation.messages()).is_ok());
+    assert!(
+        conversation
+            .messages()
+            .iter()
+            .any(|message| message.as_ref() == &tool_result)
+    );
+}
+
+#[test]
+fn asked_compaction_keeps_results_across_system_messages() {
+    compact_across_system_message(CompactReason::Asked {
+        focus: String::new(),
+    });
+}
+
+#[test]
+fn threshold_compaction_keeps_results_across_system_messages() {
+    compact_across_system_message(CompactReason::Threshold);
+}
+
+#[test]
+fn overflow_compaction_keeps_results_across_system_messages() {
+    compact_across_system_message(CompactReason::Overflow);
+}
+
+#[test]
+fn compaction_preserves_safe_system_boundaries() {
+    for (system_at, expected) in [(None, 1), (Some(1), 2), (Some(3), 3)] {
+        let mut messages = vec![
+            Message::user("start"),
+            call("1", "read", "a.rs"),
+            result("1", "ok"),
+        ];
+        if let Some(at) = system_at {
+            messages.insert(at, Message::system("instruction"));
+        }
+        let messages: Vec<_> = messages.into_iter().map(Arc::new).collect();
+        assert!(pairing::validate(&messages).is_ok());
+        assert_eq!(
+            cut_at(&messages, 0, 0, true, &HeuristicTokenCounter::default()),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn compaction_keeps_split_results_and_repeated_ids_together() {
+    for ids in [["1", "2"], ["same", "same"]] {
+        let mut assistant = AssistantMessage::new(Vec::new());
+        for id in ids {
+            if let Message::Assistant(reply) = call(id, "read", "a.rs") {
+                assistant.content.extend(reply.content);
+            }
+        }
+        let mut messages = vec![
+            Message::user("earlier summary"),
+            Message::user("start"),
+            Message::Assistant(assistant),
+        ];
+        for id in ids {
+            messages.push(Message::system("instruction"));
+            messages.push(result(id, "ok"));
+        }
+        let messages: Vec<_> = messages.into_iter().map(Arc::new).collect();
+        assert!(pairing::validate(&messages).is_ok());
+        assert_eq!(
+            cut_at(&messages, 1, 0, true, &HeuristicTokenCounter::default()),
+            Some(2)
+        );
+        assert_eq!(
+            cut_at(
+                &messages,
+                1,
+                usize::MAX,
+                true,
+                &HeuristicTokenCounter::default()
+            ),
+            Some(2)
+        );
+    }
+}
+
+#[test]
+fn compaction_leaves_an_indivisible_tool_exchange_alone() {
+    let messages = [
+        call("1", "read", "a.rs"),
+        Message::system("instruction"),
+        result("1", "ok"),
+    ]
+    .map(Arc::new);
+    assert!(pairing::validate(&messages).is_ok());
+    assert_eq!(
+        cut_at(&messages, 0, 0, true, &HeuristicTokenCounter::default()),
+        None
+    );
+}
+
 fn spec(window: u32) -> Option<ModelSpec> {
     rig_core::providers::registry::ProviderId::catalog("ollama")
         .map(|vendor| ModelSpec::new(vendor, "test").with_context_window(window))
