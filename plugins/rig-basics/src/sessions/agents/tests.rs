@@ -8,7 +8,7 @@ use rig_ecs::model::{Connection, ModelChoice};
 use rig_ecs::prelude::{Agent, AgentId, Conversation, MessageId, TurnOf, TurnOutcome};
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::commands::RunCommand;
-use rig_harness::pick::Picker;
+use rig_harness::pick::{PickPlugin, Picker};
 use rig_harness::prelude::{MainAgentQuery, ShownAgent, main_agent};
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
@@ -99,6 +99,32 @@ fn agents_marks_the_current_agent_and_forks_and_follows_their_state() {
     assert_eq!(labels(&mut app), lines(["", " · current"], "working"));
     app.world_mut().despawn(turn);
     assert_eq!(labels(&mut app), lines(["", " · current"], "idle"));
+}
+
+/// When a line above the selected one leaves an open `/agents`, such as a
+/// helper's that retired, Enter shows the agent that is selected on screen.
+#[test]
+fn enter_in_agents_shows_the_agent_selected_after_a_line_above_left() {
+    let model = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let (mut app, _wakes) = on(&MemoryStore::default(), &model);
+    app.insert_resource(TuiTestScreen::new(100, 30));
+    tui_view(&mut app);
+    app.add_plugins((PickPlugin, AgentsPlugin));
+    let ids = [1, 2, 3, 4].map(|n| AgentId(format!("0000000{n}-0000-4000-8000-000000000000")));
+    let agents = ids.map(|id| app.world_mut().spawn((Agent, Name::new("agent"), id)).id());
+    app.finish();
+    app.cleanup();
+    app.update();
+    let [first, gone, selected, _] = agents;
+    app.world_mut().trigger(ShowAgent { entity: first });
+    app.world_mut()
+        .trigger(RunCommand::new(first, "agents".to_owned()));
+    app.update();
+    press(&mut app, "down down");
+    app.world_mut().despawn(gone);
+    app.update();
+    press(&mut app, "enter");
+    assert_eq!(shown(&app), Some(selected));
 }
 
 /// Sends `text` to `agent` and runs frames until its turn, the `n`th of

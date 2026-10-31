@@ -52,11 +52,13 @@ impl Plugin for AgentsPlugin {
                 "Pick an agent to show; /agents <id> shows it",
                 agents,
             )
-            .add_observer(forked)
-            .add_systems(
-                Last,
-                (relist.run_if(any_with_component::<AgentList>)).after(CurrentAgentSystems),
-            );
+            .add_observer(forked);
+        let relist = relist
+            .run_if(any_with_component::<AgentList>)
+            .after(CurrentAgentSystems);
+        #[cfg(feature = "tui")]
+        let relist = relist.before(rig_tui::ChoiceSystems);
+        app.add_systems(Update, relist);
         #[cfg(feature = "tui")]
         rewind::add(app);
     }
@@ -312,7 +314,8 @@ fn agents(
 }
 
 /// Keeps the lines of an open `/agents` picker current, such as an agent's
-/// state once its turn ended.
+/// state once its turn ended, before the terminal view finds its
+/// selection again.
 fn relist(mut lists: Query<&mut Picker, With<AgentList>>, agents: Agents) {
     for mut picker in &mut lists {
         let (items, _) = agents.items(picker.agent);

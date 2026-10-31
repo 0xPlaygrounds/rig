@@ -10,8 +10,8 @@ use crate::session::{Fold, Folded, fold, log_lines, read_header};
 use crate::{CURRENT, SessionError, Store};
 
 /// The conversation of `agent` (the main agent when `None`, found from the
-/// logs' headers alone) of the session in `store`, folded from that
-/// agent's log only, writing nothing. Returns the agent's id and its
+/// session's own log and the agent logs' headers) of the session in
+/// `store`, folded from that agent's log only, writing nothing. Returns the agent's id and its
 /// conversation, with ids and made-times kept.
 ///
 /// # Errors
