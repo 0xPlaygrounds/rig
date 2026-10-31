@@ -619,14 +619,27 @@ fn a_stopped_reply_ends_in_a_stop_at_once_and_after_a_reload() {
 #[test]
 fn a_call_a_stop_cut_while_it_streamed_says_it_never_ran_at_once_and_after_a_reload() {
     let (mut app, agent) = view_app();
-    let Ok(write) = ToolName::new("write") else {
+    let (Ok(read), Ok(write)) = (ToolName::new("read"), ToolName::new("write")) else {
         return;
     };
     say(&mut app, agent, Message::user("write big.py"));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.open_turn();
     }
+    // A call whose arguments ended, then one still streaming them.
     let mut cut = Partial::default();
+    let ended = rig_core::streaming::Part::new(1);
+    cut.follow(&StreamEvent::Start {
+        part: ended,
+        kind: PartKind::ToolCall,
+        name: Some(read.clone()),
+    });
+    let done = ToolCall::from_wire("r1", ToolFunction::new(read, json!({ "path": "a.md" })));
+    let content = AssistantContent::ToolCall(done);
+    cut.follow(&StreamEvent::End {
+        part: ended,
+        content,
+    });
     let part = rig_core::streaming::Part::new(0);
     cut.follow(&StreamEvent::Start {
         part,
@@ -656,6 +669,11 @@ fn a_call_a_stop_cut_while_it_streamed_says_it_never_ran_at_once_and_after_a_rel
         assert!(
             header
                 .is_some_and(|header| header.contains("· stopped while it streamed; nothing ran")),
+            "{lines:#?}"
+        );
+        let read = lines.iter().find(|line| line.starts_with(" read"));
+        assert!(
+            read.is_some_and(|read| read.contains("· stopped before it ran")),
             "{lines:#?}"
         );
         assert!(reload(&mut app, agent));

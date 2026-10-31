@@ -226,13 +226,15 @@ pub(crate) fn replay(
         }
     }
     // Results answer the calls waiting with their id in call order, one
-    // each, as rig pairs them. A message saved without an id has none to
-    // give its calls: they are numbered apart.
+    // each, as rig pairs them: a failed or stopped reply's calls wait for
+    // none. A message saved without an id has none to give its calls: they
+    // are numbered apart.
     let (mut calls, mut waiting, mut results) = (Vec::new(), HashMap::new(), HashMap::new());
     let mut unnumbered = 0;
     for (id, message) in &entries {
         match &**message {
             message::Message::Assistant(reply) => {
+                let ran = !reply.stop.as_ref().is_some_and(StopReason::is_failure);
                 for (n, call) in calls_of(reply).enumerate() {
                     let acp_id = match id {
                         Some(id) => call_id(agent, *id, n),
@@ -241,8 +243,11 @@ pub(crate) fn replay(
                             format!("{agent}/-/{unnumbered}")
                         }
                     };
-                    let queue: &mut VecDeque<String> = waiting.entry(call.id.clone()).or_default();
-                    queue.push_back(acp_id.clone());
+                    if ran {
+                        let queue: &mut VecDeque<String> =
+                            waiting.entry(call.id.clone()).or_default();
+                        queue.push_back(acp_id.clone());
+                    }
                     calls.push(acp_id);
                 }
             }

@@ -550,17 +550,32 @@ fn the_log_holds_what_each_summary_first_replaced() {
     );
 }
 
-/// A summary reads a stopped reply's call as one that never ran.
+/// A summary reads a stopped reply's call that no result answers as one
+/// that never ran.
 #[test]
 fn a_stopped_replys_call_is_summarized_as_never_run() {
-    let mut stopped = call("cut", "write", "big.py");
-    if let Message::Assistant(reply) = &mut stopped {
-        reply.stop = Some(StopReason::Aborted("stopped".to_owned()));
-    }
-    let messages = [call("ran", "read", "a.rs"), result("ran", "ok"), stopped].map(Arc::new);
+    let stopped = |id: &str, path: &str| {
+        let mut stopped = call(id, "write", path);
+        if let Message::Assistant(reply) = &mut stopped {
+            reply.stop = Some(StopReason::Aborted("stopped".to_owned()));
+        }
+        stopped
+    };
+    let messages = [
+        call("ran", "read", "a.rs"),
+        result("ran", "ok"),
+        stopped("answered", "b.rs"),
+        result("answered", "partly"),
+        stopped("cut", "big.py"),
+    ]
+    .map(Arc::new);
     let text = Summarizer::default().serialize(&messages);
     assert!(
         text.contains(r#"[Assistant tool call]: read({"path":"a.rs"})"#),
+        "{text}"
+    );
+    assert!(
+        text.contains(r#"[Assistant tool call]: write({"path":"b.rs"})"#),
         "{text}"
     );
     assert!(

@@ -240,8 +240,8 @@ pub struct Refused;
 /// before any front takes the terminal, and in the launcher's
 /// [`RunDir::refusal`], keeps the run out of its session's directory
 /// (`leave_session`), so the launcher names the run's own log, and exits
-/// with code 2 at the end of the first frame. Only the first refusal is
-/// said.
+/// with [`REFUSED_EXIT_CODE`] at the end of the first frame. Only the
+/// first refusal is said.
 pub(crate) fn refuse(app: &mut App, why: String) {
     if app.world().contains_resource::<Refused>() {
         return;

@@ -568,8 +568,9 @@ impl Stopper<'_, '_> {
             Err(_) => (None, None),
         };
         let of_turn = || calls.into_iter().flat_map(Calls::iter);
-        // A call a plugin started before its reply ended is a call of the
-        // turn, answered below; the rest of what streamed never ran.
+        // A call a plugin started before its reply ended is cancelled below
+        // with the turn, and neither it nor a result is kept; the rest of
+        // what streamed never ran.
         let started: Vec<&CallId> = self
             .replies
             .iter_many(of_turn())
