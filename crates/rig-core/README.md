@@ -133,7 +133,7 @@ ID callbacks accept closures that capture and mutate application state.
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.46.0", features = ["lancedb", "fastembed"] }
 ```
 
 - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)

@@ -24,8 +24,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-sqlite = "0.2.6"
-rig-core = "0.37.0"
+rig-sqlite = "0.46.0"
+rig-core = "0.46.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ```
@@ -46,7 +46,7 @@ to an agent with `AgentBuilder::memory`.
 
 ```toml
 [dependencies]
-rig-sqlite = { version = "0.46.0-rc.1", features = ["memory"] }
+rig-sqlite = { version = "0.46.0", features = ["memory"] }
 ```
 
 `SqliteSessionStore::open` makes three tables when they are missing,

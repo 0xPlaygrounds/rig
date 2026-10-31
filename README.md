@@ -146,7 +146,7 @@ crate behind a feature.
 ### Integrations
 
 ```toml
-rig = { version = "0.44.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.46.0", features = ["lancedb", "fastembed"] }
 ```
 
 | Integration | Crate | Feature | Module path |

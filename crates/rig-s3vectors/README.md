@@ -5,8 +5,8 @@ This crate integrates AWS S3Vectors into Rig, allowing you to easily use RAG wit
 
 ```toml
 [dependencies]
-rig-s3vectors = "0.2.5"
-rig-core = "0.36.0"
+rig-s3vectors = "0.46.0"
+rig-core = "0.46.0"
 ```
 
 You can also run `cargo add rig-s3vectors rig-core` to add the latest published

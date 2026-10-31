@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
+
+### Added
+
+- *(acp)* rig acp, an ACP v1 front with a rig process per session, on rig-mcp-client ([#2948](https://github.com/0xPlaygrounds/rig/pull/2948)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tools)* [**breaking**] shell commands run to their end, and a remote command stops with its call ([#2874](https://github.com/0xPlaygrounds/rig/pull/2874)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(agent)* [**breaking**] headless runs hear SIGTERM in any setup, stop when nobody reads, and leave no tool processes behind ([#2942](https://github.com/0xPlaygrounds/rig/pull/2942)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-tools)* [**breaking**] a tool path starting with ~ is in the home directory ([#2940](https://github.com/0xPlaygrounds/rig/pull/2940)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] read returns images, long lines can be read on, a clearer timeout hint ([#2913](https://github.com/0xPlaygrounds/rig/pull/2913)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tui)* [**breaking**] prompt history per project, the shown conversation's prompts first ([#2916](https://github.com/0xPlaygrounds/rig/pull/2916)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] a failed message goes back into the input ([#2895](https://github.com/0xPlaygrounds/rig/pull/2895)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(corpus, tools, xtask)* shared policies, typed lookups ([#2898](https://github.com/0xPlaygrounds/rig/pull/2898)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-tools-v0.44.0...rig-tools-v0.45.0) - 2026-10-19
 
 ### Added

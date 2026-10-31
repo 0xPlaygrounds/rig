@@ -21,7 +21,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 Defaults are empty. An effect-log-only consumer uses:
 
 ```toml
-rig-cassette = { version = "0.42.0", default-features = false }
+rig-cassette = { version = "0.46.0", default-features = false }
 ```
 
 | features | public modules | additional normal dependencies |

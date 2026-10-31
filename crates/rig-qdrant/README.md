@@ -5,8 +5,8 @@ Vector store index integration for [Qdrant](https://qdrant.tech/). This integrat
 
 ```toml
 [dependencies]
-rig-qdrant = "0.2.5"
-rig-core = "0.36.0"
+rig-qdrant = "0.46.0"
+rig-core = "0.46.0"
 ```
 
 The root `rig` facade also exposes this crate behind the `qdrant` feature.

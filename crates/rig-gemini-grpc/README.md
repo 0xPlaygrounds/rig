@@ -8,8 +8,8 @@ Add the companion crate to your `Cargo.toml`, along with the rig-core crate:
 
 ```toml
 [dependencies]
-rig-gemini-grpc = "0.44.0"
-rig-core = "0.44.0"
+rig-gemini-grpc = "0.46.0"
+rig-core = "0.46.0"
 ```
 
 You can also run `cargo add rig-gemini-grpc rig-core` to add the most recent versions of the dependencies to your project, or enable the `rig` facade's `gemini-grpc` feature and use `rig::gemini_grpc`.

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
+
+### Added
+
+- *(sqlite, postgres)* database-backed rig-memory session stores ([#2890](https://github.com/0xPlaygrounds/rig/pull/2890)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(agent)* [**breaking**] Esc keeps the partial reply, /compact keeps history, accurate summaries, ctx ? after compaction ([#2918](https://github.com/0xPlaygrounds/rig/pull/2918)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tui, harness)* one Ctrl+D quits; a session with no messages isn't saved ([#2909](https://github.com/0xPlaygrounds/rig/pull/2909)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] no self-extension prompt, a resume hint on exit, a session migration chain ([#2899](https://github.com/0xPlaygrounds/rig/pull/2899)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* a 64k output budget, unknown-tool feedback, honest failed summaries, ordered headless JSON ([#2894](https://github.com/0xPlaygrounds/rig/pull/2894)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(catalog, compaction)* fit models' input limits with simpler overflow recovery ([#2880](https://github.com/0xPlaygrounds/rig/pull/2880)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.44.0...rig-memory-v0.45.0) - 2026-10-19
 
 ### Added

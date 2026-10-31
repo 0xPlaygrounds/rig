@@ -12,7 +12,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false }
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false }
 futures = { workspace = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }
@@ -30,7 +30,7 @@ protoc-bin-vendored = "3"
 rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
 anyhow = { workspace = true }
 rig-agent.workspace = true
-rig-core = { path = "../rig-core", version = "0.46.0-rc.1", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false, features = [
     "test-utils",
 ] }
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
