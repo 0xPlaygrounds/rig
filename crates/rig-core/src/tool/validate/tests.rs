@@ -115,6 +115,28 @@ fn problems_are_reported_at_their_pointers() {
 }
 
 #[test]
+fn an_integer_is_a_whole_number_a_64_bit_integer_holds() {
+    let offset =
+        json!({"type": "object", "properties": {"offset": {"type": "integer", "minimum": 0}}});
+    for whole in [json!(1), json!(1.0), json!(30.0), json!(1e19)] {
+        assert_eq!(
+            problems(&offset, &json!({"offset": whole})),
+            Vec::<String>::new()
+        );
+    }
+    let refused = |offset_value: Value| problems(&offset, &json!({"offset": offset_value}));
+    assert_eq!(
+        refused(json!(1.5)),
+        ["/offset: expected an integer, got a number with a fraction"]
+    );
+    assert_eq!(refused(json!(-1)), ["/offset: expected at least 0, got -1"]);
+    assert_eq!(
+        refused(json!(1e30)),
+        ["/offset: expected an integer, got a number too large for an integer"]
+    );
+}
+
+#[test]
 fn combinators_and_local_refs_are_checked_and_a_remote_ref_accepts() {
     let either = json!({"anyOf": [{"type": "string"}, {"type": "integer"}]});
     assert_eq!(validate(&either, &json!(3)), Ok(()));
