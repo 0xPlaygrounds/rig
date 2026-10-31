@@ -26,9 +26,9 @@ use serde::de::DeserializeOwned;
 use serde_json::{Number, Value};
 
 /// `args` as the arguments type `A`. Arguments that do not decode as sent
-/// are decoded once more with each integral float as its integer, so
-/// arguments that decode as sent reach `A` exactly so, every float in them
-/// a float.
+/// are decoded once more with each integral float in them as its integer,
+/// one bound for a `serde_json::Value` or `f64` field too; arguments that
+/// decode as sent reach `A` exactly so, every float in them a float.
 ///
 /// # Errors
 ///
@@ -36,15 +36,6 @@ use serde_json::{Number, Value};
 /// sent.
 pub fn decode_args<A: DeserializeOwned>(args: &Value) -> Result<A, serde_json::Error> {
     A::deserialize(args).or_else(|error| as_integers(args).ok_or(error))
-}
-
-/// [`decode_args`] for arguments as JSON text: decoded straight from the
-/// text first, so they decode exactly as `serde_json` reads them.
-pub(crate) fn decode_text<A: DeserializeOwned>(args: &str) -> Result<A, serde_json::Error> {
-    serde_json::from_str(args).or_else(|error| match serde_json::from_str::<Value>(args) {
-        Ok(value) => as_integers(&value).ok_or(error),
-        Err(_) => Err(error),
-    })
 }
 
 /// `args` decoded with each integral float as its integer; `None` when it

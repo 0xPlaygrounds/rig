@@ -174,10 +174,12 @@ fn every_matching_line_is_found_whatever_the_line_ends() {
 /// A match past the 300 characters a hit shows of its line says where it
 /// is, with the command that shows it, on a line of 350 characters and of
 /// 4,000.
+#[cfg(unix)]
 #[test]
 fn a_match_past_the_cut_says_where_it_is() {
     let dir = std::env::temp_dir().join(format!("rig-tools-wide-hit-{}", std::process::id()));
     std::fs::create_dir_all(&dir).ok();
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     let file = dir.join("wide.txt");
     let short = format!("{}NEEDLE{}", "0".repeat(340), "0".repeat(4));
     let long = format!("{}NEEDLE", "0".repeat(4000));

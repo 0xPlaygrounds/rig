@@ -36,6 +36,16 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         return;
     };
     let dir = project.parent().unwrap_or(&project).to_path_buf();
+    // A protected file the search cannot read, and so would name.
+    let locked = project.join("keys/locked.txt");
+    std::fs::write(&locked, "public\n").ok();
+    #[cfg(unix)]
+    let mode = |mode| {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(mode)).ok()
+    };
+    #[cfg(unix)]
+    mode(0o000);
     // The built-in tools resolve paths against the working directory.
     assert!(std::env::set_current_dir(&project).is_ok());
     let store = MemoryStore::default();
@@ -58,6 +68,7 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
             json!({ "path": "../outside.txt", "content": "x" }),
         ),
         calls("3", "search", json!({ "pattern": "KEY" })),
+        calls("4", "search", json!({ "pattern": "public" })),
         reply("done"),
     ]);
     let world = app.world_mut();
@@ -85,9 +96,11 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         .map(|request| serde_json::to_string(request).unwrap_or_default())
         .collect();
     let outside = dir.join("outside.txt").exists();
+    #[cfg(unix)]
+    mode(0o644);
     std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(sent.len(), 4, "{sent:?}");
-    let [_, after_read, after_write, after_search] = sent.as_slice() else {
+    assert_eq!(sent.len(), 5, "{sent:?}");
+    let [_, after_read, after_write, after_search, after_public] = sent.as_slice() else {
         return;
     };
     assert!(after_read.contains("read-protected"), "{after_read}");
@@ -103,6 +116,12 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     assert!(!after_search.contains(".env:"));
     assert!(!after_search.contains("keys/api.txt"));
     assert!(after_search.contains("1 match in protected files hidden"));
+    // A search with no protected match does not name the protected file it
+    // could not read either.
+    assert!(
+        after_public.contains("notes.txt:1: KEY=public") && !after_public.contains("locked"),
+        "{after_public}"
+    );
     let counts = app.world().resource::<PathGuardCounts>();
     assert_eq!(counts.blocked.get("deny_read .env*"), Some(&1));
     assert_eq!(

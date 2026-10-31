@@ -105,3 +105,35 @@ fn a_missing_path_is_not_found() {
         Some(ToolErrorKind::NotFound)
     );
 }
+
+/// A directory a listing could not read is named, so its files do not
+/// read as absent, and a listing that found nothing it could read says so.
+#[cfg(unix)]
+#[test]
+fn a_directory_a_listing_could_not_read_is_named() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::env::temp_dir().join(format!("rig-tools-list-unread-{}", std::process::id()));
+    let closed = dir.join("closed");
+    std::fs::create_dir_all(&closed).ok();
+    std::fs::write(closed.join("inner.txt"), "x").ok();
+    std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o000)).ok();
+    // One who may read anything, such as root, sees no failure to name.
+    let hidden = std::fs::read_dir(&closed).is_err();
+    let list = List::default();
+    let mut context = ToolContext::new();
+    let args = ListArgs::new(dir.to_string_lossy());
+    let text = futures::executor::block_on(Tool::call(&list, &mut context, args));
+    std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755)).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    if !hidden {
+        return;
+    }
+    let text = text.unwrap_or_default();
+    assert!(
+        text.starts_with(
+            "No files in the directories read.\n[could not read 1 path, so what is in them is \
+             not listed: closed (Permission denied (os error 13))]"
+        ),
+        "{text}"
+    );
+}

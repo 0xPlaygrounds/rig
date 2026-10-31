@@ -701,7 +701,8 @@ impl Workspace for Remote {
             }
         };
         let script = format!(
-            "r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; cd \"$r\" || exit {NOT_FOUND}; \
+            "{GONE}; r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; \
+             [ -e \"$r\" ] || ! gone \"$r\" || exit {NOT_FOUND}; cd \"$r\" || exit 1; \
              if {git}; then git ls-files -z -co --exclude-standard; \
              else find . -type f -print0; fi",
             quote_path(root)
@@ -1034,7 +1035,7 @@ fn quote_path(path: &Path) -> String {
 fn hidden() -> io::Error {
     io::Error::new(
         ErrorKind::PermissionDenied,
-        "a directory it is in may not be read there",
+        "a directory it is in may not be searched there",
     )
 }
 

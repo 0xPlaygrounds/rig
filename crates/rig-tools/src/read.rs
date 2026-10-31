@@ -290,25 +290,31 @@ impl Tool for Read {
                 }
             }
             let (first, limit) = args.span();
-            let lines = workspace
+            let excerpt = workspace
                 .excerpt(&path, first, limit)
                 .map_err(|error| text_error(&shown, error))?;
-            let asked = lines.text.lines().take(limit).collect();
-            let at = Some(&*shown);
-            let (output, shown_lines) =
-                show(asked, first, lines.total, MAX_BYTES, at, lines.endings);
-            let hash = lines.hash;
+            let asked = excerpt.text.lines().take(limit).collect();
+            let endings = excerpt.endings;
+            let (output, lines) = show(
+                asked,
+                first,
+                excerpt.total,
+                MAX_BYTES,
+                Some(&shown),
+                endings,
+            );
+            let hash = excerpt.hash;
             // A read that got the whole file leaves its text for an edit.
-            let whole = lines
+            let whole = excerpt
                 .whole
                 .as_deref()
-                .or((first == 1 && lines.total <= limit).then_some(lines.text.as_str()))
+                .or((first == 1 && excerpt.total <= limit).then_some(excerpt.text.as_str()))
                 .filter(|whole| content_hash(whole.as_bytes()) == hash);
             match whole {
                 Some(whole) => seen.saw_whole(&path, whole),
                 None => seen.saw(&path, hash.clone()),
             }
-            let read = FileRead::new(shown, hash).with_lines(shown_lines);
+            let read = FileRead::new(shown, hash).with_lines(lines);
             Ok::<_, ToolExecutionError>((ToolOutput::text(output), read))
         })
         .await?;

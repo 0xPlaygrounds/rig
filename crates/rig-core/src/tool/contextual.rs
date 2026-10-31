@@ -111,7 +111,11 @@ pub(crate) fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
 where
     A: serde::de::DeserializeOwned,
 {
-    match crate::tool::decode::decode_text(args) {
+    // A call's arguments are a JSON object by the time a tool sees them
+    // (`ToolFunction::arguments`), so reading them as a `Value` first loses
+    // nothing they had.
+    let decoded = serde_json::from_str(args).and_then(|value| crate::tool::decode_args(&value));
+    match decoded {
         Ok(parsed) => Ok(parsed),
         Err(original) if args.trim() == "null" => serde_json::from_str("{}").map_err(|_| {
             ToolExecutionError::invalid_args(format!("failed to parse tool arguments: {original}"))

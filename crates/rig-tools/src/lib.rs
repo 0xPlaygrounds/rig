@@ -173,6 +173,9 @@ pub struct Excerpt<'l> {
     kept: &'l str,
     bytes: usize,
     span: Option<Range<usize>>,
+    /// Bytes before the line's text in the file, such as a byte-order
+    /// mark: the positions a mark names count them.
+    before: usize,
 }
 
 /// [`Excerpt`] of `line` for `span`, its byte range (`None`: no part in
@@ -184,13 +187,10 @@ pub fn excerpt(line: &str, span: Option<Range<usize>>, limit: usize) -> Excerpt<
 /// Where a line is, for a command that shows part of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Source<'a> {
-    /// The file, quoted for `sh` ([`shell_path`]).
+    /// The file, quoted for `sh`.
     pub path: &'a str,
     /// The line's number, from 1.
     pub line: usize,
-    /// The bytes before the line's text in that line of the file, such as
-    /// a byte-order mark: byte positions in it are shifted by them.
-    pub before: usize,
 }
 
 impl<'l> Excerpt<'l> {
@@ -206,7 +206,18 @@ impl<'l> Excerpt<'l> {
             Some((end, _)) => start.get(..end).unwrap_or(start),
             None => start,
         };
-        Self { kept, bytes, span }
+        Self {
+            kept,
+            bytes,
+            span,
+            before: 0,
+        }
+    }
+
+    /// The same excerpt of a line that has `before` bytes before its text
+    /// in the file, such as a byte-order mark before line 1.
+    pub fn after(self, before: usize) -> Self {
+        Self { before, ..self }
     }
 
     /// The start of the line shown: all of it unless it was cut.
@@ -231,7 +242,7 @@ impl<'l> Excerpt<'l> {
             Some(span) if span.end > kept || (span.is_empty() && span.start >= kept) => span,
             _ => return CUT_MARK.to_owned(),
         };
-        let shift = source.map_or(0, |source| source.before);
+        let shift = self.before;
         let at = match span.is_empty() {
             true => format!("after byte {}", span.start + shift),
             false => format!("at bytes {}-{}", span.start + shift + 1, span.end + shift),

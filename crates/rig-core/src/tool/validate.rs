@@ -113,7 +113,11 @@ impl<'s> Validator<'s> {
         {
             problems.push(problem(
                 at,
-                format!("expected {}, got {}", expected(types), kind(value)),
+                format!(
+                    "expected {}, got {}",
+                    expected(types),
+                    got(names_integer(types), value)
+                ),
             ));
             return problems;
         }
@@ -291,10 +295,15 @@ fn closest(
         })
         .collect();
     if let Some(types) = types.filter(|types| !types.is_empty()) {
+        let integer = types.iter().any(|types| names_integer(types));
         let names: Vec<String> = types.into_iter().map(expected).collect();
         return vec![problem(
             at,
-            format!("expected {}, got {}", names.join(" or "), kind(value)),
+            format!(
+                "expected {}, got {}",
+                names.join(" or "),
+                got(integer, value)
+            ),
         )];
     }
     results
@@ -402,15 +411,36 @@ fn expected(types: &Value) -> String {
     }
 }
 
+/// Whether `types` (a name or a list of them) names `integer`.
+fn names_integer(types: &Value) -> bool {
+    match types {
+        Value::String(name) => name == "integer",
+        Value::Array(names) => names.iter().any(|name| name == "integer"),
+        _ => false,
+    }
+}
+
+/// [`kind`] for a value where an `integer` was or was not expected: a
+/// whole number too large for one says so only where one was.
+fn got(integer: bool, value: &Value) -> &'static str {
+    match value {
+        Value::Number(number)
+            if integer
+                && !integral(number)
+                && number.as_f64().is_some_and(|n| n.fract() == 0.0) =>
+        {
+            "a number too large for an integer"
+        }
+        value => kind(value),
+    }
+}
+
 /// `value`'s type as words, for a problem's "got".
 fn kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "a boolean",
-        Value::Number(number) if integral(number) => "a number",
-        Value::Number(number) if number.as_f64().is_some_and(|n| n.fract() == 0.0) => {
-            "a number too large for an integer"
-        }
+        Value::Number(number) if number.as_f64().is_some_and(|n| n.fract() == 0.0) => "a number",
         Value::Number(_) => "a number with a fraction",
         Value::String(_) => "a string",
         Value::Array(_) => "an array",

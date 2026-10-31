@@ -388,7 +388,6 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
             let source = resolved.as_deref().map(|path| Source {
                 path,
                 line: number + 1,
-                before: 0,
             });
             found.hits.push(Hit {
                 path: path.to_path_buf(),

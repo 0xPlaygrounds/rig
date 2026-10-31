@@ -779,13 +779,43 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     let hidden = std::fs::read(locked.join("a.txt")).is_err();
     let stat = workspace.stat(Path::new("bench:~/locked/a.txt"));
     let gone = workspace.stat(Path::new("bench:~/strata/gone/a.txt"));
+    let all = crate::workspace::Listing::All;
+    let listing = workspace.files(Path::new("bench:~/locked"), None, all);
+    let missing = workspace.files(Path::new("bench:~/strata/gone"), None, all);
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
     std::fs::remove_dir_all(&dir).ok();
     assert!(gone.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    let not_found = Some(std::io::ErrorKind::NotFound);
+    assert_eq!(missing.err().map(|error| error.kind()), not_found);
     if hidden {
         assert_eq!(
             stat.err().map(|error| error.kind()),
             Some(std::io::ErrorKind::PermissionDenied)
         );
+        // A directory there that may not be entered is no missing one.
+        let kind = listing.err().map(|error| error.kind());
+        assert!(kind.is_some() && kind != not_found, "{kind:?}");
     }
+}
+
+/// A command that ran on a host, whose output is spilled on this machine,
+/// says where a cut failure word is but gives no command for the spill
+/// file, which a command there would not find.
+#[test]
+fn a_cut_line_of_a_command_there_gives_no_command_for_the_spill_here() {
+    let dir = scratch("spill");
+    let bench = Remote::new("bench", transport(&dir.join("home")), Launcher::default());
+    let shell = Shell {
+        workspace: Arc::new(Hosts::new(Arc::new(Local), bench)),
+        spill: Some(crate::Spill(dir.join("spill"))),
+        ..Shell::default()
+    };
+    let command = "seq 1 1500; head -c 3000 /dev/zero | tr '\\0' x; echo ' FAILED'; seq 1 1500";
+    let (ran, _) = call(&shell, ShellArgs::new(command).in_dir("bench:~"));
+    let ran = ran.unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        ran.contains("[… cut at byte 300 of 3007; `FAILED` is at bytes 3002-3007]"),
+        "{ran:.600}"
+    );
 }

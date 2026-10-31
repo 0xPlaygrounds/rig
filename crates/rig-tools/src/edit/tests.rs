@@ -324,7 +324,18 @@ fn a_change_past_the_cut_says_where_it_is() {
             "{reply:.600}"
         );
     }
+    // A byte-order mark before line 1 counts in its bytes.
+    std::fs::write(&path, format!("\u{feff}{}OLD\n", "0".repeat(4000))).ok();
+    let mut context = ToolContext::new();
+    let args = EditArgs::new(path.to_string_lossy(), [Replacement::new("OLD", "NEW")]);
+    let reply =
+        futures::executor::block_on(Tool::call(&edit_tool, &mut context, args)).unwrap_or_default();
     std::fs::remove_file(&path).ok();
+    assert!(
+        reply.contains("[… cut at byte 303 of 4006; the change is at bytes 4004-4006: in `shell`")
+            && reply.contains("| cut -b 304-4006 |"),
+        "{reply:.600}"
+    );
 }
 
 /// A loose match found at several places is not told to use `replace_all`,

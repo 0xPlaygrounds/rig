@@ -222,21 +222,33 @@ pub(crate) fn listed(
     Ok(files)
 }
 
-/// Most paths a tool's note on what it could not read names.
+/// Most paths a tool's note on what it could not read names, the most
+/// bytes of the paths and reasons it shows, and of one reason.
 const MAX_UNREAD: usize = 20;
+const MAX_UNREAD_BYTES: usize = 4 * 1024;
+const MAX_WHY_CHARS: usize = 200;
 
 /// A tool's last line on the paths it could not read, each shown with why,
-/// at most [`MAX_UNREAD`] of them: `[could not read 2 paths, so {what}:
-/// a (Permission denied), b (…)]`.
+/// as many as fit [`MAX_UNREAD`] and [`MAX_UNREAD_BYTES`], and how many
+/// more: `[could not read 2 paths, so {what}: a (Permission denied), b (…)]`.
 pub(crate) fn unread(paths: impl ExactSizeIterator<Item = (String, String)>, what: &str) -> String {
     let count = paths.len();
     let noun = if count == 1 { "path" } else { "paths" };
-    let mut named: Vec<String> = paths
-        .take(MAX_UNREAD)
-        .map(|(path, why)| format!("{path} ({why})"))
-        .collect();
-    if count > MAX_UNREAD {
-        named.push(format!("and {} more", count - MAX_UNREAD));
+    let mut named: Vec<String> = Vec::new();
+    let mut bytes = 0;
+    for (path, why) in paths.take(MAX_UNREAD) {
+        let cut = crate::excerpt(&why, None, MAX_WHY_CHARS);
+        let mark = if cut.is_cut() { crate::CUT_MARK } else { "" };
+        let one = format!("{path} ({}{mark})", cut.kept());
+        // The first always shows, so the note names one at least.
+        if !named.is_empty() && bytes + one.len() > MAX_UNREAD_BYTES {
+            break;
+        }
+        bytes += one.len();
+        named.push(one);
+    }
+    if count > named.len() {
+        named.push(format!("and {} more", count - named.len()));
     }
     format!(
         "[could not read {count} {noun}, so {what}: {}]",

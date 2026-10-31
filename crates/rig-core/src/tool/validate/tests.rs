@@ -134,6 +134,11 @@ fn an_integer_is_a_whole_number_a_64_bit_integer_holds() {
         refused(json!(1e30)),
         ["/offset: expected an integer, got a number too large for an integer"]
     );
+    let text = json!({"type": "string"});
+    assert_eq!(
+        problems(&text, &json!(1e30)),
+        ["expected a string, got a number"]
+    );
 }
 
 #[test]

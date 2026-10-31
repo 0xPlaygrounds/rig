@@ -229,7 +229,7 @@ impl Shell {
             spill: self.spill.clone(),
             cut: self.cut,
             live: self.live.clone(),
-            local: self.workspace.host().is_none(),
+            local: process.remote().is_none(),
             ..Kept::default()
         };
         let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
@@ -523,7 +523,6 @@ impl Line {
         let source = spill.map(|path| Source {
             path,
             line: self.at + 1,
-            before: 0,
         });
         let (kept, mark) = (cut.kept().len(), cut.mark(&what, source));
         self.body.truncate(kept);

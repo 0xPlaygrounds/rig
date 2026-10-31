@@ -25,7 +25,7 @@ use serde::Deserialize;
 
 use crate::fs::{diff, io_error};
 use crate::workspace::{Endings, Local, Workspace, text_error, text_of};
-use crate::{Seen, Source, blocking, excerpt, shell_path};
+use crate::{CUT_MARK, Seen, Source, blocking, excerpt, shell_path};
 
 /// Most matches an ambiguity error lists by line, and most changed places
 /// a reply lists.
@@ -287,16 +287,12 @@ fn around(
             if count > MAX_PLACE && number >= first + half && number <= last - half {
                 continue;
             }
-            let cut = excerpt(line, changed.get(&number).cloned(), MAX_CLOSEST_CHARS);
-            let source = path.map(|path| Source {
-                path,
-                line: number,
-                before: if number == 1 && bom.is_some() {
-                    '\u{feff}'.len_utf8()
-                } else {
-                    0
-                },
-            });
+            let before = match number == 1 && bom.is_some() {
+                true => '\u{feff}'.len_utf8(),
+                false => 0,
+            };
+            let cut = excerpt(line, changed.get(&number).cloned(), MAX_CLOSEST_CHARS).after(before);
+            let source = path.map(|path| Source { path, line: number });
             out.push('\n');
             out.push_str(cut.kept());
             out.push_str(&cut.mark("the change", source));
@@ -827,7 +823,10 @@ fn nearest(text: &str, old: &str) -> Option<Near> {
         .take(MAX_CLOSEST)
         .map(|index| {
             let cut = excerpt(file.line(index), None, MAX_CLOSEST_CHARS);
-            format!("{}{}", cut.kept(), cut.mark("", None))
+            match cut.is_cut() {
+                true => format!("{}{CUT_MARK}", cut.kept()),
+                false => cut.kept().to_owned(),
+            }
         })
         .collect();
     let mut text = shown.join("\n");
