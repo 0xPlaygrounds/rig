@@ -910,10 +910,12 @@ mod stop {
         unsafe {
             libc::signal(signal, libc::SIG_DFL);
             if OWN.load(Ordering::SeqCst) && group > 0 {
-                libc::kill(-group, signal);
+                // cargo first: the group's signal may end the launcher at
+                // once, through another of its threads.
                 if cargo > 0 {
                     libc::kill(cargo, libc::SIGKILL);
                 }
+                libc::kill(-group, signal);
             } else {
                 kill();
                 libc::raise(signal);

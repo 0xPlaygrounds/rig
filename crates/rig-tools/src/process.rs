@@ -1032,10 +1032,10 @@ impl Ledger {
 /// process [`Process::start`] starts with [`LEDGER_VARIABLE`] set to
 /// `path`. `adopted` are groups an earlier agent listed there and left
 /// running on purpose, such as across a reload: owned from now on, as
-/// groups whose leader exited, until they are empty. A supervisor that outlives this process,
-/// such as rig's launcher, kills the groups listed once it ended, each only
-/// while one of its processes still carries the mark, so an id that names
-/// another process by then is left alone.
+/// groups whose leader exited, until they are empty. A supervisor that
+/// outlives this process, such as rig's launcher, kills the groups listed
+/// once it ended, each only while one of its processes still carries the
+/// mark, so an id that names another process by then is left alone.
 pub fn record_groups(path: impl Into<PathBuf>, adopted: impl IntoIterator<Item = u32>) {
     let mut ledger = ledger();
     ledger.path = Some(path.into());
@@ -1047,23 +1047,37 @@ pub fn record_groups(path: impl Into<PathBuf>, adopted: impl IntoIterator<Item =
 
 /// Ends the groups the agent owns whose leader exited, such as a job a
 /// command left running in the background, and those a stopped call asked
-/// to stop and would kill later, as the agent exits for good: asks each to
-/// stop (`SIGTERM`), waits at most [`STOP_GRACE`] for them to empty, then
-/// kills what is left (`SIGKILL`). Another group whose leader still runs is
-/// its [`Process`]'s, which kills it as it is dropped. A job started with
-/// `setsid` is in a session of its own and is not owned. A blocking call.
+/// to stop and would kill later ([`end_stopping`]), as the agent exits for
+/// good. Another group whose leader still runs is its [`Process`]'s, which
+/// kills it as it is dropped. A job started with `setsid` is in a session
+/// of its own and is not owned. A blocking call.
 pub fn end_left() {
     let ids: Vec<u32> = {
         let ledger = ledger();
         ledger.left.union(&ledger.stopping).copied().collect()
     };
-    signal_listed(&ids, Signal::Terminate);
+    end(&ids);
+}
+
+/// Ends the groups a stopped call asked to stop and would kill later, as
+/// the agent exits, also for a reload, whose jobs live on: asks each to
+/// stop (`SIGTERM`), waits at most [`STOP_GRACE`] for them to empty, then
+/// kills what is left (`SIGKILL`). A blocking call.
+pub fn end_stopping() {
+    let ids: Vec<u32> = ledger().stopping.iter().copied().collect();
+    end(&ids);
+}
+
+/// Asks the groups `ids` to stop, waits at most [`STOP_GRACE`] for them to
+/// empty, kills what is left and lists none of them.
+fn end(ids: &[u32]) {
+    signal_listed(ids, Signal::Terminate);
     let deadline = Instant::now() + STOP_GRACE;
     while ids.iter().any(|&id| has_members(id)) && Instant::now() < deadline {
         thread::sleep(POLL);
     }
-    signal_listed(&ids, Signal::Kill);
-    for id in ids {
+    signal_listed(ids, Signal::Kill);
+    for &id in ids {
         unlist(id);
     }
 }

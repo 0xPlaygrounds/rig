@@ -114,15 +114,14 @@ impl Plugin for ExitPlugin {
     }
 }
 
-/// Ends the jobs the agent's commands left running in the background, and
-/// those of the calls the exit stopped, as the agent exits for good; across a reload or a session switch they keep running,
-/// for the next agent to take over (`LauncherPlugin`).
+/// Ends what the calls the exit stopped still run, and, as the agent exits
+/// for good, the jobs its commands left running in the background; across
+/// a reload or a session switch those keep running, for the next agent to
+/// take over (`LauncherPlugin`).
 fn end_left_jobs(reason: Option<Res<ExitReason>>) {
-    if !matches!(
-        reason.as_deref(),
-        Some(ExitReason::Reload | ExitReason::Switch(_))
-    ) {
-        rig_tools::process::end_left();
+    match reason.as_deref() {
+        Some(ExitReason::Reload | ExitReason::Switch(_)) => rig_tools::process::end_stopping(),
+        _ => rig_tools::process::end_left(),
     }
 }
 

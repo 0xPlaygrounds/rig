@@ -134,7 +134,7 @@ fn an_overlay_change_gives_each_side_and_a_deletions_text() {
 /// An overlay says a path is on a host as the workspace under it does.
 #[test]
 fn an_overlay_tells_where_a_path_is_as_its_workspace_does() {
-    let bench = crate::remote::Remote::new("bench", ["true"], crate::process::Launcher::default());
+    let bench = crate::remote::Remote::new("bench", ["true"], crate::process::Launcher::default);
     let hosts = crate::remote::Hosts::new(Arc::new(Local), bench);
     let overlay = Overlay::new(Arc::new(hosts));
     let there = overlay.host_for(std::path::Path::new("bench:~/x"));

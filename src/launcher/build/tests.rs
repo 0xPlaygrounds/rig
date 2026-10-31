@@ -188,7 +188,7 @@ fn a_wait_for_cargos_lock_ends_with_its_command() {
     let shown = Shown::default();
     let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
     let commands = [
-        "printf '    Blocking waiting for file lock on build directory\\n    Finished\\n' >&2",
+        "printf '    Blocking waiting for file lock on build directory\\n' >&2",
         "sleep 4",
     ];
     for script in commands {

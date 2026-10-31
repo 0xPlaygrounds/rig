@@ -1,5 +1,3 @@
-#![allow(clippy::disallowed_methods, reason = "test fixtures")]
-
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -187,17 +185,27 @@ fn an_exit_ends_what_the_calls_it_stopped_still_run() {
     app.add_systems(Last, (move || call.stop()).in_set(rig_ecs::StopTurnsOnExit));
     app.world_mut().trigger(Exit(ExitReason::Quit));
     app.update();
-    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim())).unwrap_or_default();
-    let alive = !stat.is_empty()
-        && !stat
-            .rsplit(')')
-            .next()
-            .unwrap_or_default()
-            .trim_start()
-            .starts_with('Z');
+    let alive = || {
+        let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim()));
+        stat.is_ok_and(|stat| {
+            !stat
+                .rsplit(')')
+                .next()
+                .unwrap_or_default()
+                .trim_start()
+                .starts_with('Z')
+        })
+    };
+    // Shorter than the stopped call's own delayed kill, which would end it
+    // anyway.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while alive() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let left = alive();
     assert!(waiting.join().is_ok());
     assert!(
-        !pid.trim().is_empty() && !alive,
+        !pid.trim().is_empty() && !left,
         "{} outlived the exit",
         pid.trim()
     );
