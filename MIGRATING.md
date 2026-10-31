@@ -1075,8 +1075,9 @@ let model = Model::new(wire, http).with_idle_timeout(None);
   window, so it starts earlier (for GPT-6, about 906K tokens instead of about
   1,034K). After an overflow the older messages are summarized instead of
   asking for notes. A request with no output limit asks for at most 64,000
-  tokens (plus any thinking budget) instead of the whole window left; a model
-  with no known window or output limit keeps the server's default.
+  tokens plus any thinking budget and 1,024, never above the catalog's output
+  limit, instead of the whole window left; a model with no known window or
+  output limit keeps the server's default.
 - A reply stopped with Esc is sent back to the model as the text it had
   written. Quitting mid-turn stops the turn as Esc does, and resuming after a
   quit or a crash runs nothing until you send a message.
@@ -1318,8 +1319,8 @@ recorder.record_http_interaction(request, response); // was `.await`ed
 
 Proxy recording now goes through the traffic recorder. A recording is refused
 when a reply is never read, its body fails while it is read, a stream fails
-midway or stops between frames, a request gets no reply, or an exchange is
-still open 5 s after `finish`.
+midway or stops partway through a frame (a stop at a frame boundary is kept),
+a request gets no reply, or an exchange is still open 5 s after `finish`.
 
 ### 7. Coding-agent plugin API
 
@@ -1405,8 +1406,10 @@ marks an agent whose last context figure no longer applies.
 `add_entry_renderer`, `add_content_renderer`, `add_aside_renderer`,
 `add_call_decorator`, their renderer components (`ToolRenderer`,
 `EntryRenderer`, `ContentRenderer`, `AsideRenderer`, `CallDecorator`,
-`MessageDecorator`) and `AppToolRenderersExt` are removed. Write systems in the `TranscriptRender`
-schedule that fill `RenderBatch`:
+`MessageDecorator`), their callback types (`RenderToolCall`, `RenderEntry`,
+`RenderContent`, `RenderAside`, `DecorateMessage`) and `AppToolRenderersExt`
+are removed. `RenderContent` is now an enum: the owned non-text content block a content look gets.
+Write systems in the `TranscriptRender` schedule that fill `RenderBatch`:
 
 ```rust
 // before
@@ -1435,7 +1438,8 @@ Entry, content and aside renderers become loops over `entries_mut(plugin)`,
 `messages_mut()`. To replace a shipped look, order after its public set
 (`CodingToolLooks`, `SummaryLooks`, `SubagentLooks`, `WelcomeLooks`,
 `BuildFailedLooks`) instead of disabling its renderer entity.
-`TranscriptLayout::lay_out` takes `&mut World`:
+`TranscriptLayout` is no longer a system parameter and has no lifetime
+parameters; `lay_out` is an associated function that takes `&mut World`:
 
 ```rust
 // before
