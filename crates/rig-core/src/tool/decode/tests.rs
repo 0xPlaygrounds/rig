@@ -56,6 +56,9 @@ fn an_integral_float_is_the_integer_its_field_asks_for() {
     assert_eq!(lines, Some(Mode::Lines(4)));
     let fast = decoded(json!({"mode": "fast"})).and_then(|args| args.mode);
     assert_eq!(fast, Some(Mode::Fast));
+    let text = decode_text::<Args>(r#"{"offset": 1.0, "timeout_secs": 30.0}"#).ok();
+    let read = text.map(|args| (args.offset, args.timeout_secs));
+    assert_eq!(read, Some((Some(1), Some(30))));
 }
 
 #[test]
@@ -82,6 +85,11 @@ fn a_fraction_a_negative_unsigned_and_an_overflow_are_refused_not_rounded() {
         assert_eq!(decoded(args.clone()), None, "{args}");
     }
     assert!(decoded(json!({"unknown": 1})).is_none());
+    // A refusal of text is worded as `serde_json` words it, with its place.
+    let refused = decode_text::<Args>(r#"{"offset": 1.5}"#)
+        .err()
+        .map(|error| error.to_string());
+    assert!(refused.is_some_and(|why| why.contains(" at line 1 column ")));
 }
 
 #[test]

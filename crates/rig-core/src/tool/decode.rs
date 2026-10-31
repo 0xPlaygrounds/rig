@@ -38,6 +38,18 @@ pub fn decode_args<A: DeserializeOwned>(args: &Value) -> Result<A, serde_json::E
     A::deserialize(args).or_else(|error| as_integers(args).ok_or(error))
 }
 
+/// [`decode_args`] for arguments as JSON text, decoded straight from the
+/// text first, so a call that decodes, or is refused, today does so with
+/// the same words (a refusal names its line and column). Only the retry
+/// reads the text as a `Value`, which keeps the last of a repeated key, as
+/// a call's arguments (a JSON object) always have.
+pub(crate) fn decode_text<A: DeserializeOwned>(args: &str) -> Result<A, serde_json::Error> {
+    serde_json::from_str(args).or_else(|error| match serde_json::from_str::<Value>(args) {
+        Ok(value) => as_integers(&value).ok_or(error),
+        Err(_) => Err(error),
+    })
+}
+
 /// `args` decoded with each integral float as its integer; `None` when it
 /// has none or still does not decode.
 fn as_integers<A: DeserializeOwned>(args: &Value) -> Option<A> {
