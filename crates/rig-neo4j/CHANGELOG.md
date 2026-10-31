@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.46.0-rc.1...rig-neo4j-v0.46.0) - 2026-10-31
+
+### Other
+
+- release v0.46.0 ([#2958](https://github.com/0xPlaygrounds/rig/pull/2958)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2958
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.43.0...rig-neo4j-v0.44.0) - 2026-10-07
 
 ### Other
