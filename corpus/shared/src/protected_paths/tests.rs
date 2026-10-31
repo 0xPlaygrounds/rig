@@ -69,6 +69,7 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         ),
         calls("3", "search", json!({ "pattern": "KEY" })),
         calls("4", "search", json!({ "pattern": "public" })),
+        calls("5", "search", json!({ "pattern": "public", "files": true })),
         reply("done"),
     ]);
     let world = app.world_mut();
@@ -99,8 +100,16 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     #[cfg(unix)]
     mode(0o644);
     std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(sent.len(), 5, "{sent:?}");
-    let [_, after_read, after_write, after_search, after_public] = sent.as_slice() else {
+    assert_eq!(sent.len(), 6, "{sent:?}");
+    let [
+        _,
+        after_read,
+        after_write,
+        after_search,
+        after_public,
+        after_names,
+    ] = sent.as_slice()
+    else {
         return;
     };
     assert!(after_read.contains("read-protected"), "{after_read}");
@@ -121,6 +130,11 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     assert!(
         after_public.contains("notes.txt:1: KEY=public") && !after_public.contains("locked"),
         "{after_public}"
+    );
+    // Nor does a search for file names, which keeps the names it found.
+    assert!(
+        after_names.contains("notes.txt") && !after_names.contains("locked"),
+        "{after_names}"
     );
     let counts = app.world().resource::<PathGuardCounts>();
     assert_eq!(counts.blocked.get("deny_read .env*"), Some(&1));

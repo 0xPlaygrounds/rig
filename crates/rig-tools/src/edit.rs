@@ -351,19 +351,16 @@ enum Place {
     Removed(usize),
 }
 
-/// The bytes of each line `change` added, by its number in the file after
-/// it, that differ from the line it replaced: a line that replaced one
-/// (the lines of a run of changes paired in order) is changed between
-/// what the two start and end with alike; a line added beside none, all
-/// of it.
+/// The changed bytes of each line `change` added, by its number in the
+/// file after it: what differs from the removed line it is paired with in
+/// order, or all of it when it is paired with none.
 fn changed_spans(change: &FileChange) -> BTreeMap<usize, Range<usize>> {
     let mut spans = BTreeMap::new();
     for hunk in &change.hunks {
         let kept = |line: &HunkLine| matches!(line, HunkLine::Same(_));
         let mut at = hunk.new.start;
         for run in hunk.lines.chunk_by(|a, b| kept(a) == kept(b)) {
-            let text = |line: &HunkLine| line.text().trim_end_matches(['\n', '\r']).to_owned();
-            let removed: Vec<String> = run
+            let removed: Vec<&str> = run
                 .iter()
                 .filter(|line| matches!(line, HunkLine::Removed(_)))
                 .map(text)
@@ -375,7 +372,7 @@ fn changed_spans(change: &FileChange) -> BTreeMap<usize, Range<usize>> {
                 if !kept(line) {
                     let new = text(line);
                     let span = match removed.get(index) {
-                        Some(old) => differs(old, &new),
+                        Some(old) => differs(old, new),
                         None => 0..new.len(),
                     };
                     spans.insert(at, span);
@@ -385,6 +382,11 @@ fn changed_spans(change: &FileChange) -> BTreeMap<usize, Range<usize>> {
         }
     }
     spans
+}
+
+/// `line`'s text without its line end.
+fn text(line: &HunkLine) -> &str {
+    line.text().trim_end_matches(['\n', '\r'])
 }
 
 /// The bytes of `new` that differ from `old`: after what both start with

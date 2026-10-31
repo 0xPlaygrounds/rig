@@ -378,6 +378,12 @@ fn filter_searches(
                 None => kept.hits.push(hit),
             }
         }
+        for name in found.names {
+            match policy.check(Access::Read, &name.to_string_lossy()) {
+                Some(rule) => hidden.push(rule.label()),
+                None => kept.names.push(name),
+            }
+        }
         // A protected path it could not read is not named either.
         let unread = found.unread.len();
         kept.unread = (found.unread.into_iter())

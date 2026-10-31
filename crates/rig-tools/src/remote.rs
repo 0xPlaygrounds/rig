@@ -71,10 +71,12 @@ const A_DIRECTORY: i32 = 5;
 const ROOT_IS_A_FILE: i32 = 6;
 
 /// A shell function for the scripts below: whether the path `$1`, which
-/// the shell does not see, is truly not there, since the nearest of its
-/// directories that is there may be searched (or is no directory). One that
-/// may not be searched hides what is in it, which is not absence.
-const GONE: &str = "gone() { d=$1; while :; do d=$(dirname -- \"$d\"); \
+/// the shell does not see, is truly not there, since neither it nor any
+/// of its directories is a link (whose target may be hidden) and the
+/// nearest of them that is there may be searched (or is no directory). One
+/// that may not be searched hides what is in it, which is not absence.
+const GONE: &str = "gone() { d=$1; [ -L \"$d\" ] && return 1; while :; do \
+    d=$(dirname -- \"$d\"); [ -L \"$d\" ] && return 1; \
     if [ -e \"$d\" ]; then [ ! -d \"$d\" ] || [ -x \"$d\" ]; return; fi; \
     case $d in /|.) return 0;; esac; done; }";
 

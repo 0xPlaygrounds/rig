@@ -115,3 +115,25 @@ fn a_changes_hunks_make_the_text_after() {
     assert_eq!(far_change.hunks.len(), 2);
     assert_eq!(far_change.changed_lines().collect::<Vec<_>>(), [2, 19]);
 }
+
+/// A note on paths that could not be read stays bounded, its first path
+/// too, however long the paths and reasons are and however many.
+#[test]
+fn the_unread_note_is_bounded() {
+    let long = "x".repeat(50_000);
+    let one = super::unread(
+        [(long.clone(), long.clone())].into_iter(),
+        "they were not searched",
+    );
+    assert!(one.len() < 3_000 && one.contains(" […]"), "{}", one.len());
+    let many = (0..1000).map(|n| (format!("{n}{}", "y".repeat(400)), "denied".to_owned()));
+    let note = super::unread(
+        many.collect::<Vec<_>>().into_iter(),
+        "they were not searched",
+    );
+    assert!(
+        note.len() < 5_000 && note.ends_with(" more]"),
+        "{}",
+        note.len()
+    );
+}
