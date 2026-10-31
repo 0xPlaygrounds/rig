@@ -153,7 +153,7 @@ struct Duty(u32);
 
 /// A fork copies a saved component, starts a `Reset` one at its default
 /// and does not get a `Never` one, even one every agent requires, and so
-/// it is restored, where it has the `Never` one only as a new agent would.
+/// it is restored, where the required `Never` one is back at its default.
 #[test]
 fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
     let store = MemoryStore::default();
