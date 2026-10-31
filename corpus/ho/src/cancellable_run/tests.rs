@@ -38,6 +38,7 @@ fn running(model: &MockCompletionModel, name: &str) -> (App, Receiver<()>, Entit
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, "Build it.", DeliveryMode::Steer));

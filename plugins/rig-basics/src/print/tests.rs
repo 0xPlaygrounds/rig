@@ -479,6 +479,7 @@ fn a_resumed_run_without_a_prompt_runs_nothing_of_a_turn_an_exit_stopped() {
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "hi", DeliveryMode::Steer));
     test_support::run_until(&mut app, &wakes, |world| {
@@ -634,7 +635,11 @@ fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
             {
                 *done = true;
                 let model = MODEL.to_owned();
-                commands.trigger(SetModel { entity, model });
+                commands.trigger(SetModel {
+                    entity,
+                    model,
+                    kind: ChoiceKind::ForThisRun,
+                });
             }
         };
     let held = hold_turn_calls.in_set(Stage::Gate);

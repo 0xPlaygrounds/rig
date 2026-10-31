@@ -328,6 +328,7 @@ fn make_answerer(
     commands.trigger(SetModel {
         entity: agent,
         model: model.clone(),
+        kind: ChoiceKind::ForThisRun,
     });
     let question = format!("Question about the session above: {}", options.question);
     commands.trigger(Deliver::new(agent, question, DeliveryMode::Steer));

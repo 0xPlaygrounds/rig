@@ -60,6 +60,7 @@ fn talk(app: &mut App, wakes: &Receiver<()>, ask: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let before = app.world().resource::<Ended>().0.len();
     app.world_mut()

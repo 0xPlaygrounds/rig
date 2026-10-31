@@ -41,7 +41,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `skills::SkillsPlugin` | the skills (`SKILL.md`) of the project, `RIG_HOME/skills` and `~/.agents/skills`, listed in the system prompt; `/skill:<name>` |
 | `rig-basics` | `models::ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-basics` | `login::LoginPlugin` | `/login` and `/logout`: the ChatGPT plan, and providers' API keys |
-| `rig-basics` | `models::defaults::DefaultsPlugin` | a new session starts on the last model and reasoning chosen |
+| `rig-basics` | `models::defaults::DefaultsPlugin` | a new session starts on the model and reasoning last picked with `/model` and `/effort`, once it answered |
 | `rig-basics` | `sessions::SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-basics` | `sessions::agents::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |

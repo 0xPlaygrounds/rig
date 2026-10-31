@@ -13,6 +13,7 @@
 
 pub(crate) mod anthropic;
 mod cached_content;
+pub mod chatgpt_models;
 pub(crate) mod cohere;
 pub mod env;
 pub(crate) mod gemini;

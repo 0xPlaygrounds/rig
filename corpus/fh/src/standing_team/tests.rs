@@ -93,6 +93,7 @@ fn start(
     app.world_mut().trigger(SetModel {
         entity: lead,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     (app, wakes, lead)
 }

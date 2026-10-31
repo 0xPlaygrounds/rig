@@ -1,12 +1,13 @@
 //! Choosing a model and its reasoning setting: `--model`, `/model`,
 //! `/effort` ([`ModelsPlugin`]), with the terminal view's pickers and both
 //! in each agent's status line under the default `tui` feature, and the
-//! ones a new session starts with, the last ones chosen
+//! ones a new session starts with, the last ones the user chose
 //! ([`DefaultsPlugin`](defaults::DefaultsPlugin)).
 //!
-//! `/model` lists every catalog model, those that can be reached first and
+//! `/model` lists the catalog's models, those that can be reached first and
 //! each other one with why not (no key, no tool calls, the provider's
-//! reason), and completes its argument with them; a provider plugin adds
+//! reason), leaving out those a signed-in account is not offered, opens on
+//! the agent's model, and completes its argument with them; a provider plugin adds
 //! to the catalog through rig-core's [`Connector`] (in [`Models`]). It
 //! lists the [`ModelItem`]s other plugins spawn too, for choices
 //! that are no catalog model, such as a router that picks the model per
@@ -41,6 +42,7 @@ impl Plugin for ModelsPlugin {
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
         )
+        .init_resource::<TypedChoices>()
         .add_systems(First, choose_invoked_model);
         #[cfg(feature = "tui")]
         tui::add(app);
@@ -74,6 +76,74 @@ impl ModelItem {
             label: label.into(),
             command: command.into(),
         }
+    }
+}
+
+/// What a model or reasoning setting chosen with a command, `/model`,
+/// `/effort` or their pickers, is in this run: [`ChoiceKind::ByUser`]
+/// unless a front whose client owns the choice inserts
+/// [`ChoiceKind::ForThisRun`], as ACP does, where the editor sets the
+/// model of every session.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct TypedChoices(pub ChoiceKind);
+
+impl Default for TypedChoices {
+    fn default() -> Self {
+        Self(ChoiceKind::ByUser)
+    }
+}
+
+/// The model a run that names none starts on, such as a headless run's
+/// or an editor's new session in a home with no default.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FirstPick {
+    /// A sign-in is still finding out which of its models the account
+    /// offers: ask again once the [`Models`] changed.
+    Checking,
+    /// The first model that can be reached, by its reference.
+    Model(String),
+    /// None can be reached, with why a sign-in's models cannot be used
+    /// when that is why.
+    Nothing(Option<String>),
+}
+
+impl FirstPick {
+    /// The first pick among `models`, in the order [`Connector::reachable`]
+    /// gives.
+    ///
+    /// [`Connector::reachable`]: rig_harness::rig_core::catalog::Connector::reachable
+    pub fn of(models: &Models) -> Self {
+        use rig_harness::rig_core::catalog::ModelStatus;
+        let statuses = models.0.statuses();
+        if statuses
+            .iter()
+            .any(|(_, status)| *status == ModelStatus::Checking)
+        {
+            return Self::Checking;
+        }
+        if let Some((spec, _)) = statuses
+            .iter()
+            .find(|(_, status)| *status == ModelStatus::Usable)
+        {
+            return Self::Model(spec.reference());
+        }
+        // Why a sign-in's models cannot be used: it could not ask its
+        // account, else the account offers none of them.
+        let signed_in = || {
+            let statuses = statuses.iter();
+            statuses.filter(|(spec, _)| models.0.plan(spec).is_some())
+        };
+        let unasked = signed_in().find_map(|(_, status)| match status {
+            ModelStatus::Unavailable(why) => Some(why.clone()),
+            _ => None,
+        });
+        let refused = unasked.or_else(|| {
+            signed_in().find_map(|(_, status)| match status {
+                ModelStatus::NotOffered(why) => Some(why.clone()),
+                _ => None,
+            })
+        });
+        Self::Nothing(refused)
     }
 }
 
@@ -127,6 +197,7 @@ fn choose_invoked_model(
     commands.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 }
 
@@ -136,13 +207,18 @@ fn choose_invoked_model(
 fn model(
     In(args): In<CommandArgs>,
     items: Query<&ModelItem>,
-    #[cfg(feature = "tui")] models: Res<Models>,
+    typed: Res<TypedChoices>,
+    #[cfg(feature = "tui")] (models, chosen): (Res<Models>, Query<&ModelChoice>),
     #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     if args.args.is_empty() {
         #[cfg(feature = "tui")]
-        tui::pick_model(args.agent, (&models, &items), &mut notices, &mut commands);
+        {
+            let current = chosen.get(args.agent).ok();
+            let listed = (&*models, &items, current);
+            tui::pick_model(args.agent, listed, &mut notices, &mut commands);
+        }
         return;
     }
     if let Some(item) = items.iter().find(|item| item.name == args.args.trim()) {
@@ -152,6 +228,7 @@ fn model(
     commands.trigger(SetModel {
         entity: args.agent,
         model: args.args,
+        kind: typed.0,
     });
 }
 
@@ -160,6 +237,7 @@ fn model(
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
+    typed: Res<TypedChoices>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -177,6 +255,7 @@ fn effort(
             commands.trigger(SetReasoning {
                 entity: args.agent,
                 effort: ReasoningSetting(choice.reasoning),
+                kind: typed.0,
             });
         }
         Err(why) => {

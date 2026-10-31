@@ -2,6 +2,9 @@ use rig_test_support::cassette_models::OpenAiModels;
 mod support;
 
 mod cassette {
+    // This is the model the fixtures were recorded with.
+    const GPT_5_4: &str = "gpt-5.4";
+
     mod codex_behaviors;
     mod codex_sessions;
     mod codex_tool_args;
@@ -32,7 +35,8 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 60;
-pub(crate) const LIVE_MODEL: &str = chatgpt::GPT_5_3_CODEX;
+// This is the model the fixtures were recorded with.
+pub(crate) const LIVE_MODEL: &str = "gpt-5.3-codex";
 
 #[derive(Debug, Deserialize)]
 struct CachedAuthRecord {

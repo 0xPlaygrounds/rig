@@ -212,6 +212,7 @@ fn imports_resumes_and_reimports() {
         world.trigger(SetModel {
             entity: agent,
             model: "test/model".to_owned(),
+            kind: ChoiceKind::ForThisRun,
         });
         world.trigger(Deliver::new(agent, "continue", DeliveryMode::Steer));
         run_until(&mut resumed, &wakes, |world| {

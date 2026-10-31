@@ -249,6 +249,7 @@ fn app(fake: &Fake, other: &MockCompletionModel) -> (App, Receiver<()>, Entity) 
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     (app, wakes, agent)
 }
@@ -381,6 +382,7 @@ fn provider_run_search_is_kept_replayed_natively_and_sent_as_text_elsewhere() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "other/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     turn(&mut app, &wakes, agent, "Summarize what you found.");
     let requests = other.requests();

@@ -2060,7 +2060,7 @@ fn each_request_and_the_summary_start_with_the_bytes_of_the_request_before() {
     use rig_core::providers::{chatgpt, openai};
     for (dialect, model) in [
         (&openai::wire::OPENAI, "gpt-5.4"),
-        (&chatgpt::DIALECT, "gpt-5.4"),
+        (&chatgpt::DIALECT, "gpt-6.1-sol"),
     ] {
         let bodies = responses_bodies(dialect, model);
         let name = dialect.name;
@@ -2097,7 +2097,7 @@ fn a_resumed_session_sends_the_bytes_it_sent_before() {
     use rig_core::providers::{chatgpt, openai};
     for (dialect, model) in [
         (&openai::wire::OPENAI, "gpt-5.4"),
-        (&chatgpt::DIALECT, "gpt-5.4"),
+        (&chatgpt::DIALECT, "gpt-6.1-sol"),
     ] {
         let name = dialect.name;
         let store = MemoryStore::default();
@@ -2178,7 +2178,7 @@ fn a_long_turn_of_reads_rewrites_the_cached_prefix_seldom_and_shallowly() {
     let http = rig_core::test_utils::SequencedHttpClient::new(replies);
     let (mut app, wakes) = start(&MemoryStore::default());
     app.add_tool(rig_tools::Read::default());
-    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
     let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
         return;
     };
@@ -2303,7 +2303,7 @@ fn noted_turn(
         .resource_mut::<CompactionDefault>()
         .0
         .near_window = near_window;
-    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
     let agent = on_responses(&mut app, model, 200_000 + 16_384, &http);
     if let Some(agent) = agent {
         answered_turns(&mut app, &wakes, agent, 1);
@@ -2333,7 +2333,7 @@ fn a_cancelled_notes_call_under_the_floor_fails_the_turn() {
     let (mut app, wakes) = start(&MemoryStore::default());
     app.add_tool(Shell)
         .add_systems(AgentPass, cancel_notes.in_set(ReviewSystems::Act));
-    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
     let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
         return;
     };
@@ -2415,7 +2415,7 @@ fn a_stop_while_the_notes_are_held_clears_nothing() {
     // The answered notes wait for review, so the stop comes while they are
     // open.
     app.add_systems(AgentPass, hold_for_review.in_set(ReviewSystems::Act));
-    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
     let agent = on_responses(&mut app, model, 200_000 + 16_384, &http);
     assert!(agent.is_some(), "the catalog lists the model");
     let Some(agent) = agent else {
@@ -2491,7 +2491,7 @@ fn clearing_that_frees_little_checkpoints_once_from_a_cached_prefix() {
     ]);
     let (mut app, wakes) = start(&MemoryStore::default());
     collect::<Notice>(&mut app).add_tool(Shell);
-    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-5.4");
+    let model = (&rig_core::providers::chatgpt::DIALECT, "gpt-6.1-sol");
     let Some(agent) = on_responses(&mut app, model, 200_000 + 16_384, &http) else {
         return;
     };

@@ -57,6 +57,7 @@ use rig_harness::rig_core::tool::feedback::not_finished;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use crate::models::FirstPick;
 use crate::telemetry::usage::{SessionUsage, TurnUsage};
 
 /// `--print`'s name as a front.
@@ -928,14 +929,20 @@ fn drive(
                 // `--model` chose it, or the restored session did, and it
                 // was connected, or refused with a notice, already.
                 (true, _) | (false, Some(_)) => None,
-                (false, None) => match models.0.reachable().first() {
-                    Some(spec) => Some(spec.reference()),
-                    None if command => None,
-                    None => {
-                        let why = "no model can be reached: set a provider's API key, or name \
-                                   one with --model";
+                (false, None) => match FirstPick::of(&models) {
+                    // The answer wakes the loop and changes the models.
+                    FirstPick::Checking => return,
+                    FirstPick::Model(model) => Some(model),
+                    FirstPick::Nothing(_) if command => None,
+                    FirstPick::Nothing(refused) => {
+                        let why = match refused {
+                            Some(refused) => format!("no model can be reached: {refused}"),
+                            None => "no model can be reached: set a provider's API key, or \
+                                     name one with --model"
+                                .to_owned(),
+                        };
                         let ended = ended(Some(agent), 1);
-                        return end(&mut run, (ended, Reason::Said(why)), commands);
+                        return end(&mut run, (ended, Reason::Said(&why)), commands);
                     }
                 },
             };
@@ -949,6 +956,7 @@ fn drive(
                     commands.trigger(SetModel {
                         entity: agent,
                         model,
+                        kind: ChoiceKind::ForThisRun,
                     });
                 }
                 run.step = Step::Connecting { agent };

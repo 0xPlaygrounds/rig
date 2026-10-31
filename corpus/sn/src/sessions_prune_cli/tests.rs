@@ -52,6 +52,7 @@ fn run(home: &Home, turns: &[&str], script: Vec<Vec<MockStreamEvent>>) -> (Sessi
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     for (done, prompt) in turns.iter().enumerate() {
         app.world_mut()

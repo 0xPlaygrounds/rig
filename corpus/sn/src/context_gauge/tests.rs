@@ -116,6 +116,7 @@ fn the_gauge_follows_tokens_models_and_focus_and_warns_once() {
         app.world_mut().trigger(SetModel {
             entity: agent,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         app.update();
     };

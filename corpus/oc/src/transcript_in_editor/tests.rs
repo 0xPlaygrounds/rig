@@ -64,6 +64,7 @@ fn start(
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     Some((app, wakes, agent))
 }

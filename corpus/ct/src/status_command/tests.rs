@@ -122,6 +122,7 @@ fn the_item_follows_the_session_through_slow_failing_and_replaced_scripts() {
     world.trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Hi.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {

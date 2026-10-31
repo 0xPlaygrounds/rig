@@ -114,6 +114,7 @@ fn app(model: &MockCompletionModel, vision: &MockCompletionModel) -> (App, Recei
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.insert_resource(ShownAgent(Some(agent)));
     app.update();
@@ -192,6 +193,7 @@ fn long_pastes_are_chips_sent_as_their_contents() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/vision".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
     press(&mut app, "enter");

@@ -91,6 +91,7 @@ fn session(
     world.trigger(SetModel {
         entity: main,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.update();
     (app, wakes, main)

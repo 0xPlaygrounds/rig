@@ -135,6 +135,7 @@ fn every_call_is_spent_by_its_agent_subagent_or_plugin_and_kept() {
     world.trigger(SetModel {
         entity: agent,
         model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Send a scout.", DeliveryMode::Steer));
     // The parent reads its subagent's report in a call of its own.

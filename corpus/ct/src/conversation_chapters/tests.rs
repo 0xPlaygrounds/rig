@@ -64,6 +64,7 @@ fn start(home: &Home, id: &SessionId, models: &Models3) -> (App, Receiver<()>, E
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/agent".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     (app, wakes, agent)
 }

@@ -68,6 +68,7 @@ fn broken_arguments_run_repaired_and_are_kept_repaired() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, "Pick.", DeliveryMode::Steer));

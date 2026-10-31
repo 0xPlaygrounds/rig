@@ -121,6 +121,7 @@ fn ask(app: &mut App, agent: Entity) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let ask = "Make the cache faster.";
     app.world_mut()

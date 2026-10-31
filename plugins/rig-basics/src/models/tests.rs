@@ -1,6 +1,12 @@
 use std::fs;
+use std::sync::mpsc::Receiver;
 
-use rig_harness::harness_protocol::{Home, Invocation};
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::harness_protocol::{Home, Invocation, SessionId};
+use rig_harness::rig_core::catalog::Catalog;
+use rig_harness_test_support::{
+    Ended, app_in, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
+};
 
 use super::defaults::DefaultsPlugin;
 use super::*;
@@ -212,36 +218,185 @@ fn the_picker_lists_contributed_choices_first_and_the_status_line_their_label() 
     assert!(says("no model: /model picks one"), "{shown:?}");
 }
 
-#[test]
-fn the_last_model_chosen_is_kept_in_the_apps_home() {
-    let root = std::env::temp_dir().join(format!("rig-models-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
-    let home = Home::at(&root);
-    let app = |home: &Home| {
-        let mut app = App::new();
-        app.insert_resource(RigHome(home.clone()))
-            .add_plugins((AgentPlugin, DefaultsPlugin));
-        app
-    };
-    let mut first = app(&home);
-    first.insert_resource(SessionRestored::default());
-    let world = first.world_mut();
-    let agent = world.spawn((Agent, ReasoningSetting::default())).id();
-    world
-        .entity_mut(agent)
-        .insert(ModelChoice("deepseek/deepseek-flash".to_owned()));
-    world.flush();
-    assert!(home.defaults().is_file());
+/// What `defaults.json` holds before each test: a model no test chooses.
+const SAVED: &str = r#"{"model":"corpus-test/saved","effort":null}"#;
 
-    let mut next = app(&home);
-    let agent = next.world_mut().spawn(Agent).id();
-    next.update();
-    let chosen = next
-        .world()
-        .get::<ModelChoice>(agent)
-        .map(|choice| choice.0.clone());
-    assert_eq!(chosen.as_deref(), Some("deepseek/deepseek-flash"));
-    fs::remove_dir_all(&root).ok();
+/// An app in a scratch home named `name` whose saved default is [`SAVED`],
+/// choosing among scripted `corpus-test/saved` and `corpus-test/chosen`,
+/// which answers as `chosen` does, with the defaults plugin; `-m` names
+/// `invoked`. Its first frame ran; returns its loop's wakes, the home and
+/// the agent.
+fn remembering(
+    name: &str,
+    chosen: &MockCompletionModel,
+    invoked: Option<&str>,
+) -> (App, Receiver<()>, Home, Entity) {
+    let saved = MockCompletionModel::from_stream_turns([reply("saved")]);
+    let home = scratch_home(name);
+    fs::create_dir_all(home.root()).ok();
+    fs::write(home.defaults(), SAVED).ok();
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    let served = [
+        ("corpus-test/saved", &saved),
+        ("corpus-test/chosen", chosen),
+    ];
+    app.insert_resource(scripted_models(served))
+        .insert_resource(Invoked {
+            args: Invocation {
+                model: invoked.map(str::to_owned),
+                ..Invocation::default()
+            },
+            terminal: false,
+        })
+        .add_plugins((AgentPlugin, SessionLogPlugin, ModelsPlugin, DefaultsPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    app.update();
+    (app, wakes, home, agent)
+}
+
+/// Sends `text` to `agent` and runs `app` until the turn ended.
+fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
+    let ended = app.world().resource::<Ended>().0.len();
+    let world = app.world_mut();
+    world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
+}
+
+/// What `defaults.json` in `home` holds.
+fn saved(home: &Home) -> String {
+    fs::read_to_string(home.defaults()).unwrap_or_default()
+}
+
+/// The model `agent` is on.
+fn model_of(app: &App, agent: Entity) -> Option<&str> {
+    let choice = app.world().get::<ModelChoice>(agent);
+    choice.map(|choice| choice.0.as_str())
+}
+
+#[test]
+fn a_model_named_with_model_is_used_for_that_run_only() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-flag", &chosen, Some("corpus-test/chosen"));
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(model_of(&app, agent), Some("corpus-test/chosen"));
+    assert_eq!(chosen.request_count(), 1);
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn a_model_picked_with_model_is_remembered_once_it_answered() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) = remembering("defaults-picked", &chosen, None);
+    assert_eq!(model_of(&app, agent), Some("corpus-test/saved"));
+    run(&mut app, agent, "model corpus-test/chosen");
+    app.update();
+    assert_eq!(model_of(&app, agent), Some("corpus-test/chosen"));
+    assert_eq!(saved(&home), SAVED, "not before it answered");
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert!(
+        saved(&home).contains("\"corpus-test/chosen\""),
+        "{}",
+        saved(&home)
+    );
+}
+
+#[test]
+fn a_model_picked_with_model_is_not_remembered_while_it_fails() {
+    let failure = MockStreamEvent::error("no credit");
+    let chosen = MockCompletionModel::from_stream_turns([vec![failure], reply("hi")]);
+    let (mut app, wakes, home, agent) = remembering("defaults-failed", &chosen, None);
+    run(&mut app, agent, "model corpus-test/chosen");
+    ask(&mut app, &wakes, agent, "Hello.");
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.last(), Some(TurnOutcome::Failed(_))),
+        "{ended:?}"
+    );
+    assert_eq!(saved(&home), SAVED);
+    // Kept until it answers.
+    ask(&mut app, &wakes, agent, "Again.");
+    assert!(
+        saved(&home).contains("\"corpus-test/chosen\""),
+        "{}",
+        saved(&home)
+    );
+}
+
+#[test]
+fn a_model_picked_while_a_turn_runs_is_not_remembered() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) =
+        remembering("defaults-busy", &chosen, Some("corpus-test/chosen"));
+    // A turn runs, as one a resumed session continues.
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
+    assert!(app.world().get::<ActiveTurn>(agent).is_some());
+    // Refused: a model is not changed under a running turn.
+    run(&mut app, agent, "model corpus-test/chosen");
+    app.world_mut().entity_mut(turn).despawn();
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(chosen.request_count(), 1);
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn a_model_put_on_an_agent_without_a_choice_is_never_remembered() {
+    let chosen = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, wakes, home, agent) = remembering("defaults-inserted", &chosen, None);
+    // As restoring a session or forking an agent does.
+    let choice = ModelChoice("corpus-test/chosen".to_owned());
+    app.world_mut().entity_mut(agent).insert(choice);
+    ask(&mut app, &wakes, agent, "Hello.");
+    assert_eq!(chosen.request_count(), 1);
+    assert_eq!(saved(&home), SAVED);
+}
+
+#[test]
+fn an_effort_picked_is_remembered_with_the_users_model_only() {
+    let Ok(found) = Catalog::builtin().resolve("deepseek/deepseek-flash") else {
+        return;
+    };
+    let choices = found.spec.reasoning.choices();
+    let Some(level) = choices.iter().find(|choice| choice.reasoning.is_some()) else {
+        return;
+    };
+    let effort = ReasoningSetting(level.reasoning);
+    for (name, users) in [
+        ("defaults-effort-own", true),
+        ("defaults-effort-flag", false),
+    ] {
+        let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+        let (mut app, wakes, home, agent) = remembering(name, &model, None);
+        let saved_before = match users {
+            true => r#"{"model":"deepseek/deepseek-flash","effort":null}"#,
+            false => SAVED,
+        };
+        fs::write(home.defaults(), saved_before).ok();
+        // On DeepSeek as `--model` leaves an agent: not the user's choice.
+        let Some(connected) = rig_harness_test_support::connect(&model) else {
+            return;
+        };
+        let choice = ModelChoice("deepseek/deepseek-flash".to_owned());
+        app.world_mut()
+            .entity_mut(agent)
+            .insert((connected, choice));
+        app.world_mut().trigger(SetReasoning {
+            entity: agent,
+            effort,
+            kind: ChoiceKind::ByUser,
+        });
+        app.update();
+        assert_eq!(saved(&home), saved_before, "not before it answered");
+        ask(&mut app, &wakes, agent, "Hello.");
+        let kept = saved(&home);
+        assert_eq!(kept != saved_before, users, "{name}: {kept}");
+    }
 }
 
 #[cfg(feature = "tui")]
@@ -296,4 +451,29 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_t
         .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))
         .collect();
     assert_eq!(offered, ["router", "rig-models-corp/big"]);
+}
+
+#[cfg(feature = "tui")]
+#[test]
+fn the_model_picker_opens_on_the_agents_model_and_says_it_is_current() {
+    let model = MockCompletionModel::from_stream_turns([reply("hi")]);
+    let (mut app, agent) = routed();
+    let served = [("corpus-test/one", &model), ("corpus-test/two", &model)];
+    app.insert_resource(scripted_models(served));
+    let choice = ModelChoice("corpus-test/two".to_owned());
+    app.world_mut().entity_mut(agent).insert(choice);
+    run(&mut app, agent, "model");
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    let picker = pickers.iter(world).next();
+    let selected = picker.and_then(|picker| picker.items.get(picker.selected));
+    assert_eq!(
+        selected.map(|item| (item.command.as_str(), item.detail.as_deref())),
+        Some(("model corpus-test/two", Some("current")))
+    );
+    let marked = picker.map(|picker| {
+        let current = picker.items.iter().filter(|item| item.detail.is_some());
+        current.count()
+    });
+    assert_eq!(marked, Some(1));
 }

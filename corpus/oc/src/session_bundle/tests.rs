@@ -133,6 +133,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     turn(&mut app, &wakes, agent, "Edit src/lib.rs.");
     turn(&mut app, &wakes, agent, "Edit it again.");
@@ -296,6 +297,7 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/model".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     turn(&mut app, &wakes, agent, "What does src/lib.rs return?");
     let outputs = &app.world().resource::<ToolOutputs>().0;
