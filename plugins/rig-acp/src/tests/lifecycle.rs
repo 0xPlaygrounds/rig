@@ -3,6 +3,8 @@
 //! signal, ends every session and its tools. Linux, which shows each
 //! process's environment.
 
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use super::*;
 
 /// The process running `session`.

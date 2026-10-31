@@ -28,6 +28,7 @@ use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
 use rig_harness::host::session::StoreOpener;
 use rig_harness::prelude::*;
+use rig_harness::rig_tools::process::Process;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{oneshot, watch};
 
@@ -97,6 +98,13 @@ fn invalid(why: impl ToString) -> Error {
     crate::error(Error::invalid_params(), why)
 }
 
+/// Waits until `process` ended, checking every few milliseconds.
+async fn exited(process: &mut Process) {
+    while matches!(process.try_wait(), Ok(None)) {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 /// An error the client gets for one of the router's own failures.
 fn internal(why: impl ToString) -> Error {
     crate::error(Error::internal_error(), why)
@@ -124,7 +132,7 @@ impl Router {
         std::fs::create_dir_all(run.path()).map_err(internal)?;
         let run_lock = lock_file(&run.lock(), true).map_err(internal)?;
         run_lock.lock().map_err(internal)?;
-        let mut command = tokio::process::Command::new(&self.command.program);
+        let mut command = std::process::Command::new(&self.command.program);
         command
             .args(&self.command.args)
             .arg(session::FRONT)
@@ -138,12 +146,15 @@ impl Router {
             .env_remove(env::LAUNCHER)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(true);
-        let mut process = command.spawn().map_err(internal)?;
-        let (Some(input), Some(output)) = (process.stdin.take(), process.stdout.take()) else {
+            .stderr(Stdio::inherit());
+        // Killed with its group as it is dropped, and listed for this
+        // agent's launcher to kill should this agent die first.
+        let mut process = Process::start_with_stdio(command).map_err(internal)?;
+        let (Some(input), Some(output)) = (process.take_stdin(), process.take_stdout()) else {
             return Err(internal("the session process has no pipes"));
         };
+        let input = tokio::process::ChildStdin::from_std(input).map_err(internal)?;
+        let output = tokio::process::ChildStdout::from_std(output).map_err(internal)?;
         let (ready, connected) = oneshot::channel();
         let (stop, stopping) = watch::channel(false);
         let (router, key) = (self.clone(), id.as_str().to_owned());
@@ -165,8 +176,12 @@ impl Router {
                 eprintln!("rig acp: session {key}: {error}");
             }
             // One that did not close in time had its grace.
-            if late || tokio::time::timeout(GRACE, process.wait()).await.is_err() {
-                process.kill().await.ok();
+            if late
+                || tokio::time::timeout(GRACE, exited(&mut process))
+                    .await
+                    .is_err()
+            {
+                process.kill().ok();
             }
             run.kill_left_groups().ok();
             std::fs::remove_dir_all(run.path()).ok();

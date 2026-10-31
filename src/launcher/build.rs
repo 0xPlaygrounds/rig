@@ -17,6 +17,7 @@ use std::fs::{self, File};
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use rig_harness_protocol::{
@@ -51,6 +52,11 @@ pub enum BuildOutput {
     /// not look stuck, and a build with nothing to do says nothing.
     LogOnly,
 }
+
+/// How long cargo may wait for another cargo's lock before a
+/// [`BuildOutput::LogOnly`] build says it builds: a wait this short is
+/// not a build.
+const BLOCKED_QUIET: Duration = Duration::from_secs(3);
 
 /// Lines of a failed build's output a [`BuildFailure`] keeps, from its
 /// first error on.
@@ -270,6 +276,9 @@ struct BuildLog {
     shown: Box<dyn Write>,
     /// Whether a [`BuildOutput::LogOnly`] build said it works.
     announced: bool,
+    /// Since when cargo waits for another cargo's lock, without saying so
+    /// yet.
+    blocked_since: Option<Instant>,
     /// Whether what it shows is a terminal that draws cargo's progress
     /// bar, whose redrawn lines it erases.
     erase: bool,
@@ -294,6 +303,7 @@ impl BuildLog {
             output,
             shown,
             announced: false,
+            blocked_since: None,
             erase: false,
             after_cr: false,
         }
@@ -317,12 +327,13 @@ impl BuildLog {
         self.lines.push(line.to_owned());
     }
 
-    /// Runs `command`, whose stderr is piped: passes its stderr on as it
-    /// comes and logs each of its lines.
-    fn run(&mut self, mut command: Command) -> Result<ExitStatus> {
-        let mut child = command.spawn()?;
-        self.pass_on(&mut child);
-        Ok(child.wait()?)
+    /// Runs `command`, cargo, whose stderr is piped, in a process group of
+    /// its own ([`Build`]): passes its stderr on as it comes and logs each
+    /// of its lines.
+    fn run(&mut self, command: Command) -> Result<ExitStatus> {
+        let mut build = Build::spawn(command)?;
+        self.pass_on(&mut build.0);
+        Ok(build.0.wait()?)
     }
 
     /// Passes `child`'s stderr on when the output is live, and logs its
@@ -335,18 +346,43 @@ impl BuildLog {
         let Some(mut stderr) = child.stderr.take() else {
             return;
         };
-        let mut buffer = [0_u8; 8192];
+        // Read on a thread, so a wait for cargo's lock is announced once it
+        // passes its time even while cargo prints nothing.
+        let (sender, chunks) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 8192];
+            while let Ok(read @ 1..) = stderr.read(&mut buffer) {
+                if sender
+                    .send(buffer.get(..read).unwrap_or_default().to_vec())
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        });
         let mut segment: Vec<u8> = Vec::new();
         loop {
-            let read = match stderr.read(&mut buffer) {
-                Ok(0) | Err(_) => break,
-                Ok(read) => read,
+            let chunk = match self.blocked_since {
+                Some(since) => {
+                    let left = (since + BLOCKED_QUIET).saturating_duration_since(Instant::now());
+                    match chunks.recv_timeout(left) {
+                        Ok(chunk) => chunk,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            self.say_building();
+                            continue;
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                }
+                None => match chunks.recv() {
+                    Ok(chunk) => chunk,
+                    Err(_) => break,
+                },
             };
-            let chunk = buffer.get(..read).unwrap_or_default();
             if self.output == BuildOutput::Live {
-                self.show(chunk);
+                self.show(&chunk);
             }
-            for &byte in chunk {
+            for &byte in &chunk {
                 if byte == b'\r' || byte == b'\n' {
                     self.record_segment(&segment);
                     segment.clear();
@@ -388,15 +424,23 @@ impl BuildLog {
     }
 
     /// Says once, for a [`BuildOutput::LogOnly`] build, that cargo works
-    /// or waits, as its `line` shows: it fetches, compiles, or waits for
-    /// another cargo's lock.
+    /// or waits, as its `line` shows: it fetches or compiles, or it has
+    /// waited for another cargo's lock for [`BLOCKED_QUIET`].
     fn announce(&mut self, line: &str) {
-        let working = ["Updating ", "Downloading ", "Compiling ", "Blocking "];
+        let working = ["Updating ", "Downloading ", "Compiling "];
         let line = line.trim_start();
-        if self.output == BuildOutput::LogOnly
-            && !self.announced
-            && working.iter().any(|word| line.starts_with(word))
-        {
+        if working.iter().any(|word| line.starts_with(word)) {
+            self.say_building();
+        } else if line.starts_with("Blocking ") && !self.announced {
+            self.blocked_since.get_or_insert_with(Instant::now);
+        }
+    }
+
+    /// Says, for a [`BuildOutput::LogOnly`] build, that the agent is being
+    /// built, unless it said so already.
+    fn say_building(&mut self) {
+        self.blocked_since = None;
+        if self.output == BuildOutput::LogOnly && !self.announced {
             self.announced = true;
             let log = self.path.display();
             writeln!(self.shown, "rig: building the agent (output in {log})…").ok();
@@ -672,11 +716,13 @@ fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &s
 /// package per line, as `name vVERSION (source)`. Its stderr goes through
 /// `log`.
 fn tree(home: &Home, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
-    let mut child = cargo(home)
+    let mut command = cargo(home);
+    command
         .args(["tree", "--prefix", "none", "--format", "{p}"])
         .args(args)
-        .stdout(Stdio::piped())
-        .spawn()?;
+        .stdout(Stdio::piped());
+    let mut build = Build::spawn(command)?;
+    let child = &mut build.0;
     // Read on its own thread, so neither pipe fills while the other is read.
     let out = child.stdout.take();
     let reader = std::thread::spawn(move || {
@@ -686,7 +732,7 @@ fn tree(home: &Home, args: &[&str], log: &mut BuildLog) -> Result<Vec<String>> {
         }
         text
     });
-    log.pass_on(&mut child);
+    log.pass_on(child);
     let stdout = reader
         .join()
         .map_err(|_| "reading cargo tree's output failed")?;
@@ -703,6 +749,104 @@ fn package(line: &str) -> Option<(&str, &str)> {
     let name = words.next()?;
     let version = words.next()?.strip_prefix('v')?;
     Some((name, version))
+}
+
+/// cargo, running in a process group of its own, which is killed should
+/// the launcher be told to end (`SIGTERM`, `SIGINT`, `SIGHUP`) meanwhile, so
+/// no cargo or rustc outlives it. Elsewhere than unix, cargo alone.
+struct Build(Child);
+
+impl Build {
+    fn spawn(mut command: Command) -> std::io::Result<Self> {
+        #[cfg(unix)]
+        return stop::spawn(&mut command).map(Self);
+        #[cfg(not(unix))]
+        command.spawn().map(Self)
+    }
+}
+
+impl Drop for Build {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        stop::forget();
+    }
+}
+
+/// The signals that end the launcher, while a [`Build`] runs, first kill
+/// its group.
+#[cfg(unix)]
+mod stop {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Child, Command};
+    use std::sync::atomic::{AtomicI32, Ordering};
+
+    /// The signals a terminal or a supervisor ends the launcher with.
+    const ENDING: [libc::c_int; 3] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
+
+    /// The build's process group; 0 while none runs.
+    static GROUP: AtomicI32 = AtomicI32::new(0);
+
+    /// Starts `command` as the leader of a new process group and makes it
+    /// the group the ending signals kill. The signals wait while it starts,
+    /// so one that comes meanwhile finds the group.
+    pub(super) fn spawn(command: &mut Command) -> std::io::Result<Child> {
+        command.process_group(0);
+        // SAFETY: plain calls on a zeroed signal set this function owns;
+        // the child starts with an empty mask (std resets it).
+        let mut ending: libc::sigset_t = unsafe { std::mem::zeroed() };
+        let mut before: libc::sigset_t = unsafe { std::mem::zeroed() };
+        unsafe {
+            libc::sigemptyset(&raw mut ending);
+            for signal in ENDING {
+                libc::sigaddset(&raw mut ending, signal);
+                libc::signal(signal, on_signal as *const () as libc::sighandler_t);
+            }
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const ending, &raw mut before);
+        }
+        let spawned = command.spawn();
+        if let Ok(child) = &spawned {
+            GROUP.store(i32::try_from(child.id()).unwrap_or(0), Ordering::SeqCst);
+        }
+        // SAFETY: restores the mask saved above.
+        unsafe {
+            libc::pthread_sigmask(libc::SIG_SETMASK, &raw const before, std::ptr::null_mut());
+        }
+        spawned
+    }
+
+    /// The build ended: the ending signals end the launcher alone again.
+    pub(super) fn forget() {
+        GROUP.store(0, Ordering::SeqCst);
+        for signal in ENDING {
+            // SAFETY: restores the default action, which `spawn` replaced.
+            unsafe {
+                libc::signal(signal, libc::SIG_DFL);
+            }
+        }
+    }
+
+    /// Kills the build's group, if one runs.
+    pub(super) fn kill() {
+        let group = GROUP.load(Ordering::SeqCst);
+        if group > 0 {
+            // SAFETY: `kill` takes plain integers; a negative pid names the
+            // build's process group.
+            unsafe {
+                libc::kill(-group, libc::SIGKILL);
+            }
+        }
+    }
+
+    /// Kills the build's group, then ends the launcher as `signal` would
+    /// have. Only async-signal-safe calls.
+    extern "C" fn on_signal(signal: libc::c_int) {
+        kill();
+        // SAFETY: `signal` and `raise` are async-signal-safe.
+        unsafe {
+            libc::signal(signal, libc::SIG_DFL);
+            libc::raise(signal);
+        }
+    }
 }
 
 #[cfg(all(test, unix))]

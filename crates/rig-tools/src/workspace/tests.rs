@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, ErrorKind};

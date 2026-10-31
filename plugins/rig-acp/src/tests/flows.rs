@@ -1,6 +1,8 @@
 //! What a client sees of a session: the protocol, prompts, tool calls,
 //! questions, cancelling, history and MCP servers.
 
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use std::io::{BufRead, BufReader, Write};
 
 use super::*;

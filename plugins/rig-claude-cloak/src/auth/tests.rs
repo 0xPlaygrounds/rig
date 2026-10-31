@@ -12,7 +12,6 @@ fn browser_opener_receives_the_authorization_url_as_one_argument() -> anyhow::Re
         "synthetic-challenge",
     )?;
     let command = browser_command(&url);
-    let command = command.as_std();
     #[cfg(target_os = "linux")]
     anyhow::ensure!(command.get_program() == "xdg-open");
     #[cfg(target_os = "macos")]
