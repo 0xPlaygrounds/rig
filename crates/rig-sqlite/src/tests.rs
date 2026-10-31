@@ -3011,3 +3011,276 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
         ])))
     }
 }
+
+#[derive(Clone)]
+struct UniqueDocument<const INTEGER_ID: bool>(TestDocument);
+
+impl<const INTEGER_ID: bool> SqliteVectorStoreTable for UniqueDocument<INTEGER_ID> {
+    fn name() -> &'static str {
+        "unique_documents"
+    }
+    fn schema() -> Vec<Column> {
+        vec![
+            Column::new(
+                "id",
+                if INTEGER_ID {
+                    "INTEGER PRIMARY KEY"
+                } else {
+                    "TEXT PRIMARY KEY"
+                },
+            ),
+            Column::new("category", "TEXT UNIQUE"),
+            Column::new("title", "TEXT UNIQUE"),
+        ]
+    }
+    fn id(&self) -> String {
+        self.0.id.clone()
+    }
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        self.0.column_values()
+    }
+}
+
+#[tokio::test]
+async fn unique_replacements_remove_every_deleted_documents_embeddings() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    for integer_id in [false, true] {
+        if integer_id {
+            check_unique_replacements::<true>().await?;
+        } else {
+            check_unique_replacements::<false>().await?;
+        }
+    }
+    Ok(())
+}
+
+async fn check_unique_replacements<const INTEGER_ID: bool>() -> anyhow::Result<()> {
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::<UniqueDocument<INTEGER_ID>>::new(conn.clone(), 2).await?;
+    let rows = vec![
+        row("1", "a", "x", vec![1.0, 0.0]),
+        row("2", "b", "y", vec![0.8, 0.2]),
+        row("3", "c", "z", vec![0.9, 0.1]),
+        row("4", "d", "w", vec![0.0, -1.0]),
+    ]
+    .into_iter()
+    .map(|(doc, embeddings)| (UniqueDocument::<INTEGER_ID>(doc), embeddings))
+    .collect();
+    store.add_rows(rows).await?;
+    // One replacement conflicts with three distinct rows. An integer id also
+    // reuses rowid 3, so its old vectors must be removed before the new ones.
+    let (doc, embeddings) = row("3", "a", "y", vec![0.6, 0.8]);
+    store
+        .add_rows(vec![(UniqueDocument::<INTEGER_ID>(doc), embeddings)])
+        .await?;
+    let counts = conn
+        .call(|conn| {
+            let count = |table: &str| {
+                conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
+                    r.get::<_, i64>(0)
+                })
+            };
+            Ok((
+                count("unique_documents")?,
+                count("unique_documents_embeddings")?,
+                count("unique_documents_embedding_map")?,
+            ))
+        })
+        .await?;
+    anyhow::ensure!(
+        counts == (2, 2, 2),
+        "replacement left stale rows: {counts:?}"
+    );
+    let index = store.index(TestEmbeddingModel::model());
+    let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(1)
+        .build();
+    let ids = index.top_n_ids(req.clone()).await?;
+    anyhow::ensure!(
+        ids.len() == 1
+            && ids
+                .first()
+                .is_some_and(|r| r.id == "3" && (r.score - 0.6).abs() < SCORE_EPSILON),
+        "wrong top-1 result: {ids:?}"
+    );
+    let docs = index.top_n::<serde_json::Value>(req).await?;
+    anyhow::ensure!(
+        docs.len() == 1
+            && docs.first().is_some_and(
+                |r| r.id == "3" && r.document.get("title") == Some(&serde_json::json!("y"))
+            ),
+        "wrong document result: {docs:?}"
+    );
+    let all = index
+        .top_n_ids(
+            VectorSearchRequest::<SqliteSearchFilter>::builder()
+                .query("needle")
+                .samples(10)
+                .build(),
+        )
+        .await?;
+    anyhow::ensure!(
+        all.iter().map(|r| r.id.as_str()).collect::<Vec<_>>() == ["3", "4"],
+        "unrelated document lost: {all:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn unique_replacement_failure_rolls_back_documents_and_vectors() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::<UniqueDocument<false>>::new(conn, 2).await?;
+    let (doc, embeddings) = row("old", "a", "x", vec![1.0, 0.0]);
+    store
+        .add_rows(vec![(UniqueDocument::<false>(doc), embeddings)])
+        .await?;
+    let (doc, embeddings) = row("new", "a", "y", vec![1.0]);
+    anyhow::ensure!(
+        store
+            .add_rows(vec![(UniqueDocument::<false>(doc), embeddings)])
+            .await
+            .is_err()
+    );
+    let index = store.index(TestEmbeddingModel::model());
+    let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(1)
+        .build();
+    let results = index.top_n::<serde_json::Value>(req).await?;
+    anyhow::ensure!(
+        results.len() == 1
+            && results
+                .first()
+                .is_some_and(|r| r.id == "old" && (r.score - 1.0).abs() < SCORE_EPSILON),
+        "failed replacement changed original: {results:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn unique_index_added_after_open_can_replace_a_differently_collated_id() -> anyhow::Result<()>
+{
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::<TestDocument>::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![row("abc", "docs", "old", vec![1.0, 0.0])])
+        .await?;
+    conn.call(|conn| {
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX unique_nocase_id ON live_test_documents(id COLLATE NOCASE)",
+        )?;
+        Ok(())
+    })
+    .await?;
+    store
+        .add_rows(vec![row("ABC", "docs", "new", vec![0.6, 0.8])])
+        .await?;
+    let index = store.index(TestEmbeddingModel::model());
+    let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(1)
+        .build();
+    let ids = index.top_n_ids(req.clone()).await?;
+    anyhow::ensure!(
+        ids.len() == 1
+            && ids
+                .first()
+                .is_some_and(|r| r.id == "ABC" && (r.score - 0.6).abs() < SCORE_EPSILON),
+        "secondary id collation left a stale vector: {ids:?}"
+    );
+    let docs = index.top_n::<TestDocument>(req).await?;
+    anyhow::ensure!(docs.first().is_some_and(|r| r.document.title == "new"));
+    Ok(())
+}
+
+#[derive(Clone)]
+struct PrimaryKeyCollationDocument<const COLUMN_NOCASE: bool>(TestDocument);
+impl<const COLUMN_NOCASE: bool> SqliteVectorStoreTable
+    for PrimaryKeyCollationDocument<COLUMN_NOCASE>
+{
+    fn name() -> &'static str {
+        "pk_collation_documents"
+    }
+    fn schema() -> Vec<Column> {
+        vec![
+            Column::new("category", "TEXT"),
+            Column::new("title", "TEXT"),
+            Column::new(
+                "id",
+                if COLUMN_NOCASE {
+                    "TEXT COLLATE NOCASE, PRIMARY KEY(id COLLATE BINARY)"
+                } else {
+                    "TEXT, PRIMARY KEY(id COLLATE NOCASE)"
+                },
+            ),
+        ]
+    }
+    fn id(&self) -> String {
+        self.0.id.clone()
+    }
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        self.0.column_values()
+    }
+}
+
+#[tokio::test]
+async fn primary_key_collation_controls_which_vectors_are_replaced() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    check_primary_key_collation::<false>().await?;
+    check_primary_key_collation::<true>().await?;
+    Ok(())
+}
+
+async fn check_primary_key_collation<const COLUMN_NOCASE: bool>() -> anyhow::Result<()> {
+    let conn = Connection::open_in_memory().await?;
+    let store =
+        SqliteVectorStore::<PrimaryKeyCollationDocument<COLUMN_NOCASE>>::new(conn, 2).await?;
+    let (doc, embeddings) = row("abc", "docs", "old", vec![1.0, 0.0]);
+    store
+        .add_rows(vec![(
+            PrimaryKeyCollationDocument::<COLUMN_NOCASE>(doc),
+            embeddings,
+        )])
+        .await?;
+    let (doc, embeddings) = row("ABC", "docs", "new", vec![0.6, 0.8]);
+    store
+        .add_rows(vec![(
+            PrimaryKeyCollationDocument::<COLUMN_NOCASE>(doc),
+            embeddings,
+        )])
+        .await?;
+    let index = store.index(TestEmbeddingModel::model());
+    let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(2)
+        .build();
+    let results = index.top_n_ids(req).await?;
+    let ids = results.iter().map(|r| r.id.as_str()).collect::<Vec<_>>();
+    let expected = if COLUMN_NOCASE {
+        vec!["abc", "ABC"]
+    } else {
+        vec!["ABC"]
+    };
+    anyhow::ensure!(
+        ids == expected,
+        "column collation overrode primary-key replacement semantics: {results:?}"
+    );
+    let top = index
+        .top_n::<TestDocument>(
+            VectorSearchRequest::<SqliteSearchFilter>::builder()
+                .query("needle")
+                .samples(1)
+                .build(),
+        )
+        .await?;
+    let expected_title = if COLUMN_NOCASE { "old" } else { "new" };
+    anyhow::ensure!(
+        top.first()
+            .is_some_and(|r| r.document.title == expected_title),
+        "wrong top-1 document: {top:?}"
+    );
+    Ok(())
+}

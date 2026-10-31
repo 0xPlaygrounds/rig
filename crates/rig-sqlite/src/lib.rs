@@ -602,28 +602,52 @@ where
             format!("DELETE FROM {embedding_map_table_name} WHERE document_rowid = ?1");
         let delete_embeddings_sql = format!("DELETE FROM {embeddings_table_name} WHERE rowid = ?1");
 
+        // Use the id lookup only when the column and its sole unique key
+        // both have binary comparison semantics.
+        let id_has_collation = T::schema().iter().any(|column| {
+            column.name == "id" && column.col_type.to_ascii_uppercase().contains("COLLATE")
+        });
+        let secondary_unique: bool = id_has_collation
+            || txn.query_row(
+                "SELECT EXISTS (
+                SELECT 1 FROM pragma_index_list(?1) AS idx
+                WHERE idx.\"unique\" = 1 AND NOT (
+                    idx.origin = 'pk'
+                    AND (SELECT COUNT(*) FROM pragma_index_info(idx.name)) = 1
+                    AND EXISTS (
+                        SELECT 1 FROM pragma_index_xinfo(idx.name)
+                        WHERE name = 'id' AND coll = 'BINARY' AND key = 1
+                    )
+                )
+            )",
+                [table_name],
+                |row| row.get(0),
+            )?;
+
         for (doc, embeddings) in documents {
             debug!("Storing document with id {}", doc.id());
 
             let values = doc.column_values();
-            let id_value = values
-                .iter()
-                .find(|(name, _)| *name == "id")
-                .map_or_else(|| Value::Text(doc.id()), |(_, value)| value.to_sql_value());
-            if let Some(existing_rowid) = txn
-                .query_row(&existing_rowid_sql, rusqlite::params![id_value], |row| {
-                    row.get::<_, i64>(0)
-                })
-                .optional()?
-            {
-                let existing_embedding_rowids = txn
-                    .prepare(&existing_embedding_rowids_sql)?
-                    .query_map([existing_rowid], |row| row.get::<_, i64>(0))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                for embedding_rowid in existing_embedding_rowids {
-                    txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
+            if !secondary_unique {
+                let id_value = values
+                    .iter()
+                    .find(|(name, _)| *name == "id")
+                    .map_or_else(|| Value::Text(doc.id()), |(_, value)| value.to_sql_value());
+                if let Some(existing_rowid) = txn
+                    .query_row(&existing_rowid_sql, rusqlite::params![id_value], |row| {
+                        row.get::<_, i64>(0)
+                    })
+                    .optional()?
+                {
+                    let existing_embedding_rowids = txn
+                        .prepare(&existing_embedding_rowids_sql)?
+                        .query_map([existing_rowid], |row| row.get::<_, i64>(0))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?;
+                    for embedding_rowid in existing_embedding_rowids {
+                        txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
+                    }
+                    txn.execute(&delete_embedding_map_sql, [existing_rowid])?;
                 }
-                txn.execute(&delete_embedding_map_sql, [existing_rowid])?;
             }
 
             let columns = values.iter().map(|(col, _)| *col).collect::<Vec<_>>();
@@ -644,6 +668,18 @@ where
                 rusqlite::params_from_iter(values.iter().map(|(_, val)| val.to_sql_value())),
             )?;
             last_id = txn.last_insert_rowid();
+
+            if secondary_unique {
+                // REPLACE can reuse a deleted row's rowid, even when its id differs.
+                let replaced_embeddings = txn
+                    .prepare(&existing_embedding_rowids_sql)?
+                    .query_map([last_id], |row| row.get::<_, i64>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                for embedding_rowid in replaced_embeddings {
+                    txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
+                }
+                txn.execute(&delete_embedding_map_sql, [last_id])?;
+            }
 
             let metadata_values = self
                 .metadata_columns
@@ -667,6 +703,24 @@ where
                 params.push(Value::Blob(vec));
                 params.extend(metadata_values.iter().cloned());
                 stmt.execute(rusqlite::params_from_iter(params))?;
+            }
+        }
+
+        if secondary_unique {
+            // Other UNIQUE constraints may have replaced additional documents.
+            // Prune once per batch; reused rowids were handled before adding vectors.
+            let orphaned_embeddings = txn
+                .prepare(&format!(
+                    "DELETE FROM {embedding_map_table_name}
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM {table_name} d
+                     WHERE d.rowid = {embedding_map_table_name}.document_rowid
+                 ) RETURNING embedding_rowid"
+                ))?
+                .query_map([], |row| row.get::<_, i64>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for embedding_rowid in orphaned_embeddings {
+                txn.execute(&delete_embeddings_sql, [embedding_rowid])?;
             }
         }
 
