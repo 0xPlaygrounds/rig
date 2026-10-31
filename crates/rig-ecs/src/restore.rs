@@ -136,27 +136,30 @@ pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversati
     }
 }
 
-/// Marks the call `call` settled with `result` and the `facts` it
-/// published on `conversation`: in place of its started mark, else after
-/// its last entry; a call marked settled already is left as it is.
+/// Marks the call `call` settled with `result` and the facts it published
+/// (`facts`, asked only for a new mark) on `conversation`: in place of its
+/// started mark, else after its last entry; a call marked settled already
+/// is left as it is.
 pub(crate) fn mark_settled(
     conversation: &mut rig_core::conversation::Conversation,
     call: &CallId,
     result: &ToolResult,
-    facts: ToolResultContext,
+    facts: impl FnOnce() -> ToolResultContext,
 ) {
     let had = marks(conversation)
         .into_iter()
         .find(|(_, mark)| mark.call() == call);
+    if matches!(had, Some((_, CallMark::Settled { .. }))) {
+        return;
+    }
     let mark = CallMark::Settled {
         call: call.clone(),
         result: result.clone(),
-        facts,
+        facts: facts(),
     };
     let value = serde_json::to_value(mark).unwrap_or_default();
     match had {
-        Some((_, CallMark::Settled { .. })) => {}
-        Some((id, CallMark::Started { .. })) => {
+        Some((id, _)) => {
             if let Some(aside) = conversation.aside(id).cloned() {
                 conversation.replace_aside(id, Aside { value, ..aside });
             }

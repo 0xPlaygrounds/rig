@@ -125,6 +125,7 @@ struct Meta {
     /// Milliseconds since the Unix epoch: when the entry was first made.
     #[serde(default)]
     made: u64,
+    /// What the calls its results answer published.
     #[serde(default, skip_serializing_if = "ResultFacts::is_empty")]
     facts: ResultFacts,
 }

@@ -1715,7 +1715,7 @@ pub(crate) fn commit_replies(
             for call in calls.iter().filter(|call| call.settled) {
                 if let Some(outcome) = call.outcome {
                     let result = outcome.tool_result();
-                    let facts = call.facts().unwrap_or_default();
+                    let facts = || call.facts().unwrap_or_default();
                     mark_settled(&mut conversation, &call.request.call.id, &result, facts);
                 }
             }

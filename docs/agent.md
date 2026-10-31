@@ -132,12 +132,12 @@ color. A plugin draws its tools' calls with ordinary systems in
 ## Sessions
 
 Each `rig` starts a new session. `/quit` ends it, `/new` starts a new one and
-`/name` names it. A session is kept while it has a user or assistant message; one
-that only changed settings, or whose only message failed and came back to the
-input (a model that refuses it, say), is removed when it ends, offers no
-`rig --resume`, and `/resume` never lists it. `/resume` lists the earlier sessions (name or first message, what
-it spent, its main agent's context, the end of its directory and its age; →
-shows the whole directory) and resumes the one picked, in its own
+`/name` names it. A session is kept while it has a user or assistant message;
+one that only changed settings, or whose only message failed and came back to
+the input (a model that refuses it, say), is removed when it ends, offers no
+`rig --resume`, and `/resume` never lists it. `/resume` lists the earlier
+sessions (name or first message, what it spent, its main agent's context, the
+end of its directory and its age; → shows the whole directory) and resumes the one picked, in its own
 directory; `rig --resume <id or name>` (or `/resume <id or name>`) resumes a
 given one, such as after a crash.
 
@@ -145,8 +145,8 @@ The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages (each tool result
 with what its call published for its row, such as an edit's diff, a read's
 lines and a command's exit status, so a resumed session draws its calls as
-they were drawn), settings, usage and compactions, appended to as it runs and rewritten only through
-rig-memory (a plugin's redaction, say, keeps each record's place and time).
+they were drawn), settings, usage and compactions, appended to as it runs and
+rewritten only through rig-memory (a plugin's redaction, say, keeps each record's place and time).
 Images are stored once in `files/blobs/`, and `files/meta.json` caches what
 `/resume` lists. An older session format is resumed and written on in its
 own; one from before `rig-session/2` is refused, unchanged.

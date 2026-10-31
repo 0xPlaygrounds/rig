@@ -89,8 +89,8 @@ pub trait Rewrite: Send + Sync {
 /// Every string, keys included, of every value: messages, their tool
 /// calls' facts and asides through their serde form, saved values, text and
 /// every file. Redaction and path remapping are this. A string that is part
-/// of a message's or an aside's form, such as a field name or a tag, is left as it is where changing it
-/// would make the value unreadable.
+/// of a message's or an aside's form, such as a field name or a tag, is
+/// left as it is where changing it would make the value unreadable.
 ///
 /// ```
 /// use rig_core::conversation::Author;

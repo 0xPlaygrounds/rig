@@ -75,9 +75,8 @@ impl Deref for SessionPaths {
 /// read is refused, unchanged. The harness marks the running session saved
 /// once its log wrote and an agent's conversation has a user or assistant
 /// message, so `/resume` lists it (not a sessionless run's), and unmarks
-/// it while none has; a program
-/// that saves a new session through this marks it itself
-/// ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing of a
+/// it while none has; a program that saves a new session through this
+/// marks it itself ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing of a
 /// session no rig runs current.
 #[derive(Resource, Clone)]
 pub struct StoreOpener {
@@ -394,7 +393,7 @@ pub(crate) fn leave_session(world: &mut World) {
 /// conversation: marked once its log wrote and it does, unmarked once it
 /// no longer does. Once a log write failed, the log on disk may hold more
 /// than the agents do, so the marker stays as it is. `marked` is the
-/// marker as last left, read from the session the first time, so the
+/// marker as last set, read from the session the first time, so the
 /// marker is touched only on a change.
 fn track_saved(
     log: Option<Res<SessionLog>>,
@@ -414,9 +413,11 @@ fn track_saved(
         (true, false) => paths.unmark_saved(),
         _ => return,
     };
-    match change {
-        Ok(()) => *marked = holds,
-        Err(failure) => warn!("could not mark whether the session is saved: {failure}"),
+    // A failed change is not tried every frame again: the next change of
+    // what the session holds tries it.
+    *marked = holds;
+    if let Err(failure) = change {
+        warn!("could not mark whether the session is saved: {failure}");
     }
 }
 

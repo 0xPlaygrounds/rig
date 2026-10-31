@@ -157,8 +157,38 @@ fn kept_facts_are_redacted_without_old_text_and_bounded() {
         .unwrap_or_default();
     let old = changed.0.first().map(|change| change.before_text.is_none());
     assert_eq!(old, Some(true));
-    let removed = changed.0.first().map(FileChange::unified).unwrap_or_default();
-    assert!(removed.contains("-[REDACTED]\n") && !removed.contains(secret), "{removed}");
+    let removed = changed
+        .0
+        .first()
+        .map(FileChange::unified)
+        .unwrap_or_default();
+    assert!(
+        removed.contains("-[REDACTED]\n") && !removed.contains(secret),
+        "{removed}"
+    );
+
+    // A key block is in no one line: the change keeps no hunks.
+    let block = [
+        "-----BEGIN RSA PRIVATE KEY-----\n",
+        "MIIEowIBAAKCAQEAabc\n",
+        "-----END RSA PRIVATE KEY-----\n",
+    ];
+    let hunk = Hunk {
+        old: Lines { start: 1, count: 0 },
+        new: Lines { start: 1, count: 3 },
+        lines: block.map(|line| HunkLine::Added(line.to_owned())).to_vec(),
+    };
+    let mut keyed = ToolContext::new();
+    let change = FileChange::created("id_rsa", 3).with_hunks(vec![hunk]);
+    assert!(keyed.insert_result(FilesChanged(vec![change])).is_ok());
+    let kept = keyed.result_context().kept();
+    let changed = kept
+        .get::<FilesChanged>()
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let hunks = changed.0.first().map(|change| change.hunks.len());
+    assert_eq!(hunks, Some(0));
 
     let huge = FileRead::new("x".repeat(MAX_KEPT_FACTS_BYTES), content_hash(b""));
     assert!(context.insert_result(FilesRead(vec![huge])).is_ok());
