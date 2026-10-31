@@ -1,8 +1,8 @@
-# The rows of review.json that set a capability or a `rig` fact, or copy a
-# row with `from`, without a "source" when sources became required, each
-# with the fingerprint of the row as it was then (`cargo xtask catalog check`
-# reads it). A row that changes needs a source and leaves this list; nothing
-# joins it.
+# The rows of review.json that set a capability or a `rig` fact without a
+# "source" of their own, or only copy a row with `from` that has none, when
+# sources became required, each with the fingerprint of the row as it was
+# then. `cargo xtask catalog sync` and `catalog check` read it. A row that
+# changes needs a source and leaves this list; nothing joins it.
 771c1a65836c14dd aws_bedrock/amazon.nova-canvas-v1:0
 824872c3ba592085 aws_bedrock/amazon.titan-embed-image-v1
 9fde15d75038d8b7 aws_bedrock/amazon.titan-embed-text-v1
@@ -20,7 +20,21 @@ d272ee151b1f281a aws_bedrock/stability.sd3-5-large-v1:0
 696a8dd168d4d310 aws_bedrock/stability.stable-image-ultra-v1:1
 1b23653a84fbe80b azure.openai/gpt-3.5-turbo-16k
 c913fd516f8fd99d azure.openai/gpt-4o-realtime-preview
+ab982843ea5c3ace chatgpt/gpt-5.3-chat-latest
+ea0c492df0b4ed1f chatgpt/gpt-5.3-codex
+1ed232753b275c5f chatgpt/gpt-5.3-codex-spark
 e2f3101a27d6e00c chatgpt/gpt-5.3-instant
+a82810cc558a8a90 chatgpt/gpt-5.4
+cf1b1d4b64550096 chatgpt/gpt-5.4-pro
+70fe3c35221231c7 chatgpt/gpt-5.5
+ca567b57a924149b chatgpt/gpt-5.6-luna
+96215fd44da6a985 chatgpt/gpt-5.6-sol
+f8893eb628a9fc59 chatgpt/gpt-5.6-terra
+0fd0994a10a38d27 chatgpt/gpt-6-astra
+6ffd59ad5833dc8c chatgpt/gpt-6-luna
+94c51724c996df24 chatgpt/gpt-6-sol
+3218e1f6181370bd chatgpt/gpt-6.1-sol
+694ffb45f4c45d71 chatgpt/gpt-6.1-terra
 d40050f3cb33c824 copilot/claude-3.5-sonnet
 a639fe7cbb12fdc0 copilot/claude-opus-4.6
 4f16a8aba4ae8a68 copilot/claude-sonnet-4

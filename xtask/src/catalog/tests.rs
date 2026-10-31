@@ -205,12 +205,23 @@ fn a_review_sync_cannot_read_is_an_error() {
         json!({"anthropic": {"models": {"claude-x-1": {"rig": {"adaptive": true}}}}}),
         json!({"anthropic": {"models": {
             "claude-x-0": {"from": "anthropic/claude-x-1"},
-            "claude-x-1": {"from": "anthropic/claude-x-2", "name": "Claude X 1"}
+            "claude-x-1": {"from": "anthropic/claude-x-2", "name": "Claude X 1"},
+            "claude-x-2": {"name": "Claude X 2"}
         }}}),
     ] {
         let error = generate(&models_dev(), &review).expect_err("refused");
         assert!(error.contains("claude-x-1"), "{error}");
     }
+    let chained = json!({"anthropic": {"models": {
+        "claude-x-0": {"from": "anthropic/claude-x-1"},
+        "claude-x-1": {"from": "anthropic/claude-x-2", "name": "Claude X 1"},
+        "claude-x-2": {"name": "Claude X 2"}
+    }}});
+    assert!(
+        generate(&models_dev(), &chained)
+            .is_err_and(|error| error.contains("which copies anthropic/claude-x-2")),
+        "a copy of a copy is refused"
+    );
 }
 
 #[test]
@@ -473,13 +484,14 @@ fn a_lost_capability_is_refused() {
     let effort = |values: serde_json::Value| json!([{"type": "effort", "values": values}]);
     let reasoning =
         |options: serde_json::Value| json!({"reasoning": true, "reasoning_options": options});
-    for (provider, id, before, after, lost) in [
+    for (provider, id, before, after, lost, key) in [
         (
             "venice",
             "m",
             reasoning(effort(json!(["low", "high"]))),
             reasoning(json!([])),
             "venice/m: reasoning controls become unknown (were effort low high)",
+            "reasoning_options",
         ),
         (
             "venice",
@@ -487,6 +499,7 @@ fn a_lost_capability_is_refused() {
             reasoning(effort(json!(["none", "low", "high"]))),
             reasoning(effort(json!(["low", "high"]))),
             "venice/m: can no longer turn reasoning off",
+            "reasoning_options",
         ),
         (
             "venice",
@@ -494,6 +507,7 @@ fn a_lost_capability_is_refused() {
             reasoning(json!([{"type": "budget_tokens"}, {"type": "effort", "values": ["low"]}])),
             reasoning(effort(json!(["low"]))),
             "venice/m: reasoning budget lost",
+            "reasoning_options",
         ),
         (
             "venice",
@@ -501,6 +515,7 @@ fn a_lost_capability_is_refused() {
             json!({"reasoning": true}),
             json!({"reasoning": false}),
             "venice/m: stops reasoning",
+            "reasoning",
         ),
         (
             "ollama-cloud",
@@ -508,6 +523,7 @@ fn a_lost_capability_is_refused() {
             json!({"modalities": {"input": ["text", "pdf"], "output": ["text"]}}),
             json!({"modalities": {"input": ["text"], "output": ["text"]}}),
             "ollama/m: input lost: pdf",
+            "modalities.input",
         ),
         (
             "venice",
@@ -515,6 +531,7 @@ fn a_lost_capability_is_refused() {
             json!({"tool_call": true}),
             json!({"tool_call": false}),
             "venice/m: tool calls lost",
+            "tool_call",
         ),
         (
             "openrouter",
@@ -522,6 +539,7 @@ fn a_lost_capability_is_refused() {
             json!({"structured_output": true}),
             json!({}),
             "openrouter/vendor/m: structured output lost",
+            "structured_output",
         ),
         (
             "venice",
@@ -529,6 +547,7 @@ fn a_lost_capability_is_refused() {
             json!({"temperature": true}),
             json!({"temperature": false}),
             "venice/m: sampling any -> unknown",
+            "temperature",
         ),
         (
             "venice",
@@ -536,6 +555,23 @@ fn a_lost_capability_is_refused() {
             json!({}),
             json!({"rig": {"sampling": "never"}}),
             "venice/m: sampling unknown -> never",
+            "rig.sampling",
+        ),
+        (
+            "venice",
+            "m",
+            json!({}),
+            json!({"rig": {"sampling": "reasoning_off"}}),
+            "venice/m: sampling unknown -> reasoning_off",
+            "rig.sampling",
+        ),
+        (
+            "venice",
+            "m",
+            json!({"rig": {"sampling": "reasoning_off"}}),
+            json!({"rig": {"sampling": "never"}}),
+            "venice/m: sampling reasoning_off -> never",
+            "rig.sampling",
         ),
         // OpenRouter translates an OpenAI model's listed efforts and adds
         // its own, so `max` is what a refresh loses.
@@ -545,6 +581,7 @@ fn a_lost_capability_is_refused() {
             reasoning(effort(json!(["low", "high", "max"]))),
             reasoning(effort(json!(["low", "high"]))),
             "openrouter/openai/gpt-x: effort lost: max",
+            "reasoning_options",
         ),
     ] {
         let comparison = compared(
@@ -554,10 +591,12 @@ fn a_lost_capability_is_refused() {
             &json!({}),
         );
         assert_eq!(refused(&comparison), [lost]);
+        let line = format!("{lost} (answer with `{key}`)");
         assert!(
             comparison
                 .refusal()
-                .is_some_and(|refusal| refusal.contains(lost))
+                .is_some_and(|refusal| refusal.contains(&line)),
+            "{line}"
         );
     }
 }
@@ -635,7 +674,49 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
         json!({"temperature": false, "rig": {"sampling": null}}),
     );
     let venice = |row: serde_json::Value| one("venice", "m", row);
+    let tools = |on: bool| json!({"venice": {"models": {"base": {"tool_call": on}, "alias": {"tool_call": on}}}});
+    let (tools_on, tools_off) = (tools(true), tools(false));
+    let gemini = |on: bool| one("google", "gemini-x", json!({"tool_call": on}));
+    let (gemini_on, gemini_off) = (gemini(true), gemini(false));
+    let copy = |base: serde_json::Value| json!({"venice": {"models": {"base": base, "alias": {"from": "venice/base", "name": "Alias"}}}});
     for (before, after, review, unanswered) in [
+        // A copy is answered by its origin's own review value, not by one
+        // the origin takes from models.dev, and its own value needs its own
+        // source.
+        (
+            &tools_on,
+            &tools_off,
+            copy(json!({"source": "https://example.com/m", "tool_call": false})),
+            vec![],
+        ),
+        (
+            &tools_on,
+            &tools_off,
+            copy(json!({"source": "https://example.com/m", "limit": {"output": 64}})),
+            vec![
+                "venice/alias: tool calls lost",
+                "venice/base: tool calls lost",
+            ],
+        ),
+        (
+            &tools_on,
+            &tools_off,
+            json!({"venice": {"models": {
+                "base": {"source": "https://example.com/m", "tool_call": false},
+                "alias": {"from": "venice/base", "tool_call": false}
+            }}}),
+            vec!["venice/alias: tool calls lost"],
+        ),
+        // The Gemini gRPC mirror takes its origin's rows by a join, so an
+        // answer on the origin is not one for the mirror.
+        (
+            &gemini_on,
+            &gemini_off,
+            json!({"gcp.gemini": {"models": {"gemini-x": {
+                "source": "https://example.com/g", "tool_call": false
+            }}}}),
+            vec!["gemini-grpc/gemini-x: tool calls lost"],
+        ),
         (
             &claude,
             &claude,
@@ -751,6 +832,105 @@ fn removals_limits_and_prices_are_reported_not_refused() {
     );
 }
 
+/// The report lists what a refresh changed: answered losses with their
+/// source, removals with the decision they need, additions, gains,
+/// limits, and the counts.
+#[test]
+fn the_report_lists_every_change() {
+    let before = json!({"venice": {"models": {
+        "answered": {"structured_output": true},
+        "gains": {"tool_call": false, "rig": {"sampling": "never"}},
+        "priced": {"cost": {"input": 1, "output": 2}, "limit": {"context": 8192}},
+        "gone": {"name": "Gone"}
+    }}});
+    let after = json!({"venice": {"models": {
+        "answered": {"structured_output": false},
+        "gains": {"tool_call": true, "rig": {"sampling": "reasoning_off"}},
+        "priced": {"cost": {"input": 1, "output": 3}, "limit": {"context": 4096}},
+        "new": {"name": "New"},
+        "reviewed": {"name": "Reviewed"}
+    }}});
+    let review = json!({"venice": {"models": {
+        "answered": {"source": "https://example.com/a", "structured_output": false},
+        "reviewed": {"source": "https://example.com/r", "tool_call": true}
+    }}});
+    let comparison = compared(&before, &json!({}), &after, &review);
+    assert_eq!(comparison.refusal(), None);
+    let report = comparison.markdown("2026-10-30T00:00:00Z");
+    for line in [
+        "models.dev data read 2026-10-30T00:00:00Z.",
+        "### Losses answered by the review (1)",
+        "- `venice/answered`: structured output lost (source: https://example.com/a)",
+        "### Removed (1): each needs a decision in this PR",
+        "Retired (say how you know), or kept with a review row",
+        "- `venice/gone`",
+        "### Added (2: 1 reviewed, 1 not)",
+        "- `venice/new`\n",
+        "- `venice/reviewed` (reviewed)",
+        "### Gains (1)",
+        "- `venice/gains`: tool calls; sampling never -> reasoning_off",
+        "- `venice/priced`: context 8192 -> 4096",
+        "### rig facts (1)\n\n- `venice/gains`: sampling never -> reasoning_off",
+        "Rows changed: prices 1.",
+    ] {
+        assert!(report.contains(line), "{line:?} in:\n{report}");
+    }
+}
+
+/// Sync writes nothing while a loss or a missing source stands, and
+/// `catalog check` fails on a review row that lost its source though the
+/// catalog it generates did not change.
+#[test]
+fn sync_and_check_refuse_without_writing() {
+    let root = std::env::temp_dir().join(format!("xtask-catalog-{}", std::process::id()));
+    for dir in ["crates/rig-core/src/catalog", "xtask/src/catalog"] {
+        std::fs::create_dir_all(root.join(dir)).expect("directory");
+    }
+    let write = |path: &str, text: &str| std::fs::write(root.join(path), text).expect("write");
+    let read = |path: &str| std::fs::read_to_string(root.join(path)).expect("read");
+    let efforts = |values: serde_json::Value| {
+        one(
+            "venice",
+            "m",
+            json!({"reasoning": true, "reasoning_options": [{"type": "effort", "values": values}]}),
+        )
+    };
+    let review = json!({"venice": {"models": {"m": {"source": "https://example.com/m", "tool_call": true}}}});
+    let catalog = render(&generate(&efforts(json!(["low", "high"])), &review).expect("catalog"));
+    write(super::OUTPUT, &catalog);
+    write(super::GENERATED_AT, "2026-10-30T00:00:00Z\n");
+    write(super::REVIEW, &review.to_string());
+    write(super::UNSOURCED, "");
+    assert_eq!(super::check(&root), Ok(()));
+
+    let api = root.join("api.json");
+    let api_path = api.to_str().expect("UTF-8 path");
+    std::fs::write(&api, efforts(json!(["high"])).to_string()).expect("write");
+    let refused = super::sync(&root, Some(api_path), false);
+    assert!(refused.is_err_and(|error| error.contains("venice/m: effort lost: low")));
+
+    std::fs::write(&api, efforts(json!(["low", "high"])).to_string()).expect("write");
+    write(
+        super::REVIEW,
+        &json!({"venice": {"models": {
+            "m": {"source": "https://example.com/m", "tool_call": true},
+            "n": {"name": "N", "tool_call": true}
+        }}})
+        .to_string(),
+    );
+    let refused = super::sync(&root, Some(api_path), false);
+    assert!(refused.is_err_and(|error| error.contains("venice/n: sets tool_call")));
+    assert_eq!(read(super::OUTPUT), catalog, "nothing written");
+    assert_eq!(read(super::GENERATED_AT), "2026-10-30T00:00:00Z\n");
+
+    write(
+        super::REVIEW,
+        &json!({"venice": {"models": {"m": {"tool_call": true}}}}).to_string(),
+    );
+    assert!(super::check(&root).is_err_and(|error| error.contains("venice/m: sets tool_call")));
+    std::fs::remove_dir_all(&root).expect("clean up");
+}
+
 /// Each value a review row sets on a model models.dev lists, a `from`
 /// row's own included, is listed as agreeing with models.dev or not.
 #[test]
@@ -775,8 +955,9 @@ fn reviewed_values_are_compared_with_models_dev() {
 }
 
 /// A review row needs a source when it sets a capability or a `rig` fact,
-/// or copies a row with `from`, unless the unsourced list holds it as it
-/// was; a `from` row takes its origin review's. A listed row that changes, or gains a source, leaves the list.
+/// unless the unsourced list holds it as it was; a row that only copies
+/// another with `from` takes that row's. A listed row that changes, or
+/// gains a source, leaves the list, and a row is listed once.
 #[test]
 fn a_new_or_changed_review_row_needs_a_source() {
     let base = json!({"venice": {"models": {
@@ -804,7 +985,7 @@ fn a_new_or_changed_review_row_needs_a_source() {
         (json!({"named": {"name": "Named"}}), None),
         (
             json!({"copy": {"from": "venice/sourced", "rig": {"cache": ["short"]}}}),
-            None,
+            Some("venice/copy: sets rig"),
         ),
         (json!({"copy": {"from": "venice/sourced"}}), None),
         (
@@ -825,7 +1006,7 @@ fn a_new_or_changed_review_row_needs_a_source() {
         ),
         (
             json!({"old": {"source": "https://example.com/old", "tool_call": true}}),
-            Some("venice/old: has a source now"),
+            Some("venice/old: needs no line now"),
         ),
     ] {
         let result = guard::provenance(&review(extra), &unsourced);
@@ -834,6 +1015,14 @@ fn a_new_or_changed_review_row_needs_a_source() {
             Some(row) => assert!(result.is_err_and(|error| error.contains(row))),
         }
     }
+    let twice = format!(
+        "{unsourced}{}",
+        unsourced.lines().last().unwrap_or_default()
+    );
+    assert!(
+        guard::provenance(&review(json!({})), &twice)
+            .is_err_and(|error| error.contains("venice/old is listed twice"))
+    );
 }
 
 /// What rig-core reads from `spec`, in the guard's terms.

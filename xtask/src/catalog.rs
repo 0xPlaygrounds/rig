@@ -32,10 +32,9 @@
 //! sampling it took) that the row's own review does not answer by setting
 //! the deciding key with a `source`. Otherwise it prints a markdown report of
 //! every change, for the refresh PR. A review row that sets a capability,
-//! `limit` or a `rig` fact, or copies a row with `from`, names a `source`,
-//! or the review of the row it copies does, unless `unsourced.txt` lists it
-//! unchanged. DEVELOPING.md's "Refreshing the model
-//! catalog" is the procedure.
+//! `limit` or a `rig` fact names a `source`, and one that only copies a row
+//! with `from` takes that row's, unless `unsourced.txt` lists it unchanged.
+//! DEVELOPING.md's "Refreshing the model catalog" is the procedure.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
 //! command fetches <https://models.dev/api.json> with `curl`. Sync also
@@ -348,9 +347,7 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
 
 /// Check the checked-in catalog and the review's sources offline.
 pub(crate) fn check(root: &Path) -> Result<(), String> {
-    let path = root.join(OUTPUT);
-    let current =
-        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let current = read_text(&root.join(OUTPUT))?;
     let catalog =
         read_rows(&serde_json::from_str(&current).map_err(|e| format!("{OUTPUT}: {e}"))?)?;
     if render(&catalog) != current {
@@ -358,18 +355,17 @@ pub(crate) fn check(root: &Path) -> Result<(), String> {
             "{OUTPUT} is not in the form `cargo xtask catalog sync` writes"
         ));
     }
-    let stamp = root.join(GENERATED_AT);
-    let stamp =
-        std::fs::read_to_string(&stamp).map_err(|error| format!("{}: {error}", stamp.display()))?;
+    let stamp = read_text(&root.join(GENERATED_AT))?;
     if !is_rfc3339_utc(stamp.trim_end()) {
         return Err(format!(
             "{GENERATED_AT} is not a `YYYY-MM-DDTHH:MM:SSZ` time; run `cargo xtask catalog sync`"
         ));
     }
     let review = read_json(&root.join(REVIEW))?;
-    guard::provenance(&read_rows(&review)?, &read_text(&root.join(UNSOURCED))?)?;
+    let reviewed = read_rows(&review)?;
+    guard::provenance(&reviewed, &read_text(&root.join(UNSOURCED))?)?;
     let mut pinned = catalog.clone();
-    pin(&mut pinned, &read_rows(&review)?);
+    pin(&mut pinned, &reviewed);
     if pinned != catalog {
         return Err(format!(
             "{OUTPUT} pins other keys than the review and joins set; run `cargo xtask catalog sync`"

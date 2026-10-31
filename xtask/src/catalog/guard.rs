@@ -32,13 +32,34 @@ const SOURCED: [&str; 8] = [
     "rig",
 ];
 
+/// The row keys whose changes the report counts rather than lists, by the
+/// name it counts them under.
+const COUNTED: [(&str, &str); 6] = [
+    ("cost", "prices"),
+    ("description", "descriptions"),
+    ("release_date", "dates"),
+    ("last_updated", "dates"),
+    ("knowledge", "dates"),
+    ("name", "names"),
+];
+
+/// The row keys [`reading`] reads, and the part of `modalities` it does.
+const READ: [&str; 6] = [
+    "reasoning",
+    "reasoning_options",
+    "tool_call",
+    "structured_output",
+    "temperature",
+    "modalities.input",
+];
+
 /// What rig-core reads from a finished row, by the rules of `Row::spec` in
 /// `crates/rig-core/src/catalog/row.rs`. Keep the two in step;
 /// `the_reading_is_rig_cores` checks them over the checked-in catalog. It
 /// reads a row rig-core can load; a value of the wrong type, which makes
 /// rig-core skip the row, fails that test and rig-core's
 /// `the_checked_in_catalog_loads_whole` instead.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) struct Reading {
     pub(super) reasoning: Reasoning,
     /// The input modalities, in [`INPUTS`] order.
@@ -52,7 +73,7 @@ pub(super) struct Reading {
 
 /// rig-core's `ReasoningSupport`, without the default effort, which only
 /// the review sets.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) enum Reasoning {
     None,
     Unknown,
@@ -151,7 +172,7 @@ fn reasoning(row: &Map<String, Value>, no_control: bool) -> Reasoning {
 
 /// A capability a row loses, and the review key that answers it: the one
 /// that decides the lost value.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub(super) struct Loss {
     pub(super) what: String,
     pub(super) answer: &'static str,
@@ -306,13 +327,15 @@ fn controls(reasoning: &Reasoning) -> String {
 
 /// The `source` that answers a loss of `vendor/id` with the key `path`:
 /// the row's own review when it sets it, else the review of the row it
-/// copies with `from` when that one does. A key a join sets is no answer.
+/// copies with `from` when that one does, each with a source of its own. A
+/// key a join sets is no answer.
 fn answer(review: &Rows, vendor: &str, id: &str, path: &str) -> Option<String> {
     let row = review.get(vendor)?.get(id)?;
-    let origin = origin(review, row);
     let answering = match sets(row, path) {
-        true => source(row).or_else(|| origin.and_then(source)),
-        false => origin.filter(|origin| sets(origin, path)).and_then(source),
+        true => source(row),
+        false => origin(review, row)
+            .filter(|origin| sets(origin, path))
+            .and_then(source),
     };
     answering.map(str::to_owned)
 }
@@ -346,10 +369,10 @@ fn at_path<'a>(row: &'a Map<String, Value>, path: &str) -> Option<&'a Value> {
 }
 
 /// A value as the report writes it: a string bare, anything else as JSON,
-/// and an absent one as `none`.
+/// and an absent one as `absent`.
 fn spell(value: Option<&Value>) -> String {
     match value {
-        None => "none".to_owned(),
+        None => "absent".to_owned(),
         Some(Value::String(text)) => text.clone(),
         Some(value) => value.to_string(),
     }
@@ -387,16 +410,20 @@ pub(super) struct Comparison {
 /// checked against.
 pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) -> Comparison {
     let mut comparison = Comparison::default();
-    let ids = |rows: &Rows| -> BTreeSet<(String, String)> {
+    fn ids(rows: &Rows) -> BTreeSet<(&str, &str)> {
         rows.iter()
-            .flat_map(|(vendor, models)| models.keys().map(|id| (vendor.clone(), id.clone())))
+            .flat_map(|(vendor, models)| {
+                models.keys().map(move |id| (vendor.as_str(), id.as_str()))
+            })
             .collect()
-    };
+    }
+    fn row<'a>(rows: &'a Rows, vendor: &str, id: &str) -> Option<&'a Map<String, Value>> {
+        rows.get(vendor)?.get(id)
+    }
     let (before, after) = (ids(old), ids(new));
-    for (vendor, id) in before.union(&after) {
+    for &(vendor, id) in before.union(&after) {
         let key = format!("{vendor}/{id}");
-        let row = |rows: &'_ Rows| rows.get(vendor).and_then(|models| models.get(id)).cloned();
-        let (was, now) = match (row(old), row(new)) {
+        let (was, now) = match (row(old, vendor, id), row(new, vendor, id)) {
             (Some(was), Some(now)) => (was, now),
             (Some(_), None) => {
                 comparison.removed.push(key);
@@ -411,7 +438,7 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
             }
             (None, None) => continue,
         };
-        let (old_reading, new_reading) = (reading(&was), reading(&now));
+        let (old_reading, new_reading) = (reading(was), reading(now));
         let sampling_fact = now
             .get("rig")
             .and_then(|facts| facts.get("sampling"))
@@ -431,18 +458,18 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
         if !gains.is_empty() {
             comparison.gains.push((key.clone(), gains));
         }
-        let limits = limit_changes(&was, &now, &old_reading, &new_reading);
+        let limits = limit_changes(was, now, &old_reading, &new_reading);
         if !limits.is_empty() {
             comparison.limits.push((key.clone(), limits));
         }
-        let facts = fact_changes(&was, &now);
+        let facts = fact_changes(was, now);
         if !facts.is_empty() {
             comparison.facts.push((key.clone(), facts));
         }
         count(
             &mut comparison.counted,
-            &was,
-            &now,
+            was,
+            now,
             old_reading == new_reading,
         );
     }
@@ -521,27 +548,6 @@ fn fact_changes(was: &Map<String, Value>, now: &Map<String, Value>) -> Vec<Strin
         })
         .collect()
 }
-
-/// The row keys whose changes the report counts rather than lists, by the
-/// name it counts them under.
-const COUNTED: [(&str, &str); 6] = [
-    ("cost", "prices"),
-    ("description", "descriptions"),
-    ("release_date", "dates"),
-    ("last_updated", "dates"),
-    ("knowledge", "dates"),
-    ("name", "names"),
-];
-
-/// The row keys [`reading`] reads, and the part of `modalities` it does.
-const READ: [&str; 6] = [
-    "reasoning",
-    "reasoning_options",
-    "tool_call",
-    "structured_output",
-    "temperature",
-    "modalities.input",
-];
 
 /// Count the fields of a row that changed and that no list above names:
 /// the [`COUNTED`] kinds, a field rig reads whose change leaves its reading
@@ -746,9 +752,9 @@ impl Comparison {
     }
 }
 
-/// Fail on a review row that sets a [`SOURCED`] key, or copies a row's
-/// facts with `from`, with no `source` of its own or of the review of the
-/// row it copies, unless `unsourced` (the
+/// Fail on a review row that sets a [`SOURCED`] key with no `source` of
+/// its own, or that only copies a row with `from` when neither it nor the
+/// review of that row names one, unless `unsourced` (the
 /// text of [`UNSOURCED`]) lists it as it was when sources became required:
 /// a line `<fingerprint> <vendor>/<id>`. A listed row that changed, gained a
 /// source or left the review fails too, so the list only shrinks.
@@ -762,7 +768,10 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
         let (print, key) = line
             .split_once(' ')
             .ok_or_else(|| format!("{UNSOURCED}: `{line}` is not `<fingerprint> <vendor>/<id>`"))?;
-        listed.insert(key.trim().to_owned(), print.to_owned());
+        let key = key.trim();
+        if listed.insert(key.to_owned(), print.to_owned()).is_some() {
+            return Err(format!("{UNSOURCED}: {key} is listed twice"));
+        }
     }
     let mut errors = Vec::new();
     for (vendor, models) in review {
@@ -770,23 +779,30 @@ pub(super) fn provenance(review: &Rows, unsourced: &str) -> Result<(), String> {
             let key = format!("{vendor}/{id}");
             let sets: Vec<&str> = SOURCED
                 .into_iter()
-                .chain(["from"])
                 .filter(|field| row.contains_key(*field))
                 .collect();
-            let needs = !sets.is_empty()
-                && source(row)
+            // A pure copy states no fact of its own, so its origin's source
+            // covers it.
+            let needs = match (sets.is_empty(), row.contains_key("from")) {
+                (false, _) => source(row).is_none(),
+                (true, true) => source(row)
                     .or_else(|| origin(review, row).and_then(source))
-                    .is_none();
-            let sets = sets.join(", ");
+                    .is_none(),
+                (true, false) => false,
+            };
+            let sets = match sets.is_empty() {
+                true => "from".to_owned(),
+                false => sets.join(", "),
+            };
             match (needs, listed.remove(&key)) {
                 (false, None) => {}
-                (false, Some(_)) => {
-                    errors.push(format!("  {key}: has a source now; drop its line from {UNSOURCED}"))
-                }
+                (false, Some(_)) => errors.push(format!(
+                    "  {key}: needs no line now; drop it from {UNSOURCED}"
+                )),
                 (true, Some(print)) if print == fingerprint(row) => {}
                 (true, Some(_)) => errors.push(format!(
-                    "  {key}: changed, and sets {sets}; give it a \"source\" and drop its line from \
-                     {UNSOURCED}"
+                    "  {key}: changed, and sets {sets}; give it a \"source\" and drop its line \
+                     from {UNSOURCED}"
                 )),
                 (true, None) => errors.push(format!("  {key}: sets {sets}")),
             }

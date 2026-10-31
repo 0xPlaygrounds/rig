@@ -226,15 +226,16 @@ cargo xtask catalog sync --from ../api.json
 - **A lost capability stops the sync**, which then writes nothing and names
   each row and the key that answers it. Answer it in review.json on that row:
   set the key to the old value if models.dev is wrong, or to the new one if it
-  is right, with a `source`. A value a join copies (Bedrock from Anthropic,
-  OpenRouter's reasoning translation) is no answer.
+  is right, with a `source`. A value a join copies (Bedrock and Vertex from
+  Anthropic, OpenRouter's reasoning translation, `gemini-grpc` from Gemini)
+  is no answer, so each of those rows needs its own.
 - **A `source`** says what proved the fact: a doc URL, a cassette, a live
   check. Or it starts with `unverified:` and says where the fact came from
   (`unverified: copied from openai/gpt-6.1-sol`). Never claim a check that was
-  not made. Every review row a change adds or edits needs one when it sets a
-  capability, `limit` or a `rig` fact, or copies a row with `from` (a copy of
-  a reviewed row with a source takes that one); the old rows `unsourced.txt`
-  lists are held to it once they change.
+  not made. Every review row a change adds or edits needs its own when it
+  sets a capability, `limit` or a `rig` fact; one that only copies a row with
+  `from` may take the copied row's. The old rows `unsourced.txt` lists are
+  held to it once they change.
 - **Paste the report** sync prints into the PR under "Catalog changes". A
   later sync reports only what changed since the last one; to see the whole
   refresh again, restore main's catalog first:
