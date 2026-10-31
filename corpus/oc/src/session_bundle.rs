@@ -322,6 +322,10 @@ impl<F: Fn(&mut String) -> bool + Send + Sync> Rewrite for Import<F> {
         self.remap.aside(at, aside)
     }
 
+    fn facts(&self, at: &Place<'_>, facts: &mut rig_core::conversation::ResultFacts) -> bool {
+        self.remap.facts(at, facts)
+    }
+
     fn value(&self, at: &Place<'_>, key: &str, value: &mut Value) -> bool {
         let unusable = value
             .as_str()

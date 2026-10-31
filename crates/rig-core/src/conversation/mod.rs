@@ -38,6 +38,7 @@ use crate::message::{StopReason, ToolCall, UserContent};
 
 mod aside;
 mod author;
+mod facts;
 mod lineage;
 mod note;
 pub mod pairing;
@@ -45,6 +46,7 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
+pub use facts::ResultFacts;
 pub use lineage::Lineage;
 pub use note::Note;
 pub use turn::{TURN, TurnEnd, TurnRecord};
@@ -123,6 +125,8 @@ struct Meta {
     /// Milliseconds since the Unix epoch: when the entry was first made.
     #[serde(default)]
     made: u64,
+    #[serde(default, skip_serializing_if = "ResultFacts::is_empty")]
+    facts: ResultFacts,
 }
 
 /// A conversation as saved, checked before it becomes one.
@@ -194,7 +198,7 @@ fn saved_asides<S: Serializer>(
 impl PartialEq for Conversation {
     fn eq(&self, other: &Self) -> bool {
         let saved = |(_, aside): &&(AsideId, Aside)| aside.saved;
-        let same = |a: &Meta, b: &Meta| a.id == b.id && a.author == b.author;
+        let same = |a: &Meta, b: &Meta| a.id == b.id && a.author == b.author && a.facts == b.facts;
         self.messages == other.messages
             && self.meta.len() == other.meta.len()
             && self.meta.iter().zip(&other.meta).all(|(a, b)| same(a, b))
@@ -284,6 +288,10 @@ pub struct Entry {
     /// recorded change carries it only for such an entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub made: Option<u64>,
+    /// What the tool calls its results answer published, for a view to
+    /// draw them from; saved with it, never sent to a model.
+    #[serde(default, skip_serializing_if = "ResultFacts::is_empty")]
+    pub facts: ResultFacts,
 }
 
 impl Entry {
@@ -294,7 +302,14 @@ impl Entry {
             author: None,
             id: None,
             made: None,
+            facts: ResultFacts::default(),
         }
+    }
+
+    /// This entry, with what the calls its results answer published.
+    #[must_use]
+    pub fn with_facts(self, facts: ResultFacts) -> Self {
+        Self { facts, ..self }
     }
 
     /// Whether it is the [`STOPPED`] note, as
@@ -338,6 +353,8 @@ pub struct EntryRef<'c> {
     pub author: Option<&'c Author>,
     /// When it was first made, in milliseconds since the Unix epoch.
     pub made: u64,
+    /// What the tool calls its results answer published.
+    pub facts: &'c ResultFacts,
 }
 
 impl EntryRef<'_> {
@@ -540,6 +557,7 @@ impl Conversation {
             message,
             author: meta.author.as_ref(),
             made: meta.made,
+            facts: &meta.facts,
         })
     }
 
@@ -552,6 +570,7 @@ impl Conversation {
             author: meta.author.clone(),
             id: Some(meta.id),
             made: Some(meta.made),
+            facts: meta.facts.clone(),
         })
     }
 
@@ -792,6 +811,7 @@ impl Conversation {
                 && entry.id == self.id(at)
                 && entry.author.as_ref() == self.author(at)
                 && Some(&entry.message) == self.messages.get(at)
+                && Some(&entry.facts) == self.meta.get(at).map(|meta| &meta.facts)
         };
         let (len, count) = (self.messages.len(), entries.len());
         let start = entries
@@ -951,6 +971,11 @@ impl Conversation {
                     author: self.author(at).cloned(),
                     id: Some(id),
                     made: None,
+                    facts: self
+                        .meta
+                        .get(at)
+                        .map(|meta| meta.facts.clone())
+                        .unwrap_or_default(),
                 }),
                 None => self.entry(at),
             })
@@ -1277,6 +1302,7 @@ impl Conversation {
             id: entry.id.unwrap_or_default(),
             author: entry.author.clone(),
             made,
+            facts: entry.facts.clone(),
         };
         match change {
             Change::Push { entries } => {

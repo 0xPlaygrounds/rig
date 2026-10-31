@@ -74,7 +74,8 @@ impl Deref for SessionPaths {
 /// this, and reads it before writing; a run whose session does not open or
 /// read is refused, unchanged. The harness marks the running session saved
 /// once its log wrote and an agent's conversation has a user or assistant
-/// message, so `/resume` lists it (not a sessionless run's); a program
+/// message, so `/resume` lists it (not a sessionless run's), and unmarks
+/// it while none has; a program
 /// that saves a new session through this marks it itself
 /// ([`SessionDir::mark_saved`]). [`Self::relist`] keeps the listing of a
 /// session no rig runs current.
@@ -205,12 +206,13 @@ pub struct AppStart(pub StartReason);
 #[derive(Resource)]
 struct Unmarked;
 
-/// Until the session's log wrote and an agent's conversation has a user or
-/// assistant message, in a run that keeps its session: the session is
-/// marked saved then ([`SessionDir::mark_saved`]), so `/resume` lists it.
-/// A sessionless run never has it.
+/// In a run that keeps its session: the session is marked saved
+/// ([`SessionDir::mark_saved`]) while it holds a conversation
+/// ([`holds_conversation`]), so `/resume` lists it and the launcher says
+/// how to resume it, and unmarked when it no longer does, such as after a
+/// first message whose turn failed. A sessionless run never has it.
 #[derive(Resource)]
-struct Unsaved;
+struct KeepsSession;
 
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`StoreOpener`] and [`Scratch`], the
@@ -261,10 +263,10 @@ impl Plugin for SessionPlugin {
             .add_systems(First, timings::next_frame)
             .add_systems(
                 Last,
-                mark_saved
+                track_saved
                     .after(WriteLogs)
                     .before(discard_unsaved)
-                    .run_if(resource_exists::<Unsaved>),
+                    .run_if(resource_exists::<KeepsSession>),
             )
             .add_systems(
                 Last,
@@ -341,8 +343,8 @@ fn insert_plugin_data(world: &mut World) {
 /// run never marks its session saved, so a crash leaves no session for
 /// `/resume` to list.
 fn open_store(world: &mut World) -> Result<(), SessionError> {
-    let store = match world.remove_resource::<SessionStore>() {
-        Some(SessionStore(store)) => store,
+    let (store, keeps) = match world.remove_resource::<SessionStore>() {
+        Some(SessionStore(store)) => (store, false),
         None => {
             cli::choose(world);
             let front = world.get_resource::<Cli>().and_then(Cli::chosen);
@@ -353,11 +355,7 @@ fn open_store(world: &mut World) -> Result<(), SessionError> {
             let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
-            let store = stores.open(paths)?;
-            if keeps && !paths.is_saved() {
-                world.insert_resource(Unsaved);
-            }
-            store
+            (stores.open(paths)?, keeps)
         }
     };
     match open_session(world, store.clone()) {
@@ -366,7 +364,12 @@ fn open_store(world: &mut World) -> Result<(), SessionError> {
             open_session(world, store)
         }
         opened => opened,
+    }?;
+    // Only a session that was read is judged by what it holds.
+    if keeps {
+        world.insert_resource(KeepsSession);
     }
+    Ok(())
 }
 
 /// The steps a session in an earlier format is migrated by; in this
@@ -387,28 +390,47 @@ pub(crate) fn leave_session(world: &mut World) {
     world.remove_resource::<Unmarked>();
 }
 
-/// Marks the session saved once its log wrote and an agent's conversation
-/// has a user or assistant message: a session that only changed settings
-/// is not worth resuming, and is removed on exit.
-fn mark_saved(
+/// Keeps the session's saved marker equal to whether it holds a
+/// conversation: marked once its log wrote and it does, unmarked once it
+/// no longer does. Once a log write failed, the log on disk may hold more
+/// than the agents do, so the marker stays as it is. `marked` is the
+/// marker as last left, read from the session the first time, so the
+/// marker is touched only on a change.
+fn track_saved(
     log: Option<Res<SessionLog>>,
     conversations: Query<&Conversation, With<Agent>>,
     paths: Res<SessionPaths>,
-    mut commands: Commands,
+    mut marked: Local<Option<bool>>,
 ) {
-    let said = |conversation: &Conversation| {
+    let Some(log) = log.filter(|log| log.failure().is_none()) else {
+        return;
+    };
+    let marked = marked.get_or_insert_with(|| paths.is_saved());
+    let holds = holds_conversation(conversations.iter());
+    // Marked only once the log holds what it marks.
+    let written = log.has_written();
+    let change = match (*marked, holds) {
+        (false, true) if written => paths.mark_saved(),
+        (true, false) => paths.unmark_saved(),
+        _ => return,
+    };
+    match change {
+        Ok(()) => *marked = holds,
+        Err(failure) => warn!("could not mark whether the session is saved: {failure}"),
+    }
+}
+
+/// Whether a session with these agents' `conversations` is worth
+/// resuming: one has a user or assistant message. A session that only
+/// changed settings, or whose only message's turn failed and gave it
+/// back, is not.
+fn holds_conversation<'a>(mut conversations: impl Iterator<Item = &'a Conversation>) -> bool {
+    conversations.any(|conversation| {
         conversation
             .messages()
             .iter()
             .any(|message| matches!(**message, Message::User { .. } | Message::Assistant(_)))
-    };
-    if !log.is_some_and(|log| log.has_written()) || !conversations.iter().any(said) {
-        return;
-    }
-    commands.remove_resource::<Unsaved>();
-    if let Err(failure) = paths.mark_saved() {
-        warn!("could not mark the session saved: {failure}");
-    }
+    })
 }
 
 /// Marks the session started at the end of its first app's first frame.

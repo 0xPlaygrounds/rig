@@ -94,8 +94,8 @@ fn span(shown: LinesShown) -> String {
 
 /// The reply without the file's lines it shows, then the hunks of each
 /// change the call published, as a diff under the header that names the
-/// file; just the reply when it published none, as after a resume without
-/// its effect log.
+/// file; just the reply when it published none, or a change too large for
+/// the session to keep.
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<LookLine> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "").into()];

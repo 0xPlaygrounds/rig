@@ -70,10 +70,78 @@ impl std::fmt::Debug for ToolResultContext {
     }
 }
 
+/// The most bytes of JSON a call's published values may take together to
+/// be kept with a conversation ([`ToolResultContext::kept`]): room for the
+/// diff of a large edit, while a value past it, such as the diff of a
+/// rewritten generated file, is left out rather than grow the session by
+/// as much.
+pub const MAX_KEPT_FACTS_BYTES: usize = 256 * 1024;
+
 impl ToolResultContext {
     /// Read a published value without exposing ambient execution inputs.
     pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
         get_slot(&self.0)
+    }
+
+    /// Whether nothing was published.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// These values as a conversation keeps them with the call's result
+    /// ([`ResultFacts`](crate::conversation::ResultFacts)), for a view to
+    /// draw the call from after a resume: every secret in their strings
+    /// redacted ([`redact::json`](crate::redact::json)), the whole old
+    /// text of each changed file ([`FileChange::before_text`]) left out,
+    /// since the hunks show the change, and, past [`MAX_KEPT_FACTS_BYTES`]
+    /// of JSON, the largest values left out, so a small one such as an
+    /// exit status stays.
+    ///
+    /// ```
+    /// use rig_core::tool::{ExitStatus, FileChange, FilesChanged, ToolContext};
+    ///
+    /// let mut context = ToolContext::new();
+    /// context.insert_result(ExitStatus::Exited(0))?;
+    /// let change = FileChange::modified("a.rs", 1, 1).with_before_text("old\n");
+    /// context.insert_result(FilesChanged(vec![change]))?;
+    /// let kept = context.result_context().kept();
+    /// assert_eq!(kept.get::<ExitStatus>()?, Some(ExitStatus::Exited(0)));
+    /// let changed = kept.get::<FilesChanged>()?.unwrap_or_default();
+    /// assert_eq!(changed.0.first().map(|change| change.before_text.is_none()), Some(true));
+    /// # Ok::<(), rig_core::tool::ToolContextError>(())
+    /// ```
+    ///
+    /// [`FileChange::before_text`]: super::FileChange::before_text
+    #[must_use]
+    pub fn kept(&self) -> Self {
+        let mut kept = self.0.clone();
+        if let Ok(Some(mut changed)) = get_slot::<super::FilesChanged>(&kept) {
+            for change in &mut changed.0 {
+                change.before_text = None;
+            }
+            // A value that decoded encodes again; one that did not stays.
+            insert_slot(&mut kept, changed).ok();
+        }
+        let mut sized: Vec<(usize, String, serde_json::Value)> = kept
+            .into_iter()
+            .filter_map(|(key, mut value)| {
+                crate::redact::json(&mut value);
+                let size = serde_json::to_vec(&value)
+                    .ok()?
+                    .len()
+                    .saturating_add(key.len());
+                Some((size, key, value))
+            })
+            .collect();
+        sized.sort_by_key(|(size, ..)| *size);
+        let (mut room, mut fits) = (MAX_KEPT_FACTS_BYTES, BTreeMap::new());
+        for (size, key, value) in sized {
+            if size <= room {
+                room = room.saturating_sub(size);
+                fits.insert(key, value);
+            }
+        }
+        Self(fits)
     }
 }
 

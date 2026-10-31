@@ -36,12 +36,13 @@ use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{Decider, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
+use rig_core::message::CallId;
 use rig_core::operation::Completion;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_core::tool::{Scope, Tool, ToolContext, ToolExecutionError, Touches};
+use rig_core::tool::{ExitStatus, Scope, Tool, ToolContext, ToolExecutionError, Touches};
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
@@ -394,13 +395,27 @@ impl Tool for Look {
         Touches::Reads(Scope::Paths(vec!["/work/a.rs".into()]))
     }
 
+    /// Publishes how it ended, as a command does, for its row.
     async fn call(
         &self,
-        _: &mut ToolContext,
+        context: &mut ToolContext,
         _: serde_json::Value,
     ) -> Result<String, ToolExecutionError> {
+        context.insert_result(ExitStatus::Exited(7)).ok();
         Ok("seen".to_owned())
     }
+}
+
+/// What the call `call` published, as the session saved in `store` keeps
+/// it with its result.
+fn saved_exit(store: &MemoryStore, call: &str) -> Option<ExitStatus> {
+    let session = rig_memory::Session::read(store).ok()?;
+    let conversation = session.agents.into_iter().next()?.conversation;
+    let call = CallId::from_wire(call);
+    let facts = conversation
+        .entries()
+        .find_map(|entry| entry.facts.get(&call).cloned())?;
+    facts.get::<ExitStatus>().ok().flatten()
 }
 
 /// May change anything, so a restart answers its unanswered calls as
@@ -1291,8 +1306,32 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
 }
 
 #[test]
+fn a_calls_facts_are_saved_with_its_result() {
+    let store = MemoryStore::default();
+    let call = MockStreamEvent::tool_call("l1", "look", serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([
+        vec![call, MockStreamEvent::final_response_with_default_usage()],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]);
+    let mut app = tools_app(&store, &model, |_| {});
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    app.update();
+    assert_eq!(saved_exit(&store, "l1"), Some(ExitStatus::Exited(7)));
+}
+
+#[test]
 fn a_read_that_finished_before_a_crash_keeps_its_result() {
-    let (app, said, _) = restart_after(crashed_mid_reply("look"), |_| {});
+    let (app, said, store) = restart_after(crashed_mid_reply("look"), |_| {});
+    // What it published is kept with its result too.
+    assert_eq!(saved_exit(&store, "t1"), Some(ExitStatus::Exited(7)));
     // `look` reads only, and settled while `wait` ran: answered with its
     // result, so no gate saw it and it did not run again.
     assert!(

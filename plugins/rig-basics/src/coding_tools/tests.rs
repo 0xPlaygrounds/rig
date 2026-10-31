@@ -375,3 +375,85 @@ fn a_host_path_reaches_the_host_the_settings_name() {
             .is_none()
     );
 }
+
+/// The lines of `agent`'s transcript as the terminal view lays them out
+/// at 120 columns.
+#[cfg(feature = "tui")]
+fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
+    let view = rig_tui::TranscriptView::default();
+    let laid = rig_tui::TranscriptLayout::lay_out(app.world_mut(), &view, agent, 120);
+    let lines = laid.map(|laid| laid.lines().map(|line| line.text).collect());
+    lines.unwrap_or_default()
+}
+
+/// A resumed session draws the rows of `read`, `edit` and a failing
+/// `shell` as the live one did, from what each call published: the
+/// session keeps it with the call's result, so no effect log is needed.
+#[cfg(feature = "tui")]
+#[test]
+fn a_resumed_session_draws_its_tool_rows_as_the_live_one_did() {
+    use rig_harness::settings::Settings;
+    use rig_harness_test_support::{
+        Ended, calls, first_agent, log_ended, scripted_models, tui_view,
+    };
+
+    use super::EditTool;
+
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("resumed-rows-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("notes.txt"), "one\ntwo\nthree\n").ok();
+    let edits = json!([{ "old_text": "two", "new_text": "TWO" }]);
+    let model = MockCompletionModel::from_stream_turns([
+        calls("r1", "read", json!({ "path": "notes.txt" })),
+        calls("e1", "edit", json!({ "path": "notes.txt", "edits": edits })),
+        calls("s1", "shell", json!({ "command": "echo out; exit 3" })),
+        reply("done"),
+    ]);
+    let store = MemoryStore::default();
+    let open = |model: &MockCompletionModel| {
+        let (mut app, wakes) = app_on(&store);
+        app.insert_resource(Settings::default())
+            .insert_resource(scripted_models([("test/model", model)]))
+            .add_plugins((AgentPlugin, SessionLogPlugin, ReadTool, EditTool, ShellTool))
+            .init_resource::<Ended>()
+            .add_observer(log_ended);
+        tui_view(&mut app);
+        app.finish();
+        app.cleanup();
+        app.update();
+        (app, wakes)
+    };
+    let (mut live, wakes) = open(&model);
+    let world = live.world_mut();
+    let agent = (
+        Agent,
+        ModelChoice("test/model".to_owned()),
+        WorkDir(dir.clone()),
+    );
+    let agent = world.spawn(agent).id();
+    world.trigger(Deliver::new(agent, "go", DeliveryMode::Queue));
+    run_until(&mut live, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    live.update();
+    let rows = transcript(&mut live, agent);
+    drop(live);
+    let (mut resumed, _) = open(&MockCompletionModel::from_stream_turns([reply("unused")]));
+    let agent = first_agent(resumed.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let resumed_rows = transcript(&mut resumed, agent);
+    for rows in [rows, resumed_rows] {
+        let has = |text: &str| rows.iter().any(|row| row.contains(text));
+        // The read's count and numbered lines, the edit's diff and how the
+        // command ended.
+        assert!(
+            has("read notes.txt 3 lines") && has("     2  two"),
+            "{rows:#?}"
+        );
+        assert!(has("@@ -1,3 +1,3 @@"), "{rows:#?}");
+        let shell = rows.iter().find(|row| row.contains("$ echo out; exit 3"));
+        let ended = shell.is_some_and(|row| row.trim_end().ends_with("· exit 3"));
+        assert!(ended, "{rows:#?}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -20,7 +20,8 @@ mod result;
 pub mod schema;
 pub mod validate;
 pub use context::{
-    ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
+    ContextValue, MAX_KEPT_FACTS_BYTES, PublishedContext, ToolContext, ToolContextError,
+    ToolResultContext,
 };
 pub use contextual::{DynamicTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name};
 pub use facts::{

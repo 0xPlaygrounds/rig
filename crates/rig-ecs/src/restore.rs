@@ -48,10 +48,10 @@ use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
 use rig_core::completion::Message;
-use rig_core::conversation::{Aside, AsideId, Author};
+use rig_core::conversation::{Aside, AsideId, Author, Entry};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, UserContent};
-use rig_core::tool::ToolResult;
+use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_memory::Session;
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
@@ -86,9 +86,20 @@ const CALL_MARK: &str = "rig.call";
 enum CallMark {
     /// The call started.
     Started { call: CallId },
-    /// The call settled with `result` while its reply still ran.
-    Settled { call: CallId, result: ToolResult },
+    /// The call settled with `result`, having published `facts` (as a
+    /// conversation keeps them), while its reply still ran.
+    Settled {
+        call: CallId,
+        result: ToolResult,
+        #[serde(default, skip_serializing_if = "ToolResultContext::is_empty")]
+        facts: ToolResultContext,
+    },
 }
+
+/// On a restored call that had settled: what it published, as its mark
+/// kept it, for its results' entry.
+#[derive(Component, Clone, Debug)]
+pub(crate) struct KeptFacts(pub(crate) ToolResultContext);
 
 impl CallMark {
     fn call(&self) -> &CallId {
@@ -125,13 +136,14 @@ pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversati
     }
 }
 
-/// Marks the call `call` settled with `result` on `conversation`: in place
-/// of its started mark, else after its last entry; a call marked settled
-/// already is left as it is.
+/// Marks the call `call` settled with `result` and the `facts` it
+/// published on `conversation`: in place of its started mark, else after
+/// its last entry; a call marked settled already is left as it is.
 pub(crate) fn mark_settled(
     conversation: &mut rig_core::conversation::Conversation,
     call: &CallId,
     result: &ToolResult,
+    facts: ToolResultContext,
 ) {
     let had = marks(conversation)
         .into_iter()
@@ -139,6 +151,7 @@ pub(crate) fn mark_settled(
     let mark = CallMark::Settled {
         call: call.clone(),
         result: result.clone(),
+        facts,
     };
     let value = serde_json::to_value(mark).unwrap_or_default();
     match had {
@@ -155,13 +168,15 @@ pub(crate) fn mark_settled(
     }
 }
 
-/// Pushes `results`, a message of tool results, to `conversation`, and
-/// removes the marks of the calls they answer.
+/// Pushes `results`, an entry of tool results with what their calls
+/// published, to `conversation`, and removes the marks of the calls they
+/// answer.
 pub(crate) fn commit_results(
     conversation: &mut rig_core::conversation::Conversation,
-    results: Message,
+    results: impl Into<Entry>,
 ) {
-    let answered: Vec<CallId> = match &results {
+    let results = results.into();
+    let answered: Vec<CallId> = match &*results.message {
         Message::User { content } => content
             .iter()
             .filter_map(|item| match item {
@@ -642,8 +657,10 @@ fn carry_on_restored(
         let turn = commands.spawn((TurnOf(agent), state, Restored)).id();
         for call in pending {
             let interrupted = marked.remove(&call.id).map(|mark| match mark {
-                CallMark::Started { .. } => Interrupted::Started,
-                CallMark::Settled { result, .. } => Interrupted::Settled(result),
+                CallMark::Started { .. } => (Interrupted::Started, None),
+                CallMark::Settled { result, facts, .. } => {
+                    (Interrupted::Settled(result), Some(KeptFacts(facts)))
+                }
             });
             let mut restored = commands.spawn((
                 ToolRequest { call },
@@ -652,8 +669,11 @@ fn carry_on_restored(
                 ForAgent(agent),
                 Restored,
             ));
-            if let Some(interrupted) = interrupted {
+            if let Some((interrupted, facts)) = interrupted {
                 restored.insert(interrupted);
+                if let Some(facts) = facts {
+                    restored.insert(facts);
+                }
             }
         }
     } else if conversation.awaits_model() {

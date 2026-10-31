@@ -116,3 +116,41 @@ fn insert_replaces_an_undecodable_displaced_value_and_returns_none() {
         })
     );
 }
+
+/// What a conversation keeps of a call's facts: secrets redacted, no old
+/// file text, and past the budget the largest values left out while a
+/// small one stays.
+#[test]
+fn kept_facts_are_redacted_without_old_text_and_bounded() {
+    use crate::tool::{ExitStatus, FileChange, FileRead, FilesChanged, FilesRead, content_hash};
+
+    let mut context = ToolContext::new();
+    let secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz";
+    let read = FileRead::new(format!("/work/key {secret}"), content_hash(b""));
+    let change = FileChange::modified("a.rs", 1, 1).with_before_text("x".repeat(1024 * 1024));
+    let inserted = [
+        context.insert_result(ExitStatus::Exited(3)).is_ok(),
+        context.insert_result(FilesRead(vec![read])).is_ok(),
+        context.insert_result(FilesChanged(vec![change])).is_ok(),
+    ];
+    assert_eq!(inserted, [true; 3]);
+    let kept = context.result_context().kept();
+    let paths = kept.get::<FilesRead>().ok().flatten().unwrap_or_default();
+    assert_eq!(paths.paths().collect::<Vec<_>>(), ["/work/key [REDACTED]"]);
+    let changed = kept
+        .get::<FilesChanged>()
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let old = changed.0.first().map(|change| change.before_text.is_none());
+    assert_eq!(old, Some(true));
+
+    let huge = FileRead::new("x".repeat(MAX_KEPT_FACTS_BYTES), content_hash(b""));
+    assert!(context.insert_result(FilesRead(vec![huge])).is_ok());
+    let kept = context.result_context().kept();
+    assert_eq!(kept.get::<FilesRead>().ok().flatten(), None);
+    assert_eq!(
+        kept.get::<ExitStatus>().ok().flatten(),
+        Some(ExitStatus::Exited(3))
+    );
+}

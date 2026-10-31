@@ -345,6 +345,7 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
         author: None,
         id: Some(MessageId(id)),
         made: Some(id * 10),
+        facts: Default::default(),
     };
     let first_turn = assistant(vec![AssistantContent::text("a")]);
     let Message::Assistant(second_turn) = assistant(vec![AssistantContent::text("b"), call("c1")])
@@ -410,6 +411,7 @@ fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
         author: None,
         id: Some(MessageId(id)),
         made: None,
+        facts: Default::default(),
     };
     let normalized = normalize(vec![
         entry(0, assistant(vec![call("c1")])),

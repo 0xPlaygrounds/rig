@@ -14,7 +14,7 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::{Author, Entry, MessageId};
+use super::{Author, Entry, MessageId, ResultFacts};
 use crate::message::{
     AssistantContent, AssistantMessage, CallId, Message, ToolCall, ToolName, UserContent,
 };
@@ -153,7 +153,7 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
         .into_iter()
         .map(|entry| {
             let message = Arc::unwrap_or_clone(entry.message);
-            (message, (entry.author, entry.id, entry.made))
+            (message, (entry.author, entry.id, entry.made, entry.facts))
         })
         .unzip();
     let shaped = shape(messages, false);
@@ -161,20 +161,26 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
     let mut merged = Vec::new();
     let mut entries = Vec::with_capacity(shaped.messages.len());
     for (message, sources) in shaped.messages.into_iter().zip(shaped.sources) {
+        // The facts of every entry it holds anything of, found by call.
+        let facts = sources
+            .iter()
+            .filter_map(|source| metas.get(*source))
+            .fold(ResultFacts::default(), |facts, (.., more)| facts.and(more));
         let mut free = sources.iter().filter(|source| used.insert(**source));
         let kept = free.next().and_then(|source| metas.get(*source));
-        let into = kept.and_then(|(_, id, _)| *id);
+        let into = kept.and_then(|(_, id, ..)| *id);
         for gone in free.filter_map(|source| metas.get(*source)?.1) {
             if let Some(into) = into {
                 merged.push((into, gone));
             }
         }
         let entry = match kept {
-            Some((author, id, made)) => Entry {
+            Some((author, id, made, _)) => Entry {
                 message: Arc::new(message),
                 author: author.clone(),
                 id: *id,
                 made: *made,
+                facts,
             },
             // Part of an entry already kept, by its author, or results
             // made up, by rig.
@@ -186,6 +192,7 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
                         .map_or_else(|| Some(Author::rig()), |(author, ..)| author.clone()),
                     id: None,
                     made: None,
+                    facts,
                 }
             }
         };
@@ -197,12 +204,12 @@ pub fn normalize(entries: Vec<Entry>) -> Normalized {
         entries,
         repairs: shaped.repairs,
         merged,
-        dropped: dropped.filter_map(|(_, (_, id, _))| *id).collect(),
+        dropped: dropped.filter_map(|(_, (_, id, ..))| *id).collect(),
     }
 }
 
-/// An entry without its message: author, id and made-time.
-type Meta = (Option<Author>, Option<MessageId>, Option<u64>);
+/// An entry without its message: author, id, made-time and facts.
+type Meta = (Option<Author>, Option<MessageId>, Option<u64>, ResultFacts);
 
 /// Messages after [`pair`]'s walk and [`merge_turns`], each with the input
 /// indices it holds anything of (the first is the one it stands for), and

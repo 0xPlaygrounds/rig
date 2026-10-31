@@ -20,7 +20,6 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation;
 use rig_core::error::ErrorReport;
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
-use rig_core::tool::ToolResultContext;
 
 use super::markdown;
 use super::render::{Lights, light, lit};
@@ -35,7 +34,7 @@ use super::view::{
     TranscriptItem,
 };
 use super::wrap::wrap;
-use rig_core::conversation::{TurnEnd, attached_file};
+use rig_core::conversation::{ResultFacts, TurnEnd, attached_file};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
@@ -47,10 +46,11 @@ use rig_ecs::turn::{ModelRequest, SentTo};
 pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 
 /// What the view knows of the effects that settled, in this run and, once
-/// [`PastEffects`] brought them, before it: what each tool call published
-/// and how long it ran, by call id; and which calls each effect started,
-/// through any effect between, for [`ToolCallView::children`]. All of it
-/// comes from the kernel's effect records.
+/// [`PastEffects`] brought them, before it: how long each tool call ran,
+/// by call id; and which calls each effect started, through any effect
+/// between, for [`ToolCallView::children`]. All of it comes from the
+/// kernel's effect records. What a call published comes from its result's
+/// entry ([`ShownEntry::facts`]), which the session keeps.
 #[derive(Resource, Default)]
 pub(crate) struct CallFacts {
     /// This run's effects, noted as they settle.
@@ -73,11 +73,10 @@ pub(crate) struct CallFacts {
 pub(crate) type CallsUnder = BTreeMap<CallId, Vec<ChildCall>>;
 
 impl CallFacts {
-    /// What `call` published and how long it ran, as far as known.
-    fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
-        let facts = self.run.facts.get(call);
-        let facts = facts.or_else(|| self.past.facts.get(call));
-        facts.map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+    /// How long `call` ran, as far as known.
+    fn took(&self, call: &CallId) -> Option<Duration> {
+        let took = self.run.took.get(call);
+        took.or_else(|| self.past.took.get(call)).copied()
     }
 
     /// Notes the effect `record` settled in this run.
@@ -233,12 +232,11 @@ impl ChildCalls {
     }
 }
 
-/// Effects that settled, as the view keeps them: what each tool call
-/// published and how long it ran, by call id, and which calls each
-/// effect started.
+/// Effects that settled, as the view keeps them: how long each tool call
+/// ran, by call id, and which calls each effect started.
 #[derive(Clone, Default)]
 pub(crate) struct Settled {
-    facts: HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>,
+    took: HashMap<CallId, Duration>,
     calls: CallTree,
     /// The tool calls of each model call's reply that no tool call's
     /// record claimed yet, by the model call: how a record, which names a
@@ -249,8 +247,8 @@ pub(crate) struct Settled {
 impl Settled {
     /// Notes the effect `record` settled: under the effect that started
     /// it, as a call or as an effect calls go through; and, for a tool
-    /// call, what it published and how long it ran. A record read twice
-    /// counts once: whether it is new.
+    /// call, how long it ran. A record read twice counts once: whether it
+    /// is new.
     fn note(&mut self, record: &EffectRecord) -> bool {
         if !self.calls.known.insert(record.id) {
             return false;
@@ -288,11 +286,10 @@ impl Settled {
                 let call = self.claim(record, tool, args);
                 if let (Some(call), Some(agent)) = (&call, &record.scope) {
                     self.calls.tool_call(record.id, agent, call.id.clone());
-                    let took = record.finished_ms.zip(record.started_ms);
-                    let took =
-                        took.map(|(end, start)| Duration::from_millis(end.saturating_sub(start)));
-                    self.facts
-                        .insert(call.id.clone(), (record.published.clone(), took));
+                    if let Some((end, start)) = record.finished_ms.zip(record.started_ms) {
+                        let took = Duration::from_millis(end.saturating_sub(start));
+                        self.took.insert(call.id.clone(), took);
+                    }
                 }
                 let (failed, answer) = answer(Some(outcome), true);
                 Some(ChildCall {
@@ -440,7 +437,7 @@ pub(crate) fn live_call(
 }
 
 /// Effects that settled before this run, such as a resumed session's, for
-/// [`ToolCallView::children`] and each call's facts: read as the kernel's
+/// [`ToolCallView::children`] and each call's running time: read as the kernel's
 /// [`EffectRecorded`] records are. `rig_basics::telemetry` sends the session's
 /// effect log once it was restored. [`PastEffects::new`] does all the work
 /// per record, so make it where the records are read, off the main thread
@@ -516,7 +513,7 @@ pub(crate) struct Look<'a> {
     /// The notices and notes drawn inside a message, by its index, each
     /// with the content item it goes before.
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
-    /// What settled calls published and how long they ran.
+    /// How long settled calls ran, and the calls they started.
     pub(crate) facts: &'a CallFacts,
     /// The transcript's colors.
     pub(crate) theme: &'a Theme,
@@ -709,8 +706,7 @@ impl Look<'_> {
                     self.stops.answered(id, &call.id).hash(hasher);
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
-                    // Its facts come with its running time.
-                    self.facts.of(&call.id).1.hash(hasher);
+                    self.facts.took(&call.id).hash(hasher);
                     hash_children(self.children.get(&call.id), hasher);
                 }
             }
@@ -733,7 +729,7 @@ impl Look<'_> {
         self.marks.hash(&mut hasher);
         self.stops.hash(&mut hasher);
         self.theme.hash(&mut hasher);
-        // The settled calls' facts and children change only with it.
+        // The settled calls' running times and children change only with it.
         self.facts.changes.hash(&mut hasher);
         for (call, children) in &self.children.live {
             call.hash(&mut hasher);
@@ -777,6 +773,9 @@ pub(crate) struct ShownEntry<'a> {
     pub(crate) message: &'a Arc<Message>,
     pub(crate) id: Option<MessageId>,
     pub(crate) author: Option<&'a Author>,
+    /// What the calls its results answer published: all a call's row
+    /// draws of its facts, live and after a resume alike.
+    pub(crate) facts: &'a ResultFacts,
     /// Whether it is the note rig puts after a request the user stopped.
     pub(crate) stop: bool,
     /// Whether it is archived: drawn, but no item to select, rewind to or
@@ -816,6 +815,7 @@ impl<'a> ShownEntries<'a> {
                 message,
                 id: Some(entry.id),
                 author: entry.author,
+                facts: entry.facts,
                 stop: entry.is_stop_marker(),
                 archived: false,
                 stands_for,
@@ -851,6 +851,7 @@ impl<'a> ShownEntries<'a> {
                 message: &entry.message,
                 id: entry.id,
                 author: entry.author.as_ref(),
+                facts: &entry.facts,
                 stop,
                 archived: true,
                 stands_for: below,
@@ -891,6 +892,8 @@ impl<'a> ShownEntries<'a> {
 struct Cached {
     /// The message as it was laid out.
     message: Arc<Message>,
+    /// Its facts then, which the calls of the message before it draw.
+    facts: ResultFacts,
     /// [`Look::hash_message`] of it then.
     look: u64,
     lines: Vec<LookLine>,
@@ -912,12 +915,14 @@ impl Cached {
     ) -> Option<Self> {
         let entry = entries.get(index)?;
         let message = entry.message;
-        let neighbour = |at: Option<usize>| Some(&**entries.get(at?)?.message);
-        let (previous, next) = (neighbour(index.checked_sub(1)), neighbour(Some(index + 1)));
+        let previous = index.checked_sub(1).and_then(|at| entries.get(at));
+        let previous = previous.map(|previous| &**previous.message);
+        let next = entries.get(index + 1);
         let (lines, line_marks) = message_lines((entry, index), (previous, next), (look, usable));
         let wrapped = wrap_marked(&lines, &line_marks, usable);
         Some(Self {
             message: message.clone(),
+            facts: entry.facts.clone(),
             look: look_hash,
             lines,
             line_marks,
@@ -1049,7 +1054,9 @@ impl Transcript {
         // replaced; a message past either end matches only another.
         let same: Vec<bool> = (0..=entries.len())
             .map(|at| match (self.messages.get(at), entries.get(at)) {
-                (Some(cached), Some(entry)) => Arc::ptr_eq(&cached.message, entry.message),
+                (Some(cached), Some(entry)) => {
+                    Arc::ptr_eq(&cached.message, entry.message) && cached.facts == *entry.facts
+                }
                 (cached, entry) => cached.is_none() && entry.is_none(),
             })
             .collect();
@@ -1535,7 +1542,7 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
 /// calls.
 fn message_lines(
     (entry, at): (&ShownEntry<'_>, usize),
-    (previous, next): (Option<&Message>, Option<&Message>),
+    (previous, next): (Option<&Message>, Option<&ShownEntry<'_>>),
     (look, width): (&Look<'_>, usize),
 ) -> (Vec<LookLine>, Marks) {
     let mut lines = Vec::new();
@@ -1680,8 +1687,10 @@ fn message_lines(
                         );
                     }
                     AssistantContent::ToolCall(call) => {
-                        let result = tool_results(next).find(|result| result.call == call.id);
-                        let (facts, took) = look.facts.of(&call.id);
+                        let results = next.map(|next| &**next.message);
+                        let result = tool_results(results).find(|result| result.call == call.id);
+                        let facts = next.and_then(|next| next.facts.get(&call.id));
+                        let took = look.facts.took(&call.id);
                         let item = TranscriptItem::Call(call.id.clone());
                         let view = ToolCallView {
                             call,
