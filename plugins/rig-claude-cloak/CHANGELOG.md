@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(rig-claude-cloak)* publish claude-cloak with every release ([#2891](https://github.com/0xPlaygrounds/rig/pull/2891)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* add claude-cloak and harden Anthropic handling ([#2875](https://github.com/0xPlaygrounds/rig/pull/2875)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 
 ### Fixed
 
