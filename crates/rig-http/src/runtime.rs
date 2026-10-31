@@ -47,7 +47,7 @@ pub fn handle() -> Result<Handle, Error> {
         Err(_) => RUNTIME
             .as_ref()
             .map(|runtime| runtime.handle().clone())
-            .map_err(|error| Error::instance(error.clone())),
+            .map_err(|error| Error::permanent(error.clone())),
     }
 }
 

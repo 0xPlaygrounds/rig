@@ -87,7 +87,7 @@ impl HttpClientExt for Fake {
         };
         let chunks = script.into_iter().map(|chunk| match chunk {
             Ok(text) => Ok(Bytes::from(text)),
-            Err(why) => Err(http_client::Error::instance(std::io::Error::new(
+            Err(why) => Err(http_client::Error::transient(std::io::Error::new(
                 std::io::ErrorKind::ConnectionReset,
                 why,
             ))),

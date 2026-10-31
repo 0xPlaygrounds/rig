@@ -45,24 +45,24 @@ fn markers(value: &Value) -> usize {
 impl Audit {
     #[allow(clippy::result_large_err)]
     fn inspect(&self, request: &Request<Bytes>) -> http_client::Result<usize> {
-        validate(request.uri()).map_err(http_client::Error::instance)?;
+        validate(request.uri()).map_err(http_client::Error::permanent)?;
         let mut decoded = Vec::new();
         if request.headers().get("content-encoding") == Some(&HeaderValue::from_static("gzip")) {
             use std::io::Read;
             flate2::read::GzDecoder::new(request.body().as_ref())
                 .read_to_end(&mut decoded)
-                .map_err(http_client::Error::instance)?;
+                .map_err(http_client::Error::permanent)?;
         } else {
             decoded.extend_from_slice(request.body());
         }
         let value: Value =
-            serde_json::from_slice(&decoded).map_err(http_client::Error::instance)?;
+            serde_json::from_slice(&decoded).map_err(http_client::Error::permanent)?;
         if let Some(attempts) = &self.root_ttl_attempts {
-            inspect_root_ttl(&value, attempts).map_err(http_client::Error::instance)?;
+            inspect_root_ttl(&value, attempts).map_err(http_client::Error::permanent)?;
         }
         let count = markers(&value);
         if count > 4 {
-            return Err(http_client::Error::instance(Error::CacheBudget));
+            return Err(http_client::Error::permanent(Error::CacheBudget));
         }
         if let Some(messages) = value.get("messages").and_then(Value::as_array) {
             for block in messages
@@ -73,7 +73,7 @@ impl Audit {
                 if block.get("type").and_then(Value::as_str) == Some("tool_use")
                     && block.get("name").and_then(Value::as_str) != Some("_echo")
                 {
-                    return Err(http_client::Error::instance(Error::Body));
+                    return Err(http_client::Error::permanent(Error::Body));
                 }
             }
         }
@@ -85,7 +85,7 @@ impl Audit {
         let mut records = self
             .records
             .lock()
-            .map_err(|_| http_client::Error::instance(Error::Body))?;
+            .map_err(|_| http_client::Error::permanent(Error::Body))?;
         records.push((count, status));
         Ok(())
     }
@@ -139,7 +139,7 @@ impl HttpClientExt for Audit {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        async { Err(http_client::Error::instance(Error::Multipart)) }
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
 
     fn send_streaming<T>(

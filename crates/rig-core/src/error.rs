@@ -222,34 +222,7 @@ impl fmt::Display for ErrorReport {
 
 impl std::error::Error for ErrorReport {}
 
-/// The one status → retryable table.
-///
-/// Request Timeout (408), Too Early (425), Too Many Requests (429) and every
-/// server error (5xx) are retryable; every other status is not. A missing
-/// status decides nothing here: a failure with no status is classified by
-/// what it is ([`transient_transport`]), not by what it lacks.
-pub const fn retryable_status(status: Option<u16>) -> bool {
-    match status {
-        None => false,
-        Some(408 | 425 | 429) => true,
-        Some(s) => s >= 500 && s <= 599,
-    }
-}
-
-/// Classifies `StreamEnded` and backend `Instance` errors as retryable.
-/// Protocol, header, and content-type errors, and a client that could not be
-/// built (`Unbuilt`), are not retryable. Errors carrying
-/// an HTTP status use [`retryable_status`]. This does not guarantee the server
-/// has not processed the request.
-pub fn transient_transport(error: &http_client::Error) -> bool {
-    match error {
-        http_client::Error::StreamEnded | http_client::Error::Instance(_) => true,
-        http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
-            retryable_status(Some(status.as_u16()))
-        }
-        _ => false,
-    }
-}
+pub use crate::http_client::retryable_status;
 
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
@@ -263,13 +236,7 @@ pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<Str
     chain
 }
 
-/// A boxed request-building failure.
-#[cfg(not(target_family = "wasm"))]
-pub type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
-/// A boxed request-building failure.
-#[cfg(target_family = "wasm")]
-pub type BoxError = Box<dyn std::error::Error + 'static>;
+pub use crate::http_client::BoxError;
 
 /// A request-building failure shared by every clone of the error that holds
 /// it.
@@ -480,13 +447,14 @@ impl ProviderError {
         }
     }
 
-    /// Classifies transport failures with [`transient_transport`] and
+    /// Classifies transport failures with
+    /// [`http_client::Error::is_transient`] and
     /// preserved replies with [`ProviderResponseError::is_retryable`]; a
     /// truncated or stalled reply is retryable. Every other failure, rejected
     /// credentials and expired caches included, is not retryable.
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Http(error) => transient_transport(error),
+            Self::Http(error) => error.is_transient(),
             Self::ProviderResponse(response) => response.is_retryable(),
             Self::Relayed(report) => report.retryable,
             // A reply cut short, by its transport or its runtime, may end on
@@ -878,7 +846,7 @@ impl From<&VectorStoreError> for ErrorReport {
             .as_ref()
             .and_then(|response| response.status.map(|status| status.as_u16()));
         let retryable = match error {
-            VectorStoreError::Http(inner) => transient_transport(inner),
+            VectorStoreError::Http(inner) => inner.is_transient(),
             VectorStoreError::ExternalAPIError(..) => retryable_status(http_status),
             _ => false,
         };

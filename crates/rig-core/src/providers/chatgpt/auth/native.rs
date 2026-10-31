@@ -370,9 +370,10 @@ impl Authenticator {
                 Err(AuthError::Http(err)) if err.non_success_status().is_some() => {
                     let status = err.non_success_status().unwrap_or_default();
                     let text = err.non_success_body().unwrap_or_default();
-                    return Err(AuthError::Message(format!(
-                        "ChatGPT device authorization failed: {status} {text}"
-                    )));
+                    return Err(AuthError::Reply {
+                        message: format!("ChatGPT device authorization failed: {status} {text}"),
+                        source: err,
+                    });
                 }
                 Err(err) => return Err(err),
             }
@@ -417,13 +418,14 @@ impl Authenticator {
         )
         .await;
 
-        let (status, body) = match response {
+        let (status, body, reply) = match response {
             Ok(tokens) => {
                 return Ok(build_auth_record(tokens, Some(refresh_token.to_owned())));
             }
             Err(AuthError::Http(err)) if err.non_success_status().is_some() => (
                 err.non_success_status().unwrap_or_default(),
                 err.non_success_body().unwrap_or_default().to_owned(),
+                err,
             ),
             Err(err) => return Err(RefreshTokensError::Auth(err)),
         };
@@ -437,9 +439,10 @@ impl Authenticator {
             return Err(RefreshTokensError::Reauthenticate);
         }
 
-        Err(RefreshTokensError::Auth(AuthError::Message(
-            format_refresh_error(status, oauth_error.as_ref(), &body),
-        )))
+        Err(RefreshTokensError::Auth(AuthError::Reply {
+            message: format_refresh_error(status, oauth_error.as_ref(), &body),
+            source: reply,
+        }))
     }
 }
 

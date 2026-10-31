@@ -38,4 +38,8 @@ fn websocket_url_rejects_an_unsupported_scheme() {
         error.to_string().contains("ftp"),
         "the error should name the scheme, got {error}"
     );
+    assert!(
+        matches!(error, Error::Permanent(_)),
+        "the same URL fails again"
+    );
 }

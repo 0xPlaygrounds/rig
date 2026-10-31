@@ -7,7 +7,7 @@ fn non_success_headers_absent_when_not_captured() {
     for error in [
         Error::StreamEnded,
         Error::NoHeaders,
-        Error::instance(std::io::Error::other("connection reset")),
+        Error::transient(std::io::Error::other("connection reset")),
     ] {
         assert!(error.non_success_headers().is_none());
         assert!(error.non_success_status().is_none());

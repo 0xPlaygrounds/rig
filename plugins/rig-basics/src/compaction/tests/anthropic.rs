@@ -472,10 +472,10 @@ fn a_transport_timeout_during_the_summary_preserves_history() {
             )
         })
         .collect::<String>();
-    let timeout = rig_core::http_client::Error::Instance(Box::new(std::io::Error::new(
+    let timeout = rig_core::http_client::Error::transient(std::io::Error::new(
         std::io::ErrorKind::TimedOut,
         "synthetic transport timeout",
-    )));
+    ));
     let http = rig_core::test_utils::SequencedStreamingHttpClient::new(vec![
         Ok(partial.into()),
         Err(timeout),

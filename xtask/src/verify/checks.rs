@@ -551,6 +551,19 @@ pub(super) fn all() -> Vec<Check> {
                 "wasm32-unknown-unknown",
             ]));
         }
+        // The middleware client's errors cross wasm without `Send`.
+        if package == "rig-reqwest" {
+            steps.push(cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                package,
+                "--features",
+                "reqwest-middleware",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]));
+        }
         // A store that is not `Send`, as one over a JavaScript promise is.
         if package == "rig-memory" {
             steps.push(cargo(&[

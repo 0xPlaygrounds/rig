@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use crate::catalog::{Catalog, ModelSpec};
 use crate::completion::UnsupportedOption;
 use crate::effect::{EffectKind, HandlerDescriptor, family};
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorKind, ErrorReport, ProviderError};
 use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::internal::auth::{AuthContext, AuthError};
@@ -104,13 +104,7 @@ impl<A: CredentialSource> SignedInModel<A> {
             .credentials
             .auth_context(&self.http)
             .await
-            .map_err(|error| {
-                ErrorReport::new(
-                    ErrorKind::Provider,
-                    format!("the sign-in gave no credential ({error}); sign in again"),
-                )
-                .with_retryable(false)
-            })?;
+            .map_err(failed_sign_in)?;
         if let Ok(connected) = self.connected.lock()
             && let Some((held, model)) = connected.as_ref()
             && *held == context
@@ -137,6 +131,24 @@ impl<A: CredentialSource> SignedInModel<A> {
     }
 }
 
+/// The report of a call whose sign-in gave no credential. An HTTP failure
+/// underneath classifies it as it would any provider call, so a dropped
+/// connection or a 503 is retried and its `Retry-After` honoured; any other
+/// failure is final and asks to sign in again.
+fn failed_sign_in(error: AuthError) -> ErrorReport {
+    let message = format!("the sign-in gave no credential ({error})");
+    let (AuthError::Http(source) | AuthError::Reply { source, .. }) = error else {
+        return ErrorReport::new(ErrorKind::Provider, format!("{message}; sign in again"));
+    };
+    let report = ProviderError::from_transport_error(source).report();
+    let message = if report.retryable {
+        message
+    } else {
+        format!("{message}; sign in again")
+    };
+    ErrorReport { message, ..report }
+}
+
 impl<A: CredentialSource> Serve for SignedInModel<A> {
     type Family = family::Completion;
 
@@ -157,3 +169,6 @@ impl<A: CredentialSource> Serve for SignedInModel<A> {
         }
     }
 }
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod tests;

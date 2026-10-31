@@ -42,15 +42,15 @@ impl LocalSender {
             use std::io::Read;
             flate2::read::GzDecoder::new(request.body().as_ref())
                 .read_to_end(&mut decoded)
-                .map_err(http_client::Error::instance)?;
+                .map_err(http_client::Error::permanent)?;
         } else {
             decoded.extend_from_slice(request.body());
         }
-        let capture = json!({"url":request.uri().to_string(),"headers":headers,"wireBytes":request.body().as_ref(),"bodyText":String::from_utf8_lossy(&decoded),"body":serde_json::from_slice::<Value>(&decoded).map_err(http_client::Error::instance)?});
+        let capture = json!({"url":request.uri().to_string(),"headers":headers,"wireBytes":request.body().as_ref(),"bodyText":String::from_utf8_lossy(&decoded),"body":serde_json::from_slice::<Value>(&decoded).map_err(http_client::Error::permanent)?});
         *self
             .capture
             .lock()
-            .map_err(|_| http_client::Error::instance(Error::Body))? = Some(capture);
+            .map_err(|_| http_client::Error::permanent(Error::Body))? = Some(capture);
         *request.uri_mut() = self.uri.clone();
         Ok(request)
     }
@@ -76,7 +76,7 @@ impl HttpClientExt for LocalSender {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        async { Err(http_client::Error::instance(Error::Multipart)) }
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
     fn send_streaming<T>(
         &self,

@@ -26,7 +26,7 @@ impl Loopback {
             || request.headers().get("authorization")
                 != Some(&HeaderValue::from_static("Bearer fake-roundtrip-token"))
         {
-            return Err(http_client::Error::instance(Error::Destination));
+            return Err(http_client::Error::permanent(Error::Destination));
         }
         *request.uri_mut() = self.uri.clone();
         Ok(request)
@@ -53,7 +53,7 @@ impl HttpClientExt for Loopback {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        async { Err(http_client::Error::instance(Error::Multipart)) }
+        async { Err(http_client::Error::permanent(Error::Multipart)) }
     }
     fn send_streaming<T>(
         &self,

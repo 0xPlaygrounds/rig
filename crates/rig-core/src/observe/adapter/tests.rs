@@ -14,7 +14,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
         ),
         (Error::StreamEnded, AdapterErrorBoundary::Transport),
         (
-            Error::instance(std::io::Error::other("opaque client failure")),
+            Error::transient(std::io::Error::other("opaque client failure")),
             AdapterErrorBoundary::Unknown,
         ),
     ] {
