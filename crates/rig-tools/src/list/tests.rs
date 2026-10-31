@@ -131,8 +131,8 @@ fn a_directory_a_listing_could_not_read_is_named() {
     let text = text.unwrap_or_default();
     assert!(
         text.starts_with(
-            "No files in the directories read.\n[could not read 1 path, so what is in them is \
-             not listed: closed (Permission denied (os error 13))]"
+            "No files in the directories read.\n[could not read 1 path, so what is in it is not \
+             listed: closed (Permission denied (os error 13))]"
         ),
         "{text}"
     );

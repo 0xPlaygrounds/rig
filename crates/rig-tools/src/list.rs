@@ -221,7 +221,13 @@ fn list(
         if total == 0 {
             text.push_str("No files in the directories read.\n");
         }
-        text.push_str(&unread(failed, "what is in them is not listed"));
+        text.push_str(&unread(
+            failed,
+            [
+                "what is in it is not listed",
+                "what is in them is not listed",
+            ],
+        ));
         text.push('\n');
     } else if total == 0 {
         text.push_str("No files.\n");

@@ -232,10 +232,18 @@ const MAX_PATH_CHARS: usize = 500;
 
 /// A tool's last line on the paths it could not read, each shown with why,
 /// as many as fit [`MAX_UNREAD`] and [`MAX_UNREAD_BYTES`], and how many
-/// more: `[could not read 2 paths, so {what}: a (Permission denied), b (…)]`.
-pub(crate) fn unread(paths: impl ExactSizeIterator<Item = (String, String)>, what: &str) -> String {
+/// more: `[could not read 2 paths, so {what}: a (Permission denied), b (…)]`,
+/// `what` said of one path, then of several.
+pub(crate) fn unread(
+    paths: impl ExactSizeIterator<Item = (String, String)>,
+    [of_one, of_many]: [&str; 2],
+) -> String {
     let count = paths.len();
-    let noun = if count == 1 { "path" } else { "paths" };
+    let (noun, what) = if count == 1 {
+        ("path", of_one)
+    } else {
+        ("paths", of_many)
+    };
     let mut named: Vec<String> = Vec::new();
     let mut bytes = 0;
     for (path, why) in paths.take(MAX_UNREAD) {

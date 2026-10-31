@@ -8,7 +8,7 @@ Coding tools for [Rig](https://github.com/0xPlaygrounds/rig) agents:
 | `write`  | A whole file, written atomically                                    |
 | `edit`   | Several exact (or whitespace- and quote-tolerant) replacements, applied in order, all or nothing, answered with the changed lines' numbers and those lines, with a few around each, as they now are |
 | `search` | A regex over the tree as git ignores it, hidden files too when asked or when the glob names one, or the names of the files with a match (every file for an empty pattern); `find` returns the hits as data, `render` shows them; a hit cut before its match says where the match is, and the paths it could not read are named |
-| `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search` |
+| `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search`, and the directories it could not read |
 | `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, run until it ends unless the call sets a timeout, stdout and stderr interleaved line by line without terminal escape codes such as colours, and an optional `OutputLimit` that keeps both ends of a long output and the first and last errors from between, its kept lines then cut at 2000 characters (one cut before its error word says where the word is) and, with a spill directory, all of it in a file |
 | `delete`, `move` | A file removed, or moved or renamed |
 

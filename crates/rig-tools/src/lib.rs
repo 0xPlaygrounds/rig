@@ -230,6 +230,15 @@ impl<'l> Excerpt<'l> {
         self.kept.len() < self.bytes
     }
 
+    /// The span, when the line was cut and the cut left it out, all of it
+    /// or its end.
+    pub(crate) fn hidden(&self) -> Option<&Range<usize>> {
+        let kept = self.kept.len();
+        self.span.as_ref().filter(|span| {
+            self.is_cut() && (span.end > kept || (span.is_empty() && span.start >= kept))
+        })
+    }
+
     /// The mark shown after [`kept`](Self::kept): none when the line is
     /// whole; ` […]` when what it was picked for shows, or it was picked
     /// for no part; else where the line was cut and where `what` (its
@@ -237,10 +246,10 @@ impl<'l> Excerpt<'l> {
     /// command that shows the bytes of it from about 5000 before the span.
     pub fn mark(&self, what: &str, source: Option<Source<'_>>) -> String {
         let kept = self.kept.len();
-        let span = match &self.span {
+        let span = match self.hidden() {
             _ if !self.is_cut() => return String::new(),
-            Some(span) if span.end > kept || (span.is_empty() && span.start >= kept) => span,
-            _ => return CUT_MARK.to_owned(),
+            Some(span) => span,
+            None => return CUT_MARK.to_owned(),
         };
         let shift = self.before;
         let at = match span.is_empty() {

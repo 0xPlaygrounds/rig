@@ -767,7 +767,7 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     let found = found.unwrap_or_default();
     assert!(
         found.starts_with(
-            "No matches in the files read.\n[could not read 1 path, so they were not searched: \
+            "No matches in the files read.\n[could not read 1 path, so it was not searched: \
              bench:~/strata/src/lib.rs ("
         ) && found.contains("reads refused"),
         "{found}"
@@ -777,17 +777,21 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     std::fs::write(locked.join("a.txt"), "a\n").ok();
     let link = home.join("strata/link.txt");
     std::os::unix::fs::symlink("../locked/a.txt", &link).ok();
+    // A link to a directory that may be searched hides nothing.
+    std::os::unix::fs::symlink("strata", home.join("alias")).ok();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).ok();
     let hidden = std::fs::read(locked.join("a.txt")).is_err();
     let stat = workspace.stat(Path::new("bench:~/locked/a.txt"));
     let linked = workspace.stat(Path::new("bench:~/strata/link.txt"));
     let gone = workspace.stat(Path::new("bench:~/strata/gone/a.txt"));
+    let aliased = workspace.stat(Path::new("bench:~/alias/gone.txt"));
     let all = crate::workspace::Listing::All;
     let listing = workspace.files(Path::new("bench:~/locked"), None, all);
     let missing = workspace.files(Path::new("bench:~/strata/gone"), None, all);
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).ok();
     std::fs::remove_dir_all(&dir).ok();
     assert!(gone.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
+    assert!(aliased.is_ok_and(|gone| gone == crate::workspace::Stat::Missing));
     let not_found = Some(std::io::ErrorKind::NotFound);
     assert_eq!(missing.err().map(|error| error.kind()), not_found);
     if hidden {
@@ -809,6 +813,7 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
 /// A command that ran on a host, whose output is spilled on this machine,
 /// says where a cut failure word is but gives no command for the spill
 /// file, which a command there would not find.
+#[cfg(unix)]
 #[test]
 fn a_cut_line_of_a_command_there_gives_no_command_for_the_spill_here() {
     let dir = scratch("spill");

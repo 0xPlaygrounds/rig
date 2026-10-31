@@ -381,5 +381,8 @@ fn line_endings_other_than_lf_are_named() {
         "one\ntwo\n[mixed line endings: some lines end in CRLF, the others in LF]\n"
     );
     assert_eq!(read("lf.txt", "one\ntwo\n"), "one\ntwo\n");
+    // As `show_lines` shows a text, such as an `@` attachment.
+    let shown = crate::show_lines("one\r\ntwo\r\n", 1, 10, 1000);
+    assert_eq!(shown, "one\ntwo\n[CRLF line endings; edit keeps them]\n");
     std::fs::remove_dir_all(dir).ok();
 }

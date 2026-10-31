@@ -127,7 +127,8 @@ pub struct Hit {
     /// The line's number, from 1.
     pub line: usize,
     /// The line, cut at 300 characters; a line cut before its match says
-    /// where the match is.
+    /// where the match is, and the first such line of a file the command
+    /// that shows it.
     pub text: String,
 }
 
@@ -294,7 +295,10 @@ pub fn render(found: &Found) -> String {
             .unread
             .iter()
             .map(|unread| (unread.path.display().to_string(), unread.error.clone()));
-        lines.push(unread(unread_paths, "they were not searched"));
+        lines.push(unread(
+            unread_paths,
+            ["it was not searched", "they were not searched"],
+        ));
     }
     lines.join("\n")
 }
@@ -382,10 +386,13 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
             }
             continue;
         }
-        let resolved = found.files.last().and_then(|read| shell_path(&read.path));
+        // Only a file's first hit cut before its match gives the command,
+        // which the others follow with their own line and bytes.
+        let mut resolved = found.files.last().and_then(|read| shell_path(&read.path));
         for (number, line) in lines {
             let cut = excerpt(line, pattern.find(line).map(|at| at.range()), MAX_LINE);
-            let source = resolved.as_deref().map(|path| Source {
+            let shown = cut.hidden().and_then(|_| resolved.take());
+            let source = shown.as_deref().map(|path| Source {
                 path,
                 line: number + 1,
             });

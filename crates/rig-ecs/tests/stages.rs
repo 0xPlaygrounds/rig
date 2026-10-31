@@ -483,7 +483,7 @@ fn a_whole_number_sent_as_a_float_runs_as_that_integer() {
         .iter()
         .find(|record| record.disposition == Disposition::Ran);
     assert!(
-        ran.is_some_and(|record| output(&record.outcome).contains('5')),
+        ran.is_some_and(|record| record.outcome.is_ok() && output(&record.outcome).contains('5')),
         "{records:?}"
     );
 }

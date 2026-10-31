@@ -52,9 +52,11 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
 
     /// What each of `paths` holds, in order: the whole content of a
     /// regular file of at most `limit` bytes; any other file is
-    /// [`Excluded`](Observation::Excluded). What a search reads; a
-    /// workspace where each call costs a round trip, such as a remote one,
-    /// reads them in one.
+    /// [`Excluded`](Observation::Excluded), nothing there
+    /// [`Missing`](Observation::Missing), and a path that could not be
+    /// read [`Failed`](Observation::Failed) with why. What a search reads;
+    /// a workspace where each call costs a round trip, such as a remote
+    /// one, reads them in one.
     fn read_files(&self, paths: &[PathBuf], limit: u64) -> Vec<Observation<Vec<u8>>> {
         paths
             .iter()

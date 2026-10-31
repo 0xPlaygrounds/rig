@@ -38,7 +38,7 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     let dir = project.parent().unwrap_or(&project).to_path_buf();
     // A protected file the search cannot read, and so would name.
     let locked = project.join("keys/locked.txt");
-    std::fs::write(&locked, "public\n").ok();
+    std::fs::write(&locked, "x\n").ok();
     #[cfg(unix)]
     let mode = |mode| {
         use std::os::unix::fs::PermissionsExt as _;

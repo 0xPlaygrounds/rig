@@ -200,11 +200,7 @@ fn a_match_past_the_cut_says_where_it_is() {
                  `sed -n '1p;1q' {quoted} | cut -b 301-350 | LC_ALL=C fold -b -w 2000` shows \
                  bytes 301-350]"
             ),
-            format!(
-                "{zeros} [… cut at byte 300 of 4006; the match is at bytes 4001-4006: in \
-                 `shell`, `sed -n '2p;2q' {quoted} | cut -b 301-4006 | LC_ALL=C fold -b -w \
-                 2000` shows bytes 301-4006]"
-            ),
+            format!("{zeros} [… cut at byte 300 of 4006; the match is at bytes 4001-4006]"),
         ]
     );
     std::fs::remove_dir_all(dir).ok();
@@ -259,4 +255,14 @@ fn what_a_search_could_not_read_is_named() {
         text.starts_with("No matches in the files read.\n[could not read 2 paths, so they"),
         "{text}"
     );
+}
+
+/// A search saved before paths it could not read were kept still loads,
+/// and one with none saves as before.
+#[test]
+fn a_saved_search_without_unread_paths_loads_and_saves_as_before() {
+    let saved = serde_json::from_str::<super::Found>(r#"{"hits": [], "stopped": false}"#);
+    assert!(saved.is_ok_and(|found| found.unread.is_empty()));
+    let written = serde_json::to_value(super::Found::default()).unwrap_or_default();
+    assert!(written.get("unread").is_none(), "{written}");
 }

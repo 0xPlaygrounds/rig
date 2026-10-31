@@ -71,14 +71,15 @@ const A_DIRECTORY: i32 = 5;
 const ROOT_IS_A_FILE: i32 = 6;
 
 /// A shell function for the scripts below: whether the path `$1`, which
-/// the shell does not see, is truly not there, since neither it nor any
-/// of its directories is a link (whose target may be hidden) and the
-/// nearest of them that is there may be searched (or is no directory). One
-/// that may not be searched hides what is in it, which is not absence.
+/// the shell does not see, is truly not there, since the nearest of its
+/// directories that is there may be searched (or is no directory), and
+/// neither it nor a directory on the way is a link that does not resolve.
+/// A directory that may not be searched hides what is in it, and a link
+/// may point into one, which is not absence.
 const GONE: &str = "gone() { d=$1; [ -L \"$d\" ] && return 1; while :; do \
-    d=$(dirname -- \"$d\"); [ -L \"$d\" ] && return 1; \
+    d=$(dirname -- \"$d\"; echo .); d=${d%??}; \
     if [ -e \"$d\" ]; then [ ! -d \"$d\" ] || [ -x \"$d\" ]; return; fi; \
-    case $d in /|.) return 0;; esac; done; }";
+    [ -L \"$d\" ] && return 1; case $d in /|.) return 0;; esac; done; }";
 
 /// Another machine, reached through a transport (see the [module](self)
 /// docs). Its paths are that machine's: absolute, or under `~`, its user's
@@ -1037,7 +1038,8 @@ fn quote_path(path: &Path) -> String {
 fn hidden() -> io::Error {
     io::Error::new(
         ErrorKind::PermissionDenied,
-        "a directory it is in may not be searched there",
+        "a directory it is in may not be searched there, or a link on its way does not \
+         resolve",
     )
 }
 

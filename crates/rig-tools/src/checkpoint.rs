@@ -262,7 +262,7 @@ impl Snapshot {
 /// and that had not just changed when it began ([`snapshot`]); with
 /// `blobs`, the content of each file it read is kept there, by hash, once.
 /// Also the paths it could not look at: a directory it could not list, a
-/// file it could not `stat` or read.
+/// file it could not `stat`.
 fn scan(
     workspace: &dyn Workspace,
     root: &Path,
@@ -307,16 +307,12 @@ fn scan(
         let file = match same {
             Some(was) => was.clone(),
             None => {
-                let bytes =
-                    match (size <= MAX_FILE_BYTES).then(|| workspace.read(&path, MAX_FILE_BYTES)) {
-                        Some(Ok(contents)) => Some(contents.bytes),
-                        None => None,
-                        Some(Err(error)) if error.kind() == ErrorKind::NotFound => continue,
-                        Some(Err(_)) => {
-                            unknown.push(path);
-                            continue;
-                        }
-                    };
+                // A file `stat` found but that could not be read is there, by
+                // its size and time.
+                let bytes = (size <= MAX_FILE_BYTES)
+                    .then(|| workspace.read(&path, MAX_FILE_BYTES).ok())
+                    .flatten()
+                    .map(|contents| contents.bytes);
                 let hash = bytes.as_deref().map(content_hash);
                 if let (Some(blobs), Some(bytes), Some(hash)) = (blobs, &bytes, &hash) {
                     let blob = blobs.join(&hash.0);

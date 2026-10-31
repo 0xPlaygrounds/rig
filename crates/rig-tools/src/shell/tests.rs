@@ -456,6 +456,7 @@ fn a_failure_past_the_cut_says_where_it_is_and_its_command_shows_it() {
 
 /// A line naming an error anywhere in it, such as git's `fatal:` or a
 /// log's `build error:`, is kept from the cut middle of an output.
+#[cfg(unix)]
 #[test]
 fn fatal_and_error_lines_are_kept_from_the_middle() {
     let output = shell(

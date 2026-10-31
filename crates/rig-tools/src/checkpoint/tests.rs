@@ -525,6 +525,7 @@ fn git_starts_through_the_launcher() {
 /// A scan that could not `stat` a file, in a directory it may list but not
 /// search, does not take it for deleted, and neither a file in a directory
 /// it could not list at all; its content is not known rather than missing.
+/// A file it found but could not read is there: created.
 #[cfg(unix)]
 #[test]
 fn a_file_a_scan_could_not_look_at_is_not_deleted() {
@@ -546,19 +547,27 @@ fn a_file_a_scan_could_not_look_at_is_not_deleted() {
     let mode = |path: &Path, mode| {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).ok()
     };
+    let made = dir.join("made.txt");
+    std::fs::write(&made, "new\n").ok();
+    mode(&made, 0o000);
     mode(&listed, 0o600);
     mode(&closed, 0o000);
     let second = snapshot(&Local, &dir, &taking, Some(&first));
     mode(&listed, 0o755);
     mode(&closed, 0o755);
     let changes = second.as_ref().map_err(|error| error.kind());
-    let changes = changes.map(|second| second.changes_since(&first).map(|changes| changes.len()));
+    let changes = changes.map(|second| {
+        let changes = second.changes_since(&first).unwrap_or_default();
+        let kinds = changes.into_iter().map(|change| (change.kind, change.path));
+        kinds.collect::<Vec<_>>()
+    });
     let unknown = second
         .ok()
         .and_then(|second| second.content(&closed.join("a.txt")));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::remove_dir_all(&keep).ok();
-    assert_eq!(changes.map(Result::ok), Ok(Some(0)));
+    let created = (ChangeKind::Created, made.to_string_lossy().into_owned());
+    assert_eq!(changes, Ok(vec![created]));
     // Not known, or, to one who may read anything, as it was.
     let content = unknown.map(|read| read.map_err(|error| error.kind()));
     assert!(
