@@ -179,6 +179,27 @@ fn a_log_only_build_shows_one_line_while_cargo_works_and_its_errors_once_it_fail
     assert!(logged.contains("Blocking"), "{logged:?}");
 }
 
+/// A short wait for cargo's lock in one command says nothing when a later
+/// command of the same build is silent for long.
+#[test]
+fn a_wait_for_cargos_lock_ends_with_its_command() {
+    let root = std::env::temp_dir().join(format!("rig-build-log-two-{}", std::process::id()));
+    let home = Home::at(&root);
+    let shown = Shown::default();
+    let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(shown.clone()));
+    let commands = [
+        "printf '    Blocking waiting for file lock on build directory\\n    Finished\\n' >&2",
+        "sleep 4",
+    ];
+    for script in commands {
+        let mut cargo = Command::new("sh");
+        cargo.args(["-c", script]).stderr(Stdio::piped());
+        assert!(log.run(cargo).is_ok_and(|status| status.success()));
+    }
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(shown.text(), "");
+}
+
 /// A wait for another cargo's lock that lasts is said once it passes its
 /// time, while cargo still prints nothing.
 #[test]
@@ -296,8 +317,10 @@ fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
         let home = Home::at(&root);
         let mut log = BuildLog::create(&home, BuildOutput::LogOnly, Box::new(Shown::default()));
         let mut cargo = Command::new("sh");
-        // "cargo" ignores SIGTERM; what it started does not.
-        let script = "sleep 30 & echo $(ps -o pgid= -p $$) $! $$ > \"$0\"; trap '' TERM; wait";
+        // "cargo" ignores SIGTERM, from before it says it is ready; what it
+        // started does not.
+        let script = "trap '' TERM; (trap - TERM; exec sleep 30) & \
+                      echo $(ps -o pgid= -p $$) $! $$ > \"$0\"; wait";
         cargo.args(["-c", script]).arg(&seen).stderr(Stdio::piped());
         let watched = seen.clone();
         std::thread::spawn(move || {

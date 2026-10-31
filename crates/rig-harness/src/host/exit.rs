@@ -108,13 +108,14 @@ impl Plugin for ExitPlugin {
                 Last,
                 end_left_jobs
                     .in_set(OnAppExitSystems)
+                    .after(rig_ecs::StopTurnsOnExit)
                     .run_if(on_message::<AppExit>),
             );
     }
 }
 
-/// Ends the jobs the agent's commands left running in the background as it
-/// exits for good; across a reload or a session switch they keep running,
+/// Ends the jobs the agent's commands left running in the background, and
+/// those of the calls the exit stopped, as the agent exits for good; across a reload or a session switch they keep running,
 /// for the next agent to take over (`LauncherPlugin`).
 fn end_left_jobs(reason: Option<Res<ExitReason>>) {
     if !matches!(

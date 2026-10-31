@@ -1085,6 +1085,7 @@ fn list(id: u32) {
 fn unlist(id: u32) {
     let mut ledger = ledger();
     ledger.left.remove(&id);
+    ledger.stopping.remove(&id);
     if ledger.listed.remove(&id) {
         ledger.write();
     }
@@ -1116,6 +1117,7 @@ fn sweep() {
         for id in &empty {
             ledger.left.remove(id);
             ledger.listed.remove(id);
+            ledger.stopping.remove(id);
         }
         if !empty.is_empty() {
             ledger.write();

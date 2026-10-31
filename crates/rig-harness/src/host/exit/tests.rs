@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods, reason = "test fixtures")]
+
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -151,5 +153,52 @@ fn a_refused_exit_still_exits() {
     assert_eq!(
         app.world().resource::<Seen>().exits,
         [AppExit::from_code(3)]
+    );
+}
+
+/// Exiting for good ends what the calls the exit stopped still run, also a
+/// process that ignores the request to stop: the exit does not leave it to a
+/// later kill that would die with the agent.
+#[cfg(target_os = "linux")]
+#[test]
+fn an_exit_ends_what_the_calls_it_stopped_still_run() {
+    use rig_tools::process::{Launcher, Scope, Spawn};
+
+    let call = Scope::default();
+    let ready = std::env::temp_dir().join(format!("rig-exit-stubborn-{}", std::process::id()));
+    let script = format!(
+        "trap '' TERM; echo $$ > '{}'; exec sleep 30",
+        ready.display()
+    );
+    let started = call.enter(|| Launcher::default().spawn("sh", ["-c", &script], Spawn::default()));
+    let Ok(mut process) = started else {
+        return assert!(started.is_ok());
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let pid = std::fs::read_to_string(&ready).unwrap_or_default();
+    std::fs::remove_file(&ready).ok();
+    // The call's thread goes on waiting for it, as a stopped call's does.
+    let waiting = std::thread::spawn(move || process.run(None, |_| true));
+    let mut app = app();
+    app.add_systems(Last, (move || call.stop()).in_set(rig_ecs::StopTurnsOnExit));
+    app.world_mut().trigger(Exit(ExitReason::Quit));
+    app.update();
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid.trim())).unwrap_or_default();
+    let alive = !stat.is_empty()
+        && !stat
+            .rsplit(')')
+            .next()
+            .unwrap_or_default()
+            .trim_start()
+            .starts_with('Z');
+    assert!(waiting.join().is_ok());
+    assert!(
+        !pid.trim().is_empty() && !alive,
+        "{} outlived the exit",
+        pid.trim()
     );
 }
