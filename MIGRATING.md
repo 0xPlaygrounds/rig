@@ -1328,6 +1328,8 @@ app.add_systems(AgentPass, tools_as_text.in_set(PrepareSystems::Adapt));
 What `ModelStarts::sent` and `dropped` gave is `adapted.sent(model)` and
 `adapted.dropped(model)`; after Start, read `SentTo`. A call's connection is
 chosen once, after `PrepareSystems::Edit`, so route in `Edit` or before.
+`PrepareSystems` is exhaustive, so a `match` on it adds the `Adapt` and
+`AdaptOutermost` arms.
 
 **Per-call tools implement `PerCallTool`.** `add_tool_per_call` and
 `add_live_tool_per_call` take the tool and its options, with no closure:
@@ -1434,8 +1436,12 @@ transcript draws `LookLine::colored()`. `header_code` replaces `header_spans`.
 
 - `PickItem` gains `more: Option<String>` and `Picker` gains `secret: bool`;
   literals add them (`Picker` has `Default`).
-- `CallState` gains `Stopped`; `EntryView` and `EntryRender` gain
-  `id: Option<MessageId>`. `ActivityStatus` gains `Writing`.
+- Exhaustive enums with new variants, so a `match` adds arms:
+  `rig_tui::CallState::Stopped`, `rig_tui::InputAction::Exit`,
+  `rig_tui::HistorySystems::Seed` and `rig_basics::activity::ActivityStatus::Writing`.
+- `EntryView` and `EntryRender` gain `id: Option<MessageId>`.
+- `AppCliExt` gains `refuse_run`; it matters only to a type of your own that
+  implements the trait.
 - `SessionPicker::show` and `SessionItem` are removed: put labels in a
   `ResumeLabel` or a listed saved value, or relabel the `Picker`'s items in a
   system after `SessionPickerSystems`. `SessionEntry::label()` no longer holds
