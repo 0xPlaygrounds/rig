@@ -294,16 +294,29 @@ impl Native {
     }
 
     /// Records the first of `slots` that holds a non-empty string in the
-    /// item as its blob, or none.
+    /// item as its blob, or none. A slot's `*` step stands for each index
+    /// of an array in turn, and the index that holds one is recorded.
     pub(crate) fn find_blob(&mut self, slots: &[&'static str]) {
-        let holds = |slot: &&str| {
-            self.item
-                .pointer(slot)
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|value| !value.is_empty())
-        };
-        self.blob_slot = slots.iter().copied().find(holds).map(Cow::Borrowed);
+        self.blob_slot = slots.iter().find_map(|slot| blob_in(&self.item, slot));
     }
+}
+
+/// Where `slot` finds a non-empty string in `item`, its `*` step, if any,
+/// expanded to the first index that holds one.
+fn blob_in(item: &serde_json::Value, slot: &'static str) -> Option<Cow<'static, str>> {
+    let holds = |pointer: &str| {
+        item.pointer(pointer)
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| !value.is_empty())
+    };
+    let Some((array, rest)) = slot.split_once("/*/") else {
+        return holds(slot).then_some(Cow::Borrowed(slot));
+    };
+    let entries = item.pointer(array)?.as_array()?.len();
+    (0..entries)
+        .map(|index| format!("{array}/{index}/{rest}"))
+        .find(|pointer| holds(pointer))
+        .map(Cow::Owned)
 }
 
 pub(super) fn baseline(value: serde_json::Value) -> serde_json::Value {

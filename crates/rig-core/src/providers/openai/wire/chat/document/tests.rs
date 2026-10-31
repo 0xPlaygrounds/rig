@@ -280,6 +280,54 @@ fn reasoning_text_appends_and_reasoning_details_merge_as_the_decoder_merges_them
     );
 }
 
+/// A signature closes its `thinking` block whether it comes alone,
+/// numbered with the block's `index`, or restates the block's whole text.
+#[test]
+fn thinking_blocks_merge_as_the_decoder_merges_them() {
+    let block = |text: &str, index: Option<u64>| {
+        let mut block = json!({"type": "thinking", "thinking": text});
+        if let Some(index) = index {
+            block["index"] = json!(index);
+        }
+        block
+    };
+    let piece = |text: &str, index| json!({"reasoning_content": text, "thinking_blocks": [block(text, index)]});
+    for (index, restated) in [(Some(0), ""), (None, "Weighing it")] {
+        let mut first = piece("Weigh", index);
+        first["role"] = json!("assistant");
+        let mut signed = block(restated, index);
+        signed["signature"] = json!("c2lnbmVk");
+        let document = rebuilt(
+            &chat(&OPENAI),
+            &[
+                chunk(first, json!({})),
+                chunk(piece("ing it", index), json!({})),
+                chunk(
+                    json!({"reasoning_content": "", "thinking_blocks": [signed]}),
+                    json!({}),
+                ),
+                chunk(json!({"content": "pong"}), json!({"finish_reason": "stop"})),
+            ],
+        );
+        let mut joined = block("Weighing it", index);
+        joined["signature"] = json!("c2lnbmVk");
+        assert_eq!(
+            document.pointer("/choices/0"),
+            Some(&json!({
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "reasoning_content": "Weighing it",
+                    "thinking_blocks": [joined],
+                    "content": "pong"
+                },
+                "finish_reason": "stop"
+            })),
+            "{index:?}"
+        );
+    }
+}
+
 #[test]
 fn logprobs_annotations_and_audio_append() {
     let token = |text: &str| json!({"token": text, "logprob": -0.1, "top_logprobs": []});

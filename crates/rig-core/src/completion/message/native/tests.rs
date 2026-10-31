@@ -261,6 +261,43 @@ fn a_reasoning_blob_is_read_where_its_wire_put_it() {
     );
 }
 
+/// A slot's `*` step finds the first entry of an array that holds a blob,
+/// however late, and records that entry's index; an array with none, or
+/// no array, records none.
+#[test]
+fn a_star_step_records_the_first_entry_holding_a_blob() {
+    use crate::message::{Blob, Native};
+    let slots = ["/blocks/*/signature", "/blocks/*/data"];
+    let found = |item: serde_json::Value| {
+        let mut native = Native {
+            item,
+            fingerprint: Fingerprint::of(&"x"),
+            baseline: None,
+            edited: false,
+            blob_slot: None,
+        };
+        native.find_blob(&slots);
+        let stored = serde_json::to_value(&native).expect("serializes");
+        let stored: Native = serde_json::from_value(stored).expect("loads");
+        stored
+            .reasoning_blob()
+            .map(|Blob { key, value }| (key.to_owned(), value.to_owned()))
+    };
+    let unsigned = json!({"type": "thinking", "thinking": "t", "signature": ""});
+    let redacted = json!({"type": "redacted_thinking", "data": "r"});
+    let signed = json!({"type": "thinking", "thinking": "t", "signature": "s"});
+    assert_eq!(
+        found(json!({"blocks": [unsigned, redacted, signed]})),
+        Some(("/blocks/2/signature".to_owned(), "s".to_owned()))
+    );
+    assert_eq!(
+        found(json!({"blocks": [unsigned, redacted]})),
+        Some(("/blocks/1/data".to_owned(), "r".to_owned()))
+    );
+    assert_eq!(found(json!({"blocks": [unsigned]})), None);
+    assert_eq!(found(json!({"blocks": "s"})), None);
+}
+
 /// Stored native items carry these values, so a change to the projection or
 /// to how it is hashed would stale every saved item.
 #[test]
