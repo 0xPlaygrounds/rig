@@ -773,11 +773,13 @@ impl Drop for Build {
 }
 
 /// The signals that end the launcher, while a [`Build`] runs, first kill
-/// its group.
+/// its group. A signal the launcher was started ignoring, as under `nohup`,
+/// stays ignored.
 #[cfg(unix)]
 mod stop {
     use std::os::unix::process::CommandExt;
     use std::process::{Child, Command};
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicI32, Ordering};
 
     /// The signals a terminal or a supervisor ends the launcher with.
@@ -786,41 +788,70 @@ mod stop {
     /// The build's process group; 0 while none runs.
     static GROUP: AtomicI32 = AtomicI32::new(0);
 
+    /// The actions [`spawn`] replaced, which [`forget`] puts back.
+    static BEFORE: Mutex<Vec<(libc::c_int, libc::sigaction)>> = Mutex::new(Vec::new());
+
     /// Starts `command` as the leader of a new process group and makes it
     /// the group the ending signals kill. The signals wait while it starts,
     /// so one that comes meanwhile finds the group.
     pub(super) fn spawn(command: &mut Command) -> std::io::Result<Child> {
         command.process_group(0);
-        // SAFETY: plain calls on a zeroed signal set this function owns;
-        // the child starts with an empty mask (std resets it).
+        let mut replaced = Vec::new();
+        // SAFETY: plain calls on zeroed signal sets and actions this
+        // function owns; the closure runs in the forked child before `exec`
+        // and only calls `pthread_sigmask`, which is async-signal-safe. The
+        // child gets the default action for every caught signal (exec does).
         let mut ending: libc::sigset_t = unsafe { std::mem::zeroed() };
-        let mut before: libc::sigset_t = unsafe { std::mem::zeroed() };
+        let mut mask: libc::sigset_t = unsafe { std::mem::zeroed() };
         unsafe {
             libc::sigemptyset(&raw mut ending);
             for signal in ENDING {
+                let mut before: libc::sigaction = std::mem::zeroed();
+                libc::sigaction(signal, std::ptr::null(), &raw mut before);
+                if before.sa_sigaction == libc::SIG_IGN {
+                    continue;
+                }
+                let mut action: libc::sigaction = std::mem::zeroed();
+                action.sa_sigaction = on_signal as *const () as libc::sighandler_t;
+                libc::sigemptyset(&raw mut action.sa_mask);
+                libc::sigaction(signal, &raw const action, std::ptr::null_mut());
                 libc::sigaddset(&raw mut ending, signal);
-                libc::signal(signal, on_signal as *const () as libc::sighandler_t);
+                replaced.push((signal, before));
             }
-            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const ending, &raw mut before);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const ending, &raw mut mask);
+            // std keeps the parent's mask in the child: cargo gets the one
+            // from before.
+            command.pre_exec(move || {
+                libc::pthread_sigmask(libc::SIG_SETMASK, &raw const mask, std::ptr::null_mut());
+                Ok(())
+            });
         }
+        *BEFORE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = replaced;
         let spawned = command.spawn();
         if let Ok(child) = &spawned {
             GROUP.store(i32::try_from(child.id()).unwrap_or(0), Ordering::SeqCst);
         }
         // SAFETY: restores the mask saved above.
         unsafe {
-            libc::pthread_sigmask(libc::SIG_SETMASK, &raw const before, std::ptr::null_mut());
+            libc::pthread_sigmask(libc::SIG_SETMASK, &raw const mask, std::ptr::null_mut());
         }
         spawned
     }
 
-    /// The build ended: the ending signals end the launcher alone again.
+    /// The build ended: the ending signals act as they did before it.
     pub(super) fn forget() {
         GROUP.store(0, Ordering::SeqCst);
-        for signal in ENDING {
-            // SAFETY: restores the default action, which `spawn` replaced.
+        let replaced = std::mem::take(
+            &mut *BEFORE
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        for (signal, before) in replaced {
+            // SAFETY: puts back the action `spawn` read for this signal.
             unsafe {
-                libc::signal(signal, libc::SIG_DFL);
+                libc::sigaction(signal, &raw const before, std::ptr::null_mut());
             }
         }
     }

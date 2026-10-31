@@ -46,6 +46,51 @@ fn the_rebuild_gets_no_secret() {
     assert_eq!((exited.ok(), seen.as_deref()), (Some(true), Some("none")));
 }
 
+/// Whether the process `pid` runs: there and not a zombie.
+#[cfg(target_os = "linux")]
+fn alive(pid: &str) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        !stat
+            .rsplit(')')
+            .next()
+            .unwrap_or_default()
+            .trim_start()
+            .starts_with('Z')
+    })
+}
+
+/// A stopped rebuild asks `rig build` to stop before killing it, so the
+/// launcher kills cargo, which runs in a group of its own.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stopped_rebuild_leaves_no_cargo() {
+    let dir = scratch("stopped");
+    std::fs::create_dir_all(&dir).ok();
+    let launcher = dir.join("rig");
+    // Its "cargo" is a sleep in a session of its own, killed on SIGTERM.
+    let script = "#!/bin/sh\nsetsid sleep 60 & echo $! > \"$0.pid\"\n\
+                  trap 'kill $!; exit 143' TERM\nwait\n";
+    std::fs::write(&launcher, script).ok();
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755)).ok();
+    let build = ReloadBuild::start(launcher.as_os_str(), Entity::PLACEHOLDER, Wake::default());
+    let pid_file = dir.join("rig.pid");
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !pid_file.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    let cargo = std::fs::read_to_string(&pid_file).unwrap_or_default();
+    assert!(build.is_ok() && alive(cargo.trim()));
+    drop(build);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while alive(cargo.trim()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let left = alive(cargo.trim());
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(!left, "cargo outlived the stopped rebuild");
+}
+
 /// A directory of the test's own named `name`, beside its binary.
 fn scratch(name: &str) -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();

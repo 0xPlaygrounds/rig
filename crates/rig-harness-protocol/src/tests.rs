@@ -420,15 +420,15 @@ fn groups_left_are_asked_to_stop_before_they_are_killed() {
     let root = std::env::temp_dir().join(format!("rig-protocol-term-{}", std::process::id()));
     std::fs::create_dir_all(&root).ok();
     let run = super::RunDir::at(&root);
-    let (asked, stubborn) = (root.join("asked"), root.join("stubborn"));
+    let asked = root.join("asked");
+    let ready = [root.join("heeds"), root.join("ignores")];
+    let [heeding, ignoring] = ready.each_ref().map(|ready| ready.display());
+    // Each says it is ready once its trap is set.
     let heeds = format!(
-        "trap 'touch \"{}\"; exit' TERM; while :; do sleep 0.05; done",
+        "trap 'touch \"{}\"; exit' TERM; touch '{heeding}'; while :; do sleep 0.05; done",
         asked.display()
     );
-    let ignores = format!(
-        "trap '' TERM; echo $$ > '{}'; exec sleep 60",
-        stubborn.display()
-    );
+    let ignores = format!("trap '' TERM; touch '{ignoring}'; exec sleep 60");
     let mut leaders = Vec::new();
     for script in [heeds, ignores] {
         let leader = std::process::Command::new("sh")
@@ -440,7 +440,7 @@ fn groups_left_are_asked_to_stop_before_they_are_killed() {
         leaders.extend(leader.ok());
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while !stubborn.exists() && std::time::Instant::now() < deadline {
+    while !ready.iter().all(|ready| ready.exists()) && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let ids: String = leaders

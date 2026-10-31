@@ -599,8 +599,9 @@ impl RunDir {
     }
 
     /// How long [`Self::kill_left_groups`] waits for the groups it asked to
-    /// stop.
-    pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+    /// stop: longer than an agent among them takes to end its own (it gives
+    /// them 2 s).
+    pub const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 }
 
 /// The processes of the group `group`, its leader first: Linux reads each
