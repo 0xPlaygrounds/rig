@@ -43,16 +43,6 @@ const COUNTED: [(&str, &str); 6] = [
     ("name", "names"),
 ];
 
-/// The row keys [`reading`] reads, and the part of `modalities` it does.
-const READ: [&str; 6] = [
-    "reasoning",
-    "reasoning_options",
-    "tool_call",
-    "structured_output",
-    "temperature",
-    "modalities.input",
-];
-
 /// What rig-core reads from a finished row, by the rules of `Row::spec` in
 /// `crates/rig-core/src/catalog/row.rs`. Keep the two in step;
 /// `the_reading_is_rig_cores` checks them over the checked-in catalog. It
@@ -193,9 +183,9 @@ fn changes(old: &Reading, new: &Reading, sampling_fact: bool) -> (Vec<Loss>, Vec
             format!("reasoning controls become unknown (were {})", controls(was)),
             "reasoning_options",
         ),
-        (Reasoning::Unknown, now) => {
-            gains.push(format!("reasoning controls listed ({})", controls(now)))
-        }
+        // Neither: rig refused no control before and refuses what the list
+        // lacks now; `compare` lists it on its own.
+        (Reasoning::Unknown, _) => {}
         (
             Reasoning::Listed {
                 levels: was,
@@ -397,6 +387,9 @@ pub(super) struct Comparison {
     /// Each new row, and whether the review names it.
     pub(super) added: Vec<(String, bool)>,
     pub(super) gains: Vec<(String, Vec<String>)>,
+    /// Rows whose reasoning controls were unknown and are now listed, with
+    /// the controls.
+    pub(super) listed: Vec<(String, String)>,
     pub(super) limits: Vec<(String, Vec<String>)>,
     /// Rows whose `rig` facts changed, and how.
     pub(super) facts: Vec<(String, Vec<String>)>,
@@ -459,6 +452,11 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
         if !gains.is_empty() {
             comparison.gains.push((key.clone(), gains));
         }
+        if let (Reasoning::Unknown, now @ Reasoning::Listed { .. }) =
+            (&old_reading.reasoning, &new_reading.reasoning)
+        {
+            comparison.listed.push((key.clone(), controls(now)));
+        }
         let limits = limit_changes(was, now, &old_reading, &new_reading);
         if !limits.is_empty() {
             comparison.limits.push((key.clone(), limits));
@@ -471,7 +469,8 @@ pub(super) fn compare(old: &Rows, new: &Rows, review: &Rows, models_dev: &Rows) 
             &mut comparison.counted,
             was,
             now,
-            old_reading == new_reading,
+            &old_reading,
+            &new_reading,
         );
     }
     reviewed_facts(&mut comparison, review, models_dev);
@@ -550,14 +549,28 @@ fn fact_changes(was: &Map<String, Value>, now: &Map<String, Value>) -> Vec<Strin
         .collect()
 }
 
+/// Whether the part of a reading the row field at `path` feeds is the
+/// same in `old` and `new`, or `None` for a field [`reading`] does not read.
+fn same_part(path: &str, old: &Reading, new: &Reading) -> Option<bool> {
+    Some(match path {
+        "reasoning" | "reasoning_options" => old.reasoning == new.reasoning,
+        "tool_call" => old.tools == new.tools,
+        "structured_output" => old.structured_output == new.structured_output,
+        "temperature" => old.sampling == new.sampling,
+        "modalities.input" => old.input == new.input,
+        _ => return None,
+    })
+}
+
 /// Count the fields of a row that changed and that no list above names:
-/// the [`COUNTED`] kinds, a field rig reads whose change leaves its reading
-/// as it was (`same reading`), and any other field by its name.
+/// the [`COUNTED`] kinds, a field rig reads whose change leaves its part of
+/// the reading as it was (`same reading`), and any other field by its name.
 fn count(
     counted: &mut BTreeMap<String, usize>,
     was: &Map<String, Value>,
     now: &Map<String, Value>,
-    same_reading: bool,
+    old: &Reading,
+    new: &Reading,
 ) {
     let mut kinds = BTreeSet::new();
     let keys: BTreeSet<&String> = was.keys().chain(now.keys()).collect();
@@ -573,11 +586,11 @@ fn count(
             }
             let kind = match COUNTED.iter().find(|(counted, _)| *counted == path) {
                 Some((_, kind)) => (*kind).to_owned(),
-                None if READ.contains(&path.as_str()) => match same_reading {
-                    true => format!("same reading: {path}"),
-                    false => continue,
+                None => match same_part(&path, old, new) {
+                    Some(true) => format!("same reading: {path}"),
+                    Some(false) => continue,
+                    None => format!("other: {path}"),
                 },
-                None => format!("other: {path}"),
             };
             kinds.insert(kind);
         }
@@ -712,6 +725,16 @@ impl Comparison {
             format!("Gains ({})", self.gains.len()),
             "",
             rows(&self.gains),
+        );
+        section(
+            &mut out,
+            format!("Reasoning controls now listed ({})", self.listed.len()),
+            "rig refused no reasoning control on these before; now it refuses what the list \
+             lacks. Check each list.",
+            self.listed
+                .iter()
+                .map(|(key, controls)| format!("`{key}`: {controls}"))
+                .collect(),
         );
         section(
             &mut out,

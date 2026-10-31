@@ -762,6 +762,18 @@ fn only_a_review_value_with_a_source_answers_a_loss() {
         (
             &pdf,
             &text,
+            venice(json!({"source": "https://example.com/m", "modalities": {"input": ["text"]}})),
+            vec![],
+        ),
+        (
+            &sampled,
+            &never,
+            venice(json!({"source": "https://example.com/m", "rig": {"sampling": "never"}})),
+            vec![],
+        ),
+        (
+            &pdf,
+            &text,
             venice(
                 json!({"source": "https://example.com/m", "modalities": {"output": ["text", "image"]}}),
             ),
@@ -859,12 +871,14 @@ fn the_report_lists_every_change() {
     let before = json!({"venice": {"models": {
         "answered": {"structured_output": true},
         "gains": {"tool_call": false, "rig": {"sampling": "never"}},
+        "listed": {"reasoning": true},
         "priced": {"cost": {"input": 1, "output": 2}, "limit": {"context": 8192}},
         "gone": {"name": "Gone"}
     }}});
     let after = json!({"venice": {"models": {
         "answered": {"structured_output": false},
-        "gains": {"tool_call": true, "rig": {"sampling": "reasoning_off"}},
+        "gains": {"tool_call": true, "rig": {"sampling": "reasoning_off"}, "structured_output": false},
+        "listed": {"reasoning": true, "reasoning_options": [{"type": "effort", "values": ["low"]}]},
         "priced": {"cost": {"input": 1, "output": 3}, "limit": {"context": 4096}},
         "new": {"name": "New"},
         "reviewed": {"name": "Reviewed"}
@@ -887,10 +901,13 @@ fn the_report_lists_every_change() {
         "- `venice/new`\n",
         "- `venice/reviewed` (reviewed)",
         "### Gains (1)",
+        "### Reasoning controls now listed (1)",
+        "rig refused no reasoning control on these before; now it refuses what the list lacks.",
+        "- `venice/listed`: effort low",
         "- `venice/gains`: tool calls; sampling never -> reasoning_off",
         "- `venice/priced`: context 8192 -> 4096",
         "### rig facts (1)\n\n- `venice/gains`: sampling never -> reasoning_off",
-        "Rows changed: prices 1.",
+        "Rows changed: prices 1, same reading: structured_output 1.",
         "### Reviewed values models.dev disagrees with (1)",
         "- `venice/reviewed` `tool_call`: review true, models.dev absent",
     ] {
@@ -898,9 +915,9 @@ fn the_report_lists_every_change() {
     }
 }
 
-/// Sync writes nothing while a loss or a missing source stands, and
-/// `catalog check` fails on a review row that lost its source though the
-/// catalog it generates did not change.
+/// Sync writes nothing while a loss or a missing source stands, writes the
+/// catalog once the review answers the loss, and `catalog check` fails on a
+/// review row that lost its source though the catalog did not change.
 #[test]
 fn sync_and_check_refuse_without_writing() {
     let root = std::env::temp_dir().join(format!("xtask-catalog-{}", std::process::id()));
@@ -944,11 +961,28 @@ fn sync_and_check_refuse_without_writing() {
     assert_eq!(read(super::OUTPUT), catalog, "nothing written");
     assert_eq!(read(super::GENERATED_AT), "2026-10-30T00:00:00Z\n");
 
-    write(
-        super::REVIEW,
-        &json!({"venice": {"models": {"m": {"tool_call": true}}}}).to_string(),
+    std::fs::write(&api, efforts(json!(["high"])).to_string()).expect("write");
+    let answered = |source: Option<&str>| {
+        let mut row = json!({
+            "tool_call": true,
+            "reasoning_options": [{"type": "effort", "values": ["high"]}]
+        });
+        if let (Some(source), Some(row)) = (source, row.as_object_mut()) {
+            row.insert("source".to_owned(), json!(source));
+        }
+        json!({"venice": {"models": {"m": row}}}).to_string()
+    };
+    write(super::REVIEW, &answered(Some("https://example.com/m")));
+    assert_eq!(super::sync(&root, Some(api_path), false), Ok(()));
+    assert_ne!(read(super::OUTPUT), catalog, "written");
+    assert_ne!(read(super::GENERATED_AT), "2026-10-30T00:00:00Z\n");
+    assert_eq!(super::check(&root), Ok(()));
+
+    write(super::REVIEW, &answered(None));
+    assert!(
+        super::check(&root)
+            .is_err_and(|error| error.contains("venice/m: sets reasoning_options, tool_call"))
     );
-    assert!(super::check(&root).is_err_and(|error| error.contains("venice/m: sets tool_call")));
     std::fs::remove_dir_all(&root).expect("clean up");
 }
 

@@ -341,8 +341,11 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
     let stamp = root.join(GENERATED_AT);
     std::fs::write(&stamp, format!("{read_at}\n"))
         .map_err(|error| format!("{}: {error}", stamp.display()))?;
-    print!("{}", comparison.markdown(&read_at));
-    Ok(())
+    // A closed stdout is an error to report, where `print!` would panic.
+    let mut stdout = std::io::stdout().lock();
+    std::io::Write::write_all(&mut stdout, comparison.markdown(&read_at).as_bytes())
+        .and_then(|()| std::io::Write::flush(&mut stdout))
+        .map_err(|error| format!("writing the report: {error}"))
 }
 
 /// Check the checked-in catalog and the review's sources offline.

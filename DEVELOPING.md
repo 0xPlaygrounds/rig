@@ -219,7 +219,7 @@ from models.dev and `xtask/src/catalog/review.json` (module docs:
 section 8). Save models.dev once, so every run reads the same data:
 
 ```sh
-curl -sSfL https://models.dev/api.json -o ../api.json
+curl -sSfL https://models.dev/api.json -o ../api.json   # curl.exe in PowerShell
 cargo xtask catalog sync --from ../api.json
 ```
 
@@ -229,8 +229,9 @@ cargo xtask catalog sync --from ../api.json
   is right, with a `source`. A value a join copies (Bedrock and Vertex from
   Anthropic, OpenRouter's reasoning translation, `gemini-grpc` from Gemini)
   is no answer, so each of those rows needs its own. Keeping the old value
-  makes the loss disappear; the report then lists the row under "Reviewed
-  values models.dev disagrees with".
+  makes the loss disappear. For a row models.dev lists, a kept value that
+  differs from models.dev's shows under "Reviewed values models.dev
+  disagrees with"; a mirror row's or a `rig` fact's does not.
 - **A `source`** says what proved the fact: a doc URL, a cassette, a live
   check. Or it starts with `unverified:` and says where the fact came from
   (`unverified: copied from openai/gpt-6.1-sol`). Never claim a check that was
@@ -238,6 +239,9 @@ cargo xtask catalog sync --from ../api.json
   sets a capability, `limit` or a `rig` fact; one that only copies a row with
   `from` may take the copied row's. The old rows `unsourced.txt` lists are
   held to it once they change.
+- **Check each list under "Reasoning controls now listed"**: rig sent any
+  reasoning control to those models before and now refuses what the list
+  lacks, so a wrong list there is a new refusal.
 - **Paste the report** sync prints into the PR under "Catalog changes": it
   goes to stdout and refusals to stderr, so
   `cargo xtask catalog sync --from ../api.json > ../catalog-changes.md`
