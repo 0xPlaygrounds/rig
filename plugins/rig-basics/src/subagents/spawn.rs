@@ -32,8 +32,9 @@ pub const SUBAGENT: &str = "subagent";
 /// Each setting left `None` is the parent's: the model (with its
 /// connection and reasoning setting), the system prompt, the
 /// [`Environment`], and the tools, minus `task` once
-/// [`SubagentPolicy::max_depth`] is reached. A task's subagent always has
-/// `message` and `wait`, to reach the agents it works with.
+/// [`SubagentPolicy::max_depth`] is reached. A task's subagent has
+/// `message` and `wait`, to reach the agents it works with, whenever its
+/// parent has them: never a tool its parent lacks.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(on_add = record_request)]
 #[require(Name = Name::new(SUBAGENT))]

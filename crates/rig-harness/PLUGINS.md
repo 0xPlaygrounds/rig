@@ -707,7 +707,8 @@ front that shows pickers says so (`Front::new(..).shows_pickers()`), and a
 plugin that shows them beside any front, such as to an attached client,
 spawns a `ShowsPickers` entity. Otherwise, as in `-p`, `--json` or ACP, the
 harness closes each picker a command opens at once, with an error notice
-listing the commands its items run, which refuses the command.
+that says what to type instead (the commands its items run, when it has
+any), which refuses the command.
 `Picker::multiple()` (`.checked(true)`) and `Ask::multiple()` (with
 `.with(Choice::new(id, label).checked().more(text))`) take several. The
 terminal view ticks with Tab, shows a choice's `more` on Right, and once

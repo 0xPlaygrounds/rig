@@ -164,7 +164,10 @@ fn effort(
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
-        notices.write(Notice::error(args.agent, "Pick a model with /model first."));
+        notices.write(Notice::error(
+            args.agent,
+            "Pick a model first: /model <vendor/model>.",
+        ));
         return;
     };
     if args.args.is_empty() {

@@ -1859,6 +1859,6 @@ fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
     });
     assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
     let lines = stderr.text();
-    let said = "rig: Pick a model with /model first.";
+    let said = "rig: Pick a model first: /model <vendor/model>.";
     assert!(lines.iter().any(|line| line == said), "{lines:?}");
 }

@@ -5,7 +5,7 @@ use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
 use rig_core::tool::feedback::not_finished;
 
-use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
+use super::tools::{MESSAGE, PEER_ROLE, SUBAGENT_ROLE, WAIT};
 use super::{
     AwaitedBy, Awaits, Environment, Lifecycle, ORIGIN, OpenRequests, Peers, Report, Request,
     Subtask, answered,
@@ -209,9 +209,15 @@ fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
     commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
 }
 
-/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
-fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
-    commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does,
+/// when it has `message` and `wait` to reach them.
+fn brief_peer(added: On<Add<Peers>>, access: Query<&ToolAccess>, mut commands: Commands) {
+    let reaches = access
+        .get(added.entity)
+        .is_ok_and(|access| access.allows(MESSAGE) && access.allows(WAIT));
+    if reaches {
+        commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+    }
 }
 
 /// Tells a subagent its [`Environment`] in a prompt section of its own,

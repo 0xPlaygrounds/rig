@@ -1179,3 +1179,26 @@ fn a_restored_subagent_whose_work_a_plugin_carries_on_is_not_stopped() {
         assert_eq!(interrupted, !claimed, "{reports:?}");
     }
 }
+
+/// A peer whose parent has neither `message` nor `wait` gets neither, and
+/// is not told to use them.
+#[test]
+fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let restricted = ToolAccess::All.narrow([TASK, "look"]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.parent)
+        .insert(restricted);
+    let child = session.task("Propose");
+    let world = session.app.world_mut();
+    let access = world.get::<ToolAccess>(child).and_then(ToolAccess::names);
+    assert!(access.is_some_and(|names| !names.iter().any(|name| name == MESSAGE || name == WAIT)));
+    let mut roles = world.query::<(&Name, &SectionOf)>();
+    let peer_role = roles
+        .iter(world)
+        .any(|(name, of)| of.0 == child && name.as_str() == "peer_role");
+    assert!(!peer_role);
+}
