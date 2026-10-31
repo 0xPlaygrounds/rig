@@ -269,6 +269,7 @@ fn add_partial(
             history.push(Entry::new(Message::user(note(so_far))).by(by));
         }
         partial.text.clone_from(&so_far.text);
+        partial.calls = so_far.kept.iter().cloned().map(PartialCall::from).collect();
         if !so_far.text.is_empty() {
             let at = so_far.seams.iter().copied().chain([so_far.text.len()]);
             let marks: Vec<TextMark> = at.map(|at| seam(MarkIn::Streaming(entity), at)).collect();

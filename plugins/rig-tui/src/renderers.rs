@@ -185,7 +185,14 @@ impl<'a> ToolCallView<'a> {
             Some(ExitStatus::Killed) => "killed".to_owned(),
             _ => "failed".to_owned(),
         };
+        // Only a call of a reply the stop cut off has no result: one whose
+        // arguments were still streaming keeps them as they came.
+        let cut = match self.call.function.invalid_arguments {
+            Some(_) => "stopped while it streamed; nothing ran",
+            None => "stopped before it ran",
+        };
         let (band, state) = match (self.result, &self.state) {
+            (None, CallState::Stopped) => (self.theme.call_waiting, cut.to_owned()),
             (_, CallState::Stopped) => (self.theme.call_waiting, "stopped".to_owned()),
             (Some(_), _) if self.failed() => (self.theme.call_failed, failure()),
             (_, CallState::Held(holds)) => (

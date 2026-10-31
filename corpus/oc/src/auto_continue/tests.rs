@@ -1,9 +1,10 @@
 use std::path::PathBuf;
+use std::sync::mpsc::Receiver;
 
 use rig_basics::coding_tools::WriteTool;
 use rig_basics::telemetry::usage::{TurnUsage, UsagePlugin};
 use rig_core::completion::{FinishReason, Usage};
-use rig_core::message::Message as Said;
+use rig_core::message::{Message as Said, StopReason};
 use rig_core::operation::Finish;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
@@ -36,6 +37,21 @@ fn cut_text(text: &str) -> Vec<MockStreamEvent> {
 /// One turn asking `ask` of the scripted `model`, run to its end in a
 /// project at `root`.
 fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Entity) {
+    let (mut app, wakes, agent) = start_turn(model, root, ask, |_| {});
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    (app, agent)
+}
+
+/// One turn asking `ask` of the scripted `model` in a project at `root`,
+/// started in an app `with` changed first.
+fn start_turn(
+    model: &MockCompletionModel,
+    root: PathBuf,
+    ask: &str,
+    with: impl FnOnce(&mut App),
+) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(ProjectRoot(root))
@@ -48,6 +64,7 @@ fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Enti
         .insert_resource(TuiTestScreen::new(80, 30));
     tui_view(&mut app);
     collect::<Notice>(&mut app);
+    with(&mut app);
     let agent = app
         .world_mut()
         .spawn((Agent, ModelChoice("test/model".to_owned())))
@@ -57,10 +74,7 @@ fn run_turn(model: &MockCompletionModel, root: PathBuf, ask: &str) -> (App, Enti
     app.update();
     app.world_mut()
         .trigger(Deliver::new(agent, ask, DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
-    (app, agent)
+    (app, wakes, agent)
 }
 
 /// The assistant messages of `agent`'s conversation.
@@ -199,6 +213,61 @@ fn a_cut_write_is_never_run_and_asked_for_again() {
     let second = format!("{:?}", model.requests().get(1));
     assert!(second.contains("several `edit` calls"), "{second}");
     assert!(second.contains("(write) were kept"), "{second}");
+}
+
+/// Holds each continuation from starting, as a slow model would keep it
+/// streaming.
+fn hold_continuations(
+    calls: Query<Entity, (With<Continuing>, With<TurnCall>, Without<Settled>)>,
+    holds: Query<&HoldOf>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        if !holds.iter().any(|HoldOf(held)| *held == call) {
+            commands.spawn(HoldOf(call));
+        }
+    }
+}
+
+#[test]
+fn a_stop_during_a_continuation_keeps_the_calls_it_carried_never_run() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("w0", "write", json!({ "path": "a.txt", "content": "a" })),
+            MockStreamEvent::text("Now the long one"),
+            end(FinishReason::Length, 100, 20),
+        ],
+        reply("never sent"),
+    ]);
+    let root = project("auto-continue-stop");
+    let (mut app, wakes, agent) = start_turn(&model, root.clone(), "Write a.txt.", |app| {
+        app.add_systems(AgentPass, hold_continuations.in_set(Stage::Gate));
+    });
+    run_until(&mut app, &wakes, |world| {
+        let mut held = world.try_query_filtered::<(), (With<Continuing>, With<Partial>)>();
+        held.as_mut()
+            .is_some_and(|held| held.iter(world).next().is_some())
+    });
+    app.world_mut().trigger(StopTurn::new(agent));
+    for _ in 0..3 {
+        app.update();
+    }
+
+    let written = root.join("a.txt").exists();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(!written, "the carried call never ran");
+    assert!(app.world().resource::<ToolOutputs>().0.is_empty());
+    let stopped = answers(app.world(), agent);
+    let kept: Vec<(String, bool)> = stopped
+        .iter()
+        .flat_map(|answer| {
+            let aborted = matches!(answer.stop, Some(StopReason::Aborted(_)));
+            answer
+                .tool_calls()
+                .map(move |call| (call.id.to_string(), aborted))
+        })
+        .collect();
+    assert_eq!(kept, [("w0".to_owned(), true)], "{stopped:?}");
 }
 
 #[test]

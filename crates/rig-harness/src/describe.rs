@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_harness_protocol::{
-    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, env,
+    AgentDescription, DescribedCommand, DescribedFlag, DescribedSecret, REFUSED_EXIT_CODE, env,
 };
 
 use crate::host::cli::{Front, command_refusal, declared, flags};
@@ -59,7 +59,7 @@ pub fn run(mut app: App) -> AppExit {
         },
         Err(why) => {
             eprintln!("rig: {why}");
-            AppExit::from_code(2)
+            AppExit::from_code(REFUSED_EXIT_CODE)
         }
     }
 }

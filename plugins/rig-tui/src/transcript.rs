@@ -20,7 +20,6 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation;
 use rig_core::error::ErrorReport;
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
-use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
 use super::markdown;
@@ -38,11 +37,11 @@ use super::view::{
 use super::wrap::wrap;
 use rig_core::conversation::{TurnEnd, attached_file};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
-use rig_ecs::agent::{AgentId, NoticeLevel, Partial};
+use rig_ecs::agent::{AgentId, NoticeLevel};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::{ModelRequest, SentTo, StreamDelta};
+use rig_ecs::turn::{ModelRequest, SentTo};
 
 /// An item's rows (or lines) within a part.
 pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
@@ -503,73 +502,6 @@ pub(crate) fn note_agent_name(
             .name(id.0.as_str(), name.as_str())
     {
         facts.set_changed();
-    }
-}
-
-/// The tool calls a model call streams while its reply does ([`Partial`]
-/// requires it), in the order they opened: each with the JSON of its
-/// arguments so far, or finished (with none).
-#[derive(Component, Default)]
-pub(crate) struct StreamingCalls(Vec<(rig_core::streaming::Part, ToolCall, String)>);
-
-impl StreamingCalls {
-    /// The calls, in the order they opened, each with its arguments as far
-    /// as they came: read once per drawing, not per fragment.
-    pub(crate) fn calls(&self) -> impl Iterator<Item = ToolCall> {
-        self.0.iter().map(|(_, call, json)| {
-            let mut call = call.clone();
-            if !json.is_empty() {
-                call.function.arguments = parse_partial_arguments(json);
-            }
-            call
-        })
-    }
-}
-
-/// Follows the tool calls models stream: a call opens with its tool's
-/// name, its arguments grow, and it ends with the finished call.
-pub(crate) fn follow_streams(
-    mut deltas: MessageReader<StreamDelta>,
-    mut streams: Query<&mut StreamingCalls, With<Partial>>,
-) {
-    for delta in deltas.read() {
-        let Ok(mut calls) = streams.get_mut(delta.effect) else {
-            continue;
-        };
-        match &delta.event {
-            StreamEvent::Start {
-                part,
-                kind: PartKind::ToolCall,
-                name: Some(name),
-            } => {
-                let id = CallId::from_wire(format!("streaming-{}", part.index()));
-                let call = ToolCall::new(id, ToolFunction::new(name.clone(), Default::default()));
-                calls.0.push((*part, call, String::new()));
-            }
-            StreamEvent::Arguments { part, json } => {
-                if let Some((.., text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
-                    text.push_str(json);
-                }
-            }
-            StreamEvent::End {
-                part,
-                content: AssistantContent::ToolCall(done),
-            } => {
-                if let Some((_, call, text)) = calls.0.iter_mut().find(|(at, ..)| at == part) {
-                    *call = done.clone();
-                    text.clear();
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Forgets a model call's streaming calls once its reply is in the
-/// conversation, its [`Partial`] gone.
-pub(crate) fn forget_streams(gone: On<Remove<Partial>>, mut streams: Query<&mut StreamingCalls>) {
-    if let Ok(mut calls) = streams.get_mut(gone.entity) {
-        calls.0.clear();
     }
 }
 

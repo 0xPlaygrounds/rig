@@ -24,7 +24,7 @@ use rig_core::completion::{
 use rig_core::conversation::{
     Aside, AsideId, Author, Change, Conversation, Entry, MessageId, Spliced, pairing,
 };
-use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
+use rig_core::message::{CallId, StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
 use crate::session::replay;
@@ -1054,7 +1054,7 @@ impl Summarizer {
     fn serialize(&self, messages: &[Arc<Message>]) -> String {
         let snippet = |text: &str| snippet(text, self.limits.snippet_chars);
         let mut parts: Vec<String> = Vec::new();
-        for message in messages {
+        for (at, message) in messages.iter().enumerate() {
             match &**message {
                 Message::System { content } => parts.push(format!("[System]: {content}")),
                 Message::User { content } => {
@@ -1085,6 +1085,19 @@ impl Summarizer {
                     }
                 }
                 Message::Assistant(reply) => {
+                    // A failed or stopped reply's call that no result
+                    // answers never ran.
+                    let failed = reply.stop.as_ref().is_some_and(|stop| stop.is_failure());
+                    let answered: Vec<&CallId> = match messages.get(at + 1).map(|next| &**next) {
+                        Some(Message::User { content }) => content
+                            .iter()
+                            .filter_map(|item| match item {
+                                UserContent::ToolResult(result) => Some(&result.call),
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    };
                     for item in &reply.content {
                         match item {
                             AssistantContent::Text(text) => {
@@ -1097,8 +1110,12 @@ impl Summarizer {
                             }
                             AssistantContent::ToolCall(call) => {
                                 let arguments = serde_json::to_string(&call.function.arguments);
+                                let label = match failed && !answered.contains(&&call.id) {
+                                    true => "Assistant tool call, never ran",
+                                    false => "Assistant tool call",
+                                };
                                 parts.push(format!(
-                                    "[Assistant tool call]: {}({})",
+                                    "[{label}]: {}({})",
                                     call.function.name.as_str(),
                                     snippet(&arguments.unwrap_or_default())
                                 ));

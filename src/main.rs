@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use launcher::plugin::USAGE as PLUGIN_USAGE;
 use launcher::run::last_report;
-use rig_harness_protocol::{AgentDescription, Home, INVOCATION_USAGE};
+use rig_harness_protocol::{AgentDescription, Home, INVOCATION_USAGE, REFUSED_EXIT_CODE};
 
 const USAGE: &str = "\
 Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
@@ -128,7 +128,7 @@ fn help(home: &Home, command: &str) -> ExitCode {
                         ""
                     }
                 );
-                return ExitCode::from(2);
+                return ExitCode::from(REFUSED_EXIT_CODE);
             };
             println!("Usage: rig {} {}\n\n  {}", info.name, info.usage, info.help);
         }

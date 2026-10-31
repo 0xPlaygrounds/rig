@@ -1,12 +1,13 @@
 //! What the terminal is told of the turns of the agents nothing spawned,
 //! so a terminal or a multiplexer driving rig can tell a turn running from
 //! rig waiting for the user. Around each turn go the semantic prompt marks
-//! (OSC 133) a shell writes around a command: `C` as it starts, `D;0` as it
-//! answers or `D;1` as it fails or stops, then `A` and `B` once no such
+//! (OSC 133) a shell writes around a command: `C` as it starts, `D;1` as it
+//! fails or `D;0` as it answers or stops, then `A` and `B` once no such
 //! turn runs, as a shell draws its prompt. Each is followed by a state
 //! report (`133;S;activity=busy` or `reading`), and the terminal's title
 //! says `rig · working`, `rig · needs you` while a picker or a question is
-//! open, `rig · error` after a failed turn, or `rig · idle`.
+//! open, `rig · error` after a failed turn, or `rig · idle`. Only a failed
+//! turn is an error: a stop, the user's or a compaction's, is not.
 //!
 //! A subagent's turns change none of it. The terminal's own title is
 //! pushed on its title stack before the first and popped as the app exits.
@@ -45,7 +46,7 @@ pub(crate) struct Told {
     running: Option<bool>,
     /// The title's state, once one was written.
     title: Option<&'static str>,
-    /// Whether the last turn that ended failed or was stopped.
+    /// Whether the last turn that ended failed.
     failed: bool,
     /// The options each mark ends with: `;nonce=…` when
     /// [`TuiSettings::mark_nonce_env`] names a set variable.
@@ -123,13 +124,16 @@ pub(crate) fn turn_ended(
         return;
     };
     if !subagents.contains(agent) && told.running == Some(true) {
-        told.failed = !matches!(outcome, TurnOutcome::Answered(_));
+        told.failed = match outcome {
+            TurnOutcome::Failed(_) => true,
+            TurnOutcome::Answered(_) | TurnOutcome::Stopped(_) => false,
+        };
         out.write(TerminalWrite(told.idle().into_bytes()));
     }
 }
 
 /// Draws the first prompt, ends a turn gone without an outcome (with its
-/// agent: stopped), and keeps the title, once per frame.
+/// agent: stopped, so not failed), and keeps the title, once per frame.
 pub(crate) fn tell_state(
     turns: Query<&TurnOf, Without<Settled>>,
     subagents: Query<(), With<SpawnedBy>>,
@@ -140,9 +144,7 @@ pub(crate) fn tell_state(
 ) {
     let running = turns.iter().any(|turn| !subagents.contains(turn.0));
     if told.running.is_none() || told.running == Some(true) && !running {
-        if told.running.is_some() {
-            told.failed = true;
-        }
+        told.failed = false;
         out.write(TerminalWrite(told.idle().into_bytes()));
     }
     let state = if !pickers.is_empty() || !asks.is_empty() {

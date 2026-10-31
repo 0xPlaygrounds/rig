@@ -21,7 +21,7 @@ use rig_ecs::stage::{
     Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
 };
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::{ModelRequest, StreamDelta};
+use rig_ecs::turn::ModelRequest;
 use rig_harness::prelude::ToolProgress;
 use rig_harness::prelude::{App, Last, Update};
 use rig_harness::rig_core::conversation::Note;
@@ -29,7 +29,7 @@ use serde_json::json;
 
 use super::{
     Below, CallFacts, ChildCalls, Look, Part, Pass, Renderers, Scroll, ShownEntries, Stops,
-    StreamingCalls, Transcript,
+    Transcript,
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
@@ -617,6 +617,70 @@ fn a_stopped_reply_ends_in_a_stop_at_once_and_after_a_reload() {
 }
 
 #[test]
+fn a_call_a_stop_cut_while_it_streamed_says_it_never_ran_at_once_and_after_a_reload() {
+    let (mut app, agent) = view_app();
+    let (Ok(read), Ok(write)) = (ToolName::new("read"), ToolName::new("write")) else {
+        return;
+    };
+    say(&mut app, agent, Message::user("write big.py"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    // A call whose arguments ended, then one still streaming them.
+    let mut cut = Partial::default();
+    let ended = rig_core::streaming::Part::new(1);
+    cut.follow(&StreamEvent::Start {
+        part: ended,
+        kind: PartKind::ToolCall,
+        name: Some(read.clone()),
+    });
+    let done = ToolCall::from_wire("r1", ToolFunction::new(read, json!({ "path": "a.md" })));
+    let content = AssistantContent::ToolCall(done);
+    cut.follow(&StreamEvent::End {
+        part: ended,
+        content,
+    });
+    let part = rig_core::streaming::Part::new(0);
+    cut.follow(&StreamEvent::Start {
+        part,
+        kind: PartKind::ToolCall,
+        name: Some(write),
+    });
+    let json = r#"{"path": "big.py", "content": "print("#.to_owned();
+    cut.follow(&StreamEvent::Arguments { part, json });
+    let calls = cut.calls.iter().map(|call| call.call.id.clone()).collect();
+    let aborted = AssistantMessage::aborted(None, cut.stopped(), "stopped");
+    say(&mut app, agent, Message::Assistant(aborted));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.halt(Halt::Stopped);
+        let at = conversation.entries().next_back().map(|entry| entry.id);
+        conversation.end_turn(TurnEnd::Stopped {
+            why: None,
+            at,
+            calls,
+        });
+    }
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        let row = lines.iter().position(|line| line.starts_with(" write"));
+        let header = row
+            .and_then(|row| lines.get(row..=row + 1))
+            .map(<[String]>::concat);
+        assert!(
+            header
+                .is_some_and(|header| header.contains("· stopped while it streamed; nothing ran")),
+            "{lines:#?}"
+        );
+        let read = lines.iter().find(|line| line.starts_with(" read"));
+        assert!(
+            read.is_some_and(|read| read.contains("· stopped before it ran")),
+            "{lines:#?}"
+        );
+        assert!(reload(&mut app, agent));
+    }
+}
+
+#[test]
 fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
     let (mut app, agent) = view_app();
     let (Ok(look), Ok(shell), Ok(read)) = (
@@ -1083,11 +1147,9 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
         .id();
     let part = rig_core::streaming::Part::new(1);
     let stream = |app: &mut App, event: StreamEvent| {
-        app.world_mut().write_message(StreamDelta {
-            effect,
-            agent: Some(agent),
-            event,
-        });
+        if let Some(mut partial) = app.world_mut().get_mut::<Partial>(effect) {
+            partial.follow(&event);
+        }
         app.update();
         drawn_rows(app, agent, 100, Vec::new())
             .iter()
@@ -1109,19 +1171,17 @@ fn a_tool_call_is_drawn_while_its_arguments_stream() {
     );
     let done = ToolCall::from_wire("call-7", ToolFunction::new(name, json!({ "path": "a.md" })));
     let content = AssistantContent::ToolCall(done.clone());
-    stream(&mut app, StreamEvent::End { part, content });
-    let calls = app.world().get::<StreamingCalls>(effect);
-    assert_eq!(
-        calls
-            .and_then(|calls| calls.calls().next())
-            .map(|call| call.id.clone()),
-        Some(done.id)
+    let lines = stream(&mut app, StreamEvent::End { part, content });
+    assert!(
+        line_of(&lines, "Streaming write a.md").is_some(),
+        "{lines:#?}"
     );
     // Once the reply is in the conversation, its streaming calls go.
     app.world_mut().entity_mut(effect).remove::<Partial>();
     app.update();
-    let calls = app.world().get::<StreamingCalls>(effect);
-    assert!(calls.is_none_or(|calls| calls.calls().next().is_none()));
+    let lines = drawn_rows(&mut app, agent, 100, Vec::new());
+    let lines: Vec<String> = lines.iter().map(ToString::to_string).collect();
+    assert!(line_of(&lines, "Streaming write").is_none(), "{lines:#?}");
 }
 
 /// An app with what a [`TranscriptLayout`] reads and no kernel, so the
@@ -1155,6 +1215,7 @@ fn a_race_draws_the_reply_of_its_member_still_running() {
     let streaming = |text: &str| Partial {
         text: text.to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     // Losers older and newer than it: a superseded reply is never drawn.
     let first = world.spawn((CallOf(turn), streaming("first loser's"))).id();
@@ -1351,6 +1412,7 @@ fn a_mark_on_a_streaming_reply_is_drawn_until_cleared() {
     let partial = Partial {
         text: "so far more".to_owned(),
         reasoning: String::new(),
+        calls: Vec::new(),
     };
     let call = world.spawn((CallOf(turn), partial)).id();
     crate::tests::steer(&mut app, |view| {

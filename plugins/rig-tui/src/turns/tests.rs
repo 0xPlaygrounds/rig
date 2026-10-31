@@ -73,6 +73,31 @@ fn the_terminal_is_told_of_each_turn_of_the_main_agent_only() {
     let marks = [&BUSY[..], &["133;D;0"], &IDLE[..], &["2;rig · idle"]].concat();
     assert_eq!(told(&mut app, &mut seen), marks);
 
+    // Only a failed turn is an error: a stop, the user's or a
+    // compaction's, and a turn gone without an outcome are not.
+    let failed = TurnOutcome::Failed("refused".to_owned());
+    app.world_mut().spawn((TurnOf(agent), failed));
+    app.update();
+    told(&mut app, &mut seen);
+    for stopped in [None, Some("compacted".to_owned())] {
+        app.world_mut()
+            .spawn((TurnOf(agent), TurnOutcome::Stopped(stopped)));
+        app.update();
+        let marks = [&BUSY[..], &["133;D;0"], &IDLE[..], &["2;rig · idle"]].concat();
+        assert_eq!(told(&mut app, &mut seen), marks);
+        app.world_mut()
+            .spawn((TurnOf(agent), TurnOutcome::Failed("refused".to_owned())));
+        app.update();
+        told(&mut app, &mut seen);
+    }
+    let gone = app.world_mut().spawn(TurnOf(agent)).id();
+    app.update();
+    told(&mut app, &mut seen);
+    app.world_mut().despawn(gone);
+    app.update();
+    let marks = [&["133;D;0"], &IDLE[..], &["2;rig · idle"]].concat();
+    assert_eq!(told(&mut app, &mut seen), marks);
+
     // The title goes back on exit.
     app.world_mut().write_message(bevy_app::AppExit::Success);
     app.update();

@@ -55,8 +55,9 @@ pub enum TurnEnd {
         /// ending it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<MessageId>,
-        /// The tool calls the stop answered: those that had no result of
-        /// their own.
+        /// The tool calls the stop cut: those it answered, which had no
+        /// result of their own, and those of the reply it cut off, which
+        /// never ran and owe none.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         calls: Vec<CallId>,
     },

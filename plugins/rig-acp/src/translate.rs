@@ -10,8 +10,8 @@ use agent_client_protocol::schema::v1 as acp;
 use base64::Engine;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::message::{
-    self, AssistantContent, CallId, DocumentSourceKind, Image, ImageMediaType, MimeType, ToolCall,
-    ToolResult as SavedResult, ToolResultContent, UserContent,
+    self, AssistantContent, CallId, DocumentSourceKind, Image, ImageMediaType, MimeType,
+    StopReason, ToolCall, ToolResult as SavedResult, ToolResultContent, UserContent,
 };
 use rig_harness::rig_core::conversation::{Author, AuthorKind, Conversation, Entry, MessageId};
 use rig_harness::services::WorkDir;
@@ -155,6 +155,9 @@ pub(crate) fn tool_status(id: String, status: acp::ToolCallStatus) -> acp::ToolC
     acp::ToolCallUpdate::new(id, fields)
 }
 
+/// What a saved call of a reply that failed or was stopped says.
+const NEVER_RAN: &str = "Never ran.";
+
 /// A call's last update: done, or failed when `failed`, with what it
 /// answered.
 pub(crate) fn tool_done(id: &str, failed: bool, output: String) -> acp::ToolCallUpdate {
@@ -223,13 +226,15 @@ pub(crate) fn replay(
         }
     }
     // Results answer the calls waiting with their id in call order, one
-    // each, as rig pairs them. A message saved without an id has none to
-    // give its calls: they are numbered apart.
+    // each, as rig pairs them: a failed or stopped reply's calls wait for
+    // none. A message saved without an id has none to give its calls: they
+    // are numbered apart.
     let (mut calls, mut waiting, mut results) = (Vec::new(), HashMap::new(), HashMap::new());
     let mut unnumbered = 0;
     for (id, message) in &entries {
         match &**message {
             message::Message::Assistant(reply) => {
+                let ran = !reply.stop.as_ref().is_some_and(StopReason::is_failure);
                 for (n, call) in calls_of(reply).enumerate() {
                     let acp_id = match id {
                         Some(id) => call_id(agent, *id, n),
@@ -238,8 +243,11 @@ pub(crate) fn replay(
                             format!("{agent}/-/{unnumbered}")
                         }
                     };
-                    let queue: &mut VecDeque<String> = waiting.entry(call.id.clone()).or_default();
-                    queue.push_back(acp_id.clone());
+                    if ran {
+                        let queue: &mut VecDeque<String> =
+                            waiting.entry(call.id.clone()).or_default();
+                        queue.push_back(acp_id.clone());
+                    }
                     calls.push(acp_id);
                 }
             }
@@ -291,6 +299,11 @@ pub(crate) fn replay(
                             updates.push(acp::SessionUpdate::ToolCall(announced));
                             if let Some(result) = results.get(&id) {
                                 let done = tool_done(&id, result.is_error, saved_output(result));
+                                updates.push(acp::SessionUpdate::ToolCallUpdate(done));
+                            } else if reply.stop.as_ref().is_some_and(StopReason::is_failure) {
+                                // A call of a reply that failed or was
+                                // stopped never ran, and has no result.
+                                let done = tool_done(&id, true, NEVER_RAN.to_owned());
                                 updates.push(acp::SessionUpdate::ToolCallUpdate(done));
                             }
                         }

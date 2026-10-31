@@ -72,6 +72,7 @@ use crate::message::{
     DocumentSourceKind, ImageMediaType, Message, Origin, StopReason, Text, ToolResult,
     ToolResultContent, UserContent,
 };
+use crate::tool::feedback;
 use crate::wasm_compat::WasmCompatSync;
 
 /// What replaces a user image for a model without image input, and another
@@ -689,7 +690,7 @@ pub(crate) fn adapt_for(
                 );
             }
             Message::Assistant(turn) if matches!(turn.stop, Some(StopReason::Aborted(_))) => {
-                shaped.push(stopped(turn));
+                shaped.push(stopped(turn, &results_after(&history, at)));
             }
             // A failed turn is skipped, with the results answering it.
             Message::Assistant(turn)
@@ -1353,16 +1354,39 @@ fn assistant<'a>(
 /// The stopped turn `turn` as the text it had sent, shaped as a reply from
 /// no known model: canonical, blank text dropped, nothing when no text is
 /// left. Its reasoning and calls are dropped, so the results answering them
-/// go too.
-fn stopped(turn: &AssistantMessage) -> Option<Arc<Message>> {
-    let content: Vec<AssistantContent> = turn
+/// go too; each call nothing `answered` is said in a note
+/// ([`feedback::stopped_call_note`]), so the model knows it never ran.
+fn stopped(turn: &AssistantMessage, answered: &HashSet<&CallId>) -> Option<Arc<Message>> {
+    let text = turn
         .content
         .iter()
         .filter(|block| matches!(block, AssistantContent::Text(_)))
         .map(AssistantContent::canonical)
-        .filter(|block| !block.is_blank())
-        .collect();
+        .filter(|block| !block.is_blank());
+    let notes = turn
+        .tool_calls()
+        .filter(|call| !answered.contains(&call.id))
+        .map(|call| AssistantContent::text(feedback::stopped_call_note(call)));
+    let content: Vec<AssistantContent> = text.chain(notes).collect();
     (!content.is_empty()).then(|| Arc::new(Message::Assistant(AssistantMessage::new(content))))
+}
+
+/// The calls the tool results in the message after message `at` of
+/// `history` answer. Only that one is read: a resumed adaption adapts the
+/// last message again, so a turn's look changes only while it is last.
+fn results_after(history: &[Arc<Message>], at: usize) -> HashSet<&CallId> {
+    let next = history.get(at.saturating_add(1)).map(|message| &**message);
+    let content = match next {
+        Some(Message::User { content }) => content.as_slice(),
+        _ => &[],
+    };
+    content
+        .iter()
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(&result.call),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The hosted uses and results that pair, as (message, block) positions in

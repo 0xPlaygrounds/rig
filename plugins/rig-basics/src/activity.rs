@@ -72,7 +72,7 @@ pub enum ActivityStatus {
     Idle,
     /// Waiting for its model.
     Thinking,
-    /// Its model's answer streams.
+    /// Its model's answer streams: text or a tool call.
     Writing,
     /// Its tools run.
     RunningTools,
@@ -258,7 +258,7 @@ fn update_activity(
         } else if calls
             .iter()
             .filter_map(|call| partials.get(*call).ok())
-            .any(|partial| !partial.text.trim().is_empty())
+            .any(|partial| !partial.text.trim().is_empty() || !partial.calls.is_empty())
         {
             ActivityStatus::Writing
         } else {

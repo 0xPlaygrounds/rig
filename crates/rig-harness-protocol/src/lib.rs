@@ -1,7 +1,7 @@
 //! The protocol between the `rig` launcher (the `rig` crate's binary) and the
 //! rig-harness agent it builds and runs: the `RIG_HOME` layout, session ids,
-//! the environment the launcher passes to the agent, and the exit code with
-//! which the agent asks for a restart. The launcher and `rig-harness` both use
+//! the environment the launcher passes to the agent, and the exit codes that
+//! say how the agent ended. The launcher and `rig-harness` both use
 //! this crate, so the two sides cannot drift apart. It uses only std, and
 //! it changes with rig-harness.
 
@@ -15,6 +15,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// The exit code with which the agent asks its launcher to restart it on
 /// the staged build.
 pub const RELOAD_EXIT_CODE: u8 = 75;
+
+/// The exit code of a run refused before it did any work, such as for a
+/// command line or a `--tools` name it does not take.
+pub const REFUSED_EXIT_CODE: u8 = 2;
+
+/// The exit code of a run a signal ended, as a shell reports Ctrl+C.
+pub const SIGNAL_EXIT_CODE: u8 = 130;
 
 /// The version of rig: of the workspace, the launcher and the harness they
 /// build together. It stamps generated projects, so a new launcher

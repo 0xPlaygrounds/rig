@@ -231,7 +231,7 @@ pub struct Adapted(pub Connection);
 /// when admitted (unless spawned with a [`ModelRequest`]), after the
 /// messages sent to the agent meanwhile are delivered, and its reply goes
 /// into the agent's conversation and carries the turn on or ends it. Its
-/// text streams into its [`Partial`].
+/// reply streams into its [`Partial`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 #[require(Effect, Partial, Name = Name::new("model call"))]
@@ -272,7 +272,7 @@ pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
 /// id and arguments). The event's part tells parallel tool calls apart.
 /// Bevy keeps a message at least two frames, so a reader in `PostUpdate`
 /// sees the last events of a reply that settled this frame. A
-/// [`TurnCall`]'s text and reasoning also add up in its [`Partial`].
+/// [`TurnCall`]'s events also add up in its [`Partial`].
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
@@ -545,17 +545,18 @@ impl Stopper<'_, '_> {
     }
 
     /// Stops `agent`'s running turn, for `reason` (`None`: the user
-    /// stopped it); whether it had one. What a streaming reply had sent is
-    /// kept as the model's message, aborted, so the model reads its text as
-    /// no answer, and the user's request is halted as stopped, unless its
-    /// call was superseded; every tool call of the last reply gets a result
+    /// stopped it); whether it had one. What a streaming reply had sent
+    /// ([`Partial::stopped`]) is kept as the model's message, aborted, so
+    /// the model reads its text as no answer and none of its tool calls
+    /// runs, and the user's request is halted as stopped, unless its call
+    /// was superseded; every tool call of the last reply gets a result
     /// ([`stopped_answer`]), and every call of the turn that has not
     /// settled is answered so and settled, whatever held it gone. The turn
     /// ends [`TurnOutcome::Stopped`], in its record too, set before its
     /// calls settle, so a call's owner sees it stopped them; the record
-    /// names the last entry and the calls the stop answered. The
-    /// conversation is saved at once, and the views told, unless the app
-    /// exits.
+    /// names the last entry and the calls the stop cut: the streamed ones
+    /// and those it answered. The conversation is saved at once, and the
+    /// views told, unless the app exits.
     pub(crate) fn stop(&mut self, agent: Entity, reason: Option<String>) -> bool {
         let Ok((id, mut conversation, active)) = self.agents.get_mut(agent) else {
             return false;
@@ -566,34 +567,48 @@ impl Stopper<'_, '_> {
             Ok((mut state, calls)) => (state.reply.take(), calls),
             Err(_) => (None, None),
         };
-        let streamed = self
+        let of_turn = || calls.into_iter().flat_map(Calls::iter);
+        // A call a plugin started before its reply ended is cancelled below
+        // with the turn, and neither it nor a result is kept; the rest of
+        // what streamed never ran.
+        let started: Vec<&CallId> = self
+            .replies
+            .iter_many(of_turn())
+            .flatten()
+            .filter(|call| call.started)
+            .map(|call| &call.request.call.id)
+            .collect();
+        let mut content: Vec<AssistantContent> = self
             .partials
-            .iter_many(calls.into_iter().flat_map(Calls::iter));
-        let (mut reasoning, mut text) = (String::new(), String::new());
-        for partial in streamed.flatten() {
-            reasoning.push_str(&partial.reasoning);
-            text.push_str(&partial.text);
-        }
-        let reasoning =
-            (!reasoning.trim().is_empty()).then(|| AssistantContent::reasoning(reasoning));
-        let text = (!text.trim().is_empty()).then(|| AssistantContent::text(text));
-        let content: Vec<_> = reasoning.into_iter().chain(text).collect();
-        if !content.is_empty() {
-            let aborted = AssistantMessage::aborted(None, content, format!("stopped: {why}"));
-            conversation.push(Message::Assistant(aborted));
-        }
+            .iter_many(of_turn())
+            .flatten()
+            .flat_map(Partial::stopped)
+            .collect();
+        content.retain(
+            |item| !matches!(item, AssistantContent::ToolCall(call) if started.contains(&&call.id)),
+        );
+        // The streamed calls are kept never run: an aborted reply owes no
+        // results, and the stop's record names them.
+        let mut cut: Vec<CallId> = content
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(call) => Some(call.id.clone()),
+                _ => None,
+            })
+            .collect();
         let reply = reply
             .zip(calls)
             .map(|(reply, calls)| reply_calls(reply, calls, &self.replies))
             .unwrap_or_default();
         // The calls the stop cut short: not one a gate decided, nor a
         // restored one that had finished.
-        let answered = reply
+        let answered: Vec<CallId> = reply
             .iter()
             .filter(|call| call.outcome.is_none() && !call.decision.is_decided())
             .filter(|call| !matches!(call.interrupted, Some(Interrupted::Settled(_))))
             .map(|call| call.request.call.id.clone())
             .collect();
+        cut.extend(answered);
         // A decided call is answered with its decision, as Start would, a
         // running one with what it says if stopped, and a restored one that
         // settled with its result, each redacted as Commit would, so what
@@ -621,6 +636,10 @@ impl Stopper<'_, '_> {
         if let Some(results) = reply_results(reply, |call| Some(stopped_answer(&why, call))) {
             commit_results(&mut conversation, results);
         }
+        if !content.is_empty() {
+            let aborted = AssistantMessage::aborted(None, content, format!("stopped: {why}"));
+            conversation.push(Message::Assistant(aborted));
+        }
         conversation.halt(Halt::Stopped);
         // The stop is drawn under the turn's last entry; a turn that has
         // none, stopped before it added or answered anything, has no place.
@@ -633,7 +652,7 @@ impl Stopper<'_, '_> {
         conversation.end_turn(TurnEnd::Stopped {
             why: reason.clone(),
             at,
-            calls: answered,
+            calls: cut,
         });
         let conversation = conversation.bypass_change_detection();
         let saved = save_conversation(&self.log, agent, id, conversation);
@@ -1166,8 +1185,8 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`StreamTiming`], a [`StreamDelta`] per event, in order, and the text
-/// and reasoning into its [`Partial`], if it has one.
+/// [`StreamTiming`], a [`StreamDelta`] per event, in order, and each event
+/// into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
     mut calls: Query<(
         Entity,
@@ -1205,11 +1224,7 @@ pub(crate) fn stream_partials(
                 commands.entity(turn).try_insert_if_new(FirstStreamed(at));
             }
             if let Some(partial) = partial.as_mut() {
-                match &event {
-                    StreamEvent::Text { text, .. } => partial.text.push_str(text),
-                    StreamEvent::Reasoning { text, .. } => partial.reasoning.push_str(text),
-                    _ => {}
-                }
+                partial.follow(&event);
             }
             let agent = agent.map(|agent| agent.0);
             deltas.write(StreamDelta {

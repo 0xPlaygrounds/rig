@@ -92,6 +92,54 @@ fn an_aborted_reply_replays_its_text_alone() {
     );
 }
 
+/// A stopped reply's call that nothing answered never ran: the model reads
+/// its text and a note saying so, with the arguments as they came, and
+/// never the call.
+#[test]
+fn an_aborted_reply_says_its_unanswered_calls_never_ran() {
+    let write = |arguments: &str| {
+        let name = ToolName::new("write").expect("a name");
+        let mut function = ToolFunction::parse(name, arguments);
+        if arguments.is_empty() {
+            function.invalid_arguments = Some(String::new());
+        }
+        AssistantContent::ToolCall(ToolCall::new(CallId::from_wire("cut"), function))
+    };
+    let said = |call| {
+        let reply = AssistantMessage::aborted(
+            Some(same()),
+            vec![AssistantContent::text("Writing it."), call],
+            "stopped",
+        );
+        let history = vec![
+            Message::user("write big.py"),
+            Message::Assistant(reply),
+            Message::user("did you?"),
+        ];
+        adapt_for(&history, &TARGET, &Request::default())
+    };
+    let note = |adapted: Vec<Message>| match adapted.get(1) {
+        Some(Message::Assistant(reply)) if reply.tool_calls().next().is_none() => reply.text(),
+        other => panic!("the stopped reply as text: {other:?}"),
+    };
+    let cut = note(said(write(r#"{"path": "big.py", "content": "pri"#)));
+    assert_eq!(
+        cut,
+        "Writing it.[This reply was stopped before its call to `write` ran. Its arguments \
+         began: {\"path\": \"big.py\", \"content\": \"pri]"
+    );
+    let none = note(said(write("")));
+    assert!(
+        none.ends_with("call to `write` ran. It had no arguments yet.]"),
+        "{none}"
+    );
+    let whole = note(said(write(r#"{"path": "a.md"}"#)));
+    assert!(
+        whole.ends_with(r#"Its arguments were: {"path":"a.md"}]"#),
+        "{whole}"
+    );
+}
+
 /// A stopped reply with only blank text left replays nothing.
 #[test]
 fn an_aborted_reply_of_blank_text_replays_nothing() {

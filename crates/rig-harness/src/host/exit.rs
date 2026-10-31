@@ -20,12 +20,9 @@ use rig_ecs::agent::Notice;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
 use rig_ecs::tasks::Wake;
 use rig_ecs::turn::Exiting;
-use rig_harness_protocol::{RELOAD_EXIT_CODE, SessionId};
+use rig_harness_protocol::{RELOAD_EXIT_CODE, SIGNAL_EXIT_CODE, SessionId};
 
 use super::session::SessionPaths;
-
-/// The exit code of a signalled exit, as a shell reports Ctrl+C.
-pub const SIGNAL_EXIT_CODE: u8 = 130;
 
 /// Why the app exits; a resource from the frame the exit was asked for.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]

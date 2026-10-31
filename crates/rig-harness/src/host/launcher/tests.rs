@@ -2,10 +2,10 @@ use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
-use rig_harness_protocol::{Home, Invocation};
+use rig_harness_protocol::{Home, Invocation, SIGNAL_EXIT_CODE};
 
 use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
-use crate::host::exit::{Exit, ExitPlugin, ExitReason, SIGNAL_EXIT_CODE};
+use crate::host::exit::{Exit, ExitPlugin, ExitReason};
 use crate::host::session::Scratch;
 
 /// An app started with `args` on a terminal or not, through `finish` and

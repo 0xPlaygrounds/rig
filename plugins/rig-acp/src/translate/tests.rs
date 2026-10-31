@@ -305,3 +305,41 @@ fn rigs_file_tools_have_their_acp_kinds_and_a_move_both_its_files() {
         ]
     );
 }
+
+/// A saved call of a stopped reply never ran: it is shown failed, not
+/// pending, and a later call that reuses its id keeps its own result.
+#[test]
+fn a_saved_call_of_a_stopped_reply_is_shown_failed_not_pending() {
+    let (Ok(write), Some([asked, answered])) =
+        (ToolName::new("write"), read("c1", "a.txt", "a text"))
+    else {
+        return;
+    };
+    let cut = ToolCall::from_wire("c1", ToolFunction::parse(write, r#"{"path": "big.py""#));
+    let stopped = AssistantMessage::aborted(None, vec![AssistantContent::ToolCall(cut)], "stopped");
+    let conversation = Conversation::from_messages([
+        message::Message::user("Write big.py."),
+        message::Message::Assistant(stopped),
+        message::Message::user("Read a.txt instead."),
+        asked,
+        answered,
+    ]);
+    let updates = replay("main", &conversation, &BTreeMap::new(), Path::new("/p"));
+    let closed: Vec<_> = updates
+        .iter()
+        .filter_map(|update| match update {
+            acp::SessionUpdate::ToolCallUpdate(update) => Some((
+                update.fields.status,
+                update.fields.raw_output.clone().unwrap_or_default(),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        closed,
+        [
+            (Some(acp::ToolCallStatus::Failed), json!("Never ran.")),
+            (Some(acp::ToolCallStatus::Completed), json!("a text")),
+        ]
+    );
+}

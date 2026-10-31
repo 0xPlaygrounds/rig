@@ -60,7 +60,7 @@ use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
-use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::tool::{
     ContextValue, DynamicTool, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
@@ -3107,6 +3107,112 @@ impl Serve for Halfway {
         }));
         let stalls = futures::stream::iter([Ok(text)]).chain(futures::stream::pending());
         Reply::Stream(Box::pin(stalls))
+    }
+}
+
+/// A model that opens a `write` call, streams this much of its arguments,
+/// then never finishes.
+struct HalfwayCall(&'static str);
+
+impl Serve for HalfwayCall {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("halfway-call"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:halfway-call".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let part = Part::new(0);
+        let start = StreamEvent::Start {
+            part,
+            kind: PartKind::ToolCall,
+            name: ToolName::new("write").ok(),
+        };
+        let arguments = StreamEvent::Arguments {
+            part,
+            json: self.0.to_owned(),
+        };
+        let events = [start]
+            .into_iter()
+            .chain((!self.0.is_empty()).then_some(arguments));
+        let events = events.map(|event| Ok(Relayed::Item(Item::Event(event))));
+        let stalls =
+            futures::stream::iter(events.collect::<Vec<_>>()).chain(futures::stream::pending());
+        Reply::Stream(Box::pin(stalls))
+    }
+}
+
+/// A call stopped while its arguments stream, or before the first of them,
+/// is kept in the stopped reply as the model sent it, with nothing made
+/// up, named by the stop's record, and never run, nor after a restore.
+#[test]
+fn a_call_stopped_while_it_streams_is_kept_and_never_runs() {
+    for fragment in [r#"{"path": "big.py", "content": "print("#, ""] {
+        let mut app = app();
+        let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+        let agent = agent_on(&mut app, &model);
+        if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+            connection.handler = Handler(ErasedHandler::new(HalfwayCall(fragment)));
+        }
+        let streaming = |world: &mut World| {
+            let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+            partials.iter(world).any(|partial| {
+                partial.calls.iter().any(|call| {
+                    call.streaming
+                        .as_ref()
+                        .is_some_and(|(_, json)| json == fragment)
+                })
+            })
+        };
+        assert!(run_until(&mut app, streaming), "{:?}", notices(&app));
+        app.world_mut().trigger(StopTurn::new(agent));
+        for _ in 0..3 {
+            app.update();
+        }
+        let said = conversation(&app, agent);
+        let reply = said.last().and_then(|message| match message {
+            Message::Assistant(reply) if matches!(reply.stop, Some(StopReason::Aborted(_))) => {
+                Some(reply)
+            }
+            _ => None,
+        });
+        assert!(reply.is_some(), "the stopped reply is kept: {said:?}");
+        let calls: Vec<_> = reply
+            .into_iter()
+            .flat_map(|reply| reply.tool_calls())
+            .collect();
+        assert_eq!(calls.len(), 1, "{said:?}");
+        let Some(call) = calls.first() else {
+            return;
+        };
+        assert_eq!(call.function.name.as_str(), "write");
+        assert_eq!(call.function.invalid_arguments.as_deref(), Some(fragment));
+        let shown = call.function.arguments.get("path");
+        let expected = (!fragment.is_empty()).then(|| serde_json::json!("big.py"));
+        assert_eq!(shown, expected.as_ref());
+        let world = app.world_mut();
+        let requests = world.query::<&ToolRequest>().iter(world).count();
+        assert_eq!(requests, 0, "the call never became a call to run");
+        let Some(conversation) = world.get::<Conversation>(agent) else {
+            return;
+        };
+        let ended = conversation
+            .turns()
+            .last()
+            .and_then(|(_, record)| record.end);
+        assert!(
+            matches!(&ended, Some(TurnEnd::Stopped { calls, .. })
+                if calls == std::slice::from_ref(&call.id)),
+            "{ended:?}"
+        );
+        // A restore finds nothing owed, so nothing of it runs then either.
+        assert_eq!(conversation.pending_calls(), []);
     }
 }
 

@@ -232,8 +232,6 @@ pub fn add_view(app: &mut App) {
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<turns::Told>()
-        .register_required_components::<rig_ecs::agent::Partial, transcript::StreamingCalls>()
-        .add_observer(transcript::forget_streams)
         .add_observer(clipboard::type_pasted)
         .add_observer(render::redraw_on_remove)
         .add_systems(Startup, (view::load_notices, view::load_draft))
@@ -305,11 +303,7 @@ pub fn add_view(app: &mut App) {
                     pick::draw_inline_strips,
                 )
                     .in_set(TuiSystems::Draw),
-                (
-                    complete::follow_input,
-                    transcript::follow_streams,
-                    render::lay_out_frame,
-                )
+                (complete::follow_input, render::lay_out_frame)
                     .chain()
                     .in_set(TuiSystems::Layout),
                 render::lay_out_fitted
