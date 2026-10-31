@@ -18,10 +18,12 @@
 //! App::new().add_plugins(CurrentAgentPlugin).add_systems(Update, greet);
 //! ```
 
+use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use rig_ecs::SaveSystems;
 use rig_ecs::agent::{Agent, AgentId, SpawnedBy};
 use rig_ecs::prelude::*;
+use rig_ecs::stage::AgentLoop;
 
 /// The id of the session's current agent, the top-level agent the user
 /// talks to when none is named ([`main_agent`]); empty before one was
@@ -69,19 +71,19 @@ impl Plugin for CurrentAgentPlugin {
         app.init_resource::<CurrentAgent>()
             .init_resource::<ShownAgent>()
             .add_systems(First, keep_shown)
-            .add_systems(
-                Last,
-                follow_shown
-                    .run_if(resource_changed::<ShownAgent>)
-                    .in_set(CurrentAgentSystems),
-            )
+            .configure_sets(Update, CurrentAgentSystems.after(AgentLoop))
             .configure_sets(Last, CurrentAgentSystems.before(SaveSystems));
+        for schedule in [Update.intern(), Last.intern()] {
+            let follow = follow_shown.run_if(resource_changed::<ShownAgent>);
+            app.add_systems(schedule, follow.in_set(CurrentAgentSystems));
+        }
     }
 }
 
-/// Where the [`CurrentAgent`] follows the shown agent, in `Last`, before
-/// the session saves it: a system there that reads the current agent runs
-/// after it.
+/// Where the [`CurrentAgent`] follows the shown agent: in `Update` after
+/// the agent loop, which runs commands such as `/fork`, and again in
+/// `Last`, before the session saves it. A system that reads the current
+/// agent in either runs after it.
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CurrentAgentSystems;
 

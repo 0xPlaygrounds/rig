@@ -262,7 +262,7 @@ impl Agents<'_, '_> {
                 .collect();
             items.push(PickItem {
                 label: format!(
-                    "{}{} {}{from}{current} · {model} · {state}{own}",
+                    "{}{} {} · {model} · {state}{current}{from}{own}",
                     "  ".repeat(depth),
                     listed.name,
                     listed.id.short(),

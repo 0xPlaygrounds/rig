@@ -41,7 +41,7 @@ fn agents_shows_the_columns_other_plugins_add_to_an_agents_line() {
     assert_eq!(
         labels,
         [format!(
-            "main {short} · current · no model · idle · 2 queued · $0.10"
+            "main {short} · no model · idle · current · 2 queued · $0.10"
         )]
     );
 }
@@ -82,9 +82,9 @@ fn agents_marks_the_current_agent_and_forks_and_follows_their_state() {
         labels
     };
     let line =
-        |short: &str, more: &str, state: &str| format!("agent {short}{more} · no model · {state}");
+        |short: &str, more: &str, state: &str| format!("agent {short} · no model · {state}{more}");
     let lines = |more: [&str; 2], state: &str| {
-        let fork_of = format!(" · fork of {source_short}{}", more[1]);
+        let fork_of = format!("{} · fork of {source_short}", more[1]);
         let mut lines = vec![
             line(&source_short, more[0], "idle"),
             line(&fork_short, &fork_of, state),

@@ -603,6 +603,17 @@ fn the_options_follow_the_agent_shown() {
         assert!(driven.model(&id, "test/reply").await);
         assert!(driven.prompt(&id, "Hello.").await.is_ok());
         assert!(driven.prompt(&id, "/fork").await.is_ok());
+        let forked = "Forked into a new agent";
+        let confirmed = driven.until(|seen| {
+            seen.events.iter().any(|event| match event {
+                Event::Update(of, acp::SessionUpdate::AgentMessageChunk(chunk)) => {
+                    *of == id && text(&chunk.content).is_some_and(|said| said.contains(forked))
+                }
+                _ => false,
+            })
+        });
+        let confirmed = confirmed.await;
+        assert!(confirmed, "{}", driven.said(&id));
         assert!(driven.prompt(&id, "/model test/read").await.is_ok());
         let read = |seen: &Seen| advertised_model(seen, &id).as_deref() == Some("test/read");
         assert!(driven.until(read).await, "{}", driven.said(&id));
