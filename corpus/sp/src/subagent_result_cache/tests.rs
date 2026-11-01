@@ -346,6 +346,34 @@ fn a_list_task_refuses_is_never_answered_from_a_record() {
 }
 
 #[test]
+fn a_task_refused_at_the_deepest_level_is_never_answered_from_a_record() {
+    let dir = project("deepest");
+    let main = MockCompletionModel::from_stream_turns(
+        [
+            asks_with("t1", &Value::Null),
+            asks_with("t2", &json!([TASK, "read"])),
+        ]
+        .concat(),
+    );
+    let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
+    let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
+    session.app.insert_resource(SubagentPolicy { max_depth: 1 });
+    let keeps = ToolAccess::all().narrow([TASK, "read", MESSAGE, WAIT]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.main)
+        .insert(keeps);
+    session.ask("Where is the config loaded?", 3);
+    let refused = answer_to(&mut session, "And again, with task?", "t2");
+    assert!(
+        refused.contains("cannot start subagents of its own"),
+        "{refused}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(SubagentResultCachePlugin);
 }
