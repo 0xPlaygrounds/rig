@@ -269,7 +269,7 @@ fn every_change_the_log_records_is_committed() {
 /// anything of it starts.
 fn stay_idle(turns: Query<&TurnOf, With<Restored>>, mut commands: Commands) {
     for &TurnOf(agent) in &turns {
-        commands.trigger(StopTurn::plugin(agent, "stay-idle", "restart").alone());
+        commands.trigger(StopTurn::plugin_alone(agent, "stay-idle", "restart"));
     }
 }
 

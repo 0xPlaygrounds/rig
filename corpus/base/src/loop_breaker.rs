@@ -151,7 +151,7 @@ fn judge(
                 // The call and the rest of the reply never start; they are
                 // answered as stopped, and the turn ends.
                 notices.write(Notice::error(agent, format!("stopped: {why}")));
-                commands.trigger(StopTurn::plugin(agent, "loop-breaker", &why).alone());
+                commands.trigger(StopTurn::plugin_alone(agent, "loop-breaker", &why));
                 break;
             }
             if times >= limits.refuse_at {

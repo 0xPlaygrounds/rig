@@ -797,7 +797,7 @@ fn a_plugin_ending_a_turn_alone_keeps_a_waiting_sign_in_and_the_users_stop_cance
         notices.any(|notice| notice.text.ends_with("sign-in cancelled."))
     };
     // As `/compact` ends its turn.
-    let compacted = StopTurn::plugin(agent, "compaction", "compacted").alone();
+    let compacted = StopTurn::plugin_alone(agent, "compaction", "compacted");
     app.world_mut().trigger(compacted);
     app.update();
     assert!(app.world().get_entity(login).is_ok());

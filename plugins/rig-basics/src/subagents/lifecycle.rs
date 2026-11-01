@@ -289,9 +289,9 @@ pub(super) struct StoppedEarly;
 /// [`Lifecycle::Finished`] with its answer, or why there is none and what
 /// it said last. A stopped turn reports as rig-core's [`not_finished`] says
 /// a stopped call that may have partly run does: a turn a plugin ends
-/// alone ([`StopTurn::alone`]), such as for a budget, reports `Stopped:
-/// <reason>. It may have partly run; …`, and one any stop reached is
-/// [`StoppedEarly`].
+/// alone ([`StopTurn::plugin_alone`]), such as for a budget, reports
+/// `Stopped: <reason>. It may have partly run; …`, and one any stop
+/// reached is [`StoppedEarly`].
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent, Has<Restored>)>,
@@ -313,7 +313,7 @@ fn step_on_turn_end(
     // report as usual. A restored turn that ends stopped ended with the
     // restart.
     let early = matches!(outcome, TurnOutcome::Stopped(stop)
-        if restored || !stop.alone() || !matches!(stop.cause(), StopCause::Plugin { .. }));
+        if restored || !stop.alone());
     let step = match agents.awaited(agent, true).first().filter(|_| !early) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {

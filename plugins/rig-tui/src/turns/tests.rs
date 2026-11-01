@@ -79,7 +79,7 @@ fn the_terminal_is_told_of_each_turn_of_the_main_agent_only() {
     app.world_mut().spawn((TurnOf(agent), failed));
     app.update();
     told(&mut app, &mut seen);
-    let compacted = StopTurn::plugin(agent, "compaction", "compacted").alone();
+    let compacted = StopTurn::plugin_alone(agent, "compaction", "compacted");
     for stop in [StopTurn::new(agent), compacted] {
         app.world_mut().spawn(TurnOf(agent));
         app.world_mut().trigger(stop);

@@ -1142,12 +1142,15 @@ started never start, the others are answered as stopped (or with their
 the user's stop, and `StopTurn::plugin(agent, by, why)` a plugin's, such as a
 budget's. Either reaches the agent and every agent below it in `SpawnedBy`,
 even when its own agent is idle: stopping follows ancestry, so work meant to
-outlive its parent is spawned without `SpawnedBy`. `.alone()` stops only the
-agent's own turn and leaves the agents below it running. Each agent a
-`StopTurn` reached, idle or not, then gets a `StopReached` with the cause, so
-an observer reacts once per agent (`On<StopReached>`, `event_target()`)
-instead of walking `Spawned`. The kernel shows "Stopped." for the user's stop
-only; a plugin says why it stopped a turn itself.
+outlive its parent is spawned without `SpawnedBy`. Each agent such a stop
+reached, idle or not, then gets a `StopReached` with the cause, so an observer
+reacts once per agent (`On<StopReached>`, `event_target()`) instead of walking
+`Spawned`. `StopTurn::plugin_alone(agent, by, why)` is a plugin's decision
+about that one turn: it stops only the agent's own turn, leaves the agents
+below it running and sends no `StopReached`, and `stop.alone()` says so. The
+stops of the app's exit and of a restart send none either. The kernel shows
+"Stopped." for the user's stop only; a plugin says why it stopped a turn
+itself.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1164,7 +1167,7 @@ fn budget(
             calls.iter().filter(|&call| model_calls.contains(call)).count()
         });
         if made > 10 {
-            commands.trigger(StopTurn::plugin(agent, "budget", "over budget").alone());
+            commands.trigger(StopTurn::plugin_alone(agent, "budget", "over budget"));
         }
     }
 }

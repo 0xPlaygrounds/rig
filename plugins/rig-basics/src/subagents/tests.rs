@@ -837,7 +837,7 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
                        mut commands: Commands| {
         for (call, &ForAgent(agent)) in &calls {
             if agent == child && seen.insert(call) && seen.len() > 1 {
-                commands.trigger(StopTurn::plugin(agent, "budget", "over budget").alone());
+                commands.trigger(StopTurn::plugin_alone(agent, "budget", "over budget"));
             }
         }
     };
@@ -1076,7 +1076,7 @@ fn a_restored_subagent_turn_a_plugin_stops_reports_as_a_note() {
         let over_budget = |turns: Query<&TurnOf, (With<Restored>, Without<TurnOutcome>)>,
                            mut commands: Commands| {
             for &TurnOf(agent) in &turns {
-                commands.trigger(StopTurn::plugin(agent, "budget", "over budget").alone());
+                commands.trigger(StopTurn::plugin_alone(agent, "budget", "over budget"));
             }
         };
         app.add_systems(AgentPass, over_budget.in_set(Stage::Gate));

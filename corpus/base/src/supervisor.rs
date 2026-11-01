@@ -554,7 +554,7 @@ fn on_verdict(
             // told why they stopped, and the turn ends.
             if turn.is_some() {
                 let why = format!("the supervisor stopped it: {reason}");
-                commands.trigger(StopTurn::plugin(worker, NAME, &why).alone());
+                commands.trigger(StopTurn::plugin_alone(worker, NAME, &why));
             }
             let told = format!("The supervisor stopped the turn: {reason}");
             notices.write(Notice::info(worker, told));

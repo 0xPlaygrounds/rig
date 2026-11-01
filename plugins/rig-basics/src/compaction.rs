@@ -1733,7 +1733,7 @@ fn take_summary(
         }
         // The user's own compaction turn ends with it, unless it ended.
         None if !ended => {
-            commands.trigger(StopTurn::plugin(agent, "compaction", "compacted").alone())
+            commands.trigger(StopTurn::plugin_alone(agent, "compaction", "compacted"))
         }
         None => {}
     }

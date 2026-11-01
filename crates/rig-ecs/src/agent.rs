@@ -625,13 +625,13 @@ impl From<ToolCall> for PartialCall {
 /// Stop the agent's running turn at once, and the running turns of every
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is
-/// spawned without [`SpawnedBy`]. [`alone`](Self::alone) stops the agent's
-/// turn only. Each turn ends [`TurnOutcome::Stopped`] with the stop's
-/// cause, the text its reply streamed so far is kept, every call of it
-/// that has not settled is answered as stopped (rig-core's
+/// spawned without [`SpawnedBy`]; each agent it reached then gets a
+/// [`StopReached`]. [`plugin_alone`](Self::plugin_alone) stops the agent's
+/// turn only and sends none. Each turn ends [`TurnOutcome::Stopped`] with
+/// the stop's cause, the text its reply streamed so far is kept, every
+/// call of it that has not settled is answered as stopped (rig-core's
 /// [`not_finished`](rig_core::tool::feedback::not_finished)), and whatever
-/// held them is despawned. It cannot be reviewed or held. Every agent the
-/// stop reached gets a [`StopReached`].
+/// held them is despawned. It cannot be reviewed or held.
 ///
 /// Its fields are private, so the cause is the user's or a plugin's:
 ///
@@ -676,19 +676,30 @@ impl StopTurn {
         }
     }
 
-    /// Ends only the agent's own turn, as a plugin's decision about that
-    /// turn: the agents below go on, and no [`StopReached`] is sent.
-    pub fn alone(self) -> Self {
+    /// The plugin `by` ending only `agent`'s own turn, for `why`, as its
+    /// decision about that turn: the agents below go on, and no
+    /// [`StopReached`] is sent. The user's stop always reaches below:
+    ///
+    /// ```compile_fail,E0599
+    /// use bevy_ecs::prelude::*;
+    /// use rig_ecs::agent::StopTurn;
+    ///
+    /// let agent = World::new().spawn_empty().id();
+    /// let stop = StopTurn::new(agent).alone();
+    /// ```
+    pub fn plugin_alone(agent: Entity, by: &str, why: &str) -> Self {
         Self {
             below: false,
-            ..self
+            ..Self::plugin(agent, by, why)
         }
     }
 }
 
 /// On each agent a [`StopTurn`] reached, idle or not, once its turn
 /// stopped: the stop's cause. Only the kernel makes it, so an observer
-/// reads one per agent instead of walking [`Spawned`] itself.
+/// reads one per agent instead of walking [`Spawned`] itself. A
+/// [`StopTurn::plugin_alone`] sends none, and neither do the stops of the
+/// app's exit and of a restart.
 ///
 /// ```compile_fail,E0451
 /// use bevy_ecs::prelude::*;
@@ -826,8 +837,9 @@ impl Stop {
         &self.cause
     }
 
-    /// Whether a plugin ended only this turn ([`StopTurn::alone`]): no stop
-    /// reached the agent itself.
+    /// Whether a plugin ended only this turn, as its decision about it
+    /// ([`StopTurn::plugin_alone`]): no stop reached the agent. Never so
+    /// for the user's stop, the app's exit or a restart.
     pub fn alone(&self) -> bool {
         self.alone
     }

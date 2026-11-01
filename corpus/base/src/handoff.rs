@@ -215,7 +215,7 @@ fn take_brief(
     let Ok((_, &ForAgent(agent), briefing, outcome)) = calls.get(settled.entity) else {
         return;
     };
-    commands.trigger(StopTurn::plugin(agent, "handoff", "handed off").alone());
+    commands.trigger(StopTurn::plugin_alone(agent, "handoff", "handed off"));
     let brief = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => Err(report.to_string()),
         (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),

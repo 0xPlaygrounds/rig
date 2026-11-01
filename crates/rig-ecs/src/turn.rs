@@ -488,11 +488,12 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
 }
 
 /// Stops the agent's running turn at once, and, unless the stop is
-/// [`alone`](StopTurn::alone), the running turns of every agent below it
-/// in [`Spawned`], even when the agent itself is idle: stopping follows
-/// ancestry, so work meant to outlive its parent is spawned without
-/// [`SpawnedBy`](super::agent::SpawnedBy). Each agent's turn stops as
-/// [`Stopper::stop`] says, and each agent reached gets a [`StopReached`];
+/// [`plugin_alone`](StopTurn::plugin_alone), the running turns of every
+/// agent below it in [`Spawned`], even when the agent itself is idle:
+/// stopping follows ancestry, so work meant to outlive its parent is
+/// spawned without [`SpawnedBy`](super::agent::SpawnedBy). Each agent's
+/// turn stops as [`Stopper::stop`] says, and each agent reached gets a
+/// [`StopReached`], unless the stop is a plugin's of its turn alone;
 /// the conversations are written to the log at once, in one flush, so a
 /// log that ends mid-turn means a crash, a turn a plugin carries on
 /// ([`CarryOn`]) or a log that stopped (shown once, as every log failure
@@ -551,8 +552,9 @@ pub(crate) struct Stopper<'w, 's> {
 }
 
 impl Stopper<'_, '_> {
-    /// Stops each of `agents`' running turn for `cause`, alone, as
-    /// [`stop`](Self::stop) does, and writes the log once.
+    /// Stops each of `agents`' running turn for `cause`, for its agent
+    /// only, not those below, as [`stop`](Self::stop) does, and writes the
+    /// log once. No [`StopReached`] is sent.
     pub(crate) fn stop_each(&mut self, agents: Vec<Entity>, cause: &StopCause) {
         let mut stopped = false;
         for agent in agents {

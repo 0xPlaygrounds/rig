@@ -475,7 +475,7 @@ fn resolve(
             if !recovering.stopping {
                 recovering.stopping = true;
                 let why = "an interrupted turn the user did not continue";
-                commands.trigger(StopTurn::plugin(agent, "crash-resume", why).alone());
+                commands.trigger(StopTurn::plugin_alone(agent, "crash-resume", why));
             }
             continue;
         }

@@ -290,7 +290,7 @@ fn cap(
             ),
             _ => continue,
         };
-        commands.trigger(StopTurn::plugin(agent, "subagent-policy", &why).alone());
+        commands.trigger(StopTurn::plugin_alone(agent, "subagent-policy", &why));
     }
 }
 

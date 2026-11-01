@@ -3346,7 +3346,7 @@ fn a_turn_a_plugin_stops_keeps_what_streamed() {
         partials.iter(world).any(|partial| !partial.text.is_empty())
     };
     assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
-    let budget = StopTurn::plugin(agent, "budget", "over budget").alone();
+    let budget = StopTurn::plugin_alone(agent, "budget", "over budget");
     app.world_mut().trigger(budget);
     for _ in 0..3 {
         app.update();
