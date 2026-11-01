@@ -3799,7 +3799,7 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
     let mut app = app();
     let thought = MockStreamEvent::ReasoningDelta {
         id: "r".to_owned(),
-        reasoning: "hm".to_owned(),
+        reasoning: "hm, ".to_owned(),
     };
     // Two parallel tool calls whose arguments stream interleaved, then an
     // answer.
@@ -3905,7 +3905,11 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         .collect();
     assert_eq!(
         fragments,
-        [("reasoning", "hm"), ("text", "Hello, "), ("text", "world")]
+        [
+            ("reasoning", "hm, "),
+            ("text", "Hello, "),
+            ("text", "world")
+        ]
     );
     // Every event was an item, and so was the end.
     for (call, stamp) in [(tools, tools_stamp), (text, text_stamp)] {
@@ -4138,6 +4142,94 @@ fn a_key_streamed_in_pieces_reaches_the_deltas_redacted() {
             _ => None,
         });
     assert_eq!(replied.as_deref(), Some(pieces.concat().as_str()));
+}
+
+/// A model that opens reasoning in the middle of a key in its text, as a
+/// chat stream with reasoning beside its content does, then goes on with
+/// the same text part and never finishes.
+struct Interleaved;
+
+impl Serve for Interleaved {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("interleaved"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:interleaved".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let (text, thought) = (Part::new(0), Part::new(1));
+        let events = [
+            StreamEvent::Start {
+                part: text,
+                kind: PartKind::Text,
+                name: None,
+            },
+            StreamEvent::Text {
+                part: text,
+                text: "Here: ghp_abcdefghijklmnopqrst".to_owned(),
+            },
+            StreamEvent::Start {
+                part: thought,
+                kind: PartKind::Reasoning,
+                name: None,
+            },
+            StreamEvent::Reasoning {
+                part: thought,
+                text: "thinking ".to_owned(),
+            },
+            StreamEvent::Text {
+                part: text,
+                text: "uvwxyz0123456789 done".to_owned(),
+            },
+        ];
+        let events = events.map(|event| Ok(Relayed::Item(Item::Event(event))));
+        Reply::Stream(Box::pin(
+            futures::stream::iter(events).chain(futures::stream::pending()),
+        ))
+    }
+}
+
+/// A part that opens while another holds back the start of a key leaves
+/// it held: the key, finished in the first part, still reaches the
+/// [`StreamDelta`]s redacted.
+#[test]
+fn a_key_split_by_another_part_opening_reaches_the_deltas_redacted() {
+    let mut app = app();
+    #[derive(Resource, Default)]
+    struct Shown(String, String);
+    app.init_resource::<Shown>().add_systems(
+        PostUpdate,
+        |mut deltas: MessageReader<StreamDelta>, mut shown: ResMut<Shown>| {
+            for delta in deltas.read() {
+                match &delta.event {
+                    StreamEvent::Text { text, .. } => shown.0.push_str(text),
+                    StreamEvent::Reasoning { text, .. } => shown.1.push_str(text),
+                    _ => {}
+                }
+            }
+        },
+    );
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Interleaved));
+    }
+    let both = |world: &mut World| {
+        let shown = world.resource::<Shown>();
+        shown.0.ends_with(' ') && !shown.1.is_empty()
+    };
+    assert!(run_until(&mut app, both), "{:?}", notices(&app));
+    let shown = app.world().resource::<Shown>();
+    assert_eq!(
+        (shown.0.as_str(), shown.1.as_str()),
+        ("Here: [REDACTED] ", "thinking ")
+    );
 }
 
 /// `model` as the catalog's DeepSeek model, said to call tools or not.

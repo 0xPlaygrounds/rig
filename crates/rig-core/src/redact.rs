@@ -69,7 +69,8 @@ pub enum Kind {
     /// `;` or `&` (the next assignment of a query string); one of at most
     /// 7 characters, all digits, starting with `$` (a reference such as
     /// `$GITHUB_TOKEN`), with characters other than printable ASCII (a
-    /// placeholder such as `‹SECRET_1›`), or [`REDACTED`] is not a secret.
+    /// placeholder such as `‹SECRET_1›`), or one starting with [`REDACTED`]
+    /// is not a secret, so redacting text again changes nothing.
     /// Only the value is the secret.
     Assigned,
 }
@@ -188,9 +189,10 @@ pub const HELD_MOST: usize = 16 * 1024;
 /// return, joined, is [`text`] of the pieces joined. It holds back what a
 /// later piece may still make part of a secret: the last run of characters
 /// a key is made of, a line that names a secret (its value may follow), and
-/// a private key block not yet ended. It holds at most [`HELD_MOST`] bytes,
-/// far more than a key: past that it returns what it holds, so a longer run
-/// of key characters, such as a base64 blob, may show its tail.
+/// a private key block not yet ended. Past [`HELD_MOST`] bytes, far more
+/// than a key, it holds only the last run of key characters and a secret's
+/// name with what follows it, so a longer line that names a secret, or a
+/// longer private key block, may show some of itself.
 ///
 /// ```
 /// use rig_core::redact::Streamed;
@@ -212,11 +214,7 @@ impl Streamed {
     /// Takes `piece` and returns, redacted, what no later piece can change.
     pub fn push(&mut self, piece: &str) -> String {
         self.held.push_str(piece);
-        let settled = match self.held.len() > HELD_MOST {
-            true => self.held.len(),
-            false => settled(&self.held),
-        };
-        let rest = self.held.split_off(settled);
+        let rest = self.held.split_off(settled(&self.held));
         let shown = text(&self.held).into_owned();
         self.held = rest;
         shown
@@ -233,9 +231,12 @@ impl Streamed {
 /// How much of `input`, a text that may still grow, ends where no secret
 /// [`find`] finds in the grown text can start before it and end after it:
 /// before the last run of characters a key or a JSON Web Token is made of,
-/// before a line that names a secret, and before the line of a private key
-/// block not yet ended. Each such place follows a character no token
-/// continues, so a token starts after it as in the whole text.
+/// before a line that names a secret, and before the line of a secret that
+/// runs past the cut, such as a private key block. Each such place follows
+/// a character no token continues, so a token starts after it as in the
+/// whole text. Past [`HELD_MOST`], only the last run and a secret's name
+/// with what follows it on its line are held: the last run alone if the
+/// name starts the text, and nothing if the run is all of it.
 fn settled(input: &str) -> usize {
     let word = input
         .char_indices()
@@ -249,16 +250,31 @@ fn settled(input: &str) -> usize {
     };
     let line = line_of(input.len());
     let last = input.get(line..).unwrap_or_default();
-    let names = last.split(|ch| !is_token_char(ch)).any(secret_name);
-    let open_key = find(input)
-        .last()
-        .filter(|found| found.kind == Kind::PrivateKey && found.range.end == input.len())
-        .map(|found| line_of(found.range.start));
-    let mut settled = word;
-    if names || last.contains("-----BEGIN ") {
-        settled = settled.min(line);
+    // Where the last secret name of the last line starts.
+    let named = (0..last.len()).rev().find(|&at| {
+        let name = || last.get(at..).map(|rest| rest.get(..token_len(rest)));
+        starts_token(last, at) && name().flatten().is_some_and(secret_name)
+    });
+    if input.len() > HELD_MOST {
+        let cut = named.map_or(word, |at| word.min(line + at));
+        return [cut, word]
+            .into_iter()
+            .find(|&cut| cut > 0)
+            .unwrap_or(input.len());
     }
-    open_key.map_or(settled, |key| settled.min(key))
+    let mut cut = word;
+    if named.is_some() || last.contains("-----BEGIN ") {
+        cut = cut.min(line);
+    }
+    let found: Vec<_> = find(input).collect();
+    // A secret that reaches the end may still grow, as a block not yet ended.
+    for found in found.iter().rev() {
+        let past = cut < found.range.end || found.range.end == input.len();
+        if found.range.start < cut && past {
+            cut = line_of(found.range.start);
+        }
+    }
+    cut
 }
 
 /// `json`, serialized JSON such as a JSON line, with every string in it
@@ -540,7 +556,7 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
         && value.chars().all(|ch| ch.is_ascii_graphic() || ch == ' ')
         && !value.starts_with('$')
         && !value.chars().all(|ch| ch.is_ascii_digit())
-        && value != REDACTED
+        && !value.starts_with(REDACTED)
         && secret_at(value).is_none();
     plausible.then(|| from..from + value.len())
 }

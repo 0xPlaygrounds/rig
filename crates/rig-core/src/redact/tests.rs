@@ -196,9 +196,14 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
         "Prose with é and 日本語の文 words, no key, MAX_TOKENS=4096 and TOKEN_COUNT: 12345678.",
         "https://example.com/a+b/sk-proj-abcdefghijklmnop1234,(ghp_abcdefghijklmnopqrstuvwxyz0123456789)",
         "\"API_KEY\": \"abcdefgh12345678\", \"name\": \"x\"\n\tSECRET=$HOME",
+        "Export it (GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789).",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY----- API_KEY=abcdefgh12345678",
     ];
     for text_ in texts {
         let whole = text(text_).into_owned();
+        // Redacting it again changes nothing, as a front that redacts what
+        // it writes does.
+        assert_eq!(text(&whole), whole);
         let cuts: Vec<usize> = (0..=text_.len())
             .filter(|&at| text_.is_char_boundary(at))
             .collect();
@@ -217,15 +222,25 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
     }
 }
 
-/// A run of key characters with no end, such as a base64 blob, is held
-/// back no further than `HELD_MOST`, so it streams and is not searched
-/// again with every piece.
+/// Past `HELD_MOST`, a run of key characters with no end, such as a base64
+/// blob, streams instead of being held whole, and a key still forming at
+/// the end of a long line that names a secret is still held.
 #[test]
-fn a_streamed_run_with_no_end_is_held_back_no_further_than_its_bound() {
+fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
     let mut streamed = Streamed::default();
     let piece = "a".repeat(100);
     let held_back = (0..400).map(|_| streamed.push(&piece).len()).sum::<usize>();
     assert!(400 * 100 - held_back <= HELD_MOST + 100, "{held_back}");
     let rest = streamed.finish();
     assert_eq!(held_back + rest.len(), 400 * 100);
+    for line in [
+        format!("TOKEN {}gh", "word ".repeat(3275)),
+        format!("one {}API_KEY=abcd", "word ".repeat(3275)),
+    ] {
+        let pieces = [line.as_str(), "p_", "efghijklmnopqrstuvwxyz0123456789 end"];
+        let mut streamed = Streamed::default();
+        let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
+        shown += &streamed.finish();
+        assert_eq!(shown, text(&pieces.concat()), "{}", &line[..8]);
+    }
 }

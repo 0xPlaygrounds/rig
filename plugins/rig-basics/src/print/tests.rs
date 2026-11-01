@@ -2093,9 +2093,9 @@ fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
 #[test]
 fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
     let pieces = [
-        "Use GITHUB_TOKEN=gh",
+        "Use (GITHUB_TOKEN=gh",
         "p_abcdefghijklmnopqrst",
-        "uvwxyz0123456789 now.",
+        "uvwxyz0123456789). Now.",
     ];
     let mut events: Vec<_> = pieces
         .iter()
@@ -2104,7 +2104,8 @@ fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
     events.push(MockStreamEvent::final_response_with_default_usage());
     let model = MockCompletionModel::from_stream_turns([events]);
     let (_, lines) = one_shot("Key?", None, &model, true, |_| {});
-    let redacted = "Use GITHUB_TOKEN=[REDACTED] now.";
+    // The `).` after the key stays, as it does in the session log.
+    let redacted = "Use (GITHUB_TOKEN=[REDACTED]). Now.";
     let text: String = lines
         .of("text")
         .iter()

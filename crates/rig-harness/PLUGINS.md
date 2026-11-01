@@ -1082,9 +1082,10 @@ a reply may start it with what came so far). Views, the status and a stop
 read it; a stop keeps it, its calls never run. `Text` and `Reasoning`
 fragments are redacted as the session log is: a fragment that may still
 become part of a key is held back until it can't, so one may come later and
-longer, and what a part held comes before its `End` or the next part's
-`Start`. The `Partial` keeps the reply's own text, and a reply cut off
-mid-part never shows what the part held. From its first item, the
+longer, even after a later part's, and what a part held comes before its
+`End` or the stream's end. The `Partial`, and a part's `End`, keep the
+reply's own text; a reply stopped mid-part never shows what the part held.
+From its first item, the
 call also has a `StreamTiming { first, last, items }`
 beside its `Started { at }`. A delta moves no stage: a reader spawning
 effects runs `.before(AgentLoop)` or calls `Wake::wake`.

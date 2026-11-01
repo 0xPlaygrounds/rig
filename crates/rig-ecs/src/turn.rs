@@ -284,7 +284,9 @@ pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
 /// sees the last events of a reply that settled this frame. A
 /// [`TurnCall`]'s events also add up in its [`Partial`], unredacted. Text
 /// and reasoning fragments are redacted as the session log is, through
-/// `rig_core::redact::Streamed`, so a fragment may come later and longer.
+/// `rig_core::redact::Streamed`, so a fragment may come later and longer,
+/// and after a later part's. A part's `End` carries what the model sent,
+/// as the `Partial` does.
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
@@ -1353,9 +1355,9 @@ pub(crate) fn stream_partials(
 
 /// Writes `event` as a [`StreamDelta`] shows it: a text or reasoning
 /// fragment through its part's redactor in `held`, which says whether the
-/// part is reasoning. What a part held comes before its end, the next
-/// part's start (a reply's text parts follow each other), or, for `None`,
-/// the stream's end, as when it failed.
+/// part is reasoning. What a part held comes before its end or, for `None`,
+/// the stream's end, as when it failed: parts may stay open side by side,
+/// so a later part's fragments may come first.
 fn show(
     held: &mut BTreeMap<Part, (bool, redact::Streamed)>,
     event: Option<StreamEvent>,
@@ -1377,8 +1379,8 @@ fn show(
                 Some(StreamEvent::End { part, .. }) => {
                     held.remove_entry(part).into_iter().collect()
                 }
-                Some(StreamEvent::Start { .. }) | None => mem::take(held),
                 Some(_) => BTreeMap::new(),
+                None => mem::take(held),
             };
             for (part, (reasoning, mut redactor)) in ended {
                 fragment(part, reasoning, redactor.finish());
