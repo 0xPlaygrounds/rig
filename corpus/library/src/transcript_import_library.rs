@@ -470,10 +470,8 @@ pub fn write(imported: &Imported, target: &Target) -> Result<(), ImportError> {
             .saved
             .insert(MODEL.to_owned(), serde_json::Value::from(model));
     }
-    let mut session = Session {
-        agents: vec![agent],
-        ..Session::default()
-    };
+    let mut session = Session::default();
+    session.agents = vec![agent];
     session.save(&store).map_err(store_failed)?;
     let now = rig_core::now_ms();
     let title = imported

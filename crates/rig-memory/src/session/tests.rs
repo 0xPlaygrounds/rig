@@ -593,6 +593,7 @@ struct Gate {
     armed: std::sync::atomic::AtomicBool,
     paired: Option<std::sync::Barrier>,
     unreadable: std::sync::atomic::AtomicBool,
+    fail_main_append: std::sync::atomic::AtomicBool,
 }
 
 impl Files for Gate {
@@ -635,6 +636,13 @@ impl Store for Gate {
     }
 
     fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        if name == "main"
+            && self
+                .fail_main_append
+                .swap(false, std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(std::io::Error::other("injected append failure").into());
+        }
         self.store.append_log(name, len, bytes)
     }
 
@@ -752,4 +760,198 @@ fn a_failed_image_read_fails_the_load() {
     }
     let loaded = load(&gate, "agent").expect("a missing blob is a placeholder");
     assert_eq!(loaded.messages().len(), conversation.messages().len());
+}
+
+#[test]
+fn stale_sessions_cannot_overwrite_saved_values_or_retirement() {
+    for agent_state in [false, true] {
+        let store = MemoryStore::default();
+        let mut session = Session::default();
+        session.agents.push(SavedAgent {
+            id: "main".into(),
+            ..SavedAgent::default()
+        });
+        session.saved.insert("credential".into(), json!("original"));
+        session
+            .agent_mut("main")
+            .expect("main")
+            .saved
+            .insert("key".into(), json!("old"));
+        session.save(&store).expect("initial save");
+        let mut stale = session.clone();
+        let mut newer = Session::read(&store).expect("read");
+        if agent_state {
+            let agent = newer.agent_mut("main").expect("main");
+            agent.saved.insert("key".into(), json!("new"));
+            agent.saved.insert("added".into(), json!(true));
+            agent.retired = true;
+        } else {
+            newer
+                .saved
+                .insert("credential".into(), json!("replacement"));
+            newer.saved.insert("added".into(), json!(true));
+        }
+        newer.save(&store).expect("newer save");
+        let before = read_logs_for_test(&store);
+        assert!(matches!(
+            stale.save(&store),
+            Err(SessionError::Changed { .. })
+        ));
+        assert_eq!(read_logs_for_test(&store), before);
+        assert_eq!(Session::read(&store).expect("read").saved, newer.saved);
+        assert_eq!(
+            Session::read(&store).expect("read").agent("main"),
+            newer.agent("main")
+        );
+        // The successful writer may continue, including removing values.
+        newer.saved.remove("credential");
+        newer.agent_mut("main").expect("main").saved.remove("key");
+        newer.save(&store).expect("continued save");
+        newer.save(&store).expect("unchanged save");
+        assert!(
+            !Session::read(&store)
+                .expect("read")
+                .saved
+                .contains_key("credential")
+        );
+    }
+}
+
+fn read_logs_for_test(store: &dyn Store) -> Vec<(String, Vec<u8>)> {
+    store
+        .logs()
+        .expect("logs")
+        .into_iter()
+        .map(|name| {
+            let bytes = store.read_log(&name).expect("log");
+            (name, bytes)
+        })
+        .collect()
+}
+
+#[test]
+fn a_saved_value_only_rewrite_invalidates_session_snapshots() {
+    let store = MemoryStore::default();
+    let mut session = Session::default();
+    session
+        .saved
+        .insert("credential".into(), json!("secret-example"));
+    session.save(&store).expect("save session-only log");
+    let mut stale = Session::read(&store).expect("read");
+    crate::rewrite(
+        &store,
+        Author::plugin("redact"),
+        &crate::Strings(|s: &mut String| {
+            let changed = s.contains("secret-example");
+            *s = s.replace("secret-example", "[REDACTED]");
+            changed
+        }),
+    )
+    .expect("rewrite");
+    let before = read_logs_for_test(&store);
+    assert!(matches!(
+        stale.save(&store),
+        Err(SessionError::Changed { .. })
+    ));
+    assert_eq!(read_logs_for_test(&store), before);
+    let mut fresh = Session::read(&store).expect("read");
+    fresh.save(&store).expect("fresh save");
+    assert_eq!(fresh.saved.get("credential"), Some(&json!("[REDACTED]")));
+}
+
+#[test]
+fn session_conflicts_are_checked_before_any_log_is_written() {
+    let store = MemoryStore::default();
+    let mut initial = Session::default();
+    initial.saved.insert("first".into(), json!(true));
+    initial.save(&store).expect("initial save");
+    let mut stale = initial.clone();
+    initial.saved.insert("newer".into(), json!(true));
+    initial.save(&store).expect("newer save");
+    stale.agents.push(SavedAgent {
+        id: "new-agent".into(),
+        conversation: Conversation::from_messages([Message::user("unsaved work")]),
+        ..SavedAgent::default()
+    });
+    let before = read_logs_for_test(&store);
+    assert!(matches!(
+        stale.save(&store),
+        Err(SessionError::Changed { .. })
+    ));
+    assert_eq!(read_logs_for_test(&store), before);
+    assert!(
+        !stale
+            .agent("new-agent")
+            .expect("agent")
+            .conversation
+            .unsaved()
+            .is_empty()
+    );
+}
+
+#[cfg(feature = "fs")]
+#[test]
+fn stale_session_refusal_survives_reopening_a_directory_store() {
+    let path = std::env::temp_dir().join(format!("rig-stale-session-{}", std::process::id()));
+    let store = crate::DirStore::open(&path).expect("store");
+    let mut initial = Session::default();
+    initial.saved.insert("key".into(), json!("old"));
+    initial.save(&store).expect("initial save");
+    let mut stale = Session::read(&store).expect("read");
+    initial.saved.insert("key".into(), json!("new"));
+    initial.save(&store).expect("newer save");
+    assert!(matches!(
+        stale.save(&store),
+        Err(SessionError::Changed { .. })
+    ));
+    drop(store);
+    let reopened = crate::DirStore::open(&path).expect("reopen");
+    assert_eq!(
+        Session::read(&reopened).expect("read").saved.get("key"),
+        Some(&json!("new"))
+    );
+    std::fs::remove_dir_all(path).expect("cleanup");
+}
+
+#[test]
+fn a_session_retries_saved_values_after_a_partial_flush() {
+    let store = Gate::default();
+    let mut session = Session::default();
+    for id in ["main", "z"] {
+        session.agents.push(SavedAgent {
+            id: id.into(),
+            saved: [("key".into(), json!("old"))].into(),
+            ..SavedAgent::default()
+        });
+    }
+    session.save(&store).expect("initial save");
+    let mut stale = session.clone();
+    for agent in &mut session.agents {
+        agent.saved.insert("key".into(), json!("new"));
+    }
+    store
+        .fail_main_append
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(matches!(session.save(&store), Err(SessionError::Io(_))));
+    let partial = Session::read(&store).expect("partial session");
+    assert_eq!(
+        partial.agent("z").expect("z").saved.get("key"),
+        Some(&json!("new"))
+    );
+    assert_eq!(
+        partial.agent("main").expect("main").saved.get("key"),
+        Some(&json!("old"))
+    );
+    session.save(&store).expect("retry own partial save");
+    let complete = Session::read(&store).expect("complete session");
+    assert!(
+        complete
+            .agents
+            .iter()
+            .all(|agent| agent.saved.get("key") == Some(&json!("new")))
+    );
+    assert!(matches!(
+        stale.save(&store),
+        Err(SessionError::Changed { .. })
+    ));
 }
