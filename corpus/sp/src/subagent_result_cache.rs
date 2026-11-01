@@ -15,7 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
+use rig_basics::subagents::{MESSAGE, Role, SpawnSubagent, SpawnedAgent, WAIT};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_tools::workspace::{Listing as Files, Stat, Workspace};
@@ -155,16 +155,26 @@ fn key_of(
     let (Some(model), effort) = inherited.ok()? else {
         return None;
     };
-    let listed: Vec<String> = match &request.tools {
-        Some(asked) => asked.clone(),
-        None => tools.iter().map(|def| def.0.name.to_string()).collect(),
+    let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
+    // The access `task` gives: the parent's own, or the tools asked with
+    // those that reach the parent; a list it refuses is no task to take.
+    let given = match &request.tools {
+        None => access.clone(),
+        Some(asked) => {
+            let mut asked = asked.clone();
+            let reaching = [MESSAGE, WAIT].into_iter();
+            for tool in reaching.filter(|tool| access.keeps(tool) && registered.contains(tool)) {
+                if !asked.iter().any(|name| name == tool) {
+                    asked.push(tool.to_owned());
+                }
+            }
+            access.grant(&asked, registered.iter().copied()).ok()?
+        }
     };
-    // What the subagent may call in this run: an answer given without a
-    // tool is not reused once the tool is back.
-    let mut tools: Vec<String> = listed
-        .into_iter()
-        .filter(|name| access.allows(name))
-        .collect();
+    // What it may call in this run: an answer given without a tool is not
+    // reused once the tool is back.
+    let usable = registered.into_iter().filter(|name| given.allows(name));
+    let mut tools: Vec<String> = usable.map(str::to_owned).collect();
     tools.sort();
     tools.dedup();
     Some(TaskKey {

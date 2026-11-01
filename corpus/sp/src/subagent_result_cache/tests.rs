@@ -8,7 +8,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
     run_until, scripted_models,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
 
@@ -272,29 +272,75 @@ fn a_repeated_read_only_task_is_answered_from_its_record_while_its_inputs_hold()
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// The main agent's script for one `task` call `id` of [`FIND`] with
+/// `tools`, run by a subagent: the call, then what it says after.
+fn asks_with(id: &str, tools: &Value) -> Vec<Vec<MockStreamEvent>> {
+    let args = json!({ "description": "lookup", "prompt": FIND, "model": SUB, "tools": tools });
+    vec![
+        calls(id, TASK, args),
+        reply("Waiting for it."),
+        reply("Thanks."),
+    ]
+}
+
+/// What the main agent's `task` call `id` answers once it sent `text`:
+/// a reused answer, a refusal, or the start of a subagent.
+fn answer_to(session: &mut Session, text: &str, id: &str) -> String {
+    let ask = Deliver::new(session.main, text, DeliveryMode::Queue);
+    session.app.world_mut().trigger(ask);
+    let call = id.to_owned();
+    run_until(&mut session.app, &session.wakes, move |world| {
+        world.resource::<ToolOutputs>().0.contains_key(&call)
+    });
+    session.output(id)
+}
+
 #[test]
 fn an_answer_from_a_limited_run_is_not_reused_once_the_tools_are_back() {
-    let dir = project();
-    let store = MemoryStore::default();
-    let main = MockCompletionModel::from_stream_turns(asks("t1", FIND, true));
-    let sub = MockCompletionModel::from_stream_turns([reply("I cannot read files here.")]);
-    let mut session = Session::new(&store, &dir, main, &sub);
-    session.app.insert_resource(RunTools::new([TASK]));
-    session.ask("Where is the config loaded?", 3);
-    assert_eq!(sub.requests().len(), 1);
-    drop(session);
+    for tools in [Value::Null, json!(["read"])] {
+        let dir = project();
+        let store = MemoryStore::default();
+        let main = MockCompletionModel::from_stream_turns(asks_with("t1", &tools));
+        let sub = MockCompletionModel::from_stream_turns([reply("I cannot message you.")]);
+        let mut session = Session::new(&store, &dir, main, &sub);
+        session.app.insert_resource(RunTools::new([TASK, "read"]));
+        session.ask("Where is the config loaded?", 3);
+        assert_eq!(sub.requests().len(), 1, "{tools}");
+        drop(session);
 
-    let main = MockCompletionModel::from_stream_turns(asks("t2", FIND, true));
-    let sub = MockCompletionModel::from_stream_turns(finds(2));
-    let mut session = Session::new(&store, &dir, main, &sub);
-    let ask = Deliver::new(session.main, "And with every tool?", DeliveryMode::Queue);
-    session.app.world_mut().trigger(ask);
-    // A hit answers after two requests, a miss after three.
-    let model = session.main_model.clone();
-    run_until(&mut session.app, &session.wakes, move |world| {
-        model.requests().len() >= 2 && idle(world)
-    });
-    assert_eq!(sub.requests().len(), 3, "{}", session.output("t2"));
+        let main = MockCompletionModel::from_stream_turns(asks_with("t2", &tools));
+        let sub = MockCompletionModel::from_stream_turns(finds(2));
+        let mut session = Session::new(&store, &dir, main, &sub);
+        let answer = answer_to(&mut session, "And with every tool?", "t2");
+        assert!(answer.starts_with("Started subagent"), "{tools}: {answer}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[test]
+fn a_list_task_refuses_is_never_answered_from_a_record() {
+    let dir = project();
+    let main = MockCompletionModel::from_stream_turns(
+        [
+            asks_with("t1", &json!(["read"])),
+            asks_with("t2", &json!(["read", "shell"])),
+        ]
+        .concat(),
+    );
+    let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
+    let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
+    let keeps = ToolAccess::all().narrow([TASK, "read"]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.main)
+        .insert(keeps);
+    session.ask("Where is the config loaded?", 3);
+    let refused = answer_to(&mut session, "And with the shell?", "t2");
+    assert!(
+        refused.contains("`shell` is not one of your tools"),
+        "{refused}"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 

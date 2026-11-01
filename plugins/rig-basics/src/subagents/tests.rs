@@ -531,20 +531,26 @@ fn add_task_argument(world: &mut World, name: &str) {
 
 #[test]
 fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
-    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let mut session = Session::new(&MemoryStore::default(), Some(&model));
-    session
-        .app
-        .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]));
-    let args = json!({ "description": "Look", "prompt": "Look around." });
-    let said = session.call(session.parent, TASK, "t1", args);
-    assert!(said.starts_with("Started subagent"), "{said}");
-    let child = session.children(session.parent).last().copied();
-    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
-    assert!(access.is_some_and(|access| access.allows(TASK) && !access.allows("look")));
-    // A later run without the limit gives it every tool its parent keeps.
-    let saved = access.and_then(|access| serde_json::to_value(access).ok());
-    assert_eq!(saved, Some(json!("All")));
+    // At depth 1 of 2 it may start its own; at the deepest it may not.
+    for max_depth in [2, 1] {
+        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+        let mut session = Session::new(&MemoryStore::default(), Some(&model));
+        session
+            .app
+            .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]))
+            .insert_resource(SubagentPolicy { max_depth });
+        let args = json!({ "description": "Look", "prompt": "Look around." });
+        let said = session.call(session.parent, TASK, "t1", args);
+        assert!(said.starts_with("Started subagent"), "{said}");
+        let child = session.children(session.parent).last().copied();
+        let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+        // A later run without the limit gives it every tool its parent
+        // keeps, but `task` at the deepest.
+        let kept = access.is_some_and(|access| {
+            access.keeps("look") && !access.allows("look") && access.keeps(TASK) == (max_depth > 1)
+        });
+        assert!(kept, "{max_depth}: {access:?}");
+    }
 }
 
 #[test]
