@@ -491,28 +491,28 @@ where
 
         let embeddings_table_sql = conn
             .call(move |conn| {
-                conn.execute_batch("BEGIN")?;
+                let tx = conn.transaction()?;
 
-                conn.execute_batch(&create_table)?;
+                tx.execute_batch(&create_table)?;
 
                 for index_stmt in create_indexes {
-                    conn.execute_batch(&index_stmt)?;
+                    tx.execute_batch(&index_stmt)?;
                 }
 
-                conn.execute_batch(&format!(
+                tx.execute_batch(&format!(
                     "CREATE VIRTUAL TABLE IF NOT EXISTS {embeddings_table_name_for_sql} USING vec0({embeddings_columns})"
                 ))?;
-                conn.execute_batch(&format!(
+                tx.execute_batch(&format!(
                     "CREATE TABLE IF NOT EXISTS {embedding_map_table_name_for_sql} (
                         embedding_rowid INTEGER PRIMARY KEY AUTOINCREMENT,
                         document_rowid INTEGER NOT NULL
                     )"
                 ))?;
-                conn.execute_batch(&format!(
+                tx.execute_batch(&format!(
                     "CREATE INDEX IF NOT EXISTS idx_{table_name}_embedding_map_document_rowid ON {embedding_map_table_name_for_sql}(document_rowid)"
                 ))?;
 
-                conn.execute_batch("COMMIT")?;
+                tx.commit()?;
 
                 let schema_sql = conn
                     .query_row(
