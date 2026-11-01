@@ -234,7 +234,8 @@ impl From<Option<String>> for SystemPrompt {
 }
 
 /// Which registered tools the agent may call: those it keeps, saved with
-/// the session, within this run's tools ([`RunTools`]), which never are.
+/// the session, within this run's tools ([`RunTools`]), which the session
+/// never saves.
 /// Only [`within`](Self::within), [`narrow`](Self::narrow),
 /// [`grant`](Self::grant) and the kernel build a narrower one, so an
 /// access made from another never has a tool that one lacks; before it

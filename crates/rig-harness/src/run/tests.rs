@@ -144,7 +144,6 @@ fn the_unknown_names_are_named_with_the_tools_they_likely_mean() {
 #[test]
 fn the_start_makes_the_names_the_runs_tools_and_leaves_every_access() {
     let (mut app, held) = app(Front::new("view").on_terminal(), true, Some("read"));
-    register(&mut app, "shell");
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
     app.world_mut().despawn(held);

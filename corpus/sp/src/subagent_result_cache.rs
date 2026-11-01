@@ -139,7 +139,8 @@ type Parent<'a> = (
 
 /// The key of `request` from `parent`'s settings, for a subagent at
 /// `depth` of at most `max_depth`, as `rig_basics::subagents` would settle
-/// them, or `None` when it is no task the cache takes or `task` refuses.
+/// them, or `None` when it is no task the cache takes or its tools or
+/// depth are refused.
 fn key_of(
     request: &SpawnSubagent,
     (model, &effort, access): Parent,
