@@ -1146,7 +1146,8 @@ budget's. Either reaches the agent and every agent below it in `SpawnedBy`,
 even when its own agent is idle: stopping follows ancestry, so work meant to
 outlive its parent is spawned without `SpawnedBy`. Each agent such a stop
 reached, idle or not, gets a `StopReached` with the cause and whether it was
-idle (`idle()`), once its turn is gone, so an observer reacts once per agent (`On<StopReached>`,
+idle (`idle()`), once its turn is gone (idle agents after every running one
+the stop reached), so an observer reacts once per agent (`On<StopReached>`,
 `event_target()`) instead of walking `Spawned`. Observe `StopReached`, not
 `StopTurn`, to react to an agent being stopped: a `StopTurn` is only a request.
 `StopTurn::plugin_alone(agent, by, why)` is a plugin's decision

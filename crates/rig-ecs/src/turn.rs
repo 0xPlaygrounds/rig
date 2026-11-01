@@ -493,8 +493,9 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
 /// stopping follows ancestry, so work meant to outlive its parent is
 /// spawned without [`SpawnedBy`](super::agent::SpawnedBy). Each agent's
 /// turn stops as [`Stopper::stop`] says, and each agent reached gets one
-/// [`StopReached`], once its turn is gone ([`Reaching`]), unless the stop
-/// is a plugin's of its turn alone; the conversations are written to the
+/// [`StopReached`], once its turn is gone ([`Reaching`]), idle agents
+/// after every running one, unless the stop is a plugin's of its turn
+/// alone; the conversations are written to the
 /// log at once, in one flush, so a log that ends mid-turn means a crash,
 /// a turn a plugin carries on ([`CarryOn`]) or a log that stopped (shown
 /// once, as every log failure is); a stop never waits on the log.
