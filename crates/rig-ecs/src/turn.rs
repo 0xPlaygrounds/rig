@@ -512,10 +512,13 @@ pub(crate) fn on_stop_turn(
     let mut stopped = false;
     for agent in std::iter::once(root).chain(below) {
         let cause = interrupt.cause.clone();
+        // A turn another stop is still settling gets its `StopReached`
+        // from that stop, once its turn is gone.
+        let settling = stopper.settling(agent);
         let ran = stopper.stop(agent, cause.clone(), !interrupt.below);
         stopped |= ran;
         // A plugin ending one turn alone stops no agent: nothing to tell.
-        if interrupt.below {
+        if interrupt.below && !settling {
             stopper.commands.trigger(StopReached {
                 entity: agent,
                 cause,
@@ -567,6 +570,17 @@ impl Stopper<'_, '_> {
         }
     }
 
+    /// Whether `agent`'s turn was stopped or ended and the rest of that
+    /// waits in commands: its record has ended while the turn is still on.
+    fn settling(&self, agent: Entity) -> bool {
+        self.agents.get(agent).is_ok_and(|(_, conversation, _)| {
+            conversation
+                .turns()
+                .next_back()
+                .is_some_and(|(_, record)| record.end.is_some())
+        })
+    }
+
     /// Stops `agent`'s running turn, for `cause`; whether it had one. What
     /// a streaming reply had sent ([`Partial::stopped`]) is kept as the
     /// model's message, aborted, so the model reads its text as no answer
@@ -584,16 +598,12 @@ impl Stopper<'_, '_> {
     /// commands, and another stop, such as one a [`StopReached`] observer
     /// makes, can come before they apply.
     pub(crate) fn stop(&mut self, agent: Entity, cause: StopCause, alone: bool) -> bool {
+        if self.settling(agent) {
+            return false;
+        }
         let Ok((id, mut conversation, active)) = self.agents.get_mut(agent) else {
             return false;
         };
-        if conversation
-            .turns()
-            .next_back()
-            .is_some_and(|(_, record)| record.end.is_some())
-        {
-            return false;
-        }
         let why = cause.to_string();
         let turn = active.turn();
         let (reply, calls) = match self.turns.get_mut(turn) {

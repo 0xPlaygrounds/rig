@@ -81,7 +81,9 @@ fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_
     app.insert_resource(models)
         .insert_resource(Settings::from_toml(settings))
         .add_plugins((AgentPlugin, SessionLogPlugin, DebatePlugin))
-        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate))
+        .init_resource::<StillRunning>()
+        .add_observer(note_still_running);
     let host = app
         .world_mut()
         .spawn((Agent, ModelChoice("debate-pro/m".to_owned())))
@@ -139,6 +141,22 @@ fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_
             Some(Halt::Stopped),
             "the user stopped it"
         );
+    }
+    // No `StopReached` came while its agent's turn was still on.
+    assert_eq!(world.resource::<StillRunning>().0, 0);
+}
+
+/// How many `StopReached` came to an agent whose turn was still on.
+#[derive(Resource, Default)]
+struct StillRunning(usize);
+
+fn note_still_running(
+    reached: On<StopReached>,
+    turns: Query<(), With<ActiveTurn>>,
+    mut still: ResMut<StillRunning>,
+) {
+    if turns.contains(reached.event_target()) {
+        still.0 += 1;
     }
 }
 
