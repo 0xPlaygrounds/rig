@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{ChangeRecord, Conversation};
+use rig_core::conversation::{ChangeRecord, Conversation, Lineage};
 use serde_json::Value;
 
 use crate::blobs::{
@@ -17,7 +17,9 @@ use crate::store::now;
 use crate::writer::Book;
 use crate::{FORMAT, LogRewrite, Repair, SessionError, Stamp, Store, check_log_name};
 
-/// A session as its logs left it.
+/// A session as its logs left it. Construct a new session with
+/// [`Session::default`], or read an existing one with [`Session::read`].
+/// Its saved position is kept through clones and successful saves.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Session {
     /// Its agents, in the order their logs were started.
@@ -26,6 +28,7 @@ pub struct Session {
     pub saved: BTreeMap<String, Value>,
     /// What reading it repaired or worked around.
     pub repairs: Vec<Repair>,
+    pub(crate) seen: BTreeMap<String, (Lineage, u64)>,
 }
 
 /// An agent as its log left it.
@@ -461,6 +464,9 @@ pub(crate) fn session_of(folded: Vec<Folded>, repairs: Vec<Repair>) -> Session {
         ..Session::default()
     };
     for log in folded {
+        session
+            .seen
+            .insert(log.name.clone(), (log.header.lineage, log.next_seq));
         if log.name == SESSION {
             session.saved = log.state;
             continue;
@@ -538,16 +544,29 @@ impl Session {
     ///
     /// # Errors
     ///
-    /// [`SessionError::Changed`] when a log that holds changes moved on since
-    /// the agent's conversation was read, or holds another conversation,
-    /// before anything is written; when the store fails, a log is in another
-    /// format, or a line has no stamp; or when a write fails. It reads the
+    /// [`SessionError::Changed`] when any log was added, removed, rewritten or
+    /// appended to since this session was read or last saved, or an agent
+    /// holds another conversation, before anything is written. Reload the
+    /// session before applying edits after a conflict. An empty destination
+    /// may receive a copy of the session. Also fails when the store fails,
+    /// a log is in another format, a line has no stamp, or a write fails. It reads the
     /// stamps of the logs' changes, not the changes, so a change that does
     /// not apply is refused by [`Self::read`], not here.
     pub fn save(&mut self, store: &dyn Store) -> Result<(), SessionError> {
         let mut folded = Vec::new();
         for (name, lines) in &read_logs(store)? {
             folded.extend(tally(name, lines)?);
+        }
+        let current: BTreeMap<_, _> = folded
+            .iter()
+            .map(|log| (log.name.clone(), (log.header.lineage, log.next_seq)))
+            .collect();
+        if !current.is_empty() {
+            for name in self.seen.keys().chain(current.keys()) {
+                if self.seen.get(name) != current.get(name) {
+                    return Err(SessionError::Changed { log: name.clone() });
+                }
+            }
         }
         let had = |id: &str| folded.iter().find(|log| log.name == id);
         for agent in &self.agents {
@@ -573,7 +592,10 @@ impl Session {
         }
         let known = had(SESSION).map(|log| &log.state);
         book.states(SESSION, known, &self.saved);
-        book.flush(store)
+        let flushed = book.flush(store);
+        self.seen = current;
+        self.seen.extend(book.versions());
+        flushed
     }
 }
 

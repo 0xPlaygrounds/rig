@@ -382,6 +382,7 @@ pub(crate) fn restore_session(world: &mut World) {
         agents,
         saved: state,
         repairs,
+        ..
     } = session;
     let mut notices: Vec<Notice> = repairs
         .iter()

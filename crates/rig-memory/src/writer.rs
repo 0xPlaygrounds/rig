@@ -60,6 +60,15 @@ pub(crate) struct Book {
 }
 
 impl Book {
+    /// The position of each log with no queued records left to write.
+    pub(crate) fn versions(&self) -> BTreeMap<String, (Lineage, u64)> {
+        self.logs
+            .iter()
+            .filter(|(_, log)| log.len > 0 && log.pending.is_empty())
+            .map(|(name, log)| (name.clone(), (log.lineage, log.next_seq)))
+            .collect()
+    }
+
     /// A book that goes on after the logs `folded`, each as it ends.
     pub fn after(folded: &[Folded]) -> Self {
         let parents: HashMap<&str, Option<&str>> = folded

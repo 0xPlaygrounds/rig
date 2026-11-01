@@ -16,3 +16,8 @@ A session in another format is refused untouched. `migration::SHIPPED` is the ch
 taking the whole session from one format to the next, that brings an earlier one to the current
 format through the session's own `Store`, keeping a copy of it as it was under `rig/kept/`. It has
 no step yet, as no earlier format was released. See the crate docs for the API.
+
+`Session::save` refuses a snapshot with `SessionError::Changed` if any log has
+changed since it was read or last saved, including saved values and rewrites.
+Read the session again before reapplying edits after a conflict. Construct a new
+session with `Session::default()` and then set its public fields.

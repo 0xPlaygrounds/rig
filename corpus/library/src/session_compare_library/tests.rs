@@ -123,10 +123,8 @@ fn save_session(dir: &Path, rest: Vec<Message>, model: &str) -> Option<DirStore>
         ..SavedAgent::default()
     };
     agent.saved.insert(MODEL.to_owned(), json!(model));
-    let mut session = Session {
-        agents: vec![agent],
-        ..Session::default()
-    };
+    let mut session = Session::default();
+    session.agents = vec![agent];
     let spent = json!({
         "total": {"tokens": {"input_tokens": 1200, "output_tokens": 300}, "cost": 0.05, "unpriced": 0, "calls": 3},
         "models": {model: {"tokens": {}, "cost": 0.05, "unpriced": 0, "calls": 3}},

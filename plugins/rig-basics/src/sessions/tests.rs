@@ -203,10 +203,8 @@ fn a_session_written_through_the_stores_is_listed() {
         ..SavedAgent::default()
     };
     agent.conversation.push(Message::user("Port the CLI"));
-    let mut session = Session {
-        agents: vec![agent],
-        ..Session::default()
-    };
+    let mut session = Session::default();
+    session.agents = vec![agent];
     let written = stores.open(&dir).and_then(|store| session.save(&*store));
     assert!(written.is_ok(), "{written:?}");
     assert!(dir.mark_saved().is_ok());
