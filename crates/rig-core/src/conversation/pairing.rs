@@ -122,21 +122,36 @@ pub fn answered_by<'c, 'a, T>(
     found
 }
 
-/// The item of each of `calls`, in call order: the one kept at its place,
-/// else the placeless one [`answered_by`] pairs with it.
+/// The item of each of `calls`, in call order: the one kept at its place
+/// for its id, else one of the rest, kept elsewhere or without a place,
+/// that [`answered_by`] pairs with it. An edit that deletes a call moves
+/// the next into its place, so a place holds its item only for its call.
 pub fn placed<T: Copy>(
     calls: &[(CallRef, &CallId)],
     items: &[(&CallId, Option<CallRef>, T)],
 ) -> Vec<Option<T>> {
-    let placeless = items.iter().filter(|(_, at, _)| at.is_none());
-    let paired = answered_by(
-        calls.iter().map(|(_, id)| *id),
-        placeless.map(|&(id, _, item)| (id, item)),
-    );
-    let at = |place: CallRef| items.iter().find(|(_, at, _)| *at == Some(place));
-    let calls = calls.iter().zip(paired);
-    calls
-        .map(|((place, _), paired)| at(*place).map(|&(.., item)| item).or(paired))
+    let kept: Vec<Option<usize>> = calls
+        .iter()
+        .map(|(place, call)| {
+            let here =
+                |(id, at, _): &(&CallId, Option<CallRef>, T)| *at == Some(*place) && id == call;
+            items.iter().position(here)
+        })
+        .collect();
+    let rest = (0..)
+        .zip(items)
+        .filter(|(at, _)| !kept.contains(&Some(*at)));
+    let waiting = calls.iter().zip(&kept).filter(|(_, kept)| kept.is_none());
+    let mut paired = answered_by(
+        waiting.map(|((_, id), _)| *id),
+        rest.map(|(_, &(id, _, item))| (id, item)),
+    )
+    .into_iter();
+    kept.into_iter()
+        .map(|kept| match kept {
+            Some(at) => items.get(at).map(|&(.., item)| item),
+            None => paired.next().flatten(),
+        })
         .collect()
 }
 

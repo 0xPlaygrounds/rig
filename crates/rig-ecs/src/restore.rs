@@ -130,11 +130,8 @@ fn marks(conversation: &rig_core::conversation::Conversation) -> Vec<(AsideId, C
 }
 
 /// The mark of each of `calls`, the calls a reply still owes with their
-/// places, among `marks`, in call order: the mark saved at its place, else,
-/// among marks saved without a place, the one [`answered_by`] pairs with
-/// it.
-///
-/// [`answered_by`]: rig_core::conversation::pairing::answered_by
+/// places, among `marks`, in call order: the mark saved at its place for
+/// its id, else, among the rest, the one [`placed`] pairs with it.
 fn marked<'m>(
     calls: &[(CallRef, ToolCall)],
     marks: &'m [(AsideId, CallMark)],

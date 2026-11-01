@@ -467,3 +467,21 @@ fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
     );
     assert!(normalized.repairs.is_empty() && normalized.merged.is_empty());
 }
+
+/// An edit that deletes the first of two calls moves the second into the
+/// first's place; it keeps its own item, not the one kept at that place.
+#[test]
+fn a_call_moved_into_a_deleted_calls_place_keeps_its_own_item() {
+    let place = |index| CallRef {
+        reply: MessageId(1),
+        index,
+    };
+    let (first, second) = (id("c1"), id("c2"));
+    let items = [
+        (&first, Some(place(0)), "first's"),
+        (&second, Some(place(1)), "second's"),
+    ];
+    assert_eq!(placed(&[(place(0), &second)], &items), [Some("second's")]);
+    let both = [(place(0), &first), (place(1), &second)];
+    assert_eq!(placed(&both, &items), [Some("first's"), Some("second's")]);
+}

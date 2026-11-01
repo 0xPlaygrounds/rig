@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, MemoryStore, app_on, calls, collect, first_agent,
     log_ended, reply, run_until, scratch_home, scripted_models, tui_view,
@@ -330,5 +330,70 @@ skip { next }
         "{said}"
     );
     assert_eq!(messages(&app, agent), marked);
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// Deleting the first of a reply's two calls moves the second into its
+/// place, so the reply gets a new id: what was kept at the old places,
+/// such as a call's run time or a stop's cut list, matches nothing.
+#[cfg(unix)]
+#[test]
+fn a_reply_whose_calls_an_edit_moved_gets_a_new_id() {
+    let home = scratch_home("oc-transcript-in-editor-moved");
+    let home = home.root().to_path_buf();
+    assert!(std::fs::create_dir_all(&home).is_ok());
+    let command = |command: &str| serde_json::json!({ "command": command });
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("c1", "shell", command("one")),
+            MockStreamEvent::tool_call("c2", "shell", command("two")),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Both ran."),
+    ]);
+    let store = MemoryStore::default();
+    let started = start(&store, &model, &home);
+    assert!(started.is_some(), "the session has one agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "Run both.");
+    let reply = |app: &App| {
+        let conversation = app.world().get::<Conversation>(agent);
+        let entries = conversation.into_iter().flat_map(|it| it.entries());
+        let calls = |entry: &EntryRef<'_>| matches!(entry.message, Message::Assistant(turn) if turn.tool_calls().next().is_some());
+        entries
+            .filter(calls)
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>()
+    };
+    let before = reply(&app);
+    assert_eq!(before.len(), 1, "{}", messages(&app, agent));
+
+    app.world_mut()
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
+    let drop_first = script(
+        &home,
+        "drop-first.sh",
+        &awk(
+            r#"/^## \[/ { skip = 0 } /^## \[3\] tool-result shell c1/ { skip = 1 } !skip { print }"#,
+        ),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_first,
+        "Edited the conversation",
+    );
+    let left = messages(&app, agent);
+    assert!(
+        !left.contains("\"one\"") && left.contains("\"two\""),
+        "{left}\n{said}"
+    );
+    assert!(paired(&app, agent));
+    let after = reply(&app);
+    assert_eq!(after.len(), 1, "{left}");
+    assert_ne!(after, before, "the reply got a new id");
     std::fs::remove_dir_all(&home).ok();
 }

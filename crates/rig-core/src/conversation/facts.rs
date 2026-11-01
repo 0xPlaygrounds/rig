@@ -35,8 +35,8 @@ pub struct ResultFacts(Vec<(CallId, ToolResultContext)>);
 
 impl ResultFacts {
     /// What each of a reply's `calls` published, if anything: the facts
-    /// kept for its place, else the placeless ones
-    /// [`answered_by`](super::pairing::answered_by) pairs with it.
+    /// kept for its place and id, else, among the rest, those
+    /// [`placed`](super::pairing::placed) pairs with it.
     pub fn of<'c>(
         &self,
         calls: impl IntoIterator<Item = (CallRef, &'c CallId)>,
