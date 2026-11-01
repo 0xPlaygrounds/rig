@@ -736,6 +736,11 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
             });
         }
     }
+    // How many calls each kept reply has before merging, which only adds
+    // calls after its own.
+    let asked: Vec<_> = (entries.iter())
+        .filter_map(|entry| Some((entry.id?, ids(&entry.message).0.len())))
+        .collect();
     let normalized = pairing::normalize(entries);
     let worse = normalized
         .repairs
@@ -757,17 +762,8 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
     let mut entries = normalized.entries;
     for entry in &mut entries {
         let calls = ids(&entry.message).0;
-        let kept = original
-            .iter()
-            .find(|was| was.id.is_some() && was.id == entry.id);
-        // Whole calls, as ids alone repeat across replies.
-        let asked = |message: &Message| match message {
-            Message::Assistant(turn) => turn.tool_calls().cloned().collect(),
-            _ => Vec::new(),
-        };
-        let placed =
-            kept.is_some_and(|was| asked(&was.message).starts_with(&asked(&entry.message)));
-        if entry.id.is_none() || placed {
+        let had = asked.iter().find(|(id, _)| Some(*id) == entry.id);
+        if entry.id.is_none() || had.is_some_and(|&(_, had)| had == calls.len()) {
             continue;
         }
         let repeated = calls

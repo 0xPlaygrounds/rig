@@ -420,19 +420,21 @@ fn a_reply_whose_calls_an_edit_moved_gets_a_new_id() {
 /// Taking out a reply's only call, and its result, merges the next reply
 /// into it: that reply's call then sits where the taken call was, so the
 /// merged reply gets a new id and nothing kept for the old place is its,
-/// also when the two calls have the same id, as replies may reuse one.
+/// also when the two calls have the same id, as replies may reuse one,
+/// and when they are the same call.
 #[cfg(unix)]
 #[test]
 fn a_reply_a_merge_moves_a_call_into_gets_a_new_id() {
-    merge_moves_a_call("c2");
-    merge_moves_a_call("c1");
+    merge_moves_a_call("c2", "two");
+    merge_moves_a_call("c1", "two");
+    merge_moves_a_call("c1", "one");
 }
 
 /// [`a_reply_a_merge_moves_a_call_into_gets_a_new_id`], with `second` the
-/// id of the second reply's call.
+/// id and command of the second reply's call.
 #[cfg(unix)]
-fn merge_moves_a_call(second: &str) {
-    let home = scratch_home(&format!("oc-transcript-in-editor-merged-{second}"));
+fn merge_moves_a_call(second: &str, ran: &str) {
+    let home = scratch_home(&format!("oc-transcript-in-editor-merged-{second}-{ran}"));
     let home = home.root().to_path_buf();
     assert!(std::fs::create_dir_all(&home).is_ok());
     let command = |command: &str| serde_json::json!({ "command": command });
@@ -443,7 +445,7 @@ fn merge_moves_a_call(second: &str) {
             MockStreamEvent::final_response_with_default_usage(),
         ],
         vec![
-            MockStreamEvent::tool_call(second, "shell", command("two")),
+            MockStreamEvent::tool_call(second, "shell", command(ran)),
             MockStreamEvent::final_response_with_default_usage(),
         ],
         reply("Both ran."),
@@ -483,10 +485,8 @@ fence { if (/^```$/) fence = 0; next }
         "Edited the conversation",
     );
     let left = messages(&app, agent);
-    assert!(
-        !left.contains("\"one\"") && left.contains("\"two\"") && left.contains("Looking."),
-        "{left}\n{said}"
-    );
+    let kept = left.matches(&format!("\"{ran}\"")).count();
+    assert!(kept == 1 && left.contains("Looking."), "{left}\n{said}");
     let after = replies(&app);
     assert_eq!(after.len(), 2, "{left}");
     let merged = after.first().copied();
