@@ -717,10 +717,17 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
         // a reply's calls that share one an edit took out or moved.
         let repeats = |id: &&String| before.iter().filter(|was| was == id).count() > 1;
         let shared = |calls: &[String]| calls.iter().filter(repeats).cloned().collect::<Vec<_>>();
+        let count = |calls: &[String], id: &String| calls.iter().filter(|it| *it == id).count();
         let changed = shared(&calls) != shared(&before);
-        if let Some(id) = shared(&before).first().filter(|_| changed) {
+        let named = shared(&before)
+            .into_iter()
+            .find(|id| count(&calls, id) != count(&before, id));
+        if let Some(id) = named
+            .or_else(|| shared(&before).into_iter().next())
+            .filter(|_| changed)
+        {
             return Err(format!(
-                "a reply asks for two calls with the id `{id}`, so the edit can't tell which one it changed; edit that reply's text only"
+                "a reply asks for two calls with the id `{id}`, so the edit can't tell which one it changed; leave that reply's calls with that id as they are"
             ));
         }
         if !empty {

@@ -136,11 +136,15 @@ fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
         app.update();
     };
     say(&mut app, source, ["one?", "one."]);
-    let Some(middle) = fork(&mut app, source) else {
+    let middle = fork(&mut app, source);
+    assert!(middle.is_some(), "the first fork is made");
+    let Some(middle) = middle else {
         return;
     };
     say(&mut app, middle, ["two?", "two."]);
-    let Some(last) = fork(&mut app, middle) else {
+    let last = fork(&mut app, middle);
+    assert!(last.is_some(), "the second fork is made");
+    let Some(last) = last else {
         return;
     };
     say(&mut app, last, ["three?", "three."]);
