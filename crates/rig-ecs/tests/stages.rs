@@ -3370,6 +3370,49 @@ fn a_turn_a_plugin_stops_keeps_what_streamed() {
     assert_eq!(halted, Some(Halt::Kept));
 }
 
+/// For each `StopReached`, whether its agent's turn was still on.
+#[derive(Resource, Default)]
+struct Reached(Vec<bool>);
+
+/// A stop that reaches below, made while a plugin's stop of the turn
+/// alone settles it, still reaches the agent: once, after its turn is gone.
+#[test]
+fn a_stop_made_as_a_plugins_stop_of_the_turn_alone_settles_reaches_the_agent_once_its_turn_is_gone()
+{
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Halfway));
+    }
+    let stop_all = |ended: On<Add<TurnOutcome>>,
+                    turns: Query<(&TurnOutcome, &TurnOf)>,
+                    mut commands: Commands| {
+        if let Ok((TurnOutcome::Stopped(stop), &TurnOf(agent))) = turns.get(ended.entity)
+            && stop.alone()
+        {
+            commands.trigger(StopTurn::plugin(agent, "policy", "stop all work"));
+        }
+    };
+    let reached =
+        |reached: On<StopReached>, on: Query<Has<ActiveTurn>>, mut log: ResMut<Reached>| {
+            log.0.extend(on.get(reached.event_target()));
+        };
+    app.init_resource::<Reached>()
+        .add_observer(stop_all)
+        .add_observer(reached);
+    let streamed = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials.iter(world).any(|partial| !partial.text.is_empty())
+    };
+    assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
+    let budget = StopTurn::plugin_alone(agent, "budget", "over budget");
+    app.world_mut().trigger(budget);
+    app.update();
+    assert!(app.world().get::<ActiveTurn>(agent).is_none());
+    assert_eq!(app.world().resource::<Reached>().0, [false]);
+}
+
 /// A model call superseded while it streamed is not the turn's reply: an
 /// interrupt before it settles keeps none of its text.
 #[test]

@@ -224,6 +224,7 @@ impl Plugin for AgentPlugin {
             .add_observer(fork::fork_agent)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_stop_turn)
+            .add_observer(turn::reach_once_gone)
             .add_observer(inbox::unsent_on_turn_end)
             .add_observer(inbox::unmark)
             .add_observer(model::on_set_model)

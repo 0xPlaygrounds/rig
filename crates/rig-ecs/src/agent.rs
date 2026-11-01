@@ -695,8 +695,8 @@ impl StopTurn {
     }
 }
 
-/// On each agent a [`StopTurn`] reached, idle or not, once its turn
-/// stopped: the stop's cause. Only the kernel makes it, so an observer
+/// On each agent a [`StopTurn`] reached, idle or not, once, after its turn
+/// is gone: the stop's cause. Only the kernel makes it, so an observer
 /// reads one per agent instead of walking [`Spawned`] itself. A
 /// [`StopTurn::plugin_alone`] sends none, and neither do the stops of the
 /// app's exit and of a restart.
