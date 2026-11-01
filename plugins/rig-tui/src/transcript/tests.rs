@@ -7,7 +7,7 @@ use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
-use rig_core::conversation::TurnEnd;
+use rig_core::conversation::{CallRef, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, Image, Reasoning, ToolCall, ToolFunction, ToolName,
@@ -21,7 +21,7 @@ use rig_ecs::stage::{
     Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
 };
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::ModelRequest;
+use rig_ecs::turn::{ModelRequest, TurnCall};
 use rig_harness::prelude::ToolProgress;
 use rig_harness::prelude::{App, Last, Update};
 use rig_harness::rig_core::conversation::Note;
@@ -131,7 +131,7 @@ fn following_again_drops_the_held_row() {
 fn drawn(
     transcript: &mut Transcript,
     conversation: &Conversation,
-    states: (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    states: (&BTreeMap<CallRef, CallState>, &BTreeMap<CallRef, String>),
     renderers: &Renderers,
 ) -> String {
     drawn_at(transcript, conversation, states, renderers, WIDTH)
@@ -141,7 +141,7 @@ fn drawn(
 fn drawn_at(
     transcript: &mut Transcript,
     conversation: &Conversation,
-    (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    (calls, outputs): (&BTreeMap<CallRef, CallState>, &BTreeMap<CallRef, String>),
     renderers: &Renderers,
     width: u16,
 ) -> String {
@@ -150,6 +150,7 @@ fn drawn_at(
     let entries = ShownEntries::new(conversation, None);
     let look = Look {
         renderers,
+        agent: None,
         calls,
         outputs,
         inside: HashMap::new(),
@@ -189,13 +190,18 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let effect = world.spawn(ToolRequest { call: call.clone() }).id();
     let lease = "waiting for lease on src/a.rs";
     let hold = world.spawn((Name::new(lease), HoldOf(effect))).id();
+    // The call is the reply's first, as the kernel would place it.
+    let reply = conversation.entries().next().map(|entry| entry.id);
+    let at = reply.map(|reply| CallRef { reply, index: 0 });
     let states = |world: &mut World| {
-        let states = world.run_system_once(move |calls: CallStates| calls.of([effect]));
-        states.unwrap_or_default()
+        let state = world.run_system_once(move |calls: CallStates| calls.state(effect));
+        let state = state.ok().flatten().map(|(_, state)| state);
+        at.zip(state).into_iter().collect::<BTreeMap<_, _>>()
     };
     let held = states(&mut world);
     let names = vec![lease.to_owned()];
-    assert_eq!(held.get(&call.id), Some(&CallState::Held(names)));
+    let first = |states: &BTreeMap<CallRef, CallState>| states.values().next().cloned();
+    assert_eq!(first(&held), Some(CallState::Held(names)));
     let mut transcript = Transcript::default();
     let none = (BTreeMap::new(), Renderers::default());
     let shown = drawn(&mut transcript, &conversation, (&held, &none.0), &none.1);
@@ -203,7 +209,7 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
 
     world.despawn(hold);
     let waiting = states(&mut world);
-    assert_eq!(waiting.get(&call.id), Some(&CallState::Waiting));
+    assert_eq!(first(&waiting), Some(CallState::Waiting));
     let shown = drawn(&mut transcript, &conversation, (&waiting, &none.0), &none.1);
     assert!(!shown.contains("held:"), "{shown}");
 
@@ -214,7 +220,7 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     world.entity_mut(effect).insert((started, progress));
     let running = states(&mut world);
     let line = Some("12 of 40 files".to_owned());
-    assert_eq!(running.get(&call.id), Some(&CallState::Running(line)));
+    assert_eq!(first(&running), Some(CallState::Running(line)));
     let shown = drawn(&mut transcript, &conversation, (&running, &none.0), &none.1);
     assert!(shown.contains("   12 of 40 files"), "{shown}");
     world
@@ -281,11 +287,15 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
         .in_set(RenderSystems::Render),
     );
     let mut renderers = Renderers::default();
-    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
+    let Some(reply) = conversation.entries().next().map(|entry| entry.id) else {
+        return;
+    };
+    let at = CallRef { reply, index: 0 };
+    let calls = BTreeMap::from([(at, CallState::Running(None))]);
     let mut transcript = Transcript::default();
     let mut outputs = BTreeMap::new();
     for line in ["cc a.c", "cc b.c", "ld app"] {
-        let text = outputs.entry(call.id.clone()).or_insert_with(String::new);
+        let text = outputs.entry(at).or_insert_with(String::new);
         text.push_str(&format!("{line}\n"));
         renderers.pass = Pass::Collect;
         drawn(
@@ -809,8 +819,12 @@ fn a_stopped_call_wins_over_its_live_state() {
         at: Some(at),
         calls,
     });
-    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
-    let outputs = BTreeMap::from([(call.id.clone(), "cc a.c".to_owned())]);
+    let call = CallRef {
+        reply: at,
+        index: 0,
+    };
+    let calls = BTreeMap::from([(call, CallState::Running(None))]);
+    let outputs = BTreeMap::from([(call, "cc a.c".to_owned())]);
     let mut transcript = Transcript::default();
     let renderers = Renderers::default();
     let shown = drawn(
@@ -1301,11 +1315,13 @@ fn plain(kind: &str) -> (EffectRequest, Outcome) {
 }
 
 /// The rows a `consult` renderer draws of `agent`'s transcript: one per
-/// call under its call, with its depth, name, agent, state and first line.
+/// call under its call, with its depth, name, agent, state and first line,
+/// each after a `↳ `.
 fn consult_rows(app: &mut App, agent: Entity) -> Vec<String> {
     let rows = laid_out(app, agent);
     let rows = rows.iter().flat_map(DrawnTranscript::rows);
-    rows.map(|row| row.text.clone()).collect()
+    let rows = rows.filter_map(|row| row.text.strip_prefix("↳ "));
+    rows.map(str::to_owned).collect()
 }
 
 #[test]
@@ -1328,7 +1344,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
                             let agent = child.agent.as_deref().unwrap_or("-");
                             let line = child.answer.as_deref().unwrap_or("-");
                             let (depth, name, state) = (child.depth, &child.name, &child.state);
-                            Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+                            Line::from(format!("↳ {depth} {name} {agent} {state:?} {line}"))
                         });
                         children.map(LookLine::from).collect()
                     };
@@ -1342,10 +1358,6 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
         return;
     };
     let consulting = ToolCall::from_wire("c1", ToolFunction::new(consult, json!({})));
-    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
-        consulting.clone(),
-    )]));
-    say(&mut app, agent, asked.clone());
     let id = app.world().get::<AgentId>(agent).cloned();
     let helper = (Name::new("helper"), AgentId("helper".to_owned()));
     let helper = app.world_mut().spawn(helper).id();
@@ -1353,11 +1365,21 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     // spawns a helper (a plain effect) and briefs it (another); the
     // helper's model call, under the brief, asks for a read.
     let model = |text: &str| ModelRequest::new(CompletionRequest::new(Message::user(text)));
-    let turn = (model("consult"), ForAgent(agent));
-    let turn = settle(&mut app, None, (turn, reply("", vec![consulting.clone()])));
-    let answered = Outcome::from(ToolResult::success("both answered".to_owned().into()));
-    let consulted = (ToolRequest { call: consulting }, ForAgent(agent), answered);
-    let consulted = settle(&mut app, turn, consulted);
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
+    let asking = (TurnCall, CallOf(turn), ForAgent(agent));
+    settle(&mut app, None, (asking, reply("", vec![consulting])));
+    app.update();
+    // The kernel spawned the consult as its reply asked for it.
+    let records = &app.world().resource::<Records>().0;
+    let consulted = records.iter().find_map(|record| match &record.kind {
+        EffectKind::ToolCall { name, .. } if name == "consult" => Some(record.id),
+        _ => None,
+    });
+    let asked = app.world().get::<Conversation>(agent);
+    let asked = asked.and_then(|conversation| conversation.messages().first().cloned());
+    let Some(asked) = asked.map(|asked| (*asked).clone()) else {
+        return;
+    };
     let spawned = settle(&mut app, consulted, plain("subagent"));
     let briefed = settle(&mut app, spawned, (plain("message"), ForAgent(helper)));
     let reading = ToolCall::from_wire("r1", ToolFunction::new(read, json!({ "path": "a.rs" })));

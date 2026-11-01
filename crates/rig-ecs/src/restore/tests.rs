@@ -9,7 +9,7 @@ use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use futures::StreamExt;
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::conversation::{Author, Change, Entry, Halt, MessageId, STOPPED, TurnEnd};
+use rig_core::conversation::{Author, CallRef, Change, Entry, Halt, MessageId, STOPPED, TurnEnd};
 use rig_memory::{Files, LogWriteError, MemoryStore, Store};
 use serde_json::Value;
 
@@ -34,15 +34,20 @@ use crate::stage::{
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
+use rig_core::completion::{CompletionResponse, FinishReason};
+
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{Decider, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
-use rig_core::message::CallId;
+use rig_core::message::{
+    AssistantContent, CallId, Origin, ToolCall, ToolFunction, ToolName, UserContent,
+};
 use rig_core::operation::Completion;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::tool::{ExitStatus, Scope, Tool, ToolContext, ToolExecutionError, Touches};
+use std::sync::Arc;
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
@@ -412,9 +417,19 @@ fn saved_exit(store: &MemoryStore, call: &str) -> Option<ExitStatus> {
     let session = rig_memory::Session::read(store).ok()?;
     let conversation = session.agents.into_iter().next()?.conversation;
     let call = CallId::from_wire(call);
-    let facts = conversation
-        .entries()
-        .find_map(|entry| entry.facts.get(&call).cloned())?;
+    let entries: Vec<_> = conversation.entries().collect();
+    let facts = entries.windows(2).find_map(|pair| {
+        let [reply, results] = pair else { return None };
+        let Message::Assistant(message) = reply.message else {
+            return None;
+        };
+        let calls: Vec<_> = CallRef::calls(reply.id, message).collect();
+        let facts = results
+            .facts
+            .of(calls.iter().map(|(at, asked)| (*at, &asked.id)));
+        let mut found = calls.iter().zip(facts);
+        found.find_map(|((_, asked), facts)| facts.filter(|_| asked.id == call).cloned())
+    })?;
     facts.get::<ExitStatus>().ok().flatten()
 }
 
@@ -1339,6 +1354,100 @@ fn a_read_that_finished_before_a_crash_keeps_its_result() {
         "{said}"
     );
     assert!(app.world().resource::<Gated>().0.is_empty());
+}
+
+/// Answers the first model call with a reply asking to `peek`, then
+/// `look`, under one id, as a replayed or a plugin's answer may: a live
+/// stream renames a repeated id, an answer decided for it does not.
+fn answer_twice(
+    mut calls: Query<&mut Decision, (With<TurnCall>, ReadyToStart)>,
+    mut answered: Local<bool>,
+) {
+    for mut decision in &mut calls {
+        let call = |tool: &str| {
+            let name = ToolName::new(tool).ok()?;
+            let function = ToolFunction::new(name, serde_json::json!({}));
+            Some(AssistantContent::ToolCall(ToolCall::from_wire(
+                "c9", function,
+            )))
+        };
+        let choice: Option<Vec<_>> = [call("peek"), call("look")].into_iter().collect();
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = choice.map(|choice| {
+            let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+            Ok(rig_core::effect::Answered::Completion(Arc::new(
+                reply.with_finish_reason(FinishReason::ToolCalls),
+            )))
+        });
+        if let Some(reply) = reply.filter(|_| !*answered) {
+            *answered = decision.decide(Decider::plugin("replay"), reply);
+        }
+    }
+}
+
+#[test]
+fn each_call_sharing_an_id_keeps_its_own_result_across_a_crash() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Peek)
+            .add_systems(AgentPass, answer_twice.in_set(Stage::Gate));
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    // The second call settled, and the session saved it, while the first
+    // still runs.
+    let saved = store.clone();
+    let settled = move |_: &World| {
+        let session = rig_memory::Session::read(&saved);
+        let agents = session.map(|session| session.agents).unwrap_or_default();
+        let asides = agents.iter().flat_map(|agent| agent.conversation.asides());
+        let mut states = asides.map(|(_, aside)| aside.value.get("state").cloned());
+        states.any(|state| state == Some(Value::from("settled")))
+    };
+    assert!(run_until(&mut app, settled));
+    // A crash: nothing more is written.
+    drop(app);
+    let (_, said, store) = restart_after(store, |app| {
+        app.add_tool(Peek);
+    });
+    let session = rig_memory::Session::read(&store).map(|session| session.agents);
+    let agents = session.unwrap_or_default();
+    let conversation = agents.first().map(|agent| &agent.conversation);
+    let entries: Vec<_> = conversation
+        .into_iter()
+        .flat_map(|it| it.entries())
+        .collect();
+    let answered = entries.windows(2).find_map(|pair| {
+        let [reply, results] = pair else { return None };
+        let (Message::Assistant(asked), Message::User { content }) =
+            (reply.message, results.message)
+        else {
+            return None;
+        };
+        let calls: Vec<_> = CallRef::calls(reply.id, asked).collect();
+        let facts = results
+            .facts
+            .of(calls.iter().map(|(at, call)| (*at, &call.id)));
+        let results = content.iter().filter_map(|part| match part {
+            UserContent::ToolResult(result) => Some(result),
+            _ => None,
+        });
+        let results = results.map(|result| {
+            let text = serde_json::to_string(&result.content).unwrap_or_default();
+            (result.name.as_str().to_owned(), text.contains("seen"))
+        });
+        let exits = facts
+            .into_iter()
+            .map(|facts| facts.and_then(|facts| facts.get::<ExitStatus>().ok().flatten()));
+        Some((results.collect::<Vec<_>>(), exits.collect::<Vec<_>>()))
+    });
+    // `look` keeps what it said and published; `peek` is cut short.
+    let calls = vec![("peek".to_owned(), false), ("look".to_owned(), true)];
+    let expected = (calls, vec![None, Some(ExitStatus::Exited(7))]);
+    assert_eq!(answered, Some(expected), "{said}");
 }
 
 /// Keeps every message a turn did not send in the inbox.

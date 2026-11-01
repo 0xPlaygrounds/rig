@@ -79,16 +79,16 @@ pub mod prelude {
     };
     pub use crate::tasks::{Done, PollTasks, Running, Wake};
     pub use crate::tools::{
-        AppToolsExt, CallHandler, DeclaredFootprint, Footprint, ToolCalled, ToolDef, ToolOptions,
-        ToolRequest, WorldToolsExt,
+        AppToolsExt, CallHandler, DeclaredFootprint, Footprint, InReply, ToolCalled, ToolDef,
+        ToolOptions, ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
         Adapted, Backoff, DroppedOptions, Exiting, FirstStreamed, ModelRequest, Recovery,
         RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{
-        Aside, AsideId, Author, AuthorKind, Change, ChangeRecord, Entry, EntryRef, Halt, MessageId,
-        RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
+        Aside, AsideId, Author, AuthorKind, CallRef, Change, ChangeRecord, Entry, EntryRef, Halt,
+        MessageId, RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
     };
     pub use rig_core::effect::Decider;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};

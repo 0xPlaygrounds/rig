@@ -38,7 +38,7 @@ use rig_core::completion::{
 };
 use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{
-    Author, AuthorKind, Entry, Halt, ResultFacts, TurnEnd, attached_file,
+    Author, AuthorKind, CallRef, Entry, Halt, MessageId, ResultFacts, TurnEnd, attached_file,
 };
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
@@ -73,7 +73,7 @@ use super::stage::{
     Started, SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, ToolDef, ToolRequest, offered, redacted};
+use super::tools::{Footprint, InReply, ToolDef, ToolRequest, offered, redacted};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -787,7 +787,14 @@ fn reply_results(
 ) -> Option<Entry> {
     let facts: ResultFacts = calls
         .iter()
-        .filter_map(|call| Some((call.request.call.id.clone(), call.facts()?)))
+        .filter_map(|call| {
+            let facts = call.facts().filter(|facts| !facts.is_empty())?;
+            let facts = match call.in_reply {
+                Some(at) => facts.with_at(at.at()),
+                None => facts,
+            };
+            Some((call.request.call.id.clone(), facts))
+        })
         .collect();
     let results: Vec<_> = calls
         .into_iter()
@@ -1453,12 +1460,13 @@ pub(crate) fn commit_turn_calls(
                     }
                     (Next::Failed(why), _) => fail(&mut commands, turn, why),
                     (Next::Call, None) => spawn_turn_call(&mut commands, turn, agent),
-                    (Next::Run(calls), None) => {
+                    (Next::Run(asked, calls), None) => {
                         state.reply = Some(effect.id());
                         let cut_off = cut_off(response);
-                        spawn_reply(&mut commands, (agent, turn), calls, effect.id(), &cut_off);
+                        let reply = (effect.id(), asked);
+                        spawn_reply(&mut commands, (agent, turn), calls, reply, &cut_off);
                     }
-                    (Next::Run(calls), Some(why)) => {
+                    (Next::Run(_, calls), Some(why)) => {
                         let results = close_pending_with(&calls, &format!("not run: {why}"));
                         commit_results(&mut answered.conversation, results);
                     }
@@ -1498,8 +1506,8 @@ enum Next {
     Failed(String),
     /// It calls the model again, with the messages sent meanwhile.
     Call,
-    /// It runs the reply's tool calls.
-    Run(Vec<ToolCall>),
+    /// It runs the tool calls of the reply, the entry it names.
+    Run(MessageId, Vec<ToolCall>),
 }
 
 /// Appends `response`, the reply to `agent`, and says what its turn does
@@ -1522,18 +1530,17 @@ fn commit_reply(
     if let Some(failure) = failure {
         return Next::Failed(failure);
     }
-    if let Some(message) = response.message() {
-        answered.conversation.push(message);
-        let through = answered.conversation.messages().len().checked_sub(1);
-        let through = through.and_then(|last| answered.conversation.id(last));
-        if let Some(through) = through.filter(|_| response.usage.context_tokens().is_some()) {
+    let reply = response.message().map(|message| {
+        let through = answered.conversation.push(message);
+        if response.usage.context_tokens().is_some() {
             let usage = response.usage;
             *answered.last = LastUsage(Some(Anchor { usage, through }));
             commands.entity(agent).remove::<ContextStale>();
         }
-    }
-    if !tool_calls.is_empty() {
-        return Next::Run(tool_calls);
+        through
+    });
+    if let Some(reply) = reply.filter(|_| !tool_calls.is_empty()) {
+        return Next::Run(reply, tool_calls);
     }
     // What was sent meanwhile carries the turn on. Inform messages go along
     // but carry nothing on.
@@ -1565,16 +1572,17 @@ pub(crate) struct Answered {
 }
 
 /// Spawns a call of `turn`, for `agent`, for each of `calls`, in order,
-/// asked for by the model call `reply`. Every call exists before any is
+/// asked for by the model call `reply`, whose reply is the entry `asked`:
+/// each call is [`InReply`] at its place. Every call exists before any is
 /// gated.
 pub(crate) fn spawn_reply(
     commands: &mut Commands,
     (agent, turn): (Entity, Entity),
     calls: Vec<ToolCall>,
-    reply: EffectId,
+    (reply, asked): (EffectId, MessageId),
     cut_off: &[ToolCall],
 ) {
-    for call in calls {
+    for (index, call) in (0..).zip(calls) {
         let refused = cut_off.iter().find(|cut| cut.id == call.id).map(|cut| {
             let name = cut.function.name.as_str();
             let why = feedback::output_limit_feedback(name, &cut.function.raw_arguments());
@@ -1585,6 +1593,10 @@ pub(crate) fn spawn_reply(
         });
         let mut call = commands.spawn((
             ToolRequest { call },
+            InReply::new(CallRef {
+                reply: asked,
+                index,
+            }),
             Effect::with_parent_id(Some(reply)),
             CallOf(turn),
             ForAgent(agent),
@@ -1611,6 +1623,7 @@ fn cut_off(response: &CompletionResponse) -> Vec<ToolCall> {
 pub(crate) struct ReplyCall {
     effect: &'static Effect,
     request: &'static ToolRequest,
+    in_reply: Option<&'static InReply>,
     outcome: Option<&'static Outcome>,
     if_stopped: Option<&'static IfStopped>,
     published: Option<&'static Published>,
@@ -1637,21 +1650,27 @@ impl ReplyCallItem<'_, '_> {
 }
 
 /// The calls of the reply `reply` among `calls`, in the reply's order:
-/// for each call the model asked for, the last effect that superseded it.
+/// for each call the model asked for ([`InReply`]), the last effect that
+/// superseded it.
 fn reply_calls<'a>(
     reply: EffectId,
     calls: &Calls,
     replies: &'a Query<ReplyCall>,
 ) -> Vec<ReplyCallItem<'a, 'a>> {
     let mut asked: Vec<ReplyCallItem<'a, 'a>> = Vec::new();
+    let mut seen: Vec<InReply> = Vec::new();
     for call in calls.iter() {
         let Ok(mut call) = replies.get(call) else {
             continue;
         };
-        let first = |at: &ReplyCallItem| at.request.call.id == call.request.call.id;
-        if call.effect.parent != Some(reply) || asked.iter().any(first) {
+        // A successor keeps the place of the call it supersedes.
+        let Some(&at) = call.in_reply.filter(|at| !seen.contains(*at)) else {
+            continue;
+        };
+        if call.effect.parent != Some(reply) {
             continue;
         }
+        seen.push(at);
         for _ in 0..calls.len() {
             match call
                 .successor
@@ -1724,10 +1743,11 @@ pub(crate) fn commit_replies(
         };
         if calls.iter().any(|call| !call.settled) {
             for call in calls.iter().filter(|call| call.settled) {
-                if let Some(outcome) = call.outcome {
+                if let (Some(outcome), Some(at)) = (call.outcome, call.in_reply) {
                     let result = outcome.tool_result();
                     let facts = || call.facts().unwrap_or_default();
-                    mark_settled(&mut conversation, &call.request.call.id, &result, facts);
+                    let call = (&call.request.call.id, at.at());
+                    mark_settled(&mut conversation, call, &result, facts);
                 }
             }
             continue;

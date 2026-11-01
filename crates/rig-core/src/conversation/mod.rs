@@ -49,6 +49,7 @@ pub use author::{Author, AuthorKind, RequestId};
 pub use facts::ResultFacts;
 pub use lineage::Lineage;
 pub use note::Note;
+pub use pairing::CallRef;
 pub use turn::{TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
@@ -667,9 +668,18 @@ impl Conversation {
     }
 
     /// The tool calls of the last assistant message that nothing answers
-    /// yet. See [`pairing::pending_calls`].
-    pub fn pending_calls(&self) -> Vec<ToolCall> {
-        pairing::pending_calls(&self.messages)
+    /// yet, each with its [`CallRef`]. See [`pairing::pending_calls`].
+    pub fn pending_calls(&self) -> Vec<(CallRef, ToolCall)> {
+        let Some((at, calls)) = pairing::pending(&self.messages) else {
+            return Vec::new();
+        };
+        let Some(reply) = self.id(at) else {
+            return Vec::new();
+        };
+        let calls = calls.into_iter();
+        calls
+            .map(|(index, call)| (CallRef { reply, index }, call.clone()))
+            .collect()
     }
 
     /// Whether the messages pair every tool call with its result. See

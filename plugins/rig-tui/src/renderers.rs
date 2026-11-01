@@ -11,7 +11,9 @@ use bevy_ecs::schedule::ScheduleLabel;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{Audio, Document, Image, ToolCall, ToolResult, UserContent, Video};
+use rig_core::message::{
+    Audio, Document, Image, ToolCall, ToolFunction, ToolResult, UserContent, Video,
+};
 use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_harness::rig_core::conversation::Note;
@@ -62,8 +64,9 @@ pub struct ToolCallView<'a> {
 pub struct ChildCall {
     /// How far below the call it is: 0 for one the call started itself.
     pub depth: usize,
-    /// The tool call, or `None` for a model call.
-    pub call: Option<ToolCall>,
+    /// The tool and the arguments it ran with, or `None` for a model
+    /// call.
+    pub call: Option<ToolFunction>,
     /// The tool's name, or the model's catalog reference (`vendor/model`),
     /// or `model` before it is known.
     pub name: String,

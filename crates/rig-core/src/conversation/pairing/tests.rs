@@ -1,5 +1,7 @@
 use super::*;
-use crate::message::{StopReason, ToolCall, ToolFunction, ToolResult, ToolResultContent};
+use crate::message::{
+    AssistantContent, StopReason, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+};
 
 fn tool_call(id: &str) -> ToolCall {
     ToolCall {
@@ -312,6 +314,30 @@ fn pending_calls_are_the_last_turns_unanswered_calls() {
         let cut = AssistantMessage::new(vec![call("cut")]).with_stop(stop);
         assert!(pending_calls(&[Message::Assistant(cut)]).is_empty());
     }
+}
+
+#[test]
+fn the_nth_result_with_an_id_answers_the_nth_call_with_it() {
+    let (c1, c2) = (id("c1"), id("c2"));
+    let calls = [&c1, &c2, &c1];
+    let answers = [(&c1, 'a'), (&c1, 'b'), (&c2, 'c'), (&c1, 'd')];
+    assert_eq!(
+        answered_by(calls, answers),
+        vec![Some('a'), Some('c'), Some('b')]
+    );
+    // One result for a repeated id answers its first call; the second is
+    // still owed.
+    let history = vec![
+        assistant(vec![call("c1"), call("c2"), call("c1")]),
+        results(&["c2", "c1"]),
+    ];
+    let pending = pending(&history).map(|(_, calls)| {
+        let calls = calls.into_iter();
+        calls
+            .map(|(at, call)| (at, call.id.clone()))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(pending, Some(vec![(2, c1)]));
 }
 
 #[test]

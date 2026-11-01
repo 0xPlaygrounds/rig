@@ -12,6 +12,7 @@ use bevy_ecs::system::{IntoObserverSystem, SystemParam};
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::ToolDefinition;
+use rig_core::conversation::CallRef;
 use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
@@ -127,6 +128,33 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 pub struct ToolRequest {
     /// The call as the model sent it.
     pub call: ToolCall,
+}
+
+/// Which call of its reply a tool call is: on each call a model's reply
+/// asked for, given by the kernel as it spawns the reply's calls, and by a
+/// restore. A reply may repeat a provider's call id; this tells its calls
+/// apart. A call that supersedes one keeps it.
+///
+/// Only the kernel gives one:
+///
+/// ```compile_fail,E0423
+/// # use rig_ecs::prelude::*;
+/// fn forge(at: CallRef) -> InReply {
+///     InReply(at)
+/// }
+/// ```
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InReply(CallRef);
+
+impl InReply {
+    pub(crate) fn new(at: CallRef) -> Self {
+        Self(at)
+    }
+
+    /// The call it is.
+    pub fn at(&self) -> CallRef {
+        self.0
+    }
 }
 
 /// The handler that answers a tool call, on the call: its tool's, which a

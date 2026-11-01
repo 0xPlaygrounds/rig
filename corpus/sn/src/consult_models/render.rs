@@ -31,7 +31,7 @@ fn child(child: &ChildCall) -> Vec<Line<'static>> {
     let indent = "  ".repeat(child.depth + 1);
     let what = match &child.call {
         Some(call) => {
-            let arguments = serde_json::Value::Object(call.function.arguments.clone());
+            let arguments = serde_json::Value::Object(call.arguments.clone());
             format!("{} {arguments}", child.name)
         }
         None => child.name.clone(),

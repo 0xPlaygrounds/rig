@@ -518,7 +518,11 @@ public set: the shipped looks are in `CodingToolLooks`, `SummaryLooks`,
 # Gating and reviewing tool calls
 
 A tool call is an effect with a `ToolRequest` (the model's `ToolCall`) and the
-`CallHandler` that will run it.
+`CallHandler` that will run it. A call a model's reply asked for also has
+`InReply`, which the kernel gives: its reply and its place there
+(`CallRef`). A reply may repeat a provider's call id, so key what you keep
+per call by the `CallRef`, and pair results with calls by
+`pairing::answered_by`.
 
 - **Prepare** edits them as the call is admitted: the arguments, or the
   handler, wrapped with `ErasedHandler::layered` (to give it a secret the

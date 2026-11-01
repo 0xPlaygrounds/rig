@@ -867,6 +867,11 @@ pub struct EffectRecord {
     /// turns or it belongs to none, such as a call made between turns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn: Option<u64>,
+    /// The call of a reply it is, for a tool call a model's reply asked
+    /// for. `None` for any other effect, and in a record that kept no
+    /// call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call: Option<crate::conversation::CallRef>,
     /// When a handler started serving it, in milliseconds since the Unix
     /// epoch. `None` when no handler started it (it was answered before it
     /// started), or when the recorder keeps no times.
@@ -941,7 +946,7 @@ pub enum Disposition {
 
 impl EffectRecord {
     /// The record of effect `id`, `kind`, routed to `key` and answered with
-    /// `outcome`, and nothing else known: no parent, scope, purpose, turn, times,
+    /// `outcome`, and nothing else known: no parent, scope, purpose, turn, call, times,
     /// tool output, kept items, review or decider, and [`Disposition::Ran`]. A host
     /// that answers or cancels an effect itself builds its record from this
     /// and sets what it knows.
@@ -963,6 +968,7 @@ impl EffectRecord {
             scope: None,
             purpose: None,
             turn: None,
+            call: None,
             started_ms: None,
             first_item_ms: None,
             finished_ms: None,

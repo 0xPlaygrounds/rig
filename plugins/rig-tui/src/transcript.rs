@@ -19,7 +19,7 @@ use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::conversation;
 use rig_core::error::ErrorReport;
-use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
+use rig_core::message::{AssistantMessage, ToolFunction, ToolName, ToolResult, UserContent};
 
 use super::markdown;
 use super::render::{Lights, light, lit};
@@ -34,7 +34,8 @@ use super::view::{
     TranscriptItem,
 };
 use super::wrap::wrap;
-use rig_core::conversation::{ResultFacts, TurnEnd, attached_file};
+use rig_core::conversation::pairing::answered_by;
+use rig_core::conversation::{CallRef, ResultFacts, TurnEnd, attached_file};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
@@ -47,8 +48,8 @@ pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 
 /// What the view knows of the effects that settled, in this run and, once
 /// [`PastEffects`] brought them, before it: how long each tool call ran,
-/// by call id; and which calls each effect started, through any effect
-/// between, for [`ToolCallView::children`]. All of it comes from the
+/// by its agent and [`CallRef`]; and which calls each effect started,
+/// through any effect between, for [`ToolCallView::children`]. All of it comes from the
 /// kernel's effect records. What a call published comes from its result's
 /// entry ([`ShownEntry::facts`]), which the session keeps.
 #[derive(Resource, Default)]
@@ -69,14 +70,16 @@ pub(crate) struct CallFacts {
     children: Mutex<HashMap<String, Arc<CallsUnder>>>,
 }
 
-/// The calls under each tool call that started any, by its call id.
-pub(crate) type CallsUnder = BTreeMap<CallId, Vec<ChildCall>>;
+/// The calls under each tool call that started any, by the call.
+pub(crate) type CallsUnder = BTreeMap<CallRef, Vec<ChildCall>>;
 
 impl CallFacts {
-    /// How long `call` ran, as far as known.
-    fn took(&self, call: &CallId) -> Option<Duration> {
-        let took = self.run.took.get(call);
-        took.or_else(|| self.past.took.get(call)).copied()
+    /// How long the call `at` of the agent with the id `agent` ran, as far
+    /// as known.
+    fn took(&self, agent: Option<&str>, at: CallRef) -> Option<Duration> {
+        let key = (Arc::from(agent?), at);
+        let took = self.run.took.get(&key);
+        took.or_else(|| self.past.took.get(&key)).copied()
     }
 
     /// Notes the effect `record` settled in this run.
@@ -136,7 +139,7 @@ impl CallFacts {
             let starts_any = trees.iter().any(|tree| tree.children.contains_key(&parent));
             match tool_call(&trees, parent) {
                 Some((of, call)) if **of == *agent && starts_any && !live.contains_key(call) => {
-                    live.insert(call.clone(), self.below(&trees, parent));
+                    live.insert(*call, self.below(&trees, parent));
                 }
                 _ => {}
             }
@@ -155,7 +158,7 @@ impl CallFacts {
         for parent in trees.iter().flat_map(|tree| tree.children.keys()) {
             match tool_call(&trees, *parent) {
                 Some((of, call)) if **of == *agent && !found.contains_key(call) => {
-                    found.insert(call.clone(), self.below(&trees, *parent));
+                    found.insert(*call, self.below(&trees, *parent));
                 }
                 _ => {}
             }
@@ -210,9 +213,9 @@ impl CallFacts {
     }
 }
 
-/// The agent (by id) and call id of the tool call effect `id` is, as the
+/// The agent (by id) and the call of the tool call effect `id` is, as the
 /// first of `trees` that knows says.
-fn tool_call<'a>(trees: &[&'a CallTree], id: EffectId) -> Option<&'a (Arc<str>, CallId)> {
+fn tool_call<'a>(trees: &[&'a CallTree], id: EffectId) -> Option<&'a (Arc<str>, CallRef)> {
     trees.iter().find_map(|tree| tree.tool_calls.get(&id))
 }
 
@@ -226,29 +229,28 @@ pub(crate) struct ChildCalls {
 }
 
 impl ChildCalls {
-    /// The calls under the tool call `call`, if it started any.
-    pub(crate) fn get(&self, call: &CallId) -> Option<&Vec<ChildCall>> {
-        self.live.get(call).or_else(|| self.settled.get(call))
+    /// The calls under the tool call `at`, if it started any.
+    pub(crate) fn get(&self, at: Option<CallRef>) -> Option<&Vec<ChildCall>> {
+        let at = at?;
+        self.live.get(&at).or_else(|| self.settled.get(&at))
     }
 }
 
 /// Effects that settled, as the view keeps them: how long each tool call
-/// ran, by call id, and which calls each effect started.
+/// of a reply ran, by its agent's id and the call, and which calls each
+/// effect started.
 #[derive(Clone, Default)]
 pub(crate) struct Settled {
-    took: HashMap<CallId, Duration>,
+    took: HashMap<(Arc<str>, CallRef), Duration>,
     calls: CallTree,
-    /// The tool calls of each model call's reply that no tool call's
-    /// record claimed yet, by the model call: how a record, which names a
-    /// call's tool and arguments but not its id, finds which call it is.
-    replies: HashMap<EffectId, Vec<ToolCall>>,
 }
 
 impl Settled {
     /// Notes the effect `record` settled: under the effect that started
     /// it, as a call or as an effect calls go through; and, for a tool
-    /// call, how long it ran. A record read twice counts once: whether it
-    /// is new.
+    /// call of a reply, how long it ran. A record that names no call, as
+    /// one saved before records named them, has no running time. A record
+    /// read twice counts once: whether it is new.
     fn note(&mut self, record: &EffectRecord) -> bool {
         if !self.calls.known.insert(record.id) {
             return false;
@@ -256,20 +258,6 @@ impl Settled {
         let outcome = record.reviewed.as_ref().unwrap_or(&record.outcome);
         let child = match &record.kind {
             EffectKind::Completion { .. } => {
-                let reply = match outcome {
-                    Ok(effect::Answered::Completion(reply)) => Some(reply),
-                    _ => None,
-                };
-                let calls = reply.into_iter().flat_map(|reply| &reply.choice);
-                let calls: Vec<ToolCall> = calls
-                    .filter_map(|content| match content {
-                        AssistantContent::ToolCall(call) => Some(call.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                if !calls.is_empty() {
-                    self.replies.insert(record.id, calls);
-                }
                 let model = record.key.as_str().strip_prefix("model:");
                 let (failed, answer) = answer(Some(outcome), false);
                 Some(ChildCall {
@@ -283,14 +271,16 @@ impl Settled {
                 })
             }
             EffectKind::ToolCall { name: tool, args } => {
-                let call = self.claim(record, tool, args);
-                if let (Some(call), Some(agent)) = (&call, &record.scope) {
-                    self.calls.tool_call(record.id, agent, call.id.clone());
+                if let (Some(at), Some(agent)) = (record.call, &record.scope) {
+                    self.calls.tool_call(record.id, agent, at);
                     if let Some((end, start)) = record.finished_ms.zip(record.started_ms) {
                         let took = Duration::from_millis(end.saturating_sub(start));
-                        self.took.insert(call.id.clone(), took);
+                        self.took.insert((Arc::clone(agent), at), took);
                     }
                 }
+                let args = serde_json::from_str(args).unwrap_or_default();
+                let call = ToolName::new(tool.as_str()).ok();
+                let call = call.map(|name| ToolFunction::new(name, args));
                 let (failed, answer) = answer(Some(outcome), true);
                 Some(ChildCall {
                     depth: 0,
@@ -308,47 +298,17 @@ impl Settled {
         self.calls.add(record.parent, record.id, child, agent);
         true
     }
-
-    /// The call of its parent model call's reply a tool call's `record`
-    /// is: the first unclaimed one of that tool with these arguments, else
-    /// of that tool (a plugin may have changed the arguments); one made
-    /// from the record when its reply is not known, such as a call carried
-    /// over a restart.
-    fn claim(&mut self, record: &EffectRecord, tool: &str, args: &str) -> Option<ToolCall> {
-        let parent = record.parent;
-        let reply = parent.and_then(|parent| self.replies.get_mut(&parent));
-        if let Some(calls) = reply {
-            let named = |call: &ToolCall| call.function.name.as_str() == tool;
-            let same = calls
-                .iter()
-                .position(|call| named(call) && call.function.raw_arguments() == args);
-            let found = same.or_else(|| calls.iter().position(named));
-            let call = found.map(|at| calls.remove(at));
-            if calls.is_empty()
-                && let Some(parent) = parent
-            {
-                self.replies.remove(&parent);
-            }
-            if call.is_some() {
-                return call;
-            }
-        }
-        let name = ToolName::new(tool).ok()?;
-        let args = serde_json::from_str(args).unwrap_or_default();
-        let id = CallId::from_wire(format!("effect-{}", record.id));
-        Some(ToolCall::new(id, ToolFunction::new(name, args)))
-    }
 }
 
 /// Effects by the effect that started them (its `parent`), each with its
 /// own effect id and, for a tool or model call, the call; the effect each
-/// one was started by; and each tool call's agent (by id) and call id, by
-/// its effect.
+/// one was started by; and each reply's tool call's agent (by id) and
+/// call, by its effect.
 #[derive(Clone, Default)]
 pub(crate) struct CallTree {
     children: HashMap<EffectId, Vec<Child>>,
     parents: HashMap<EffectId, EffectId>,
-    tool_calls: HashMap<EffectId, (Arc<str>, CallId)>,
+    tool_calls: HashMap<EffectId, (Arc<str>, CallRef)>,
     /// Every effect noted, so none is noted twice.
     known: HashSet<EffectId>,
 }
@@ -382,10 +342,10 @@ impl CallTree {
         }
     }
 
-    /// Notes that effect `id` is the tool call `call` of the agent with
-    /// the id `agent`.
-    pub(crate) fn tool_call(&mut self, id: EffectId, agent: &str, call: CallId) {
-        self.tool_calls.insert(id, (Arc::from(agent), call));
+    /// Notes that effect `id` is the tool call `at` of the agent with the
+    /// id `agent`.
+    pub(crate) fn tool_call(&mut self, id: EffectId, agent: &str, at: CallRef) {
+        self.tool_calls.insert(id, (Arc::from(agent), at));
     }
 }
 
@@ -427,7 +387,7 @@ pub(crate) fn live_call(
     let (failed, answer) = answer(outcome.map(|Outcome(outcome)| outcome), request.is_some());
     Some(ChildCall {
         depth: 0,
-        call: request.map(|request| request.call.clone()),
+        call: request.map(|request| request.call.function.clone()),
         name,
         agent: agent.map(|name| name.as_str().to_owned()),
         state,
@@ -507,10 +467,12 @@ pub(crate) fn note_agent_name(
 pub(crate) struct Look<'a> {
     /// The looks plugins added.
     pub(crate) renderers: &'a Renderers,
+    /// The id of the agent drawn, when it is one of this app's.
+    pub(crate) agent: Option<&'a str>,
     /// The state of each call of the running turn.
-    pub(crate) calls: &'a BTreeMap<CallId, CallState>,
+    pub(crate) calls: &'a BTreeMap<CallRef, CallState>,
     /// The output so far of each of its running calls that reports it.
-    pub(crate) outputs: &'a BTreeMap<CallId, String>,
+    pub(crate) outputs: &'a BTreeMap<CallRef, String>,
     /// The notices and notes drawn inside a message, by its index, each
     /// with the content item it goes before.
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
@@ -528,13 +490,12 @@ pub(crate) struct Look<'a> {
 
 /// Where stops cut the turns of a conversation off, read from its turn
 /// records: the last entry of each stopped turn, which the stop is drawn
-/// under, and the calls each stop answered, with the reply asking for them,
-/// as call ids may repeat across turns. A turn that ended as stopped in its
-/// own course, with no last entry recorded, has none.
+/// under, and the calls each stop answered. A turn that ended as stopped
+/// in its own course, with no last entry recorded, has none.
 #[derive(Default, Hash)]
 pub(crate) struct Stops {
     at: BTreeSet<MessageId>,
-    calls: BTreeSet<(MessageId, CallId)>,
+    calls: BTreeSet<CallRef>,
 }
 
 impl Stops {
@@ -575,10 +536,9 @@ impl Stops {
                 continue;
             };
             if let (Message::Assistant(message), Some(id)) = (&**reply.message, reply.id) {
-                let answered = message.tool_calls().filter(|call| calls.contains(&call.id));
-                stops
-                    .calls
-                    .extend(answered.map(|call| (id, call.id.clone())));
+                let answered = CallRef::calls(id, message);
+                let answered = answered.filter(|(_, call)| calls.contains(&call.id));
+                stops.calls.extend(answered.map(|(at, _)| at));
             }
         }
         stops
@@ -589,9 +549,9 @@ impl Stops {
         id.is_some_and(|id| self.at.contains(&id))
     }
 
-    /// Whether a stop answered the call `call` of the reply `id`.
-    fn answered(&self, id: Option<MessageId>, call: &CallId) -> bool {
-        id.is_some_and(|id| self.calls.contains(&(id, call.clone())))
+    /// Whether a stop answered the call `at`.
+    fn answered(&self, at: Option<CallRef>) -> bool {
+        at.is_some_and(|at| self.calls.contains(&at))
     }
 }
 
@@ -669,19 +629,14 @@ impl Look<'_> {
         }
     }
 
-    /// Where the call `call` of the reply `id` stands: stopped when a stop
-    /// answered it, else as its effect says while it has one, else done
-    /// once it has `result`.
-    fn state(
-        &self,
-        id: Option<MessageId>,
-        call: &CallId,
-        result: Option<&ToolResult>,
-    ) -> CallState {
-        if self.stops.answered(id, call) {
+    /// Where the call `at` stands: stopped when a stop answered it, else
+    /// as its effect says while it has one, else done once it has
+    /// `result`.
+    fn state(&self, at: Option<CallRef>, result: Option<&ToolResult>) -> CallState {
+        if self.stops.answered(at) {
             return CallState::Stopped;
         }
-        match self.calls.get(call) {
+        match at.and_then(|at| self.calls.get(&at)) {
             Some(state) => state.clone(),
             None if result.is_some() => CallState::Done,
             None => CallState::Running(None),
@@ -701,15 +656,13 @@ impl Look<'_> {
         marks
             .filter(|mark| matches!(mark.r#in, MarkIn::Message { id: of, .. } if Some(of) == id))
             .for_each(|mark| mark.hash(hasher));
-        if let Message::Assistant(assistant) = message {
-            for item in assistant.content.iter() {
-                if let AssistantContent::ToolCall(call) = item {
-                    self.stops.answered(id, &call.id).hash(hasher);
-                    self.calls.get(&call.id).hash(hasher);
-                    self.outputs.get(&call.id).hash(hasher);
-                    self.facts.took(&call.id).hash(hasher);
-                    hash_children(self.children.get(&call.id), hasher);
-                }
+        if let (Message::Assistant(assistant), Some(id)) = (message, id) {
+            for (at, _) in CallRef::calls(id, assistant) {
+                self.stops.answered(Some(at)).hash(hasher);
+                self.calls.get(&at).hash(hasher);
+                self.outputs.get(&at).hash(hasher);
+                self.facts.took(self.agent, at).hash(hasher);
+                hash_children(self.children.get(Some(at)), hasher);
             }
         }
         hasher.finish()
@@ -745,7 +698,9 @@ fn hash_children(children: Option<&Vec<ChildCall>>, hasher: &mut DefaultHasher) 
     for child in children.into_iter().flatten() {
         (child.depth, &child.name, &child.agent, &child.state).hash(hasher);
         (child.failed, &child.answer).hash(hasher);
-        child.call.as_ref().map(|call| &call.id).hash(hasher);
+        let call = child.call.as_ref();
+        call.map(|call| (&call.name, call.raw_arguments()))
+            .hash(hasher);
     }
 }
 
@@ -1524,15 +1479,17 @@ fn tool_results(message: Option<&Message>) -> impl Iterator<Item = &ToolResult> 
     })
 }
 
-/// Whether `message` is a reply holding the call `result` answers.
-fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
-    match message {
-        Some(Message::Assistant(assistant)) => assistant
-            .content
-            .iter()
-            .any(|item| matches!(item, AssistantContent::ToolCall(call) if call.id == result.call)),
-        _ => false,
-    }
+/// The result of each call of `reply` among those of `results`, in call
+/// order ([`answered_by`]).
+fn answers<'a>(
+    reply: &AssistantMessage,
+    results: Option<&'a Message>,
+) -> Vec<Option<&'a ToolResult>> {
+    let calls = reply.tool_calls().map(|call| &call.id);
+    answered_by(
+        calls,
+        tool_results(results).map(|result| (&result.call, result)),
+    )
 }
 
 /// Draws `entry`, the `at`-th of those shown, with the notices and notes
@@ -1577,6 +1534,11 @@ fn message_lines(
     match message {
         Message::System { .. } => {}
         Message::User { content } => {
+            let drawn = match previous {
+                Some(Message::Assistant(reply)) => answers(reply, Some(message)),
+                _ => Vec::new(),
+            };
+            let drawn: Vec<&ToolResult> = drawn.into_iter().flatten().collect();
             for (item_at, item) in content.iter().enumerate() {
                 look.renderers.at(Place::Message {
                     index: at,
@@ -1633,7 +1595,8 @@ fn message_lines(
                         }
                     }
                     // Drawn under its call already.
-                    UserContent::ToolResult(result) if answers(previous, result) => {}
+                    UserContent::ToolResult(result)
+                        if drawn.iter().any(|drawn| std::ptr::eq(*drawn, result)) => {}
                     UserContent::ToolResult(result) => {
                         let style = result_style(result.is_error);
                         let rows = text_rows(&result_text(result), style);
@@ -1649,6 +1612,14 @@ fn message_lines(
             }
         }
         Message::Assistant(assistant) => {
+            // Each call's result and facts, by its place in the reply.
+            let results = answers(assistant, next.map(|next| &**next.message));
+            let facts = next.zip(id).map(|(next, id)| {
+                let calls = CallRef::calls(id, assistant).map(|(at, call)| (at, &call.id));
+                next.facts.of(calls)
+            });
+            let facts = facts.into_iter().flatten().chain(std::iter::repeat(None));
+            let mut calls = (0..).zip(results).zip(facts);
             for (item_at, item) in assistant.content.iter().enumerate() {
                 look.renderers.at(Place::Message {
                     index: at,
@@ -1688,20 +1659,18 @@ fn message_lines(
                         );
                     }
                     AssistantContent::ToolCall(call) => {
-                        let results = next.map(|next| &**next.message);
-                        let result = tool_results(results).find(|result| result.call == call.id);
-                        let facts = next.and_then(|next| next.facts.get(&call.id));
-                        let took = look.facts.took(&call.id);
+                        let ((index, result), facts) = calls.next().unwrap_or_default();
+                        let at = id.map(|reply| CallRef { reply, index });
                         let item = TranscriptItem::Call(call.id.clone());
                         let view = ToolCallView {
                             call,
                             result,
-                            state: look.state(id, &call.id, result),
+                            state: look.state(at, result),
                             theme: *look.theme,
                             facts,
-                            took,
-                            output: look.outputs.get(&call.id).map(String::as_str),
-                            children: look.children.get(&call.id).map_or(&[], Vec::as_slice),
+                            took: at.and_then(|at| look.facts.took(look.agent, at)),
+                            output: at.and_then(|at| look.outputs.get(&at)).map(String::as_str),
+                            children: look.children.get(at).map_or(&[], Vec::as_slice),
                         };
                         let (drawn, decorated) = look.renderers.call_decorated(&view);
                         let start = lines.len();

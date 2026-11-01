@@ -81,6 +81,7 @@ impl Slot {
             scope: self.origin.scope,
             purpose: self.origin.purpose,
             turn: None,
+            call: None,
             started_ms: self.started_ms,
             first_item_ms: self.first_item_ms,
             finished_ms: self.finished_ms,

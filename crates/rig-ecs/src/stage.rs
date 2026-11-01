@@ -70,8 +70,8 @@ use super::restore::{Interrupted, answer_interrupted, mark_started, stop_restore
 use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
 use super::tools::{
-    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
-    redact_results, refuse_calls,
+    CallHandler, Footprint, InReply, ToolRequest, ToolStart, ToolStarts, complete_calls,
+    compute_footprints, redact_results, refuse_calls,
 };
 use super::turn::{
     Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, TurnCall, back_off,
@@ -1134,21 +1134,24 @@ fn start(
         ending.and_then(TurnOutcome::stops).is_some()
     };
     // Before a call that may change something starts, the reply that asked
-    // for it and the call's mark are written to the store (not yet synced
-    // to disk). When they cannot be, no such call starts: a restart could
-    // not tell that it may have run.
+    // for it and, for a call of a reply, the call's mark are written to the
+    // store (not yet synced to disk). When they cannot be, no such call
+    // starts: a restart could not tell that it may have run.
     let changing: Vec<_> = ready
         .iter()
         .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item))
         .filter(|item| !item.footprint.is_some_and(|it| it.0.reads_only()))
-        .filter_map(|item| Some((item.agent?.0, item.tool?.call.id.clone())))
+        .filter_map(|item| {
+            let at = item.in_reply.map(InReply::at);
+            Some((item.agent?.0, item.tool?.call.id.clone(), at))
+        })
         .collect();
     let mut unsaved = None;
     if !changing.is_empty() {
         let mut conversations = saving.p1();
-        for (agent, call) in &changing {
-            if let Ok(mut conversation) = conversations.get_mut(*agent) {
-                mark_started(&mut conversation, call);
+        for (agent, call, at) in &changing {
+            if let (Ok(mut conversation), Some(at)) = (conversations.get_mut(*agent), at) {
+                mark_started(&mut conversation, (call, *at));
             }
         }
         if let Some(agent) = saving.p0().save() {
@@ -1286,6 +1289,7 @@ struct StartItem {
     decision: &'static Decision,
     request: Option<&'static EffectRequest>,
     tool: Option<&'static ToolRequest>,
+    in_reply: Option<&'static InReply>,
     model: Option<&'static mut ModelRequest>,
     adapted: Option<&'static Adapted>,
     turn_call: Has<TurnCall>,
@@ -1477,6 +1481,7 @@ fn assemble(
         .get::<CallOf>(entity)
         .and_then(|call| world.get::<Turn>(call.0))
         .map(|turn| turn.index);
+    record.call = world.get::<InReply>(entity).map(InReply::at);
     Some(record)
 }
 

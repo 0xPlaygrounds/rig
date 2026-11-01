@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::ToolExecutionError;
+use crate::conversation::CallRef;
 
 /// Context passed to every tool execution.
 ///
@@ -77,6 +78,9 @@ impl std::fmt::Debug for ToolResultContext {
 /// as much.
 pub const MAX_KEPT_FACTS_BYTES: usize = 256 * 1024;
 
+/// The key [`ToolResultContext::with_at`] keeps its call under.
+const AT: &str = "rig.at";
+
 impl ToolResultContext {
     /// Read a published value without exposing ambient execution inputs.
     pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
@@ -86,6 +90,24 @@ impl ToolResultContext {
     /// Whether nothing was published.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// The call these values were kept for with its result
+    /// ([`with_at`](Self::with_at)); `None` when no call was recorded, as
+    /// in a session saved before calls were.
+    pub fn at(&self) -> Option<CallRef> {
+        CallRef::deserialize(self.0.get(AT)?).ok()
+    }
+
+    /// These values, kept for the call `at`, so a reply that repeats a
+    /// call id still finds each call's own. An older reader takes it for a
+    /// value no type reads.
+    #[must_use]
+    pub fn with_at(mut self, at: CallRef) -> Self {
+        if let Ok(value) = serde_json::to_value(at) {
+            self.0.insert(AT.to_owned(), value);
+        }
+        self
     }
 
     /// These values as a conversation keeps them with the call's result
