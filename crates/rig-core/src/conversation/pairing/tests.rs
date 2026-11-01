@@ -315,6 +315,35 @@ fn pending_calls_are_the_last_turns_unanswered_calls() {
 }
 
 #[test]
+fn pending_calls_consume_one_result_per_occurrence_in_call_order() {
+    let calls: Vec<_> = (0..3)
+        .map(|index| {
+            let mut call = tool_call("same");
+            call.function
+                .arguments
+                .insert("index".into(), serde_json::json!(index));
+            call
+        })
+        .collect();
+    let mut history = vec![assistant(
+        calls
+            .iter()
+            .cloned()
+            .map(AssistantContent::ToolCall)
+            .collect(),
+    )];
+    for answered in 0..=3 {
+        assert_eq!(
+            pending_calls(&history),
+            calls.get(answered..).unwrap_or_default()
+        );
+        history.push(Message::system("Keep going"));
+        history.push(results(&["same"]));
+    }
+    assert!(pending_calls(&history).is_empty());
+}
+
+#[test]
 fn a_window_starts_past_results_whose_calls_it_cuts_off() {
     let history = vec![
         assistant(vec![call("c1")]),
