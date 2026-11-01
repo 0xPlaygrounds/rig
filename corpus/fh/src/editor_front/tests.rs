@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use rig_basics::coding_tools::{EditTool, ReadTool, WriteTool};
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_on, calls, connect as connect_model, first_agent, log_ended,
@@ -287,4 +287,49 @@ fn a_gate_that_asks_goes_before_the_review() {
         .cloned();
     assert_eq!(buffer.map(|buffer| buffer.text).as_deref(), Some("draft\n"));
     assert_eq!(std::fs::read_to_string(&a).ok().as_deref(), Some("disk\n"));
+}
+
+/// A key the reply streams in pieces reaches no editor: neither its
+/// streamed fragments nor the message the conversation then holds.
+#[test]
+fn a_key_streamed_in_pieces_reaches_no_editor() {
+    let pieces = [
+        "Use GITHUB_TOKEN=gh",
+        "p_abcdefghijklmnopqrst",
+        "uvwxyz0123456789 now.",
+    ];
+    let mut events: Vec<_> = pieces
+        .iter()
+        .map(|piece| MockStreamEvent::text(*piece))
+        .collect();
+    events.push(MockStreamEvent::final_response_with_default_usage());
+    let model = MockCompletionModel::from_stream_turns([events]);
+    let (mut app, wakes) = app_with(&model, |_| {});
+    let mut editor = FakeEditor {
+        link: connect(app.world_mut()),
+        got: Vec::new(),
+    };
+    editor.send(&FromEditor::Send {
+        text: "Key?".to_owned(),
+        selection: None,
+    });
+    let (mut streamed, mut replied) = (String::new(), Vec::new());
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(10) && replied.is_empty() {
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(50)).ok();
+        for message in editor.drain() {
+            match message {
+                ToEditor::Delta { kind, text, .. } if kind == "text" => streamed.push_str(&text),
+                ToEditor::Message {
+                    message: Message::Assistant(reply),
+                    ..
+                } => replied.push(reply.text()),
+                _ => {}
+            }
+        }
+    }
+    let redacted = "Use GITHUB_TOKEN=[REDACTED] now.";
+    assert_eq!(streamed, redacted);
+    assert_eq!(replied, [redacted]);
 }
