@@ -3,12 +3,10 @@
 //! headers, framing, status and content-type checks, request ids and the
 //! observation of the exchange.
 
-use std::sync::Arc;
-
 use bytes::Bytes;
 use futures::StreamExt;
 
-use super::{Exchange, Opened, Opening, Received, Transport};
+use super::{Exchange, Opened, Opening, Transport};
 use crate::error::ProviderError;
 use crate::http_client::framing::{Framer, Framing};
 use crate::http_client::{self, HttpClientExt};
@@ -222,15 +220,10 @@ impl HttpExchange {
             ..
         } = self;
         let mut body = response.into_body();
-        let received = Arc::new(Received::new());
-        let marked = Arc::clone(&received);
         let frames = async_stream::stream! {
             while let Some(chunk) = body.next().await {
                 let chunk = match chunk {
-                    Ok(chunk) => {
-                        marked.mark();
-                        chunk
-                    }
+                    Ok(chunk) => chunk,
                     Err(error) => {
                         if let Some(slot) = &slot {
                             slot.error_boundary(AdapterErrorBoundary::Transport);
@@ -263,13 +256,10 @@ impl HttpExchange {
                 yield Ok(frame);
             }
         };
-        Opened {
-            received: Some(received),
-            ..Opened::new(frames)
-                .with_request_id(request_id)
-                .with_http(status, headers)
-                .with_route(path)
-        }
+        Opened::new(frames)
+            .with_request_id(request_id)
+            .with_http(status, headers)
+            .with_route(path)
     }
 }
 

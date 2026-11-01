@@ -42,6 +42,9 @@ pub enum WhenDrained {
     /// Never resolve, so an event timeout is the only way out. This is the
     /// in-memory equivalent of a server that accepted the turn and went quiet.
     Stall,
+    /// Send a ping each period, forever: a server that keeps the connection
+    /// alive but sends no event.
+    Ping(Duration),
 }
 
 #[derive(Default)]
@@ -55,6 +58,8 @@ struct ScriptState {
     sent: Vec<String>,
     closed: bool,
     drained: WhenDrained,
+    /// The wait before each scripted frame, if any.
+    paced: Option<Duration>,
 }
 
 /// A scripted connection, cloneable so a test can inspect what the session
@@ -89,6 +94,21 @@ impl Script {
     #[must_use]
     pub fn stalling(self) -> Self {
         self.0.lock().expect("script lock").drained = WhenDrained::Stall;
+        self
+    }
+
+    /// A script that sends each scripted frame `gap` after the last.
+    #[must_use]
+    pub fn paced(self, gap: Duration) -> Self {
+        self.0.lock().expect("script lock").paced = Some(gap);
+        self
+    }
+
+    /// A script that pings every `period` instead of ending the stream when
+    /// it runs out.
+    #[must_use]
+    pub fn pinging(self, period: Duration) -> Self {
+        self.0.lock().expect("script lock").drained = WhenDrained::Ping(period);
         self
     }
 
@@ -129,10 +149,24 @@ impl WebSocketConnection for ScriptedConnection {
         let next = {
             let mut state = self.0.0.lock().expect("script lock");
             match state.inbound.pop_front() {
-                Some(frame) => Some(Some(frame)),
+                Some(frame) => match state.paced {
+                    Some(gap) => {
+                        return Box::pin(async move {
+                            tokio::time::sleep(gap).await;
+                            Ok(Some(frame))
+                        });
+                    }
+                    None => Some(Some(frame)),
+                },
                 None => match state.drained {
                     WhenDrained::EndStream => Some(None),
                     WhenDrained::Stall => None,
+                    WhenDrained::Ping(period) => {
+                        return Box::pin(async move {
+                            tokio::time::sleep(period).await;
+                            Ok(Some(Frame::Ping(Default::default())))
+                        });
+                    }
                 },
             }
         };

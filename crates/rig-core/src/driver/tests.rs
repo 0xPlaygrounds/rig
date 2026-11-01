@@ -475,6 +475,30 @@ impl Transport<Echo> for Broken {
     }
 }
 
+/// A transport whose reply opens `opens_after` it is sent, then sends
+/// `frame` `gap` later, then nothing more, without ending.
+#[derive(Clone)]
+struct LateOpening {
+    opens_after: std::time::Duration,
+    gap: std::time::Duration,
+    frame: &'static str,
+}
+
+impl Transport<Echo> for LateOpening {
+    fn send(&self, _payload: Encoded, _exchange: super::Exchange) -> super::Opening<WireFrame> {
+        let (opens_after, gap, frame) = (self.opens_after, self.gap, self.frame);
+        super::Opening::new(async move {
+            tokio::time::sleep(opens_after).await;
+            let frames = futures::stream::once(async move {
+                tokio::time::sleep(gap).await;
+                Ok(WireFrame::Text(frame.to_owned()))
+            })
+            .chain(futures::stream::pending());
+            Ok(super::Opened::new(frames))
+        })
+    }
+}
+
 /// A transport whose reply sends `frames`, each `gap` after the last, then
 /// sends nothing more, without ending.
 #[derive(Clone)]
@@ -535,44 +559,18 @@ async fn a_streamed_reply_that_falls_silent_stalls() {
     }
 }
 
-/// An event stream that sends only comments for longer than the idle
-/// timeout, as a provider pings while its model thinks, does not stall.
+/// An event stream that sends only comments, as a provider pings while it
+/// sends nothing, stalls an idle timeout after it opened, however often it
+/// pings.
 #[tokio::test]
-async fn comments_keep_a_streamed_reply_from_stalling() {
-    let idle = std::time::Duration::from_millis(200);
-    let pinging = PacedStreamingClient {
-        chunks: vec![
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            "data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
-             data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
-        ],
-        gap: idle / 4,
-    };
-    let response = Model::new(Echo::streaming(), pinging)
-        .with_idle_timeout(Some(idle))
-        .stream(prompt())
-        .expect("the stream opens")
-        .finish()
-        .await;
-    assert!(response.is_ok(), "a pinging reply ends: {response:?}");
-}
-
-/// A reply that pings once and then falls silent stalls the idle timeout
-/// after the ping, not a whole timeout after the timer next looked.
-#[tokio::test]
-async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
+async fn comments_alone_stall_a_streamed_reply() {
     let idle = std::time::Duration::from_millis(400);
-    let once = PacedStreamingClient {
-        chunks: vec![": ping\n\n"],
-        gap: idle / 4,
+    let pinging = PacedStreamingClient {
+        chunks: vec![": keep-alive\n\n"; 64],
+        gap: idle / 8,
     };
     let started = std::time::Instant::now();
-    let stalled = Model::new(Echo::streaming(), once)
+    let stalled = Model::new(Echo::streaming(), pinging)
         .with_idle_timeout(Some(idle))
         .stream(prompt())
         .expect("the stream opens")
@@ -580,21 +578,61 @@ async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
         .await;
     let took = started.elapsed();
     assert!(
-        matches!(stalled, Err(ProviderError::Stalled(_))),
-        "a silent reply stalls: {stalled:?}"
+        matches!(stalled, Err(ProviderError::Stalled(after)) if after == idle),
+        "a reply of comments stalls: {stalled:?}"
     );
-    // The ping at 100 ms moves the stall to about 500 ms; timing from the
-    // timer's next look would take 800 ms.
+    assert!(took < idle * 2, "stalled {took:?} after it opened");
+}
+
+/// A reply that sends a frame now and then, each within the idle timeout,
+/// never stalls, however long it runs in all and whatever comes between.
+#[tokio::test]
+async fn frames_within_the_idle_timeout_never_stall() {
+    let idle = std::time::Duration::from_millis(200);
+    let mut chunks = Vec::new();
+    for _ in 0..6 {
+        chunks.push(": keep-alive\n\n");
+        chunks.push("data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n");
+    }
+    chunks.push("data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n");
+    let trickle = PacedStreamingClient {
+        chunks,
+        gap: idle / 6,
+    };
+    let response = Model::new(Echo::streaming(), trickle)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a trickling reply ends: {response:?}");
+}
+
+/// Opening a reply and its first frame share one idle timeout: a reply that
+/// opens late and sends its first frame as late again stalls.
+#[tokio::test]
+async fn opening_and_the_first_frame_share_the_idle_timeout() {
+    let idle = std::time::Duration::from_millis(400);
+    let late = LateOpening {
+        opens_after: idle * 3 / 4,
+        gap: idle * 3 / 4,
+        frame: r#"{"type":"delta","text":"hi"}"#,
+    };
+    let mut stream = Model::new(Echo::streaming(), late)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens");
+    let first = stream.next().await;
     assert!(
-        took < idle + idle * 3 / 4,
-        "stalled {took:?} after it opened"
+        matches!(first, Some(Err(ProviderError::Stalled(after))) if after == idle),
+        "a late first frame stalls: {first:?}"
     );
 }
 
 /// A reader that pauses between frames does not move the stall: it comes
-/// the idle timeout after the last bytes, however long the reader took.
+/// the idle timeout after the last frame, however long the reader took.
 #[tokio::test]
-async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_bytes() {
+async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_frame() {
     let idle = std::time::Duration::from_millis(400);
     let once = PacedStreamingClient {
         chunks: vec!["data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n"],
@@ -619,9 +657,9 @@ async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_bytes() {
         matches!(last, Some(Err(ProviderError::Stalled(_)))),
         "a silent reply stalls: {last:?}"
     );
-    // The bytes came at once, so the stall is due at about 400 ms; timing
+    // The frame came at once, so the stall is due at about 400 ms; timing
     // from when the reader came back would take 700 ms.
-    assert!(took < idle + idle / 2, "stalled {took:?} after the bytes");
+    assert!(took < idle + idle / 2, "stalled {took:?} after the frame");
 }
 
 /// An idle timeout longer than a browser's timer takes waits indefinitely,

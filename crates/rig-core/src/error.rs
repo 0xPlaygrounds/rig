@@ -326,8 +326,10 @@ pub enum ProviderError {
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
-    /// A streamed reply sent nothing for this long, before its first frame
-    /// or between two, and was dropped. Retryable.
+    /// A streamed reply sent no frame for this long, from when it was sent
+    /// to its first frame or between two, and was dropped. Bytes that are
+    /// no frame, such as an event stream's comments, do not count.
+    /// Retryable.
     Stalled(std::time::Duration),
     /// A [`GenerationOptions`](crate::completion::GenerationOptions) field
     /// the wire or model cannot honour, under
@@ -369,7 +371,7 @@ impl fmt::Display for ProviderError {
             }
             Self::Stalled(idle) => write!(
                 f,
-                "TimeoutError: the streamed reply sent nothing for {}s",
+                "TimeoutError: the streamed reply sent no event for {}s",
                 idle.as_secs_f64()
             ),
             Self::UnsupportedOption(option) => write!(f, "RequestError: {option}"),

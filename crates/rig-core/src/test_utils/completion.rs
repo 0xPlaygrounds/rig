@@ -25,7 +25,7 @@ pub enum MockError {
     Request(String),
     /// A preserved provider error response (rig#2314), id included.
     ProviderResponse(crate::provider_response::ProviderResponseError),
-    /// A streamed reply that sent nothing for this long.
+    /// A streamed reply that sent no frame for this long.
     Stalled(std::time::Duration),
 }
 

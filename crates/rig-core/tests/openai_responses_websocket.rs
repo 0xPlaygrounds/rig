@@ -171,10 +171,8 @@ async fn event_timeout_rejects_reuse_and_allows_close() {
         .await
         .expect_err("next_event should time out");
     assert!(
-        error
-            .to_string()
-            .contains("Timed out waiting for the next OpenAI websocket event"),
-        "expected timeout error, got {error}"
+        matches!(error, rig_core::error::ProviderError::Stalled(_)) && error.is_retryable(),
+        "expected a retryable stall, got {error}"
     );
 
     let closed = session
@@ -191,6 +189,63 @@ async fn event_timeout_rejects_reuse_and_allows_close() {
         .await
         .expect("explicit close after timeout should succeed");
     assert!(script.closed(), "the close handshake should reach the peer");
+}
+
+#[tokio::test]
+async fn pings_do_not_hold_off_the_event_timeout() {
+    // A turn that is accepted and then only pinged: the event timeout still
+    // ends the wait, counted from when the turn was sent, not the last ping.
+    let timeout = Duration::from_millis(100);
+    let script = Script::turn([]).pinging(timeout / 5);
+
+    let client = test_client();
+    let mut session = session_with_timeout(&client, &script, Some(timeout));
+    session
+        .send(CompletionRequest::new("hello"))
+        .await
+        .expect("request should send");
+
+    let error = tokio::time::timeout(timeout * 10, session.next_event())
+        .await
+        .expect("pings must not hold the wait open")
+        .expect_err("next_event should time out");
+    assert!(
+        matches!(error, rig_core::error::ProviderError::Stalled(after) if after == timeout),
+        "expected a stall, got {error}"
+    );
+}
+
+#[tokio::test]
+async fn events_within_the_event_timeout_never_stall_a_turn() {
+    // Each event comes half the timeout after the last, the whole turn over
+    // twice the timeout: every event restarts the wait, so the turn ends.
+    let timeout = Duration::from_millis(200);
+    let mut turn = vec![response_event(
+        "response.created",
+        response_with("resp_1", "in_progress"),
+        1,
+    )];
+    for sequence in 2..5 {
+        turn.push(response_event(
+            "response.in_progress",
+            response_with("resp_1", "in_progress"),
+            sequence,
+        ));
+    }
+    turn.push(response_event(
+        "response.completed",
+        response_with("resp_1", "completed"),
+        5,
+    ));
+    let script = Script::turn(turn).paced(timeout / 2);
+
+    let client = test_client();
+    let mut session = session_with_timeout(&client, &script, Some(timeout));
+    let response = session
+        .completion(CompletionRequest::new("hello"))
+        .await
+        .expect("a turn whose events keep coming completes");
+    assert_eq!(raw_response(response)["id"], "resp_1");
 }
 
 /// One completed turn: the terminal `response.completed`, then the trailing
