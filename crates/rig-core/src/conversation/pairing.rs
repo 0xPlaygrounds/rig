@@ -675,7 +675,7 @@ pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
     if reply.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
         return Vec::new();
     }
-    let answered: Vec<&CallId> = messages
+    let mut answered: Vec<&CallId> = messages
         .iter()
         .skip(at + 1)
         .flat_map(|message| match message.borrow() {
@@ -691,7 +691,9 @@ pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
         .content
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) if !answered.contains(&&call.id) => Some(call.clone()),
+            AssistantContent::ToolCall(call) if !answer(&mut answered, &call.id, |id| id) => {
+                Some(call.clone())
+            }
             _ => None,
         })
         .collect()

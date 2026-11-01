@@ -34,6 +34,52 @@ fn said(texts: &[&str]) -> Vec<Arc<Message>> {
     texts.iter().map(message).map(Arc::new).collect()
 }
 
+#[test]
+fn a_fork_excludes_a_partially_answered_batch_with_repeated_ids() {
+    use rig_core::conversation::Halt;
+    use rig_core::message::{
+        AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName, ToolResult,
+        ToolResultContent, UserContent,
+    };
+
+    let (_, writer) = writer();
+    let mut main = Conversation::new();
+    let name = ToolName::new("lookup").expect("tool name");
+    let calls = (0..2)
+        .map(|index| {
+            AssistantContent::ToolCall(ToolCall::new(
+                CallId::from_wire("same"),
+                ToolFunction::new(name.clone(), serde_json::json!({"index": index})),
+            ))
+        })
+        .collect();
+    say(
+        &writer,
+        "main",
+        &mut main,
+        &[
+            Message::user("one?"),
+            Message::assistant("one."),
+            Message::user("Look up both"),
+            Message::Assistant(AssistantMessage::new(calls)),
+            Message::User {
+                content: vec![UserContent::ToolResult(ToolResult {
+                    is_error: false,
+                    call: CallId::from_wire("same"),
+                    name,
+                    content: vec![ToolResultContent::text("first result")],
+                })],
+            },
+        ],
+    );
+    assert_eq!(main.pending_calls().len(), 1);
+    assert!(main.halt(Halt::Stopped));
+    writer.save("main", &mut main);
+    let fork = writer.fork_log("main", "fork", None).expect("forked");
+    assert_eq!(fork.conversation.messages(), said(&["one?", "one."]));
+    assert!(fork.conversation.validate().is_ok());
+}
+
 /// A fork copies the log up to a turn boundary at or before the message it
 /// is given: the whole log, through an answer, just before a question (a
 /// question that asks for a turn is at no boundary), or nothing; and it
