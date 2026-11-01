@@ -404,8 +404,7 @@ impl Connector {
     /// providers registered, with a key set or signed in, then those of
     /// configured providers that need none (local servers such as Ollama),
     /// which a picker can mark "no key needed". Only [`ModelStatus::Usable`]
-    /// models are reachable. Sign-in plans are checked per model; other models
-    /// share one check per provider.
+    /// models are reachable, checked as [`Self::statuses`] checks them.
     pub fn reachable(&self) -> Vec<&ModelSpec> {
         let statuses = self.statuses().into_iter();
         let usable = statuses.filter(|(_, status)| *status == ModelStatus::Usable);

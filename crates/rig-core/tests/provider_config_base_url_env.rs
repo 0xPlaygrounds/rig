@@ -40,6 +40,10 @@ fn the_environment_sets_base_urls_and_configures_local_servers() {
     // SAFETY: as above.
     unsafe { std::env::set_var("OLLAMA_API_BASE_URL", "http://127.0.0.1:9/") };
     assert!(usable("ollama") && !usable("llamacpp"));
+    // A key alone configures one too.
+    // SAFETY: as above.
+    unsafe { std::env::set_var("LLAMACPP_API_KEY", "test") };
+    assert!(usable("llamacpp"));
     // The daemon's OpenAI-compatible API, where its models connect; this
     // reader of the dialect asks for a key.
     // SAFETY: as above.

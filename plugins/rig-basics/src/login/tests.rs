@@ -411,18 +411,72 @@ fn a_sign_in_during_a_retrys_wait_stops_the_old_fetch() {
     let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
     assert!(sol.is_some(), "the catalog lists GPT-6.1 Sol");
     let Some(sol) = sol else { return };
+    // The 503 is held until after the sign-in, so its retry's wait starts
+    // with the fetch already forgotten.
+    let release = backend.hold();
     assert_eq!(
         offered.status(sol.spec, &session.auth, &http),
         ModelStatus::Checking
     );
-    let started = std::time::Instant::now();
-    while backend.listed.load(Ordering::SeqCst) == 0 && started.elapsed().as_secs() < 10 {
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    // The 503 came; its retry waits. A sign-in now forgets it.
+    until_listed(&backend, 1);
     offered.forget();
+    drop(release);
     std::thread::sleep(wait * 2);
     assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+}
+
+/// Waits, at most 10 s, until `backend` was asked for `lists` lists.
+fn until_listed(backend: &Backend, lists: usize) {
+    let started = std::time::Instant::now();
+    while backend.listed.load(Ordering::SeqCst) < lists && started.elapsed().as_secs() < 10 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_request_waiting_on_a_list_a_sign_in_dropped_asks_again() {
+    let backend = Backend::default();
+    let lists = [(200, SOL), (200, SOL)];
+    let (app, _, _) = signed_in("login-dropped", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let offered = Arc::clone(&app.world().resource::<super::Session>().offered);
+    let release = backend.hold();
+    let proceeded = std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| before(&gate));
+        until_listed(&backend, 1);
+        offered.forget();
+        drop(release);
+        waiting.join().ok()
+    });
+    let proceeded = matches!(proceeded, Some(rig_core::serve::BeforeServe::Proceed));
+    assert!(proceeded);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_request_waiting_out_a_wait_asks_again_after_a_sign_in() {
+    let backend = Backend::default();
+    let lists = [(429, "Rate limited: try again in 30s."), (200, SOL)];
+    let (app, _, _) = signed_in("login-wait-reset", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let offered = Arc::clone(&app.world().resource::<super::Session>().offered);
+    assert!(denied(&gate).is_some());
+    let started = std::time::Instant::now();
+    let proceeded = std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| before(&gate));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        offered.forget();
+        waiting.join().ok()
+    });
+    let proceeded = matches!(proceeded, Some(rig_core::serve::BeforeServe::Proceed));
+    assert!(proceeded);
+    // Not the 30 s the old account's backend asked for.
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
 }
 
 #[test]

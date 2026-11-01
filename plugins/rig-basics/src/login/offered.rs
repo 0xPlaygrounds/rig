@@ -218,7 +218,9 @@ impl Offered {
                 left
             };
             if !left.is_zero() {
-                sleep(left).await;
+                // A second at a time, so a sign-in or sign-out meanwhile,
+                // which forgets the failure, is seen.
+                sleep(left.min(Duration::from_secs(1))).await;
                 continue;
             }
             // Dropped by a sign-in or sign-out, which asks anew.
