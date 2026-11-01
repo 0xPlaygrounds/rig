@@ -711,7 +711,8 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
             Message::System { content } => content.trim().is_empty(),
         };
         let (calls, before) = (ids(&message).0, ids(&entry.message).0);
-        let moved = calls.iter().zip(&before).any(|(call, was)| call != was);
+        // Ids can repeat, so any change to the calls may have moved one.
+        let moved = calls != before;
         if !empty {
             entries.push(Entry {
                 message: message.into(),
