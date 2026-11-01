@@ -215,6 +215,39 @@ async fn pings_do_not_hold_off_the_event_timeout() {
     );
 }
 
+#[tokio::test]
+async fn events_within_the_event_timeout_never_stall_a_turn() {
+    // Each event comes half the timeout after the last, the whole turn over
+    // twice the timeout: every event restarts the wait, so the turn ends.
+    let timeout = Duration::from_millis(200);
+    let mut turn = vec![response_event(
+        "response.created",
+        response_with("resp_1", "in_progress"),
+        1,
+    )];
+    for sequence in 2..5 {
+        turn.push(response_event(
+            "response.in_progress",
+            response_with("resp_1", "in_progress"),
+            sequence,
+        ));
+    }
+    turn.push(response_event(
+        "response.completed",
+        response_with("resp_1", "completed"),
+        5,
+    ));
+    let script = Script::turn(turn).paced(timeout / 2);
+
+    let client = test_client();
+    let mut session = session_with_timeout(&client, &script, Some(timeout));
+    let response = session
+        .completion(CompletionRequest::new("hello"))
+        .await
+        .expect("a turn whose events keep coming completes");
+    assert_eq!(raw_response(response)["id"], "resp_1");
+}
+
 /// One completed turn: the terminal `response.completed`, then the trailing
 /// `response.done` OpenAI may emit after it.
 fn completed_turn_with_late_done(response_id: &str, sequence: u64) -> Vec<String> {

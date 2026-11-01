@@ -590,8 +590,8 @@ async fn comments_alone_stall_a_streamed_reply() {
 async fn frames_within_the_idle_timeout_never_stall() {
     let idle = std::time::Duration::from_millis(200);
     let mut chunks = Vec::new();
-    for _ in 0..4 {
-        chunks.extend([": keep-alive\n\n", ": keep-alive\n\n"]);
+    for _ in 0..6 {
+        chunks.push(": keep-alive\n\n");
         chunks.push("data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n");
     }
     chunks.push("data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n");
