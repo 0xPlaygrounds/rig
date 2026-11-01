@@ -714,10 +714,11 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
         // Ids can repeat, so any change to the calls may have moved one.
         let moved = calls != before;
         // The file names a call by its id alone, so it can't tell which of
-        // a reply's calls that share one an edit took out.
-        let repeated =
-            (before.iter().enumerate()).find(|&(n, id)| before.iter().take(n).any(|was| was == id));
-        if let Some((_, id)) = repeated.filter(|_| moved) {
+        // a reply's calls that share one an edit took out or moved.
+        let repeats = |id: &&String| before.iter().filter(|was| was == id).count() > 1;
+        let shared = |calls: &[String]| calls.iter().filter(repeats).cloned().collect::<Vec<_>>();
+        let changed = shared(&calls) != shared(&before);
+        if let Some(id) = shared(&before).first().filter(|_| changed) {
             return Err(format!(
                 "a reply asks for two calls with the id `{id}`, so the edit can't tell which one it changed; edit that reply's text only"
             ));

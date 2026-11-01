@@ -421,14 +421,14 @@ fn a_reply_whose_calls_an_edit_moved_gets_a_new_id() {
 /// `shell` call's arguments, under one id: a live stream renames a
 /// repeated id, an answer decided for the call does not.
 fn answer_once(
-    asked: Vec<serde_json::Value>,
+    asked: Vec<(&'static str, serde_json::Value)>,
 ) -> impl FnMut(Query<&mut Decision, (With<TurnCall>, ReadyToStart)>, Local<bool>) {
     move |mut calls, mut answered| {
         for mut decision in &mut calls {
-            let call = |args: &serde_json::Value| {
+            let call = |(id, args): &(&str, serde_json::Value)| {
                 let function = ToolFunction::new(ToolName::new("shell").ok()?, args.clone());
                 Some(AssistantContent::ToolCall(ToolCall::from_wire(
-                    "c9", function,
+                    *id, function,
                 )))
             };
             let choice: Option<Vec<_>> = asked.iter().map(call).collect();
@@ -448,10 +448,11 @@ fn answer_once(
 
 /// An edit that takes out one of two calls sharing an id is refused, as
 /// the file can't say which: the editor opens again with why, and the
-/// calls keep what each published.
+/// calls keep what each published. Taking out another call of that reply
+/// is no such edit.
 #[cfg(unix)]
 #[test]
-fn an_edit_that_takes_out_one_of_two_calls_sharing_an_id_is_refused() {
+fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
     let home = scratch_home("oc-transcript-in-editor-repeated");
     let home = home.root().to_path_buf();
     assert!(std::fs::create_dir_all(&home).is_ok());
@@ -463,8 +464,9 @@ fn an_edit_that_takes_out_one_of_two_calls_sharing_an_id_is_refused() {
         return;
     };
     let asked = vec![
-        serde_json::json!({ "command": "one", "exit": 3 }),
-        serde_json::json!({ "command": "two", "exit": 7 }),
+        ("c9", serde_json::json!({ "command": "one", "exit": 3 })),
+        ("c9", serde_json::json!({ "command": "two", "exit": 7 })),
+        ("c10", serde_json::json!({ "command": "three", "exit": 5 })),
     ];
     app.add_systems(AgentPass, answer_once(asked).in_set(Stage::Gate));
     ask(&mut app, &wakes, agent, "Run both.");
@@ -500,7 +502,7 @@ fn an_edit_that_takes_out_one_of_two_calls_sharing_an_id_is_refused() {
             .collect::<Vec<_>>()
     };
     let ran: Vec<_> = before.iter().map(|(_, exits)| exits.clone()).collect();
-    assert_eq!(ran, [exited(&[3, 7])]);
+    assert_eq!(ran, [exited(&[3, 7, 5])]);
 
     let drop_first = script(
         &home,
@@ -529,5 +531,24 @@ fence { if (/^```$/) fence = 0; next }
         "{seen}\n{said}"
     );
     assert_eq!(exits(&app), before, "{said}");
+
+    let drop_unique = script(
+        &home,
+        "drop-unique.sh",
+        &awk(r#"/^## \[/ { skip = 0 }
+/^```call shell c10$/ { fence = 1; next }
+fence { if (/^```$/) fence = 0; next }
+/^## \[3\] tool-result shell c10$/ { skip = 1 }
+!skip { print }"#),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_unique,
+        "Edited the conversation",
+    );
+    let ran: Vec<_> = exits(&app).into_iter().map(|(_, exits)| exits).collect();
+    assert_eq!(ran, [exited(&[3, 7])], "{said}");
     std::fs::remove_dir_all(&home).ok();
 }
