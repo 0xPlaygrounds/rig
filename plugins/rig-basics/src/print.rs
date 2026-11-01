@@ -32,7 +32,7 @@
 //! so without a prompt such a run has none; a run the launcher restarted on
 //! a reload with nothing left ends with 0. The exit code is 0 answered, 2
 //! for no prompt, a refused slash command, a `--tools` name no tool has or
-//! a `--model` the catalog lacks, 130 when cut off, as by a signal or a
+//! a `--model` the catalog lacks or that does not connect, 130 when cut off, as by a signal or a
 //! reader of stdout gone, else 1, such as for a failed turn, a turn that
 //! ended with no answer, or an error notice about the agent and no answer;
 //! a run of several turns exits with the worst. A `--json` run that exits
@@ -829,8 +829,9 @@ fn send(
         // failure before it.
         let refused = agents.refused.get(agent).ok();
         let reason = refused.map_or(Reason::Worst, |ModelRefused(why)| Reason::Told(why.clone()));
-        // `--model` named a model the catalog lacks, which leaves the agent
-        // with none: a command line refused, not a failed run.
+        // `--model` named a model the catalog lacks or that does not
+        // connect, which leaves the agent with none: a command line
+        // refused, not a failed run.
         let unknown = run.model
             && agents
                 .choices

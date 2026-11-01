@@ -1,4 +1,5 @@
-use rig_harness_test_support::{Collected, collect, first_agent, scratch_home};
+use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::{Collected, collect, first_agent, scratch_home, scripted_models};
 
 use super::*;
 
@@ -44,9 +45,8 @@ fn notices(app: &App) -> Vec<String> {
 fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     let home = scratch_home("corpus-keybindings");
     assert!(std::fs::create_dir_all(home.root()).is_ok());
-    // The catalog has no `deepseek/deepseek-pro`, the spec's second model.
     let keys = r#"
-"alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
+"alt+m" = { cycle_model = ["corpus-keys/flash", "corpus-keys/pro"] }
 "ctrl+k" = { command = "/help" }
 "ctrl+t" = { insert = "Think." }
 "ctrl+e" = { editor = true, override = true }
@@ -54,8 +54,14 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
 "#;
     assert!(std::fs::write(home.root().join(USER_FILE), keys).is_ok());
 
+    let answers = MockCompletionModel::text("ok");
+    let served = [
+        ("corpus-keys/flash", &answers),
+        ("corpus-keys/pro", &answers),
+    ];
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
+        .insert_resource(scripted_models(served))
         .insert_resource(Settings::default())
         .add_plugins((AgentPlugin, KeyBindingsPlugin));
     collect::<Notice>(&mut app);
@@ -84,14 +90,14 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     };
     app.world_mut().trigger(SetModel {
         entity: agent,
-        model: "deepseek/deepseek-flash".to_owned(),
+        model: "corpus-keys/flash".to_owned(),
         kind: ChoiceKind::ForThisRun,
     });
     app.update();
     press(&mut app, "alt+m", agent);
-    assert_eq!(model(&app, agent), Some("deepseek/deepseek-v4-pro"));
+    assert_eq!(model(&app, agent), Some("corpus-keys/pro"));
     press(&mut app, "alt+m", agent);
-    assert_eq!(model(&app, agent), Some("deepseek/deepseek-flash"));
+    assert_eq!(model(&app, agent), Some("corpus-keys/flash"));
 
     press(&mut app, "ctrl+t", agent);
     let world = app.world_mut();

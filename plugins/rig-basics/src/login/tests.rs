@@ -307,57 +307,73 @@ fn a_headless_run_with_no_model_waits_for_the_list_and_takes_an_offered_one() {
 }
 
 #[test]
-fn a_list_that_cannot_be_had_refuses_the_plans_models_and_says_why() {
+fn a_list_that_cannot_be_had_says_why_and_the_first_pick_takes_a_model_that_asks_again() {
     let backend = Backend::default();
     let lists = [(503, "busy")];
     let (mut app, wakes, _) = signed_in("login-unlisted", (&backend, &lists), NEVER, |_| {});
     run_until(&mut app, &wakes, |world| {
         status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
     });
+    let sol = status(app.world(), "gpt-6.1-sol");
+    let said = matches!(&sol, Some(ModelStatus::Unavailable(why))
+        if why.starts_with("could not ask ChatGPT which models"));
+    assert!(said, "{sol:?}");
+    // A model of the plan, whose request asks again, rather than none.
     let pick = FirstPick::of(app.world().resource::<Models>());
-    let said = match &pick {
-        FirstPick::Nothing(Some(why)) => why.starts_with("could not ask ChatGPT which models"),
-        _ => false,
-    };
-    assert!(said, "{pick:?}");
+    let picked = matches!(&pick, FirstPick::Model(model) if model.starts_with("chatgpt/"));
+    assert!(picked, "{pick:?}");
     assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
 }
 
-#[test]
-fn a_list_that_could_not_be_had_is_asked_again_by_the_next_request() {
-    use rig_core::effect::{EffectId, EffectKind};
-    use rig_core::serve::{BeforeServe, Intercept};
-
-    let backend = Backend::default();
-    let lists = [(503, "busy"), (200, SOL)];
-    let (mut app, wakes, agent) = signed_in("login-failed", (&backend, &lists), NEVER, |_| {});
-    on_sol(&mut app, agent);
+/// A gate on the plan's GPT-6.1 Sol in `app`, whose backend is `backend`.
+fn gate_on_sol(app: &App, backend: &Backend) -> Option<offered::Gate> {
     let session = app.world().resource::<super::Session>();
-    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
-    assert!(sol.is_some(), "the catalog lists GPT-6.1 Sol");
-    let Some(sol) = sol else { return };
-    let gate = offered::Gate {
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok()?;
+    Some(offered::Gate {
         offered: Arc::clone(&session.offered),
         spec: sol.spec.clone(),
         auth: session.auth.clone(),
         http: DynHttpClient::new(backend.clone()),
-    };
+    })
+}
+
+/// What `gate` does with a request for its model.
+fn before(gate: &offered::Gate) -> rig_core::serve::BeforeServe {
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_core::serve::Intercept;
+
     let asking = EffectKind::Completion {
         request: Arc::new(rig_core::completion::CompletionRequest::new("Hello.")),
         stream: true,
     };
-    let before = || bevy_tasks::block_on(gate.before(EffectId::from_raw(1), &asking));
-    // The busy backend's refusal, with its class: it may be retried.
-    let refused = match before() {
-        BeforeServe::Deny(report) => Some(report),
+    bevy_tasks::block_on(gate.before(EffectId::from_raw(1), &asking))
+}
+
+/// The report `gate` denies a request with, if it does.
+fn denied(gate: &offered::Gate) -> Option<rig_core::error::ErrorReport> {
+    match before(gate) {
+        rig_core::serve::BeforeServe::Deny(report) => Some(report),
         _ => None,
-    };
+    }
+}
+
+#[test]
+fn a_list_that_could_not_be_had_is_asked_again_by_the_next_request() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (mut app, wakes, agent) = signed_in("login-failed", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    // The busy backend's refusal, with its class: it may be retried.
+    let refused = denied(&gate);
     assert!(
         refused.as_ref().is_some_and(|report| report.retryable),
         "{refused:?}"
     );
+    on_sol(&mut app, agent);
     run_until(&mut app, &wakes, |world| {
-        status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
+        world.get::<Connection>(agent).is_some()
     });
     // Listing, which follows the answer, does not ask again, and the
     // agent keeps its model.
@@ -366,8 +382,29 @@ fn a_list_that_could_not_be_had_is_asked_again_by_the_next_request() {
     }
     assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
     assert!(app.world().get::<Connection>(agent).is_some());
-    assert!(matches!(before(), BeforeServe::Proceed));
+    assert!(matches!(
+        before(&gate),
+        rig_core::serve::BeforeServe::Proceed
+    ));
     assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_list_refused_with_a_wait_is_not_asked_again_before_it() {
+    let backend = Backend::default();
+    let lists = [(429, "Rate limited: try again in 30s."), (200, SOL)];
+    let (app, _, _) = signed_in("login-wait", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    let now = std::time::SystemTime::now();
+    let first = denied(&gate);
+    let asked = first.as_ref().and_then(|report| report.retry_after(now));
+    assert_eq!(asked, Some(std::time::Duration::from_secs(30)), "{first:?}");
+    // Refused again at once, with the same wait, and nothing sent.
+    let again = denied(&gate);
+    assert!(again.is_some_and(|report| report.retry_after(now) == asked));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -378,17 +415,26 @@ fn a_credential_refresh_that_never_answers_ends_with_the_lists_deadline() {
     };
     let lists = [(200, SOL)];
     // Expired: asking first refreshes it, which the backend never answers.
-    let (mut app, wakes, _) = signed_in("login-stalled", (&backend, &lists), 0, |_| {});
+    let (app, _, _) = signed_in("login-stalled", (&backend, &lists), 0, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
     let started = std::time::Instant::now();
-    run_until(&mut app, &wakes, |world| {
-        status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
+    let refused = denied(&gate);
+    assert!(started.elapsed() < std::time::Duration::from_secs(20));
+    // A timeout, which may be retried and which signing in again would not
+    // mend.
+    let timed_out = refused.as_ref().is_some_and(|report| {
+        report.kind == rig_core::error::ErrorKind::Timeout
+            && report.retryable
+            && report.message.contains("no answer in 10 s")
+            && !report.message.contains("sign in")
     });
+    assert!(timed_out, "{refused:?}");
     let sol = status(app.world(), "gpt-6.1-sol");
-    // A timeout, which signing in again would not mend.
     let said = matches!(&sol, Some(ModelStatus::Unavailable(why))
         if why.contains("no answer in 10 s") && !why.contains("sign in"));
     assert!(said, "{sol:?}");
-    assert!(started.elapsed() < std::time::Duration::from_secs(20));
     assert_eq!(backend.listed.load(Ordering::SeqCst), 0);
 }
 

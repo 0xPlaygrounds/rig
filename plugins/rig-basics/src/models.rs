@@ -105,7 +105,9 @@ pub enum FirstPick {
     /// A sign-in is still finding out which of its models the account
     /// offers: ask again once the [`Models`] changed.
     Checking,
-    /// The first model that can be reached, by its reference.
+    /// The first model that can be reached, else the first of a sign-in
+    /// that could not ask its account which models it offers, whose
+    /// request asks again; by its reference.
     Model(String),
     /// None can be reached, with why a sign-in's models cannot be used
     /// when that is why.
@@ -132,21 +134,19 @@ impl FirstPick {
         {
             return Self::Model(spec.reference());
         }
-        // Why a sign-in's models cannot be used: it could not ask its
-        // account, else the account offers none of them.
-        let signed_in = || {
-            let statuses = statuses.iter();
-            statuses.filter(|(spec, _)| models.0.plan(spec).is_some())
-        };
-        let unasked = signed_in().find_map(|(_, status)| match status {
-            ModelStatus::Unavailable(why) => Some(why.clone()),
+        let mut signed_in = statuses
+            .iter()
+            .filter(|(spec, _)| models.0.plan(spec).is_some());
+        if let Some((spec, _)) = signed_in
+            .clone()
+            .find(|(_, status)| matches!(status, ModelStatus::Unavailable(_)))
+        {
+            return Self::Model(spec.reference());
+        }
+        // Why a sign-in's models cannot be used: the account offers none.
+        let refused = signed_in.find_map(|(_, status)| match status {
+            ModelStatus::NotOffered(why) => Some(why.clone()),
             _ => None,
-        });
-        let refused = unasked.or_else(|| {
-            signed_in().find_map(|(_, status)| match status {
-                ModelStatus::NotOffered(why) => Some(why.clone()),
-                _ => None,
-            })
         });
         Self::Nothing(refused)
     }

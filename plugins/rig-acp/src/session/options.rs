@@ -211,11 +211,15 @@ pub(super) fn changed(
             }
             _ => false,
         };
-        let answer = match (took, refusals.get(agent)) {
-            (_, Ok(ModelRefused(why))) => Err(crate::error(Error::invalid_params(), why.clone())),
-            (true, Err(_)) => Ok(acp::SetSessionConfigOptionResponse::new(current.clone())),
-            (false, Err(_)) => {
-                let why = said.unwrap_or_else(|| "rig did not change it".to_owned());
+        // A change not taken says its own refusal over an older one.
+        let answer = match (took, refusals.get(agent), said) {
+            (false, _, Some(why)) => Err(crate::error(Error::invalid_params(), why)),
+            (_, Ok(ModelRefused(why)), _) => {
+                Err(crate::error(Error::invalid_params(), why.clone()))
+            }
+            (true, Err(_), _) => Ok(acp::SetSessionConfigOptionResponse::new(current.clone())),
+            (false, Err(_), None) => {
+                let why = "rig did not change it".to_owned();
                 Err(crate::error(Error::invalid_params(), why))
             }
         };

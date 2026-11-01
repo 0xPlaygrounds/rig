@@ -1,3 +1,9 @@
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+
+use rig_harness::harness_protocol::Home;
+use rig_harness::rig_core::catalog::ModelStatus;
+use rig_harness::services::RigHome;
+
 use super::*;
 
 #[test]
@@ -34,10 +40,6 @@ fn plugin_registers_separate_vendor_without_changing_anthropic() {
 
 #[test]
 fn the_models_are_usable_only_once_logged_in() -> anyhow::Result<()> {
-    use rig_harness::harness_protocol::Home;
-    use rig_harness::rig_core::catalog::ModelStatus;
-    use rig_harness::services::RigHome;
-
     let root = tempfile::tempdir()?;
     let mut app = App::new();
     app.insert_resource(RigHome(Home::at(root.path())))
@@ -53,10 +55,13 @@ fn the_models_are_usable_only_once_logged_in() -> anyhow::Result<()> {
     };
     let before = usable(&app);
     anyhow::ensure!(!before.is_empty() && before.iter().all(|usable| !usable));
-    use std::os::unix::fs::DirBuilderExt;
     let stored = root.path().join("anthropic-oauth");
     std::fs::DirBuilder::new().mode(0o700).create(&stored)?;
-    std::fs::write(stored.join("credentials.json"), "{}")?;
+    let credentials = stored.join("credentials.json");
+    std::fs::write(&credentials, "{}")?;
+    // A file others may read is not one a request reads.
+    anyhow::ensure!(usable(&app).iter().all(|usable| !usable));
+    std::fs::set_permissions(&credentials, std::fs::Permissions::from_mode(0o600))?;
     let after = usable(&app);
     anyhow::ensure!(after.iter().any(|usable| *usable), "{after:?}");
     Ok(())

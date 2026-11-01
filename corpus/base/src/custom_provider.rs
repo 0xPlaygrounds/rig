@@ -5,7 +5,7 @@
 //! catalog in [`Models`] as `<name>/<model>`, and the vendor is reached
 //! through this plugin's [`Provide`], never the environment's keys for a
 //! built-in vendor. So `--model`, `/model`, its picker and completions
-//! (with "no key: set …" for one whose `key_env` is unset), the remembered
+//! (which leave out one whose `key_env` is unset), the remembered
 //! default, subagents and session restore take them like any built-in
 //! model. Each is reached on the wire of its `api`, at its `base_url`, with
 //! its extra `headers` and its key from `key_env` or `key_command` (run

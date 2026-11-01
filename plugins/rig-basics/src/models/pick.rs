@@ -4,7 +4,7 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
 
-use super::{FirstPick, ModelItem};
+use super::ModelItem;
 
 /// What a catalog model is to `/model`: its reference, and its line.
 pub(super) struct Listed {
@@ -24,7 +24,11 @@ pub(super) fn catalog(models: &Connector) -> Vec<Listed> {
                 None => "  (no key needed)".to_owned(),
             },
             ModelStatus::Checking => "  (checking your plan)".to_owned(),
-            _ => return None,
+            ModelStatus::NotOffered(_)
+            | ModelStatus::NoKey(_)
+            | ModelStatus::Unconfigured
+            | ModelStatus::NoTools
+            | ModelStatus::Unavailable(_) => return None,
         };
         Some(listing(spec, &note))
     });
@@ -69,7 +73,17 @@ fn model_items(
             .iter()
             .any(|it| it.reference == chosen.spec.reference())
     {
-        listed.insert(0, listing(chosen.spec, ""));
+        // Why it cannot be used, as it is listed anyway.
+        let note = match models.0.status(chosen.spec) {
+            ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
+            ModelStatus::Unconfigured => "  (at its default address)".to_owned(),
+            ModelStatus::NoTools => "  (calls no tools)".to_owned(),
+            ModelStatus::Unavailable(why) | ModelStatus::NotOffered(why) => {
+                format!("  (unavailable: {why})")
+            }
+            ModelStatus::Usable | ModelStatus::Checking => String::new(),
+        };
+        listed.insert(0, listing(chosen.spec, &note));
     }
     let current = current.map(|current| format!("model {}", current.0));
     let listed = listed.into_iter().map(|listed| PickItem {
@@ -112,14 +126,20 @@ pub(super) fn pick_model(
     ));
 }
 
-/// Why no model can be used, and how to make one usable.
+/// Why no model can be used, and how to make one usable: a sign-in's own
+/// reason, when its models are why.
 fn nothing_usable(models: &Models) -> String {
-    let why = match FirstPick::of(models) {
-        FirstPick::Nothing(Some(why)) => why,
-        _ => {
-            "export a provider's API key, such as OPENAI_API_KEY, or sign in with /login".to_owned()
-        }
-    };
+    let statuses = models.0.statuses().into_iter();
+    let signed_in = statuses.filter(|(spec, _)| models.0.plan(spec).is_some());
+    let why = signed_in
+        .filter_map(|(_, status)| match status {
+            ModelStatus::Unavailable(why) | ModelStatus::NotOffered(why) => Some(why),
+            _ => None,
+        })
+        .next();
+    let why = why.unwrap_or_else(|| {
+        "export a provider's API key, such as OPENAI_API_KEY, or sign in with /login".to_owned()
+    });
     format!("No model can be used now: {why}.")
 }
 

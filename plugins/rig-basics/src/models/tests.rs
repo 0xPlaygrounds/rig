@@ -531,6 +531,39 @@ fn a_model_without_its_key_is_neither_listed_nor_offered_as_the_argument() {
 }
 
 #[test]
+fn the_picker_lists_the_agents_model_first_with_why_it_cannot_be_used() {
+    let Some(models) = one_without_a_key("rig-models-gone") else {
+        return;
+    };
+    let (mut app, agent) = routed();
+    app.insert_resource(models);
+    // As a resumed session whose key is gone has it.
+    let current = ModelChoice("rig-models-gone-locked/big".to_owned());
+    app.world_mut().entity_mut(agent).insert(current);
+    run(&mut app, agent, "model");
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    let picker = pickers.iter(world).next();
+    let rows: Vec<(&str, Option<&str>)> = picker
+        .iter()
+        .flat_map(|picker| &picker.items)
+        .map(|item| (item.label.as_str(), item.detail.as_deref()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("router  per request", None),
+            (
+                "rig-models-gone-locked/big  big  (no key: set CORP_KEY)",
+                Some("current")
+            ),
+            ("rig-models-gone/small  small  (no key needed)", None),
+        ]
+    );
+    assert_eq!(picker.map(|picker| picker.selected), Some(1));
+}
+
+#[test]
 fn with_no_model_to_use_the_picker_says_how_to_get_one() {
     use rig_harness::rig_core::catalog::Connector;
 
@@ -565,11 +598,9 @@ fn a_model_without_its_key_keeps_the_current_one_connected() {
     run(&mut app, agent, "model rig-models-keyless-locked/big");
     assert_eq!(
         recalled(&app),
-        [
-            "Not picked: cannot use rig-models-keyless-locked/big: no key for \
+        ["Cannot use rig-models-keyless-locked/big: no key for \
               `rig-models-keyless-locked`: set `CORP_KEY` or pass one with \
-              `ConnectOptions::api_key`. Still on rig-models-keyless/small."
-        ]
+              `ConnectOptions::api_key`. Still on rig-models-keyless/small."]
     );
     app.update();
     let world = app.world();

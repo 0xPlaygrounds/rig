@@ -15,7 +15,7 @@
 //!   - refuses the call with "Ollama not running at …" while the model is
 //!     unavailable: its server stopped listing it, or is down. The vendor's
 //!     provider refuses to connect it with the same words, so the picker
-//!     notes it so and choosing it fails. An endpoint that is down is
+//!     leaves it out and choosing it fails. An endpoint that is down is
 //!     skipped with one debug line. A saved choice of a local model
 //!     connects once a probe finds it (the kernel reconnects when the
 //!     catalog changes);

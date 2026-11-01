@@ -223,7 +223,7 @@ pub(crate) fn on_set_model(
     let why = match models.0.catalog().resolve(&set.model) {
         Ok(found) => {
             let model = ModelChoice(found.spec.reference());
-            match models.0.connect(&model.0) {
+            match models.connect(&model.0) {
                 Ok(_) => {
                     commands.entity(set.entity).insert(model.clone());
                     commands.trigger(ChoiceTaken {
@@ -234,29 +234,26 @@ pub(crate) fn on_set_model(
                     return;
                 }
                 Err(why) if current == Some(&model) => {
-                    let why = format!("Cannot use {}: {why}.", model.0);
-                    let refused = ModelRefused(why.clone());
                     let mut agent = commands.entity(set.entity);
-                    agent.remove::<Connection>().insert(refused);
+                    agent
+                        .remove::<Connection>()
+                        .insert(ModelRefused(why.clone()));
                     notices.write(Notice::error(set.entity, why));
                     return;
                 }
-                Err(why) => format!("cannot use {}: {why}.", model.0),
+                Err(why) => why,
             }
         }
         Err(why) => {
             let stop = if why.suggestions.is_empty() { "." } else { "" };
-            format!("{why}{stop}")
+            format!("Not picked: {why}{stop}")
         }
     };
     let kept = match current {
         Some(ModelChoice(model)) => format!(" Still on {model}."),
         None => String::new(),
     };
-    notices.write(Notice::error(
-        set.entity,
-        format!("Not picked: {why}{kept}"),
-    ));
+    notices.write(Notice::error(set.entity, format!("{why}{kept}")));
 }
 
 /// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`],

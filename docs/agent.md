@@ -39,13 +39,20 @@ supported yet.
 
 ## Models and sign-in
 
-`/model` picks a model (providers that need no key, such as a local Ollama,
-are listed last; the picker opens on the current one), and `/effort` its
-reasoning setting. A new session starts with the model and reasoning you last
-picked with `/model` and `/effort`, saved once that model has answered (an
-`/effort` is saved with a model you picked with `/model` or saved before). `-m
+`/model` picks a model, and `/effort` its reasoning setting. It lists the
+models you can use now: those of a provider whose key is exported or saved
+with `/login`, those of a sign-in, and those of a local server that needs no
+key (Ollama, llama.cpp) once `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL`
+names it, listed last; the picker opens on the current model, which it always
+lists. With none to list it says how to get one. `/model vendor/model` names
+any catalog model, such as a local one at its default address; one that does
+not connect, such as one with no key, is refused and the current model stays.
+A new session starts with the model and reasoning you last picked with
+`/model` and `/effort`, saved once that model has answered (an `/effort` is
+saved with a model you picked with `/model` or saved before). `-m
 vendor/model` picks one on the command line for that run only, with the saved
-reasoning setting when that model takes it; an editor's
+reasoning setting when that model takes it, and none when it does not
+connect (a headless run then exits 2); an editor's
 choice over ACP and an automatic pick are never saved either. With nothing
 saved or named, the terminal view asks you to pick one, and a headless run
 or an editor's new session takes the first model that can be reached.
@@ -73,8 +80,10 @@ without the terminal view. Esc or a second `/login` cancels a sign-in that waits
 Once signed in, `/model` lists the plan's models as `chatgpt/...`, marked
 "(ChatGPT plan)": those ChatGPT says your account may use, asked once per run
 when first needed (and once more if it refuses a model it listed). Until it
-answers they are marked as being checked; if it cannot be asked, the plan's
-models are refused with the reason until you sign in again with `/login`. A
+answers they are marked as being checked; if it cannot be asked, such as when
+it does not answer within 10 s, the plan's models are refused with the reason,
+and the next request asks again (after any wait ChatGPT asked for), so a
+timeout is retried; only a failed sign-in asks you to sign in again. A
 successful sign-in switches the agent to the plan's latest frontier model for
 that session. The credential is kept in `RIG_HOME/auth/chatgpt.json`,
 readable by you alone, and refreshed before a request when it has expired, so

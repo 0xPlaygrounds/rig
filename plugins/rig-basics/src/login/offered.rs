@@ -3,11 +3,12 @@
 //! more after the backend said a model it was sent was not found. Until the
 //! answer comes, listings say the plan's models are being checked and
 //! requests wait for it. A list that could not be had is refused out loud,
-//! never guessed, and not kept: the next request asks again.
+//! never guessed, and not kept: the next request asks again, once any wait
+//! the backend asked for is over.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
@@ -61,9 +62,9 @@ enum Asking {
     Running(Vec<async_channel::Sender<Asked>>),
     /// The account's models.
     Answered(Arc<[String]>),
-    /// The last fetch failed, when: a request asks again, and so does a
-    /// listing once [`LIST_TIMEOUT`] passed, which keeps the listing that
-    /// follows each answer from asking again at once.
+    /// The last fetch failed, and until when the backend asked not to be
+    /// asked again: listings say why, and the next request after then asks
+    /// again.
     Failed(ErrorReport, Instant),
 }
 
@@ -87,16 +88,15 @@ impl Offered {
     }
 
     /// The answer, if it came, or why the last fetch failed; asking starts
-    /// on the IO pool if it had not, or if it failed long enough ago.
+    /// on the IO pool if it had not. Listing follows each answer, so it
+    /// never asks again after a failure.
     fn now(self: &Arc<Self>, auth: &Authenticator, http: &DynHttpClient) -> Option<Asked> {
         let mut state = self.state();
         match &state.asked {
             Asking::Answered(listed) => Some(Ok(Arc::clone(listed))),
-            Asking::Failed(failure, at) if at.elapsed() < LIST_TIMEOUT => {
-                Some(Err(failure.clone()))
-            }
+            Asking::Failed(failure, _) => Some(Err(failure.clone())),
             Asking::Running(_) => None,
-            Asking::NotYet | Asking::Failed(..) => {
+            Asking::NotYet => {
                 self.start(&mut state, (auth, http), Vec::new());
                 None
             }
@@ -135,26 +135,32 @@ impl Offered {
         auth: &Authenticator,
         http: &DynHttpClient,
     ) -> Option<String> {
-        self.now(auth, http)?.ok()?;
-        self.known_refusal(&spec.id).map(|why| why.reason())
+        let listed = self.now(auth, http)?.ok()?;
+        let offered = listed.contains(&spec.id);
+        (!offered).then(|| Refusal::NotOffered.reason())
     }
 
     /// Why the model `slug` is refused, if the answer came and leaves it out.
     pub(super) fn known_refusal(&self, slug: &str) -> Option<Refusal> {
         match &self.state().asked {
-            Asking::Answered(listed) => refusal(&Ok(Arc::clone(listed)), slug),
+            Asking::Answered(listed) if !listed.iter().any(|listed| listed == slug) => {
+                Some(Refusal::NotOffered)
+            }
             _ => None,
         }
     }
 
     /// The answer, waiting for it, asking first if nobody had or the last
-    /// fetch failed.
+    /// fetch failed; the failure itself while the wait it asked for runs.
     async fn answer(self: &Arc<Self>, auth: &Authenticator, http: &DynHttpClient) -> Asked {
         let (sender, waiting) = async_channel::bounded(1);
         {
             let mut state = self.state();
             match &mut state.asked {
                 Asking::Answered(listed) => return Ok(Arc::clone(listed)),
+                Asking::Failed(failure, again) if Instant::now() < *again => {
+                    return Err(failure.clone());
+                }
                 Asking::Running(waiting) => waiting.push(sender),
                 Asking::NotYet | Asking::Failed(..) => {
                     self.start(&mut state, (auth, http), vec![sender]);
@@ -232,7 +238,10 @@ impl Offered {
             }
             let kept = match &asked {
                 Ok(listed) => Asking::Answered(Arc::clone(listed)),
-                Err(failure) => Asking::Failed(failure.clone(), Instant::now()),
+                Err(failure) => {
+                    let wait = failure.retry_after(SystemTime::now()).unwrap_or_default();
+                    Asking::Failed(failure.clone(), Instant::now() + wait)
+                }
             };
             let previous = std::mem::replace(&mut state.asked, kept);
             // Counted under the lock: whoever sees the answer sees it counted.
