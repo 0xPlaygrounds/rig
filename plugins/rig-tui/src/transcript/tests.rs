@@ -16,6 +16,7 @@ use rig_core::message::{
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
 use rig_ecs::stage::{
     Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
@@ -152,6 +153,7 @@ fn drawn_at(
     let look = Look {
         renderers,
         agent: None,
+        forked_from: &[],
         calls,
         outputs,
         inside: HashMap::new(),
@@ -1488,6 +1490,116 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     world.write_message(PastEffects::new(records));
     say(&mut resumed, agent, asked);
     assert_eq!(consult_rows(&mut resumed, agent), expected);
+}
+
+/// Adds a `wait` renderer: one row per call, how long it ran and how many
+/// calls it started, after a `⏱ `.
+fn timing(app: &mut App) {
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("wait") {
+                let view = input.view();
+                let line = format!("⏱ {:?} {}", view.took, view.children.len());
+                output.lines = vec![LookLine::from(Line::from(line))];
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
+}
+
+/// The rows [`timing`] draws of `agent`'s transcript, without the `⏱ `.
+fn timed_rows(app: &mut App, agent: Entity) -> Vec<String> {
+    let rows = laid_out(app, agent);
+    let rows = rows.iter().flat_map(DrawnTranscript::rows);
+    let rows = rows.filter_map(|row| row.text.strip_prefix("⏱ "));
+    rows.map(str::to_owned).collect()
+}
+
+/// The record of the `main` agent's `wait` effect `id`, under `parent`,
+/// as the reply's call `call` when it is one, run for `took` milliseconds.
+fn waited(id: u64, parent: Option<u64>, call: Option<CallRef>, took: u64) -> EffectRecord {
+    let kind = EffectKind::ToolCall {
+        name: "wait".to_owned(),
+        args: "{}".to_owned(),
+    };
+    let Outcome(outcome) = Outcome::from(ToolResult::success("done".to_owned().into()));
+    let key = effect::HandlerKey::new("tool:wait");
+    let mut record = EffectRecord::new(EffectId::from_raw(id), key, kind, outcome);
+    record.scope = Some(Arc::from("main"));
+    (record.parent, record.call) = (parent.map(EffectId::from_raw), call);
+    (record.started_ms, record.finished_ms) = (Some(1_000), Some(1_000 + took));
+    record
+}
+
+/// A call a fork took over shows how long it ran and the calls it started,
+/// as the records of the agent it was forked from say, live and once
+/// resumed; the fork's own call at the place of a later call of that agent
+/// takes nothing from it.
+#[test]
+fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
+    let Ok(wait) = ToolName::new("wait") else {
+        return;
+    };
+    let call = |id: &str| ToolCall::from_wire(id, ToolFunction::new(wait.clone(), json!({})));
+    let asking = |call: &ToolCall| {
+        let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+        Message::Assistant(reply)
+    };
+    let answering = |call: &ToolCall| Message::tool_result(call.id.clone(), wait.clone(), "done");
+    let (c1, c2, c3) = (call("c1"), call("c2"), call("c3"));
+    let (mut app, source) = layout_app();
+    timing(&mut app);
+    say(&mut app, source, asking(&c1));
+    say(&mut app, source, answering(&c1));
+    let Some(copy) = app.world().get::<Conversation>(source).cloned() else {
+        return;
+    };
+    let fork = (Name::new("agent"), AgentId("fork".to_owned()), copy);
+    let fork = (fork, ForkedFrom("main".to_owned()));
+    let fork = app.world_mut().spawn(fork).id();
+    // Both go on from the same message count.
+    say(&mut app, source, asking(&c2));
+    say(&mut app, source, answering(&c2));
+    say(&mut app, fork, asking(&c3));
+    assert_eq!(message_id(&app, fork, 2), message_id(&app, source, 2));
+    let at = |message| {
+        Some(CallRef {
+            reply: message_id(&app, source, message)?,
+            index: 0,
+        })
+    };
+    let records = vec![
+        waited(1, None, at(0), 5_000),
+        waited(2, Some(1), None, 0),
+        waited(3, None, at(2), 7_000),
+    ];
+    for record in &records {
+        app.world_mut()
+            .write_message(EffectRecorded(record.clone()));
+    }
+    app.update();
+    assert_eq!(timed_rows(&mut app, source), ["Some(5s) 1", "Some(7s) 0"]);
+    assert_eq!(timed_rows(&mut app, fork), ["Some(5s) 1", "None 0"]);
+
+    // Resumed: the same conversations and records, read back.
+    let conversations = [source, fork].map(|agent| app.world().get::<Conversation>(agent).cloned());
+    let [Some(source_conversation), Some(fork_conversation)] = conversations else {
+        return;
+    };
+    let (mut resumed, source) = layout_app();
+    timing(&mut resumed);
+    let world = resumed.world_mut();
+    world.entity_mut(source).insert(source_conversation);
+    let fork = (
+        Name::new("agent"),
+        AgentId("fork".to_owned()),
+        fork_conversation,
+    );
+    let fork = world.spawn((fork, ForkedFrom("main".to_owned()))).id();
+    world.write_message(PastEffects::new(records));
+    resumed.update();
+    assert_eq!(timed_rows(&mut resumed, fork), ["Some(5s) 1", "None 0"]);
 }
 
 /// A mark inside a saved reply's text block is drawn between the words it

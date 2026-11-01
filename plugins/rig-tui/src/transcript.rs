@@ -79,8 +79,17 @@ impl CallFacts {
     /// as known.
     fn took(&self, agent: Option<&str>, at: CallRef) -> Option<Duration> {
         let key = (Arc::from(agent?), at);
-        let took = self.run.took.get(&key);
-        took.or_else(|| self.past.took.get(&key)).copied()
+        let mut known = [&self.run, &*self.past].into_iter();
+        known.find_map(|settled| settled.ran.get(&key).copied().flatten())
+    }
+
+    /// Whether the settled effects hold the call `at` of the agent with the
+    /// id `agent`.
+    fn ran(&self, agent: &str, at: CallRef) -> bool {
+        let key = (Arc::from(agent), at);
+        [&self.run, &*self.past]
+            .into_iter()
+            .any(|settled| settled.ran.contains_key(&key))
     }
 
     /// Notes the effect `record` settled in this run.
@@ -121,9 +130,21 @@ impl CallFacts {
     /// settled) say: each call after the one that started it, in the order
     /// they were made, through any effect between that is no call. What
     /// the settled effects say is worked out once per change; over it, the
-    /// tool calls a live effect is under, which change as it runs.
-    pub(crate) fn children(&self, live: &CallTree, agent: &str) -> ChildCalls {
+    /// tool calls a live effect is under, which change as it runs. Also
+    /// what the settled effects say of each agent it was forked from,
+    /// `forked_from`.
+    pub(crate) fn children(
+        &self,
+        live: &CallTree,
+        agent: &str,
+        forked_from: &[&str],
+    ) -> ChildCalls {
         let settled = self.settled_children(agent);
+        let inherited = forked_from.iter().map(|from| {
+            let children = self.settled_children(from);
+            ((*from).to_owned(), children)
+        });
+        let inherited = inherited.collect();
         let trees = [&self.past.calls, &self.run.calls, live];
         // Every live effect, and every effect it is under.
         let mut above = HashSet::new();
@@ -145,7 +166,11 @@ impl CallFacts {
                 _ => {}
             }
         }
-        ChildCalls { settled, live }
+        ChildCalls {
+            settled,
+            live,
+            inherited,
+        }
     }
 
     /// What [`Self::children`] works out from the settled effects alone.
@@ -227,22 +252,31 @@ fn tool_call<'a>(trees: &[&'a CallTree], id: EffectId) -> Option<&'a (Arc<str>, 
 pub(crate) struct ChildCalls {
     settled: Arc<CallsUnder>,
     live: CallsUnder,
+    /// What the settled effects say of each agent the drawn one was
+    /// forked from, by its id.
+    inherited: Vec<(String, Arc<CallsUnder>)>,
 }
 
 impl ChildCalls {
-    /// The calls under the tool call `at`, if it started any.
-    pub(crate) fn get(&self, at: Option<CallRef>) -> Option<&Vec<ChildCall>> {
+    /// The calls under the tool call `at`, if it started any: the drawn
+    /// agent's own, or with `from`, those of the agent with that id it was
+    /// forked from.
+    pub(crate) fn get(&self, at: Option<CallRef>, from: Option<&str>) -> Option<&Vec<ChildCall>> {
         let at = at?;
-        self.live.get(&at).or_else(|| self.settled.get(&at))
+        let Some(from) = from else {
+            return self.live.get(&at).or_else(|| self.settled.get(&at));
+        };
+        let inherited = self.inherited.iter().find(|(of, _)| of == from);
+        inherited.and_then(|(_, children)| children.get(&at))
     }
 }
 
-/// Effects that settled, as the view keeps them: how long each tool call
-/// of a reply ran, by its agent's id and the call, and which calls each
-/// effect started.
+/// Effects that settled, as the view keeps them: each tool call of a
+/// reply, by its agent's id and the call, with how long it ran when
+/// known; and which calls each effect started.
 #[derive(Clone, Default)]
 pub(crate) struct Settled {
-    took: HashMap<(Arc<str>, CallRef), Duration>,
+    ran: HashMap<(Arc<str>, CallRef), Option<Duration>>,
     calls: CallTree,
 }
 
@@ -273,10 +307,10 @@ impl Settled {
             EffectKind::ToolCall { name: tool, args } => {
                 if let (Some(at), Some(agent)) = (record.call, &record.scope) {
                     self.calls.tool_call(record.id, agent, at);
-                    if let Some((end, start)) = record.finished_ms.zip(record.started_ms) {
-                        let took = Duration::from_millis(end.saturating_sub(start));
-                        self.took.insert((Arc::clone(agent), at), took);
-                    }
+                    let took = record.finished_ms.zip(record.started_ms);
+                    let took = took.map(|(end, start)| end.saturating_sub(start));
+                    let took = took.map(Duration::from_millis);
+                    self.ran.insert((Arc::clone(agent), at), took);
                 }
                 let args = serde_json::from_str(args).unwrap_or_default();
                 let call = ToolName::new(tool.as_str()).ok();
@@ -469,6 +503,9 @@ pub(crate) struct Look<'a> {
     pub(crate) renderers: &'a Renderers,
     /// The id of the agent drawn, when it is one of this app's.
     pub(crate) agent: Option<&'a str>,
+    /// The ids of the agents it was forked from, nearest first, as far as
+    /// known.
+    pub(crate) forked_from: &'a [&'a str],
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallRef, CallState>,
     /// The output so far of each of its running calls that reports it.
@@ -575,7 +612,7 @@ impl ShownAside<'_> {
     }
 }
 
-impl Look<'_> {
+impl<'a> Look<'a> {
     /// The marks in `text`, each with the span it draws.
     pub(crate) fn marks_in(&self, text: MarkIn) -> Vec<(usize, ratatui::text::Span<'static>)> {
         let marks = self.marks.iter().filter(|mark| mark.r#in == text);
@@ -607,6 +644,22 @@ impl Look<'_> {
                 }
             }
         }
+    }
+
+    /// The id of the agent the drawn one was forked from whose effect
+    /// records say how the call `at` ran, its running time and the calls
+    /// it started: the nearest that holds it, for a call the fork took
+    /// over. `None` for the drawn agent's own. Only a call `answered`
+    /// outside the running turn that the drawn agent holds no record of is
+    /// taken over, as a fork's own new call may have the place of a later
+    /// call of the agent it was forked from.
+    fn forked_call(&self, at: CallRef, answered: bool) -> Option<&'a str> {
+        let agent = self.agent?;
+        if !answered || self.calls.contains_key(&at) || self.facts.ran(agent, at) {
+            return None;
+        }
+        let mut from = self.forked_from.iter().copied();
+        from.find(|from| self.facts.ran(from, at))
     }
 
     /// Where the call `at` stands: stopped when a stop answered it, else
@@ -641,8 +694,11 @@ impl Look<'_> {
                 self.stops.answered(Some(at)).hash(hasher);
                 self.calls.get(&at).hash(hasher);
                 self.outputs.get(&at).hash(hasher);
-                self.facts.took(self.agent, at).hash(hasher);
-                hash_children(self.children.get(Some(at)), hasher);
+                // As if answered: an answer changes the next message,
+                // which draws this one again.
+                let from = self.forked_call(at, true);
+                self.facts.took(from.or(self.agent), at).hash(hasher);
+                hash_children(self.children.get(Some(at), from), hasher);
             }
         }
         hasher.finish()
@@ -1641,15 +1697,17 @@ fn message_lines(
                     AssistantContent::ToolCall(call) => {
                         let ((index, result), facts) = calls.next().unwrap_or_default();
                         let at = id.map(|reply| CallRef { reply, index });
+                        let answered = result.is_some() || look.stops.answered(at);
+                        let from = at.and_then(|at| look.forked_call(at, answered));
                         let view = ToolCallView {
                             call,
                             result,
                             state: look.state(at, result),
                             theme: *look.theme,
                             facts,
-                            took: at.and_then(|at| look.facts.took(look.agent, at)),
+                            took: at.and_then(|at| look.facts.took(from.or(look.agent), at)),
                             output: at.and_then(|at| look.outputs.get(&at)).map(String::as_str),
-                            children: look.children.get(at).map_or(&[], Vec::as_slice),
+                            children: look.children.get(at, from).map_or(&[], Vec::as_slice),
                         };
                         let (drawn, decorated) = look.renderers.call_decorated(&view);
                         let start = lines.len();

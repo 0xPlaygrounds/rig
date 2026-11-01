@@ -48,6 +48,7 @@ use super::wrap::wrap_all;
 use rig_core::conversation;
 use rig_core::conversation::CallRef;
 use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial, PartialCall};
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
 use rig_ecs::tools::{InReply, ToolRequest};
@@ -344,6 +345,10 @@ pub(crate) struct ShownConversation<'a> {
     /// Its id; `None` for a conversation no agent of this app holds,
     /// which shows no notices.
     pub(crate) id: Option<&'a AgentId>,
+    /// The ids of the agents it was forked from, nearest first, as far as
+    /// this app holds them: their records say how the calls it took over
+    /// ran.
+    pub(crate) forked_from: Vec<&'a str>,
     pub(crate) conversation: &'a conversation::Conversation,
     /// What entries of it stand for, drawn above them.
     pub(crate) replaced: Option<&'a Replaced>,
@@ -372,6 +377,7 @@ impl<'a> ShownConversation<'a> {
         Self {
             entity,
             id: None,
+            forked_from: Vec::new(),
             conversation,
             replaced: None,
             changed: true,
@@ -535,6 +541,8 @@ pub(crate) struct LayoutSources<'w, 's> {
             Option<&'static Replaced>,
         ),
     >,
+    /// The agents forked from another, with the id of each.
+    forks: Query<'w, 's, (&'static AgentId, &'static ForkedFrom)>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
     /// The replies streaming in that nothing superseded, such as a race's
@@ -576,6 +584,8 @@ impl LayoutSources<'_, '_> {
             .map(|(effect, message, _)| (effect, message))
             .collect();
         inbox.sort_by_key(|(effect, _)| effect.id());
+        let forked_from = self.forked_from(entity);
+        let live = self.live_calls();
         Some(ShownConversation {
             entity,
             id: Some(id),
@@ -587,8 +597,24 @@ impl LayoutSources<'_, '_> {
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
             asides: asides(conversation),
-            children: self.facts.children(&self.live_calls(), &id.0),
+            children: self.facts.children(&live, &id.0, &forked_from),
+            forked_from,
         })
+    }
+
+    /// The ids of the agents `entity` was forked from, nearest first, as
+    /// far as this app holds them.
+    fn forked_from(&self, entity: Entity) -> Vec<&str> {
+        let mut lineage = Vec::new();
+        let mut from = self.forks.get(entity).ok();
+        while let Some((_, ForkedFrom(id))) = from {
+            if lineage.contains(&id.as_str()) {
+                break;
+            }
+            lineage.push(id.as_str());
+            from = self.forks.iter().find(|(of, _)| of.0 == *id);
+        }
+        lineage
     }
 
     /// The effects not settled yet, by the effects that started them, the
@@ -670,6 +696,7 @@ pub(crate) fn lay_out_transcript(
     let mut look = Look {
         renderers: sources.renderers,
         agent: shown.id.map(|id| id.0.as_str()),
+        forked_from: &shown.forked_from,
         calls: &shown.calls,
         outputs: &shown.outputs,
         inside: HashMap::new(),
