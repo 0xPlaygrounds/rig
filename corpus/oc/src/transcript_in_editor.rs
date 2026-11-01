@@ -713,6 +713,15 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
         let (calls, before) = (ids(&message).0, ids(&entry.message).0);
         // Ids can repeat, so any change to the calls may have moved one.
         let moved = calls != before;
+        // The file names a call by its id alone, so it can't tell which of
+        // a reply's calls that share one an edit took out.
+        let repeated =
+            (before.iter().enumerate()).find(|&(n, id)| before.iter().take(n).any(|was| was == id));
+        if let Some((_, id)) = repeated.filter(|_| moved) {
+            return Err(format!(
+                "a reply asks for two calls with the id `{id}`, so the edit can't tell which one it changed; edit that reply's text only"
+            ));
+        }
         if !empty {
             entries.push(Entry {
                 message: message.into(),
