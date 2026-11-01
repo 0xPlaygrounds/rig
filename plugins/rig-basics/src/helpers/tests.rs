@@ -196,7 +196,7 @@ fn a_helper_in_tilde_is_in_the_home_directory() {
     };
     let lent = Lent {
         model: None,
-        access: ToolAccess::All,
+        access: ToolAccess::all(),
         lendable: Vec::new(),
         base: std::env::temp_dir().join(format!("rig-helpers-tilde-{}", std::process::id())),
     };

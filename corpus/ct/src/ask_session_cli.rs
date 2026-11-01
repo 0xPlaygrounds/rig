@@ -10,7 +10,7 @@
 //! when the app has it, condenses one too large for the model), its system
 //! prompt says what it is for and lists the turns, and it may call only
 //! this plugin's two read-only tools, `search_session` and
-//! `fetch_message` ([`ToolAccess::Only`]).
+//! `fetch_message` ([`ToolAccess::narrow`]).
 //!
 //! The answer goes to stdout and nothing else; progress and errors go to
 //! stderr. `--json` prints `{answer, cited_turns, model, tokens, cost}`:
@@ -323,7 +323,7 @@ fn make_answerer(
     }
     commands.entity(agent).insert((
         SystemPrompt(prompt),
-        ToolAccess::All.narrow([SEARCH, FETCH]),
+        ToolAccess::all().narrow([SEARCH, FETCH]),
     ));
     commands.trigger(SetModel {
         entity: agent,

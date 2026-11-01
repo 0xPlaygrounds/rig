@@ -564,8 +564,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     let world = session.app.world();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
     let access = world.get::<ToolAccess>(child);
-    let only_look =
-        access.and_then(ToolAccess::names) == Some(&["look", MESSAGE, WAIT].map(str::to_owned)[..]);
+    let only_look = access.and_then(ToolAccess::names) == Some(vec!["look", MESSAGE, WAIT]);
     assert!(
         only_look,
         "its profile's tools, and those that reach agents"
@@ -1188,7 +1187,7 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
     let store = MemoryStore::default();
     let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
     let mut session = Session::new(&store, Some(&parent));
-    let restricted = ToolAccess::All.narrow([TASK, "look"]);
+    let restricted = ToolAccess::all().narrow([TASK, "look"]);
     session
         .app
         .world_mut()
@@ -1198,7 +1197,7 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
     let told = |session: &mut Session, child: Entity| {
         let world = session.app.world_mut();
         let access = world.get::<ToolAccess>(child).and_then(ToolAccess::names);
-        let lacks = access.is_some_and(|names| !names.iter().any(|n| n == MESSAGE || n == WAIT));
+        let lacks = access.is_some_and(|names| !names.iter().any(|n| *n == MESSAGE || *n == WAIT));
         let mut roles = world.query::<(&Name, &SectionOf)>();
         let role =
             (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role");
@@ -1227,7 +1226,7 @@ fn a_peer_whose_parent_loses_the_tools_to_reach_peers_is_told_no_more() {
         (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role")
     };
     assert!(role(&mut session));
-    let narrowed = ToolAccess::All.narrow([TASK, "look"]);
+    let narrowed = ToolAccess::all().narrow([TASK, "look"]);
     session
         .app
         .world_mut()
@@ -1255,14 +1254,14 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
             .filter(|(name, of)| of.0 == child && name.as_str() == "peer_role")
             .count()
     };
-    let reaching = ToolAccess::All.narrow(["look", MESSAGE, WAIT]);
+    let reaching = ToolAccess::all().narrow(["look", MESSAGE, WAIT]);
     session
         .app
         .world_mut()
         .entity_mut(child)
         .insert((Peers, reaching));
     assert_eq!(roles(&mut session), 1);
-    let narrowed = ToolAccess::All.narrow(["look"]);
+    let narrowed = ToolAccess::all().narrow(["look"]);
     session.app.world_mut().entity_mut(child).insert(narrowed);
     assert_eq!(roles(&mut session), 0);
 }

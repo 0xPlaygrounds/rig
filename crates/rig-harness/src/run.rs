@@ -13,8 +13,10 @@
 //! asked to exit meanwhile exits without the agent loop, and a signal then
 //! leaves each restored turn to carry on in the next run.
 //!
-//! A name no tool has refuses the run with exit code 2, and every agent
-//! keeps its access as the session has it. A front that says why a run
+//! `--tools` limits only its run: once the start passes, it is the run's
+//! [`RunTools`], which the kernel keeps every agent within and the session
+//! never saves, so a later run has every tool the session kept. A name no
+//! tool has refuses the run with exit code 2. A front that says why a run
 //! failed itself, such as `--json`'s `exit` line, takes the refusal
 //! ([`RunStart::take_refusal`]) in `Update`; else the harness refuses the
 //! run on stderr, and the launcher says it again once the screen is back.
@@ -37,25 +39,22 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use rig_core::catalog::edit_distance;
 use rig_ecs::StopTurnsOnExit;
-use rig_ecs::agent::{Agent, ToolAccess, TurnOf};
+use rig_ecs::agent::{RunTools, TurnOf};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::restore::{CarryOn, Restored};
-use rig_ecs::stage::{
-    Admitted, AgentLoop, AgentPass, Effect, ForAgent, Outcome, PrepareSystems, Settled, Started,
-};
+use rig_ecs::stage::{AgentLoop, Effect, Outcome, Settled, Started};
 use rig_ecs::tasks::{PollTasks, Running, Wake};
 use rig_ecs::tools::ToolDef;
-use rig_ecs::turn::ModelRequest;
 
 use crate::host::cli::{self, AppCliExt, Cli, Flag};
 use crate::host::exit::{ExitReason, ExitRequest};
 use crate::host::launcher::{self, Invoked};
 
-/// The option that intersects every agent's tool access with the names
-/// given. Omission leaves access unchanged; an empty value permits no
-/// tools. A run refuses a name no registered tool has once its start is
-/// over ([`RunStart`]), before any model or tool call, in every front.
-/// Subagents retain inherited restrictions and this limit.
+/// The option that leaves the run only the tools named ([`RunTools`]):
+/// every agent keeps the access the session saved, within these, for this
+/// run only. Omission leaves every tool; an empty value leaves none. A run
+/// refuses a name no registered tool has once its start is over
+/// ([`RunStart`]), before any model or tool call, in every front.
 pub const TOOLS: &str = "tools";
 
 /// While any entity has it, the run's start is not over: [`RunStart`]
@@ -147,7 +146,13 @@ pub struct RunPlugin;
 
 impl Plugin for RunPlugin {
     fn build(&self, app: &mut App) {
-        app.add_flag(Flag::new(TOOLS, "Give the agent only these tools").value("NAME[,NAME…]"));
+        app.add_flag(
+            Flag::new(
+                TOOLS,
+                "Give this run only these tools; an empty list gives none",
+            )
+            .value("NAME[,NAME…]"),
+        );
         start(app);
     }
 
@@ -172,16 +177,7 @@ impl Plugin for RunPlugin {
         }) else {
             return;
         };
-        app.insert_resource(Tools(tools))
-            .run_after_start()
-            .add_systems(
-                AgentPass,
-                (
-                    limit_tools.in_set(PrepareSystems::Input),
-                    limit_offers.in_set(PrepareSystems::Edit),
-                )
-                    .distributive_run_if(resource_exists::<Tools>),
-            );
+        app.insert_resource(Tools(tools)).run_after_start();
     }
 }
 
@@ -275,7 +271,7 @@ fn keep_restored(
     }
 }
 
-/// The tools `--tools` leaves the agents.
+/// The names `--tools` gives, until the start checks them.
 #[derive(Resource)]
 struct Tools(Vec<String>);
 
@@ -324,14 +320,13 @@ pub(crate) fn closest<'a>(name: &str, names: &[&'a str]) -> Option<&'a str> {
 }
 
 /// Once no [`Starting`] is left, checks the names `--tools` gives against
-/// the tools registered then, and keeps every agent to them before the
-/// first request is built. A refusal leaves every agent's tool access as
-/// the session has it.
+/// the tools registered then, and makes them the run's tools
+/// ([`RunTools`]) before the first request is built. A refusal leaves the
+/// run every tool.
 fn check_start(
     starting: Query<(), With<Starting>>,
     tools: Option<Res<Tools>>,
     defs: Query<&ToolDef>,
-    agents: Query<(Entity, &ToolAccess), With<Agent>>,
     (mut start, exit): (ResMut<RunStart>, Option<Res<ExitReason>>),
     mut commands: Commands,
 ) {
@@ -342,32 +337,15 @@ fn check_start(
     }
     let names = defs.iter().map(|tool| tool.0.name.as_str());
     match tools.as_ref().and_then(|tools| tools.unknown(names)) {
-        Some(why) => {
-            start.refused = Some(why);
-            commands.remove_resource::<Tools>();
-        }
+        Some(why) => start.refused = Some(why),
         None => {
             start.over = true;
             if let Some(tools) = tools {
-                narrow(&agents, &tools, &mut commands);
+                commands.insert_resource(RunTools::new(tools.0.iter().map(String::as_str)));
             }
         }
     }
-}
-
-/// Inserts each of `agents`' access kept to `tools` where it is wider, so
-/// what follows an agent's access sees it change.
-fn narrow(
-    agents: &Query<(Entity, &ToolAccess), With<Agent>>,
-    tools: &Tools,
-    commands: &mut Commands,
-) {
-    for (agent, access) in agents {
-        let narrowed = access.narrow(tools.0.iter().map(String::as_str));
-        if *access != narrowed {
-            commands.entity(agent).insert(narrowed);
-        }
-    }
+    commands.remove_resource::<Tools>();
 }
 
 /// Refuses the run whose `--tools` was refused when no front took the
@@ -375,30 +353,6 @@ fn narrow(
 fn refuse_untaken(mut start: ResMut<RunStart>, mut commands: Commands) {
     if let Some(why) = start.refused.take() {
         commands.queue(move |world: &mut World| launcher::refuse_running(world, &why));
-    }
-}
-
-/// Keeps access within `--tools` before dispatch, including agents admitted
-/// this pass, by inserting it ([`narrow`]).
-fn limit_tools(
-    agents: Query<(Entity, &ToolAccess), With<Agent>>,
-    tools: Res<Tools>,
-    mut commands: Commands,
-) {
-    narrow(&agents, &tools, &mut commands);
-}
-
-/// Removes offers built at Admit before the agent's access was intersected.
-fn limit_offers(
-    agents: Query<&ToolAccess, With<Agent>>,
-    mut calls: Query<(&ForAgent, &mut ModelRequest), Added<Admitted>>,
-) {
-    for (agent, mut call) in &mut calls {
-        if let Ok(access) = agents.get(agent.0) {
-            call.request_mut()
-                .tools
-                .retain(|tool| access.allows(&tool.name));
-        }
     }
 }
 

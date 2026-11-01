@@ -29,7 +29,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::agent::{AgentId, CallOf, SpawnedBy, ToolAccess};
+use super::agent::{AgentId, CallOf, RunTools, SpawnedBy, ToolAccess};
 use super::effects::Handler;
 use super::stage::{
     Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
@@ -444,24 +444,26 @@ pub(crate) fn offered<'a>(
     offered
 }
 
-/// Keeps each agent's access within the access of every agent above it,
-/// before anything is admitted: a child never calls or is offered a tool
-/// its parent may not, however its access was made or restored. Looks only
-/// when an access or a parent changed.
+/// Keeps each agent's access within this run's tools ([`RunTools`]) and
+/// the access of every agent above it, before anything is admitted: a
+/// child never calls or is offered a tool its parent or the run may not,
+/// however its access was made or restored. Looks only when an access, a
+/// parent or the run's tools changed.
 pub(crate) fn keep_within_parents(
     agents: Query<(Entity, Ref<ToolAccess>, Option<Ref<SpawnedBy>>)>,
+    run: Option<Res<RunTools>>,
     mut commands: Commands,
 ) {
     let changed = (agents.iter())
         .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
-    if !changed {
+    if !changed && !run.as_ref().is_some_and(Res::is_changed) {
         return;
     }
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
         .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|parent| parent.0))))
         .collect();
     for (agent, access, parent) in &agents {
-        let mut within = (*access).clone();
+        let mut within = access.for_run(run.as_deref());
         let mut next = parent.map(|parent| parent.0);
         // A cycle of parents ends once every agent was passed.
         for _ in 0..above.len() {

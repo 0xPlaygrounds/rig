@@ -308,12 +308,12 @@ fn profile_spawn(
         request.model = request.model.take().or_else(|| profile.model.clone());
         request.effort = request.effort.take().or_else(|| profile.effort.clone());
         let asked = match (&request.tools, parents.get(parent)) {
-            (Some(names), _) => ToolAccess::All.narrow(names.iter().map(String::as_str)),
+            (Some(names), _) => ToolAccess::all().narrow(names.iter().map(String::as_str)),
             (None, Ok(access)) => access.clone(),
-            (None, Err(_)) => ToolAccess::All,
+            (None, Err(_)) => ToolAccess::all(),
         };
         if let Some(names) = profile.narrow(&asked).names() {
-            request.tools = Some(names.to_vec());
+            request.tools = Some(names.into_iter().map(str::to_owned).collect());
         }
     }
 }

@@ -269,7 +269,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     let world = app.world_mut();
     world
         .entity_mut(agent)
-        .insert(ToolAccess::All.narrow([APPLY_PATCH, "edit", "write"]));
+        .insert(ToolAccess::all().narrow([APPLY_PATCH, "edit", "write"]));
     let model = "test/gpt-5-test".to_owned();
     world.trigger(SetModel {
         entity: agent,
