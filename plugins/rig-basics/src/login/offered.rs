@@ -190,7 +190,8 @@ impl Offered {
 
     /// The answer, waiting for it, asking first if nobody had or the last
     /// fetch failed, once the wait the backend asked for is over; the
-    /// failure itself when that wait is longer than a model call would.
+    /// failure itself when that wait is longer than a model call would. A
+    /// sign-in or sign-out meanwhile asks again for the new account.
     async fn answer(self: &Arc<Self>, auth: &Authenticator, http: &DynHttpClient) -> Asked {
         loop {
             let (sender, waiting) = async_channel::bounded(1);
@@ -220,10 +221,10 @@ impl Offered {
                 sleep(left).await;
                 continue;
             }
-            return waiting.recv().await.unwrap_or_else(|_| {
-                let ended = "the model list request ended";
-                Err(ErrorReport::new(ErrorKind::Cancelled, ended))
-            });
+            // Dropped by a sign-in or sign-out, which asks anew.
+            if let Ok(asked) = waiting.recv().await {
+                return asked;
+            }
         }
     }
 

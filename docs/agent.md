@@ -43,7 +43,7 @@ supported yet.
 models you can use now: those of a provider whose key is exported or saved
 with `/login`, those of a sign-in, and those of a local server that needs no
 key (Ollama, llama.cpp) once `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL`
-names it or its key is set or saved with `/login`, listed last; the picker opens on the current model, which it always
+names it or its key variable is set, listed last; the picker opens on the current model, which it always
 lists. With none to list it says how to get one. `/model vendor/model` names
 any catalog model, such as a local one at its default address; one that does
 not connect, such as one with no key, is refused and the current model stays.

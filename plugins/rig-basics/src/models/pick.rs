@@ -138,7 +138,9 @@ fn nothing_usable(models: &Models) -> String {
         })
         .next();
     let why = why.unwrap_or_else(|| {
-        "export a provider's API key, such as OPENAI_API_KEY, or sign in with /login".to_owned()
+        "export a provider's API key, such as OPENAI_API_KEY, sign in with /login, or name a \
+         local server with OLLAMA_API_BASE_URL"
+            .to_owned()
     });
     format!("No model can be used now: {why}.")
 }

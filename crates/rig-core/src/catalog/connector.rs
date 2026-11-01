@@ -415,10 +415,10 @@ impl Connector {
     /// Every catalog model with its [`ModelStatus`]: first the
     /// [`reachable`](Self::reachable) ones in that order, then the others in
     /// catalog order. Only [`ModelStatus::Usable`] is reachable. Models
-    /// claimed by a sign-in's plan are checked individually; other models
-    /// share one check per provider, unless the provider refused it for a
-    /// reason of its own ([`ModelStatus::Unavailable`]), which may be that
-    /// model's alone.
+    /// claimed by a sign-in's plan or reached through a registered provider
+    /// ([`Self::provide`]), which may answer per model, are checked
+    /// individually; the others, which the environment configures per
+    /// provider, share one check per provider.
     pub fn statuses(&self) -> Vec<(&ModelSpec, ModelStatus)> {
         let mut checked: HashMap<ProviderId, ModelStatus> = HashMap::new();
         let mut statuses: Vec<(&ModelSpec, ModelStatus)> = self
@@ -427,17 +427,13 @@ impl Connector {
             .map(|spec| {
                 let status = match spec.tools {
                     false => ModelStatus::NoTools,
-                    true if self.plan(spec).is_some() => self.status(spec),
-                    true => match checked.get(&spec.provider) {
-                        Some(status) => status.clone(),
-                        None => {
-                            let status = self.status(spec);
-                            if !matches!(status, ModelStatus::Unavailable(_)) {
-                                checked.insert(spec.provider, status.clone());
-                            }
-                            status
-                        }
-                    },
+                    true if self.plan(spec).is_some() || self.is_provided(spec.provider) => {
+                        self.status(spec)
+                    }
+                    true => checked
+                        .entry(spec.provider)
+                        .or_insert_with(|| self.status(spec))
+                        .clone(),
                 };
                 (spec, status)
             })

@@ -576,7 +576,7 @@ fn with_no_model_to_use_the_picker_says_how_to_get_one() {
         recalled(&app),
         [
             "No model can be used now: export a provider's API key, such as OPENAI_API_KEY, \
-          or sign in with /login."
+          sign in with /login, or name a local server with OLLAMA_API_BASE_URL."
         ]
     );
     let world = app.world_mut();

@@ -391,6 +391,41 @@ fn a_list_nobody_waits_for_retries_a_transient_failure_itself() {
 }
 
 #[test]
+fn a_sign_in_during_a_retrys_wait_stops_the_old_fetch() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (app, _, _) = signed_in("login-reset", (&backend, &lists), NEVER, |_| {});
+    let session = app.world().resource::<super::Session>();
+    let wait = std::time::Duration::from_millis(300);
+    let retry = rig_ecs::retry::RetryPolicy {
+        max_retries: 1,
+        first_backoff: wait,
+        max_backoff: wait,
+        ..rig_ecs::retry::RetryPolicy::DEFAULT
+    };
+    let offered = Arc::new(offered::Offered::paced(offered::Pace {
+        retry,
+        cooldown: std::time::Duration::from_secs(600),
+    }));
+    let http = DynHttpClient::new(backend.clone());
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
+    assert!(sol.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(sol) = sol else { return };
+    assert_eq!(
+        offered.status(sol.spec, &session.auth, &http),
+        ModelStatus::Checking
+    );
+    let started = std::time::Instant::now();
+    while backend.listed.load(Ordering::SeqCst) == 0 && started.elapsed().as_secs() < 10 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    // The 503 came; its retry waits. A sign-in now forgets it.
+    offered.forget();
+    std::thread::sleep(wait * 2);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+}
+
+#[test]
 fn a_listing_asks_again_once_the_cooldown_after_a_failure_passed() {
     let backend = Backend::default();
     let lists = [(503, "busy"), (200, SOL)];
