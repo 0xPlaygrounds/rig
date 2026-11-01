@@ -80,10 +80,11 @@ without the terminal view. Esc or a second `/login` cancels a sign-in that waits
 Once signed in, `/model` lists the plan's models as `chatgpt/...`, marked
 "(ChatGPT plan)": those ChatGPT says your account may use, asked once per run
 when first needed (and once more if it refuses a model it listed). Until it
-answers they are marked as being checked; if it cannot be asked, such as when
-it does not answer within 10 s, the plan's models are refused with the reason,
-and the next request asks again (after any wait ChatGPT asked for), so a
-timeout is retried; only a failed sign-in asks you to sign in again. A
+answers they are marked as being checked; a timeout or an
+unavailable backend is retried as a model call is. If it still cannot be
+asked, the plan's models are refused with the reason; the next request asks
+again (after any wait ChatGPT asked for), and so does `/model` 10 s later.
+Only a failed sign-in asks you to sign in again. A
 successful sign-in switches the agent to the plan's latest frontier model for
 that session. The credential is kept in `RIG_HOME/auth/chatgpt.json`,
 readable by you alone, and refreshed before a request when it has expired, so

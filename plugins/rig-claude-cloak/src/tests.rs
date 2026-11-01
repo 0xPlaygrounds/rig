@@ -59,6 +59,7 @@ fn the_models_are_usable_only_once_logged_in() -> anyhow::Result<()> {
     std::fs::DirBuilder::new().mode(0o700).create(&stored)?;
     let credentials = stored.join("credentials.json");
     std::fs::write(&credentials, "{}")?;
+    std::fs::set_permissions(&credentials, std::fs::Permissions::from_mode(0o644))?;
     // A file others may read is not one a request reads.
     anyhow::ensure!(usable(&app).iter().all(|usable| !usable));
     std::fs::set_permissions(&credentials, std::fs::Permissions::from_mode(0o600))?;

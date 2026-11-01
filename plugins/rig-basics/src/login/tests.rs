@@ -307,21 +307,19 @@ fn a_headless_run_with_no_model_waits_for_the_list_and_takes_an_offered_one() {
 }
 
 #[test]
-fn a_list_that_cannot_be_had_says_why_and_the_first_pick_takes_a_model_that_asks_again() {
+fn a_list_that_cannot_be_had_refuses_the_plans_models_and_says_why() {
     let backend = Backend::default();
-    let lists = [(503, "busy")];
+    let lists = [(400, "bad request")];
     let (mut app, wakes, _) = signed_in("login-unlisted", (&backend, &lists), NEVER, |_| {});
     run_until(&mut app, &wakes, |world| {
         status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
     });
-    let sol = status(app.world(), "gpt-6.1-sol");
-    let said = matches!(&sol, Some(ModelStatus::Unavailable(why))
-        if why.starts_with("could not ask ChatGPT which models"));
-    assert!(said, "{sol:?}");
-    // A model of the plan, whose request asks again, rather than none.
     let pick = FirstPick::of(app.world().resource::<Models>());
-    let picked = matches!(&pick, FirstPick::Model(model) if model.starts_with("chatgpt/"));
-    assert!(picked, "{pick:?}");
+    let said = match &pick {
+        FirstPick::Nothing(Some(why)) => why.starts_with("could not ask ChatGPT which models"),
+        _ => false,
+    };
+    assert!(said, "{pick:?}");
     assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
 }
 
@@ -335,6 +333,77 @@ fn gate_on_sol(app: &App, backend: &Backend) -> Option<offered::Gate> {
         auth: session.auth.clone(),
         http: DynHttpClient::new(backend.clone()),
     })
+}
+
+/// The account's models of `app`'s sign-in asked anew at `pace`, and the
+/// status of GPT-6.1 Sol by them, waiting while it is being checked.
+fn paced(
+    app: &App,
+    backend: &Backend,
+    pace: offered::Pace,
+) -> (Arc<offered::Offered>, impl Fn() -> ModelStatus) {
+    let session = app.world().resource::<super::Session>();
+    let offered = Arc::new(offered::Offered::paced(pace));
+    let (asked, auth) = (Arc::clone(&offered), session.auth.clone());
+    let http = DynHttpClient::new(backend.clone());
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
+    let sol = sol.map(|found| found.spec.clone());
+    let status = move || {
+        let started = std::time::Instant::now();
+        loop {
+            let Some(sol) = &sol else {
+                return ModelStatus::NoTools;
+            };
+            let status = asked.status(sol, &auth, &http);
+            if status != ModelStatus::Checking || started.elapsed().as_secs() > 20 {
+                return status;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    (offered, status)
+}
+
+/// A pace with `retries` quick retries and `cooldown` before a listing
+/// asks again.
+fn pace(retries: u32, cooldown: std::time::Duration) -> offered::Pace {
+    let quick = std::time::Duration::from_millis(1);
+    offered::Pace {
+        retry: rig_ecs::retry::RetryPolicy {
+            max_retries: retries,
+            first_backoff: quick,
+            max_backoff: quick,
+            ..rig_ecs::retry::RetryPolicy::DEFAULT
+        },
+        cooldown,
+    }
+}
+
+#[test]
+fn a_list_nobody_waits_for_retries_a_transient_failure_itself() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (app, _, _) = signed_in("login-retried", (&backend, &lists), NEVER, |_| {});
+    let (_offered, status) = paced(&app, &backend, pace(1, std::time::Duration::ZERO));
+    assert_eq!(status(), ModelStatus::Usable);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_listing_asks_again_once_the_cooldown_after_a_failure_passed() {
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (503, "busy"), (200, SOL)];
+    let (app, _, _) = signed_in("login-relisted", (&backend, &lists), NEVER, |_| {});
+    // Within the cooldown, listing says why and does not ask again.
+    let (_, status) = paced(&app, &backend, pace(0, std::time::Duration::from_secs(600)));
+    assert!(matches!(status(), ModelStatus::Unavailable(_)));
+    assert!(matches!(status(), ModelStatus::Unavailable(_)));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+    // After it, as when a session with no model opens `/model` again: the
+    // failed answer is asked again, and the next one is the list.
+    let (_, status) = paced(&app, &backend, pace(0, std::time::Duration::ZERO));
+    assert_eq!(status(), ModelStatus::Usable);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 3);
 }
 
 /// What `gate` does with a request for its model.
@@ -390,20 +459,40 @@ fn a_list_that_could_not_be_had_is_asked_again_by_the_next_request() {
 }
 
 #[test]
-fn a_list_refused_with_a_wait_is_not_asked_again_before_it() {
+fn a_list_refused_with_a_wait_is_asked_again_once_it_is_over() {
     let backend = Backend::default();
-    let lists = [(429, "Rate limited: try again in 30s."), (200, SOL)];
+    let lists = [(429, "Rate limited: try again in 1s."), (200, SOL)];
     let (app, _, _) = signed_in("login-wait", (&backend, &lists), NEVER, |_| {});
     let gate = gate_on_sol(&app, &backend);
     assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
     let Some(gate) = gate else { return };
-    let now = std::time::SystemTime::now();
     let first = denied(&gate);
-    let asked = first.as_ref().and_then(|report| report.retry_after(now));
-    assert_eq!(asked, Some(std::time::Duration::from_secs(30)), "{first:?}");
-    // Refused again at once, with the same wait, and nothing sent.
+    let asked = first
+        .as_ref()
+        .and_then(|report| report.retry_after(std::time::SystemTime::now()));
+    assert_eq!(asked, Some(std::time::Duration::from_secs(1)), "{first:?}");
+    // The next request waits out the rest, then asks.
+    let started = std::time::Instant::now();
+    assert!(matches!(
+        before(&gate),
+        rig_core::serve::BeforeServe::Proceed
+    ));
+    assert!(started.elapsed() >= std::time::Duration::from_millis(500));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_list_refused_with_a_long_wait_refuses_the_next_request_at_once() {
+    let backend = Backend::default();
+    let lists = [(429, "Rate limited: try again in 120s."), (200, SOL)];
+    let (app, _, _) = signed_in("login-long-wait", (&backend, &lists), NEVER, |_| {});
+    let gate = gate_on_sol(&app, &backend);
+    assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(gate) = gate else { return };
+    assert!(denied(&gate).is_some());
     let again = denied(&gate);
-    assert!(again.is_some_and(|report| report.retry_after(now) == asked));
+    let waits = again.and_then(|report| report.retry_after(std::time::SystemTime::now()));
+    assert_eq!(waits, Some(std::time::Duration::from_secs(120)));
     assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
 }
 
