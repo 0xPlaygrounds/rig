@@ -147,7 +147,7 @@ impl<A: CredentialSource> SignedInModel<A> {
 /// underneath classifies it as it would any provider call, so a dropped
 /// connection or a 503 is retried and its `Retry-After` honoured; any other
 /// failure is final and asks to sign in again.
-fn failed_sign_in(error: AuthError) -> ErrorReport {
+pub fn failed_sign_in(error: AuthError) -> ErrorReport {
     let message = format!("the sign-in gave no credential ({error})");
     let (AuthError::Http(source) | AuthError::Reply { source, .. }) = error else {
         return ErrorReport::new(ErrorKind::Provider, format!("{message}; sign in again"));

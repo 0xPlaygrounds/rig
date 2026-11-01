@@ -397,6 +397,10 @@ pub struct Quirks {
     /// A second environment variable naming the base URL, kept because the
     /// provider documents both spellings.
     pub base_url_env_alias: Option<&'static str>,
+    /// The path the API is served at under the address the base-URL
+    /// variable names, when that variable names the server's root, as
+    /// Ollama's does; empty when it names the API itself.
+    pub base_url_env_path: &'static str,
     /// The environment variable naming the account a credential belongs to,
     /// sent as `ChatGPT-Account-Id`.
     pub account_id_env: Option<&'static str>,
@@ -462,6 +466,7 @@ impl Quirks {
             speech_body: SpeechBody::OpenAi,
             transcription_body: TranscriptionBody::Multipart,
             base_url_env_alias: None,
+            base_url_env_path: "",
             account_id_env: None,
             default_instructions: None,
             instructions_env: None,
@@ -695,7 +700,10 @@ impl OpenAIConfig {
             .flatten()
         {
             if let Some(base_url) = env::optional(name)? {
-                provider.base_url = base_url;
+                provider.base_url = match quirks.base_url_env_path {
+                    "" => base_url,
+                    path => format!("{}{path}", base_url.trim_end_matches('/')),
+                };
                 break;
             }
         }

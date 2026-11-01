@@ -103,7 +103,6 @@ impl Plugin for LoginPlugin {
         .add_systems(Update, show_login_prompts.in_set(PollTasks))
         .add_systems(First, offered::show_answers)
         .add_systems(Update, offered::refuse_unoffered)
-        .add_observer(offered::refuse_chosen)
         .add_observer(on_signed_in)
         .add_observer(on_signed_out)
         .add_observer(cancel_on_interrupt);

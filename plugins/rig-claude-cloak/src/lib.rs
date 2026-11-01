@@ -93,12 +93,19 @@ impl Plugin for ClaudeCloakPlugin {
 #[derive(Resource)]
 struct CloakHome(PathBuf);
 
+/// `spec` reached with the credentials in `home`; refused before a login,
+/// so pickers list this plugin's models only once signed in.
 fn connect(
     home: &Path,
     spec: &ModelSpec,
     catalog: &Catalog,
     transport: &Transport,
 ) -> Result<ErasedHandler, ConnectError> {
+    if !auth::signed_in(home) {
+        return Err(ConnectError::Provider(
+            auth::AuthError::NotLoggedIn.to_string(),
+        ));
+    }
     let client = transport::new(home.to_path_buf())
         .map_err(|error| ConnectError::Provider(error.to_string()))?;
     connect_with_client(spec, catalog, transport, client)
@@ -204,14 +211,20 @@ fn command(
     ));
 }
 
+/// Says how a login or logout ended; after one that succeeded, marks the
+/// [`Models`] changed, so lists and agents refused before see the change.
 fn completed(
     pending: Query<(Entity, &Pending, &Done<LoginResult>)>,
+    mut models: ResMut<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     for (entity, pending, result) in &pending {
         notices.write(match &result.0 {
-            Ok(text) => Notice::info(pending.0, *text),
+            Ok(text) => {
+                models.set_changed();
+                Notice::info(pending.0, *text)
+            }
             Err(error) => Notice::error(pending.0, error.to_string()),
         });
         commands.entity(entity).despawn();

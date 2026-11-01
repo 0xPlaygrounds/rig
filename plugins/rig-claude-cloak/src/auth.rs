@@ -627,6 +627,14 @@ async fn credentials_in(
     .await
 }
 
+/// Whether `home` holds the credentials a login saved, which may still
+/// need a refresh: what makes this plugin's models usable.
+pub fn signed_in(home: &Path) -> bool {
+    home.join("anthropic-oauth")
+        .join("credentials.json")
+        .is_file()
+}
+
 /// Deletes local credentials. Fails if login or refresh is currently active.
 pub fn logout(home: &Path) -> Result<(), AuthError> {
     logout_in(&directory(home)?)

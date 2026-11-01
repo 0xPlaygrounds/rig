@@ -324,6 +324,53 @@ fn a_list_that_cannot_be_had_refuses_the_plans_models_and_says_why() {
 }
 
 #[test]
+fn a_list_that_could_not_be_had_is_asked_again_by_the_next_request() {
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_core::serve::{BeforeServe, Intercept};
+
+    let backend = Backend::default();
+    let lists = [(503, "busy"), (200, SOL)];
+    let (mut app, wakes, agent) = signed_in("login-failed", (&backend, &lists), NEVER, |_| {});
+    on_sol(&mut app, agent);
+    let session = app.world().resource::<super::Session>();
+    let sol = Catalog::builtin().resolve("chatgpt/gpt-6.1-sol").ok();
+    assert!(sol.is_some(), "the catalog lists GPT-6.1 Sol");
+    let Some(sol) = sol else { return };
+    let gate = offered::Gate {
+        offered: Arc::clone(&session.offered),
+        spec: sol.spec.clone(),
+        auth: session.auth.clone(),
+        http: DynHttpClient::new(backend.clone()),
+    };
+    let asking = EffectKind::Completion {
+        request: Arc::new(rig_core::completion::CompletionRequest::new("Hello.")),
+        stream: true,
+    };
+    let before = || bevy_tasks::block_on(gate.before(EffectId::from_raw(1), &asking));
+    // The busy backend's refusal, with its class: it may be retried.
+    let refused = match before() {
+        BeforeServe::Deny(report) => Some(report),
+        _ => None,
+    };
+    assert!(
+        refused.as_ref().is_some_and(|report| report.retryable),
+        "{refused:?}"
+    );
+    run_until(&mut app, &wakes, |world| {
+        status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
+    });
+    // Listing, which follows the answer, does not ask again, and the
+    // agent keeps its model.
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
+    assert!(app.world().get::<Connection>(agent).is_some());
+    assert!(matches!(before(), BeforeServe::Proceed));
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
+}
+
+#[test]
 fn a_credential_refresh_that_never_answers_ends_with_the_lists_deadline() {
     let backend = Backend {
         stalls: true,
@@ -337,8 +384,9 @@ fn a_credential_refresh_that_never_answers_ends_with_the_lists_deadline() {
         status(world, "gpt-6.1-sol") != Some(ModelStatus::Checking)
     });
     let sol = status(app.world(), "gpt-6.1-sol");
-    let said =
-        matches!(&sol, Some(ModelStatus::Unavailable(why)) if why.contains("no answer in 10 s"));
+    // A timeout, which signing in again would not mend.
+    let said = matches!(&sol, Some(ModelStatus::Unavailable(why))
+        if why.contains("no answer in 10 s") && !why.contains("sign in"));
     assert!(said, "{sol:?}");
     assert!(started.elapsed() < std::time::Duration::from_secs(20));
     assert_eq!(backend.listed.load(Ordering::SeqCst), 0);

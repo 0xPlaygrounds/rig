@@ -692,7 +692,7 @@ fn the_options_follow_the_agent_shown() {
 }
 
 #[test]
-fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
+fn a_refused_model_change_says_why_and_keeps_the_model() {
     let place = Place::new("refused");
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         let new = driven.new_session(Vec::new()).await;
@@ -704,22 +704,10 @@ fn a_refused_model_change_says_why_and_shows_the_options_as_they_are() {
         let refused = driven.cx.send_request(change).block_task().await;
         let why = refused.err().map(|error| error.message);
         assert!(
-            why.as_ref()
-                .is_some_and(|why| !why.is_empty() && why != "rig did not change it"),
+            why.as_ref().is_some_and(|why| why.contains(UNREACHABLE)),
             "{why:?}"
         );
-        // The options the client is told after it show the model rig has.
-        let told = |seen: &Seen| {
-            seen.events.iter().any(|event| match event {
-                Event::Update(of, acp::SessionUpdate::ConfigOptionUpdate(update)) => {
-                    *of == id && format!("{:?}", update.config_options).contains(UNREACHABLE)
-                }
-                _ => false,
-            })
-        };
-        assert!(driven.until(told).await);
-        // A model that can be reached takes its place.
-        assert!(driven.model(&id, "test/reply").await);
+        // The model the session had still answers.
         assert_eq!(
             driven.prompt(&id, "Hello.").await.ok(),
             Some(acp::StopReason::EndTurn)
