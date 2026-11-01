@@ -579,7 +579,15 @@ impl Workspace for Local {
                 fs::copy(from, to)?;
                 fs::remove_file(from)
             }
-            moved => moved,
+            Ok(()) => match fs::symlink_metadata(from) {
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error),
+                Ok(_) => Err(io::Error::new(
+                    ErrorKind::InvalidInput,
+                    "the source still exists after rename; the paths may refer to the same file",
+                )),
+            },
+            Err(error) => Err(error),
         }
     }
 
