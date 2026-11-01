@@ -192,11 +192,9 @@ pub const HELD_MOST: usize = 16 * 1024;
 /// return, joined, is [`text`] of the pieces joined. It holds back what a
 /// later piece may still make part of a secret: the last run of characters
 /// a key is made of, a line that names a secret (its value may follow), and
-/// a private key block not yet ended. Past [`HELD_MOST`] bytes held, far
-/// more than a key, as when one piece is that long, it holds only the last
-/// run of key characters, a secret's name with what follows it, and a
-/// private key block shorter than the bound, so a secret-naming line may
-/// show some of itself, and a longer key block its tail.
+/// a private key block not yet ended. It holds at most [`HELD_MOST`] bytes,
+/// far more than a key, so a line that names a secret, a private key block
+/// or a run of key characters longer than that may show some of itself.
 ///
 /// ```
 /// use rig_core::redact::Streamed;
@@ -238,10 +236,7 @@ impl Streamed {
 /// before a line that names a secret, and before the line of a secret that
 /// runs past the cut, such as a private key block. Each such place follows
 /// a character no token continues, so a token starts after it as in the
-/// whole text. Past [`HELD_MOST`], only the last run, a secret's name with
-/// what follows it on its line, and a private key block shorter than the
-/// bound are held: the last run alone if the name starts the text, and
-/// nothing if the run is all of it.
+/// whole text. At most [`HELD_MOST`] bytes stay held.
 fn settled(input: &str) -> usize {
     let word = input
         .char_indices()
@@ -255,39 +250,16 @@ fn settled(input: &str) -> usize {
     };
     let line = line_of(input.len());
     let last = input.get(line..).unwrap_or_default();
-    // Where the last secret name of the last line starts: a run of key
-    // characters that ends as one does, wherever in the run [`find`] may
-    // start a token.
-    let named = SECRET_NAMES
-        .iter()
-        .flat_map(|name| {
-            let ends_run = |at: usize| {
-                let after = last.get(at + name.len()..).unwrap_or_default();
-                !after.starts_with(is_token_char)
-            };
-            last.match_indices(name)
-                .map(|(at, _)| at)
-                .filter(move |&at| ends_run(at))
+    // A run of key characters that ends as a secret name does, wherever in
+    // the run [`find`] may start a token.
+    let named = SECRET_NAMES.iter().any(|name| {
+        last.match_indices(name).any(|(at, _)| {
+            let after = last.get(at + name.len()..).unwrap_or_default();
+            !after.starts_with(is_token_char)
         })
-        .max();
-    if input.len() > HELD_MOST {
-        // A private key block not yet ended, if it is shorter than the bound.
-        let open_key = input
-            .rfind("-----BEGIN ")
-            .filter(|&at| !input.get(at..).unwrap_or_default().contains("-----END "))
-            .map(line_of)
-            .filter(|&at| input.len() - at <= HELD_MOST);
-        let cut = [named.map(|at| line + at), open_key]
-            .into_iter()
-            .flatten()
-            .fold(word, usize::min);
-        return [cut, word]
-            .into_iter()
-            .find(|&cut| cut > 0)
-            .unwrap_or(input.len());
-    }
+    });
     let mut cut = word;
-    if named.is_some() || last.contains("-----BEGIN ") {
+    if named || last.contains("-----BEGIN ") {
         cut = cut.min(line);
     }
     let found: Vec<_> = find(input).collect();
@@ -298,7 +270,10 @@ fn settled(input: &str) -> usize {
             cut = line_of(found.range.start);
         }
     }
-    cut
+    let least = input.len().saturating_sub(HELD_MOST);
+    (cut.max(least)..=input.len())
+        .find(|&at| input.is_char_boundary(at))
+        .unwrap_or(input.len())
 }
 
 /// `json`, serialized JSON such as a JSON line, with every string in it
@@ -556,7 +531,15 @@ const SECRET_NAMES: &[&str] = &[
 /// is a key of a known shape, which the scan finds as its own kind.
 fn assigned(rest: &str) -> Option<Range<usize>> {
     let name = rest.get(..token_len(rest))?;
-    if !secret_name(name) {
+    let upper_snake = name.starts_with(|ch: char| ch.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
+    let secret_named = SECRET_NAMES.iter().any(|end| {
+        name.strip_suffix(end)
+            .is_some_and(|head| head.is_empty() || head.ends_with('_'))
+    });
+    if !upper_snake || !secret_named {
         return None;
     }
     // A quoted name's closing quote, then `=` or `:`, spaces around it.
@@ -583,20 +566,6 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
         && !value.contains(REDACTED)
         && secret_at(value).is_none();
     plausible.then(|| from..from + value.len())
-}
-
-/// Whether `name` is upper snake case and is, or ends after a `_` with, one
-/// of [`SECRET_NAMES`].
-fn secret_name(name: &str) -> bool {
-    let upper_snake = name.starts_with(|ch: char| ch.is_ascii_uppercase())
-        && name
-            .chars()
-            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
-    upper_snake
-        && SECRET_NAMES.iter().any(|end| {
-            name.strip_suffix(end)
-                .is_some_and(|head| head.is_empty() || head.ends_with('_'))
-        })
 }
 
 /// Whether `ch` ends an unquoted assigned value: whitespace, a quote, or a

@@ -238,19 +238,22 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
     let rest = streamed.finish();
     assert_eq!(shown + rest.len(), 400 * 100);
     // A piece that carries what is held past the bound while a key block is
-    // open still holds the block.
-    let long = format!(
-        "{}\n-----BEGIN RSA PRIVATE KEY-----\nMII",
-        "word ".repeat(3300)
-    );
-    let pieces = [
-        long.as_str(),
-        "EowIBAAKCAQEA\nabcd\n-----END RSA PRIVATE KEY-----\nafter",
+    // open, on its own line or after the prose, or ended, still holds it.
+    let words = "word ".repeat(3300);
+    let body = "EowIBAAKCAQEA\nabcd\n-----END RSA PRIVATE KEY-----\nafter";
+    let open = [
+        format!("{words}\n-----BEGIN RSA PRIVATE KEY-----\nMII"),
+        format!("{words}-----BEGIN RSA PRIVATE KEY-----\nMII"),
     ];
-    let mut streamed = Streamed::default();
-    let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
-    shown += &streamed.finish();
-    assert_eq!(shown, text(&pieces.concat()));
+    let ended =
+        format!("{words}\n-----BEGIN RSA PRIVATE KEY-----\nMII\n-----END RSA PRIVATE KEY-----");
+    let cases = open.iter().map(|first| vec![first.as_str(), body]);
+    for pieces in cases.chain([vec![ended.as_str()]]) {
+        let mut streamed = Streamed::default();
+        let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
+        shown += &streamed.finish();
+        assert_eq!(shown, text(&pieces.concat()));
+    }
     for line in [
         format!("TOKEN {}gh", "word ".repeat(3275)),
         format!("one {}API_KEY=abcd", "word ".repeat(3275)),
