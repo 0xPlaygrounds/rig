@@ -16,6 +16,7 @@ fn test_metadata_columns() -> Vec<SqliteMetadataColumn> {
     vec![SqliteMetadataColumn {
         name: "category",
         metadata_type: SqliteMetadataType::Text,
+        native_comparisons: true,
     }]
 }
 
@@ -24,14 +25,17 @@ fn typed_metadata_columns() -> Vec<SqliteMetadataColumn> {
         SqliteMetadataColumn {
             name: "priority",
             metadata_type: SqliteMetadataType::Integer,
+            native_comparisons: true,
         },
         SqliteMetadataColumn {
             name: "rating",
             metadata_type: SqliteMetadataType::Float,
+            native_comparisons: true,
         },
         SqliteMetadataColumn {
             name: "published",
             metadata_type: SqliteMetadataType::Boolean,
+            native_comparisons: true,
         },
     ]
 }
@@ -3010,4 +3014,100 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
             Ok(rig_core::driver::Step::End(response)),
         ])))
     }
+}
+
+#[derive(Clone)]
+struct CollatedDocument(TestDocument);
+impl SqliteVectorStoreTable for CollatedDocument {
+    fn name() -> &'static str {
+        "collated_documents"
+    }
+    fn schema() -> Vec<Column> {
+        vec![
+            Column::new("id", "TEXT PRIMARY KEY"),
+            Column::new("category", "TEXT COLLATE NOCASE").indexed(),
+            Column::new("title", "TEXT COLLATE\"RTRIM\"").indexed(),
+        ]
+    }
+    fn id(&self) -> String {
+        self.0.id.clone()
+    }
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        self.0.column_values()
+    }
+}
+
+#[tokio::test]
+async fn indexed_collations_preserve_filter_semantics_and_candidate_budget() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::<CollatedDocument>::new(conn.clone(), 2).await?;
+    let rows = [
+        row("near", "Other", "other", vec![1.0, 0.0]),
+        row("wanted", "Docs", "wanted   ", vec![0.6, 0.8]),
+    ]
+    .into_iter()
+    .map(|(doc, embeddings)| (CollatedDocument(doc), embeddings))
+    .collect();
+    store.add_rows(rows).await?;
+    // Reopening must keep working against the existing vec0 metadata schema.
+    let store = SqliteVectorStore::<CollatedDocument>::new(conn, 2).await?;
+    let index = store.index(TestEmbeddingModel::model());
+    let eq = SqliteSearchFilter::eq("category", serde_json::json!("docs"));
+    let filters = [
+        eq.clone(),
+        eq.clone().or(eq),
+        SqliteSearchFilter::eq("category", serde_json::json!("DOCS"))
+            .not()
+            .not(),
+        SqliteSearchFilter::gt("category", serde_json::json!("c"))
+            .and(SqliteSearchFilter::lt("category", serde_json::json!("e"))),
+        SqliteSearchFilter::between("category", "c"..="e"),
+        SqliteSearchFilter::eq("category", serde_json::json!("OTHER")).not(),
+        SqliteSearchFilter::eq("title", serde_json::json!("wanted")),
+    ];
+    for filter in filters {
+        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+            .query("needle")
+            .samples(1)
+            .filter(filter.clone())
+            .build();
+        let ids = index.top_n_ids(req.clone()).await?;
+        anyhow::ensure!(
+            ids.len() == 1 && ids.first().is_some_and(|r| r.id == "wanted"),
+            "wrong ids for {filter:?}: {ids:?}"
+        );
+        let docs = index.top_n::<TestDocument>(req).await?;
+        anyhow::ensure!(
+            docs.len() == 1
+                && docs
+                    .first()
+                    .is_some_and(|r| r.id == "wanted" && r.document.category == "Docs"),
+            "wrong documents for {filter:?}: {docs:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn collation_declarations_disable_only_native_comparisons() -> anyhow::Result<()> {
+    for declaration in [
+        "TEXT COLLATE NOCASE",
+        "TEXT collate rtrim",
+        "TEXT COLLATE\"NOCASE\"",
+        "TEXT COLLATE/*comment*/NOCASE",
+    ] {
+        let columns = sqlite_metadata_columns(&[Column::new("category", declaration).indexed()])?;
+        anyhow::ensure!(
+            columns.len() == 1,
+            "metadata must still be stored for existing schema compatibility"
+        );
+        anyhow::ensure!(sqlite_native_metadata_column("category", &columns).is_none());
+        let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs"));
+        let rendered = filter.render_split(&columns)?;
+        anyhow::ensure!(rendered.native.is_empty() && rendered.has_post_filters());
+    }
+    let columns = sqlite_metadata_columns(&[Column::new("category", "TEXT").indexed()])?;
+    anyhow::ensure!(sqlite_native_metadata_column("category", &columns).is_some());
+    Ok(())
 }
