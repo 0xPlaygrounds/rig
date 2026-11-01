@@ -142,22 +142,35 @@ fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_
             "the user stopped it"
         );
     }
-    // No `StopReached` came while its agent's turn was still on.
-    assert_eq!(world.resource::<StillRunning>().0, 0);
+    // No `StopReached` came while its agent's turn was still on, and each
+    // debater's first says what its turn record says: the user stopped it.
+    // The debate's own stop of the idle debater comes after.
+    let still = world.resource::<StillRunning>();
+    assert_eq!(still.running, 0);
+    for &arguer in &arguers {
+        let first = still.causes.iter().find(|(agent, _)| *agent == arguer);
+        assert_eq!(first.map(|(_, cause)| cause), Some(&StopCause::User));
+    }
 }
 
-/// How many `StopReached` came to an agent whose turn was still on.
+/// The `StopReached` that came: how many while the agent's turn was still
+/// on, and each one's agent and cause.
 #[derive(Resource, Default)]
-struct StillRunning(usize);
+struct StillRunning {
+    running: usize,
+    causes: Vec<(Entity, StopCause)>,
+}
 
 fn note_still_running(
     reached: On<StopReached>,
     turns: Query<(), With<ActiveTurn>>,
     mut still: ResMut<StillRunning>,
 ) {
-    if turns.contains(reached.event_target()) {
-        still.0 += 1;
+    let agent = reached.event_target();
+    if turns.contains(agent) {
+        still.running += 1;
     }
+    still.causes.push((agent, reached.cause().clone()));
 }
 
 #[test]

@@ -494,10 +494,10 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
 /// spawned without [`SpawnedBy`](super::agent::SpawnedBy). Each agent's
 /// turn stops as [`Stopper::stop`] says, and each agent reached gets one
 /// [`StopReached`], once its turn is gone ([`Reaching`]), unless the stop
-/// is a plugin's of its turn alone; the conversations are written to the log at once, in one flush, so a
-/// log that ends mid-turn means a crash, a turn a plugin carries on
-/// ([`CarryOn`]) or a log that stopped (shown once, as every log failure
-/// is); a stop never waits on the log.
+/// is a plugin's of its turn alone; the conversations are written to the
+/// log at once, in one flush, so a log that ends mid-turn means a crash,
+/// a turn a plugin carries on ([`CarryOn`]) or a log that stopped (shown
+/// once, as every log failure is); a stop never waits on the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
     spawned: Query<&Spawned>,
@@ -509,25 +509,32 @@ pub(crate) fn on_stop_turn(
         .then(|| spawned.iter_descendants::<Spawned>(root))
         .into_iter()
         .flatten();
+    let reached: Vec<(Entity, bool)> = std::iter::once(root)
+        .chain(below)
+        .map(|agent| (agent, stopper.agents.contains(agent)))
+        .collect();
+    let cause = &interrupt.cause;
+    // A plugin ending one turn alone stops no agent: nothing to tell. Each
+    // running agent's cause is queued before anything a `StopReached`
+    // observer stops can queue its own; a turn another stop is still
+    // settling keeps that stop's cause if it reached below.
+    let running = reached.iter().filter(|&&(_, running)| running);
+    for &(agent, _) in running.filter(|_| interrupt.below) {
+        let reaching = Reaching(cause.clone());
+        stopper.commands.entity(agent).try_insert_if_new(reaching);
+    }
     let mut stopped = false;
-    for agent in std::iter::once(root).chain(below) {
-        let cause = interrupt.cause.clone();
-        // A plugin ending one turn alone stops no agent: nothing to tell.
-        // A turn another stop is still settling keeps that stop's cause if
-        // it reached below, and takes this one's if not.
-        if interrupt.below {
-            if stopper.agents.contains(agent) {
-                let reaching = Reaching(cause.clone());
-                stopper.commands.entity(agent).try_insert_if_new(reaching);
-            } else {
-                stopper.commands.trigger(StopReached {
-                    entity: agent,
-                    cause: cause.clone(),
-                    idle: true,
-                });
-            }
-        }
-        stopped |= stopper.stop(agent, cause, !interrupt.below);
+    for &(agent, _) in &reached {
+        stopped |= stopper.stop(agent, cause.clone(), !interrupt.below);
+    }
+    let idle = reached.iter().filter(|&&(_, running)| !running);
+    for &(agent, _) in idle.filter(|_| interrupt.below) {
+        let (cause, idle) = (cause.clone(), true);
+        stopper.commands.trigger(StopReached {
+            entity: agent,
+            cause,
+            idle,
+        });
     }
     // A failed write stops the logging, which the frame's log write shows;
     // the turns stop all the same, and nothing more starts unsaved.
