@@ -59,8 +59,8 @@ each plugin added): ask it before reading rig's source.
   (rig-core's `Conversation`). An **entry** is one message with a `MessageId`,
   an author and a made-time. An **aside** is a typed side value after an entry,
   saved and rewritten with the conversation and never sent to a model; a
-  **note** is an aside of kind `note` the terminal view draws (`Note`). A **change** is
-  one edit (`Change`), a **change record** one with who and when
+  **note** is an aside of kind `note` the terminal view draws (`Note`). A
+  **change** is one edit (`Change`), a **change record** one with who and when
   (`ChangeRecord`). The **halt** says why the last user message is unanswered.
 - **Turns and forks.** A **turn** runs from a user message to the reply that
   ends it, at most one per agent; its model call is the **turn call**

@@ -733,11 +733,14 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
 
 /// A call's lines name it by where its reply asked for it, the same id
 /// in `tool_call` and `tool_result`, never by the provider's id, which a
-/// provider may use again.
+/// provider may use again: here two replies each ask for `c1`.
 #[test]
 fn a_calls_lines_name_it_by_its_place_in_the_reply() {
-    let model =
-        MockCompletionModel::from_stream_turns([calls("c1", "allowed", json!({})), reply("done")]);
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "allowed", json!({})),
+        calls("c1", "allowed", json!({})),
+        reply("done"),
+    ]);
     let (mut app, wakes, lines, input) = restricted_run(&model, None, ToolAccess::all());
     send(
         &input,
@@ -746,12 +749,16 @@ fn a_calls_lines_name_it_by_its_place_in_the_reply() {
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     let world = app.world_mut();
     let conversation = first_agent(world).and_then(|agent| world.get::<Conversation>(agent));
-    let asked = conversation.and_then(|conversation| {
-        let mut replies = conversation.entries().filter(|entry| {
-            matches!(entry.message, Message::Assistant(reply) if reply.tool_calls().next().is_some())
-        });
-        replies.next().map(|entry| format!("{}/0", entry.id))
-    });
+    let asked: Vec<Value> = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.entries())
+        .filter(|entry| match entry.message {
+            Message::Assistant(reply) => reply.tool_calls().next().is_some(),
+            _ => false,
+        })
+        .map(|entry| json!(format!("{}/0", entry.id)))
+        .collect();
+    assert_eq!(asked.len(), 2, "{asked:?}");
     let ids = |kind| -> Vec<Value> {
         lines
             .of(kind)
@@ -759,6 +766,6 @@ fn a_calls_lines_name_it_by_its_place_in_the_reply() {
             .map(|line| at(line, "id").clone())
             .collect()
     };
-    assert_eq!(ids("tool_call"), [json!(asked)]);
-    assert_eq!(ids("tool_result"), [json!(asked)]);
+    assert_eq!(ids("tool_call"), asked);
+    assert_eq!(ids("tool_result"), asked);
 }

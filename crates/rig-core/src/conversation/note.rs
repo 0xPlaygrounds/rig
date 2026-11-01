@@ -6,9 +6,9 @@ use super::{Aside, Author, MessageId};
 
 /// A note in a transcript: an [`Aside`] of kind [`Note::KIND`] that rig's
 /// terminal view draws after the entry it follows, with what it shows
-/// collapsed, in a line, and what it shows expanded. It never
-/// reaches a model, and it is saved, restored and forked with the
-/// conversation; one made [`unsaved`](Aside::unsaved) is not saved.
+/// collapsed, in a line, and what it shows expanded. It never reaches a
+/// model, and it is saved, restored and forked with the conversation; one
+/// made [`unsaved`](Aside::unsaved) is not saved.
 ///
 /// ```
 /// use rig_core::conversation::{Author, Conversation, Note};

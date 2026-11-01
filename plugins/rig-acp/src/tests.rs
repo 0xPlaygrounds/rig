@@ -411,6 +411,7 @@ fn mcp_stub() {
                 "inputSchema": { "type": "object" },
             }]}),
             Some("tools/call") if request.pointer("/params/name") == Some(&json!("pair")) => {
+                // A key too, so both paths are seen redacted alike.
                 json!({ "content": [
                     { "type": "text", "text": "first" },
                     { "type": "text", "text": "OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234" },

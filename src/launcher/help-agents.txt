@@ -75,9 +75,13 @@ Events, each with "agent" when it is an agent's:
   ready {session}                      the first line
   turn_start
   text {text}                          the reply as it streams
-  tool_call {id, name, args}           id: where the reply asked for the
-        call, such as "m4/1" (the reply's message and the call's place
-        in it), the same on its tool_result; null for a plugin's own call
+  tool_call {id, name, args}           id: where the agent's reply asked
+        for the call, such as "m4/1" (the reply's message and the call's
+        place in it), the same on its tool_result. Ids are an agent's
+        own, so two subagents can both have "m1/0": pair a tool_call
+        with its tool_result by "agent" and id. null for a plugin's own
+        call, which nothing pairs. A call run again, such as a retry,
+        has another tool_call with the same id before its one tool_result
   tool_result {id, name, ok, refused, cancelled, output}   refused:
         refused before it ran, such as a tool the agent may not use;
         cancelled: still running when rig exited, its output then what
