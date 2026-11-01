@@ -429,7 +429,7 @@ fn brief_editor(
     let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
     let editor_tools = EDITOR_TOOLS
         .iter()
-        .filter(|name| registered.contains(name) && access.is_none_or(|access| access.allows(name)))
+        .filter(|name| registered.contains(name) && access.is_none_or(|access| access.keeps(name)))
         .map(|name| (*name).to_owned())
         .collect();
     let editor = SpawnSubagent {

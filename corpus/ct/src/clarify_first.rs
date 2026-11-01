@@ -315,7 +315,7 @@ impl Starter<'_, '_> {
                 let name = def.0.name.as_str();
                 footprint.0.reads_only()
                     && name != CLARIFY_ASK
-                    && access.is_none_or(|access| access.allows(name))
+                    && access.is_none_or(|access| access.keeps(name))
             })
             .map(|(def, _)| def.0.name.to_string())
             .collect();

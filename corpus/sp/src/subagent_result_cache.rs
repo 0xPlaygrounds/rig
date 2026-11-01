@@ -15,7 +15,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
+use rig_basics::subagents::{
+    MESSAGE, Role, SpawnSubagent, SpawnedAgent, SubagentPolicy, TASK, WAIT,
+};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_tools::workspace::{Listing as Files, Stat, Workspace};
@@ -135,15 +137,17 @@ type Parent<'a> = (
     &'a ToolAccess,
 );
 
-/// The key of `request` from `parent`'s settings, as `rig_basics::subagents` would
-/// settle them, or `None` when it is no task the cache takes.
+/// The key of `request` from `parent`'s settings, for a subagent at
+/// `depth` of at most `max_depth`, as `rig_basics::subagents` would settle
+/// them, or `None` when it is no task the cache takes or its tools or
+/// depth are refused.
 fn key_of(
     request: &SpawnSubagent,
     (model, &effort, access): Parent,
-    tools: &Query<&ToolDef>,
+    (tools, depth, max_depth): (&Query<&ToolDef>, usize, usize),
     models: &Models,
 ) -> Option<TaskKey> {
-    if request.role != Role::Task || request.peers {
+    if request.role != Role::Task || request.peers || depth > max_depth {
         return None;
     }
     let inherited = ModelChoice::inherit(
@@ -155,14 +159,30 @@ fn key_of(
     let (Some(model), effort) = inherited.ok()? else {
         return None;
     };
-    let mut tools: Vec<String> = match &request.tools {
-        Some(asked) => asked.clone(),
-        None => tools
-            .iter()
-            .map(|def| def.0.name.to_string())
-            .filter(|name| access.allows(name))
-            .collect(),
+    let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
+    // The access `task` gives: the parent's own (but `task` at the deepest),
+    // or the tools asked with those that reach the parent; a list it
+    // refuses is no task to take.
+    let may_delegate = depth < max_depth;
+    let given = match &request.tools {
+        None if may_delegate => access.clone(),
+        None => access.narrow(registered.iter().copied().filter(|name| *name != TASK)),
+        Some(asked) if !may_delegate && asked.iter().any(|name| name == TASK) => return None,
+        Some(asked) => {
+            let mut asked = asked.clone();
+            let reaching = [MESSAGE, WAIT].into_iter();
+            for tool in reaching.filter(|tool| access.keeps(tool) && registered.contains(tool)) {
+                if !asked.iter().any(|name| name == tool) {
+                    asked.push(tool.to_owned());
+                }
+            }
+            access.grant(&asked, registered.iter().copied()).ok()?
+        }
     };
+    // What it may call in this run: an answer given without a tool is not
+    // reused once the tool is back.
+    let usable = registered.into_iter().filter(|name| given.allows(name));
+    let mut tools: Vec<String> = usable.map(str::to_owned).collect();
     tools.sort();
     tools.dedup();
     Some(TaskKey {
@@ -236,8 +256,9 @@ fn reuse(
     >,
     mut calls: Query<(&mut Decision, Option<&CallOf>), ToolCalls>,
     (parents, tools, turns): (Query<Parent>, Query<&ToolDef>, Query<&Turn>),
-    mut caches: Query<&mut SubagentCache>,
+    (mut caches, lineage): (Query<&mut SubagentCache>, Query<&SpawnedBy>),
     (models, workspace, switch): (Res<Models>, Res<ProjectWorkspace>, Res<SubcacheSwitch>),
+    policy: Option<Res<SubagentPolicy>>,
     mut commands: Commands,
 ) {
     for (request_entity, request, &ForAgent(parent), of, mut decision) in &mut requests {
@@ -248,10 +269,12 @@ fn reuse(
         let Ok((mut call, call_of)) = calls.get_mut(of.parent()) else {
             continue;
         };
+        let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
+        let max_depth = policy.as_deref().cloned().unwrap_or_default().max_depth;
         let Some(key) = parents
             .get(parent)
             .ok()
-            .and_then(|parent| key_of(request, parent, &tools, &models))
+            .and_then(|parent| key_of(request, parent, (&tools, depth, max_depth), &models))
         else {
             continue;
         };

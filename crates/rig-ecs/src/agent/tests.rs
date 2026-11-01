@@ -11,7 +11,7 @@ fn owned(names: &[&str]) -> Vec<String> {
 
 #[test]
 fn a_grant_gives_only_tools_the_granting_access_has() {
-    let parent = ToolAccess::All.narrow(["read", "shell"]);
+    let parent = ToolAccess::all().narrow(["read", "shell"]);
     let registered = ["edit", "read", "shell"];
     let shell = parent.grant(&owned(&["shell"]), registered);
     assert_eq!(
@@ -26,7 +26,7 @@ fn a_grant_gives_only_tools_the_granting_access_has() {
     );
     // A name no tool has is refused from every tool too.
     assert!(
-        ToolAccess::All
+        ToolAccess::all()
             .grant(&owned(&["bogus"]), registered)
             .is_err()
     );
@@ -34,10 +34,10 @@ fn a_grant_gives_only_tools_the_granting_access_has() {
 
 #[test]
 fn narrowing_never_widens_an_access() {
-    let read = ToolAccess::All.narrow(["read"]);
+    let read = ToolAccess::all().narrow(["read"]);
     assert_eq!(read.narrow(["read", "shell"]), read);
-    assert!(!read.within(&ToolAccess::All).allows("shell"));
-    assert_eq!(ToolAccess::All.within(&read), read);
+    assert!(!read.within(&ToolAccess::all()).allows("shell"));
+    assert_eq!(ToolAccess::all().within(&read), read);
     let none = read.narrow(["shell"]);
     assert_eq!(none.names(), Some(&[][..]));
 }
@@ -60,17 +60,17 @@ fn an_access_saves_as_it_did_before_its_names_were_private() {
 fn an_agent_is_kept_within_every_agent_above_it() {
     let mut world = World::new();
     let parent = world
-        .spawn(ToolAccess::All.narrow(["read", "run_steel"]))
+        .spawn(ToolAccess::all().narrow(["read", "run_steel"]))
         .id();
-    let child = (world.spawn((ToolAccess::All.narrow(["run_steel"]), SpawnedBy(parent)))).id();
+    let child = (world.spawn((ToolAccess::all().narrow(["run_steel"]), SpawnedBy(parent)))).id();
     // As a session saved before the check restores it: wider than its parent.
     let leaf = world
         .spawn((
-            ToolAccess::All.narrow(["shell", "run_steel"]),
+            ToolAccess::all().narrow(["shell", "run_steel"]),
             SpawnedBy(child),
         ))
         .id();
-    let free = world.spawn((ToolAccess::All, SpawnedBy(child))).id();
+    let free = world.spawn((ToolAccess::all(), SpawnedBy(child))).id();
     world.run_system_once(keep_within_parents).ok();
     let names = |world: &World, agent| {
         let access = world.get::<ToolAccess>(agent);
@@ -79,4 +79,38 @@ fn an_agent_is_kept_within_every_agent_above_it() {
     assert_eq!(names(&world, leaf), Some(owned(&["run_steel"])));
     assert_eq!(names(&world, free), Some(owned(&["run_steel"])));
     assert_eq!(names(&world, parent), Some(owned(&["read", "run_steel"])));
+}
+
+#[test]
+fn the_runs_tools_limit_an_access_and_are_never_saved() {
+    let run = RunTools::new(["read", "edit"]);
+    let access = ToolAccess::all()
+        .narrow(["read", "shell"])
+        .for_run(Some(&run));
+    assert!(access.allows("read") && !access.allows("shell") && access.keeps("shell"));
+    // A child may be given what its parent keeps, and uses it within the
+    // run's tools too.
+    let child = access.grant(&owned(&["shell"]), ["read", "shell"]);
+    assert!(child.is_ok_and(|child| child.keeps("shell") && !child.allows("shell")));
+    let free = ToolAccess::all().for_run(Some(&run));
+    assert!(!free.within(&ToolAccess::all()).allows("shell"));
+    assert!(!ToolAccess::all().within(&free).allows("shell"));
+    let saved = serde_json::to_value(&access).ok();
+    assert_eq!(saved, Some(json!({ "Only": ["read", "shell"] })));
+}
+
+#[test]
+fn an_agent_is_kept_within_the_runs_tools_however_it_was_made() {
+    let mut world = World::new();
+    world.insert_resource(RunTools::new(["read", "task"]));
+    let parent = world.spawn(ToolAccess::all()).id();
+    // Made afresh, not from its parent's access, as a plugin may.
+    let child = world.spawn((ToolAccess::all(), SpawnedBy(parent))).id();
+    world.run_system_once(keep_within_parents).ok();
+    for agent in [parent, child] {
+        let access = world.get::<ToolAccess>(agent);
+        assert!(access.is_some_and(|access| access.allows("task") && !access.allows("shell")));
+        let saved = access.and_then(|access| serde_json::to_value(access).ok());
+        assert_eq!(saved, Some(json!("All")));
+    }
 }

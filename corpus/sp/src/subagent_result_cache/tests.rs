@@ -8,7 +8,7 @@ use rig_harness_test_support::{
     Collected, MemoryStore, ToolOutputs, app_on, calls, collect, log_tool_outputs, reply,
     run_until, scripted_models,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
 
@@ -154,10 +154,11 @@ fn builds(n: usize) -> Vec<Vec<MockStreamEvent>> {
     ]
 }
 
-/// A project of its own beside the test binary, with `src/config.rs`.
-fn project() -> PathBuf {
+/// A project of the test `name` beside the test binary, with
+/// `src/config.rs`.
+fn project(name: &str) -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("subcache-project-{}", std::process::id()));
+    let dir = exe.with_file_name(format!("subcache-{name}-{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(dir.join("src")).ok();
     let config = "use std::fs;\n\n// Loading.\n\n\n\n\n\n\n\n\npub fn load_config() {}\n";
@@ -170,7 +171,7 @@ fn project() -> PathBuf {
 /// hit after a restart until `/subcache off`.
 #[test]
 fn a_repeated_read_only_task_is_answered_from_its_record_while_its_inputs_hold() {
-    let dir = project();
+    let dir = project("hits");
     let store = MemoryStore::default();
     let script = [
         asks("t1", FIND, true),
@@ -268,6 +269,106 @@ fn a_repeated_read_only_task_is_answered_from_its_record_while_its_inputs_hold()
         sub.requests().len(),
         3,
         "with the cache off the subagent runs"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The main agent's script for one `task` call `id` of [`FIND`] with
+/// `tools`, run by a subagent: the call, then what it says after.
+fn asks_with(id: &str, tools: &Value) -> Vec<Vec<MockStreamEvent>> {
+    let args = json!({ "description": "lookup", "prompt": FIND, "model": SUB, "tools": tools });
+    vec![
+        calls(id, TASK, args),
+        reply("Waiting for it."),
+        reply("Thanks."),
+    ]
+}
+
+/// What the main agent's `task` call `id` answers once it sent `text`:
+/// a reused answer, a refusal, or the start of a subagent.
+fn answer_to(session: &mut Session, text: &str, id: &str) -> String {
+    let ask = Deliver::new(session.main, text, DeliveryMode::Queue);
+    session.app.world_mut().trigger(ask);
+    let call = id.to_owned();
+    run_until(&mut session.app, &session.wakes, move |world| {
+        world.resource::<ToolOutputs>().0.contains_key(&call)
+    });
+    session.output(id)
+}
+
+#[test]
+fn an_answer_from_a_limited_run_is_not_reused_once_the_tools_are_back() {
+    for tools in [Value::Null, json!(["read"])] {
+        let dir = project("limited");
+        let store = MemoryStore::default();
+        let main = MockCompletionModel::from_stream_turns(asks_with("t1", &tools));
+        let sub = MockCompletionModel::from_stream_turns([reply("I cannot message you.")]);
+        let mut session = Session::new(&store, &dir, main, &sub);
+        session.app.insert_resource(RunTools::new([TASK, "read"]));
+        session.ask("Where is the config loaded?", 3);
+        assert_eq!(sub.requests().len(), 1, "{tools}");
+        drop(session);
+
+        let main = MockCompletionModel::from_stream_turns(asks_with("t2", &tools));
+        let sub = MockCompletionModel::from_stream_turns(finds(2));
+        let mut session = Session::new(&store, &dir, main, &sub);
+        let answer = answer_to(&mut session, "And with every tool?", "t2");
+        assert!(answer.starts_with("Started subagent"), "{tools}: {answer}");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[test]
+fn a_list_task_refuses_is_never_answered_from_a_record() {
+    let dir = project("refused");
+    let main = MockCompletionModel::from_stream_turns(
+        [
+            asks_with("t1", &json!(["read"])),
+            asks_with("t2", &json!(["read", "shell"])),
+        ]
+        .concat(),
+    );
+    let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
+    let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
+    let keeps = ToolAccess::all().narrow([TASK, "read"]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.main)
+        .insert(keeps);
+    session.ask("Where is the config loaded?", 3);
+    let refused = answer_to(&mut session, "And with the shell?", "t2");
+    assert!(
+        refused.contains("`shell` is not one of your tools"),
+        "{refused}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_task_refused_at_the_deepest_level_is_never_answered_from_a_record() {
+    let dir = project("deepest");
+    let main = MockCompletionModel::from_stream_turns(
+        [
+            asks_with("t1", &Value::Null),
+            asks_with("t2", &json!([TASK, "read"])),
+        ]
+        .concat(),
+    );
+    let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
+    let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
+    session.app.insert_resource(SubagentPolicy { max_depth: 1 });
+    let keeps = ToolAccess::all().narrow([TASK, "read", MESSAGE, WAIT]);
+    session
+        .app
+        .world_mut()
+        .entity_mut(session.main)
+        .insert(keeps);
+    session.ask("Where is the config loaded?", 3);
+    let refused = answer_to(&mut session, "And again, with task?", "t2");
+    assert!(
+        refused.contains("cannot start subagents of its own"),
+        "{refused}"
     );
     std::fs::remove_dir_all(&dir).ok();
 }

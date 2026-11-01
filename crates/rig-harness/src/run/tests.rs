@@ -142,53 +142,14 @@ fn the_unknown_names_are_named_with_the_tools_they_likely_mean() {
 }
 
 #[test]
-fn agents_spawned_during_a_pass_are_restricted_before_dispatch() {
-    let mut app = App::new();
-    app.insert_resource(Tools(vec!["allowed".to_owned()]));
-    app.add_systems(
-        AgentPass,
-        (
-            (|mut commands: Commands| {
-                commands.spawn((Agent, ToolAccess::All.narrow(["denied"])));
-                commands.spawn(Agent);
-            })
-            .in_set(Stage::Commit),
-            limit_tools
-                .after(Stage::Commit)
-                .in_set(PrepareSystems::Input),
-        ),
-    );
-    app.world_mut().run_schedule(AgentPass);
-    let world = app.world_mut();
-    let accesses: Vec<_> = world
-        .query::<&ToolAccess>()
-        .iter(world)
-        .map(|access| (access.allows("allowed"), access.allows("denied")))
-        .collect();
-    assert_eq!(accesses.len(), 2);
-    assert!(accesses.contains(&(false, false)));
-    assert!(accesses.contains(&(true, false)));
-}
-
-/// The agents an access was inserted on.
-#[derive(Resource, Default)]
-struct Inserted(Vec<Entity>);
-
-#[test]
-fn the_start_keeps_every_agent_to_the_tools_by_inserting_its_access() {
+fn the_start_makes_the_names_the_runs_tools_and_leaves_every_access() {
     let (mut app, held) = app(Front::new("view").on_terminal(), true, Some("read"));
-    app.init_resource::<Inserted>().add_observer(
-        |set: On<Insert<ToolAccess>>, mut seen: ResMut<Inserted>| {
-            seen.0.push(set.entity);
-        },
-    );
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
-    app.world_mut().resource_mut::<Inserted>().0.clear();
     app.world_mut().despawn(held);
     app.update();
     let world = app.world();
-    assert!(world.resource::<Inserted>().0.contains(&agent));
-    let names = world.get::<ToolAccess>(agent).and_then(ToolAccess::names);
-    assert_eq!(names, Some(&["read".to_owned()][..]));
+    let run = world.get_resource::<RunTools>();
+    assert_eq!(run, Some(&RunTools::new(["read"])));
+    assert_eq!(world.get::<ToolAccess>(agent), Some(&ToolAccess::all()));
 }

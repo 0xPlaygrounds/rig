@@ -199,7 +199,7 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes, agent) = app(&model);
     // As the drive test's intermediary: allowed `run_steel` and `look` only.
-    let access = ToolAccess::All.narrow([RUN_STEEL, "look"]);
+    let access = ToolAccess::all().narrow([RUN_STEEL, "look"]);
     app.world_mut().entity_mut(agent).insert(access);
     let run = |app: &mut App, id: &str, tools: &str| {
         let code = format!(r#"(spawn-agent "leaf" (hash 'tools (list {tools})))"#);

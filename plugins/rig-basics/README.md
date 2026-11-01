@@ -45,9 +45,10 @@ so each can be turned off alone.
   (`HelpersPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
-In TUI, print and JSON runs, omitting `--tools` preserves each agent's tool access.
-`--tools=` permits no tools; `--tools=read,write` intersects each agent's
-existing access with those names before its first request and at execution.
+In TUI, print and JSON runs, `--tools=read,write` limits that run to those
+tools, and `--tools=` leaves it none. Each agent keeps its own access within
+them, at its first request and at execution. The limit is never saved, so a
+later run without `--tools` has every tool the session kept.
 The harness owns this check (`rig_harness::run`), the same in every front:
 once every plugin finished and no `rig_harness::run::Starting` entity is
 left, a run refuses a name no registered tool has, with exit code 2, before
@@ -58,10 +59,11 @@ tools can be named; until then the agent runs no turn, request or prompt.
 This limit also applies to subagents, including their normally supplied
 `message` and `wait` tools: include those names when children need them. A
 subagent never has a tool its parent lacks: it gets `message` and `wait`
-only when its parent has them, and asking for another tool is refused.
-Access is intersected in Prepare Input and already-built tool advertisements
-are pruned in Prepare Edit, before dispatch and in a defined order with session
-persistence.
+only when its parent keeps them, and asking for another tool is refused. A
+tool its parent keeps but the run leaves out is given, and cannot be called
+in that run.
+The kernel keeps every agent within the run's tools (`rig_ecs::agent::RunTools`)
+before anything is admitted, as it keeps each within its parents.
 
 Without an explicit output limit, a turn asks for 64,000 tokens plus any
 thinking budget and 1,024, within the model's output limit, or the server's

@@ -233,15 +233,27 @@ impl From<Option<String>> for SystemPrompt {
     }
 }
 
-/// Which registered tools the agent may call. Saved with the session.
-/// Only [`within`](Self::within), [`narrow`](Self::narrow) and
-/// [`grant`](Self::grant) build an [`Only`](Self::Only), so an access made
-/// from another never has a tool that one lacks; before it admits anything
-/// the kernel keeps each agent's access within the access of every agent
-/// above it ([`SpawnedBy`]), whatever made or restored it.
+/// Which registered tools the agent may call: those it keeps, saved with
+/// the session, within this run's tools ([`RunTools`]), which the session
+/// never saves.
+/// Only [`within`](Self::within), [`narrow`](Self::narrow),
+/// [`grant`](Self::grant) and the kernel build a narrower one, so an
+/// access made from another never has a tool that one lacks; before it
+/// admits anything the kernel keeps each agent's access within the run's
+/// tools and the access of every agent above it ([`SpawnedBy`]), whatever
+/// made or restored it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub enum ToolAccess {
+#[serde(from = "Kept", into = "Kept")]
+pub struct ToolAccess {
+    kept: Kept,
+    /// This run's tools, which only the kernel sets.
+    run: Option<Granted>,
+}
+
+/// What the session saves of a [`ToolAccess`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum Kept {
     /// Every registered tool.
     #[default]
     All,
@@ -249,25 +261,55 @@ pub enum ToolAccess {
     Only(Granted),
 }
 
-/// The tools a [`ToolAccess::Only`] names.
+impl From<Kept> for ToolAccess {
+    fn from(kept: Kept) -> Self {
+        Self { kept, run: None }
+    }
+}
+
+impl From<ToolAccess> for Kept {
+    fn from(access: ToolAccess) -> Self {
+        access.kept
+    }
+}
+
+/// Tool names, each once, in the order given.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Granted(Vec<String>);
+struct Granted(Vec<String>);
 
 impl Granted {
-    /// The names, in the order granted.
-    pub fn names(&self) -> &[String] {
-        &self.0
+    fn has(&self, name: &str) -> bool {
+        self.0.iter().any(|it| it == name)
+    }
+
+    /// These names that `allows` allows.
+    fn within(&self, allows: impl Fn(&str) -> bool) -> Self {
+        Self(self.0.iter().filter(|name| allows(name)).cloned().collect())
+    }
+}
+
+/// The tools this run leaves every agent, such as `--tools` names: the
+/// kernel keeps each agent's [`ToolAccess`] within them, and the session
+/// never saves them, so a later run has every tool the session kept.
+/// Without it, a run leaves every tool.
+#[derive(Resource, Clone, Debug, PartialEq, Eq)]
+pub struct RunTools(Granted);
+
+impl RunTools {
+    /// The tools `names`, each once.
+    pub fn new<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
+        Self(Granted(unique(names)))
     }
 }
 
 /// Why [`ToolAccess::grant`] refused: `name` is not one of the tools the
-/// granting access has, `yours`.
+/// granting access keeps, `yours`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NotYours {
     /// The tool asked for.
     pub name: String,
-    /// The registered tools the granting access allows, sorted.
+    /// The registered tools the granting access keeps, sorted.
     pub yours: Vec<String>,
 }
 
@@ -281,44 +323,59 @@ impl std::fmt::Display for NotYours {
 impl std::error::Error for NotYours {}
 
 impl ToolAccess {
-    /// Whether the tool `name` may be called.
+    /// Every registered tool.
+    pub fn all() -> Self {
+        Self::default()
+    }
+
+    /// Whether the tool `name` may be called in this run. A child's tools
+    /// are built with [`keeps`](Self::keeps), so they outlive the run.
     pub fn allows(&self, name: &str) -> bool {
-        match self {
-            Self::All => true,
-            Self::Only(granted) => granted.0.iter().any(|allowed| allowed == name),
+        self.keeps(name) && self.run.as_ref().is_none_or(|run| run.has(name))
+    }
+
+    /// Whether the agent keeps the tool `name`, whatever this run's tools:
+    /// what the session saves, and what a child it starts may be given.
+    pub fn keeps(&self, name: &str) -> bool {
+        match &self.kept {
+            Kept::All => true,
+            Kept::Only(granted) => granted.has(name),
         }
     }
 
-    /// The names an [`Only`](Self::Only) gives; `None` for [`All`](Self::All).
+    /// The names it keeps, in the order granted; `None` for every tool.
     pub fn names(&self) -> Option<&[String]> {
-        match self {
-            Self::All => None,
-            Self::Only(granted) => Some(granted.names()),
+        match &self.kept {
+            Kept::All => None,
+            Kept::Only(granted) => Some(&granted.0),
         }
     }
 
     /// This access kept within `other`: the tools both allow, in this
     /// one's order, or `other`'s when this one allows every tool.
     pub fn within(&self, other: &Self) -> Self {
-        match (self, other) {
-            (_, Self::All) => self.clone(),
-            (Self::All, Self::Only(_)) => other.clone(),
-            (Self::Only(mine), Self::Only(_)) => {
-                let kept = mine.0.iter().filter(|name| other.allows(name));
-                Self::Only(Granted(kept.cloned().collect()))
-            }
-        }
+        let kept = match (&self.kept, &other.kept) {
+            (_, Kept::All) => self.kept.clone(),
+            (Kept::All, Kept::Only(_)) => other.kept.clone(),
+            (Kept::Only(mine), Kept::Only(theirs)) => Kept::Only(mine.within(|it| theirs.has(it))),
+        };
+        let run = match (&self.run, &other.run) {
+            (Some(mine), Some(theirs)) => Some(mine.within(|it| theirs.has(it))),
+            (mine, theirs) => mine.as_ref().or(theirs.as_ref()).cloned(),
+        };
+        Self { kept, run }
     }
 
     /// This access kept to `names`, each once: never more than it was, such
-    /// as for `--tools`.
+    /// as for an agent profile.
     pub fn narrow<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Self {
-        self.within(&Self::Only(Granted(unique(names))))
+        self.within(&Kept::Only(Granted(unique(names))).into())
     }
 
     /// A child's access: the tools `asked`, each once, every one a tool of
-    /// `registered` this access allows; or why not, for the first that is
-    /// not.
+    /// `registered` this access keeps; or why not, for the first that is
+    /// not. The child keeps them and, as every agent, uses them within this
+    /// run's tools, so a later run gives it what it was given.
     pub fn grant<'a>(
         &self,
         asked: &[String],
@@ -326,7 +383,7 @@ impl ToolAccess {
     ) -> Result<Self, NotYours> {
         let mut yours: Vec<&str> = registered
             .into_iter()
-            .filter(|name| self.allows(name))
+            .filter(|name| self.keeps(name))
             .collect();
         yours.sort_unstable();
         yours.dedup();
@@ -335,9 +392,19 @@ impl ToolAccess {
                 name: name.clone(),
                 yours: yours.into_iter().map(str::to_owned).collect(),
             }),
-            None => Ok(Self::Only(Granted(unique(
-                asked.iter().map(String::as_str),
-            )))),
+            None => Ok(Self {
+                kept: Kept::Only(Granted(unique(asked.iter().map(String::as_str)))),
+                run: self.run.clone(),
+            }),
+        }
+    }
+
+    /// This access within the run's tools `run`, the kernel's to set.
+    pub(crate) fn for_run(&self, run: Option<&RunTools>) -> Self {
+        let run = run.map(|run| run.0.clone());
+        Self {
+            kept: self.kept.clone(),
+            run,
         }
     }
 }

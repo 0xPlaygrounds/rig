@@ -120,6 +120,30 @@ fn a_helper_answers_and_a_chain_hands_each_answer_on() {
 }
 
 #[test]
+fn a_helper_gets_only_the_tools_of_this_run() {
+    let (mut app, wakes, dir) = helped(
+        "run-tools",
+        &[
+            json!({ "task": "one", "tools": ["read"] }),
+            json!({ "task": "two" }),
+        ],
+    );
+    // The caller keeps `read`; this run leaves it only `helper`.
+    app.insert_resource(RunTools::new([HELPER]));
+    assert_eq!(output(&mut app, &wakes, 0), "did: one");
+    assert_eq!(output(&mut app, &wakes, 1), "did: two");
+    let args = std::fs::read_to_string(dir.join("args")).unwrap_or_default();
+    let mut lines = args.lines();
+    for task in ["one", "two"] {
+        let line = lines.next().unwrap_or_default();
+        assert!(
+            line.starts_with(&format!("-p --json --tools= -- {task}")),
+            "{args}"
+        );
+    }
+}
+
+#[test]
 fn side_by_side_helpers_run_four_at_a_time_and_failures_are_reported() {
     let mut tasks: Vec<Value> = (0..5)
         .map(|n| json!({ "task": format!("wait {n}") }))
@@ -196,7 +220,7 @@ fn a_helper_in_tilde_is_in_the_home_directory() {
     };
     let lent = Lent {
         model: None,
-        access: ToolAccess::All,
+        access: ToolAccess::all(),
         lendable: Vec::new(),
         base: std::env::temp_dir().join(format!("rig-helpers-tilde-{}", std::process::id())),
     };

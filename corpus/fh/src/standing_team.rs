@@ -281,7 +281,7 @@ fn delegated(
             let access = callers.get(called.agent).ok();
             let names = tools.iter().map(|def| def.0.name.to_string());
             names
-                .filter(|name| access.is_none_or(|access| access.allows(name)))
+                .filter(|name| access.is_none_or(|access| access.keeps(name)))
                 .collect()
         }
     };

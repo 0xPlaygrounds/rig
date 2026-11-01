@@ -530,6 +530,30 @@ fn add_task_argument(world: &mut World, name: &str) {
 }
 
 #[test]
+fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
+    // At depth 1 of 2 it may start its own; at the deepest it may not.
+    for max_depth in [2, 1] {
+        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+        let mut session = Session::new(&MemoryStore::default(), Some(&model));
+        session
+            .app
+            .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]))
+            .insert_resource(SubagentPolicy { max_depth });
+        let args = json!({ "description": "Look", "prompt": "Look around." });
+        let said = session.call(session.parent, TASK, "t1", args);
+        assert!(said.starts_with("Started subagent"), "{said}");
+        let child = session.children(session.parent).last().copied();
+        let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+        // A later run without the limit gives it every tool its parent
+        // keeps, but `task` at the deepest.
+        let kept = access.is_some_and(|access| {
+            access.keeps("look") && !access.allows("look") && access.keeps(TASK) == (max_depth > 1)
+        });
+        assert!(kept, "{max_depth}: {access:?}");
+    }
+}
+
+#[test]
 fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
@@ -1188,7 +1212,7 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
     let store = MemoryStore::default();
     let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
     let mut session = Session::new(&store, Some(&parent));
-    let restricted = ToolAccess::All.narrow([TASK, "look"]);
+    let restricted = ToolAccess::all().narrow([TASK, "look"]);
     session
         .app
         .world_mut()
@@ -1227,7 +1251,7 @@ fn a_peer_whose_parent_loses_the_tools_to_reach_peers_is_told_no_more() {
         (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role")
     };
     assert!(role(&mut session));
-    let narrowed = ToolAccess::All.narrow([TASK, "look"]);
+    let narrowed = ToolAccess::all().narrow([TASK, "look"]);
     session
         .app
         .world_mut()
@@ -1255,14 +1279,14 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
             .filter(|(name, of)| of.0 == child && name.as_str() == "peer_role")
             .count()
     };
-    let reaching = ToolAccess::All.narrow(["look", MESSAGE, WAIT]);
+    let reaching = ToolAccess::all().narrow(["look", MESSAGE, WAIT]);
     session
         .app
         .world_mut()
         .entity_mut(child)
         .insert((Peers, reaching));
     assert_eq!(roles(&mut session), 1);
-    let narrowed = ToolAccess::All.narrow(["look"]);
+    let narrowed = ToolAccess::all().narrow(["look"]);
     session.app.world_mut().entity_mut(child).insert(narrowed);
     assert_eq!(roles(&mut session), 0);
 }

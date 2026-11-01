@@ -157,7 +157,7 @@ impl Plugin for SubagentPolicyPlugin {
 
 /// Gives each new subagent the default model and tools, unless its `task`
 /// call named its own and the policy allows that. Default tools its parent
-/// may not use are left out.
+/// does not keep are left out.
 fn with_defaults(
     mut requests: Query<(&mut SpawnSubagent, &ForAgent), (Added<Admitted>, PluginEffects)>,
     access: Query<&ToolAccess>,
@@ -177,8 +177,8 @@ fn with_defaults(
         if request.tools.is_none()
             && let Some(tools) = &config.default_tools
         {
-            let allows = |name: &&String| access.get(parent).is_ok_and(|a| a.allows(name));
-            request.tools = Some(tools.iter().filter(allows).cloned().collect());
+            let keeps = |name: &&String| access.get(parent).is_ok_and(|a| a.keeps(name));
+            request.tools = Some(tools.iter().filter(keeps).cloned().collect());
         }
     }
 }
