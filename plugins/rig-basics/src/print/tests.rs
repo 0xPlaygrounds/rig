@@ -2087,3 +2087,37 @@ fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
     let said = "rig: Pick a model first: /model <vendor/model>.";
     assert!(lines.iter().any(|line| line == said), "{lines:?}");
 }
+
+/// A key the model streams in pieces reaches no line: the text, the turn's
+/// answer and the exit's answer say it redacted, as the session log does.
+#[test]
+fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
+    let pieces = [
+        "Use GITHUB_TOKEN=gh",
+        "p_abcdefghijklmnopqrst",
+        "uvwxyz0123456789 now.",
+    ];
+    let mut events: Vec<_> = pieces
+        .iter()
+        .map(|piece| MockStreamEvent::text(*piece))
+        .collect();
+    events.push(MockStreamEvent::final_response_with_default_usage());
+    let model = MockCompletionModel::from_stream_turns([events]);
+    let (_, lines) = one_shot("Key?", None, &model, true, |_| {});
+    let redacted = "Use GITHUB_TOKEN=[REDACTED] now.";
+    let text: String = lines
+        .of("text")
+        .iter()
+        .filter_map(|line| at(line, "text").as_str())
+        .collect();
+    assert_eq!(text, redacted);
+    let answers = ["turn_end", "exit"].map(|kind| {
+        lines
+            .of(kind)
+            .first()
+            .map(|line| at(line, "answer").clone())
+    });
+    assert_eq!(answers, [Some(json!(redacted)), Some(json!(redacted))]);
+    let all = lines.text().concat();
+    assert!(!all.contains("ghp_"), "{all}");
+}

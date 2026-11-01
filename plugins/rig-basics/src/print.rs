@@ -1275,8 +1275,7 @@ impl Out<'_, '_> {
         }
         let recalled: Vec<Recalled> = self.read.recalled.read(&self.recalled).cloned().collect();
         for recalled in recalled {
-            let text = rig_harness::rig_core::redact::text(&recalled.text);
-            let fields = json!({ "text": text, "why": recalled.why });
+            let fields = json!({ "text": recalled.text, "why": recalled.why });
             self.write(Some(recalled.agent), "recalled", fields);
         }
         self.text();
@@ -1317,7 +1316,10 @@ impl Out<'_, '_> {
         if let Some(AgentId(id)) = agent.and_then(|agent| self.ids.get(agent).ok()) {
             line.insert("agent".to_owned(), id.clone().into());
         }
-        let line = format!("{}\n", Value::Object(line));
+        // No key reaches a line: it is redacted as the session log is.
+        let mut line = Value::Object(line);
+        redact::json(&mut line);
+        let line = format!("{line}\n");
         self.out.out.write(Stream::Out, line.into_bytes());
     }
 }
@@ -1402,7 +1404,6 @@ fn note_cut_off(
         }
         let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
         let kept = kept.map(Outcome::tool_result);
-        let kept = kept.map(|result| redact::tool_result(&result).unwrap_or(result));
         let (ok, output) = match kept {
             Some(result) => (result.is_success(), result.output().render()),
             None => {
