@@ -475,6 +475,30 @@ impl Transport<Echo> for Broken {
     }
 }
 
+/// A transport whose reply opens `opens_after` it is sent, then sends
+/// `frame` `gap` later, then nothing more, without ending.
+#[derive(Clone)]
+struct LateOpening {
+    opens_after: std::time::Duration,
+    gap: std::time::Duration,
+    frame: &'static str,
+}
+
+impl Transport<Echo> for LateOpening {
+    fn send(&self, _payload: Encoded, _exchange: super::Exchange) -> super::Opening<WireFrame> {
+        let (opens_after, gap, frame) = (self.opens_after, self.gap, self.frame);
+        super::Opening::new(async move {
+            tokio::time::sleep(opens_after).await;
+            let frames = futures::stream::once(async move {
+                tokio::time::sleep(gap).await;
+                Ok(WireFrame::Text(frame.to_owned()))
+            })
+            .chain(futures::stream::pending());
+            Ok(super::Opened::new(frames))
+        })
+    }
+}
+
 /// A transport whose reply sends `frames`, each `gap` after the last, then
 /// sends nothing more, without ending.
 #[derive(Clone)]
@@ -573,7 +597,7 @@ async fn frames_within_the_idle_timeout_never_stall() {
     chunks.push("data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n");
     let trickle = PacedStreamingClient {
         chunks,
-        gap: idle / 4,
+        gap: idle / 6,
     };
     let response = Model::new(Echo::streaming(), trickle)
         .with_idle_timeout(Some(idle))
@@ -584,10 +608,31 @@ async fn frames_within_the_idle_timeout_never_stall() {
     assert!(response.is_ok(), "a trickling reply ends: {response:?}");
 }
 
-/// A reader that pauses between frames does not move the stall: it comes
-/// the idle timeout after the last bytes, however long the reader took.
+/// Opening a reply and its first frame share one idle timeout: a reply that
+/// opens late and sends its first frame as late again stalls.
 #[tokio::test]
-async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_bytes() {
+async fn opening_and_the_first_frame_share_the_idle_timeout() {
+    let idle = std::time::Duration::from_millis(400);
+    let late = LateOpening {
+        opens_after: idle * 3 / 4,
+        gap: idle * 3 / 4,
+        frame: r#"{"type":"delta","text":"hi"}"#,
+    };
+    let mut stream = Model::new(Echo::streaming(), late)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens");
+    let first = stream.next().await;
+    assert!(
+        matches!(first, Some(Err(ProviderError::Stalled(after))) if after == idle),
+        "a late first frame stalls: {first:?}"
+    );
+}
+
+/// A reader that pauses between frames does not move the stall: it comes
+/// the idle timeout after the last frame, however long the reader took.
+#[tokio::test]
+async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_frame() {
     let idle = std::time::Duration::from_millis(400);
     let once = PacedStreamingClient {
         chunks: vec!["data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n"],
@@ -612,9 +657,9 @@ async fn a_slow_reader_stalls_an_idle_timeout_after_the_last_bytes() {
         matches!(last, Some(Err(ProviderError::Stalled(_)))),
         "a silent reply stalls: {last:?}"
     );
-    // The bytes came at once, so the stall is due at about 400 ms; timing
+    // The frame came at once, so the stall is due at about 400 ms; timing
     // from when the reader came back would take 700 ms.
-    assert!(took < idle + idle / 2, "stalled {took:?} after the bytes");
+    assert!(took < idle + idle / 2, "stalled {took:?} after the frame");
 }
 
 /// An idle timeout longer than a browser's timer takes waits indefinitely,

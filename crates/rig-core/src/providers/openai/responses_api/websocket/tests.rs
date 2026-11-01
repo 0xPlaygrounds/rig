@@ -309,3 +309,15 @@ fn websocket_failures_with_a_transient_code_are_retryable() {
     assert!(err.is_retryable(), "{err}");
     assert_eq!(err.report().code.as_deref(), Some("rate_limit_exceeded"));
 }
+
+/// A session from the default builder fails a turn that sends no event for
+/// the driver's idle timeout, as a streamed reply does, rather than waiting
+/// indefinitely.
+#[test]
+fn the_default_builder_times_event_waits_as_the_driver_does() {
+    let builder = ResponsesWebSocketSessionBuilder::new(test_wire("https://api.openai.com/v1"));
+    assert_eq!(
+        builder.event_timeout,
+        Some(crate::driver::STREAM_IDLE_TIMEOUT)
+    );
+}
