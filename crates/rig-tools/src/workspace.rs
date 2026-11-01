@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -590,18 +590,40 @@ impl Workspace for Local {
 
     fn canonical(&self, path: &Path) -> PathBuf {
         let joined = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-        let real = joined.ancestors().find_map(|ancestor| {
-            let real = fs::canonicalize(ancestor).ok()?;
-            Some((real, joined.strip_prefix(ancestor).ok()?))
-        });
-        let (mut out, rest) = real.unwrap_or((PathBuf::new(), &joined));
-        for component in rest.components() {
-            match component {
-                Component::ParentDir => {
+        if let Ok(real) = fs::canonicalize(&joined) {
+            return real;
+        }
+        let mut rest: std::collections::VecDeque<_> = joined
+            .components()
+            .map(|component| component.as_os_str().to_owned())
+            .collect();
+        let mut out = PathBuf::new();
+        let mut links = 0;
+        while let Some(part) = rest.pop_front() {
+            if part == ".." {
+                out.pop();
+            } else if part != "." {
+                out.push(&part);
+                if let Ok(target) = fs::read_link(&out) {
+                    links += 1;
+                    if links > 40 {
+                        // Keep a looping path intact so the eventual I/O refuses it.
+                        return joined;
+                    }
                     out.pop();
+                    for component in target.components().rev() {
+                        rest.push_front(component.as_os_str().to_owned());
+                    }
                 }
-                Component::CurDir => {}
-                other => out.push(other),
+            }
+        }
+        // Preserve native spelling (including Windows verbatim prefixes) for
+        // existing ancestors of a destination that has yet to be created.
+        for ancestor in out.ancestors() {
+            if let Ok(real) = fs::canonicalize(ancestor)
+                && let Ok(rest) = out.strip_prefix(ancestor)
+            {
+                return real.join(rest);
             }
         }
         out
