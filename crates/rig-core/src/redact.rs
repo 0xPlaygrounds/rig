@@ -69,8 +69,8 @@ pub enum Kind {
     /// `;` or `&` (the next assignment of a query string); one of at most
     /// 7 characters, all digits, starting with `$` (a reference such as
     /// `$GITHUB_TOKEN`), with characters other than printable ASCII (a
-    /// placeholder such as `‹SECRET_1›`), or one starting with [`REDACTED`]
-    /// is not a secret, so redacting text again changes nothing.
+    /// placeholder such as `‹SECRET_1›`), or one holding [`REDACTED`] is
+    /// not a secret, so redacting text again changes nothing.
     /// Only the value is the secret.
     Assigned,
 }
@@ -569,7 +569,7 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
         && value.chars().all(|ch| ch.is_ascii_graphic() || ch == ' ')
         && !value.starts_with('$')
         && !value.chars().all(|ch| ch.is_ascii_digit())
-        && !value.starts_with(REDACTED)
+        && !value.contains(REDACTED)
         && secret_at(value).is_none();
     plausible.then(|| from..from + value.len())
 }

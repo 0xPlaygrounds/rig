@@ -200,6 +200,7 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
         "PASSWORD=\"sk-proj-abcdefghijklmnop1234 trailing\" then",
         "AKIA0123456789ABCDEFghp_abcdefghijklmnopqrstuvwxyz0123456789 and AKIA0123456789ABCDEFsk-proj-abcdefghijklmnop1234",
         "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----TOKEN=abcdefgh12345678",
+        "TOKEN=\"key: -----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----\" after",
         "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY----- API_KEY=abcdefgh12345678",
     ];
     for input in texts {
