@@ -938,12 +938,22 @@ impl Add for Cost {
 }
 
 /// Sum two counters where an unreported side does not turn a reported one
-/// into "unreported".
+/// into "unreported". A running account stops at `u64::MAX` rather than
+/// wrap.
 fn add_counter(lhs: Option<u64>, rhs: Option<u64>) -> Option<u64> {
     match (lhs, rhs) {
         (None, None) => None,
-        (lhs, rhs) => Some(lhs.unwrap_or(0) + rhs.unwrap_or(0)),
+        (lhs, rhs) => Some(lhs.unwrap_or(0).saturating_add(rhs.unwrap_or(0))),
     }
+}
+
+/// The sum of the token `counts` one reply reported, or an error when it
+/// overflows: no reply counts that many tokens, so its usage is malformed.
+pub(crate) fn token_sum(counts: impl IntoIterator<Item = u64>) -> Result<u64, ProviderError> {
+    counts
+        .into_iter()
+        .try_fold(0_u64, u64::checked_add)
+        .ok_or_else(|| ProviderError::Response("the reply's token counts overflow".to_owned()))
 }
 
 impl Add for Usage {

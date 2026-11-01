@@ -16,6 +16,8 @@ workspace = true
 trace = ["bevy_ecs/trace"]
 
 [dependencies]
+# The front's output queue and line readers.
+async-channel = { workspace = true }
 # `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
 bevy = { workspace = true }
 bevy_app = { workspace = true }
@@ -26,6 +28,7 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
+futures = { workspace = true }
 # The launcher protocol, shared with the `rig` binary.
 rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0" }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
@@ -38,7 +41,7 @@ rig-memory = { path = "../rig-memory", version = "0.46.0", features = ["fs"] }
 rig-tools = { path = "../rig-tools", version = "0.46.0" }
 # The tokio runtime rig's HTTP requests run on, shared with plugins.
 rig-http = { path = "../rig-http", version = "0.46.0", features = ["tokio"] }
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 # Questions' answers, and the user's settings for plugins.
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

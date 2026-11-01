@@ -16,7 +16,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -26,14 +26,16 @@ use futures::future::{BoxFuture, Shared};
 use futures::{FutureExt, StreamExt};
 use rig_basics::session_picker::SessionEntry;
 use rig_harness::harness_protocol::{Home, RunDir, SessionId, StartReason, env, lock_file};
+use rig_harness::host::pipes::{self, Stream, Writer};
 use rig_harness::host::session::StoreOpener;
+use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::process::Process;
 use rig_harness::run::TOOLS;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::{oneshot, watch};
 
-use crate::{Reply, session};
+use crate::{Pending, Reply, session};
 
 /// How long a session process may take to end once asked, before it is
 /// killed.
@@ -62,6 +64,16 @@ struct Router {
     /// The saved sessions a load or resume is opening, each done once that
     /// request was answered.
     opening: Mutex<HashMap<String, Shared<BoxFuture<'static, ()>>>>,
+    /// The client's requests that open or close a session, while their
+    /// task runs.
+    tasks: Pending,
+    /// Set once the router stops: no session opens any more.
+    stopping: AtomicBool,
+    /// The writer of stdout: a session's output is read only while it
+    /// keeps up.
+    writer: Writer,
+    /// The most bytes of a line it reads ([`crate::LINE_LIMIT`]).
+    limit: usize,
 }
 
 /// A session's process, as the router runs it.
@@ -70,10 +82,13 @@ struct Child {
     /// The number of its run directory, which tells this process from a
     /// later one of the same session.
     run: u64,
-    /// Ends the connection, which closes the process's stdin.
+    /// Ends the connection: closes the process's stdin, then waits for its
+    /// answers and its end.
     stop: watch::Sender<bool>,
     /// Done once the process ended and was cleaned up, for every waiter.
     gone: Shared<BoxFuture<'static, ()>>,
+    /// The client's requests forwarded to it and not answered yet.
+    pending: Pending,
 }
 
 /// Locks `mutex`, whatever a panicking holder left.
@@ -159,8 +174,11 @@ impl Router {
         let (ready, connected) = oneshot::channel();
         let (stop, stopping) = watch::channel(false);
         let (router, key) = (self.clone(), id.as_str().to_owned());
+        let pending = Pending::new();
+        let (transport, input) = lines(input, output, self.writer.clone(), self.limit);
+        let owed = pending.clone();
         let gone = tokio::spawn(async move {
-            let connection = forward(client, lines(input, output), ready, stopping.clone());
+            let connection = forward(client, transport, ready, stopping.clone(), input, owed);
             tokio::pin!(connection);
             // Asked to end, the connection has its grace to close, as a
             // stopped process never drains what was written to it.
@@ -174,7 +192,8 @@ impl Router {
                 }
             };
             if let Err(error) = ended {
-                eprintln!("rig acp: session {key}: {error}");
+                let said = format!("rig acp: session {key}: {error}\n");
+                router.writer.write(Stream::Err, said.into_bytes());
             }
             // One that did not close in time had its grace.
             if late
@@ -205,6 +224,7 @@ impl Router {
             run: number,
             stop,
             gone,
+            pending,
         });
         let mut sessions = locked(&self.sessions);
         sessions.insert(id.as_str().to_owned(), child.clone());
@@ -348,21 +368,43 @@ impl Router {
             .collect()
     }
 
-    /// Ends every session's process, as the router ends.
+    /// Ends every session's process, as the router ends, while the client
+    /// is still served: no session opens from then on, one being opened or
+    /// closed is waited for, and each session answers what it owes as it
+    /// ends.
     async fn end(&self) {
-        let children: Vec<_> = locked(&self.sessions).values().cloned().collect();
-        futures::future::join_all(children.iter().map(|child| child.end())).await;
+        self.stopping.store(true, Ordering::SeqCst);
+        loop {
+            let children: Vec<_> = locked(&self.sessions).values().cloned().collect();
+            futures::future::join_all(children.iter().map(|child| child.end())).await;
+            if locked(&self.sessions).is_empty() && self.tasks.is_none() {
+                return;
+            }
+            // A session that opened meanwhile, or a task still running.
+            tokio::select! {
+                () = self.tasks.none() => {}
+                () = tokio::time::sleep(LOOK) => {}
+            }
+        }
     }
 }
 
+/// How often the router's end looks again for sessions opened meanwhile.
+const LOOK: Duration = Duration::from_millis(50);
+
 /// Runs the client side of a session's connection over `transport` until
-/// `stopped` or the process closes it: its updates and questions go to the
-/// client as they come, in the order they come.
+/// the process closes it: its updates and questions go to the client as
+/// they come, in the order they come. Once `stopping`, the process's stdin
+/// is closed (`input`), and its answers are still forwarded until it ends.
+/// The connection ends only once no forwarded request is `owed`, so no
+/// answer that came is lost with it.
 async fn forward(
     client: ConnectionTo<Client>,
     transport: impl agent_client_protocol::ConnectTo<Client> + 'static,
     ready: oneshot::Sender<ConnectionTo<Agent>>,
     stopping: watch::Receiver<bool>,
+    input: Input,
+    owed: Pending,
 ) -> Result<(), Error> {
     let (updates, permissions, forms) = (client.clone(), client.clone(), client);
     Client
@@ -387,9 +429,13 @@ async fn forward(
         .connect_with(transport, async move |cx| {
             ready.send(cx.clone()).ok();
             tokio::select! {
-                () = asked(stopping) => {}
+                () = asked(stopping) => {
+                    input.close().await;
+                    cx.incoming_closed().await;
+                }
                 () = cx.incoming_closed() => {}
             }
+            owed.none().await;
             Ok(())
         })
         .await
@@ -417,44 +463,75 @@ async fn asked(mut stopping: watch::Receiver<bool>) {
     }
 }
 
-/// A session process's stdin and stdout as ACP lines. A line it writes that
-/// is not a JSON object, such as a plugin's stray print, goes to stderr
-/// instead, so it never breaks the client's connection.
+/// A session process's stdin, which the router closes to end it.
+#[derive(Clone)]
+pub(crate) struct Input(Arc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>);
+
+impl Input {
+    /// Closes the process's stdin; what is sent after goes nowhere.
+    async fn close(&self) {
+        self.0.lock().await.take();
+    }
+}
+
+/// A session process's stdin and stdout as ACP lines, and its stdin to
+/// close. Its stdout is read at most `limit` ([`crate::LINE_LIMIT`]) a
+/// line, and only while the client's `writer` keeps up, so a client that
+/// stopped reading holds the session back. A line it writes that is not a
+/// JSON object, such as a plugin's stray print, goes to stderr instead, so
+/// it never breaks the client's connection; a line past the limit, or not
+/// UTF-8, ends its output.
 pub(crate) fn lines(
     input: tokio::process::ChildStdin,
     output: tokio::process::ChildStdout,
-) -> Lines<
-    impl futures::Sink<String, Error = std::io::Error> + Send + 'static,
-    impl futures::Stream<Item = std::io::Result<String>> + Send + 'static,
-> {
-    let sink = futures::sink::unfold(input, async |mut input, line: String| {
-        input.write_all(line.as_bytes()).await?;
-        input.write_all(b"\n").await?;
-        input.flush().await?;
+    writer: Writer,
+    limit: usize,
+) -> (
+    Lines<
+        impl futures::Sink<String, Error = std::io::Error> + Send + 'static,
+        impl futures::Stream<Item = std::io::Result<String>> + Send + 'static,
+    >,
+    Input,
+) {
+    let input = Input(Arc::new(tokio::sync::Mutex::new(Some(input))));
+    let sink = futures::sink::unfold(input.clone(), async |input, line: String| {
+        if let Some(stdin) = input.0.lock().await.as_mut() {
+            stdin.write_all(line.as_bytes()).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await?;
+        }
         Ok::<_, std::io::Error>(input)
     });
-    let read = BufReader::new(output).lines();
-    let stream = futures::stream::unfold(read, async |mut read| {
+    let read = pipes::lines(output, limit);
+    let stream = futures::stream::unfold((read, writer), async |(mut read, writer)| {
         loop {
-            match read.next_line().await {
-                Ok(Some(line)) if line.trim_start().starts_with('{') => {
-                    return Some((Ok(line), read));
+            writer.room().await;
+            let line = match crate::stdio::accepted(read.next().await?) {
+                Ok(line) => line,
+                Err(why) => {
+                    let said = format!("rig acp: a session wrote {why}; its output ends\n");
+                    writer.write(Stream::Err, said.into_bytes());
+                    return None;
                 }
-                Ok(Some(line)) if line.trim().is_empty() => {}
-                Ok(Some(line)) => {
-                    eprintln!("rig acp: a session wrote a line that is not ACP: {line}")
+            };
+            match line.trim_start() {
+                trimmed if trimmed.starts_with('{') => return Some((Ok(line), (read, writer))),
+                "" => {}
+                _ => {
+                    let said = format!("rig acp: a session wrote a line that is not ACP: {line}\n");
+                    writer.write(Stream::Err, said.into_bytes());
                 }
-                Ok(None) => return None,
-                Err(error) => return Some((Err(error), read)),
             }
         }
     });
-    Lines::new(Box::pin(sink), stream.boxed())
+    (Lines::new(Box::pin(sink), stream.boxed()), input)
 }
 
-/// Serves the client on stdio until it closes the connection, then ends
-/// every session's process.
-async fn serve(router: Arc<Router>) -> Result<(), Error> {
+/// Serves the client on stdio until it closes the connection or the router
+/// is `stopped`; then, still serving, ends every session's process, whose
+/// answers reach the client, and only then lets the connection end, which
+/// sends what it was handed first.
+async fn serve(router: Arc<Router>, stopped: oneshot::Receiver<()>) -> Result<(), Error> {
     let (init, new, load, resume, list) = (
         router.clone(),
         router.clone(),
@@ -468,7 +545,7 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
         router.clone(),
         router.clone(),
     );
-    let served = Agent
+    Agent
         .builder()
         .name("rig-acp")
         .on_receive_request(
@@ -516,10 +593,7 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
         .on_receive_request(
             async move |request: acp::PromptRequest, responder, _| {
                 let child = prompt.child(&request.session_id)?;
-                child
-                    .cx
-                    .prepare_request(request)
-                    .forward_response_to(responder)
+                forward_request(&child, request, responder)
             },
             agent_client_protocol::on_receive_request!(),
         )
@@ -534,16 +608,17 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
         .on_receive_request(
             async move |request: acp::SetSessionConfigOptionRequest, responder, _| {
                 let child = config.child(&request.session_id)?;
-                child
-                    .cx
-                    .prepare_request(request)
-                    .forward_response_to(responder)
+                forward_request(&child, request, responder)
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async move |request: acp::CloseSessionRequest, responder, cx| {
                 let router = close.clone();
+                // Closed however the router ends: the session ends with it.
+                let closed = acp::CloseSessionResponse::new();
+                let held = Some(router.tasks.hold());
+                let responder = Reply::owed(responder, Ok(closed), held);
                 cx.spawn(async move {
                     let closed = async {
                         // One being opened is closed once open, or once its
@@ -563,15 +638,56 @@ async fn serve(router: Arc<Router>) -> Result<(), Error> {
                         child.end().await;
                         Ok(acp::CloseSessionResponse::new())
                     };
-                    responder.respond_with_result(closed.await)
+                    responder.send(closed.await);
+                    Ok(())
                 })
             },
             agent_client_protocol::on_receive_request!(),
         )
-        .connect_to(agent_client_protocol::Stdio::new())
-        .await;
-    router.end().await;
-    served
+        .connect_with(
+            crate::stdio::stdio(
+                std::io::stdin(),
+                router.writer.clone(),
+                router.limit,
+                "rig acp",
+            ),
+            async move |cx: ConnectionTo<Client>| {
+                // The client left: it closed stdin, or stopped reading.
+                tokio::select! {
+                    () = cx.incoming_closed() => {}
+                    () = router.writer.gone() => {}
+                    _ = stopped => {}
+                }
+                tokio::time::timeout(GRACE * 2, router.end()).await.ok();
+                Ok(())
+            },
+        )
+        .await
+}
+
+/// Forwards the client's `request` to `child`'s session and its answer
+/// back; the request is owed until then, and answers an error should the
+/// session end first.
+fn forward_request<Request>(
+    child: &Child,
+    request: Request,
+    responder: Responder<Request::Response>,
+) -> Result<(), Error>
+where
+    Request: agent_client_protocol::JsonRpcRequest + Send + 'static,
+{
+    let held = Some(child.pending.hold());
+    // The client's cancel of its request reaches the session.
+    let cancelled = responder.cancellation();
+    let owed = Reply::owed(responder, Err(crate::ended()), held);
+    child
+        .cx
+        .prepare_request(request)
+        .forward_cancellation_from(cancelled)
+        .on_receiving_result(async move |result| {
+            owed.send(result);
+            Ok(())
+        })
 }
 
 /// Answers a request that opens a session in a task of its own: in the
@@ -591,6 +707,11 @@ fn opening<Request>(
 where
     Request: agent_client_protocol::JsonRpcRequest + Send + 'static,
 {
+    if router.stopping.load(Ordering::SeqCst) {
+        let why = "rig acp is stopping: it opens no session";
+        return responder.respond_with_error(crate::error(Error::internal_error(), why));
+    }
+    let held = router.tasks.hold();
     let (done, answered) = oneshot::channel::<()>();
     if let Some(key) = &saved {
         let mut opening = locked(&router.opening);
@@ -605,7 +726,7 @@ where
         None => StartReason::New,
     };
     cx.clone().spawn(async move {
-        let _done = done;
+        let _done = (done, held);
         let reply = Arc::new(Reply::new(responder));
         let opened = async {
             refuse_directories(&others)?;
@@ -635,12 +756,14 @@ fn refuse_directories(directories: &[PathBuf]) -> Result<(), Error> {
     }
 }
 
-/// The router's run: its task, and how it is stopped.
+/// The router's run: its task, how it is stopped, and its writer of
+/// stdout.
 #[derive(Resource)]
 struct Served {
     stop: Option<oneshot::Sender<()>>,
     task: Option<tokio::task::JoinHandle<()>>,
     done: async_channel::Receiver<bool>,
+    writer: Writer,
 }
 
 /// Makes this app the router: serves the client from the first frame and
@@ -682,6 +805,13 @@ pub(crate) fn install(app: &mut App) {
         let tools = tools.flag_value(TOOLS).unwrap_or_default();
         command.args.push(format!("--{TOOLS}={tools}").into());
     }
+    let interrupted = signals::interruption(app.world());
+    let writer = Writer::spawn(
+        std::io::stdout(),
+        std::io::stderr(),
+        wake.clone(),
+        interrupted,
+    );
     let router = Arc::new(Router {
         home,
         stores,
@@ -691,20 +821,19 @@ pub(crate) fn install(app: &mut App) {
         client: Mutex::new(None),
         sessions: Mutex::new(HashMap::new()),
         opening: Mutex::new(HashMap::new()),
+        tasks: Pending::new(),
+        stopping: AtomicBool::new(false),
+        writer: writer.clone(),
+        limit: crate::LineLimit::of(app.world()),
     });
     let (stop, stopped) = oneshot::channel();
     let (done, finished) = async_channel::bounded(1);
     let task = runtime.spawn(async move {
         let _held = base;
-        let served = tokio::select! {
-            served = serve(router.clone()) => served,
-            _ = stopped => {
-                router.end().await;
-                Ok(())
-            }
-        };
+        let writer = router.writer.clone();
+        let served = serve(router, stopped).await;
         if let Err(error) = &served {
-            eprintln!("rig acp: {error}");
+            writer.write(Stream::Err, format!("rig acp: {error}\n").into_bytes());
         }
         done.send(served.is_ok()).await.ok();
         wake.wake();
@@ -713,6 +842,7 @@ pub(crate) fn install(app: &mut App) {
         stop: Some(stop),
         task: Some(task),
         done: finished,
+        writer,
     })
     .add_systems(First, served_ended)
     .add_systems(
@@ -782,12 +912,16 @@ fn served_ended(served: Res<Served>, mut commands: Commands) {
     }
 }
 
-/// Stops serving as the app exits, after every session's process ended.
+/// Stops serving as the app exits, once every session's process ended and
+/// answered what it owed (within twice [`GRACE`], then a little more for
+/// the connection to send it), and waits for the writer to write it.
 fn shutdown(mut served: ResMut<Served>, runtime: Res<TokioRuntime>) {
     if let Some(stop) = served.stop.take() {
         stop.send(()).ok();
     }
     if let Some(task) = served.task.take() {
-        runtime.0.block_on(task).ok();
+        let ended = async { tokio::time::timeout(GRACE * 2 + GRACE / 5, task).await };
+        runtime.0.block_on(ended).ok();
     }
+    served.writer.finish();
 }

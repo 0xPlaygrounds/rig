@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use crate::completion::{FinishReason, Usage};
+use crate::completion::{FinishReason, Usage, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::json_utils::remove_preserving_order;
@@ -149,27 +149,35 @@ enum Open {
 /// Rig's usage for an interaction's `usage`, read leniently: input is
 /// `total_input_tokens` plus the tool-use tokens, output
 /// `total_output_tokens` plus the thought tokens, and the total their sum;
-/// without a base count, that side and the total stay absent.
-pub fn usage_of(usage: &Value) -> Usage {
+/// without a base count, that side and the total stay absent. An error when
+/// a sum overflows.
+pub fn usage_of(usage: &Value) -> Result<Usage, ProviderError> {
     let tool_use = usage.u64("total_tool_use_tokens");
     let thoughts = usage.u64("total_thought_tokens");
-    let add = |key: &str, more: Option<u64>| usage.u64(key).map(|count| count + more.unwrap_or(0));
+    let add = |key: &str, more: Option<u64>| {
+        usage
+            .u64(key)
+            .map(|count| token_sum([count, more.unwrap_or(0)]))
+            .transpose()
+    };
     let (input_tokens, output_tokens) = (
-        add("total_input_tokens", tool_use),
-        add("total_output_tokens", thoughts),
+        add("total_input_tokens", tool_use)?,
+        add("total_output_tokens", thoughts)?,
     );
-    Usage {
+    let total_tokens = input_tokens
+        .zip(output_tokens)
+        .map(|(input, output)| token_sum([input, output]))
+        .transpose()?;
+    Ok(Usage {
         input_tokens,
         output_tokens,
         cached_input_tokens: usage.u64("total_cached_tokens"),
         reasoning_tokens: thoughts,
         tool_use_prompt_tokens: tool_use,
-        total_tokens: input_tokens
-            .zip(output_tokens)
-            .map(|(input, output)| input + output),
+        total_tokens,
         cache_creation_input_tokens: None,
         cost: None,
-    }
+    })
 }
 
 /// The image a content item states, when it has data or a URI.
@@ -404,7 +412,11 @@ impl InteractionsDecoder {
     }
 
     /// End the reply with the interaction resource it completed with.
-    fn complete(&mut self, interaction: Map<String, Value>, out: Out<'_, Completion>) -> Flow {
+    fn complete(
+        &mut self,
+        interaction: Map<String, Value>,
+        out: Out<'_, Completion>,
+    ) -> Result<Flow, ProviderError> {
         let interaction = Value::Object(interaction);
         let field = |key: &str| interaction.str(key).map(str::to_owned);
         // An agent interaction names its agent in place of a model.
@@ -414,13 +426,13 @@ impl InteractionsDecoder {
         let status = field("status").or_else(|| self.status.take());
         let (reason, error) = ending(status.as_deref(), interaction.arr("errors"));
         let finish = Finish {
-            usage: usage_of(interaction.get("usage").unwrap_or(&Value::Null)),
+            usage: usage_of(interaction.get("usage").unwrap_or(&Value::Null))?,
             reason,
             response_id: field("id"),
             model,
             error,
         };
-        out.end(finish)
+        Ok(out.end(finish))
     }
 }
 
@@ -567,7 +579,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
                     self.start(index, step, &mut out)?;
                     self.stop(index, &mut out)?;
                 }
-                return Ok(self.complete(interaction, out));
+                return self.complete(interaction, out);
             }
         };
         let mut event = Value::Object(event);
@@ -623,7 +635,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
                     Some(Value::Object(interaction)) => interaction,
                     _ => Map::new(),
                 };
-                return Ok(self.complete(interaction, out));
+                return self.complete(interaction, out);
             }
             "error" => {
                 let Value::Object(mut body) = event else {

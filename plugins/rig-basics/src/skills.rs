@@ -18,6 +18,7 @@
 //! Read `template.md`, then ...
 //! ```
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
@@ -147,10 +148,11 @@ pub fn discover(roots: &[PathBuf]) -> (Vec<Skill>, Vec<String>) {
     let mut skills: Vec<Skill> = Vec::new();
     let mut problems = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
+    let mut walk = Walk::default();
     for root in roots {
-        let mut files = Vec::new();
-        find(root, &mut files);
-        for file in files {
+        walk.find(root);
+        problems.append(&mut walk.problems);
+        for file in std::mem::take(&mut walk.files) {
             let Ok(real) = file.canonicalize() else {
                 continue;
             };
@@ -178,29 +180,67 @@ pub fn discover(roots: &[PathBuf]) -> (Vec<Skill>, Vec<String>) {
     (skills, problems)
 }
 
-/// Pushes the `SKILL.md` files under `dir` onto `files`, in name order.
-fn find(dir: &Path, files: &mut Vec<PathBuf>) {
-    let file = dir.join(SKILL_FILE);
-    if file.is_file() {
-        files.push(file);
-        return;
+/// A search of skill directories that visits each directory once, by its
+/// canonical path, however links lead back to it.
+#[derive(Default)]
+struct Walk {
+    /// The `SKILL.md` files found, in name order.
+    files: Vec<PathBuf>,
+    /// Every directory searched.
+    searched: HashSet<PathBuf>,
+    /// The directories being searched, from the root down.
+    path: Vec<PathBuf>,
+    /// The directories a link led back to, each named once.
+    looped: HashSet<PathBuf>,
+    problems: Vec<String>,
+}
+
+impl Walk {
+    /// Pushes the `SKILL.md` files under `dir` onto `files`, in name order.
+    /// A directory searched already is skipped; one a link leads back to
+    /// from below it is named once in `problems`.
+    fn find(&mut self, dir: &Path) {
+        let Ok(real) = dir.canonicalize() else {
+            return;
+        };
+        if self.path.contains(&real) && self.looped.insert(real.clone()) {
+            self.problems.push(format!(
+                "Skills: {} leads back to {}, which is searched once.",
+                dir.display(),
+                real.display()
+            ));
+        }
+        if !self.searched.insert(real.clone()) {
+            return;
+        }
+        self.path.push(real);
+        self.search(dir);
+        self.path.pop();
     }
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut dirs: Vec<PathBuf> = entries
-        .flatten()
-        .filter(|entry| {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            !name.starts_with('.') && name != "node_modules"
-        })
-        .map(|entry| entry.path())
-        .filter(|path| path.is_dir())
-        .collect();
-    dirs.sort();
-    for dir in dirs {
-        find(&dir, files);
+
+    fn search(&mut self, dir: &Path) {
+        let file = dir.join(SKILL_FILE);
+        if file.is_file() {
+            self.files.push(file);
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut dirs: Vec<PathBuf> = entries
+            .flatten()
+            .filter(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                !name.starts_with('.') && name != "node_modules"
+            })
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .collect();
+        dirs.sort();
+        for dir in dirs {
+            self.find(&dir);
+        }
     }
 }
 

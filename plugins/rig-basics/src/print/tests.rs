@@ -1,6 +1,9 @@
+use std::io::Write;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+use async_channel::Sender;
 
 use bevy_tasks::futures_lite::stream;
 use bevy_tasks::{IoTaskPool, TaskPool};
@@ -884,7 +887,11 @@ fn sections_follow_the_answer_by_tag() {
 fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
     let wait = Duration::from_millis(50);
     let on = || false;
-    let piped = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, wait, on);
+    let piped = |prompt: &str, text: &'static [u8]| {
+        with_piped(prompt, text, wait, PIPED_LIMIT, on, drop)
+            .ok()
+            .flatten()
+    };
     assert_eq!(piped("Review", b"diff").as_deref(), Some("Review\n\ndiff"));
     assert_eq!(piped("", b"diff").as_deref(), Some("diff"));
     // A pipe whose writer stays open and silent, as an agent's shell may
@@ -893,7 +900,10 @@ fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
         return;
     };
     assert_eq!(
-        with_piped("Review", silent, wait, on).as_deref(),
+        with_piped("Review", silent, wait, PIPED_LIMIT, on, drop)
+            .ok()
+            .flatten()
+            .as_deref(),
         Some("Review")
     );
     drop(writer);
@@ -908,8 +918,24 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
     };
     let since = std::time::Instant::now();
     let interrupted = move || since.elapsed() > Duration::from_millis(100);
-    assert_eq!(with_piped("", silent, Duration::MAX, interrupted), None);
+    let waited = with_piped("", silent, Duration::MAX, PIPED_LIMIT, interrupted, drop);
+    assert_eq!(waited, Ok(None));
     drop(writer);
+}
+
+/// What is piped in may be exactly the limit; one byte more is refused,
+/// with or without a prompt before it.
+#[test]
+fn piped_input_past_its_limit_is_refused() {
+    let read = |prompt: &str, text: &'static [u8]| {
+        with_piped(prompt, text, Duration::from_secs(5), 4, || false, drop)
+    };
+    assert_eq!(read("", b"abcd"), Ok(Some("abcd".to_owned())));
+    assert_eq!(read("", b"abcde"), Err(TooLarge { limit: 4, asked: 5 }));
+    assert_eq!(
+        read("Review", b"abcdefgh"),
+        Err(TooLarge { limit: 4, asked: 5 })
+    );
 }
 
 /// A long recalled text, such as a big input piped in after the prompt,
@@ -994,7 +1020,7 @@ struct Waiting;
 fn json_run(
     model: &MockCompletionModel,
     approve: bool,
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     let lines = Lines::default();
     let (input, requests) = JsonIn::channel();
     let invoked = Invocation {
@@ -1032,8 +1058,11 @@ fn json_run(
 }
 
 /// Sends `line` as a request.
-fn send(input: &Sender<String>, line: Value) {
-    assert!(input.try_send(line.to_string()).is_ok(), "the run reads");
+fn send(input: &Sender<RequestLine>, line: Value) {
+    assert!(
+        input.try_send(Ok(line.to_string().into_bytes())).is_ok(),
+        "the run reads"
+    );
 }
 
 /// Whether a `wait` call runs.
@@ -1213,6 +1242,185 @@ fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let driver = older.starts_with("false") && older.contains("update the driver");
     assert!(driver, "{older}");
     assert!(unknown.contains("sned"), "{unknown}");
+}
+
+/// A reader that stopped reading: every write waits until `go`.
+struct Stalled(Arc<std::sync::atomic::AtomicBool>);
+
+impl Write for Stalled {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        while !self.0.load(std::sync::atomic::Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// While the reader is behind, the agent's work waits; a signal still ends
+/// the run, as its exit is an effect of the same loop.
+#[test]
+fn a_run_whose_reader_stalled_waits_and_still_exits() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = Writer::spawn(
+        Stalled(go.clone()),
+        std::io::sink(),
+        Wake::default(),
+        || true,
+    );
+    writer.write(Stream::Out, vec![b'x'; pipes::ROOM + 1]);
+    app.world_mut().resource_mut::<JsonOut>().out = writer;
+    let room = app.world_mut().run_system_cached(output_has_room);
+    assert_eq!(room.ok(), Some(false));
+    app.world_mut().trigger(Exit(ExitReason::Signal));
+    run_until(&mut app, |_| false);
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+}
+
+/// Input that ends in the frame its replies passed the backlog limit
+/// unread, before any later frame could see it, ends the run as cut off,
+/// not as a clean end.
+#[test]
+fn input_that_ends_past_the_backlog_limit_is_cut_off() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = Writer::spawn(
+        Stalled(go.clone()),
+        std::io::sink(),
+        Wake::default(),
+        || true,
+    );
+    writer.write(Stream::Out, vec![b'x'; pipes::BACKLOG_LIMIT + 1]);
+    // In one go, as within the frame a last batch of replies passed the
+    // limit: the writer is gone, and the input ends.
+    let world = app.world_mut();
+    world.resource_mut::<JsonOut>().out = writer;
+    let requests = world
+        .query_filtered::<Entity, With<Requests>>()
+        .single(world);
+    assert!(requests.is_ok());
+    if let Ok(requests) = requests {
+        world.entity_mut(requests).remove::<Running>();
+    }
+    world.flush();
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(
+        world.get_resource::<ExitReason>(),
+        Some(&ExitReason::Signal)
+    );
+}
+
+/// The warning that the prompt goes alone, after a silent stdin, goes
+/// through the front's writer.
+#[test]
+fn the_silent_stdin_warning_goes_through_the_writer() {
+    let Ok((silent, held)) = std::io::pipe() else {
+        return;
+    };
+    let model = answering(&["hello"]);
+    let stderr = Lines::default();
+    let (app, _) = one_shot("hi", Some(MODEL), &model, false, |app| {
+        app.insert_resource(Printed::to(stderr.clone()))
+            .insert_resource(PipedIn(Box::new(silent)));
+    });
+    drop(held);
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let said = stderr.text().join("\n");
+    assert!(said.contains("nothing came on stdin"), "{said}");
+}
+
+/// A reader that takes its first write, then stops reading until `1`.
+struct OnceThenStalled(bool, Arc<std::sync::atomic::AtomicBool>);
+
+impl Write for OnceThenStalled {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        while std::mem::replace(&mut self.0, true)
+            && !self.1.load(std::sync::atomic::Ordering::Acquire)
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A backlog that passed its limit, then drained a little before the
+/// frame looked, still ends the run as cut off.
+#[test]
+fn a_backlog_that_passed_its_limit_ends_the_run_though_it_drained() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, _, _, _input) = json_run(&model, false);
+    let go = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let reader = OnceThenStalled(false, go.clone());
+    let writer = Writer::spawn(reader, std::io::sink(), Wake::default(), || false);
+    writer.write(Stream::Out, vec![b'x'; pipes::BACKLOG_LIMIT + 1]);
+    writer.write(Stream::Out, b"stalled".to_vec());
+    let since = Instant::now();
+    while !writer.has_room() && since.elapsed() < Duration::from_secs(10) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(writer.has_room());
+    app.world_mut().resource_mut::<JsonOut>().out = writer;
+    run_until(&mut app, |_| false);
+    go.store(true, std::sync::atomic::Ordering::Release);
+    assert_eq!(app.should_exit(), Some(ExitReason::Signal.exit()));
+}
+
+/// A request line that is not UTF-8 is answered with why, and the
+/// driver's next line is still served.
+#[test]
+fn a_request_line_not_utf8_is_refused_and_the_next_is_served() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    assert!(input.try_send(Ok(vec![b'{', 0xff, b'}'])).is_ok());
+    send(&input, json!({ "v": 1, "type": "state", "id": 2 }));
+    test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
+    let replies = lines.of("reply");
+    let [refused, served] = replies.as_slice() else {
+        return assert_eq!(replies.len(), 2, "{replies:?}");
+    };
+    let why = at(refused, "error").as_str().unwrap_or_default();
+    assert!(why.starts_with("not a UTF-8 line"), "{why}");
+    assert_eq!(
+        (at(served, "id"), at(served, "ok")),
+        (&json!(2), &json!(true))
+    );
+}
+
+/// A request line past its limit is answered with why, and the driver's
+/// next line is still served.
+#[test]
+fn a_request_line_past_its_limit_is_refused_and_the_next_is_served() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    let refused = TooLarge {
+        limit: REQUEST_LIMIT,
+        asked: REQUEST_LIMIT + 1,
+    };
+    assert!(input.try_send(Err(refused)).is_ok());
+    send(&input, json!({ "v": 1, "type": "state", "id": 2 }));
+    test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
+    let replies = lines.of("reply");
+    let [refused, served] = replies.as_slice() else {
+        return assert_eq!(replies.len(), 2, "{replies:?}");
+    };
+    assert_eq!(at(refused, "ok"), &json!(false));
+    let why = at(refused, "error").as_str().unwrap_or_default();
+    assert!(why.contains(&REQUEST_LIMIT.to_string()), "{why}");
+    assert_eq!(
+        (at(served, "id"), at(served, "ok")),
+        (&json!(2), &json!(true))
+    );
 }
 
 /// A one-shot run of `prompt` on `model`, `--model named` when given,

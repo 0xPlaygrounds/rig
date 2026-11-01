@@ -3902,6 +3902,108 @@ fn a_streams_items_arrive_in_order_and_wake_the_loop() {
     assert!(woken >= 3, "woken {woken} times");
 }
 
+/// A source faster than the frames is held back: at most the stream's
+/// bound waits, each frame takes only what came before it looked, and
+/// every item arrives, in order.
+#[test]
+fn a_stream_faster_than_the_frames_is_held_back_and_arrives_whole() {
+    let mut app = app();
+    #[derive(Resource, Default)]
+    struct PerFrame(Vec<usize>);
+    app.init_resource::<Items>()
+        .init_resource::<PerFrame>()
+        .add_observer(
+            |item: On<Insert<Done<u32>>>, done: Query<&Done<u32>>, mut items: ResMut<Items>| {
+                items.0.extend(done.get(item.entity).map(|done| done.0));
+            },
+        )
+        .add_systems(Last, |items: Res<Items>, mut frames: ResMut<PerFrame>| {
+            frames.0.push(items.0.len());
+        });
+    let read = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = Arc::clone(&read);
+    let items = futures::stream::iter(0..2000_u32).inspect(move |_| {
+        counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+    let pool = bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let wake = app.world().resource::<Wake>().clone();
+    let source = app
+        .world_mut()
+        .spawn(Running::stream(pool, &wake, items))
+        .id();
+    // No frame runs: the source reads only what fits, and one item more.
+    let since = Instant::now();
+    while read.load(std::sync::atomic::Ordering::Relaxed) < 256 && since.elapsed() < DEADLINE {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    let early = read.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        (256..=300).contains(&early),
+        "read {early} items with no frame"
+    );
+    let ended = |world: &mut World| world.get::<Running>(source).is_none();
+    assert!(run_until(&mut app, ended));
+    assert_eq!(
+        app.world().resource::<Items>().0,
+        (0..2000).collect::<Vec<_>>()
+    );
+    let frames = &app.world().resource::<PerFrame>().0;
+    let steps = frames
+        .windows(2)
+        .filter_map(|pair| Some(pair.get(1)? - pair.first()?));
+    let most = steps.max();
+    assert!(
+        most.is_some_and(|most| most <= 256),
+        "{most:?} in one frame"
+    );
+}
+
+/// A reply that streams faster than the frames is held back too: a frame
+/// takes at most a model call's feed bound, and the text arrives whole.
+#[test]
+fn a_reply_faster_than_the_frames_is_held_back_and_arrives_whole() {
+    let mut app = app();
+    #[derive(Resource, Default)]
+    struct Fed {
+        text: String,
+        most: usize,
+    }
+    let mut events: Vec<_> = (0..3000)
+        .map(|n| MockStreamEvent::text(format!("{n},")))
+        .collect();
+    events.push(MockStreamEvent::final_response_with_default_usage());
+    let model = MockCompletionModel::from_stream_turns([events]);
+    app.init_resource::<Fed>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(
+            PostUpdate,
+            |mut deltas: MessageReader<StreamDelta>, mut fed: ResMut<Fed>| {
+                let mut count = 0;
+                for delta in deltas.read() {
+                    if let StreamEvent::Text { text, .. } = &delta.event {
+                        fed.text.push_str(text);
+                        count += 1;
+                    }
+                }
+                fed.most = fed.most.max(count);
+            },
+        );
+    agent_on(&mut app, &model);
+    for _ in 0..3 {
+        app.update();
+    }
+    // The reply streams while no frame runs.
+    std::thread::sleep(Duration::from_millis(300));
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let fed = app.world().resource::<Fed>();
+    let whole: String = (0..3000).map(|n| format!("{n},")).collect();
+    assert_eq!(fed.text, whole);
+    assert!(fed.most <= 1024, "{} deltas in one frame", fed.most);
+}
+
 /// `model` as the catalog's DeepSeek model, said to call tools or not.
 fn connection_with(model: &MockCompletionModel, tools: bool) -> Option<Connection> {
     let mut connection = connection(model)?;

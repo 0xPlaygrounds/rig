@@ -674,3 +674,18 @@ async fn the_observed_usage_does_not_invent_a_total() {
     assert_eq!(totals, [None], "Ollama reports no total_tokens");
     assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
+
+/// Counts whose sum passes `u64::MAX` fail the reply, without a panic or a
+/// wrapped total.
+#[test]
+fn usage_counts_that_overflow_fail_the_reply() {
+    let mut last = done(MODEL, "stop");
+    last["prompt_eval_count"] = json!(u64::MAX);
+    let failed = decode(MODEL, Mode::Streaming, &[last]).map(|response| response.usage);
+    assert!(
+        failed
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("overflow")),
+        "{failed:?}"
+    );
+}
