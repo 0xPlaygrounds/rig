@@ -530,6 +530,24 @@ fn add_task_argument(world: &mut World, name: &str) {
 }
 
 #[test]
+fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]));
+    let args = json!({ "description": "Look", "prompt": "Look around." });
+    let said = session.call(session.parent, TASK, "t1", args);
+    assert!(said.starts_with("Started subagent"), "{said}");
+    let child = session.children(session.parent).last().copied();
+    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+    assert!(access.is_some_and(|access| access.allows(TASK) && !access.allows("look")));
+    // A later run without the limit gives it every tool its parent keeps.
+    let saved = access.and_then(|access| serde_json::to_value(access).ok());
+    assert_eq!(saved, Some(json!("All")));
+}
+
+#[test]
 fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&MemoryStore::default(), Some(&model));

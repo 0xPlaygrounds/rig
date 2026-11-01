@@ -290,11 +290,13 @@ fn inherit_settings(
     let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
     let may_delegate = depth < policy.max_depth;
     let mut tools: Vec<String> = match &request.tools {
-        None => registered
-            .iter()
-            .filter(|name| access.allows(name) && (may_delegate || **name != TASK))
-            .map(|name| (*name).to_owned())
-            .collect(),
+        // The parent's own access, not this run's tools of it, so a later
+        // run gives the new agent what its parent keeps.
+        None if may_delegate => return Ok((model, effort, access.clone())),
+        None => {
+            let delegating = registered.iter().copied().filter(|name| *name != TASK);
+            return Ok((model, effort, access.narrow(delegating)));
+        }
         Some(asked) => {
             if let Some(name) = asked.iter().find(|name| !may_delegate && *name == TASK) {
                 return Err(format!(

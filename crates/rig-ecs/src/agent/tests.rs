@@ -98,3 +98,22 @@ fn an_agent_is_kept_within_every_agent_above_it() {
     assert_eq!(names(&world, free), Some(owned(&["run_steel"])));
     assert_eq!(names(&world, parent), Some(owned(&["read", "run_steel"])));
 }
+
+#[test]
+fn an_agent_is_kept_within_the_runs_tools_however_it_was_made() {
+    let mut world = World::new();
+    world.insert_resource(RunTools::new(["read", "task"]));
+    let parent = world.spawn(ToolAccess::all()).id();
+    // Made afresh, not from its parent's access, as a plugin may.
+    let child = world.spawn((ToolAccess::all(), SpawnedBy(parent))).id();
+    world.run_system_once(keep_within_parents).ok();
+    for agent in [parent, child] {
+        let access = world.get::<ToolAccess>(agent);
+        assert_eq!(
+            access.and_then(ToolAccess::names),
+            Some(vec!["read", "task"])
+        );
+        let saved = access.and_then(|access| serde_json::to_value(access).ok());
+        assert_eq!(saved, Some(json!("All")));
+    }
+}
