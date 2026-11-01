@@ -163,7 +163,8 @@ fn a_program_answers_calls_tools_and_fails() {
     let (mut app, wakes, agent, home) = start("ho-command-provider", &scripts, config);
     use_model(&mut app, agent, "cmd/echo");
 
-    // Text streams as the program writes it.
+    // Text streams as the program writes it, a word whole: the kernel
+    // holds back "hel", which the rest of the word could make a key.
     assert_eq!(answer(ask(&mut app, &wakes, agent, "say hi")), "hello");
     let deltas: Vec<&str> = app
         .world()
@@ -178,7 +179,7 @@ fn a_program_answers_calls_tools_and_fails() {
             _ => None,
         })
         .collect();
-    assert_eq!(deltas, ["hel", "lo"]);
+    assert_eq!(deltas, ["hello"]);
 
     // The tool call runs, and the next request carries its result.
     assert_eq!(answer(ask(&mut app, &wakes, agent, "use tool")), "hello");

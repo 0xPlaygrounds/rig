@@ -14,6 +14,7 @@
 //! it: the user's unanswered message goes back to the views. Every end is
 //! a [`TurnOutcome`] proposed on the turn; [`StopTurn`] ends it at once.
 
+use std::collections::BTreeMap;
 use std::mem;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -49,7 +50,7 @@ use rig_core::message::{
 use rig_core::now_ms;
 use rig_core::redact;
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
 use rig_memory::Anchor;
 use web_time::Instant;
@@ -262,9 +263,10 @@ pub struct RetryVerdict(pub Verdict);
 
 /// The feed of a model call's stream, read in [`Stage::Arrive`]. It holds
 /// at most [`FEED_ITEMS`]: a frame that falls behind slows the reply's read
-/// rather than growing memory.
+/// rather than growing memory. Beside it, each text or reasoning part's
+/// redactor, for its [`StreamDelta`]s.
 #[derive(Component)]
-pub(crate) struct Feed(Receiver<Fed>);
+pub(crate) struct Feed(Receiver<Fed>, BTreeMap<Part, (bool, redact::Streamed)>);
 
 /// The most items of a model call's stream that wait for a frame.
 const FEED_ITEMS: usize = 1024;
@@ -280,7 +282,9 @@ pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
 /// id and arguments). The event's part tells parallel tool calls apart.
 /// Bevy keeps a message at least two frames, so a reader in `PostUpdate`
 /// sees the last events of a reply that settled this frame. A
-/// [`TurnCall`]'s events also add up in its [`Partial`].
+/// [`TurnCall`]'s events also add up in its [`Partial`], unredacted. Text
+/// and reasoning fragments are redacted as the session log is, through
+/// `rig_core::redact::Streamed`, so a fragment may come later and longer.
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
@@ -1277,7 +1281,7 @@ pub(crate) async fn stream_reply(
 /// the [`Feed`] for its entity.
 pub(crate) fn feed() -> (Sender<Fed>, Feed) {
     let (sender, receiver) = async_channel::bounded(FEED_ITEMS);
-    (sender, Feed(receiver))
+    (sender, Feed(receiver, BTreeMap::new()))
 }
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
@@ -1287,7 +1291,7 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 pub(crate) fn stream_partials(
     mut calls: Query<(
         Entity,
-        &Feed,
+        &mut Feed,
         Option<&mut Partial>,
         Option<&mut StreamTiming>,
         Option<&ForAgent>,
@@ -1297,13 +1301,22 @@ pub(crate) fn stream_partials(
     mut deltas: MessageWriter<StreamDelta>,
     mut commands: Commands,
 ) {
-    for (effect, feed, mut partial, mut streamed, agent, of, turn_call) in &mut calls {
+    for (effect, mut feed, mut partial, mut streamed, agent, of, turn_call) in &mut calls {
+        let Feed(items, held) = &mut *feed;
+        let agent = agent.map(|agent| agent.0);
+        let mut write = |event| {
+            deltas.write(StreamDelta {
+                effect,
+                agent,
+                event,
+            });
+        };
         // The stamp of a call whose first item came now.
         let mut first: Option<StreamTiming> = None;
         // What came before this look, so a stream that keeps feeding never
         // holds the frame; a finished reply sent all of it before it did.
-        let came = feed.0.len();
-        for Fed(at, event) in std::iter::from_fn(|| feed.0.try_recv().ok()).take(came) {
+        let came = items.len();
+        for Fed(at, event) in std::iter::from_fn(|| items.try_recv().ok()).take(came) {
             match streamed.as_deref_mut().or(first.as_mut()) {
                 Some(stamp) => {
                     stamp.last = at;
@@ -1326,17 +1339,55 @@ pub(crate) fn stream_partials(
             if let Some(partial) = partial.as_mut() {
                 partial.follow(&event);
             }
-            let agent = agent.map(|agent| agent.0);
-            deltas.write(StreamDelta {
-                effect,
-                agent,
-                event,
-            });
+            show(held, Some(event), &mut write);
+        }
+        // The stream ended without ending its parts, as when it failed.
+        if items.is_closed() && items.is_empty() {
+            show(held, None, &mut write);
         }
         if let Some(first) = first {
             commands.entity(effect).try_insert(first);
         }
     }
+}
+
+/// Writes `event` as a [`StreamDelta`] shows it: a text or reasoning
+/// fragment through its part's redactor in `held`, which says whether the
+/// part is reasoning. What a part held comes before its end, the next
+/// part's start (a reply's text parts follow each other), or, for `None`,
+/// the stream's end, as when it failed.
+fn show(
+    held: &mut BTreeMap<Part, (bool, redact::Streamed)>,
+    event: Option<StreamEvent>,
+    mut write: impl FnMut(StreamEvent),
+) {
+    let mut fragment = |part, reasoning, text: String| {
+        if !text.is_empty() {
+            write(match reasoning {
+                true => StreamEvent::Reasoning { part, text },
+                false => StreamEvent::Text { part, text },
+            });
+        }
+    };
+    let (part, reasoning, text) = match event {
+        Some(StreamEvent::Text { part, text }) => (part, false, text),
+        Some(StreamEvent::Reasoning { part, text }) => (part, true, text),
+        event => {
+            let ended = match &event {
+                Some(StreamEvent::End { part, .. }) => {
+                    held.remove_entry(part).into_iter().collect()
+                }
+                Some(StreamEvent::Start { .. }) | None => mem::take(held),
+                Some(_) => BTreeMap::new(),
+            };
+            for (part, (reasoning, mut redactor)) in ended {
+                fragment(part, reasoning, redactor.finish());
+            }
+            return event.into_iter().for_each(write);
+        }
+    };
+    let (_, redactor) = held.entry(part).or_insert((reasoning, Default::default()));
+    fragment(part, reasoning, redactor.push(&text));
 }
 
 /// Puts the [`RETRY_POLICY`] policy's [`RetryVerdict`] on each model call whose

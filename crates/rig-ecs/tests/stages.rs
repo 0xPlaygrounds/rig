@@ -3816,8 +3816,10 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         ],
         vec![
             thought,
-            MockStreamEvent::text("Hel"),
-            MockStreamEvent::text("lo"),
+            // Cut after a space: a fragment that ends inside a word waits
+            // for the rest of it, which may make a key.
+            MockStreamEvent::text("Hello, "),
+            MockStreamEvent::text("world"),
             MockStreamEvent::final_response_with_default_usage(),
         ],
     ]);
@@ -3903,7 +3905,7 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         .collect();
     assert_eq!(
         fragments,
-        [("reasoning", "hm"), ("text", "Hel"), ("text", "lo")]
+        [("reasoning", "hm"), ("text", "Hello, "), ("text", "world")]
     );
     // Every event was an item, and so was the end.
     for (call, stamp) in [(tools, tools_stamp), (text, text_stamp)] {
@@ -3916,7 +3918,7 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         said.last()
             .and_then(|message| message.final_answer())
             .as_deref(),
-        Some("Hello")
+        Some("Hello, world")
     );
 }
 
@@ -4090,6 +4092,52 @@ fn a_reply_faster_than_the_frames_is_held_back_and_arrives_whole() {
     let whole: String = (0..3000).map(|n| format!("{n},")).collect();
     assert_eq!(fed.text, whole);
     assert!(fed.most <= 1024, "{} deltas in one frame", fed.most);
+}
+
+/// A key a reply streams in pieces reaches the [`StreamDelta`]s redacted,
+/// as the session log keeps it, and the reply keeps its own text.
+#[test]
+fn a_key_streamed_in_pieces_reaches_the_deltas_redacted() {
+    let mut app = app();
+    #[derive(Resource, Default)]
+    struct Shown(String);
+    let pieces = [
+        "Use GITHUB_TOKEN=gh",
+        "p_abcdefghijklmnopqrst",
+        "uvwxyz0123456789 now.",
+    ];
+    let mut events: Vec<_> = pieces
+        .iter()
+        .map(|piece| MockStreamEvent::text(*piece))
+        .collect();
+    events.push(MockStreamEvent::final_response_with_default_usage());
+    let model = MockCompletionModel::from_stream_turns([events]);
+    app.init_resource::<Shown>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(
+            PostUpdate,
+            |mut deltas: MessageReader<StreamDelta>, mut shown: ResMut<Shown>| {
+                for delta in deltas.read() {
+                    if let StreamEvent::Text { text, .. } = &delta.event {
+                        shown.0.push_str(text);
+                    }
+                }
+            },
+        );
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let shown = &app.world().resource::<Shown>().0;
+    assert_eq!(shown, "Use GITHUB_TOKEN=[REDACTED] now.");
+    let replied = conversation(&app, agent)
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            Message::Assistant(reply) => Some(reply.text()),
+            _ => None,
+        });
+    assert_eq!(replied.as_deref(), Some(pieces.concat().as_str()));
 }
 
 /// `model` as the catalog's DeepSeek model, said to call tools or not.

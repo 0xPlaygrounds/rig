@@ -1079,7 +1079,12 @@ that frame. A turn's call also adds each event up in its `Partial`, the
 one record of the reply in flight: its text, reasoning and tool calls,
 each call with its arguments so far until it ends (a successor continuing
 a reply may start it with what came so far). Views, the status and a stop
-read it; a stop keeps it, its calls never run. From its first item, the
+read it; a stop keeps it, its calls never run. `Text` and `Reasoning`
+fragments are redacted as the session log is: a fragment that may still
+become part of a key is held back until it can't, so one may come later and
+longer, and what a part held comes before its `End` or the next part's
+`Start`. The `Partial` keeps the reply's own text, and a reply cut off
+mid-part never shows what the part held. From its first item, the
 call also has a `StreamTiming { first, last, items }`
 beside its `Started { at }`. A delta moves no stage: a reader spawning
 effects runs `.before(AgentLoop)` or calls `Wake::wake`.
