@@ -452,7 +452,7 @@ fn answer_once(
 /// is no such edit.
 #[cfg(unix)]
 #[test]
-fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
+fn an_edit_is_refused_when_it_moves_merges_or_takes_out_calls_sharing_an_id() {
     let home = scratch_home("oc-transcript-in-editor-repeated");
     let home = home.root().to_path_buf();
     assert!(std::fs::create_dir_all(&home).is_ok());
