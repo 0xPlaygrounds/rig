@@ -1365,31 +1365,33 @@ fn a_read_that_finished_before_a_crash_keeps_its_result() {
     assert!(app.world().resource::<Gated>().0.is_empty());
 }
 
-/// Answers the first model call with a reply asking to `peek`, then
-/// `look`, under one id, as a replayed or a plugin's answer may: a live
-/// stream renames a repeated id, an answer decided for it does not.
+/// Answers the first model call with a reply asking for `asked`, each a
+/// tool and its arguments, under one id, as a replayed or a plugin's
+/// answer may: a live stream renames a repeated id, an answer decided for
+/// it does not.
 fn answer_twice(
-    mut calls: Query<&mut Decision, (With<TurnCall>, ReadyToStart)>,
-    mut answered: Local<bool>,
-) {
-    for mut decision in &mut calls {
-        let call = |tool: &str| {
-            let name = ToolName::new(tool).ok()?;
-            let function = ToolFunction::new(name, serde_json::json!({}));
-            Some(AssistantContent::ToolCall(ToolCall::from_wire(
-                "c9", function,
-            )))
-        };
-        let choice: Option<Vec<_>> = [call("peek"), call("look")].into_iter().collect();
-        let origin = Origin::new("test.api", "test", "model");
-        let reply = choice.map(|choice| {
-            let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
-            Ok(rig_core::effect::Answered::Completion(Arc::new(
-                reply.with_finish_reason(FinishReason::ToolCalls),
-            )))
-        });
-        if let Some(reply) = reply.filter(|_| !*answered) {
-            *answered = decision.decide(Decider::plugin("replay"), reply);
+    asked: [(&'static str, Value); 2],
+) -> impl FnMut(Query<&mut Decision, (With<TurnCall>, ReadyToStart)>, Local<bool>) {
+    move |mut calls, mut answered| {
+        for mut decision in &mut calls {
+            let call = |(tool, args): &(&str, Value)| {
+                let name = ToolName::new(*tool).ok()?;
+                let function = ToolFunction::new(name, args.clone());
+                Some(AssistantContent::ToolCall(ToolCall::from_wire(
+                    "c9", function,
+                )))
+            };
+            let choice: Option<Vec<_>> = asked.iter().map(call).collect();
+            let origin = Origin::new("test.api", "test", "model");
+            let reply = choice.map(|choice| {
+                let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+                Ok(rig_core::effect::Answered::Completion(Arc::new(
+                    reply.with_finish_reason(FinishReason::ToolCalls),
+                )))
+            });
+            if let Some(reply) = reply.filter(|_| !*answered) {
+                *answered = decision.decide(Decider::plugin("replay"), reply);
+            }
         }
     }
 }
@@ -1399,8 +1401,12 @@ fn each_call_sharing_an_id_keeps_its_own_result_across_a_crash() {
     let store = MemoryStore::default();
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut app = tools_app(&store, &model, |app| {
-        app.add_tool(Peek)
-            .add_systems(AgentPass, answer_twice.in_set(Stage::Gate));
+        app.add_tool(Peek);
+        let asked = [
+            ("peek", serde_json::json!({})),
+            ("look", serde_json::json!({})),
+        ];
+        app.add_systems(AgentPass, answer_twice(asked).in_set(Stage::Gate));
     });
     if let Some(agent) = first_agent(&mut app) {
         app.world_mut()
@@ -1457,6 +1463,67 @@ fn each_call_sharing_an_id_keeps_its_own_result_across_a_crash() {
     let calls = vec![("peek".to_owned(), false), ("look".to_owned(), true)];
     let expected = (calls, vec![None, Some(ExitStatus::Exited(7))]);
     assert_eq!(answered, Some(expected), "{said}");
+}
+
+/// Changes the one file its call names, and never answers.
+struct Edit;
+
+impl Tool for Edit {
+    const NAME: &'static str = "edit";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Edits.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    fn footprint(&self, args: &serde_json::Value) -> Touches {
+        let path = args.get("path").and_then(Value::as_str).unwrap_or("/work");
+        Touches::Writes(Scope::Paths(vec![path.into()]))
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        std::future::pending::<()>().await;
+        Ok(String::new())
+    }
+}
+
+#[test]
+fn each_write_sharing_an_id_that_a_crash_cut_short_is_answered_as_interrupted() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let edit = |path: &str| ("edit", serde_json::json!({ "path": path }));
+    let mut app = tools_app(&store, &model, |app| {
+        let asked = [edit("/work/a.rs"), edit("/work/b.rs")];
+        app.add_tool(Edit)
+            .add_systems(AgentPass, answer_twice(asked).in_set(Stage::Gate));
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    // Both started, each marked so first, and neither finished.
+    let editing = |world: &World| {
+        let started = world.iter_entities().filter(|it| it.contains::<Started>());
+        started.filter(|it| it.contains::<ToolRequest>()).count() == 2
+    };
+    assert!(run_until(&mut app, editing));
+    // A crash: nothing more is written.
+    drop(app);
+    let (_, said, _) = restart_after(store, |app| {
+        app.add_tool(Edit);
+    });
+    assert_eq!(said.matches(&interrupted()).count(), 2, "{said}");
+    assert!(!said.contains("Not run"), "{said}");
 }
 
 /// Keeps every message a turn did not send in the inbox.

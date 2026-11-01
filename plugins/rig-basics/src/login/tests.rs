@@ -784,6 +784,31 @@ fn choosing_the_connected_model_in_the_frame_the_list_refuses_it_is_refused() {
 struct Taken(Vec<(ChoiceKind, Option<ModelChoice>)>);
 
 #[test]
+fn a_plugin_ending_a_turn_alone_keeps_a_waiting_sign_in_and_the_users_stop_cancels_it() {
+    let backend = Backend::default();
+    let lists = [(200, SOL)];
+    let (mut app, _, agent) = signed_in("login-stop", (&backend, &lists), NEVER, |app| {
+        collect::<Notice>(app);
+    });
+    let (_, prompts) = crossbeam_channel::unbounded();
+    let login = app.world_mut().spawn(PendingLogin { agent, prompts }).id();
+    let cancelled = |app: &App| {
+        let mut notices = app.world().resource::<Collected<Notice>>().0.iter();
+        notices.any(|notice| notice.text.ends_with("sign-in cancelled."))
+    };
+    // As `/compact` ends its turn.
+    let compacted = StopTurn::plugin(agent, "compaction", "compacted").alone();
+    app.world_mut().trigger(compacted);
+    app.update();
+    assert!(app.world().get_entity(login).is_ok());
+    assert!(!cancelled(&app));
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.update();
+    assert!(app.world().get_entity(login).is_err());
+    assert!(cancelled(&app));
+}
+
+#[test]
 fn a_sign_in_switches_the_agent_for_that_run_only() {
     let backend = Backend::default();
     let lists = [(200, SOL)];

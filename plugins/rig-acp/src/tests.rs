@@ -108,6 +108,13 @@ fn agent() {
         calls("g1", "read", json!({ "path": "guarded.txt" })),
         reply("read it for you"),
     ]);
+    // As `delegate`, for a subagent `twice` answers.
+    let task = json!({ "description": "Touch twice", "prompt": TWICE, "model": "test/reply" });
+    let delegate_twice = script(vec![
+        calls("d1", "task", task),
+        reply("delegated"),
+        reply("noted"),
+    ]);
     // A provider that fails every call, retries included.
     let fail = script(
         (0..8)
@@ -137,6 +144,7 @@ fn agent() {
         ("test/again", &again),
         ("test/fail", &fail),
         ("test/delegate", &delegate),
+        ("test/delegate-twice", &delegate_twice),
         ("test/sub", &sub),
         ("test/guarded", &guarded),
         ("test/wait", &wait),
@@ -184,7 +192,10 @@ fn agent() {
     .add_observer(asked)
     .add_observer(carry_on)
     .add_observer(release)
-    .add_systems(AgentPass, guard.in_set(Stage::Gate).before(ApprovalSystems));
+    .add_systems(
+        AgentPass,
+        (guard.before(ApprovalSystems), twice).in_set(Stage::Gate),
+    );
     let limit = std::env::var(LINE_LIMIT_BYTES).ok();
     if let Some(limit) = limit.and_then(|limit| limit.parse().ok()) {
         app.insert_resource(crate::LineLimit(limit));
@@ -282,14 +293,67 @@ fn asked(
     }
 }
 
-/// A call that reads `guarded.txt` needs the user's approval.
+/// A call that reads `guarded.txt`, or runs [`GUARDED`], needs the user's
+/// approval.
 fn guard(calls: Query<(Entity, &ToolRequest), (ReadyToStart, ToolCalls)>, mut commands: Commands) {
     for (call, request) in &calls {
         let args = request.call.function.arguments_value();
-        if args.get("path") == Some(&json!("guarded.txt")) {
+        if args.get("path") == Some(&json!("guarded.txt"))
+            || args.get("command") == Some(&json!(GUARDED))
+        {
             let reason = NeedsApproval::add("test", "It reads the guarded file.");
             commands.entity(call).queue(reason);
         }
+    }
+}
+
+/// What `test/delegate-twice` asks its subagent.
+const TWICE: &str = "Run the guarded command twice.";
+
+/// The command [`guard`] asks approval for.
+const GUARDED: &str = "touch guarded.out";
+
+/// Answers a model call asked [`TWICE`] with a reply that runs
+/// [`GUARDED`] twice under one id, as a plugin's answer may: a live stream
+/// renames a repeated id. Both change the same files, so the second waits
+/// for the first to settle.
+fn twice(mut calls: Query<(&ModelRequest, &mut Decision), (With<TurnCall>, ReadyToStart)>) {
+    use rig_harness::rig_core::completion::message::{
+        AssistantContent, Message, Origin, ToolCall, ToolFunction, ToolName, UserContent,
+    };
+    use rig_harness::rig_core::completion::{CompletionResponse, FinishReason, Usage};
+
+    for (request, mut decision) in &mut calls {
+        // Its first model call: no reply yet, and asked [`TWICE`].
+        let history = request
+            .history
+            .iter()
+            .flat_map(|history| history.messages());
+        let history = history.map(|message| &**message);
+        let asked = history.clone().any(|message| {
+            matches!(message, Message::User { content } if content.iter().any(|part|
+                matches!(part, UserContent::Text(text) if text.text.contains(TWICE))))
+        });
+        let mut replies = history.filter(|message| matches!(message, Message::Assistant(_)));
+        let asked = asked && replies.next().is_none();
+        let Ok(shell) = ToolName::new("shell") else {
+            return;
+        };
+        if !asked {
+            continue;
+        }
+        let run = ToolFunction::new(shell, json!({ "command": GUARDED }));
+        let run = AssistantContent::ToolCall(ToolCall::from_wire("s9", run));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(
+            vec![run.clone(), run],
+            Usage::default(),
+            origin,
+            Value::Null,
+        );
+        let reply = reply.with_finish_reason(FinishReason::ToolCalls);
+        let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Ok(answer));
     }
 }
 
