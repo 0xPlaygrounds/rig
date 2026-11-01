@@ -8,7 +8,7 @@ One task:
                           (an open stdin that stays silent costs a second).
                           More than 64 MiB piped in is refused (exit 2).
   rig -p --json "task"    The same run as JSON lines (below); its last line
-                          is {"v":1,"type":"exit","ms":…,"code":0,
+                          is {"v":2,"type":"exit","ms":…,"code":0,
                           "answer":"…","error":null,"session":"…",
                           "usage":{…}}.
   Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
@@ -57,25 +57,27 @@ its output elsewhere (`server > log 2>&1 &`), ends when rig exits; `setsid`
 keeps it running after (on macOS: perl -MPOSIX -e 'POSIX::setsid(); exec
 @ARGV' CMD).
 
-Every line, both ways, is a JSON object with "v":1. A line of another
+Every line, both ways, is a JSON object with "v":2. A line of another
 version is refused with a reply saying whether rig or the driver needs
 updating. Every event has "ms", when it was written (Unix milliseconds).
 
 Requests, each with an optional "id" its reply repeats, and "agent" (an
 agent's id; the main agent without one):
-  {"v":1,"type":"send","text":"Fix the tests."}   a message: it starts a
+  {"v":2,"type":"send","text":"Fix the tests."}   a message: it starts a
         turn, or joins the running one at its next model call
-  {"v":1,"type":"stop"}                           stop the turn
-  {"v":1,"type":"answer","ask":7,"choices":["allow"]}   answer a question;
+  {"v":2,"type":"stop"}                           stop the turn
+  {"v":2,"type":"answer","ask":7,"choices":["allow"]}   answer a question;
         "text":"…" answers one whose "text" is true
-  {"v":1,"type":"state"}      the agents (working or not, model) and the
+  {"v":2,"type":"state"}      the agents (working or not, model) and the
         open questions, in the reply's "state"
 
 Events, each with "agent" when it is an agent's:
   ready {session}                      the first line
   turn_start
   text {text}                          the reply as it streams
-  tool_call {id, name, args}
+  tool_call {id, name, args}           id: where the reply asked for the
+        call, such as "m4/1" (the reply's message and the call's place
+        in it), the same on its tool_result; null for a plugin's own call
   tool_result {id, name, ok, refused, cancelled, output}   refused:
         refused before it ran, such as a tool the agent may not use;
         cancelled: still running when rig exited, its output then what
@@ -137,7 +139,7 @@ In Python:
   import json, subprocess
   rig = subprocess.Popen(["rig", "--json"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
   def send(**request):
-      rig.stdin.write(json.dumps({"v": 1, **request}) + "\n"); rig.stdin.flush()
+      rig.stdin.write(json.dumps({"v": 2, **request}) + "\n"); rig.stdin.flush()
   send(type="send", text="Which file here is the largest?")
   for event in map(json.loads, rig.stdout):
       if event["type"] == "ask":

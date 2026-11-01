@@ -17,13 +17,13 @@ for a; do task=$a; done
 mkdir -p "$d/run"; echo "$@" >> "$d/args"
 touch "$d/run/$$"; ls "$d/run" | wc -l >> "$d/counts"
 case "$task" in
-  fail*) echo '{"v":1,"type":"exit","code":1,"error":"it broke"}'; rm "$d/run/$$"; exit 1;;
+  fail*) echo '{"v":2,"type":"exit","code":1,"error":"it broke"}'; rm "$d/run/$$"; exit 1;;
   crash*) echo boom >&2; rm "$d/run/$$"; exit 3;;
   slow*) sleep 30;;
   wait*) sleep 0.3;;
 esac
 rm "$d/run/$$"
-printf '{"v":1,"type":"exit","code":0,"answer":"did: %s"}\n' "$task"
+printf '{"v":2,"type":"exit","code":0,"answer":"did: %s"}\n' "$task"
 "#;
 
 /// An app whose agent's model calls `helper` with each of `args` in turn,
