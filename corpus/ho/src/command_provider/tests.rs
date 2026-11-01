@@ -13,7 +13,7 @@ use super::*;
 
 /// The stand-in program: saves each request beside itself, then calls
 /// `read` when the user asked for a tool and no result came back yet, and
-/// otherwise answers "hel", "lo".
+/// otherwise answers "hello ", "there".
 const ECHO: &str = r#"#!/bin/sh
 dir=$(dirname "$0")
 n=$(ls "$dir" | grep -c '^stdin-')
@@ -26,8 +26,8 @@ case "$request" in
     echo '{"done":true}'
     exit 0 ;;
 esac
-echo '{"text":"hel"}'
-echo '{"text":"lo"}'
+echo '{"text":"hello "}'
+echo '{"text":"there"}'
 echo '{"usage":{"input_tokens":3,"output_tokens":2}}'
 echo '{"done":true}'
 "#;
@@ -163,9 +163,12 @@ fn a_program_answers_calls_tools_and_fails() {
     let (mut app, wakes, agent, home) = start("ho-command-provider", &scripts, config);
     use_model(&mut app, agent, "cmd/echo");
 
-    // Text streams as the program writes it, a word whole: the kernel
-    // holds back "hel", which the rest of the word could make a key.
-    assert_eq!(answer(ask(&mut app, &wakes, agent, "say hi")), "hello");
+    // Text streams as the program writes it; the last word comes at the
+    // part's end, since more of it could make a key.
+    assert_eq!(
+        answer(ask(&mut app, &wakes, agent, "say hi")),
+        "hello there"
+    );
     let deltas: Vec<&str> = app
         .world()
         .resource::<Collected<StreamDelta>>()
@@ -179,10 +182,13 @@ fn a_program_answers_calls_tools_and_fails() {
             _ => None,
         })
         .collect();
-    assert_eq!(deltas, ["hello"]);
+    assert_eq!(deltas, ["hello ", "there"]);
 
     // The tool call runs, and the next request carries its result.
-    assert_eq!(answer(ask(&mut app, &wakes, agent, "use tool")), "hello");
+    assert_eq!(
+        answer(ask(&mut app, &wakes, agent, "use tool")),
+        "hello there"
+    );
     let third = fs::read_to_string(home.root().join("stdin-3.json")).unwrap_or_default();
     assert!(third.contains(r#""type":"tool_result""#), "{third}");
     assert!(third.contains("the notes say 42"), "{third}");

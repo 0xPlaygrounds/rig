@@ -1115,7 +1115,7 @@ fn print_notices(
             match &recalled.why {
                 Some(why) => printed.error(why),
                 None => {
-                    let text = rig_harness::rig_core::redact::text(&recalled.text);
+                    let text = redact::text(&recalled.text);
                     printed.error(&format!("not answered: {}", excerpt(&text)));
                 }
             }
@@ -1404,6 +1404,9 @@ fn note_cut_off(
         }
         let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
         let kept = kept.map(Outcome::tool_result);
+        // A stop's answer is not redacted yet, and a key in its JSON is
+        // quoted the way only the decoded value shows.
+        let kept = kept.map(|result| redact::tool_result(&result).unwrap_or(result));
         let (ok, output) = match kept {
             Some(result) => (result.is_success(), result.output().render()),
             None => {

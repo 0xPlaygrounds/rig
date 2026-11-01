@@ -1636,7 +1636,10 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                     match cut {
                         Cut::Running => call.insert(Waiting),
                         Cut::WithOutput => {
-                            let so_far = result("half ghp_abcdefghijklmnopqrstuvwxyz0123456789");
+                            // A key in a JSON result, quoted as JSON escapes it.
+                            let text = r#"half API_KEY="abcdefgh12345678""#;
+                            let so_far = rig_core::tool::ToolOutput::json(json!({ "text": text }));
+                            let so_far = rig_core::tool::ToolResult::success(so_far);
                             call.insert((Waiting, IfStopped(Outcome::from(so_far))))
                         }
                         Cut::Answered => call.insert(Outcome::from(result("Waited."))),
@@ -1667,7 +1670,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 "Stopped: the run was interrupted. It may have partly run; check before running it again.",
             ),
             // A key it printed is redacted, on the line and in the session.
-            Cut::WithOutput => (true, true, "half [REDACTED]"),
+            Cut::WithOutput => (true, true, r#"{"text":"half API_KEY=\"[REDACTED]\""}"#),
             Cut::Answered => (true, false, "Waited."),
         };
         let results = lines.of("tool_result");
@@ -1714,8 +1717,11 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
             .first()
             .map(|r| format!("{:?}", r.chat_history))
             .unwrap_or_default();
+        // As the history's debug form quotes it.
+        let quoted = format!("{output:?}");
+        let quoted = quoted.trim_matches('"');
         assert!(
-            history.contains(output) && history.contains("Do not carry it out"),
+            history.contains(quoted) && history.contains("Do not carry it out"),
             "{cut:?} {history}"
         );
         assert_eq!(second.request_count(), 1, "{cut:?}");

@@ -1385,7 +1385,10 @@ fn show(
             for (part, (reasoning, mut redactor)) in ended {
                 fragment(part, reasoning, redactor.finish());
             }
-            return event.into_iter().for_each(write);
+            if let Some(event) = event {
+                write(event);
+            }
+            return;
         }
     };
     let (_, redactor) = held.entry(part).or_insert((reasoning, Default::default()));

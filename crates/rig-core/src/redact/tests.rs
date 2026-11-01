@@ -197,21 +197,22 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
         "https://example.com/a+b/sk-proj-abcdefghijklmnop1234,(ghp_abcdefghijklmnopqrstuvwxyz0123456789)",
         "\"API_KEY\": \"abcdefgh12345678\", \"name\": \"x\"\n\tSECRET=$HOME",
         "Export it (GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789).",
+        "PASSWORD=\"sk-proj-abcdefghijklmnop1234 trailing\" then",
         "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY----- API_KEY=abcdefgh12345678",
     ];
-    for text_ in texts {
-        let whole = text(text_).into_owned();
+    for input in texts {
+        let whole = text(input).into_owned();
         // Redacting it again changes nothing, as a front that redacts what
         // it writes does.
         assert_eq!(text(&whole), whole);
-        let cuts: Vec<usize> = (0..=text_.len())
-            .filter(|&at| text_.is_char_boundary(at))
+        let cuts: Vec<usize> = (0..=input.len())
+            .filter(|&at| input.is_char_boundary(at))
             .collect();
         // Every cut into two pieces, and the text one character at a time.
-        let splits = cuts.iter().map(|&at| vec![&text_[..at], &text_[at..]]);
+        let splits = cuts.iter().map(|&at| vec![&input[..at], &input[at..]]);
         let chars = cuts
             .windows(2)
-            .map(|pair| &text_[pair[0]..pair[1]])
+            .map(|pair| &input[pair[0]..pair[1]])
             .collect::<Vec<_>>();
         for pieces in splits.chain(std::iter::once(chars)) {
             let mut streamed = Streamed::default();
@@ -229,10 +230,10 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
 fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
     let mut streamed = Streamed::default();
     let piece = "a".repeat(100);
-    let held_back = (0..400).map(|_| streamed.push(&piece).len()).sum::<usize>();
-    assert!(400 * 100 - held_back <= HELD_MOST + 100, "{held_back}");
+    let shown = (0..400).map(|_| streamed.push(&piece).len()).sum::<usize>();
+    assert!(400 * 100 - shown <= HELD_MOST + 100, "{shown}");
     let rest = streamed.finish();
-    assert_eq!(held_back + rest.len(), 400 * 100);
+    assert_eq!(shown + rest.len(), 400 * 100);
     for line in [
         format!("TOKEN {}gh", "word ".repeat(3275)),
         format!("one {}API_KEY=abcd", "word ".repeat(3275)),
