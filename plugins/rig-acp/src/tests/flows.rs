@@ -583,7 +583,42 @@ fn a_client_mcp_server_serves_the_model_and_a_failing_one_is_told_after_the_sess
         assert!(driven.prompt(&id, "/early m1").await.is_ok());
         assert_eq!(tool_steps(driven, &id).len(), shown);
         let said = driven.said(&id);
-        assert!(said.contains("files (client): connected, 1 tool"), "{said}");
+        assert!(
+            said.contains("files (client): connected, 2 tools"),
+            "{said}"
+        );
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_tool_result_reads_the_same_live_and_after_session_load() {
+    let place = Place::new("pair");
+    let router = drive(&place, full_client(), async |driven| {
+        let new = driven
+            .new_session(vec![stub_with("files", Vec::new())])
+            .await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/pair").await);
+        assert!(driven.prompt(&id, "Pair.").await.is_ok());
+        let results = |updates: Vec<acp::SessionUpdate>| -> Vec<Value> {
+            let done = updates.into_iter().filter_map(|update| match update {
+                acp::SessionUpdate::ToolCallUpdate(update) => update.fields.raw_output,
+                _ => None,
+            });
+            done.collect()
+        };
+        let live = results(driven.updates(&id));
+        let close = acp::CloseSessionRequest::new(id.clone());
+        assert!(driven.cx.send_request(close).block_task().await.is_ok());
+        let before = driven.updates(&id).len();
+        let load = acp::LoadSessionRequest::new(id.clone(), &driven.project);
+        assert!(driven.cx.send_request(load).block_task().await.is_ok());
+        let replayed = results(driven.updates(&id).into_iter().skip(before).collect());
+        assert_eq!(live.len(), 1, "{live:?}");
+        assert_eq!(replayed, live);
     });
     assert!(router.is_some());
 }

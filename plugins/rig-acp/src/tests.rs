@@ -138,6 +138,8 @@ fn agent() {
         calls("m1", "files__add", json!({ "a": 2, "b": 3 })),
         reply("added"),
     ]);
+    // A call of an MCP tool that answers with two text parts.
+    let pair = script(vec![calls("p1", "files__pair", json!({})), reply("paired")]);
     let mut models = scripted_models([
         ("test/reply", &replies),
         ("test/read", &read),
@@ -150,6 +152,7 @@ fn agent() {
         ("test/wait", &wait),
         ("test/mcp", &mcp),
         ("test/shell", &quick),
+        ("test/pair", &pair),
     ]);
     // A model of the catalog no key reaches.
     if let Ok(nowhere) = ProviderId::declare("acp-unreachable") {
@@ -403,7 +406,16 @@ fn mcp_stub() {
                     "type": "object",
                     "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
                 },
+            }, {
+                "name": "pair",
+                "inputSchema": { "type": "object" },
             }]}),
+            Some("tools/call") if request.pointer("/params/name") == Some(&json!("pair")) => {
+                json!({ "content": [
+                    { "type": "text", "text": "first" },
+                    { "type": "text", "text": "OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234" },
+                ]})
+            }
             Some("tools/call") => {
                 let sum = number("a") + number("b");
                 json!({ "content": [{ "type": "text", "text": sum.to_string() }] })
