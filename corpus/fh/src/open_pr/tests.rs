@@ -128,6 +128,7 @@ fn session(dir: &Path, answers: Vec<Answer>, until: &str) -> (String, Vec<String
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Add a file a.txt", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {

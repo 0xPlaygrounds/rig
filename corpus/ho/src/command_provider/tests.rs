@@ -131,6 +131,7 @@ fn use_model(app: &mut App, agent: Entity, model: &str) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
 }
 

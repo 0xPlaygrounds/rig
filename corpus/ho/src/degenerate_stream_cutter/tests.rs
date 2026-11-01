@@ -123,6 +123,7 @@ fn looping_and_role_play_replies_are_cut_where_they_go_wrong() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     let ask = |app: &mut App, text: &str, turns: usize| {
         app.world_mut()

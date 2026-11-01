@@ -64,8 +64,10 @@ to use a new one.
   images.
 - **Options:** the model, from the models you can reach, each named with
   its provider (one model can come from several), and its reasoning level.
-  `/model` and `/effort` change them too. `rig acp`'s own options, such as
-  `--model`, do not reach the sessions: the editor's options choose.
+  `/model` and `/effort` change them too, for that session only: a new
+  session starts on the terminal's saved default, and nothing chosen in an
+  editor changes it. `rig acp`'s own options, such as `--model`, do not
+  reach the sessions: the editor's options choose.
 - **Tool calls:** each of the main agent's calls, as it is asked for, runs,
   and ends, with its arguments, output and the files it names.
 - **Questions:** a tool call a plugin wants approved asks for permission

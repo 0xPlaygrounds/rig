@@ -199,6 +199,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Patch it.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -252,6 +253,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Hi.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -272,6 +274,7 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Patch again.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {

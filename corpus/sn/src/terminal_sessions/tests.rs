@@ -94,6 +94,7 @@ fn a_shell_is_driven_across_turns_and_dies_with_the_app() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     let ended = |count: usize| move |world: &World| world.resource::<Ended>().0.len() >= count;
     app.world_mut()

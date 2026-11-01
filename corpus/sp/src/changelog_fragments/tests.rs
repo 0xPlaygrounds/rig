@@ -134,6 +134,7 @@ fn source_turns_get_fragments_in_the_background() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let say = |app: &mut App, text: &str| {
         let message = Deliver::new(agent, text, DeliveryMode::Steer);

@@ -53,6 +53,7 @@ impl Session {
         world.trigger(SetModel {
             entity: worker,
             model,
+            kind: ChoiceKind::ForThisRun,
         });
         world.trigger(Deliver::new(worker, typed, DeliveryMode::Steer));
         run_until(&mut app, &wakes, |world| {

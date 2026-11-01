@@ -131,6 +131,7 @@ fn commands_see_only_what_the_policy_allows() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
 
     // The allowed, the set and the default variables; nothing else.

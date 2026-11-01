@@ -108,6 +108,7 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     let head = git(&home, &["rev-parse", "HEAD"]);
     let branch = git(&home, &["symbolic-ref", "HEAD"]);
@@ -237,6 +238,7 @@ fn a_stopped_turns_edits_are_not_the_users() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     ask(&mut app, &wakes, agent, "say hi");
 

@@ -1019,3 +1019,27 @@ fn a_preview_counts_what_its_messages_draw() {
     assert_eq!(drawn_size(&image), 0);
     assert_eq!(drawn_size(&system), 0);
 }
+
+#[test]
+fn a_picker_filled_again_before_its_first_frame_keeps_the_item_it_opened_on() {
+    let (mut app, _) = view_app();
+    app.init_resource::<Reported>().add_observer(report);
+    let picker = |names: &[&str], selected: usize| Picker {
+        selected,
+        ..(names.iter()).fold(Picker::new("Model"), |picker, name| {
+            picker.item(*name, format!("note {name}"))
+        })
+    };
+    let entity = app.world_mut().spawn(picker(&["a", "b", "c"], 2)).id();
+    app.update();
+    // Its lines move, as the models' do once a sign-in's answer came.
+    app.world_mut()
+        .entity_mut(entity)
+        .insert(picker(&["c", "a", "b"], 1));
+    app.update();
+    press(&mut app, "enter");
+    assert_eq!(
+        app.world().resource::<Reported>().0,
+        [Some(Chosen::item(0))]
+    );
+}

@@ -122,6 +122,7 @@ fn clients_watch_and_type_and_one_that_never_reads_is_dropped() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     let earlier = message::Message::user("an earlier question");
     assert_eq!(commit_message(app.world_mut(), agent, earlier), Ok(()));

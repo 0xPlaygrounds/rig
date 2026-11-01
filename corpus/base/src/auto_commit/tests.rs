@@ -72,6 +72,7 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
     world.trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Add a file a.txt", DeliveryMode::Queue));
 

@@ -120,6 +120,7 @@ fn run(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>) {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model,
+        kind: ChoiceKind::ForThisRun,
     });
     app.world_mut()
         .trigger(Deliver::new(agent, "Read the docs.", DeliveryMode::Steer));

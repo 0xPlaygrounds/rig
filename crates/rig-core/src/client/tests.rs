@@ -132,7 +132,7 @@ async fn a_chatgpt_sign_in_sends_the_token_and_account() {
         chatgpt::auth::DeviceCodeHandler::default(),
         false,
     );
-    let requests = signed_in_requests("chatgpt/gpt-5.5", authenticator, "{}").await;
+    let requests = signed_in_requests("chatgpt/gpt-6.1-sol", authenticator, "{}").await;
     let request = requests.first().expect("the model sent its request");
     assert_eq!(request.headers["authorization"], "Bearer chatgpt-token");
     assert_eq!(request.headers["chatgpt-account-id"], "acct_1");
@@ -180,7 +180,7 @@ fn a_signed_in_model_checks_without_a_credential() {
         false,
     );
     let spec = crate::catalog::Catalog::builtin()
-        .resolve("chatgpt/gpt-5.3-codex-spark")
+        .resolve("chatgpt/gpt-6.1-sol")
         .expect("in the catalog")
         .spec
         .clone();

@@ -284,3 +284,108 @@ fn a_provider_without_a_key_falls_back_to_a_sign_in() {
     let reference = model_of(&connector, SIGNED_IN);
     assert!(connector.connect(&reference).is_ok());
 }
+
+struct AccountOffers;
+
+impl SignIn for AccountOffers {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        _: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>> {
+        Some(if spec.id == "unlisted" {
+            Err(ConnectError::Provider("not offered".to_owned()))
+        } else {
+            Ok(adapted(spec, MockCompletionModel::text("ok").into()))
+        })
+    }
+
+    fn plan(&self, _: &ModelSpec) -> Option<&'static str> {
+        Some("Account")
+    }
+
+    fn offers(&self, spec: &ModelSpec, _: &Transport) -> ModelStatus {
+        match spec.id.as_str() {
+            "offered" => ModelStatus::Usable,
+            "checking" => ModelStatus::Checking,
+            _ => ModelStatus::NotOffered("not in this account's list".to_owned()),
+        }
+    }
+}
+
+#[test]
+fn a_sign_in_reports_each_models_offer_and_only_offered_models_are_reachable() {
+    let Ok(vendor) = ProviderId::declare("connector-offers") else {
+        panic!("valid vendor");
+    };
+    let mut connector = Connector::new(Catalog::default());
+    for id in ["unlisted", "checking", "offered"] {
+        connector
+            .catalog_mut()
+            .insert(ModelSpec::new(vendor, id).with_tools(true));
+    }
+    connector.provide(vendor, |_: &ModelSpec, _: &Catalog, _: &Transport| {
+        Err(ConnectError::MissingKey {
+            vendor: "connector-offers".to_owned(),
+            tried: vec![],
+        })
+    });
+    // A plan that serves nothing must not supply the offer for another sign-in.
+    connector.add_sign_in(Plan);
+    connector.add_sign_in(AccountOffers);
+    let statuses: Vec<_> = connector
+        .statuses()
+        .into_iter()
+        .map(|(spec, status)| (spec.id.as_str(), status))
+        .collect();
+    assert_eq!(
+        statuses,
+        vec![
+            ("offered", ModelStatus::Usable),
+            ("checking", ModelStatus::Checking),
+            (
+                "unlisted",
+                ModelStatus::NotOffered("not in this account's list".to_owned())
+            ),
+        ]
+    );
+    assert_eq!(
+        connector
+            .reachable()
+            .iter()
+            .map(|spec| spec.id.as_str())
+            .collect::<Vec<_>>(),
+        ["offered"]
+    );
+
+    connector.provide(vendor, |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+        Ok(adapted(spec, MockCompletionModel::text("direct").into()))
+    });
+    assert_eq!(connector.reachable().len(), 3);
+}
+
+#[test]
+fn models_without_a_sign_in_plan_keep_one_check_per_provider() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let Ok(vendor) = ProviderId::declare("connector-cached") else {
+        panic!("valid vendor");
+    };
+    let checks = Arc::new(AtomicUsize::new(0));
+    let counted = checks.clone();
+    let mut connector = Connector::new(Catalog::default());
+    for id in ["one", "two"] {
+        connector
+            .catalog_mut()
+            .insert(ModelSpec::new(vendor, id).with_tools(true));
+    }
+    connector.provide(
+        vendor,
+        move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+            counted.fetch_add(1, Ordering::SeqCst);
+            Ok(adapted(spec, MockCompletionModel::text("ok").into()))
+        },
+    );
+    assert_eq!(connector.reachable().len(), 2);
+    assert_eq!(checks.load(Ordering::SeqCst), 1);
+}

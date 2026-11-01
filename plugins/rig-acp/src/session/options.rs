@@ -119,6 +119,7 @@ impl Options<'_, '_> {
                 self.commands.trigger(SetModel {
                     entity: agent,
                     model: model.clone(),
+                    kind: ChoiceKind::ForThisRun,
                 });
                 Ok(Asked::Model(model))
             }
@@ -136,6 +137,7 @@ impl Options<'_, '_> {
                 self.commands.trigger(SetReasoning {
                     entity: agent,
                     effort,
+                    kind: ChoiceKind::ForThisRun,
                 });
                 Ok(Asked::Reasoning(effort))
             }

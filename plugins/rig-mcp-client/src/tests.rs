@@ -1204,6 +1204,7 @@ fn a_terminal_run_can_name_a_servers_tool_in_its_tools() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: MODEL.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     let ask = Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Steer);
     app.world_mut().trigger(ask);

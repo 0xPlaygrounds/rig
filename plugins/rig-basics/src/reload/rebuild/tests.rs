@@ -146,6 +146,7 @@ fn a_failed_build_leaves_its_errors_as_a_note() {
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model_name,
+        kind: ChoiceKind::ForThisRun,
     });
     let wake = app.world().resource::<Wake>().clone();
     if let Ok(build) = ReloadBuild::start(launcher.as_os_str(), agent, wake) {

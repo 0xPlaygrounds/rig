@@ -87,6 +87,7 @@ fn after_a_turn(
     world.trigger(SetModel {
         entity: agent,
         model: MODEL.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     world.trigger(Deliver::new(agent, "Find the bug.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {

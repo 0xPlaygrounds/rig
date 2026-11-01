@@ -49,6 +49,7 @@ fn session(
     app.world_mut().trigger(SetModel {
         entity: agent,
         model: model.0.to_owned(),
+        kind: ChoiceKind::ForThisRun,
     });
     for (done, step) in steps.iter().enumerate() {
         let (Step::Say(text) | Step::Stop(text)) = step;

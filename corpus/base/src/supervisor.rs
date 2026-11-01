@@ -242,6 +242,7 @@ fn supervise(
                 commands.trigger(SetModel {
                     entity: supervisor,
                     model,
+                    kind: ChoiceKind::ForThisRun,
                 });
             }
         }
