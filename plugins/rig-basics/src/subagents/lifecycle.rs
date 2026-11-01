@@ -277,9 +277,10 @@ fn work_on_turn_start(
     }
 }
 
-/// On a [`Lifecycle::Finished`] subagent whose turn the user, the exit or
-/// a restart stopped, of it or of an agent above it: its report is a note
-/// that starts no turn of the agent it goes to.
+/// On a [`Lifecycle::Finished`] subagent a stop reached, from it or from
+/// an agent above it, by the user, a plugin, the exit or a restart; not one
+/// a plugin ended alone: its report is a note that starts no turn of the
+/// agent it goes to.
 #[derive(Component)]
 pub(super) struct StoppedEarly;
 
