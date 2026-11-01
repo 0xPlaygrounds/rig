@@ -91,12 +91,13 @@ pub(crate) fn store_images_with<'m>(
 
 /// Puts the data of each image `message` names in `store` back in place.
 /// An image whose blob cannot be read has no data any more ([`Unknown`]),
-/// which a request sends as a placeholder; the first such failure is
-/// returned.
+/// which a request sends as a placeholder. The first failure other than
+/// `NotFound` is returned, or the first missing blob when all failures
+/// are `NotFound`.
 ///
 /// # Errors
 ///
-/// The first blob that could not be read.
+/// A blob that could not be read, preferring errors other than `NotFound`.
 pub fn load_images(message: &mut Message, store: &dyn Files) -> io::Result<()> {
     load_images_with(message, &|name| read_blob(store, name))
 }
@@ -106,7 +107,7 @@ pub(crate) fn load_images_with(
     message: &mut Message,
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
 ) -> io::Result<()> {
-    let mut gone = Ok(());
+    let mut gone: io::Result<()> = Ok(());
     for image in message.images_mut() {
         if let Url(url) = &image.data
             && let Some(name) = url.strip_prefix(BLOB)
@@ -114,7 +115,12 @@ pub(crate) fn load_images_with(
             image.data = match blob(name) {
                 Ok(bytes) => Base64(STANDARD.encode(bytes)),
                 Err(failure) => {
-                    gone = gone.and(Err(failure));
+                    if gone.as_ref().err().is_none_or(|error| {
+                        error.kind() == io::ErrorKind::NotFound
+                            && failure.kind() != io::ErrorKind::NotFound
+                    }) {
+                        gone = Err(failure);
+                    }
                     Unknown
                 }
             };
