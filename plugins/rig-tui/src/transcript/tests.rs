@@ -1535,7 +1535,8 @@ fn waited(id: u64, parent: Option<u64>, call: Option<CallRef>, took: u64) -> Eff
 /// A call a fork took over shows how long it ran and the calls it started,
 /// as the records of the agent that made it say, live and once resumed,
 /// even with a fork between them gone; a fork's own call at the place of
-/// a later call of its source shows its own.
+/// a later call of its source shows its own record, or none when it has
+/// none.
 #[test]
 fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
     let Ok(wait) = ToolName::new("wait") else {
@@ -1558,74 +1559,79 @@ fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
         Some(world.spawn((fork, ForkedFrom(lineage.collect()))).id())
     };
     let (c1, c2, c3) = (call("c1"), call("c2"), call("c3"));
-    let (mut app, source) = layout_app();
-    timing(&mut app);
-    say(&mut app, source, asking(&c1));
-    say(&mut app, source, answering(&c1));
-    let Some(middle) = fork_of(app.world_mut(), source, "fork") else {
-        return;
-    };
-    // Both go on from the same message count.
-    say(&mut app, source, asking(&c2));
-    say(&mut app, source, answering(&c2));
-    say(&mut app, middle, asking(&c3));
-    say(&mut app, middle, answering(&c3));
-    assert_eq!(message_id(&app, middle, 2), message_id(&app, source, 2));
-    let Some(last) = fork_of(app.world_mut(), middle, "last") else {
-        return;
-    };
-    let at = |agent, message| {
-        Some(CallRef {
-            reply: message_id(&app, agent, message)?,
-            index: 0,
-        })
-    };
-    let mut own = waited(4, None, at(middle, 2), 3_000);
-    own.scope = Some(Arc::from("fork"));
-    let records = vec![
-        waited(1, None, at(source, 0), 5_000),
-        waited(2, Some(1), None, 0),
-        waited(3, None, at(source, 2), 7_000),
-        own,
-    ];
-    for record in &records {
-        app.world_mut()
-            .write_message(EffectRecorded(record.clone()));
-    }
-    app.update();
-    assert_eq!(timed_rows(&mut app, source), ["Some(5s) 1", "Some(7s) 0"]);
-    let (inherited, own) = ("Some(5s) 1", "Some(3s) 0");
-    assert_eq!(timed_rows(&mut app, middle), [inherited, own]);
-    app.world_mut().despawn(middle);
-    app.update();
-    assert_eq!(timed_rows(&mut app, last), [inherited, own]);
+    // The fork's own `c3` with a record of its own, then with none.
+    for (recorded, own) in [(true, "Some(3s) 0"), (false, "None 0")] {
+        let (mut app, source) = layout_app();
+        timing(&mut app);
+        say(&mut app, source, asking(&c1));
+        say(&mut app, source, answering(&c1));
+        let Some(middle) = fork_of(app.world_mut(), source, "fork") else {
+            return;
+        };
+        // Both go on from the same message count.
+        say(&mut app, source, asking(&c2));
+        say(&mut app, source, answering(&c2));
+        say(&mut app, middle, asking(&c3));
+        say(&mut app, middle, answering(&c3));
+        assert_eq!(message_id(&app, middle, 2), message_id(&app, source, 2));
+        let Some(last) = fork_of(app.world_mut(), middle, "last") else {
+            return;
+        };
+        let at = |agent, message| {
+            Some(CallRef {
+                reply: message_id(&app, agent, message)?,
+                index: 0,
+            })
+        };
+        let mut records = vec![
+            waited(1, None, at(source, 0), 5_000),
+            waited(2, Some(1), None, 0),
+            waited(3, None, at(source, 2), 7_000),
+        ];
+        if recorded {
+            let mut record = waited(4, None, at(middle, 2), 3_000);
+            record.scope = Some(Arc::from("fork"));
+            records.push(record);
+        }
+        for record in &records {
+            app.world_mut()
+                .write_message(EffectRecorded(record.clone()));
+        }
+        app.update();
+        assert_eq!(timed_rows(&mut app, source), ["Some(5s) 1", "Some(7s) 0"]);
+        let inherited = "Some(5s) 1";
+        assert_eq!(timed_rows(&mut app, middle), [inherited, own]);
+        app.world_mut().despawn(middle);
+        app.update();
+        assert_eq!(timed_rows(&mut app, last), [inherited, own]);
 
-    // Resumed: the same conversations and records, read back.
-    let world = app.world();
-    let kept = |agent| {
-        Some((
-            world.get::<Conversation>(agent)?.clone(),
-            world.get::<ForkedFrom>(agent).cloned(),
-        ))
-    };
-    let (Some((source_conversation, _)), Some((last_conversation, Some(lineage)))) =
-        (kept(source), kept(last))
-    else {
-        return;
-    };
-    let (mut resumed, source) = layout_app();
-    timing(&mut resumed);
-    let world = resumed.world_mut();
-    world.entity_mut(source).insert(source_conversation);
-    let last = (
-        Name::new("agent"),
-        AgentId("last".to_owned()),
-        last_conversation,
-    );
-    let last = world.spawn((last, lineage)).id();
-    world.write_message(PastEffects::new(records));
-    resumed.update();
-    assert_eq!(timed_rows(&mut resumed, last), [inherited, own]);
+        // Resumed: the same conversations and records, read back.
+        let world = app.world();
+        let kept = |agent| {
+            Some((
+                world.get::<Conversation>(agent)?.clone(),
+                world.get::<ForkedFrom>(agent).cloned(),
+            ))
+        };
+        let (Some((source_conversation, _)), Some((last_conversation, Some(lineage)))) =
+            (kept(source), kept(last))
+        else {
+            return;
+        };
+        let (mut resumed, source) = layout_app();
+        timing(&mut resumed);
+        let world = resumed.world_mut();
+        world.entity_mut(source).insert(source_conversation);
+        let last = (
+            Name::new("agent"),
+            AgentId("last".to_owned()),
+            last_conversation,
+        );
+        let last = world.spawn((last, lineage)).id();
+        world.write_message(PastEffects::new(records));
+        resumed.update();
+        assert_eq!(timed_rows(&mut resumed, last), [inherited, own]);
+    }
 }
 
 /// A mark inside a saved reply's text block is drawn between the words it
