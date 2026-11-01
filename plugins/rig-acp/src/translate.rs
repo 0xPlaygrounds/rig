@@ -11,7 +11,7 @@ use base64::Engine;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::message::{
     self, AssistantContent, DocumentSourceKind, Image, ImageMediaType, MimeType, StopReason,
-    ToolCall, ToolResult as SavedResult, ToolResultContent, UserContent,
+    ToolCall, ToolResultContent, UserContent,
 };
 use rig_harness::rig_core::conversation::{Author, AuthorKind, Conversation, Entry, MessageId};
 use rig_harness::services::WorkDir;
@@ -154,9 +154,10 @@ pub(crate) fn tool_done(id: &str, failed: bool, output: String) -> acp::ToolCall
     acp::ToolCallUpdate::new(id.to_owned(), fields)
 }
 
-/// What a saved tool result says, as text.
-fn saved_output(result: &SavedResult) -> String {
-    let parts = result.content.iter().map(|part| match part {
+/// What a tool result's `content` says, as text: the same for a call live
+/// and loaded.
+pub(crate) fn tool_output(content: &[ToolResultContent]) -> String {
+    let parts = content.iter().map(|part| match part {
         ToolResultContent::Text(text) => text.text.clone(),
         ToolResultContent::Json { value } => value.to_string(),
         ToolResultContent::Image(_) => "[image]".to_owned(),
@@ -278,7 +279,8 @@ pub(crate) fn replay(
                             let announced = tool_call(call, id.clone(), cwd);
                             updates.push(acp::SessionUpdate::ToolCall(announced));
                             if let Some(result) = results.get(&id) {
-                                let done = tool_done(&id, result.is_error, saved_output(result));
+                                let done =
+                                    tool_done(&id, result.is_error, tool_output(&result.content));
                                 updates.push(acp::SessionUpdate::ToolCallUpdate(done));
                             } else if reply.stop.as_ref().is_some_and(StopReason::is_failure) {
                                 // A call of a reply that failed or was

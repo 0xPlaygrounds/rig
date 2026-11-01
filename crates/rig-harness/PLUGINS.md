@@ -59,8 +59,8 @@ each plugin added): ask it before reading rig's source.
   (rig-core's `Conversation`). An **entry** is one message with a `MessageId`,
   an author and a made-time. An **aside** is a typed side value after an entry,
   saved and rewritten with the conversation and never sent to a model; a
-  **note** is an aside of kind `note` a front draws (`Note`). A **change** is
-  one edit (`Change`), a **change record** one with who and when
+  **note** is an aside of kind `note` the terminal view draws (`Note`). A
+  **change** is one edit (`Change`), a **change record** one with who and when
   (`ChangeRecord`). The **halt** says why the last user message is unanswered.
 - **Turns and forks.** A **turn** runs from a user message to the reply that
   ends it, at most one per agent; its model call is the **turn call**
@@ -1534,8 +1534,8 @@ it is not the user's own or the model's, an `Author` (`Author::plugin(name)`,
 **Asides** never reach a model: an `Aside { kind, after, author, value }`
 follows the entry `after` and is saved and restored with the
 conversation unless `unsaved()` (`add_aside`, `replace_aside`,
-`remove_aside`, `asides()`). The harness's `Note` is the kind fronts draw
-([the transcript](#the-transcript-notes-looks-and-scrolling)).
+`remove_aside`, `asides()`). The harness's `Note` is the kind the terminal
+view draws ([the transcript](#the-transcript-notes-looks-and-scrolling)).
 
 **Saving.** A change waits in the conversation's outbox until the kernel saves
 it to the agent's log: between the stages of every pass, at the end of the
@@ -2214,8 +2214,8 @@ fn stats(home: Res<RigHome>, stores: Res<StoreOpener>, mut commands: Commands) {
 A plugin puts a note in an agent's transcript as an
 [aside](#changing-history), `Note::new(title, text).aside(author, after)`,
 after a message (`after`, a `MessageId`, or the summary that replaced it),
-with its title and its text. Every front draws it, it is kept as any aside
-is, and `Note::of(aside)` reads one.
+with its title and its text. The terminal view draws it; `--json` and ACP
+show no asides. It is kept as any aside is, and `Note::of(aside)` reads one.
 
 The terminal view draws notes, and what the conversation holds from a plugin
 (such as `rig_basics::compaction`'s summary), with systems selecting

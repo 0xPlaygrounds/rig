@@ -75,7 +75,7 @@ pub const ORIGIN: &str = "print";
 pub const ANSWER: &str = "answer";
 
 /// The version of the JSON lines, `v` on every line both ways.
-pub const VERSION: u64 = 1;
+pub const VERSION: u64 = 2;
 
 /// What a print run writes to stdout after the answer, such as a todo
 /// list: spawn one and keep its `text` current. Sections follow the
@@ -1367,7 +1367,7 @@ fn note_cut_off(
     calls: Query<
         (
             Entity,
-            (&ToolRequest, &ForAgent, Option<&CallOf>),
+            (&ToolRequest, &ForAgent, Option<&CallOf>, Option<&InReply>),
             Option<&Outcome>,
             Option<&IfStopped>,
             Option<&Footprint>,
@@ -1393,7 +1393,7 @@ fn note_cut_off(
     }
     out.flush();
     let mut closing = Vec::new();
-    for (call, (request, &ForAgent(agent), turn), outcome, if_stopped, footprint) in &calls {
+    for (call, (request, &ForAgent(agent), turn, place), outcome, if_stopped, footprint) in &calls {
         if outcome.is_none() {
             out.out.cancelled.insert(call);
         }
@@ -1411,7 +1411,7 @@ fn note_cut_off(
             }
         };
         let fields = json!({
-            "id": request.call.id.wire(),
+            "id": call_id(place),
             "name": request.call.function.name.as_str(),
             "ok": ok,
             "refused": false,
@@ -1488,10 +1488,16 @@ fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
     }
 }
 
+/// A call's `id`: where its reply asked for it, such as `m4/1`; `null`
+/// for a call no reply asked for, such as a plugin's own.
+fn call_id(place: Option<&InReply>) -> Value {
+    place.map(|place| place.at().wire()).into()
+}
+
 /// The fields of a `tool_call` line.
-fn call_fields(call: &ToolCall) -> Value {
+fn call_fields(call: &ToolCall, place: Option<&InReply>) -> Value {
     json!({
-        "id": call.id.wire(),
+        "id": call_id(place),
         "name": call.function.name.as_str(),
         "args": call.function.arguments_value(),
     })
@@ -1500,12 +1506,12 @@ fn call_fields(call: &ToolCall) -> Value {
 /// A tool call starts, or a question waits for its answer.
 fn started(
     start: On<Add<Started>>,
-    calls: Query<(&ToolRequest, &ForAgent)>,
+    calls: Query<(&ToolRequest, &ForAgent, Option<&InReply>)>,
     asks: Query<(&Ask, Option<&ForAgent>)>,
     mut out: Out,
 ) {
-    if let Ok((request, &ForAgent(agent))) = calls.get(start.entity) {
-        out.emit(Some(agent), "tool_call", call_fields(&request.call));
+    if let Ok((request, &ForAgent(agent), place)) = calls.get(start.entity) {
+        out.emit(Some(agent), "tool_call", call_fields(&request.call, place));
     } else if let Ok((ask, agent)) = asks.get(start.entity) {
         let choices = ask.choices.iter();
         let fields = json!({
@@ -1531,20 +1537,20 @@ fn settled(
         Option<&TurnUsage>,
         Option<&FirstStreamed>,
     )>,
-    calls: Query<(&ToolRequest, Has<Started>)>,
+    calls: Query<(&ToolRequest, Option<&InReply>, Has<Started>)>,
     mut out: Out,
 ) {
     let Ok((&ForAgent(agent), outcome, ended, used, first)) = effects.get(settled.entity) else {
         return;
     };
-    if let (Ok((request, started)), Some(outcome)) = (calls.get(settled.entity), outcome) {
+    if let (Ok((request, place, started)), Some(outcome)) = (calls.get(settled.entity), outcome) {
         if !started {
-            out.emit(Some(agent), "tool_call", call_fields(&request.call));
+            out.emit(Some(agent), "tool_call", call_fields(&request.call, place));
         }
         let result = outcome.tool_result();
         let cancelled = out.out.cancelled.contains(&settled.entity);
         let fields = json!({
-            "id": request.call.id.wire(),
+            "id": call_id(place),
             "name": request.call.function.name.as_str(),
             "ok": result.is_success(),
             // Refused before it ran: the agent may not use it, or a gate

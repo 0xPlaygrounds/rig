@@ -1096,7 +1096,7 @@ fn a_held_start_holds_a_drivers_first_request() {
     }
     send(
         &input,
-        json!({ "v": 1, "type": "send", "id": 1, "text": "hi" }),
+        json!({ "v": VERSION, "type": "send", "id": 1, "text": "hi" }),
     );
     for _ in 0..20 {
         app.update();
@@ -1118,14 +1118,14 @@ fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let text = "Fix the tests.";
     send(
         &input,
-        json!({ "v": 1, "type": "send", "id": 1, "text": text }),
+        json!({ "v": VERSION, "type": "send", "id": 1, "text": text }),
     );
     test_support::run_until(&mut app, &wakes, waits);
     // While the tool call runs: it reaches the turn's next model call.
     let text = "Also the docs.";
     send(
         &input,
-        json!({ "v": 1, "type": "send", "id": 2, "text": text }),
+        json!({ "v": VERSION, "type": "send", "id": 2, "text": text }),
     );
     test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
     let world = app.world_mut();
@@ -1183,17 +1183,20 @@ fn an_approval_is_answered_over_the_pipe_and_eof_ends_the_run() {
     let model =
         MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({})), reply("ok")]);
     let (mut app, wakes, lines, input) = json_run(&model, true);
-    send(&input, json!({ "v": 1, "type": "send", "text": "Wait." }));
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "send", "text": "Wait." }),
+    );
     test_support::run_until(&mut app, &wakes, |_| !lines.of("ask").is_empty());
     let ask = lines.of("ask").first().cloned().unwrap_or_default();
     let choices = at(&ask, "choices").as_array().into_iter().flatten();
     let ids: Vec<&str> = choices.filter_map(|c| at(c, "id").as_str()).collect();
     assert_eq!(ids, ["deny", "allow"], "{ask}");
-    send(&input, json!({ "v": 1, "type": "state", "id": "s" }));
+    send(&input, json!({ "v": VERSION, "type": "state", "id": "s" }));
     let id = at(&ask, "ask");
     send(
         &input,
-        json!({ "v": 1, "type": "answer", "id": "a", "ask": id, "choices": ["allow"] }),
+        json!({ "v": VERSION, "type": "answer", "id": "a", "ask": id, "choices": ["allow"] }),
     );
     test_support::run_until(&mut app, &wakes, waits);
     let replies = lines.of("reply");
@@ -1223,9 +1226,12 @@ fn an_approval_is_answered_over_the_pipe_and_eof_ends_the_run() {
 fn a_line_of_another_version_is_refused_naming_the_side_to_update() {
     let model = MockCompletionModel::from_stream_turns([reply("ok")]);
     let (mut app, wakes, lines, input) = json_run(&model, false);
-    send(&input, json!({ "v": 2, "type": "state", "id": 1 }));
+    send(
+        &input,
+        json!({ "v": VERSION + 1, "type": "state", "id": 1 }),
+    );
     send(&input, json!({ "type": "state", "id": 2 }));
-    send(&input, json!({ "v": 1, "type": "sned", "id": 3 }));
+    send(&input, json!({ "v": VERSION, "type": "sned", "id": 3 }));
     test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 3);
     let errors: Vec<String> = lines
         .of("reply")
@@ -1383,7 +1389,7 @@ fn a_request_line_not_utf8_is_refused_and_the_next_is_served() {
     let model = MockCompletionModel::from_stream_turns([reply("ok")]);
     let (mut app, wakes, lines, input) = json_run(&model, false);
     assert!(input.try_send(Ok(vec![b'{', 0xff, b'}'])).is_ok());
-    send(&input, json!({ "v": 1, "type": "state", "id": 2 }));
+    send(&input, json!({ "v": VERSION, "type": "state", "id": 2 }));
     test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
     let replies = lines.of("reply");
     let [refused, served] = replies.as_slice() else {
@@ -1408,7 +1414,7 @@ fn a_request_line_past_its_limit_is_refused_and_the_next_is_served() {
         asked: REQUEST_LIMIT + 1,
     };
     assert!(input.try_send(Err(refused)).is_ok());
-    send(&input, json!({ "v": 1, "type": "state", "id": 2 }));
+    send(&input, json!({ "v": VERSION, "type": "state", "id": 2 }));
     test_support::run_until(&mut app, &wakes, |_| lines.of("reply").len() == 2);
     let replies = lines.of("reply");
     let [refused, served] = replies.as_slice() else {
@@ -1673,7 +1679,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         assert_eq!(
             fields,
             [
-                json!("c1"),
+                json!("m1/0"),
                 json!(ok),
                 json!(false),
                 json!(cancelled),
@@ -1743,13 +1749,14 @@ fn a_tool_call_of_no_turn_cut_off_by_a_signal_is_closed_too() {
     });
     assert_eq!(app.should_exit(), Some(AppExit::from_code(130)));
     let results = lines.of("tool_result");
-    let closed = results.iter().find(|line| at(line, "id") == "s1");
-    let fields = closed.map(|line| ["cancelled", "output"].map(|key| at(line, key).clone()));
+    // No reply asked for it, so it has no place to name it by.
+    let closed = results.iter().find(|line| at(line, "name") == "wait");
+    let fields = closed.map(|line| ["id", "cancelled", "output"].map(|key| at(line, key).clone()));
     let cut =
         "Stopped: the run was interrupted. It may have partly run; check before running it again.";
     assert_eq!(
         fields,
-        Some([json!(true), json!(cut)]),
+        Some([Value::Null, json!(true), json!(cut)]),
         "{:?}",
         lines.parsed()
     );

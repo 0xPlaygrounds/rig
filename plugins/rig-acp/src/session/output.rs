@@ -129,7 +129,8 @@ pub(super) fn settled(
         && let Some(id) = out.session.calls.remove(&settled.entity)
     {
         let result = outcome.tool_result();
-        let done = translate::tool_done(&id, !result.is_success(), result.output().render());
+        let output = translate::tool_output(result.output().as_content());
+        let done = translate::tool_done(&id, !result.is_success(), output);
         out.send(acp::SessionUpdate::ToolCallUpdate(done));
     }
 }

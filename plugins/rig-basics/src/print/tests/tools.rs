@@ -99,7 +99,10 @@ fn cli_allowlists_filter_the_first_request_and_enforce_actual_dispatch() {
         let model =
             MockCompletionModel::from_stream_turns([calls("c1", called, json!({})), reply("done")]);
         let (mut app, wakes, lines, input) = restricted_run(&model, tools, ToolAccess::all());
-        send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+        send(
+            &input,
+            json!({"v": VERSION, "type": "send", "text": "Run it."}),
+        );
         test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
         assert_eq!(model.request_count(), 2, "{tools:?}");
         let requests = model.requests();
@@ -202,7 +205,7 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
         };
         let (mut app, wakes, lines, input) =
             restricted_run_with(&model, Some(tools), ToolAccess::all(), configure);
-        let line = json!({"v": 1, "type": "send", "text": "Run it."});
+        let line = json!({"v": VERSION, "type": "send", "text": "Run it."});
         input.try_send(Ok(line.to_string().into_bytes())).ok();
         test_support::run_until(&mut app, &wakes, |_| !lines.of("exit").is_empty());
         let exit = lines.of("exit").first().cloned().unwrap_or_default();
@@ -323,7 +326,10 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
         Some("allowed,denied"),
         ToolAccess::all().narrow(["allowed"]),
     );
-    send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+    send(
+        &input,
+        json!({"v": VERSION, "type": "send", "text": "Run it."}),
+    );
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     let requests = model.requests();
     let advertised: Vec<_> = requests
@@ -341,7 +347,7 @@ fn cli_allowlist_intersects_agent_specific_access_before_requests() {
 fn offered_on(store: &MemoryStore, tools: Option<&str>, access: Option<ToolAccess>) -> Vec<String> {
     let model = answering(&["done"]);
     let (mut app, wakes, lines, input) = restricted_on(store, &model, tools, access, |_| {});
-    send(&input, json!({"v": 1, "type": "send", "text": "Go."}));
+    send(&input, json!({"v": VERSION, "type": "send", "text": "Go."}));
     test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
     app.world_mut().write_message(AppExit::Success);
     app.update();
@@ -416,7 +422,10 @@ fn cli_allowlist_reaches_anthropic_http_output() {
             spec,
             handler: Handler(ErasedHandler::new(adapter)),
         });
-        send(&input, json!({"v": 1, "type": "send", "text": "Run it."}));
+        send(
+            &input,
+            json!({"v": VERSION, "type": "send", "text": "Run it."}),
+        );
         test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
         let requests = http.requests();
         assert_eq!(requests.len(), 1);
@@ -720,4 +729,43 @@ fn a_refused_tool_name_runs_nothing_of_a_resumed_session() {
         let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
         assert_eq!(world.get::<ToolAccess>(agent), Some(&ToolAccess::all()));
     }
+}
+
+/// A call's lines name it by where its reply asked for it, the same id
+/// in `tool_call` and `tool_result`, never by the provider's id, which a
+/// provider may use again: here two replies each ask for `c1`.
+#[test]
+fn a_calls_lines_name_it_by_its_place_in_the_reply() {
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "allowed", json!({})),
+        calls("c1", "allowed", json!({})),
+        reply("done"),
+    ]);
+    let (mut app, wakes, lines, input) = restricted_run(&model, None, ToolAccess::all());
+    send(
+        &input,
+        json!({"v": VERSION, "type": "send", "text": "Run it."}),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    let world = app.world_mut();
+    let conversation = first_agent(world).and_then(|agent| world.get::<Conversation>(agent));
+    let asked: Vec<Value> = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.entries())
+        .filter(|entry| match entry.message {
+            Message::Assistant(reply) => reply.tool_calls().next().is_some(),
+            _ => false,
+        })
+        .map(|entry| json!(format!("{}/0", entry.id)))
+        .collect();
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    let ids = |kind| -> Vec<Value> {
+        lines
+            .of(kind)
+            .iter()
+            .map(|line| at(line, "id").clone())
+            .collect()
+    };
+    assert_eq!(ids("tool_call"), asked);
+    assert_eq!(ids("tool_result"), asked);
 }
