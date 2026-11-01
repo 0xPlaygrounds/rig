@@ -285,8 +285,8 @@ pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
 /// [`TurnCall`]'s events also add up in its [`Partial`], unredacted. Text
 /// and reasoning fragments are redacted as the session log is, through
 /// `rig_core::redact::Streamed`, so a fragment may come later and longer,
-/// and after a later part's. A part's `End` carries what the model sent,
-/// as the `Partial` does.
+/// and after a later part's; one with nothing to show yet is not sent. A
+/// part's `End` carries what the model sent, as the `Partial` does.
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
@@ -1288,8 +1288,8 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`StreamTiming`], a [`StreamDelta`] per event, in order, and each event
-/// into its [`Partial`], if it has one.
+/// [`StreamTiming`], its events as [`StreamDelta`]s through each part's
+/// redactor ([`show`]), and each event into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
     mut calls: Query<(
         Entity,
