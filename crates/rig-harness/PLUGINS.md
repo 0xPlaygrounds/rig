@@ -215,8 +215,10 @@ spawns a successor with the request it needs and the same `CallOf`, which
 the failed effect is `SupersededBy` (`commands.spawn(successor)
 .add_related::<SupersededBy>(&[failed])`), or sends it again
 (`commands.queue(resend(failed))`): the failed effect is recorded as
-superseded, never in the conversation. Any number of effects may name one
-successor, as a race's losers do. Slow work holds the outcome first.
+superseded, never in the conversation. The successor of a reply's call
+takes the call's `InReply` from the kernel, so its result goes in the
+call's place. Any number of effects may name one successor, as a race's
+losers do. Slow work holds the outcome first.
 
 **The loop's edge.** Work spawned, answered or released after `AgentLoop`
 ran waits for the next frame, so a system that does so every frame runs in

@@ -460,9 +460,11 @@ pub struct Holds(Vec<Entity>);
 /// settles at the next Commit, recorded as superseded. Any number of
 /// effects may name one successor: a retry is
 /// `commands.spawn(retry).add_related::<SupersededBy>(&[call])`, and each
-/// loser of a race gets `insert(SupersededBy(winner))`.
+/// loser of a race gets `insert(SupersededBy(winner))`. A successor without
+/// an [`InReply`] takes that of the call it supersedes, so it answers in
+/// the call's place.
 #[derive(Component, Reflect, Debug)]
-#[component(on_add = moved::<SupersededBy>)]
+#[component(on_add = superseded)]
 #[reflect(Component)]
 #[relationship(relationship_target = Supersedes)]
 pub struct SupersededBy(pub Entity);
@@ -970,6 +972,19 @@ pub(crate) fn moved<C: Component>(mut world: DeferredWorld, context: HookContext
         passes.moved = passes.moved.wrapping_add(1);
         passes.last = Some((std::any::type_name::<C>(), context.entity));
     }
+}
+
+/// Gives the successor of a call of a reply the call's place
+/// ([`InReply`]), unless it has one, and counts the move.
+fn superseded(mut world: DeferredWorld, context: HookContext) {
+    let place = world.get::<InReply>(context.entity).copied();
+    let successor = world
+        .get::<SupersededBy>(context.entity)
+        .map(SupersededBy::successor);
+    if let (Some(place), Some(successor)) = (place, successor) {
+        world.commands().entity(successor).try_insert_if_new(place);
+    }
+    moved::<SupersededBy>(world, context);
 }
 
 /// Gives a new effect its id, and its parent from the effect it is a

@@ -30,8 +30,8 @@ use crate::session_log::{
     ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
 };
 use crate::stage::{
-    AgentPass, Decision, ForAgent, HoldOf, IfStopped, Outcome, PrepareSystems, ReadyToSettle,
-    ReadyToStart, Settled, Stage, Started,
+    AgentPass, Decision, Effect, ForAgent, HoldOf, IfStopped, Outcome, PrepareSystems,
+    ReadyToSettle, ReadyToStart, Settled, Stage, Started, SupersededBy, Supersedes,
 };
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
@@ -1495,6 +1495,66 @@ fn each_call_sharing_an_id_keeps_its_own_result_across_a_crash() {
     let calls = vec![("peek".to_owned(), false), ("look".to_owned(), true)];
     let expected = (calls, vec![None, Some(ExitStatus::Exited(7))]);
     assert_eq!(answered, Some(expected), "{said}");
+}
+
+/// Replaces each `look` call with a successor of its own, as a reviewer
+/// may: its request, parent, turn and agent, but not its place.
+fn replace_looks(
+    calls: Query<
+        (Entity, &ToolRequest, &Effect, &CallOf, &ForAgent),
+        (ReadyToStart, Without<SupersededBy>, Without<Supersedes>),
+    >,
+    mut commands: Commands,
+) {
+    for (call, request, effect, &CallOf(turn), &ForAgent(agent)) in &calls {
+        if request.call.function.name.as_str() == "look" {
+            let parent = Effect::with_parent_id(effect.parent);
+            let successor = (request.clone(), parent, CallOf(turn), ForAgent(agent));
+            commands
+                .spawn(successor)
+                .add_related::<SupersededBy>(&[call]);
+        }
+    }
+}
+
+#[test]
+fn a_successor_a_plugin_made_keeps_its_result_across_a_crash() {
+    let store = MemoryStore::default();
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([vec![
+        call("l1", "look"),
+        call("p1", "peek"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Peek)
+            .add_systems(AgentPass, replace_looks.in_set(Stage::Gate));
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    // The successor settled, and the session saved its result, while
+    // `peek` still runs.
+    let saved = store.clone();
+    let settled = move |_: &World| {
+        let session = rig_memory::Session::read(&saved);
+        let agents = session.map(|session| session.agents).unwrap_or_default();
+        let asides = agents.iter().flat_map(|agent| agent.conversation.asides());
+        let mut states = asides.map(|(_, aside)| aside.value.get("state").cloned());
+        states.any(|state| state == Some(Value::from("settled")))
+    };
+    let kept = run_until(&mut app, settled);
+    // A crash: nothing more is written.
+    drop(app);
+    let (app, said, store) = restart_after(store, |app| {
+        app.add_tool(Peek);
+    });
+    // `look` did not run again: its successor's result was kept.
+    let gated = &app.world().resource::<Gated>().0;
+    assert!(!gated.iter().any(|(tool, _)| tool == "look"), "{gated:?}");
+    assert!(kept && said.contains("seen"), "{said}");
+    assert_eq!(saved_exit(&store, "l1"), Some(ExitStatus::Exited(7)));
 }
 
 /// Changes the one file its call names, and never answers.

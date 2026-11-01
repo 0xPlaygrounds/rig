@@ -30,7 +30,7 @@
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::CallOf;
 use rig_ecs::stage::{Effect, EffectRequest, ForAgent, Settled, SupersededBy};
-use rig_ecs::tools::{InReply, ToolRequest};
+use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, SideCall, TurnCall};
 
 use crate::load::ProvidedBy;
@@ -41,8 +41,9 @@ use crate::load::ProvidedBy;
 /// [`ModelRequest`], [`EffectRequest`] or [`ToolRequest`] is copied as it
 /// is now, with its Prepare edits (a model call's connection is routed and
 /// adapted again in Prepare, as `Adapted` is not copied), and its
-/// [`Effect`] parent and purpose, [`InReply`], `CallOf`, `ForAgent`,
-/// `ChildOf`, `ProvidedBy` and `Name`. The owner's markers follow by
+/// [`Effect`] parent and purpose, `CallOf`, `ForAgent`, `ChildOf`,
+/// `ProvidedBy` and `Name`; the kernel gives it the call's `InReply`. The
+/// owner's markers follow by
 /// [`follow_successor`](rig_ecs::stage::follow_successor):
 /// `commands.queue(resend(call))`.
 pub fn resend(effect: Entity) -> impl Command {
@@ -69,7 +70,6 @@ pub fn resend(effect: Entity) -> impl Command {
                 old.get::<ToolRequest>().cloned(),
             )
         };
-        let in_reply = old.get::<InReply>().copied();
         let call_of = old.get::<CallOf>().map(|&CallOf(turn)| CallOf(turn));
         let agent = old
             .get::<ForAgent>()
@@ -89,7 +89,6 @@ pub fn resend(effect: Entity) -> impl Command {
         insert(&mut successor, model);
         insert(&mut successor, request);
         insert(&mut successor, tool);
-        insert(&mut successor, in_reply);
         insert(&mut successor, call_of);
         insert(&mut successor, agent);
         insert(&mut successor, child_of);
