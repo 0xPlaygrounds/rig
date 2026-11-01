@@ -579,11 +579,21 @@ impl Stopper<'_, '_> {
     /// calls settle, so a call's owner sees it stopped them; the record
     /// names the last entry and the places of the calls the stop cut: those
     /// it answered and the streamed ones. The conversation is saved at
-    /// once, and the views told, unless the app exits.
+    /// once, and the views told, unless the app exits. A turn whose record
+    /// has ended is not stopped again: the rest of a stop waits in
+    /// commands, and another stop, such as one a [`StopReached`] observer
+    /// makes, can come before they apply.
     pub(crate) fn stop(&mut self, agent: Entity, cause: StopCause, alone: bool) -> bool {
         let Ok((id, mut conversation, active)) = self.agents.get_mut(agent) else {
             return false;
         };
+        if conversation
+            .turns()
+            .next_back()
+            .is_some_and(|(_, record)| record.end.is_some())
+        {
+            return false;
+        }
         let why = cause.to_string();
         let turn = active.turn();
         let (reply, calls) = match self.turns.get_mut(turn) {

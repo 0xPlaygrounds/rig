@@ -67,7 +67,8 @@ fn hold_turn_calls(calls: Query<Entity, (ReadyToStart, With<TurnCall>)>, mut com
 }
 
 #[test]
-fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_stop_ends_it() {
+fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_stop_ends_it_once()
+{
     let models = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let models = scripted_models([
         ("debate-pro/m", &models),
@@ -107,6 +108,14 @@ fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_
     }
     assert_eq!(arguing(app.world()), 2, "both debaters still argue");
 
+    // Each arguing debater has streamed some text when the user stops.
+    let world = app.world_mut();
+    let mut arguers = world.query_filtered::<Entity, (With<Debater>, With<ActiveTurn>)>();
+    let arguers: Vec<Entity> = arguers.iter(world).collect();
+    let mut streaming = world.query_filtered::<&mut Partial, With<TurnCall>>();
+    for mut partial in streaming.iter_mut(world) {
+        partial.text = "half".to_owned();
+    }
     app.world_mut().trigger(StopTurn::new(host));
     for _ in 0..3 {
         app.update();
@@ -115,6 +124,22 @@ fn a_plugin_ending_the_hosts_turn_alone_leaves_the_debate_running_and_the_users_
     assert!(world.get::<Debate>(host).is_none(), "the debate ended");
     let mut running = world.query_filtered::<(), (With<Debater>, With<ActiveTurn>)>();
     assert_eq!(running.iter(world).count(), 0, "no debater runs");
+    assert_eq!(arguers.len(), 2);
+    for conversation in arguers
+        .iter()
+        .filter_map(|&agent| world.get::<Conversation>(agent))
+    {
+        let aborted = conversation.messages().iter().filter(|message| {
+            matches!(&***message, message::Message::Assistant(reply)
+                if matches!(reply.stop, Some(message::StopReason::Aborted(_))))
+        });
+        assert_eq!(aborted.count(), 1, "what streamed is kept once");
+        assert_eq!(
+            conversation.halted(),
+            Some(Halt::Stopped),
+            "the user stopped it"
+        );
+    }
 }
 
 #[test]
