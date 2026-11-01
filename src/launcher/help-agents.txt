@@ -60,7 +60,7 @@ keeps it running after (on macOS: perl -MPOSIX -e 'POSIX::setsid(); exec
 Every line, both ways, is a JSON object with "v":2. A line of another
 version is refused with a reply saying whether rig or the driver needs
 updating. Every event has "ms", when it was written (Unix milliseconds).
-No key reaches an event: rig redacts each as its session log does.
+rig redacts every event as its session log is redacted.
 
 Requests, each with an optional "id" its reply repeats, and "agent" (an
 agent's id; the main agent without one):

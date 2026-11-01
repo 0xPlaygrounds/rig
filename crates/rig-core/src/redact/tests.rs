@@ -198,6 +198,8 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
         "\"API_KEY\": \"abcdefgh12345678\", \"name\": \"x\"\n\tSECRET=$HOME",
         "Export it (GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789).",
         "PASSWORD=\"sk-proj-abcdefghijklmnop1234 trailing\" then",
+        "AKIA0123456789ABCDEFghp_abcdefghijklmnopqrstuvwxyz0123456789 and AKIA0123456789ABCDEFsk-proj-abcdefghijklmnop1234",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----TOKEN=abcdefgh12345678",
         "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY----- API_KEY=abcdefgh12345678",
     ];
     for input in texts {
@@ -244,4 +246,14 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
         shown += &streamed.finish();
         assert_eq!(shown, text(&pieces.concat()), "{}", &line[..8]);
     }
+}
+
+/// A secret right after another, with no space between, is found too: what
+/// follows a secret starts a token, as it does once the first is redacted.
+#[test]
+fn a_secret_right_after_another_is_found_too() {
+    let glued = "AKIA0123456789ABCDEFghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    assert_eq!(text(glued), "[REDACTED][REDACTED]");
+    let after_a_block = "-----BEGIN RSA PRIVATE KEY-----\nMIIEow\n-----END RSA PRIVATE KEY-----TOKEN=abcdefgh12345678";
+    assert_eq!(text(after_a_block), "[REDACTED]TOKEN=[REDACTED]");
 }

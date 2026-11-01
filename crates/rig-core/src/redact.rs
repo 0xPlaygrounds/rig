@@ -126,6 +126,9 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
     // on a char boundary, and the bytes of any other character are skipped.
     let bytes = input.as_bytes();
     let mut at = 0;
+    // Where the last secret ended: what follows it starts a token, as it
+    // does after the secret is redacted, so redacting twice finds nothing new.
+    let mut ended = 0;
     std::iter::from_fn(move || {
         while let Some(&byte) = bytes.get(at) {
             if !is_token_byte(byte) {
@@ -139,14 +142,14 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
                 .unwrap_or(rest.len());
             let token = rest.get(..len).unwrap_or_default();
             if may_be_secret(token)
-                && starts_token(input, at)
+                && (starts_token(input, at) || at == ended)
                 && let Some(rest) = input.get(at..)
             {
                 let found = secret_at(rest).map(|(kind, len)| (kind, 0..len));
                 let found = found.or_else(|| Some((Kind::Assigned, assigned(rest)?)));
                 if let Some((kind, range)) = found {
                     let range = at + range.start..at + range.end;
-                    at = range.end;
+                    (at, ended) = (range.end, range.end);
                     return Some(SecretMatch { kind, range });
                 }
             }
@@ -250,11 +253,21 @@ fn settled(input: &str) -> usize {
     };
     let line = line_of(input.len());
     let last = input.get(line..).unwrap_or_default();
-    // Where the last secret name of the last line starts.
-    let named = (0..last.len()).rev().find(|&at| {
-        let name = || last.get(at..).map(|rest| rest.get(..token_len(rest)));
-        starts_token(last, at) && name().flatten().is_some_and(secret_name)
-    });
+    // Where the last secret name of the last line starts: a run of key
+    // characters that ends as one does, wherever in the run [`find`] may
+    // start a token.
+    let named = SECRET_NAMES
+        .iter()
+        .flat_map(|name| {
+            let ends_run = |at: usize| {
+                let after = last.get(at + name.len()..).unwrap_or_default();
+                !after.starts_with(is_token_char)
+            };
+            last.match_indices(name)
+                .map(|(at, _)| at)
+                .filter(move |&at| ends_run(at))
+        })
+        .max();
     if input.len() > HELD_MOST {
         let cut = named.map_or(word, |at| word.min(line + at));
         return [cut, word]
