@@ -760,7 +760,13 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
         let kept = original
             .iter()
             .find(|was| was.id.is_some() && was.id == entry.id);
-        let placed = kept.is_some_and(|was| ids(&was.message).0.starts_with(&calls));
+        // Whole calls, as ids alone repeat across replies.
+        let asked = |message: &Message| match message {
+            Message::Assistant(turn) => turn.tool_calls().cloned().collect(),
+            _ => Vec::new(),
+        };
+        let placed =
+            kept.is_some_and(|was| asked(&was.message).starts_with(&asked(&entry.message)));
         if entry.id.is_none() || placed {
             continue;
         }

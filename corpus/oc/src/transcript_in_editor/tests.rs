@@ -419,11 +419,20 @@ fn a_reply_whose_calls_an_edit_moved_gets_a_new_id() {
 
 /// Taking out a reply's only call, and its result, merges the next reply
 /// into it: that reply's call then sits where the taken call was, so the
-/// merged reply gets a new id and nothing kept for the old place is its.
+/// merged reply gets a new id and nothing kept for the old place is its,
+/// also when the two calls have the same id, as replies may reuse one.
 #[cfg(unix)]
 #[test]
 fn a_reply_a_merge_moves_a_call_into_gets_a_new_id() {
-    let home = scratch_home("oc-transcript-in-editor-merged");
+    merge_moves_a_call("c2");
+    merge_moves_a_call("c1");
+}
+
+/// [`a_reply_a_merge_moves_a_call_into_gets_a_new_id`], with `second` the
+/// id of the second reply's call.
+#[cfg(unix)]
+fn merge_moves_a_call(second: &str) {
+    let home = scratch_home(&format!("oc-transcript-in-editor-merged-{second}"));
     let home = home.root().to_path_buf();
     assert!(std::fs::create_dir_all(&home).is_ok());
     let command = |command: &str| serde_json::json!({ "command": command });
@@ -434,7 +443,7 @@ fn a_reply_a_merge_moves_a_call_into_gets_a_new_id() {
             MockStreamEvent::final_response_with_default_usage(),
         ],
         vec![
-            MockStreamEvent::tool_call("c2", "shell", command("two")),
+            MockStreamEvent::tool_call(second, "shell", command("two")),
             MockStreamEvent::final_response_with_default_usage(),
         ],
         reply("Both ran."),
@@ -461,9 +470,9 @@ fn a_reply_a_merge_moves_a_call_into_gets_a_new_id() {
         &home,
         "drop-first.sh",
         &awk(r#"/^## \[/ { skip = 0 }
-/^```call shell c1$/ { fence = 1; next }
+/^```call shell c1$/ && !gone { fence = 1; gone = 1; next }
 fence { if (/^```$/) fence = 0; next }
-/^## \[3\] tool-result shell c1$/ { skip = 1 }
+/^## \[3\] tool-result shell c1$/ && !cut { skip = 1; cut = 1 }
 !skip { print }"#),
     );
     let said = typed(
