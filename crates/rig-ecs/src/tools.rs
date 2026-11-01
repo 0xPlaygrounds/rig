@@ -132,7 +132,7 @@ pub struct ToolRequest {
 
 /// Which call of its reply a tool call is, on each call a reply asked for.
 /// It tells apart calls that share a provider's id. A call that supersedes
-/// one keeps it. Only the kernel gives one:
+/// one keeps it. Only the kernel makes one:
 ///
 /// ```compile_fail,E0423
 /// # use rig_ecs::prelude::*;

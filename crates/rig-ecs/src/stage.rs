@@ -462,7 +462,7 @@ pub struct Holds(Vec<Entity>);
 /// `commands.spawn(retry).add_related::<SupersededBy>(&[call])`, and each
 /// loser of a race gets `insert(SupersededBy(winner))`. A successor without
 /// an [`InReply`] takes that of the call it supersedes, so it answers in
-/// the call's place.
+/// the call's place. With several, it takes the first one's.
 #[derive(Component, Reflect, Debug)]
 #[component(on_add = superseded)]
 #[reflect(Component)]
