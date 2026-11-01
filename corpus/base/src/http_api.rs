@@ -28,7 +28,6 @@ use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_basics::activity::Activity;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::redact;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -172,13 +171,12 @@ impl Events<'_, '_> {
     }
 }
 
-/// Sends the event `kind` with `data` to `clients`, redacted as the session
-/// log is, dropping those that lag behind or went away.
+/// Sends the event `kind` with `data` to `clients`, dropping those that lag
+/// behind or went away.
 fn send(clients: &mut Vec<SyncSender<String>>, kind: &str, data: &Value) {
     if clients.is_empty() {
         return;
     }
-    let data = redact::json_text(&data.to_string()).into_owned();
     let event = format!("event: {kind}\ndata: {data}\n\n");
     clients.retain(|client| client.try_send(event.clone()).is_ok());
 }

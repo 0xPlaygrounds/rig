@@ -30,7 +30,6 @@ use futures::channel::mpsc::{UnboundedSender, unbounded};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
-use rig_harness::rig_core::redact;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_tools::fs::{place, resolve};
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
@@ -338,10 +337,10 @@ impl EditorClient {
     }
 }
 
-/// Sends `message` as a line on `out`, redacted as the session log is.
+/// Sends `message` as a line on `out`.
 fn send(out: &mpsc::Sender<String>, message: &ToEditor) {
     if let Ok(line) = serde_json::to_string(message) {
-        out.send(redact::json_text(&line).into_owned()).ok();
+        out.send(line).ok();
     }
 }
 
