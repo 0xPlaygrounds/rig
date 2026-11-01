@@ -231,3 +231,23 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
         .collect();
     assert_eq!(leaves, [Some(vec!["look".to_owned()])]);
 }
+
+#[test]
+fn a_program_never_spawns_an_agent_deeper_than_the_subagent_limit() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, root) = app(&model);
+    // At depth 2, rig-basics' default `SubagentPolicy::max_depth`: `task`
+    // refuses this agent a child.
+    let child = app.world_mut().spawn((Agent, SpawnedBy(root))).id();
+    let deepest = app.world_mut().spawn((Agent, SpawnedBy(child))).id();
+    let code = json!({ "code": r#"(spawn-agent "leaf")"# });
+    let call = start_call(app.world_mut(), deepest, (RUN_STEEL, "s1"), code);
+    let call = call.unwrap_or(Entity::PLACEHOLDER);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(call).is_some()
+    });
+    let world = app.world_mut();
+    let mut parents = world.query::<&SpawnedBy>();
+    let too_deep = parents.iter(world).filter(|by| by.0 == deepest).count();
+    assert_eq!(too_deep, 0, "an agent was spawned at depth 3");
+}
