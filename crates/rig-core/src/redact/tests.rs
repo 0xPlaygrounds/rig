@@ -181,3 +181,51 @@ fn json_text_redacts_serialized_json_as_its_value_is_redacted() {
     let unclosed = r#"{"a":"AKIA0123456789ABCDEF"#;
     assert_eq!(json_text(unclosed), unclosed);
 }
+
+/// A text redacted in pieces, cut anywhere, joins to the text redacted
+/// whole: no secret the whole holds is shown, however it streams.
+#[test]
+fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
+    let texts = [
+        "Set OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234 first, then run it.",
+        "export GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789\nnext",
+        "PASSWORD: hunter2hunter2 and DB_PASSWORD = \"two words here\" end",
+        "id AKIA0123456789ABCDEF and eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2ln done",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\nabcd\n-----END RSA PRIVATE KEY-----\nafter",
+        "-----BEGIN PRIVATE KEY-----\nMIIEowIBAAKCAQEA never ends",
+        "Prose with é and 日本語の文 words, no key, MAX_TOKENS=4096 and TOKEN_COUNT: 12345678.",
+        "https://example.com/a+b/sk-proj-abcdefghijklmnop1234,(ghp_abcdefghijklmnopqrstuvwxyz0123456789)",
+        "\"API_KEY\": \"abcdefgh12345678\", \"name\": \"x\"\n\tSECRET=$HOME",
+    ];
+    for text_ in texts {
+        let whole = text(text_).into_owned();
+        let cuts: Vec<usize> = (0..=text_.len())
+            .filter(|&at| text_.is_char_boundary(at))
+            .collect();
+        // Every cut into two pieces, and the text one character at a time.
+        let splits = cuts.iter().map(|&at| vec![&text_[..at], &text_[at..]]);
+        let chars = cuts
+            .windows(2)
+            .map(|pair| &text_[pair[0]..pair[1]])
+            .collect::<Vec<_>>();
+        for pieces in splits.chain(std::iter::once(chars)) {
+            let mut streamed = Streamed::default();
+            let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
+            shown += &streamed.finish();
+            assert_eq!(shown, whole, "{pieces:?}");
+        }
+    }
+}
+
+/// A run of key characters with no end, such as a base64 blob, is held
+/// back no further than `HELD_MOST`, so it streams and is not searched
+/// again with every piece.
+#[test]
+fn a_streamed_run_with_no_end_is_held_back_no_further_than_its_bound() {
+    let mut streamed = Streamed::default();
+    let piece = "a".repeat(100);
+    let held_back = (0..400).map(|_| streamed.push(&piece).len()).sum::<usize>();
+    assert!(400 * 100 - held_back <= HELD_MOST + 100, "{held_back}");
+    let rest = streamed.finish();
+    assert_eq!(held_back + rest.len(), 400 * 100);
+}

@@ -179,6 +179,88 @@ pub fn text(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// The most a [`Streamed`] holds back, in bytes: a private key block, the
+/// longest secret, is a few kilobytes.
+pub const HELD_MOST: usize = 16 * 1024;
+
+/// A text that arrives in pieces, such as a streamed reply, redacted as
+/// [`text`] redacts it whole: what [`Self::push`] and [`Self::finish`]
+/// return, joined, is [`text`] of the pieces joined. It holds back what a
+/// later piece may still make part of a secret: the last run of characters
+/// a key is made of, a line that names a secret (its value may follow), and
+/// a private key block not yet ended. It holds at most [`HELD_MOST`] bytes,
+/// far more than a key: past that it returns what it holds, so a longer run
+/// of key characters, such as a base64 blob, may show its tail.
+///
+/// ```
+/// use rig_core::redact::Streamed;
+///
+/// let mut streamed = Streamed::default();
+/// let mut shown = streamed.push("export GITHUB_TOKEN=gh");
+/// assert_eq!(shown, "");
+/// shown += &streamed.push("p_abcdefghijklmnopqrstuvwxyz0123456789\nnext ");
+/// shown += &streamed.finish();
+/// assert_eq!(shown, "export GITHUB_TOKEN=[REDACTED]\nnext ");
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct Streamed {
+    /// What came and was not returned yet.
+    held: String,
+}
+
+impl Streamed {
+    /// Takes `piece` and returns, redacted, what no later piece can change.
+    pub fn push(&mut self, piece: &str) -> String {
+        self.held.push_str(piece);
+        let settled = match self.held.len() > HELD_MOST {
+            true => self.held.len(),
+            false => settled(&self.held),
+        };
+        let rest = self.held.split_off(settled);
+        let shown = text(&self.held).into_owned();
+        self.held = rest;
+        shown
+    }
+
+    /// Returns, redacted, what it still holds: the text ended.
+    pub fn finish(&mut self) -> String {
+        let shown = text(&self.held).into_owned();
+        self.held.clear();
+        shown
+    }
+}
+
+/// How much of `input`, a text that may still grow, ends where no secret
+/// [`find`] finds in the grown text can start before it and end after it:
+/// before the last run of characters a key or a JSON Web Token is made of,
+/// before a line that names a secret, and before the line of a private key
+/// block not yet ended. Each such place follows a character no token
+/// continues, so a token starts after it as in the whole text.
+fn settled(input: &str) -> usize {
+    let word = input
+        .char_indices()
+        .rfind(|&(_, ch)| !is_token_char(ch) && !matches!(ch, '.' | '+' | '/'))
+        .map_or(0, |(at, ch)| at + ch.len_utf8());
+    let line_of = |at: usize| {
+        input
+            .get(..at)
+            .and_then(|before| before.rfind('\n'))
+            .map_or(0, |at| at + 1)
+    };
+    let line = line_of(input.len());
+    let last = input.get(line..).unwrap_or_default();
+    let names = last.split(|ch| !is_token_char(ch)).any(secret_name);
+    let open_key = find(input)
+        .last()
+        .filter(|found| found.kind == Kind::PrivateKey && found.range.end == input.len())
+        .map(|found| line_of(found.range.start));
+    let mut settled = word;
+    if names || last.contains("-----BEGIN ") {
+        settled = settled.min(line);
+    }
+    open_key.map_or(settled, |key| settled.min(key))
+}
+
 /// `json`, serialized JSON such as a JSON line, with every string in it
 /// redacted as [`json`] redacts a value: object keys are left as they are.
 /// Borrowed when it has none, and only a string with an escape in it is
@@ -434,15 +516,7 @@ const SECRET_NAMES: &[&str] = &[
 /// is a key of a known shape, which the scan finds as its own kind.
 fn assigned(rest: &str) -> Option<Range<usize>> {
     let name = rest.get(..token_len(rest))?;
-    let upper_snake = name.starts_with(|ch: char| ch.is_ascii_uppercase())
-        && name
-            .chars()
-            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
-    let secret_named = SECRET_NAMES.iter().any(|end| {
-        name.strip_suffix(end)
-            .is_some_and(|head| head.is_empty() || head.ends_with('_'))
-    });
-    if !upper_snake || !secret_named {
+    if !secret_name(name) {
         return None;
     }
     // A quoted name's closing quote, then `=` or `:`, spaces around it.
@@ -469,6 +543,20 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
         && value != REDACTED
         && secret_at(value).is_none();
     plausible.then(|| from..from + value.len())
+}
+
+/// Whether `name` is upper snake case and is, or ends after a `_` with, one
+/// of [`SECRET_NAMES`].
+fn secret_name(name: &str) -> bool {
+    let upper_snake = name.starts_with(|ch: char| ch.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_');
+    upper_snake
+        && SECRET_NAMES.iter().any(|end| {
+            name.strip_suffix(end)
+                .is_some_and(|head| head.is_empty() || head.ends_with('_'))
+        })
 }
 
 /// Whether `ch` ends an unquoted assigned value: whitespace, a quote, or a
