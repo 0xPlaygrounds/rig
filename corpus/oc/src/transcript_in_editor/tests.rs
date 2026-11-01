@@ -456,7 +456,7 @@ fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
     let home = scratch_home("oc-transcript-in-editor-repeated");
     let home = home.root().to_path_buf();
     assert!(std::fs::create_dir_all(&home).is_ok());
-    let model = MockCompletionModel::from_stream_turns([reply("Both ran.")]);
+    let model = MockCompletionModel::from_stream_turns([reply("Hello."), reply("Both ran.")]);
     let store = MemoryStore::default();
     let started = start(&store, &model, &home);
     assert!(started.is_some(), "the session has one agent");
@@ -468,6 +468,7 @@ fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
         ("c9", serde_json::json!({ "command": "two", "exit": 7 })),
         ("c10", serde_json::json!({ "command": "three", "exit": 5 })),
     ];
+    ask(&mut app, &wakes, agent, "Hi.");
     app.add_systems(AgentPass, answer_once(asked).in_set(Stage::Gate));
     ask(&mut app, &wakes, agent, "Run both.");
     // The id of each reply with calls, and the exit status each call
@@ -513,7 +514,7 @@ fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
             awk(r#"/^## \[/ { skip = 0 }
 /^```call shell c9$/ && !gone { fence = 1; gone = 1; next }
 fence { if (/^```$/) fence = 0; next }
-/^## \[3\] tool-result shell c9$/ && !cut { skip = 1; cut = 1 }
+/^## \[5\] tool-result shell c9$/ && !cut { skip = 1; cut = 1 }
 !skip { print }"#)
         ),
     );
@@ -539,7 +540,7 @@ fence { if (/^```$/) fence = 0; next }
         &awk(r#"/^## \[/ { skip = 0 }
 /^```call shell c10$/ { fence = 1; next }
 fence { if (/^```$/) fence = 0; next }
-/^## \[3\] tool-result shell c10$/ { skip = 1 }
+/^## \[5\] tool-result shell c10$/ { skip = 1 }
 !skip { print }"#),
     );
     let said = typed(
@@ -557,5 +558,30 @@ fence { if (/^```$/) fence = 0; next }
         replies.iter().map(|(id, _)| *id).collect::<Vec<_>>()
     };
     assert_eq!(ids(&after), ids(&before), "{said}");
+
+    // Taking out the question before the reply would merge it into the
+    // answer before: refused too.
+    std::fs::remove_file(home.join("count")).ok();
+    let drop_question = script(
+        &home,
+        "drop-question.sh",
+        &format!(
+            "if [ -e \"$d/count\" ]; then head -n 1 \"$f\" > \"$d/seen\"; exit 0; fi\ntouch \"$d/count\"\n{}",
+            awk(r#"/^## \[/ { skip = 0 } /^## \[3\] user$/ { skip = 1 } !skip { print }"#)
+        ),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_question,
+        "nothing changed",
+    );
+    let seen = std::fs::read_to_string(home.join("seen")).unwrap_or_default();
+    assert!(
+        seen.starts_with("# ERROR:") && seen.contains("`c9`"),
+        "{seen}\n{said}"
+    );
+    assert_eq!(exits(&app), after, "{said}");
     std::fs::remove_dir_all(&home).ok();
 }
