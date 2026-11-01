@@ -49,8 +49,8 @@ pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 /// What the view knows of the effects that settled, in this run and, once
 /// [`PastEffects`] brought them, before it: how long each tool call ran,
 /// by its agent and [`CallRef`]; and which calls each effect started,
-/// through any effect between, for [`ToolCallView::children`]. All of it comes from the
-/// kernel's effect records. What a call published comes from its result's
+/// through any effect between, for [`ToolCallView::children`]. All of it
+/// comes from the kernel's effect records. What a call published comes from its result's
 /// entry ([`ShownEntry::facts`]), which the session keeps.
 #[derive(Resource, Default)]
 pub(crate) struct CallFacts {
@@ -248,9 +248,8 @@ pub(crate) struct Settled {
 impl Settled {
     /// Notes the effect `record` settled: under the effect that started
     /// it, as a call or as an effect calls go through; and, for a tool
-    /// call of a reply, how long it ran. A record that names no call, as
-    /// one saved before records named them, has no running time. A record
-    /// read twice counts once: whether it is new.
+    /// call of a reply, how long it ran. A record read twice counts once:
+    /// whether it is new.
     fn note(&mut self, record: &EffectRecord) -> bool {
         if !self.calls.known.insert(record.id) {
             return false;

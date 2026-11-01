@@ -130,12 +130,9 @@ pub struct ToolRequest {
     pub call: ToolCall,
 }
 
-/// Which call of its reply a tool call is: on each call a model's reply
-/// asked for, given by the kernel as it spawns the reply's calls, and by a
-/// restore. A reply may repeat a provider's call id; this tells its calls
-/// apart. A call that supersedes one keeps it.
-///
-/// Only the kernel gives one:
+/// Which call of its reply a tool call is, on each call a reply asked for.
+/// It tells apart calls that share a provider's id. A call that supersedes
+/// one keeps it. Only the kernel gives one:
 ///
 /// ```compile_fail,E0423
 /// # use rig_ecs::prelude::*;

@@ -2,8 +2,7 @@
 //! which result answers which call ([`answered_by`]), validation and repair
 //! of a message list, the same repair over entries that keeps their ids
 //! ([`normalize`]), the calls a cut-short conversation still owes, and
-//! where a window of it may start. A call is known by its reply and place
-//! ([`CallRef`]), as a reply may repeat a provider's call id.
+//! where a window of it may start.
 //!
 //! ```
 //! use rig_core::{conversation::pairing, message::Message};
@@ -53,9 +52,8 @@ pub enum PairingError {
     },
 }
 
-/// One tool call of a reply: the reply's entry and the call's place among
-/// the reply's tool calls, from 0. No two calls of a conversation share
-/// one, while a reply may repeat a provider's call id.
+/// A tool call's place: its reply's entry and its index among the reply's
+/// tool calls. Unlike a provider's call id, no two calls share one.
 ///
 /// ```
 /// use rig_core::conversation::{CallRef, Conversation};
@@ -73,20 +71,17 @@ pub enum PairingError {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CallRef {
-    /// The reply that asked for the call.
     pub reply: MessageId,
-    /// Its place among the reply's tool calls, from 0.
     pub index: u32,
 }
 
 impl CallRef {
-    /// Its plain form, the reply's id and the place: `m4/1`.
+    /// Its text form, such as `m4/1`.
     pub fn wire(&self) -> String {
         format!("{}/{}", self.reply, self.index)
     }
 
-    /// The tool calls of `message`, the entry `reply`, each with its
-    /// [`CallRef`], in order.
+    /// The tool calls of `message`, the entry `reply`, with their places.
     pub fn calls(
         reply: MessageId,
         message: &AssistantMessage,
@@ -98,12 +93,9 @@ impl CallRef {
     }
 }
 
-/// The answer of each of `calls`, in call order, among `answers`, each
-/// with the call id it answers: the n-th answer with an id answers the
-/// n-th call with that id, as [`pair`] pairs results with calls. `None`
-/// for a call nothing answers; an answer no call waits for is left out.
-/// Every reader that matches results, or what a result keeps, to a call
-/// uses this rule.
+/// The answer of each of `calls`, in call order: the n-th answer with an id
+/// answers the n-th call with that id, as [`pair`] pairs them. `None` for a
+/// call nothing answers; an answer no call waits for is dropped.
 ///
 /// ```
 /// use rig_core::conversation::pairing::answered_by;
@@ -127,6 +119,24 @@ pub fn answered_by<'c, 'a, T>(
         }
     }
     found
+}
+
+/// The item of each of `calls`, in call order: the one kept at its place,
+/// else the placeless one [`answered_by`] pairs with it.
+pub(crate) fn placed<T: Copy>(
+    calls: &[(CallRef, &CallId)],
+    items: &[(&CallId, Option<CallRef>, T)],
+) -> Vec<Option<T>> {
+    let placeless = items.iter().filter(|(_, at, _)| at.is_none());
+    let paired = answered_by(
+        calls.iter().map(|(_, id)| *id),
+        placeless.map(|&(id, _, item)| (id, item)),
+    );
+    let at = |place: CallRef| items.iter().find(|(_, at, _)| *at == Some(place));
+    let calls = calls.iter().zip(paired);
+    calls
+        .map(|((place, _), paired)| at(*place).map(|&(.., item)| item).or(paired))
+        .collect()
 }
 
 /// Rejects what [`pair`] would repair: consecutive assistant messages, a
@@ -537,8 +547,7 @@ fn unanswered<'a>(
         .collect()
 }
 
-/// The one rule for which call a result answers: take the first of
-/// `waiting` with the id `id`; `None` when none has it.
+/// Takes the first of `waiting` with the id `id`.
 fn take<T>(waiting: &mut Vec<T>, id: &CallId, id_of: impl Fn(&T) -> &CallId) -> Option<T> {
     let at = waiting.iter().position(|call| id_of(call) == id)?;
     Some(waiting.remove(at))
@@ -734,8 +743,8 @@ fn sourced(content: Vec<(Option<usize>, UserContent)>) -> (Vec<usize>, Vec<UserC
 }
 
 /// The tool calls of the last assistant message in `messages` that no
-/// later tool result answers ([`answered_by`]), in call order: what a
-/// conversation cut short still owes the model. A turn that ended in an
+/// later tool result answers, in call order: what a conversation cut short
+/// still owes the model. A turn that ended in an
 /// error or was aborted owes none, as its calls never run.
 pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
     let pending = pending(messages);

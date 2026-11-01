@@ -646,8 +646,9 @@ impl From<ToolCall> for PartialCall {
 #[reflect(opaque, Event, Clone, Debug)]
 pub struct StopTurn {
     entity: Entity,
-    cause: StopCause,
-    below: bool,
+    pub(crate) cause: StopCause,
+    /// Whether the stop reaches the agents below the agent.
+    pub(crate) below: bool,
 }
 
 impl StopTurn {
@@ -681,16 +682,6 @@ impl StopTurn {
             ..self
         }
     }
-
-    /// Who or what stops the turn.
-    pub(crate) fn cause(&self) -> &StopCause {
-        &self.cause
-    }
-
-    /// Whether the stop reaches the agents below the agent.
-    pub(crate) fn reaches_below(&self) -> bool {
-        self.below
-    }
 }
 
 /// On each agent a [`StopTurn`] reached, idle or not, once its turn
@@ -707,15 +698,11 @@ impl StopTurn {
 /// ```
 #[derive(EntityEvent, Clone, Debug)]
 pub struct StopReached {
-    entity: Entity,
-    cause: StopCause,
+    pub(crate) entity: Entity,
+    pub(crate) cause: StopCause,
 }
 
 impl StopReached {
-    pub(crate) fn new(entity: Entity, cause: StopCause) -> Self {
-        Self { entity, cause }
-    }
-
     /// Who or what stopped it.
     pub fn cause(&self) -> &StopCause {
         &self.cause
@@ -827,14 +814,10 @@ pub enum TurnOutcome {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Stop {
-    cause: StopCause,
+    pub(crate) cause: StopCause,
 }
 
 impl Stop {
-    pub(crate) fn new(cause: StopCause) -> Self {
-        Self { cause }
-    }
-
     /// Who or what stopped the turn.
     pub fn cause(&self) -> &StopCause {
         &self.cause

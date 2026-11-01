@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::CallRef;
-use super::pairing::answered_by;
+use super::pairing::placed;
 use crate::message::CallId;
 use crate::tool::ToolResultContext;
 
@@ -9,8 +9,7 @@ use crate::tool::ToolResultContext;
 /// a conversation keeps it ([`ToolResultContext::kept`]): the host facts a
 /// view draws a call's row from, such as rig-core's `ExitStatus` and
 /// `FilesChanged`, saved with the entry so a resumed session draws what
-/// the live one did. The model never sees them. Each call's facts name
-/// the call they are for ([`ToolResultContext::with_at`]).
+/// the live one did. The model never sees them.
 ///
 /// ```
 /// use rig_core::conversation::{CallRef, Conversation, ResultFacts};
@@ -35,25 +34,20 @@ use crate::tool::ToolResultContext;
 pub struct ResultFacts(Vec<(CallId, ToolResultContext)>);
 
 impl ResultFacts {
-    /// What each of `calls`, a reply's tool calls in order with their
-    /// ids, published, if anything: the facts kept for it, else, among
-    /// facts that name no call, those [`answered_by`] pairs with it.
+    /// What each of a reply's `calls` published, if anything: the facts
+    /// kept for its place, else the placeless ones
+    /// [`answered_by`](super::pairing::answered_by) pairs with it.
     pub fn of<'c>(
         &self,
         calls: impl IntoIterator<Item = (CallRef, &'c CallId)>,
     ) -> Vec<Option<&ToolResultContext>> {
-        let calls: Vec<(CallRef, &CallId)> = calls.into_iter().collect();
-        let unnamed = self.0.iter().filter(|(_, facts)| facts.at().is_none());
-        let unnamed = unnamed.map(|(id, facts)| (id, facts));
-        let paired = answered_by(calls.iter().map(|(_, id)| *id), unnamed);
-        calls
+        let calls: Vec<_> = calls.into_iter().collect();
+        let kept: Vec<_> = self
+            .0
             .iter()
-            .zip(paired)
-            .map(|((at, _), paired)| {
-                let mut named = self.0.iter().map(|(_, facts)| facts);
-                named.find(|facts| facts.at() == Some(*at)).or(paired)
-            })
-            .collect()
+            .map(|(id, facts)| (id, facts.at(), facts))
+            .collect();
+        placed(&calls, &kept)
     }
 
     /// Whether no call published anything.

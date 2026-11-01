@@ -64,8 +64,7 @@ pub struct ToolCallView<'a> {
 pub struct ChildCall {
     /// How far below the call it is: 0 for one the call started itself.
     pub depth: usize,
-    /// The tool and the arguments it ran with, or `None` for a model
-    /// call.
+    /// The tool and arguments it ran with, or `None` for a model call.
     pub call: Option<ToolFunction>,
     /// The tool's name, or the model's catalog reference (`vendor/model`),
     /// or `model` before it is known.

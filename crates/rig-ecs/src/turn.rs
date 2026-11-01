@@ -503,15 +503,18 @@ pub(crate) fn on_stop_turn(
     mut stopper: Stopper,
 ) {
     let root = interrupt.event_target();
-    let below = (interrupt.reaches_below())
+    let below = (interrupt.below)
         .then(|| spawned.iter_descendants::<Spawned>(root))
         .into_iter()
         .flatten();
     let mut stopped = false;
     for agent in std::iter::once(root).chain(below) {
-        let cause = interrupt.cause().clone();
+        let cause = interrupt.cause.clone();
         stopped |= stopper.stop(agent, cause.clone());
-        stopper.commands.trigger(StopReached::new(agent, cause));
+        stopper.commands.trigger(StopReached {
+            entity: agent,
+            cause,
+        });
     }
     // A failed write stops the logging, which the frame's log write shows;
     // the turns stop all the same, and nothing more starts unsaved.
@@ -660,7 +663,10 @@ impl Stopper<'_, '_> {
         // none, stopped before it added or answered anything, has no place.
         // Ids only grow, so this holds after an edit, such as a compaction,
         // moved what the turn began at.
-        let start = conversation.turns().next_back().map(|(_, record)| record.start);
+        let start = conversation
+            .turns()
+            .next_back()
+            .map(|(_, record)| record.start);
         let last = conversation.entries().next_back();
         let at = last
             .filter(|last| start.is_some_and(|start| last.id >= start))
@@ -690,7 +696,7 @@ impl Stopper<'_, '_> {
             // The outcome goes on first, as `stop_calls` finds it, so what
             // observes a call settling sees that its turn stopped.
             if let Ok(mut turn) = world.get_entity_mut(turn) {
-                turn.insert(TurnOutcome::Stopped(Stop::new(cause)));
+                turn.insert(TurnOutcome::Stopped(Stop { cause }));
             }
             for (call, answer) in answers {
                 match answer {
