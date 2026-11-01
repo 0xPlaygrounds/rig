@@ -243,6 +243,52 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_continues_it() {
     );
 }
 
+/// A fork that failed leaves nothing pending: a later rewind through the
+/// same message shows its fork with its own message back in the input.
+#[test]
+fn a_failed_fork_leaves_nothing_pending_for_a_later_rewind() {
+    let model = MockCompletionModel::from_stream_turns([reply("One."), reply("Two.")]);
+    let (mut app, wakes) = on(&MemoryStore::default(), &model);
+    app.insert_resource(TuiTestScreen::new(100, 30));
+    tui_view(&mut app);
+    app.add_plugins(AgentsPlugin);
+    let model = ModelChoice("test/model".to_owned());
+    let agent = app.world_mut().spawn((Agent, model)).id();
+    app.finish();
+    app.cleanup();
+    app.update();
+    app.world_mut().trigger(ShowAgent { entity: agent });
+    ask(&mut app, &wakes, (agent, "first question"), 1);
+    // The agent has no message m2 yet, so this fork fails.
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "fork m2".to_owned()));
+    app.update();
+    assert_eq!(shown(&app), Some(agent), "the fork through m2 failed");
+    ask(&mut app, &wakes, (agent, "second question"), 2);
+    let second = app.world().get::<Conversation>(agent).and_then(|c| c.id(2));
+    assert_eq!(second.map(|id| id.to_string()).as_deref(), Some("m2"));
+    let world = app.world_mut();
+    let mut main = world.query_filtered::<&mut TranscriptView, With<MainPane>>();
+    if let Ok(mut view) = main.single_mut(world) {
+        view.selected = second.map(TranscriptItem::Message);
+    }
+    press(&mut app, "enter");
+    app.update();
+
+    assert_ne!(shown(&app), Some(agent), "the rewind's fork is shown");
+    let world = app.world_mut();
+    let mut input = world.query_filtered::<&Editor, With<MainEditor>>();
+    let typed = input
+        .single(world)
+        .ok()
+        .map(|input| input.text().to_owned());
+    // The refused `/fork m2` came back to the input too.
+    let back = typed
+        .as_deref()
+        .is_some_and(|typed| typed.contains("second question"));
+    assert!(back, "the rewound message is back in the input: {typed:?}");
+}
+
 /// A Responses reply streamed with `items` as its output.
 fn streamed(items: Vec<serde_json::Value>) -> MockHttpResponse {
     let mut body = String::new();
