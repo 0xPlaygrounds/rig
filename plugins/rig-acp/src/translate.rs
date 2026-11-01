@@ -10,8 +10,8 @@ use agent_client_protocol::schema::v1 as acp;
 use base64::Engine;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::message::{
-    self, AssistantContent, CallId, DocumentSourceKind, Image, ImageMediaType, MimeType,
-    StopReason, ToolCall, ToolResult as SavedResult, ToolResultContent, UserContent,
+    self, AssistantContent, DocumentSourceKind, Image, ImageMediaType, MimeType, StopReason,
+    ToolCall, ToolResult as SavedResult, ToolResultContent, UserContent,
 };
 use rig_harness::rig_core::conversation::{Author, AuthorKind, Conversation, Entry, MessageId};
 use rig_harness::services::WorkDir;
@@ -77,29 +77,9 @@ fn call_id(agent: &str, message: MessageId, n: usize) -> String {
     format!("{agent}/{message}/{n}")
 }
 
-/// The ACP id of a call of `agent` with the id `call`, whose conversation
-/// is `conversation`: in the last message that asked for it, the first
-/// such call whose id is not `taken`, as a reply may repeat an id. None for
-/// a call no message asked for.
-pub(crate) fn call_id_in(
-    agent: &str,
-    conversation: &Conversation,
-    call: &CallId,
-    taken: impl Fn(&str) -> bool,
-) -> Option<String> {
-    let (id, reply) = conversation.entries().rev().find_map(|entry| {
-        let message::Message::Assistant(reply) = entry.message else {
-            return None;
-        };
-        calls_of(reply)
-            .any(|asked| asked.id == *call)
-            .then_some((entry.id, reply))
-    })?;
-    let mut ids = calls_of(reply)
-        .enumerate()
-        .filter(|(_, asked)| asked.id == *call)
-        .map(|(n, _)| call_id(agent, id, n));
-    ids.find(|id| !taken(id))
+/// The id ACP shows for the call at `at` of `agent`'s conversation.
+pub(crate) fn call_id_at(agent: &str, at: CallRef) -> String {
+    call_id(agent, at.reply, at.index as usize)
 }
 
 /// The calls a reply asks for, in order.

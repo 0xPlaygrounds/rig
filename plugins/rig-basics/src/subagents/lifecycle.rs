@@ -308,11 +308,12 @@ fn step_on_turn_end(
     let said = said.unwrap_or_else(|| " ".to_owned());
     let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
     let stopped = |why: &str| failed(&not_finished(why, true, &Touches::Independent));
-    // A restart or a stop that is no plugin's ends it for good: it waits on
-    // no one. A restored turn that ends stopped, by the kernel or a plugin,
-    // ended with the restart.
+    // A stop that reached the agent ends it for good: it waits on no one.
+    // Only a plugin ending this one turn alone, as a budget does, lets it
+    // report as usual. A restored turn that ends stopped ended with the
+    // restart.
     let early = matches!(outcome, TurnOutcome::Stopped(stop)
-        if restored || !matches!(stop.cause(), StopCause::Plugin { .. }));
+        if restored || !stop.alone() || !matches!(stop.cause(), StopCause::Plugin { .. }));
     let step = match agents.awaited(agent, true).first().filter(|_| !early) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {

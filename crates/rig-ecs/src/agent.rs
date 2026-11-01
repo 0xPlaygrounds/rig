@@ -638,9 +638,10 @@ impl From<ToolCall> for PartialCall {
 /// ```compile_fail,E0451
 /// use bevy_ecs::prelude::*;
 /// use rig_ecs::agent::StopTurn;
+/// use rig_ecs::prelude::StopCause;
 ///
 /// let agent = World::new().spawn_empty().id();
-/// let stop = StopTurn { entity: agent, reason: None };
+/// let stop = StopTurn { entity: agent, cause: StopCause::User, below: true };
 /// ```
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(opaque, Event, Clone, Debug)]
@@ -675,7 +676,8 @@ impl StopTurn {
         }
     }
 
-    /// Stops only the agent's own turn: the agents below it go on.
+    /// Ends only the agent's own turn, as a plugin's decision about that
+    /// turn: the agents below go on, and no [`StopReached`] is sent.
     pub fn alone(self) -> Self {
         Self {
             below: false,
@@ -810,17 +812,24 @@ pub enum TurnOutcome {
 /// use rig_ecs::agent::{Stop, TurnOutcome};
 /// use rig_ecs::prelude::StopCause;
 ///
-/// let stopped = TurnOutcome::Stopped(Stop { cause: StopCause::User });
+/// let stopped = TurnOutcome::Stopped(Stop { cause: StopCause::User, alone: false });
 /// ```
 #[derive(Clone, Debug)]
 pub struct Stop {
     pub(crate) cause: StopCause,
+    pub(crate) alone: bool,
 }
 
 impl Stop {
     /// Who or what stopped the turn.
     pub fn cause(&self) -> &StopCause {
         &self.cause
+    }
+
+    /// Whether a plugin ended only this turn ([`StopTurn::alone`]): no stop
+    /// reached the agent itself.
+    pub fn alone(&self) -> bool {
+        self.alone
     }
 }
 

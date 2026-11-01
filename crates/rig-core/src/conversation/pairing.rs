@@ -53,7 +53,8 @@ pub enum PairingError {
 }
 
 /// A tool call's place: its reply's entry and its index among the reply's
-/// tool calls. Unlike a provider's call id, no two calls share one.
+/// tool calls. Unlike a provider's call id, no two calls of one
+/// conversation share one; across agents, pair it with the agent.
 ///
 /// ```
 /// use rig_core::conversation::{CallRef, Conversation};
@@ -123,7 +124,7 @@ pub fn answered_by<'c, 'a, T>(
 
 /// The item of each of `calls`, in call order: the one kept at its place,
 /// else the placeless one [`answered_by`] pairs with it.
-pub(crate) fn placed<T: Copy>(
+pub fn placed<T: Copy>(
     calls: &[(CallRef, &CallId)],
     items: &[(&CallId, Option<CallRef>, T)],
 ) -> Vec<Option<T>> {

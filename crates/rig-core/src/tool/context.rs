@@ -100,8 +100,7 @@ impl ToolResultContext {
     }
 
     /// These values, kept for the call `at`, so a reply that repeats a
-    /// call id still finds each call's own. An older reader takes it for a
-    /// value no type reads.
+    /// call id still finds each call's own.
     #[must_use]
     pub fn with_at(mut self, at: CallRef) -> Self {
         if let Ok(value) = serde_json::to_value(at) {

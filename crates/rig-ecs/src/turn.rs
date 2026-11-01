@@ -510,11 +510,14 @@ pub(crate) fn on_stop_turn(
     let mut stopped = false;
     for agent in std::iter::once(root).chain(below) {
         let cause = interrupt.cause.clone();
-        stopped |= stopper.stop(agent, cause.clone());
-        stopper.commands.trigger(StopReached {
-            entity: agent,
-            cause,
-        });
+        stopped |= stopper.stop(agent, cause.clone(), !interrupt.below);
+        // A plugin ending one turn alone stops no agent: nothing to tell.
+        if interrupt.below {
+            stopper.commands.trigger(StopReached {
+                entity: agent,
+                cause,
+            });
+        }
     }
     // A failed write stops the logging, which the frame's log write shows;
     // the turns stop all the same, and nothing more starts unsaved.
@@ -552,7 +555,7 @@ impl Stopper<'_, '_> {
     pub(crate) fn stop_each(&mut self, agents: Vec<Entity>, cause: &StopCause) {
         let mut stopped = false;
         for agent in agents {
-            stopped |= self.stop(agent, cause.clone());
+            stopped |= self.stop(agent, cause.clone(), false);
         }
         if stopped {
             let _ = self.log.flush();
@@ -572,7 +575,7 @@ impl Stopper<'_, '_> {
     /// names the last entry and the calls the stop cut: the streamed ones
     /// and those it answered. The conversation is saved at once, and the
     /// views told, unless the app exits.
-    pub(crate) fn stop(&mut self, agent: Entity, cause: StopCause) -> bool {
+    pub(crate) fn stop(&mut self, agent: Entity, cause: StopCause, alone: bool) -> bool {
         let Ok((id, mut conversation, active)) = self.agents.get_mut(agent) else {
             return false;
         };
@@ -696,7 +699,7 @@ impl Stopper<'_, '_> {
             // The outcome goes on first, as `stop_calls` finds it, so what
             // observes a call settling sees that its turn stopped.
             if let Ok(mut turn) = world.get_entity_mut(turn) {
-                turn.insert(TurnOutcome::Stopped(Stop { cause }));
+                turn.insert(TurnOutcome::Stopped(Stop { cause, alone }));
             }
             for (call, answer) in answers {
                 match answer {

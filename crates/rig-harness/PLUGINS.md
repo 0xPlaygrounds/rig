@@ -521,7 +521,8 @@ A tool call is an effect with a `ToolRequest` (the model's `ToolCall`) and the
 `CallHandler` that will run it. A call a model's reply asked for also has
 `InReply`, which the kernel gives: its reply and its place there
 (`CallRef`). A reply may repeat a provider's call id, so key what you keep
-per call by the `CallRef`, and pair results with calls by
+per call by the `CallRef`, with the agent when what you keep spans agents
+(a `CallRef` is one conversation's), and pair results with calls by
 `pairing::answered_by`.
 
 - **Prepare** edits them as the call is admitted: the arguments, or the

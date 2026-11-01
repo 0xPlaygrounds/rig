@@ -126,9 +126,13 @@ fn a_compacted_conversation_replays_what_its_summary_replaced_in_place_of_the_su
         return;
     };
     let first = call_id("main", first, 0);
-    // The id a live call of the last turn has.
-    let second = call_id_in("main", &conversation, &CallId::from_wire("c1"), |_| false);
-    let second = second.unwrap_or_default();
+    // The id the call of the last turn has: its reply's, not the first's.
+    let last_reply = conversation.entries().rev().find_map(|entry| {
+        matches!(entry.message, message::Message::Assistant(_)).then_some(entry.id)
+    });
+    let second = last_reply
+        .map(|id| call_id("main", id, 0))
+        .unwrap_or_default();
     assert_ne!(first, second);
     let replaced = BTreeMap::from([(summary, originals)]);
     let updates = replay("main", &conversation, &replaced, Path::new("/p"));
@@ -230,15 +234,6 @@ fn a_call_is_known_by_where_it_sits_whatever_the_providers_id() {
             at(6, 1, "\"five\""),
         ]
     );
-    // Live calls find the same ids: each the first not taken yet.
-    let repeated = CallId::from_wire("c9");
-    let first = call_id_in("main", &conversation, &repeated, |_| false);
-    let (first_id, second_id) = (at(6, 0, ""), at(6, 1, ""));
-    assert_eq!(first.as_deref(), Some(first_id.trim_end()));
-    let second = call_id_in("main", &conversation, &repeated, |id| {
-        id == first_id.trim_end()
-    });
-    assert_eq!(second.as_deref(), Some(second_id.trim_end()));
 }
 
 #[test]

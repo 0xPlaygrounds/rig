@@ -47,7 +47,7 @@ use bevy_log::warn;
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
-use rig_core::conversation::pairing::answered_by;
+use rig_core::conversation::pairing::placed;
 use rig_core::conversation::{Aside, AsideId, Author, CallRef, Entry, StopCause};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, ToolCall};
@@ -76,7 +76,7 @@ use super::turn::{Stopper, TurnCall, not_finished};
 const CALL_MARK: &str = "rig.call";
 
 /// A `rig.call` aside's value. `at` is the call's place in its reply; a
-/// mark saved without one is paired with a call by [`answered_by`].
+/// mark saved without one is paired with a call by [`answered_by`](rig_core::conversation::pairing::answered_by).
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 enum CallMark {
@@ -129,20 +129,18 @@ fn marks(conversation: &rig_core::conversation::Conversation) -> Vec<(AsideId, C
 
 /// The mark of each of `calls`, the calls a reply still owes with their
 /// places, among `marks`, in call order: the mark saved at its place, else,
-/// among marks saved without a place, the one [`answered_by`] pairs with
+/// among marks saved without a place, the one [`answered_by`](rig_core::conversation::pairing::answered_by) pairs with
 /// it.
 fn marked<'m>(
     calls: &[(CallRef, ToolCall)],
     marks: &'m [(AsideId, CallMark)],
 ) -> Vec<Option<&'m (AsideId, CallMark)>> {
-    let unplaced = marks.iter().filter(|(_, mark)| mark.at().is_none());
-    let unplaced = unplaced.map(|mark| (mark.1.call(), mark));
-    let paired = answered_by(calls.iter().map(|(_, call)| &call.id), unplaced);
-    let placed = |at: CallRef| marks.iter().find(|(_, mark)| mark.at() == Some(at));
-    let calls = calls.iter().zip(paired);
-    calls
-        .map(|((at, _), paired)| placed(*at).or(paired))
-        .collect()
+    let calls: Vec<_> = calls.iter().map(|(at, call)| (*at, &call.id)).collect();
+    let marks: Vec<_> = marks
+        .iter()
+        .map(|mark| (mark.1.call(), mark.1.at(), mark))
+        .collect();
+    placed(&calls, &marks)
 }
 
 /// Marks the call `call`, at its place `at`, started on `conversation`,

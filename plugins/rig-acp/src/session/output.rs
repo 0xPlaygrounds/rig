@@ -77,22 +77,17 @@ pub(super) fn stream(mut out: Out) {
 /// its history has it, under its id.
 pub(super) fn call_asked(
     asked: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent, &Effect, Has<Restored>)>,
-    agents: Query<(&AgentId, &Conversation)>,
+    calls: Query<(&ToolRequest, &ForAgent, &InReply, Has<Restored>)>,
+    agents: Query<&AgentId>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
     mut out: Out,
 ) {
-    if let Ok((request, &ForAgent(agent), effect, restored)) = calls.get(asked.entity)
-        && effect.parent.is_some()
-        && let Ok((AgentId(of), conversation)) = agents.get(agent)
+    if let Ok((request, &ForAgent(agent), in_reply, restored)) = calls.get(asked.entity)
+        && let Ok(AgentId(of)) = agents.get(agent)
         && out.main(agent)
     {
-        let calls = &out.session.calls;
-        let taken = |id: &str| calls.values().any(|shown| shown == id);
-        let Some(id) = translate::call_id_in(of, conversation, &request.call.id, taken) else {
-            return;
-        };
+        let id = translate::call_id_at(of, in_reply.at());
         out.session.calls.insert(asked.entity, id.clone());
         if restored {
             return;
