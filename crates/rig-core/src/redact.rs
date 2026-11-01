@@ -275,11 +275,25 @@ fn settled(input: &str) -> usize {
         .find(|&at| input.is_char_boundary(at))
         .unwrap_or(input.len());
     // A whole secret the bound cuts through goes out whole, so it is
-    // redacted as in the whole text.
-    let through = found.iter().find(|found| {
-        found.range.start < cut && cut < found.range.end && found.range.end < input.len()
-    });
-    through.map_or(cut, |found| found.range.end)
+    // redacted as in the whole text: an assigned value with its name before
+    // it and its closing quote after it.
+    let whole = |found: &SecretMatch| {
+        let (start, end) = (found.range.start, found.range.end);
+        if found.kind != Kind::Assigned {
+            return start..end;
+        }
+        let before = input.get(..start).unwrap_or_default();
+        let named = before.trim_end_matches(['=', ':', '"', '\'', ' ', '\t']);
+        let quoted = input
+            .get(end..)
+            .is_some_and(|after| after.starts_with(['"', '\'']));
+        named.trim_end_matches(is_token_char).len()..end + usize::from(quoted)
+    };
+    let through = found
+        .iter()
+        .map(whole)
+        .find(|whole| whole.start < cut && cut < whole.end && whole.end < input.len());
+    through.map_or(cut, |whole| whole.end)
 }
 
 /// `json`, serialized JSON such as a JSON line, with every string in it

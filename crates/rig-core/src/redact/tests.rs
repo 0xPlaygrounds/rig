@@ -263,17 +263,23 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
         shown += &streamed.finish();
         assert_eq!(shown, text(&pieces.concat()));
     }
-    // A key on a held line the bound lets go of a few bytes at a time.
-    let line = format!("TOKEN note: {key} {}", "word ".repeat(3300));
-    let pieces: Vec<&str> = line
-        .as_bytes()
-        .chunks(5)
-        .filter_map(|piece| std::str::from_utf8(piece).ok())
-        .collect();
-    let mut streamed = Streamed::default();
-    let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
-    shown += &streamed.finish();
-    assert_eq!(shown, text(&line));
+    // A key, or an assigned value with its name and quotes, on a held line
+    // the bound lets go of a few bytes at a time.
+    for line in [
+        format!("TOKEN note: {key} {}", "word ".repeat(3300)),
+        format!("GITHUB_TOKEN=abcdefgh12345678 {}", "word ".repeat(3300)),
+        format!("TOKEN=\"abcdefgh12345678\" {}", "word ".repeat(3300)),
+    ] {
+        let pieces: Vec<&str> = line
+            .as_bytes()
+            .chunks(5)
+            .filter_map(|piece| std::str::from_utf8(piece).ok())
+            .collect();
+        let mut streamed = Streamed::default();
+        let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
+        shown += &streamed.finish();
+        assert_eq!(shown, text(&line));
+    }
     for line in [
         format!("TOKEN {}gh", "word ".repeat(3275)),
         format!("one {}API_KEY=abcd", "word ".repeat(3275)),
