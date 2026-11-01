@@ -747,25 +747,31 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
             "the edited conversation does not pair its tool calls: {why}"
         ));
     }
-    // A reply that repeats a call id keeps its id and its calls through the
-    // merging of replies too, or its calls would be paired by order.
-    for entry in &normalized.entries {
+    // Merging replies can put a call where another was, under that one's
+    // id: such a reply gets a new id, so nothing kept for the old places
+    // matches it. One that repeats a call id can't: its calls would be
+    // paired by order.
+    let mut entries = normalized.entries;
+    for entry in &mut entries {
         let calls = ids(&entry.message).0;
-        let repeated = calls
-            .iter()
-            .find(|id| calls.iter().filter(|it| it == id).count() > 1);
         let kept = original
             .iter()
             .find(|was| was.id.is_some() && was.id == entry.id);
-        if let Some(id) =
-            repeated.filter(|_| kept.is_none_or(|was| !ids(&was.message).0.starts_with(&calls)))
-        {
+        let placed = kept.is_some_and(|was| ids(&was.message).0.starts_with(&calls));
+        if entry.id.is_none() || placed {
+            continue;
+        }
+        let repeated = calls
+            .iter()
+            .find(|id| calls.iter().filter(|it| it == id).count() > 1);
+        if let Some(id) = repeated {
             return Err(format!(
                 "a reply asks for two calls with the id `{id}`, so the edit can't keep each call in its place; leave that reply and the messages around it as they are"
             ));
         }
+        entry.id = None;
     }
-    Ok(normalized.entries)
+    Ok(entries)
 }
 
 /// Every entry of `conversation`.

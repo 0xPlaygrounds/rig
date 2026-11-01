@@ -417,6 +417,77 @@ fn a_reply_whose_calls_an_edit_moved_gets_a_new_id() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+/// Taking out a reply's only call, and its result, merges the next reply
+/// into it: that reply's call then sits where the taken call was, so the
+/// merged reply gets a new id and nothing kept for the old place is its.
+#[cfg(unix)]
+#[test]
+fn a_reply_a_merge_moves_a_call_into_gets_a_new_id() {
+    let home = scratch_home("oc-transcript-in-editor-merged");
+    let home = home.root().to_path_buf();
+    assert!(std::fs::create_dir_all(&home).is_ok());
+    let command = |command: &str| serde_json::json!({ "command": command });
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::text("Looking."),
+            MockStreamEvent::tool_call("c1", "shell", command("one")),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        vec![
+            MockStreamEvent::tool_call("c2", "shell", command("two")),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Both ran."),
+    ]);
+    let store = MemoryStore::default();
+    let started = start(&store, &model, &home);
+    assert!(started.is_some(), "the session has one agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "Run both.");
+    let replies = |app: &App| {
+        let conversation = app.world().get::<Conversation>(agent);
+        let entries = conversation.into_iter().flat_map(|it| it.entries());
+        let replies = entries.filter(|entry| matches!(entry.message, Message::Assistant(_)));
+        replies.map(|entry| entry.id).collect::<Vec<_>>()
+    };
+    let before = replies(&app);
+    assert_eq!(before.len(), 3, "{}", messages(&app, agent));
+
+    app.world_mut()
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
+    let drop_first = script(
+        &home,
+        "drop-first.sh",
+        &awk(r#"/^## \[/ { skip = 0 }
+/^```call shell c1$/ { fence = 1; next }
+fence { if (/^```$/) fence = 0; next }
+/^## \[3\] tool-result shell c1$/ { skip = 1 }
+!skip { print }"#),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_first,
+        "Edited the conversation",
+    );
+    let left = messages(&app, agent);
+    assert!(
+        !left.contains("\"one\"") && left.contains("\"two\"") && left.contains("Looking."),
+        "{left}\n{said}"
+    );
+    let after = replies(&app);
+    assert_eq!(after.len(), 2, "{left}");
+    let merged = after.first().copied();
+    assert!(
+        merged.is_some_and(|id| !before.contains(&id)),
+        "{before:?} {after:?}"
+    );
+    std::fs::remove_dir_all(&home).ok();
+}
+
 /// Answers the first model call with a reply asking for `asked`, each a
 /// `shell` call's arguments, under one id: a live stream renames a
 /// repeated id, an answer decided for the call does not.
