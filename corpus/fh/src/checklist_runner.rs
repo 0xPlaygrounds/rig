@@ -772,10 +772,10 @@ fn first_line(text: &str) -> String {
     line.unwrap_or_default().to_owned()
 }
 
-/// An interrupt of a run's agent stops the run: its running items' agents
-/// are retired and their boxes stay as they were.
+/// A stop that reaches a run's agent stops the run: its running items'
+/// agents are retired and their boxes stay as they were.
 fn on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     mut runs: Query<(Entity, &mut PlanRun)>,
     open: Query<(Entity, &ItemRequest), Without<Settled>>,
     (wake, mut commands): (Res<Wake>, Commands),

@@ -266,8 +266,8 @@ fn hold(
     std::fs::write(root.0.join("held"), "").ok();
 }
 
-/// Ends `/hold`'s work as its agent is stopped.
-fn release(stop: On<StopTurn>, held: Query<(Entity, &Held)>, mut commands: Commands) {
+/// Ends `/hold`'s work as a stop reaches its agent.
+fn release(stop: On<StopReached>, held: Query<(Entity, &Held)>, mut commands: Commands) {
     for (work, Held(agent)) in &held {
         if *agent == stop.event_target() {
             commands.entity(work).despawn();

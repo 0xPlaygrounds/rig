@@ -696,9 +696,9 @@ fn stop_consultants(
     }
 }
 
-/// Interrupting an agent ends its consults.
+/// A stop that reaches an agent ends its consults.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     consultations: Query<(Entity, &Consultation)>,
     mut commands: Commands,
 ) {

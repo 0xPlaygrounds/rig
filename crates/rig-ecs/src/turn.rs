@@ -512,12 +512,14 @@ pub(crate) fn on_stop_turn(
     let mut stopped = false;
     for agent in std::iter::once(root).chain(below) {
         let cause = interrupt.cause.clone();
-        stopped |= stopper.stop(agent, cause.clone(), !interrupt.below);
+        let ran = stopper.stop(agent, cause.clone(), !interrupt.below);
+        stopped |= ran;
         // A plugin ending one turn alone stops no agent: nothing to tell.
         if interrupt.below {
             stopper.commands.trigger(StopReached {
                 entity: agent,
                 cause,
+                idle: !ran,
             });
         }
     }

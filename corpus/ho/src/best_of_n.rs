@@ -1099,11 +1099,11 @@ fn candidate_done(
     }
 }
 
-/// Stopping the agent cancels its runs: the candidates are retired, which
-/// stops their turns and commands, the run's effects are cancelled with it,
-/// and its worktrees are removed.
+/// A stop that reaches the agent cancels its runs: the candidates are
+/// retired, which stops their turns and commands, the run's effects are
+/// cancelled with it, and its worktrees are removed.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     runs: Query<(Entity, &Run)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,

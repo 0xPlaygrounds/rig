@@ -353,8 +353,8 @@ fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
     }
 }
 
-/// Interrupting the agent stops its debate.
-fn stop_on_interrupt(interrupt: On<StopTurn>, debates: Query<&Debate>, mut commands: Commands) {
+/// A stop that reaches the agent stops its debate.
+fn stop_on_interrupt(interrupt: On<StopReached>, debates: Query<&Debate>, mut commands: Commands) {
     if let Ok(debate) = debates.get(interrupt.event_target()) {
         stop(&mut commands, interrupt.event_target(), debate);
     }

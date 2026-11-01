@@ -707,18 +707,25 @@ impl StopTurn {
 /// use rig_ecs::prelude::StopCause;
 ///
 /// let agent = World::new().spawn_empty().id();
-/// let reached = StopReached { entity: agent, cause: StopCause::User };
+/// let reached = StopReached { entity: agent, cause: StopCause::User, idle: true };
 /// ```
 #[derive(EntityEvent, Clone, Debug)]
 pub struct StopReached {
     pub(crate) entity: Entity,
     pub(crate) cause: StopCause,
+    pub(crate) idle: bool,
 }
 
 impl StopReached {
     /// Who or what stopped it.
     pub fn cause(&self) -> &StopCause {
         &self.cause
+    }
+
+    /// Whether the agent had no running turn for the stop to end. The
+    /// stopped turn is gone when this is sent, so [`ActiveTurn`] cannot say.
+    pub fn idle(&self) -> bool {
+        self.idle
     }
 }
 

@@ -9,8 +9,8 @@
 //! restart until it ends. A build that fails leaves this build running,
 //! and the launcher rolls back a new build that fails to start. Views show
 //! where it is from the [`ReloadStatus`] resource; with the `tui` feature,
-//! the terminal view's status line does. A [`StopTurn`] of an idle agent
-//! (Esc in the terminal view) cancels a running build.
+//! the terminal view's status line does. A stop that reaches an idle agent
+//! no agent spawned (Esc in the terminal view) cancels a running build.
 //!
 //! A failed build's first errors go into the conversation of the agent that
 //! asked, as a note for its model ([`launcher::build_failure_message`]);
@@ -132,16 +132,20 @@ fn reload(
     notices.write(Notice::info(None, notice));
 }
 
-/// Cancels a running build when an idle agent is interrupted, as Esc does
-/// in the terminal view; Esc on a running turn stops the turn only.
+/// Cancels a running build when a stop reaches an idle agent that no agent
+/// spawned, as Esc does in the terminal view; Esc on a running turn stops
+/// the turn only. The agents below, which the stop reaches too, are not
+/// the one it was for.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
-    busy: Query<Has<ActiveTurn>>,
+    interrupt: On<StopReached>,
+    spawned: Query<Has<SpawnedBy>>,
     status: Res<ReloadStatus>,
     mut commands: Commands,
 ) {
-    let idle = busy.get(interrupt.event_target()).is_ok_and(|busy| !busy);
-    if idle && matches!(*status, ReloadStatus::Building { .. }) {
+    let root = spawned
+        .get(interrupt.event_target())
+        .is_ok_and(|spawned| !spawned);
+    if interrupt.idle() && root && matches!(*status, ReloadStatus::Building { .. }) {
         commands.trigger(CancelReload);
     }
 }
@@ -166,3 +170,6 @@ fn on_cancel_reload(
     *status = ReloadStatus::Idle;
     notices.write(Notice::info(None, notice));
 }
+
+#[cfg(test)]
+mod tests;
