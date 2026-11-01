@@ -575,10 +575,10 @@ impl Run {
     /// told already by the kernel's error notice, and takes back an earlier
     /// answer, as one with no answer text does; a stopped one changes
     /// neither.
-    fn turn_ended(&mut self, outcome: &TurnOutcome) {
+    fn turn_ended(&mut self, ended: TurnEnd) {
         self.turned = true;
         self.unanswered = false;
-        match TurnEnd::of(outcome) {
+        match ended {
             TurnEnd::Answered(answer) => self.answer = Some(answer),
             TurnEnd::Unanswered => {
                 self.unanswered = true;
@@ -633,6 +633,7 @@ const NO_ANSWER: &str = "the model ended the turn without an answer";
 
 /// How a turn ended, as a headless run reports it, both in its exit code
 /// and in its `turn_end` line.
+#[derive(Clone)]
 enum TurnEnd {
     /// With this final text.
     Answered(String),
@@ -641,7 +642,7 @@ enum TurnEnd {
     Unanswered,
     /// For this reason.
     Failed(String),
-    /// Stopped, and why when something said.
+    /// Stopped, and why when it was not the user.
     Stopped(Option<String>),
 }
 
@@ -652,7 +653,10 @@ impl TurnEnd {
                 .final_answer()
                 .map_or(Self::Unanswered, Self::Answered),
             TurnOutcome::Failed(why) => Self::Failed(why.clone()),
-            TurnOutcome::Stopped(why) => Self::Stopped(why.clone()),
+            TurnOutcome::Stopped(stop) => Self::Stopped(match stop.cause() {
+                StopCause::User => None,
+                cause => Some(cause.to_string()),
+            }),
         }
     }
 }
@@ -911,7 +915,7 @@ fn keep_answer(
     if run.step == Step::Start {
         wake.wake();
     }
-    run.turn_ended(outcome);
+    run.turn_ended(TurnEnd::of(outcome));
 }
 
 /// Takes what came since the work last settled: the exit code it earns,

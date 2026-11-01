@@ -336,7 +336,10 @@ fn turn_ended(
             json!({ "agent": agent, "outcome": "answered", "answer": message.final_answer() })
         }
         TurnOutcome::Failed(why) => json!({ "agent": agent, "outcome": "failed", "error": why }),
-        TurnOutcome::Stopped(why) => json!({ "agent": agent, "outcome": "stopped", "reason": why }),
+        TurnOutcome::Stopped(stop) => {
+            let why = (*stop.cause() != StopCause::User).then(|| stop.cause().to_string());
+            json!({ "agent": agent, "outcome": "stopped", "reason": why })
+        }
     };
     events.send("turn_end", &data);
 }

@@ -1868,7 +1868,9 @@ fn a_turn_without_text_fails_the_run_only_when_no_later_turn_answers() {
         (vec![&said, &silent], None, no_answer),
     ] {
         let mut run = Run::default();
-        turns.into_iter().for_each(|turn| run.turn_ended(turn));
+        turns
+            .into_iter()
+            .for_each(|turn| run.turn_ended(TurnEnd::of(turn)));
         assert_eq!(run.settled().as_deref(), answer);
         assert_eq!(run.failed, fails);
     }
@@ -1883,9 +1885,10 @@ fn a_recovered_error_does_not_fail_a_later_settlement() {
         notice: Some("Compaction failed: the summary was cut".to_owned()),
         ..Run::default()
     };
-    run.turn_ended(&TurnOutcome::Answered(Message::assistant("done")));
+    let answered = TurnOutcome::Answered(Message::assistant("done"));
+    run.turn_ended(TurnEnd::of(&answered));
     assert_eq!(run.settled().as_deref(), Some("done"));
-    run.turn_ended(&TurnOutcome::Stopped(None));
+    run.turn_ended(TurnEnd::Stopped(None));
     assert_eq!(run.settled(), None);
     assert_eq!(run.failed, None);
 }
@@ -1893,9 +1896,9 @@ fn a_recovered_error_does_not_fail_a_later_settlement() {
 #[test]
 fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
     let (answered, failed, stopped) = (
-        TurnOutcome::Answered(Message::assistant("done")),
-        TurnOutcome::Failed("out of credit".to_owned()),
-        TurnOutcome::Stopped(None),
+        TurnEnd::of(&TurnOutcome::Answered(Message::assistant("done"))),
+        TurnEnd::of(&TurnOutcome::Failed("out of credit".to_owned())),
+        TurnEnd::Stopped(None),
     );
     let failure = Some(Failure {
         code: 1,
@@ -1908,7 +1911,9 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
         ([&answered, &stopped], Some("done"), None),
     ] {
         let mut run = Run::default();
-        turns.into_iter().for_each(|turn| run.turn_ended(turn));
+        turns
+            .into_iter()
+            .for_each(|turn: &TurnEnd| run.turn_ended(turn.clone()));
         assert_eq!(run.settled().as_deref(), answer);
         assert_eq!(run.failed, fails);
     }

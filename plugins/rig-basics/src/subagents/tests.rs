@@ -480,6 +480,39 @@ fn stopping_an_idle_parent_stops_its_subagents_and_their_reports_start_nothing()
 }
 
 #[test]
+fn a_plugins_stop_that_reaches_a_subagent_ends_it_early_and_its_report_starts_nothing() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let child = session.task("ta");
+    run_until(&mut session.app, &session.wakes, |world| {
+        world.get::<ActiveTurn>(child).is_some()
+    });
+    // A debate ends, stopping its agent and what works below it.
+    let parent = session.parent;
+    let stop = StopTurn::plugin(parent, "debate", "the debate stopped");
+    session.app.world_mut().trigger(stop);
+    for _ in 0..3 {
+        session.app.update();
+    }
+    let world = session.app.world();
+    assert!(world.get::<lifecycle::StoppedEarly>(child).is_some());
+    let reports = session.to(parent);
+    let modes: Vec<_> = reports
+        .iter()
+        .map(|(request, mode, _)| (*request, *mode))
+        .collect();
+    assert_eq!(modes, [("ta", DeliveryMode::Inform)]);
+    assert!(
+        world.get::<ActiveTurn>(parent).is_none(),
+        "no report started it"
+    );
+    assert_eq!(model.request_count(), 0);
+}
+
+#[test]
 fn what_a_parent_knows_of_the_environment_goes_to_every_subagent_below_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
@@ -799,17 +832,15 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     session.call(session.parent, TASK, "t1", args);
     let child = session.children(session.parent).last().copied();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
-    let budget =
-        move |calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, ReadyToStart)>,
-              mut seen: Local<HashSet<Entity>>,
-              mut commands: Commands| {
-            for (call, &CallOf(turn), &ForAgent(agent)) in &calls {
-                if agent == child && seen.insert(call) && seen.len() > 1 {
-                    let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
-                    commands.entity(turn).insert(stopped);
-                }
+    let budget = move |calls: Query<(Entity, &ForAgent), (With<TurnCall>, ReadyToStart)>,
+                       mut seen: Local<HashSet<Entity>>,
+                       mut commands: Commands| {
+        for (call, &ForAgent(agent)) in &calls {
+            if agent == child && seen.insert(call) && seen.len() > 1 {
+                commands.trigger(StopTurn::plugin_alone(agent, "budget", "over budget"));
             }
-        };
+        }
+    };
     let mark = |mut reports: Query<&mut Incoming, (With<Report>, Added<Admitted>)>| {
         for mut report in &mut reports {
             report.text_mut().insert_str(0, "[report] ");
@@ -1042,11 +1073,10 @@ fn a_restored_subagent_turn_a_plugin_stops_reports_as_a_note() {
     // for a budget: the report is a note all the same, and the parent's
     // model is not called.
     let mut session = Session::with(&store, None, |app| {
-        let over_budget = |turns: Query<Entity, (With<Restored>, Without<TurnOutcome>)>,
+        let over_budget = |turns: Query<&TurnOf, (With<Restored>, Without<TurnOutcome>)>,
                            mut commands: Commands| {
-            for turn in &turns {
-                let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
-                commands.entity(turn).insert(stopped);
+            for &TurnOf(agent) in &turns {
+                commands.trigger(StopTurn::plugin_alone(agent, "budget", "over budget"));
             }
         };
         app.add_systems(AgentPass, over_budget.in_set(Stage::Gate));

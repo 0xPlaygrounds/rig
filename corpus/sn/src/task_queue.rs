@@ -520,9 +520,12 @@ fn finish(
             (TaskState::Done, answer)
         }
         TurnOutcome::Failed(why) => (TaskState::Failed, why.clone()),
-        TurnOutcome::Stopped(why) => {
-            let why = why.as_deref().unwrap_or("stopped");
-            (TaskState::Interrupted, why.to_owned())
+        TurnOutcome::Stopped(stop) => {
+            let why = match stop.cause() {
+                StopCause::User => "stopped".to_owned(),
+                cause => cause.to_string(),
+            };
+            (TaskState::Interrupted, why)
         }
     };
     task.state = state;

@@ -798,17 +798,10 @@ fn window(
             return None;
         };
         let stop = conversation.index_of(stop).filter(|stop| *stop >= end)?;
-        let from = conversation.start_of(turn.start).min(stop);
-        let asked =
-            (from..=stop)
-                .rev()
-                .find(|at| match messages.get(*at).map(|message| &**message) {
-                    Some(Message::Assistant(reply)) => {
-                        reply.tool_calls().any(|call| calls.contains(&call.id))
-                    }
-                    _ => false,
-                })?;
-        (start..end).contains(&asked).then_some(stop)
+        let asked = calls
+            .iter()
+            .filter_map(|call| conversation.index_of(call.reply));
+        (start..end).contains(&asked.max()?).then_some(stop)
     };
     while let Some(stop) = conversation
         .turns()

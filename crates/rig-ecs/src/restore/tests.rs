@@ -9,7 +9,9 @@ use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use futures::StreamExt;
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::conversation::{Author, Change, Entry, Halt, MessageId, STOPPED, TurnEnd};
+use rig_core::conversation::{
+    Author, CallRef, Change, Entry, Halt, MessageId, STOPPED, StopCause, TurnEnd,
+};
 use rig_memory::{Files, LogWriteError, MemoryStore, Store};
 use serde_json::Value;
 
@@ -21,28 +23,35 @@ use crate::agent::{
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
 use crate::model::{Connection, ModelChoice, ReasoningSetting};
-use crate::restore::{CarryOn, Interrupted, RESTARTED, Restored};
+use crate::restore::{CarryOn, Interrupted, Restored};
 use crate::retry::Verdict;
 use crate::session_log::tests::{edit, push_message};
 use crate::session_log::{
     ConversationChanged, ReflectSaved, SessionLog, SessionLogPlugin, SessionRestored, SessionStore,
 };
 use crate::stage::{
-    AgentPass, Decision, ForAgent, HoldOf, IfStopped, Outcome, PrepareSystems, ReadyToSettle,
-    ReadyToStart, Settled, Stage, Started,
+    AgentPass, Decision, Effect, ForAgent, HoldOf, IfStopped, Outcome, PrepareSystems,
+    ReadyToSettle, ReadyToStart, Settled, Stage, Started, SupersededBy, Supersedes,
 };
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
+use rig_core::completion::{CompletionResponse, FinishReason};
+
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{Decider, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
-use rig_core::message::CallId;
+use rig_core::message::{
+    AssistantContent, CallId, Origin, ToolCall, ToolFunction, ToolName, UserContent,
+};
 use rig_core::operation::Completion;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_core::tool::{ExitStatus, Scope, Tool, ToolContext, ToolExecutionError, Touches};
+use rig_core::tool::{
+    ExitStatus, Scope, Tool, ToolContext, ToolErrorKind, ToolExecutionError, Touches,
+};
+use std::sync::Arc;
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
@@ -258,10 +267,9 @@ fn every_change_the_log_records_is_committed() {
 
 /// Keeps every restored agent idle: its restored turn is stopped before
 /// anything of it starts.
-fn stay_idle(turns: Query<Entity, (With<Restored>, With<TurnOf>)>, mut commands: Commands) {
-    for turn in &turns {
-        let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
-        commands.entity(turn).insert_if_new(stopped);
+fn stay_idle(turns: Query<&TurnOf, With<Restored>>, mut commands: Commands) {
+    for &TurnOf(agent) in &turns {
+        commands.trigger(StopTurn::plugin_alone(agent, "stay-idle", "restart"));
     }
 }
 
@@ -412,9 +420,19 @@ fn saved_exit(store: &MemoryStore, call: &str) -> Option<ExitStatus> {
     let session = rig_memory::Session::read(store).ok()?;
     let conversation = session.agents.into_iter().next()?.conversation;
     let call = CallId::from_wire(call);
-    let facts = conversation
-        .entries()
-        .find_map(|entry| entry.facts.get(&call).cloned())?;
+    let entries: Vec<_> = conversation.entries().collect();
+    let facts = entries.windows(2).find_map(|pair| {
+        let [reply, results] = pair else { return None };
+        let Message::Assistant(message) = reply.message else {
+            return None;
+        };
+        let calls: Vec<_> = CallRef::calls(reply.id, message).collect();
+        let facts = results
+            .facts
+            .of(calls.iter().map(|(at, asked)| (*at, &asked.id)));
+        let mut found = calls.iter().zip(facts);
+        found.find_map(|((_, asked), facts)| facts.filter(|_| asked.id == call).cloned())
+    })?;
     facts.get::<ExitStatus>().ok().flatten()
 }
 
@@ -585,7 +603,7 @@ fn an_exit_stops_the_running_turn_and_a_restart_carries_nothing_on() {
         .last()
         .and_then(|(_, record)| record.end);
     assert!(
-        matches!(&ended, Some(TurnEnd::Stopped { why: Some(why), .. }) if why == "the run ended"),
+        matches!(&ended, Some(TurnEnd::Stopped { by: Some(StopCause::Exit(why)), .. }) if why == "the run ended"),
         "{ended:?}"
     );
     // The restart starts nothing; the next message reaches the model after
@@ -951,16 +969,25 @@ fn a_restart_stops_what_a_crash_left_and_keeps_what_finished() {
     );
     assert!(app.world().resource::<Gated>().0.is_empty());
     let stopped = matches!(app.world().resource::<Ended>().0.as_slice(),
-        [TurnOutcome::Stopped(Some(why))] if why == RESTARTED);
+        [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::Restarted);
     assert!(stopped, "{:?}", app.world().resource::<Ended>().0);
     // Only `wait` is drawn as stopped: `touch` keeps its own look.
     let agent = first_agent(&mut app);
     let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
     let ended = conversation.and_then(|it| it.turns().last().and_then(|(_, record)| record.end));
+    let called = |at: &CallRef| {
+        let conversation = conversation?;
+        let reply = conversation
+            .messages()
+            .get(conversation.index_of(at.reply)?)?;
+        let Message::Assistant(reply) = &**reply else {
+            return None;
+        };
+        let call = reply.tool_calls().nth(usize::try_from(at.index).ok()?)?;
+        Some(call.id.wire().into_owned())
+    };
     let calls: Option<Vec<String>> = match &ended {
-        Some(TurnEnd::Stopped { calls, .. }) => {
-            Some(calls.iter().map(|id| id.wire().into_owned()).collect())
-        }
+        Some(TurnEnd::Stopped { calls, .. }) => calls.iter().map(called).collect(),
         _ => None,
     };
     assert_eq!(calls, Some(vec!["w1".to_owned()]), "{ended:?}");
@@ -1196,15 +1223,14 @@ fn a_restored_turn_a_gate_stops_starts_nothing() {
     let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended));
     let stopped = matches!(app.world().resource::<Ended>().0.as_slice(),
-        [TurnOutcome::Stopped(Some(why))] if why == "restart");
+        [TurnOutcome::Stopped(stop)]
+            if matches!(stop.cause(), StopCause::Plugin { why, .. } if why == "restart"));
     assert!(stopped, "{:?}", app.world().resource::<Ended>().0);
-    // What finished keeps its result, what ran is cut short, and the model
-    // was not asked.
+    // What finished keeps its result, what ran is cut short by the gate's
+    // stop, and the model was not asked.
     let said = said(&mut app);
-    assert!(
-        said.contains("touched") && said.contains(&interrupted()),
-        "{said}"
-    );
+    let cut = "Stopped: restart. It may have partly run; check before running it again.";
+    assert!(said.contains("touched") && said.contains(cut), "{said}");
     assert_eq!(model.request_count(), 0);
 }
 
@@ -1278,7 +1304,9 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
     let mut app = tools_app(&store, &model, |app| {
         app.add_tool(Wait)
             .init_resource::<Asking>()
-            .add_systems(AgentPass, ask.in_set(Stage::Gate));
+            .init_resource::<InterruptedKinds>()
+            .add_systems(AgentPass, ask.in_set(Stage::Gate))
+            .add_observer(note_interrupted_kind);
     });
     for _ in 0..5 {
         app.update();
@@ -1303,6 +1331,34 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
         said.contains("touched") && said.contains(&interrupted()),
         "{said}"
     );
+    // The call the crash cut short is answered as cancelled, not as a
+    // failure of some other kind.
+    let kinds = &app.world().resource::<InterruptedKinds>().0;
+    assert!(
+        !kinds.is_empty()
+            && kinds
+                .iter()
+                .all(|kind| *kind == Some(ToolErrorKind::Cancelled)),
+        "{kinds:?}"
+    );
+}
+
+/// The error kind of each interrupted call's answer, as it was answered.
+#[derive(Resource, Default)]
+struct InterruptedKinds(Vec<Option<ToolErrorKind>>);
+
+fn note_interrupted_kind(
+    answered: On<Add<Outcome>>,
+    outcomes: Query<&Outcome, With<Interrupted>>,
+    mut kinds: ResMut<InterruptedKinds>,
+) {
+    if let Ok(outcome) = outcomes.get(answered.entity) {
+        let result = outcome.tool_result();
+        let kind = result.error().map(ToolExecutionError::kind);
+        if kind.is_some() {
+            kinds.0.push(kind);
+        }
+    }
 }
 
 #[test]
@@ -1339,6 +1395,249 @@ fn a_read_that_finished_before_a_crash_keeps_its_result() {
         "{said}"
     );
     assert!(app.world().resource::<Gated>().0.is_empty());
+}
+
+/// Answers the first model call with a reply asking for `asked`, each a
+/// tool and its arguments, under one id, as a replayed or a plugin's
+/// answer may: a live stream renames a repeated id, an answer decided for
+/// it does not.
+fn answer_twice(
+    asked: [(&'static str, Value); 2],
+) -> impl FnMut(Query<&mut Decision, (With<TurnCall>, ReadyToStart)>, Local<bool>) {
+    move |mut calls, mut answered| {
+        for mut decision in &mut calls {
+            let call = |(tool, args): &(&str, Value)| {
+                let name = ToolName::new(*tool).ok()?;
+                let function = ToolFunction::new(name, args.clone());
+                Some(AssistantContent::ToolCall(ToolCall::from_wire(
+                    "c9", function,
+                )))
+            };
+            let choice: Option<Vec<_>> = asked.iter().map(call).collect();
+            let origin = Origin::new("test.api", "test", "model");
+            let reply = choice.map(|choice| {
+                let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+                Ok(rig_core::effect::Answered::Completion(Arc::new(
+                    reply.with_finish_reason(FinishReason::ToolCalls),
+                )))
+            });
+            if let Some(reply) = reply.filter(|_| !*answered) {
+                *answered = decision.decide(Decider::plugin("replay"), reply);
+            }
+        }
+    }
+}
+
+#[test]
+fn each_call_sharing_an_id_keeps_its_own_result_across_a_crash() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Peek);
+        let asked = [
+            ("peek", serde_json::json!({})),
+            ("look", serde_json::json!({})),
+        ];
+        app.add_systems(AgentPass, answer_twice(asked).in_set(Stage::Gate));
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    // The second call settled, and the session saved it, while the first
+    // still runs.
+    let saved = store.clone();
+    let settled = move |_: &World| {
+        let session = rig_memory::Session::read(&saved);
+        let agents = session.map(|session| session.agents).unwrap_or_default();
+        let asides = agents.iter().flat_map(|agent| agent.conversation.asides());
+        let mut states = asides.map(|(_, aside)| aside.value.get("state").cloned());
+        states.any(|state| state == Some(Value::from("settled")))
+    };
+    assert!(run_until(&mut app, settled));
+    // A crash: nothing more is written.
+    drop(app);
+    let (_, said, store) = restart_after(store, |app| {
+        app.add_tool(Peek);
+    });
+    let session = rig_memory::Session::read(&store).map(|session| session.agents);
+    let agents = session.unwrap_or_default();
+    let conversation = agents.first().map(|agent| &agent.conversation);
+    let entries: Vec<_> = conversation
+        .into_iter()
+        .flat_map(|it| it.entries())
+        .collect();
+    let answered = entries.windows(2).find_map(|pair| {
+        let [reply, results] = pair else { return None };
+        let (Message::Assistant(asked), Message::User { content }) =
+            (reply.message, results.message)
+        else {
+            return None;
+        };
+        let calls: Vec<_> = CallRef::calls(reply.id, asked).collect();
+        let facts = results
+            .facts
+            .of(calls.iter().map(|(at, call)| (*at, &call.id)));
+        let results = content.iter().filter_map(|part| match part {
+            UserContent::ToolResult(result) => Some(result),
+            _ => None,
+        });
+        let results = results.map(|result| {
+            let text = serde_json::to_string(&result.content).unwrap_or_default();
+            (result.name.as_str().to_owned(), text.contains("seen"))
+        });
+        let exits = facts
+            .into_iter()
+            .map(|facts| facts.and_then(|facts| facts.get::<ExitStatus>().ok().flatten()));
+        Some((results.collect::<Vec<_>>(), exits.collect::<Vec<_>>()))
+    });
+    // `look` keeps what it said and published; `peek` is cut short.
+    let calls = vec![("peek".to_owned(), false), ("look".to_owned(), true)];
+    let expected = (calls, vec![None, Some(ExitStatus::Exited(7))]);
+    assert_eq!(answered, Some(expected), "{said}");
+}
+
+/// Replaces each `look` call with a successor of its own, as a reviewer
+/// may: its request, parent, turn and agent, but not its place.
+fn replace_looks(
+    calls: Query<
+        (Entity, &ToolRequest, &Effect, &CallOf, &ForAgent),
+        (ReadyToStart, Without<SupersededBy>, Without<Supersedes>),
+    >,
+    chained: Res<Chained>,
+    mut commands: Commands,
+) {
+    for (call, request, effect, &CallOf(turn), &ForAgent(agent)) in &calls {
+        if request.call.function.name.as_str() == "look" {
+            let parent = effect.parent;
+            let successor = || {
+                let effect = Effect::with_parent_id(parent);
+                (request.clone(), effect, CallOf(turn), ForAgent(agent))
+            };
+            let next = commands.spawn(successor()).id();
+            if chained.0 {
+                // Linked from its end: the second successor first.
+                let last = commands.spawn(successor()).id();
+                commands.entity(next).insert(SupersededBy(last));
+            }
+            commands.entity(next).add_related::<SupersededBy>(&[call]);
+        }
+    }
+}
+
+/// Whether [`replace_looks`] makes a chain of two successors.
+#[derive(Resource)]
+struct Chained(bool);
+
+#[test]
+fn a_successor_a_plugin_made_keeps_its_result_across_a_crash() {
+    successor_keeps_its_result_across_a_crash(false);
+}
+
+#[test]
+fn the_last_of_a_chain_of_successors_keeps_its_result_across_a_crash() {
+    successor_keeps_its_result_across_a_crash(true);
+}
+
+fn successor_keeps_its_result_across_a_crash(chained: bool) {
+    let store = MemoryStore::default();
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([vec![
+        call("l1", "look"),
+        call("p1", "peek"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_tool(Peek)
+            .insert_resource(Chained(chained))
+            .add_systems(AgentPass, replace_looks.in_set(Stage::Gate));
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    // The successor settled, and the session saved its result, while
+    // `peek` still runs.
+    let saved = store.clone();
+    let settled = move |_: &World| {
+        let session = rig_memory::Session::read(&saved);
+        let agents = session.map(|session| session.agents).unwrap_or_default();
+        let asides = agents.iter().flat_map(|agent| agent.conversation.asides());
+        let mut states = asides.map(|(_, aside)| aside.value.get("state").cloned());
+        states.any(|state| state == Some(Value::from("settled")))
+    };
+    let kept = run_until(&mut app, settled);
+    // A crash: nothing more is written.
+    drop(app);
+    let (app, said, store) = restart_after(store, |app| {
+        app.add_tool(Peek);
+    });
+    // `look` did not run again: its successor's result was kept.
+    let gated = &app.world().resource::<Gated>().0;
+    assert!(!gated.iter().any(|(tool, _)| tool == "look"), "{gated:?}");
+    assert!(kept && said.contains("seen"), "{said}");
+    assert_eq!(saved_exit(&store, "l1"), Some(ExitStatus::Exited(7)));
+}
+
+/// Changes the one file its call names, and never answers.
+struct Edit;
+
+impl Tool for Edit {
+    const NAME: &'static str = "edit";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Edits.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    fn footprint(&self, args: &serde_json::Value) -> Touches {
+        let path = args.get("path").and_then(Value::as_str).unwrap_or("/work");
+        Touches::Writes(Scope::Paths(vec![path.into()]))
+    }
+
+    async fn call(
+        &self,
+        _: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        std::future::pending::<()>().await;
+        Ok(String::new())
+    }
+}
+
+#[test]
+fn each_write_sharing_an_id_that_a_crash_cut_short_is_answered_as_interrupted() {
+    let store = MemoryStore::default();
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let edit = |path: &str| ("edit", serde_json::json!({ "path": path }));
+    let mut app = tools_app(&store, &model, |app| {
+        let asked = [edit("/work/a.rs"), edit("/work/b.rs")];
+        app.add_tool(Edit)
+            .add_systems(AgentPass, answer_twice(asked).in_set(Stage::Gate));
+    });
+    if let Some(agent) = first_agent(&mut app) {
+        app.world_mut()
+            .trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    }
+    // Both started, each marked so first, and neither finished.
+    let editing = |world: &World| {
+        let started = world.iter_entities().filter(|it| it.contains::<Started>());
+        started.filter(|it| it.contains::<ToolRequest>()).count() == 2
+    };
+    assert!(run_until(&mut app, editing));
+    // A crash: nothing more is written.
+    drop(app);
+    let (_, said, _) = restart_after(store, |app| {
+        app.add_tool(Edit);
+    });
+    assert_eq!(said.matches(&interrupted()).count(), 2, "{said}");
+    assert!(!said.contains("Not run"), "{said}");
 }
 
 /// Keeps every message a turn did not send in the inbox.
@@ -1631,5 +1930,6 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
 /// What the model reads of a call that may change something and was
 /// running when the session stopped.
 fn interrupted() -> String {
-    format!("Stopped: {RESTARTED}. It may have partly run; check before running it again.")
+    let restarted = StopCause::Restarted;
+    format!("Stopped: {restarted}. It may have partly run; check before running it again.")
 }

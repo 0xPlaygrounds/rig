@@ -42,8 +42,8 @@ use crate::load::ProvidedBy;
 /// is now, with its Prepare edits (a model call's connection is routed and
 /// adapted again in Prepare, as `Adapted` is not copied), and its
 /// [`Effect`] parent and purpose, `CallOf`, `ForAgent`, `ChildOf`,
-/// `ProvidedBy` and `Name`. The owner's markers follow by
-/// [`follow_successor`](rig_ecs::stage::follow_successor):
+/// `ProvidedBy` and `Name`; the kernel gives it the call's `InReply`. The
+/// owner's markers follow by [`follow_successor`](rig_ecs::stage::follow_successor):
 /// `commands.queue(resend(call))`.
 pub fn resend(effect: Entity) -> impl Command {
     move |world: &mut World| {

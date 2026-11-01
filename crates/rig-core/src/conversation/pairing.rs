@@ -1,7 +1,8 @@
 //! The rules pairing a conversation's tool calls with their results:
-//! validation and repair of a message list, the same repair over entries
-//! that keeps their ids ([`normalize`]), the calls a cut-short conversation
-//! still owes, and where a window of it may start.
+//! which result answers which call ([`answered_by`]), validation and repair
+//! of a message list, the same repair over entries that keeps their ids
+//! ([`normalize`]), the calls a cut-short conversation still owes, and
+//! where a window of it may start.
 //!
 //! ```
 //! use rig_core::{conversation::pairing, message::Message};
@@ -14,10 +15,10 @@ use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use super::{Author, Entry, MessageId, ResultFacts};
-use crate::message::{
-    AssistantContent, AssistantMessage, CallId, Message, ToolCall, ToolName, UserContent,
-};
+use crate::message::{AssistantMessage, CallId, Message, ToolCall, ToolName, UserContent};
 use crate::tool::feedback::tool_result_message;
 
 /// Why a history is not a canonical conversation, or what [`pair`] repaired.
@@ -49,6 +50,109 @@ pub enum PairingError {
         /// The orphan result's call id.
         call_id: CallId,
     },
+}
+
+/// A tool call's place: its reply's entry and its index among the reply's
+/// tool calls. Unlike a provider's call id, no two calls of one
+/// conversation share one; across agents, pair it with the agent.
+///
+/// ```
+/// use rig_core::conversation::{CallRef, Conversation};
+/// use rig_core::message::{AssistantContent, AssistantMessage, Message, ToolCall, ToolFunction, ToolName};
+///
+/// let look = ToolFunction::new(ToolName::new("look")?, serde_json::json!({}));
+/// let call = AssistantContent::ToolCall(ToolCall::from_wire("c1", look));
+/// let mut conversation = Conversation::new();
+/// let reply = conversation.push(Message::Assistant(AssistantMessage::new(vec![call.clone(), call])));
+/// let second = CallRef { reply, index: 1 };
+/// assert_eq!(second.wire(), format!("{reply}/1"));
+/// let pending = conversation.pending_calls();
+/// assert_eq!(pending.get(1).map(|(at, _)| *at), Some(second));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CallRef {
+    pub reply: MessageId,
+    pub index: u32,
+}
+
+impl CallRef {
+    /// Its text form, such as `m4/1`.
+    pub fn wire(&self) -> String {
+        format!("{}/{}", self.reply, self.index)
+    }
+
+    /// The tool calls of `message`, the entry `reply`, with their places.
+    pub fn calls(
+        reply: MessageId,
+        message: &AssistantMessage,
+    ) -> impl Iterator<Item = (Self, &ToolCall)> {
+        (0..).zip(message.tool_calls()).map(move |(index, call)| {
+            let at = Self { reply, index };
+            (at, call)
+        })
+    }
+}
+
+/// The answer of each of `calls`, in call order: the n-th answer with an id
+/// answers the n-th call with that id, as [`pair`] pairs them. `None` for a
+/// call nothing answers; an answer no call waits for is dropped.
+///
+/// ```
+/// use rig_core::conversation::pairing::answered_by;
+/// use rig_core::message::CallId;
+///
+/// let id = CallId::from_wire("c1");
+/// let answers = [(&id, "first"), (&id, "second")];
+/// assert_eq!(answered_by([&id, &id, &id], answers), [Some("first"), Some("second"), None]);
+/// ```
+pub fn answered_by<'c, 'a, T>(
+    calls: impl IntoIterator<Item = &'c CallId>,
+    answers: impl IntoIterator<Item = (&'a CallId, T)>,
+) -> Vec<Option<T>> {
+    let mut waiting: Vec<(usize, &CallId)> = calls.into_iter().enumerate().collect();
+    let mut found: Vec<Option<T>> = waiting.iter().map(|_| None).collect();
+    for (id, answer) in answers {
+        if let Some((at, _)) = take(&mut waiting, id, |(_, id)| id)
+            && let Some(slot) = found.get_mut(at)
+        {
+            *slot = Some(answer);
+        }
+    }
+    found
+}
+
+/// The item of each of `calls`, in call order: the one kept at its place
+/// for its id, else one of the rest, kept elsewhere or without a place,
+/// that [`answered_by`] pairs with it. An edit that deletes a call moves
+/// the next into its place, so a place holds its item only for its call.
+pub fn placed<T: Copy>(
+    calls: &[(CallRef, &CallId)],
+    items: &[(&CallId, Option<CallRef>, T)],
+) -> Vec<Option<T>> {
+    let kept: Vec<Option<usize>> = calls
+        .iter()
+        .map(|(place, call)| {
+            let here =
+                |(id, at, _): &(&CallId, Option<CallRef>, T)| *at == Some(*place) && id == call;
+            items.iter().position(here)
+        })
+        .collect();
+    let rest = (0..)
+        .zip(items)
+        .filter(|(at, _)| !kept.contains(&Some(*at)));
+    let waiting = calls.iter().zip(&kept).filter(|(_, kept)| kept.is_none());
+    let mut paired = answered_by(
+        waiting.map(|((_, id), _)| *id),
+        rest.map(|(_, &(id, _, item))| (id, item)),
+    )
+    .into_iter();
+    kept.into_iter()
+        .map(|kept| match kept {
+            Some(at) => items.get(at).map(|&(.., item)| item),
+            None => paired.next().flatten(),
+        })
+        .collect()
 }
 
 /// Rejects what [`pair`] would repair: consecutive assistant messages, a
@@ -358,7 +462,7 @@ fn walk(
                             true
                         }
                         Some(_) => false,
-                        None => answer(&mut walk.waiting, &result.call, |(id, _)| id),
+                        None => take(&mut walk.waiting, &result.call, |(id, _)| id).is_some(),
                     };
                     if answers {
                         content.push((Some(index), UserContent::ToolResult(result)));
@@ -423,7 +527,7 @@ pub fn answers(pending: &[CallId], results: &[UserContent]) -> Result<(), Answer
         let UserContent::ToolResult(result) = result else {
             return Err(AnswerError::NotAResult);
         };
-        if !answer(&mut waiting, &result.call, |id| id) {
+        if take(&mut waiting, &result.call, |id| id).is_none() {
             return Err(AnswerError::Unknown(result.call.clone()));
         }
     }
@@ -459,15 +563,10 @@ fn unanswered<'a>(
         .collect()
 }
 
-/// Take the first of `waiting` with the id `id`; false when none has it.
-fn answer<T>(waiting: &mut Vec<T>, id: &CallId, id_of: impl Fn(&T) -> &CallId) -> bool {
-    match waiting.iter().position(|call| id_of(call) == id) {
-        Some(at) => {
-            waiting.remove(at);
-            true
-        }
-        None => false,
-    }
+/// Takes the first of `waiting` with the id `id`.
+fn take<T>(waiting: &mut Vec<T>, id: &CallId, id_of: impl Fn(&T) -> &CallId) -> Option<T> {
+    let at = waiting.iter().position(|call| id_of(call) == id)?;
+    Some(waiting.remove(at))
 }
 
 /// One step of [`pair`]'s walk, with indices into its input.
@@ -664,18 +763,29 @@ fn sourced(content: Vec<(Option<usize>, UserContent)>) -> (Vec<usize>, Vec<UserC
 /// still owes the model. A turn that ended in an error or was aborted owes
 /// none, as its calls never run.
 pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
-    let Some((at, Message::Assistant(reply))) = messages
+    let pending = pending(messages);
+    let calls = pending.into_iter().flat_map(|(_, calls)| calls);
+    calls.map(|(_, call)| call.clone()).collect()
+}
+
+/// [`pending_calls`], with the index of the message asking for them and
+/// each call's place among its tool calls.
+pub(crate) fn pending<M: Borrow<Message>>(
+    messages: &[M],
+) -> Option<(usize, Vec<(u32, &ToolCall)>)> {
+    let (at, reply) = messages
         .iter()
         .map(Borrow::borrow)
         .enumerate()
-        .rfind(|(_, message)| matches!(message, Message::Assistant(_)))
-    else {
-        return Vec::new();
-    };
+        .rev()
+        .find_map(|(at, message)| match message {
+            Message::Assistant(reply) => Some((at, reply)),
+            _ => None,
+        })?;
     if reply.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
-        return Vec::new();
+        return None;
     }
-    let answered: Vec<&CallId> = messages
+    let results = messages
         .iter()
         .skip(at + 1)
         .flat_map(|message| match message.borrow() {
@@ -683,18 +793,13 @@ pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
             _ => &[],
         })
         .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(&result.call),
+            UserContent::ToolResult(result) => Some((&result.call, ())),
             _ => None,
-        })
-        .collect();
-    reply
-        .content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) if !answered.contains(&&call.id) => Some(call.clone()),
-            _ => None,
-        })
-        .collect()
+        });
+    let answered = answered_by(reply.tool_calls().map(|call| &call.id), results);
+    let calls = (0..).zip(reply.tool_calls()).zip(answered);
+    let calls = calls.filter_map(|(call, answer)| answer.is_none().then_some(call));
+    Some((at, calls.collect()))
 }
 
 /// The first index at or after `at` a request may start `messages` from:

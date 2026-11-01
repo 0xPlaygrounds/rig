@@ -1,7 +1,12 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::completion::{CompletionResponse, FinishReason, Usage};
+use rig_core::effect::Answered;
+use rig_core::message::{Origin, ToolFunction, ToolName};
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_core::tool::ExitStatus;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, MemoryStore, app_on, calls, collect, first_agent,
     log_ended, reply, run_until, scratch_home, scripted_models, tui_view,
@@ -18,10 +23,18 @@ struct Args {
     /// The command.
     #[expect(dead_code, reason = "the log is the same for every command")]
     command: String,
+    /// The exit status to publish, if any.
+    #[serde(default)]
+    exit: Option<i32>,
 }
 
-/// A `shell` that prints a long build log.
-fn shell(called: On<ToolCalled<Args>>, mut calls: Query<&mut Decision, ToolCalls>) {
+/// A `shell` that prints a long build log, and publishes the exit status
+/// its call asks for.
+fn shell(
+    called: On<ToolCalled<Args>>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+    mut commands: Commands,
+) {
     let log: Vec<String> = (1..=LOG_LINES)
         .map(|n| format!("build log line {n}"))
         .collect();
@@ -30,6 +43,12 @@ fn shell(called: On<ToolCalled<Args>>, mut calls: Query<&mut Decision, ToolCalls
             Decider::plugin("shell"),
             ToolResult::success(log.join("\n").into()),
         );
+    }
+    if let Some(code) = called.args.exit {
+        let mut context = ToolContext::new();
+        context.insert_result(ExitStatus::Exited(code)).ok();
+        let published = Published(context.result_context());
+        commands.entity(called.call).insert(published);
     }
 }
 
@@ -330,5 +349,319 @@ skip { next }
         "{said}"
     );
     assert_eq!(messages(&app, agent), marked);
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// Deleting the first of a reply's two calls moves the second into its
+/// place, so the reply gets a new id: what was kept at the old places,
+/// such as a call's run time or a stop's cut list, matches nothing.
+#[cfg(unix)]
+#[test]
+fn a_reply_whose_calls_an_edit_moved_gets_a_new_id() {
+    let home = scratch_home("oc-transcript-in-editor-moved");
+    let home = home.root().to_path_buf();
+    assert!(std::fs::create_dir_all(&home).is_ok());
+    let command = |command: &str| serde_json::json!({ "command": command });
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("c1", "shell", command("one")),
+            MockStreamEvent::tool_call("c2", "shell", command("two")),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Both ran."),
+    ]);
+    let store = MemoryStore::default();
+    let started = start(&store, &model, &home);
+    assert!(started.is_some(), "the session has one agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "Run both.");
+    let reply = |app: &App| {
+        let conversation = app.world().get::<Conversation>(agent);
+        let entries = conversation.into_iter().flat_map(|it| it.entries());
+        let calls = |entry: &EntryRef<'_>| matches!(entry.message, Message::Assistant(turn) if turn.tool_calls().next().is_some());
+        entries
+            .filter(calls)
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>()
+    };
+    let before = reply(&app);
+    assert_eq!(before.len(), 1, "{}", messages(&app, agent));
+
+    app.world_mut()
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
+    let drop_first = script(
+        &home,
+        "drop-first.sh",
+        &awk(
+            r#"/^## \[/ { skip = 0 } /^## \[3\] tool-result shell c1/ { skip = 1 } !skip { print }"#,
+        ),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_first,
+        "Edited the conversation",
+    );
+    let left = messages(&app, agent);
+    assert!(
+        !left.contains("\"one\"") && left.contains("\"two\""),
+        "{left}\n{said}"
+    );
+    assert!(paired(&app, agent));
+    let after = reply(&app);
+    assert_eq!(after.len(), 1, "{left}");
+    assert_ne!(after, before, "the reply got a new id");
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// Taking out a reply's only call, and its result, merges the next reply
+/// into it: that reply's call then sits where the taken call was, so the
+/// merged reply gets a new id and nothing kept for the old place is its,
+/// also when the two calls have the same id, as replies may reuse one,
+/// and when they are the same call.
+#[cfg(unix)]
+#[test]
+fn a_reply_a_merge_moves_a_call_into_gets_a_new_id() {
+    merge_moves_a_call("c2", "two");
+    merge_moves_a_call("c1", "two");
+    merge_moves_a_call("c1", "one");
+}
+
+/// [`a_reply_a_merge_moves_a_call_into_gets_a_new_id`], with `second` the
+/// id and command of the second reply's call.
+#[cfg(unix)]
+fn merge_moves_a_call(second: &str, ran: &str) {
+    let home = scratch_home(&format!("oc-transcript-in-editor-merged-{second}-{ran}"));
+    let home = home.root().to_path_buf();
+    assert!(std::fs::create_dir_all(&home).is_ok());
+    let command = |command: &str| serde_json::json!({ "command": command });
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::text("Looking."),
+            MockStreamEvent::tool_call("c1", "shell", command("one")),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        vec![
+            MockStreamEvent::tool_call(second, "shell", command(ran)),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Both ran."),
+    ]);
+    let store = MemoryStore::default();
+    let started = start(&store, &model, &home);
+    assert!(started.is_some(), "the session has one agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    ask(&mut app, &wakes, agent, "Run both.");
+    let replies = |app: &App| {
+        let conversation = app.world().get::<Conversation>(agent);
+        let entries = conversation.into_iter().flat_map(|it| it.entries());
+        let replies = entries.filter(|entry| matches!(entry.message, Message::Assistant(_)));
+        replies.map(|entry| entry.id).collect::<Vec<_>>()
+    };
+    let before = replies(&app);
+    assert_eq!(before.len(), 3, "{}", messages(&app, agent));
+
+    app.world_mut()
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
+    let drop_first = script(
+        &home,
+        "drop-first.sh",
+        &awk(r#"/^## \[/ { skip = 0 }
+/^```call shell c1$/ && !gone { fence = 1; gone = 1; next }
+fence { if (/^```$/) fence = 0; next }
+/^## \[3\] tool-result shell c1$/ && !cut { skip = 1; cut = 1 }
+!skip { print }"#),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_first,
+        "Edited the conversation",
+    );
+    let left = messages(&app, agent);
+    let kept = left.matches(&format!("\"{ran}\"")).count();
+    assert!(kept == 1 && left.contains("Looking."), "{left}\n{said}");
+    let after = replies(&app);
+    assert_eq!(after.len(), 2, "{left}");
+    let merged = after.first().copied();
+    assert!(
+        merged.is_some_and(|id| !before.contains(&id)),
+        "{before:?} {after:?}"
+    );
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// Answers the first model call with a reply asking for `asked`, each a
+/// `shell` call's arguments, under one id: a live stream renames a
+/// repeated id, an answer decided for the call does not.
+fn answer_once(
+    asked: Vec<(&'static str, serde_json::Value)>,
+) -> impl FnMut(Query<&mut Decision, (With<TurnCall>, ReadyToStart)>, Local<bool>) {
+    move |mut calls, mut answered| {
+        for mut decision in &mut calls {
+            let call = |(id, args): &(&str, serde_json::Value)| {
+                let function = ToolFunction::new(ToolName::new("shell").ok()?, args.clone());
+                Some(AssistantContent::ToolCall(ToolCall::from_wire(
+                    *id, function,
+                )))
+            };
+            let choice: Option<Vec<_>> = asked.iter().map(call).collect();
+            let origin = Origin::new("test.api", "test", "model");
+            let reply = choice.map(|choice| {
+                let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
+                Ok(Answered::Completion(Arc::new(
+                    reply.with_finish_reason(FinishReason::ToolCalls),
+                )))
+            });
+            if let Some(reply) = reply.filter(|_| !*answered) {
+                *answered = decision.decide(Decider::plugin("replay"), reply);
+            }
+        }
+    }
+}
+
+/// An edit that takes out one of two calls sharing an id, or merges their
+/// reply into another, is refused, as the file can't say which call is
+/// which: the editor opens again with why, and the calls keep what each
+/// published. Taking out a call at that reply's end is no such edit.
+#[cfg(unix)]
+#[test]
+fn an_edit_is_refused_when_it_moves_merges_or_takes_out_calls_sharing_an_id() {
+    let home = scratch_home("oc-transcript-in-editor-repeated");
+    let home = home.root().to_path_buf();
+    assert!(std::fs::create_dir_all(&home).is_ok());
+    let model = MockCompletionModel::from_stream_turns([reply("Hello."), reply("Both ran.")]);
+    let store = MemoryStore::default();
+    let started = start(&store, &model, &home);
+    assert!(started.is_some(), "the session has one agent");
+    let Some((mut app, wakes, agent)) = started else {
+        return;
+    };
+    let asked = vec![
+        ("c9", serde_json::json!({ "command": "one" })),
+        ("c9", serde_json::json!({ "command": "two", "exit": 7 })),
+        ("c10", serde_json::json!({ "command": "three", "exit": 5 })),
+    ];
+    ask(&mut app, &wakes, agent, "Hi.");
+    app.add_systems(AgentPass, answer_once(asked).in_set(Stage::Gate));
+    ask(&mut app, &wakes, agent, "Run both.");
+    // The id of each reply with calls, and the exit status each call
+    // published.
+    let exits = |app: &App| {
+        let conversation = app.world().get::<Conversation>(agent);
+        let entries: Vec<_> = conversation
+            .into_iter()
+            .flat_map(|it| it.entries())
+            .collect();
+        let replies = entries.windows(2).filter_map(|pair| {
+            let [reply, results] = pair else { return None };
+            let Message::Assistant(turn) = reply.message else {
+                return None;
+            };
+            let calls: Vec<_> = CallRef::calls(reply.id, turn).collect();
+            let facts = results
+                .facts
+                .of(calls.iter().map(|(at, call)| (*at, &call.id)));
+            let exits = facts
+                .into_iter()
+                .map(|facts| facts.and_then(|facts| facts.get::<ExitStatus>().ok().flatten()));
+            (!calls.is_empty()).then(|| (reply.id, exits.collect::<Vec<_>>()))
+        });
+        replies.collect::<Vec<_>>()
+    };
+    let before = exits(&app);
+    let ran: Vec<_> = before.iter().map(|(_, exits)| exits.clone()).collect();
+    assert_eq!(
+        ran,
+        [vec![
+            None,
+            Some(ExitStatus::Exited(7)),
+            Some(ExitStatus::Exited(5))
+        ]]
+    );
+
+    let drop_first = script(
+        &home,
+        "drop-first.sh",
+        &format!(
+            "if [ -e \"$d/count\" ]; then head -n 1 \"$f\" > \"$d/seen\"; exit 0; fi\ntouch \"$d/count\"\n{}",
+            awk(r#"/^## \[/ { skip = 0 }
+/^```call shell c9$/ && !gone { fence = 1; gone = 1; next }
+fence { if (/^```$/) fence = 0; next }
+/^## \[5\] tool-result shell c9$/ && !cut { skip = 1; cut = 1 }
+!skip { print }"#)
+        ),
+    );
+    app.world_mut()
+        .insert_resource(Answers::new([Answer::choice(DELETE_BOTH)]));
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_first,
+        "nothing changed",
+    );
+    let seen = std::fs::read_to_string(home.join("seen")).unwrap_or_default();
+    assert!(
+        seen.starts_with("# ERROR:") && seen.contains("`c9`"),
+        "{seen}\n{said}"
+    );
+    assert_eq!(exits(&app), before, "{said}");
+
+    let drop_unique = script(
+        &home,
+        "drop-unique.sh",
+        &awk(r#"/^## \[/ { skip = 0 }
+/^```call shell c10$/ { fence = 1; next }
+fence { if (/^```$/) fence = 0; next }
+/^## \[5\] tool-result shell c10$/ { skip = 1 }
+!skip { print }"#),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_unique,
+        "Edited the conversation",
+    );
+    // Nothing moved, so the reply keeps its id and each call its own.
+    let after = exits(&app);
+    let ran: Vec<_> = after.iter().map(|(_, exits)| exits.clone()).collect();
+    assert_eq!(ran, [vec![None, Some(ExitStatus::Exited(7))]], "{said}");
+    let ids = |replies: &[(MessageId, Vec<Option<ExitStatus>>)]| {
+        replies.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&after), ids(&before), "{said}");
+
+    // Taking out the question before the reply would merge it into the
+    // answer before: refused too.
+    std::fs::remove_file(home.join("count")).ok();
+    let drop_question = script(
+        &home,
+        "drop-question.sh",
+        &format!(
+            "if [ -e \"$d/count\" ]; then head -n 1 \"$f\" > \"$d/seen\"; exit 0; fi\ntouch \"$d/count\"\n{}",
+            awk(r#"/^## \[/ { skip = 0 } /^## \[3\] user$/ { skip = 1 } !skip { print }"#)
+        ),
+    );
+    let said = typed(
+        &mut app,
+        &wakes,
+        (agent, "/edit-history"),
+        &drop_question,
+        "nothing changed",
+    );
+    let seen = std::fs::read_to_string(home.join("seen")).unwrap_or_default();
+    assert!(
+        seen.starts_with("# ERROR:") && seen.contains("`c9`"),
+        "{seen}\n{said}"
+    );
+    assert_eq!(exits(&app), after, "{said}");
     std::fs::remove_dir_all(&home).ok();
 }

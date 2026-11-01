@@ -19,6 +19,7 @@ use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::PartialReflect;
 use bevy_reflect::prelude::*;
 use rig_core::conversation::MessageId;
+use serde::{Deserialize, Serialize};
 
 use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation, Notice};
 use super::model::Connection;
@@ -32,7 +33,8 @@ use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 /// through it ends just before it. The new agent has the saved components
 /// `agent` has now (its model, reasoning setting, tools, system prompt and
 /// working directory among them) as their fork rules say
-/// ([`ReflectSaved`]), its connection, and a [`ForkedFrom`] naming it, and
+/// ([`ReflectSaved`]), its connection, and a [`ForkedFrom`] naming it and
+/// the agents it came from, and
 /// shares its prompt cache ([`CacheKey`]). Its context is [`ContextStale`]
 /// until its first reply. It has no parent. [`AgentForked`]
 /// names it; a fork that cannot be made, such as without a session log or
@@ -47,11 +49,62 @@ pub struct ForkAgent {
     pub through: Option<MessageId>,
 }
 
-/// On an agent made by a [`ForkAgent`]: the id of the agent it was forked
-/// from. Saved with the session.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Saved, Default, Clone, Debug, PartialEq)]
-pub struct ForkedFrom(pub String);
+/// On an agent made by a [`ForkAgent`]: the agents its conversation came
+/// from, nearest first. A fork of a fork lists its source, then the
+/// source's own. Saved with the session.
+///
+/// ```
+/// use rig_core::conversation::Conversation;
+/// use rig_core::message::Message;
+/// use rig_ecs::fork::{Ancestor, ForkedFrom};
+///
+/// // A fork of `main` made after two messages, which then went on.
+/// let mut fork = Conversation::from_messages([Message::user("Hi"), Message::assistant("Hello")]);
+/// let since = fork.next_id();
+/// let forked = ForkedFrom(vec![Ancestor { agent: "main".to_owned(), since }]);
+/// let own = fork.push(Message::user("And now?"));
+/// assert_eq!(fork.id(1).and_then(|id| forked.made_by(id)), Some("main"));
+/// assert_eq!(forked.made_by(own), None);
+/// ```
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved,
+    Default,
+    Clone,
+    Debug,
+    PartialEq,
+    Serialize,
+    Deserialize
+)]
+pub struct ForkedFrom(pub Vec<Ancestor>);
+
+/// An agent a fork's conversation came from ([`ForkedFrom`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ancestor {
+    /// Its id.
+    pub agent: String,
+    /// The first message id made after the copy from it: the entries of
+    /// the fork with a lower id came from it, or from an ancestor further
+    /// up whose `since` is above them too.
+    pub since: MessageId,
+}
+
+impl ForkedFrom {
+    /// The id of the agent that made the fork's message `id`, which the
+    /// fork copied: the farthest ancestor whose `since` is above it. `None`
+    /// for a message the fork made itself.
+    pub fn made_by(&self, id: MessageId) -> Option<&str> {
+        let older = self.0.iter().take_while(|ancestor| id < ancestor.since);
+        older.last().map(|ancestor| ancestor.agent.as_str())
+    }
+
+    /// The ids of the agents it came from, nearest first.
+    pub fn agents(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(|ancestor| ancestor.agent.as_str())
+    }
+}
 
 /// An agent made by a [`ForkAgent`].
 #[derive(Event, Clone, Debug)]
@@ -131,6 +184,18 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
             Some((component, value))
         })
         .collect();
+    let source = Ancestor {
+        agent: id.0.clone(),
+        since: copy.conversation.next_id(),
+    };
+    let older = world
+        .get::<ForkedFrom>(from)
+        .map(|from| from.0.iter().cloned());
+    let lineage = ForkedFrom(
+        std::iter::once(source)
+            .chain(older.into_iter().flatten())
+            .collect(),
+    );
     let key = CacheKey(CacheKey::of(world.get::<CacheKey>(from), &id).to_owned());
     let connection = world.get::<Connection>(from).cloned();
     let conversation = Conversation(copy.conversation);
@@ -139,7 +204,7 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     for (component, value) in &saved {
         component.insert(&mut spawned, value.as_ref(), &registry);
     }
-    spawned.insert((key, ForkedFrom(id.0.clone())));
+    spawned.insert((key, lineage));
     // No reply of the fork measured the conversation it starts with.
     if !empty {
         spawned.insert(ContextStale {});

@@ -556,9 +556,12 @@ fn turn_records_open_numbered_and_end_once() {
     conversation.push(Message::user("and?"));
     assert_eq!(conversation.open_turn().index, 1);
     let stopped = TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at: conversation.entries().next_back().map(|entry| entry.id),
-        calls: vec![crate::message::CallId::from_wire("c1")],
+        calls: vec![CallRef {
+            reply: answer,
+            index: 0,
+        }],
     };
     assert!(conversation.end_turn(stopped.clone()));
 
@@ -582,6 +585,42 @@ fn turn_records_open_numbered_and_end_once() {
         Some(&Message::user("and?"))
     );
     assert_eq!(fold(&conversation.take_unsaved()), conversation);
+}
+
+/// A stop's cause reads back as it was saved, and a stop saved before
+/// causes and call places were recorded reads as recording neither,
+/// whatever text and call ids it kept.
+#[test]
+fn a_stop_cause_reads_back_and_an_old_stop_has_none() {
+    let causes = [
+        StopCause::User,
+        StopCause::Exit("the run ended".into()),
+        StopCause::Restarted,
+        StopCause::Plugin {
+            by: "budget".into(),
+            why: "over budget".into(),
+        },
+    ];
+    for cause in causes {
+        let end = TurnEnd::Stopped {
+            by: Some(cause),
+            at: None,
+            calls: Vec::new(),
+        };
+        let saved = serde_json::to_value(&end).expect("a turn end serializes");
+        let read: TurnEnd = serde_json::from_value(saved).expect("a turn end reads back");
+        assert_eq!(read, end);
+    }
+    let old = serde_json::json!({"how": "stopped", "why": "compacted", "calls": ["c1"]});
+    let read: TurnEnd = serde_json::from_value(old).expect("an old stop reads");
+    assert_eq!(
+        read,
+        TurnEnd::Stopped {
+            by: None,
+            at: None,
+            calls: Vec::new()
+        }
+    );
 }
 
 /// Ids have a plain form: their number, and `m4`/`a4` text that reads back,

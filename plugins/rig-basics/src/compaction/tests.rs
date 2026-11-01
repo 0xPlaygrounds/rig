@@ -1331,7 +1331,7 @@ fn a_stop_while_reading_again_clears_nothing() {
     }
     let ended = &app.world().resource::<Ended>().0;
     assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Stopped(None)]),
+        matches!(ended.as_slice(), [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User),
         "{ended:?}"
     );
     assert!(sent(&model).is_empty());
@@ -1616,6 +1616,17 @@ fn compact_on_a_conversation_past_the_input_limit_asks_a_request_of_its_own() {
     );
     let live = entries(app.world(), agent);
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
+    // The `/compact` turn ends with nothing of its own to draw its stop
+    // under: not under the reply it kept.
+    let ended = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.turns().next_back())
+        .and_then(|(_, turn)| turn.end);
+    assert!(
+        matches!(ended, Some(TurnEnd::Stopped { at: None, .. })),
+        "{ended:?}"
+    );
 }
 
 /// Stopping the turn while a failed summary call waits to be sent again
@@ -1652,7 +1663,7 @@ fn a_stop_during_the_retry_wait_cancels_the_compaction() {
     assert!(
         matches!(
             app.world().resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped(None)]
+            [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User
         ),
         "{:?}",
         app.world().resource::<Ended>().0
@@ -1986,7 +1997,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
     assert!(
         matches!(
             world.resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped(None)]
+            [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User
         ),
         "{:?}",
         world.resource::<Ended>().0
@@ -3102,7 +3113,7 @@ fn a_stop_while_the_notes_are_held_clears_nothing() {
     assert!(
         matches!(
             app.world().resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped(None)]
+            [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User
         ),
         "{:?}",
         app.world().resource::<Ended>().0
@@ -3236,7 +3247,7 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
             let at = conversation.entries().next_back().map(|entry| entry.id);
             let calls = Vec::new();
             conversation.end_turn(TurnEnd::Stopped {
-                why: None,
+                by: Some(StopCause::User),
                 at,
                 calls,
             });
@@ -3247,7 +3258,7 @@ fn an_asked_summary_is_told_the_reply_it_keeps() {
             let at = conversation.entries().next_back().map(|entry| entry.id);
             let calls = Vec::new();
             conversation.end_turn(TurnEnd::Stopped {
-                why: None,
+                by: Some(StopCause::User),
                 at,
                 calls,
             });
@@ -3476,7 +3487,10 @@ fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
     // compaction's whose start went with it, says nothing about the reply.
     conversation.open_turn();
     conversation.end_turn(TurnEnd::Stopped {
-        why: Some("compacted".to_owned()),
+        by: Some(StopCause::Plugin {
+            by: "compaction".to_owned(),
+            why: "compacted".to_owned(),
+        }),
         at: None,
         calls: Vec::new(),
     });
@@ -3493,7 +3507,7 @@ fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
     assert!(kept_reply(&conversation, Some(cut)).is_some_and(|it| it.contains("continues")));
     conversation.halt(Halt::Stopped);
     conversation.end_turn(TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at: Some(cut),
         calls: Vec::new(),
     });
@@ -3510,7 +3524,7 @@ fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
     conversation.open_turn();
     let cut = conversation.push(Message::assistant("Working on it"));
     conversation.end_turn(TurnEnd::Stopped {
-        why: Some("restarted".to_owned()),
+        by: Some(StopCause::Restarted),
         at: Some(cut),
         calls: Vec::new(),
     });

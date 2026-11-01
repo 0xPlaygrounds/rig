@@ -361,11 +361,8 @@ fn pipe(
             match (run.agent, run.request) {
                 // A stage's agent at work stops its turn, and so retires.
                 (Some(agent), _) if working.contains(agent) => {
-                    let reason = Some("the pipeline stopped".to_owned());
-                    commands.trigger(StopTurn {
-                        entity: agent,
-                        reason,
-                    });
+                    let why = "the pipeline stopped";
+                    commands.trigger(StopTurn::plugin(agent, "relay-pipeline", why));
                 }
                 (Some(agent), _) => commands.trigger(Retire { entity: agent }),
                 (None, Some(request)) => commands.entity(request).try_despawn(),
@@ -489,10 +486,10 @@ fn step(
             .final_answer()
             .ok_or_else(|| "it gave no answer".to_owned()),
         TurnOutcome::Failed(why) => Err(format!("failed: {why}")),
-        TurnOutcome::Stopped(why) => Err(format!(
-            "stopped {}",
-            why.as_deref().unwrap_or("by the user")
-        )),
+        TurnOutcome::Stopped(stop) => Err(match stop.cause() {
+            StopCause::User => "stopped by the user".to_owned(),
+            cause => format!("stopped {cause}"),
+        }),
     };
     let next = run.record(answer);
     go_on(&mut commands, host, &mut run, next);

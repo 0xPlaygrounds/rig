@@ -536,10 +536,8 @@ fn stop_reviewer(
     if let Ok(&ReviewedBy(reviewer)) = reviews.get(removed.entity)
         && busy.contains(reviewer)
     {
-        commands.trigger(StopTurn {
-            entity: reviewer,
-            reason: Some("the review was cancelled".to_owned()),
-        });
+        let why = "the review was cancelled";
+        commands.trigger(StopTurn::plugin(reviewer, "review-agent", why));
     }
 }
 

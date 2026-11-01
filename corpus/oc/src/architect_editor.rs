@@ -547,9 +547,7 @@ fn editor_finished(
     let said = match outcome {
         TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("(the editor failed: {why})"),
-        TurnOutcome::Stopped(why) => {
-            format!("(the editor was stopped: {})", why.as_deref().unwrap_or(""))
-        }
+        TurnOutcome::Stopped(stop) => format!("(the editor was stopped: {})", stop.cause()),
     };
     let report = report(work, &said);
     let result = match outcome {
@@ -571,11 +569,8 @@ fn stop_editor(
         return;
     }
     for (editor, _) in editors.iter().filter(|(_, of)| of.0 == settled.entity) {
-        let reason = Some("the `implement` call it worked for ended".to_owned());
-        commands.trigger(StopTurn {
-            entity: editor,
-            reason,
-        });
+        let why = "the `implement` call it worked for ended";
+        commands.trigger(StopTurn::plugin(editor, "architect-editor", why));
     }
 }
 

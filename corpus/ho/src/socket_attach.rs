@@ -426,7 +426,10 @@ fn turn_ended(
     let (how, why) = match outcome {
         TurnOutcome::Answered(_) => ("answered", None),
         TurnOutcome::Failed(why) => ("failed", Some(why.clone())),
-        TurnOutcome::Stopped(why) => ("stopped", why.clone()),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => ("stopped", None),
+            cause => ("stopped", Some(cause.to_string())),
+        },
     };
     let event =
         json!({ "type": "turn_end", "agent": events.name(agent), "outcome": how, "reason": why });

@@ -81,12 +81,14 @@ fn a_prompt_ends_as_its_last_turn_did_and_a_plugins_stop_is_no_cancel() {
         Some(acp::StopReason::MaxTokens)
     );
     assert_eq!(stop(true, Some(cut)), Some(acp::StopReason::Cancelled));
-    let compacted = TurnOutcome::Stopped(Some("compacted".to_owned()));
-    assert_eq!(stop(false, Some(compacted)), Some(acp::StopReason::EndTurn));
-    assert_eq!(
-        stop(false, Some(TurnOutcome::Stopped(None))),
-        Some(acp::StopReason::Cancelled)
-    );
+    let compacted = StopCause::Plugin {
+        by: "compaction".to_owned(),
+        why: "compacted".to_owned(),
+    };
+    assert_eq!(stopped(&compacted), acp::StopReason::EndTurn);
+    assert_eq!(stopped(&StopCause::User), acp::StopReason::Cancelled);
+    let exit = StopCause::Exit("the run ended".to_owned());
+    assert_eq!(stopped(&exit), acp::StopReason::Cancelled);
     assert_eq!(stop(false, None), Some(acp::StopReason::EndTurn));
     assert!(stop_reason(false, Some(&TurnOutcome::Failed("why".to_owned()))).is_err());
 }

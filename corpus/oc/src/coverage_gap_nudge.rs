@@ -801,14 +801,14 @@ fn cancel_on_new_turn(
     }
 }
 
-/// An interrupt calls off its agent's coverage run.
+/// A stop that reaches the agent calls off its coverage run.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     runs: Query<(Entity, &CoverageRun)>,
     mut agents: Query<&mut Coverage>,
     mut commands: Commands,
 ) {
-    cancel(interrupt.entity, &runs, &mut agents, &mut commands);
+    cancel(interrupt.event_target(), &runs, &mut agents, &mut commands);
 }
 
 /// Despawns `agent`'s run, which drops its task and kills its command.

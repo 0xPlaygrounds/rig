@@ -117,7 +117,8 @@ fn repeated_calls_are_refused_then_stop_the_turn() {
     let ended = &app.world().resource::<Ended>().0;
     let why = "the agent was repeating `read a.txt`";
     assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Stopped(Some(stopped))] if stopped == why),
+        matches!(ended.as_slice(), [TurnOutcome::Stopped(stop)]
+            if matches!(stop.cause(), StopCause::Plugin { why: stopped, .. } if stopped == why)),
         "{ended:?}"
     );
     let notices = &app.world().resource::<Collected<Notice>>().0;

@@ -240,9 +240,10 @@ struct Searched(usize);
 #[test]
 fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
     use crate::tests::{press, typed, view_app};
-    use crate::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, KeyScope, TranscriptItem};
+    use crate::{
+        AppKeyBindingsExt, CallItem, KeyBinding, KeyPress, KeyPressed, KeyScope, TranscriptItem,
+    };
     use crossterm::event::KeyCode;
-    use rig_core::message::CallId;
 
     let (mut app, _) = view_app();
     let slash = KeyBinding::new(KeyPress::key(KeyCode::Char('/')), "Search the transcript");
@@ -251,7 +252,7 @@ fn the_transcript_has_the_keys_while_an_item_is_selected_until_typing() {
         .add_key_binding(slash.in_scope(KeyScope::Transcript), searched);
     let selected = |app: &App| crate::tests::main_view(app).selected.clone();
     let select = |app: &mut App| {
-        let item = TranscriptItem::Call(CallId::from_wire("c1"));
+        let item = TranscriptItem::Call(CallItem::Streaming(0));
         crate::tests::steer(app, |view| view.selected = Some(item));
     };
     select(&mut app);

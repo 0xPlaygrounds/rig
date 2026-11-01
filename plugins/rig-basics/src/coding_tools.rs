@@ -20,11 +20,11 @@ use std::sync::{Arc, PoisonError, RwLock};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppPerCallExt, Attachment, Author, AuthorKind, CallPlace,
-    Commands, Component, Decider, Decision, Effect, Entity, ForAgent, HoldOf, Incoming, Insert,
-    IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome, PerCallTool,
-    Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled, Remove, Res,
-    Resource, Running, Spawned, Started, StopTurn, SystemSet, Tool, ToolOptions, Wake, Without,
-    WorkDir, blocking,
+    Commands, Component, Decider, Decision, Effect, Entity, EntityEvent, ForAgent, HoldOf,
+    Incoming, Insert, IntoScheduleConfigs, MessagePart, MessageWriter, Name, Notice, On, Outcome,
+    PerCallTool, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace, Query, Recalled,
+    Remove, Res, Resource, Running, Started, StopReached, SystemSet, Tool, ToolOptions, Wake,
+    Without, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
@@ -495,46 +495,39 @@ fn release_removed(
     );
 }
 
-/// Stops reading the files of the user's messages to the stopped agent and
-/// the agents below it, which go back to the input instead of to the
-/// model, in the order they were sent, as a stopped turn's do; what waited
-/// behind them goes on ([`release_removed`]).
+/// Stops reading the files of the user's messages to an agent a stop
+/// reached, which go back to the input instead of to the model, in the
+/// order they were sent, as a stopped turn's do; what waited behind them
+/// goes on ([`release_removed`]).
 fn stop_reading(
-    stop: On<StopTurn>,
-    spawned: Query<&Spawned>,
+    stop: On<StopReached>,
     holds: Query<(Entity, &Reading, &HoldOf)>,
     mut messages: HeldMessages,
     mut recalled: MessageWriter<Recalled>,
     mut commands: Commands,
 ) {
-    let below = spawned.iter_descendants::<Spawned>(stop.entity);
-    let stopped: Vec<Entity> = std::iter::once(stop.entity).chain(below).collect();
+    let stopped = stop.event_target();
     let mut back = Vec::new();
     for (hold, &Reading(agent), &HoldOf(message)) in &holds {
         let Ok((effect, typed, mut decision)) = messages.get_mut(message) else {
             continue;
         };
-        if !stopped.contains(&agent) || typed.author != Author::user() {
+        if agent != stopped || typed.author != Author::user() {
             continue;
         }
         if decision.decide(Decider::plugin("attach"), Outcome::custom("recalled")) {
-            back.push((effect.id(), agent, typed.text().trim().to_owned()));
+            back.push((effect.id(), typed.text().trim().to_owned()));
         }
         commands.entity(hold).try_despawn();
     }
     back.sort_unstable();
-    for agent in stopped {
-        let texts: Vec<&str> = (back.iter())
-            .filter(|(_, to, _)| *to == agent)
-            .map(|(_, _, text)| text.as_str())
-            .collect();
-        if !texts.is_empty() {
-            recalled.write(Recalled {
-                agent,
-                text: texts.join("\n\n"),
-                why: None,
-            });
-        }
+    let texts: Vec<&str> = back.iter().map(|(_, text)| text.as_str()).collect();
+    if !texts.is_empty() {
+        recalled.write(Recalled {
+            agent: stopped,
+            text: texts.join("\n\n"),
+            why: None,
+        });
     }
 }
 

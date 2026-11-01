@@ -1073,7 +1073,10 @@ fn candidate_done(
     let failed = match outcome {
         TurnOutcome::Answered(_) => None,
         TurnOutcome::Failed(why) => Some(why.clone()),
-        TurnOutcome::Stopped(why) => Some(why.clone().unwrap_or_else(|| "stopped".to_owned())),
+        TurnOutcome::Stopped(stop) => Some(match stop.cause() {
+            StopCause::User => "stopped".to_owned(),
+            cause => cause.to_string(),
+        }),
     };
     match (failed, run.base.clone()) {
         (None, Some(base)) => {
@@ -1096,16 +1099,19 @@ fn candidate_done(
     }
 }
 
-/// Stopping the agent cancels its runs: the candidates are retired, which
-/// stops their turns and commands, the run's effects are cancelled with it,
-/// and its worktrees are removed.
+/// A stop that reaches the agent cancels its runs: the candidates are
+/// retired, which stops their turns and commands, the run's effects are
+/// cancelled with it, and its worktrees are removed.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     runs: Query<(Entity, &Run)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (run_entity, run) in runs.iter().filter(|(_, run)| run.owner == interrupt.entity) {
+    for (run_entity, run) in runs
+        .iter()
+        .filter(|(_, run)| run.owner == interrupt.event_target())
+    {
         for agent in run
             .candidates
             .iter()

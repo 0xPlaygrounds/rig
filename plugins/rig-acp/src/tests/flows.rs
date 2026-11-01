@@ -341,6 +341,46 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
 }
 
 #[test]
+fn two_calls_that_share_an_id_ask_under_their_own_ids_one_after_the_other() {
+    let place = Place::new("twice");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        driven.answering(Answering::Allow);
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        // A subagent's calls are shown by the permissions they ask.
+        assert!(driven.model(&id, "test/delegate-twice").await);
+        assert!(driven.prompt(&id, "Delegate it.").await.is_ok());
+        let completed = |seen: &Seen| {
+            let done = seen.events.iter().filter(|event| {
+                matches!(event, Event::Update(_, acp::SessionUpdate::ToolCallUpdate(update))
+                    if update.fields.status == Some(acp::ToolCallStatus::Completed)
+                        && seen.asked.iter().any(|asked| asked.tool_call_id == update.tool_call_id))
+            });
+            done.count() == 2
+        };
+        assert!(
+            driven.until(completed).await,
+            "{:?}",
+            tool_steps(driven, &id)
+        );
+        let asked: Vec<String> = driven
+            .seen()
+            .asked
+            .iter()
+            .map(|call| call.tool_call_id.to_string())
+            .collect();
+        let places: Vec<_> = asked
+            .iter()
+            .filter_map(|asked| asked.rsplit('/').next())
+            .collect();
+        assert_eq!(places, ["0", "1"], "{asked:?}");
+    });
+    assert!(router.is_some());
+}
+
+#[test]
 fn cancel_stops_a_running_tool_and_one_sent_with_the_prompt() {
     let place = Place::new("cancel");
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {

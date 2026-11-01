@@ -391,15 +391,15 @@ fn cancel_on_user(
     }
 }
 
-/// Stopping the agent stops its checks.
+/// A stop that reaches the agent stops its checks.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     runs: Query<(Entity, &ForAgent), With<CheckRun>>,
     mut states: Query<&mut CheckState>,
     mut commands: Commands,
 ) {
-    stop(interrupt.entity, &runs, &mut commands);
-    if let Ok(mut state) = states.get_mut(interrupt.entity) {
+    stop(interrupt.event_target(), &runs, &mut commands);
+    if let Ok(mut state) = states.get_mut(interrupt.event_target()) {
         state.running = None;
     }
 }

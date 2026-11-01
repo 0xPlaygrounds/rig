@@ -215,8 +215,10 @@ spawns a successor with the request it needs and the same `CallOf`, which
 the failed effect is `SupersededBy` (`commands.spawn(successor)
 .add_related::<SupersededBy>(&[failed])`), or sends it again
 (`commands.queue(resend(failed))`): the failed effect is recorded as
-superseded, never in the conversation. Any number of effects may name one
-successor, as a race's losers do. Slow work holds the outcome first.
+superseded, never in the conversation. The successor of a reply's call
+takes the call's `InReply` from the kernel, so its result goes in the
+call's place. Any number of effects may name one successor, as a race's
+losers do. Slow work holds the outcome first.
 
 **The loop's edge.** Work spawned, answered or released after `AgentLoop`
 ran waits for the next frame, so a system that does so every frame runs in
@@ -518,7 +520,12 @@ public set: the shipped looks are in `CodingToolLooks`, `SummaryLooks`,
 # Gating and reviewing tool calls
 
 A tool call is an effect with a `ToolRequest` (the model's `ToolCall`) and the
-`CallHandler` that will run it.
+`CallHandler` that will run it. A call a model's reply asked for also has
+`InReply`, which the kernel gives: its reply and its place there
+(`CallRef`). A reply may repeat a provider's call id, so key what you keep
+per call by the `CallRef`, with the agent when what you keep spans agents
+(a `CallRef` is one conversation's), and pair results with calls by
+`pairing::answered_by`.
 
 - **Prepare** edits them as the call is admitted: the arguments, or the
   handler, wrapped with `ErasedHandler::layered` (to give it a secret the
@@ -558,7 +565,7 @@ a turn a plugin carries across the exit (`CarryOn`, such as a call that
 waits on a batch for hours), leaves one unfinished. A restart restores its
 unanswered calls as `Restored` work that every gate sees; then, before
 `GateSystems::After`, the kernel stops the turn as the user's stop does
-("the session restarted"), and nothing of it runs. A plugin that carries
+(`StopCause::Restarted`), and nothing of it runs. A plugin that carries
 the turn on, or asks the user first, puts `CarryOn` on the restored turn
 by Gate; the kernel then takes `CarryOn` and `Restored` off it, and it
 goes on as any turn, which the next exit stops. A call that had started
@@ -1127,12 +1134,51 @@ turn fails, the kernel proposes a `TurnOutcome` (`Answered(message)`,
   `Answered` proposal away, and so does a new
   `(TurnCall, CallOf(turn), ForAgent(agent))` once admitted.
 
-A plugin may insert `TurnOutcome::Failed(reason)` or `Stopped(Some(reason))`
-at any time, such as a budget: calls not started never start, the others are
-answered as stopped (or with their `IfStopped`). `StopTurn` stops a turn at
-once, and the turns of every agent below it in `SpawnedBy`, even when its own
-agent is idle: stopping follows ancestry, so work meant to outlive its parent
-is spawned without `SpawnedBy`. A call that did not finish reads rig-core's
+A plugin may insert `TurnOutcome::Failed(reason)` at any time: calls not
+started never start, the others are answered as stopped (or with their
+`IfStopped`).
+
+**Stopping a turn.** Every stop goes through the kernel, which ends the turn
+`TurnOutcome::Stopped(stop)` at once; `stop.cause()` is a `StopCause`: `User`,
+`Exit(why)`, `Restarted` or `Plugin { by, why }`. `StopTurn::new(agent)` is
+the user's stop, and `StopTurn::plugin(agent, by, why)` a plugin's, such as a
+budget's. Either reaches the agent and every agent below it in `SpawnedBy`,
+even when its own agent is idle: stopping follows ancestry, so work meant to
+outlive its parent is spawned without `SpawnedBy`. Each agent such a stop
+reached, idle or not, gets a `StopReached` with the cause and whether it was
+idle (`idle()`), once its turn is gone (idle agents after every running one
+the stop reached), so an observer reacts once per agent (`On<StopReached>`,
+`event_target()`) instead of walking `Spawned`. Observe `StopReached`, not
+`StopTurn`, to react to an agent being stopped: a `StopTurn` is only a request.
+`StopTurn::plugin_alone(agent, by, why)` is a plugin's decision
+about that one turn: it stops only the agent's own turn, leaves the agents
+below it running and sends no `StopReached`, and `stop.alone()` says so. The
+stops of the app's exit and of a restart send none either. The kernel shows
+"Stopped." for the user's stop only; a plugin says why it stopped a turn
+itself.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+/// Stops a turn that made more than ten model calls, keeping what streamed.
+fn budget(
+    calls: Query<(&CallOf, &ForAgent), (ReadyToStart, ModelCalls, With<TurnCall>)>,
+    turns: Query<&Calls>,
+    model_calls: Query<(), With<TurnCall>>,
+    mut commands: Commands,
+) {
+    for (&CallOf(turn), &ForAgent(agent)) in &calls {
+        let made = turns.get(turn).map_or(0, |calls| {
+            calls.iter().filter(|&call| model_calls.contains(call)).count()
+        });
+        if made > 10 {
+            commands.trigger(StopTurn::plugin_alone(agent, "budget", "over budget"));
+        }
+    }
+}
+```
+
+A call that did not finish reads rig-core's
 `tool::feedback::not_finished`: "Not run: …" when it never started, else
 "Stopped: …" and whether it only read or may have partly run (an `Independent`
 footprint may have). Once nothing holds the outcome and every call settled,
@@ -1144,17 +1190,20 @@ something inserts a `TurnOutcome`.
 `TurnRecord` aside by rig (`TURN`), and `Turn` is filled from it, a
 restarted turn's too: its `index`, `start`, and how it ended,
 `TurnEnd::Answered { answer }`, `Failed { why }` or
-`Stopped { why, at, calls }` (`calls` empty when the stop cut off no
-call, such as a crash during a model call), or `None` while it runs or once
+`Stopped { by, at, calls }` (`by` the `StopCause`, absent only in a record
+saved before causes were; `calls` the places (`CallRef`) of the calls it
+cut, empty when it cut off none, such as a crash during a model call, and
+in a record saved before calls had places), or `None` while it runs or once
 a crash cut it short (an exit stops it, unless a plugin carries it on);
 `conversation.turns()` lists them, for a program without the app too. A
 stop mid-reply saves what streamed as an aborted reply
 (`StopReason::Aborted`), which goes back to the model as its text alone, its
 request `halted()` `Stopped`, and the kernel's note after it by
-`Author::rig()` (`EntryRef::is_stop_marker`); a plugin-stopped turn's
-request, and an agent's or a plugin's message a failed turn left, is halted
-`Kept`. A stop's record names the turn's last entry (`at`), which a front
-draws the stop under, and the tool calls the stop answered (`calls`).
+`Author::rig()` (`EntryRef::is_stop_marker`), for the user's, the exit's or a
+restart's stop; a plugin-stopped turn's request, and an agent's or a
+plugin's message a failed turn left, is halted `Kept`, left for the next
+turn. A stop's record names the turn's last entry (`at`), which a front
+draws the stop under, and the tool calls the stop cut (`calls`).
 
 **Ending a turn with an answer already known**, such as the JSON a
 `submit` tool was called with: a Gate system decides the turn's next
@@ -1770,7 +1819,9 @@ effect, which a holder may take as "stop waiting".
   or before `through` (`None` for the end), so a compaction made before the
   cut is undone in it too; it has the saved components `agent` has now
   (model, reasoning, tools, prompt, working directory), its connection, its
-  prompt-cache key (`CacheKey`) and a `ForkedFrom` naming `agent`.
+  prompt-cache key (`CacheKey`) and a `ForkedFrom` listing `agent` and the
+  agents it came from, nearest first; `ForkedFrom::made_by` says which of
+  them made a message the fork copied.
   `AgentForked { from, fork, through }` names it. `rig_basics::sessions`'
   `/fork`, `/agents` and rewind are built on it, and show the fork, which
   makes it the session's `CurrentAgent`.
@@ -2192,7 +2243,9 @@ select), the `highlights` lit, the `marks` (a `TextMark` label inside a
 reply's text or a streaming call's) and where it is scrolled (`top()`, placed
 in `TuiSystems::Layout`; a panel fitted to it changes in `TuiSystems::Fit`,
 drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a
-`TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at a
+`TranscriptItem` (a `Message`, a tool `Call` by its `CallItem`: a reply's
+call by its `CallRef`, a streaming one by its place among the streaming
+reply's calls; an `Aside`, a `Notice`), at a
 row of it or its `n`th lit match; `item: None` follows the newest output. A
 `DrawnTranscript` added to a pane holds the rows it drew by item;
 `TranscriptLayout::lay_out(world, view, agent, width)` lays any agent's out

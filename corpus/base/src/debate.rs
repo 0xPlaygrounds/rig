@@ -349,18 +349,14 @@ fn seat(
 fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
     commands.entity(host).remove::<Debate>();
     for &(_, agent) in &debate.seated {
-        let reason = Some("the debate stopped".to_owned());
-        commands.trigger(StopTurn {
-            entity: agent,
-            reason,
-        });
+        commands.trigger(StopTurn::plugin(agent, "debate", "the debate stopped"));
     }
 }
 
-/// Interrupting the agent stops its debate.
-fn stop_on_interrupt(interrupt: On<StopTurn>, debates: Query<&Debate>, mut commands: Commands) {
-    if let Ok(debate) = debates.get(interrupt.entity) {
-        stop(&mut commands, interrupt.entity, debate);
+/// A stop that reaches the agent stops its debate.
+fn stop_on_interrupt(interrupt: On<StopReached>, debates: Query<&Debate>, mut commands: Commands) {
+    if let Ok(debate) = debates.get(interrupt.event_target()) {
+        stop(&mut commands, interrupt.event_target(), debate);
     }
 }
 

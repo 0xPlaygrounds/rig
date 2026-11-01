@@ -101,8 +101,9 @@ pub use terminal::{
 pub use theme::Theme;
 pub use transcript::{PastEffects, Replaced};
 pub use view::{
-    DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices, RowWrap,
-    ScrollTo, ShowAgent, ShownNotice, TextMark, TranscriptItem, TranscriptSlot, TranscriptView,
+    CallItem, DrawnLine, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, MarkIn, Notices,
+    RowWrap, ScrollTo, ShowAgent, ShownNotice, TextMark, TranscriptItem, TranscriptSlot,
+    TranscriptView,
 };
 
 /// The terminal view's name as a front.

@@ -317,7 +317,7 @@ fn what_a_plugin_keeps_outside_the_store_maps_through_the_same_rewrite() {
 /// and in a reset, so a redaction or a path remap reaches a saved diff.
 #[test]
 fn a_rewrite_reaches_what_the_calls_of_an_entry_published() {
-    use rig_core::conversation::{Entry, ResultFacts};
+    use rig_core::conversation::{CallRef, Entry, ResultFacts};
     use rig_core::message::{CallId, ToolName};
     use rig_core::tool::{FileRead, FilesRead, ToolContext, content_hash};
 
@@ -351,7 +351,13 @@ fn a_rewrite_reaches_what_the_calls_of_an_entry_published() {
     let session = Session::read(&*store).expect("read");
     for agent in session.agents {
         let facts = agent.conversation.entries().find_map(|entry| {
-            let read = entry.facts.get(&call)?.get::<FilesRead>().ok()??;
+            // Facts saved without their call's place pair with it by id.
+            let at = CallRef {
+                reply: entry.id,
+                index: 0,
+            };
+            let facts = entry.facts.of([(at, &call)]).into_iter().next()??;
+            let read = facts.get::<FilesRead>().ok()??;
             Some(read.paths().map(str::to_owned).collect::<Vec<_>>())
         });
         assert_eq!(

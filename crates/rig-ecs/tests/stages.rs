@@ -55,7 +55,7 @@ use rig_core::effect::{
     Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
 };
 use rig_core::error::ErrorKind;
-use rig_core::message::{CallId, Message, StopReason, ToolFunction, ToolName};
+use rig_core::message::{Message, StopReason, ToolFunction, ToolName};
 use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
@@ -2949,7 +2949,9 @@ fn keep_on_stop(
     mut commands: Commands,
 ) {
     for (message, unsent) in &unsent {
-        if keep.0 && matches!(unsent.ended, Some(TurnOutcome::Stopped(None))) {
+        if keep.0
+            && matches!(&unsent.ended, Some(TurnOutcome::Stopped(stop)) if *stop.cause() == StopCause::User)
+        {
             commands.entity(message).remove::<Unsent>();
         }
     }
@@ -3227,9 +3229,11 @@ fn a_call_stopped_while_it_streams_is_kept_and_never_runs() {
             .turns()
             .last()
             .and_then(|(_, record)| record.end);
+        // The cut call is named by its place in the kept reply.
+        let reply = conversation.entries().next_back().map(|entry| entry.id);
+        let cut = reply.map(|reply| vec![CallRef { reply, index: 0 }]);
         assert!(
-            matches!(&ended, Some(TurnEnd::Stopped { calls, .. })
-                if calls == std::slice::from_ref(&call.id)),
+            matches!(&ended, Some(TurnEnd::Stopped { calls, .. }) if Some(calls) == cut.as_ref()),
             "{ended:?}"
         );
         // A restore finds nothing owed, so nothing of it runs then either.
@@ -3276,7 +3280,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert!(world.get::<ActiveTurn>(agent).is_none());
     assert!(matches!(
         world.get::<TurnOutcome>(turn),
-        Some(TurnOutcome::Stopped(None))
+        Some(TurnOutcome::Stopped(stop)) if *stop.cause() == StopCause::User
     ));
     assert!(world.get::<Settled>(turn).is_some());
     assert!(world.get::<Started>(check).is_none());
@@ -3299,7 +3303,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
         // the reply, so the stop answered none.
         let at = conversation.entries().next_back().map(|entry| entry.id);
         let stopped = TurnEnd::Stopped {
-            why: None,
+            by: Some(StopCause::User),
             at,
             calls: Vec::new(),
         };
@@ -3314,7 +3318,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     }
     assert!(app.world().get_entity(check).is_err(), "settled, then gone");
     assert!(
-        matches!(ended(&app).as_slice(), [TurnOutcome::Stopped(None)]),
+        matches!(ended(&app).as_slice(), [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User),
         "{:?}",
         ended(&app)
     );
@@ -3324,6 +3328,89 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
         .map(|record| record.kind.name().to_owned())
         .collect();
     assert_eq!(cancelled, ["completion", "check"], "{:?}", records(&app));
+}
+
+/// A turn a plugin stops keeps what streamed, as a user's stop does: the
+/// streamed text is kept as an aborted reply, and the request is kept for
+/// the next turn.
+#[test]
+fn a_turn_a_plugin_stops_keeps_what_streamed() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Halfway));
+    }
+    let streamed = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials.iter(world).any(|partial| !partial.text.is_empty())
+    };
+    assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
+    let budget = StopTurn::plugin_alone(agent, "budget", "over budget");
+    app.world_mut().trigger(budget);
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        app.world().get::<ActiveTurn>(agent).is_none(),
+        "the turn ended"
+    );
+    let said = conversation(&app, agent);
+    let kept = said.last().and_then(|message| match message {
+        Message::Assistant(reply) if matches!(reply.stop, Some(StopReason::Aborted(_))) => {
+            message.final_answer()
+        }
+        _ => None,
+    });
+    assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
+    let halted = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.halted());
+    assert_eq!(halted, Some(Halt::Kept));
+}
+
+/// For each `StopReached`, whether its agent's turn was still on.
+#[derive(Resource, Default)]
+struct Reached(Vec<bool>);
+
+/// A stop that reaches below, made while a plugin's stop of the turn
+/// alone settles it, still reaches the agent: once, after its turn is gone.
+#[test]
+fn a_stop_made_as_a_plugins_stop_of_the_turn_alone_settles_reaches_the_agent_once_its_turn_is_gone()
+{
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Halfway));
+    }
+    let stop_all = |ended: On<Add<TurnOutcome>>,
+                    turns: Query<(&TurnOutcome, &TurnOf)>,
+                    mut commands: Commands| {
+        if let Ok((TurnOutcome::Stopped(stop), &TurnOf(agent))) = turns.get(ended.entity)
+            && stop.alone()
+        {
+            commands.trigger(StopTurn::plugin(agent, "policy", "stop all work"));
+        }
+    };
+    let reached =
+        |reached: On<StopReached>, on: Query<Has<ActiveTurn>>, mut log: ResMut<Reached>| {
+            log.0.extend(on.get(reached.event_target()));
+        };
+    app.init_resource::<Reached>()
+        .add_observer(stop_all)
+        .add_observer(reached);
+    let streamed = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials.iter(world).any(|partial| !partial.text.is_empty())
+    };
+    assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
+    let budget = StopTurn::plugin_alone(agent, "budget", "over budget");
+    app.world_mut().trigger(budget);
+    app.update();
+    assert!(app.world().get::<ActiveTurn>(agent).is_none());
+    assert_eq!(app.world().resource::<Reached>().0, [false]);
 }
 
 /// A model call superseded while it streamed is not the turn's reply: an
@@ -3626,16 +3713,17 @@ fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something(
         .get::<Conversation>(agent)
         .and_then(|conversation| {
             let (_, record) = conversation.turns().next_back()?;
+            let mut entries = conversation.entries().rev();
+            let last = entries.next().map(|entry| entry.id);
+            // The reply's last three calls, by their places.
+            let reply = entries.next()?.id;
+            let cut: Vec<_> = (1..4).map(|index| CallRef { reply, index }).collect();
             match record.end? {
-                TurnEnd::Stopped { at, calls, .. } => Some((
-                    at == conversation.entries().next_back().map(|entry| entry.id),
-                    calls,
-                )),
+                TurnEnd::Stopped { at, calls, .. } => Some((at == last, calls == cut)),
                 _ => None,
             }
         });
-    let calls = ["s1", "p1", "t1"].map(CallId::from_wire).to_vec();
-    assert_eq!(ended, Some((true, calls)));
+    assert_eq!(ended, Some((true, true)));
 }
 
 /// Stopping an idle agent's turn stops the running turns of the agents

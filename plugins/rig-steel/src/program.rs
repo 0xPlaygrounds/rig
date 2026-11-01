@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use futures::channel::oneshot;
 use futures::future::Shared;
 use rig_ecs::agent::{AgentId, TurnOutcome};
-use rig_ecs::prelude::{Author, RequestId};
+use rig_ecs::prelude::{Author, RequestId, StopCause};
 use serde_json::{Map, Value};
 use steel::SteelVal;
 use steel::parser::lexer::TokenStream;
@@ -366,12 +366,10 @@ impl Host {
                 message.final_answer().unwrap_or_default().into(),
             )),
             TurnOutcome::Failed(why) => Err(format!("the agent's turn failed: {why}")),
-            TurnOutcome::Stopped(None) => {
-                Err("the agent was stopped before it answered".to_owned())
-            }
-            TurnOutcome::Stopped(Some(why)) => {
-                Err(format!("the agent was stopped before it answered: {why}"))
-            }
+            TurnOutcome::Stopped(stop) => match stop.cause() {
+                StopCause::User => Err("the agent was stopped before it answered".to_owned()),
+                cause => Err(format!("the agent was stopped before it answered: {cause}")),
+            },
         }
     }
 

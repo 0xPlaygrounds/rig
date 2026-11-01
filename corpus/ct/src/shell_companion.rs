@@ -583,8 +583,11 @@ fn settled(
                 Event::Done { answer, command }
             }
             Ok(TurnOutcome::Failed(why)) => Event::Failed { why: why.clone() },
-            Ok(TurnOutcome::Stopped(why)) => Event::Failed {
-                why: why.clone().unwrap_or_else(|| "stopped in rig".to_owned()),
+            Ok(TurnOutcome::Stopped(stop)) => Event::Failed {
+                why: match stop.cause() {
+                    StopCause::User => "stopped in rig".to_owned(),
+                    cause => cause.to_string(),
+                },
             },
             Err(_) => return,
         }

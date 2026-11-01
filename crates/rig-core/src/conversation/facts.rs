@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::CallRef;
+use super::pairing::placed;
 use crate::message::CallId;
 use crate::tool::ToolResultContext;
 
@@ -10,15 +12,20 @@ use crate::tool::ToolResultContext;
 /// the live one did. The model never sees them.
 ///
 /// ```
-/// use rig_core::conversation::ResultFacts;
-/// use rig_core::message::CallId;
+/// use rig_core::conversation::{CallRef, Conversation, ResultFacts};
+/// use rig_core::message::{CallId, Message};
 /// use rig_core::tool::{ExitStatus, ToolContext};
 ///
 /// let mut context = ToolContext::new();
 /// context.insert_result(ExitStatus::Exited(3))?;
 /// let call = CallId::from_wire("call_1");
-/// let facts: ResultFacts = [(call.clone(), context.result_context())].into_iter().collect();
-/// let status = facts.get(&call).map(|facts| facts.get::<ExitStatus>());
+/// let reply = Conversation::new().push(Message::assistant("Running it."));
+/// let at = CallRef { reply, index: 0 };
+/// let facts: ResultFacts = [(call.clone(), context.result_context().with_at(at))]
+///     .into_iter()
+///     .collect();
+/// let found = facts.of([(at, &call)]);
+/// let status = found.first().copied().flatten().map(|facts| facts.get::<ExitStatus>());
 /// assert_eq!(status.transpose()?.flatten(), Some(ExitStatus::Exited(3)));
 /// # Ok::<(), rig_core::tool::ToolContextError>(())
 /// ```
@@ -27,11 +34,20 @@ use crate::tool::ToolResultContext;
 pub struct ResultFacts(Vec<(CallId, ToolResultContext)>);
 
 impl ResultFacts {
-    /// What the call `call` published, if it published anything.
-    pub fn get(&self, call: &CallId) -> Option<&ToolResultContext> {
-        self.0
+    /// What each of a reply's `calls` published, if anything: the facts
+    /// kept for its place and id, else, among the rest, those
+    /// [`placed`](super::pairing::placed) pairs with it.
+    pub fn of<'c>(
+        &self,
+        calls: impl IntoIterator<Item = (CallRef, &'c CallId)>,
+    ) -> Vec<Option<&ToolResultContext>> {
+        let calls: Vec<_> = calls.into_iter().collect();
+        let kept: Vec<_> = self
+            .0
             .iter()
-            .find_map(|(id, facts)| (id == call).then_some(facts))
+            .map(|(id, facts)| (id, facts.at(), facts))
+            .collect();
+        placed(&calls, &kept)
     }
 
     /// Whether no call published anything.

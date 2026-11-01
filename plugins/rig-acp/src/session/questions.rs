@@ -30,8 +30,16 @@ const TEXT: &str = "text";
 pub(crate) struct Asking<'w, 's> {
     asks: Query<'w, 's, (&'static Ask, Option<&'static HoldOf>, &'static mut Decision)>,
     approvals: Query<'w, 's, &'static NeedsApproval>,
-    calls: Query<'w, 's, (&'static ToolRequest, &'static ForAgent)>,
-    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
+    calls: Query<
+        'w,
+        's,
+        (
+            &'static ToolRequest,
+            &'static ForAgent,
+            Option<&'static InReply>,
+        ),
+    >,
+    agents: Query<'w, 's, &'static AgentId>,
     dirs: Query<'w, 's, &'static WorkDir>,
     root: Res<'w, ProjectRoot>,
 }
@@ -49,11 +57,10 @@ impl Asking<'_, '_> {
         // The call and its id: a subagent's, never shown before, is shown
         // from here on.
         let call = held.filter(|_| approval.is_some()).and_then(|effect| {
-            let (request, &ForAgent(agent)) = self.calls.get(effect).ok()?;
+            let (request, &ForAgent(agent), in_reply) = self.calls.get(effect).ok()?;
             let call_id = session.calls.get(&effect).cloned().or_else(|| {
-                let (AgentId(of), conversation) = self.agents.get(agent).ok()?;
-                let taken = |id: &str| session.calls.values().any(|shown| shown == id);
-                translate::call_id_in(of, conversation, &request.call.id, taken)
+                let AgentId(of) = self.agents.get(agent).ok()?;
+                Some(translate::call_id_at(of, in_reply?.at()))
             })?;
             session.calls.insert(effect, call_id.clone());
             Some((request, agent, call_id))

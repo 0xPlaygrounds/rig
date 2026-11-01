@@ -7,21 +7,22 @@ use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
-use rig_core::conversation::TurnEnd;
+use rig_core::conversation::{CallRef, StopCause, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, Image, Reasoning, ToolCall, ToolFunction, ToolName,
+    AssistantContent, AssistantMessage, Image, Reasoning, ToolCall, ToolFunction, ToolName,
     ToolResult as ToolResultMessage, ToolResultContent,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
+use rig_ecs::fork::{Ancestor, ForkedFrom};
 use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
 use rig_ecs::stage::{
     Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
 };
 use rig_ecs::tools::ToolRequest;
-use rig_ecs::turn::ModelRequest;
+use rig_ecs::turn::{ModelRequest, TurnCall};
 use rig_harness::prelude::ToolProgress;
 use rig_harness::prelude::{App, Last, Update};
 use rig_harness::rig_core::conversation::Note;
@@ -34,8 +35,9 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, LookLine,
-    MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout, TranscriptView,
+    CallItem, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan,
+    LookLine, MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout,
+    TranscriptView,
 };
 
 use crate::{RenderBatch, RenderSystems, TranscriptRender};
@@ -131,7 +133,7 @@ fn following_again_drops_the_held_row() {
 fn drawn(
     transcript: &mut Transcript,
     conversation: &Conversation,
-    states: (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    states: (&BTreeMap<CallRef, CallState>, &BTreeMap<CallRef, String>),
     renderers: &Renderers,
 ) -> String {
     drawn_at(transcript, conversation, states, renderers, WIDTH)
@@ -141,7 +143,7 @@ fn drawn(
 fn drawn_at(
     transcript: &mut Transcript,
     conversation: &Conversation,
-    (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    (calls, outputs): (&BTreeMap<CallRef, CallState>, &BTreeMap<CallRef, String>),
     renderers: &Renderers,
     width: u16,
 ) -> String {
@@ -150,6 +152,8 @@ fn drawn_at(
     let entries = ShownEntries::new(conversation, None);
     let look = Look {
         renderers,
+        agent: None,
+        forked_from: None,
         calls,
         outputs,
         inside: HashMap::new(),
@@ -189,13 +193,18 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let effect = world.spawn(ToolRequest { call: call.clone() }).id();
     let lease = "waiting for lease on src/a.rs";
     let hold = world.spawn((Name::new(lease), HoldOf(effect))).id();
+    // The call is the reply's first, as the kernel would place it.
+    let reply = conversation.entries().next().map(|entry| entry.id);
+    let at = reply.map(|reply| CallRef { reply, index: 0 });
     let states = |world: &mut World| {
-        let states = world.run_system_once(move |calls: CallStates| calls.of([effect]));
-        states.unwrap_or_default()
+        let state = world.run_system_once(move |calls: CallStates| calls.state(effect));
+        let state = state.ok().flatten().map(|(_, state)| state);
+        at.zip(state).into_iter().collect::<BTreeMap<_, _>>()
     };
     let held = states(&mut world);
     let names = vec![lease.to_owned()];
-    assert_eq!(held.get(&call.id), Some(&CallState::Held(names)));
+    let first = |states: &BTreeMap<CallRef, CallState>| states.values().next().cloned();
+    assert_eq!(first(&held), Some(CallState::Held(names)));
     let mut transcript = Transcript::default();
     let none = (BTreeMap::new(), Renderers::default());
     let shown = drawn(&mut transcript, &conversation, (&held, &none.0), &none.1);
@@ -203,7 +212,7 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
 
     world.despawn(hold);
     let waiting = states(&mut world);
-    assert_eq!(waiting.get(&call.id), Some(&CallState::Waiting));
+    assert_eq!(first(&waiting), Some(CallState::Waiting));
     let shown = drawn(&mut transcript, &conversation, (&waiting, &none.0), &none.1);
     assert!(!shown.contains("held:"), "{shown}");
 
@@ -214,7 +223,7 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     world.entity_mut(effect).insert((started, progress));
     let running = states(&mut world);
     let line = Some("12 of 40 files".to_owned());
-    assert_eq!(running.get(&call.id), Some(&CallState::Running(line)));
+    assert_eq!(first(&running), Some(CallState::Running(line)));
     let shown = drawn(&mut transcript, &conversation, (&running, &none.0), &none.1);
     assert!(shown.contains("   12 of 40 files"), "{shown}");
     world
@@ -281,11 +290,15 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
         .in_set(RenderSystems::Render),
     );
     let mut renderers = Renderers::default();
-    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
+    let Some(reply) = conversation.entries().next().map(|entry| entry.id) else {
+        return;
+    };
+    let at = CallRef { reply, index: 0 };
+    let calls = BTreeMap::from([(at, CallState::Running(None))]);
     let mut transcript = Transcript::default();
     let mut outputs = BTreeMap::new();
     for line in ["cc a.c", "cc b.c", "ld app"] {
-        let text = outputs.entry(call.id.clone()).or_insert_with(String::new);
+        let text = outputs.entry(at).or_insert_with(String::new);
         text.push_str(&format!("{line}\n"));
         renderers.pass = Pass::Collect;
         drawn(
@@ -330,6 +343,16 @@ fn add_aside(app: &mut App, agent: Entity, aside: Aside) -> Option<AsideId> {
 fn message_id(app: &App, agent: Entity, index: usize) -> Option<MessageId> {
     let conversation = app.world().get::<Conversation>(agent)?;
     conversation.id(index)
+}
+
+/// The item of the `index`-th call of the reply that is `agent`'s
+/// `message`-th message.
+fn call_item(app: &App, agent: Entity, message: usize, index: u32) -> Option<TranscriptItem> {
+    let reply = message_id(app, agent, message)?;
+    Some(TranscriptItem::Call(CallItem::Reply(CallRef {
+        reply,
+        index,
+    })))
 }
 
 /// Where in `lines` the first that contains `text` is.
@@ -552,14 +575,26 @@ fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
 }
 
 /// Ends the turn `agent` runs as a stop does: the request halted, the
-/// record ending at the last entry with the calls the stop answered.
-fn stop(app: &mut App, agent: Entity, calls: &[&str]) {
+/// record ending at the last entry with the calls the stop answered, by
+/// their indices among the last reply's calls.
+fn stop(app: &mut App, agent: Entity, calls: &[u32]) {
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.halt(Halt::Stopped);
         let at = conversation.entries().next_back().map(|entry| entry.id);
-        let calls = calls.iter().map(|id| CallId::from_wire(*id)).collect();
-        let why = None;
-        conversation.end_turn(TurnEnd::Stopped { why, at, calls });
+        let reply = conversation
+            .entries()
+            .rev()
+            .find(|entry| matches!(entry.message, Message::Assistant(_)));
+        let reply = reply.map(|entry| entry.id);
+        let at_reply = |index: &u32| {
+            reply.map(|reply| CallRef {
+                reply,
+                index: *index,
+            })
+        };
+        let calls = calls.iter().filter_map(at_reply).collect();
+        let by = Some(StopCause::User);
+        conversation.end_turn(TurnEnd::Stopped { by, at, calls });
     }
     app.update();
 }
@@ -648,18 +683,9 @@ fn a_call_a_stop_cut_while_it_streamed_says_it_never_ran_at_once_and_after_a_rel
     });
     let json = r#"{"path": "big.py", "content": "print("#.to_owned();
     cut.follow(&StreamEvent::Arguments { part, json });
-    let calls = cut.calls.iter().map(|call| call.call.id.clone()).collect();
     let aborted = AssistantMessage::aborted(None, cut.stopped(), "stopped");
     say(&mut app, agent, Message::Assistant(aborted));
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.halt(Halt::Stopped);
-        let at = conversation.entries().next_back().map(|entry| entry.id);
-        conversation.end_turn(TurnEnd::Stopped {
-            why: None,
-            at,
-            calls,
-        });
-    }
+    stop(&mut app, agent, &[0, 1]);
     for _ in 0..2 {
         let lines = on_screen(&mut app, agent, 100);
         let row = lines.iter().position(|line| line.starts_with(" write"));
@@ -724,7 +750,7 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
         ..call.result(vec![ToolResultContent::text(text)])
     });
     say(&mut app, agent, Message::tool_results(results.to_vec()));
-    stop(&mut app, agent, &["a", "b"]);
+    stop(&mut app, agent, &[0, 1]);
     let drawn_stopped = |lines: &[String]| {
         let headers: Vec<&str> = lines
             .iter()
@@ -766,6 +792,95 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
     assert!(line_of(&lines, "the summary").is_some(), "{lines:#?}");
 }
 
+#[test]
+fn each_call_of_a_reply_shows_its_own_result_even_when_two_share_an_id() {
+    let (mut app, agent) = view_app();
+    crate::tests::keep_drawn(&mut app);
+    let (Ok(look), Ok(probe)) = (ToolName::new("look"), ToolName::new("probe")) else {
+        return;
+    };
+    // Two calls of one reply with one id, as a provider may send them.
+    let both = [
+        ToolCall::from_wire("c9", ToolFunction::new(look, json!({}))),
+        ToolCall::from_wire("c9", ToolFunction::new(probe, json!({}))),
+    ];
+    say(&mut app, agent, Message::user("look and probe"));
+    let asked = both.iter().cloned().map(AssistantContent::ToolCall);
+    let reply = AssistantMessage::new(asked.collect());
+    say(&mut app, agent, Message::Assistant(reply));
+    let results = both
+        .iter()
+        .zip(["looked four", "probed five"])
+        .map(|(call, said)| call.result(vec![ToolResultContent::text(said)]));
+    say(&mut app, agent, Message::tool_results(results.collect()));
+    let lines = on_screen(&mut app, agent, 100);
+    let shown = ["looked four", "probed five"].map(|said| count_of(&lines, said));
+    assert_eq!(shown, [1, 1], "{lines:#?}");
+    // Each is its own item: they draw apart, and selecting steps from the
+    // first to the second and past it.
+    let (Some(first), Some(second)) = (call_item(&app, agent, 1, 0), call_item(&app, agent, 1, 1))
+    else {
+        return;
+    };
+    let drawn = crate::tests::drawn(&app);
+    assert_ne!(drawn.rows_of(&first), drawn.rows_of(&second));
+    let selected = |app: &App| crate::tests::main_view(app).selected.clone();
+    crate::tests::steer(&mut app, |view| view.selected = Some(first.clone()));
+    press(&mut app, "alt+down");
+    assert_eq!(selected(&app), Some(second.clone()));
+    press(&mut app, "alt+down");
+    let past = selected(&app);
+    assert!(past != Some(first) && past != Some(second), "{past:?}");
+}
+
+#[test]
+fn a_stop_draws_stopped_only_the_call_it_cut_of_two_that_share_an_id() {
+    let (mut app, agent) = view_app();
+    let (Ok(look), Ok(shell)) = (ToolName::new("look"), ToolName::new("shell")) else {
+        return;
+    };
+    let both = [
+        ToolCall::from_wire("c9", ToolFunction::new(look, json!({}))),
+        ToolCall::from_wire("c9", ToolFunction::new(shell, json!({}))),
+    ];
+    say(&mut app, agent, Message::user("look, then run"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    let asked = both.iter().cloned().map(AssistantContent::ToolCall);
+    say(
+        &mut app,
+        agent,
+        Message::Assistant(AssistantMessage::new(asked.collect())),
+    );
+    // The look finished; the stop cut the shell.
+    let results = both
+        .iter()
+        .zip([
+            ("seen", false),
+            ("Stopped: the user stopped the turn.", true),
+        ])
+        .map(|(call, (said, is_error))| ToolResultMessage {
+            is_error,
+            ..call.result(vec![ToolResultContent::text(said)])
+        });
+    say(&mut app, agent, Message::tool_results(results.collect()));
+    stop(&mut app, agent, &[1]);
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        let stopped = |name: &str| {
+            let header = lines.iter().find(|line| line.starts_with(name));
+            header.map(|header| header.contains("· stopped"))
+        };
+        assert_eq!(
+            (stopped(" look"), stopped(" shell")),
+            (Some(false), Some(true)),
+            "{lines:#?}"
+        );
+        assert!(reload(&mut app, agent));
+    }
+}
+
 /// A call a stop answered is drawn stopped whatever live state it still
 /// has.
 #[test]
@@ -778,14 +893,17 @@ fn a_stopped_call_wins_over_its_live_state() {
     conversation.open_turn();
     let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
     let at = conversation.push(Message::Assistant(reply));
-    let calls = vec![call.id.clone()];
+    let call = CallRef {
+        reply: at,
+        index: 0,
+    };
     conversation.end_turn(TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at: Some(at),
-        calls,
+        calls: vec![call],
     });
-    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
-    let outputs = BTreeMap::from([(call.id.clone(), "cc a.c".to_owned())]);
+    let calls = BTreeMap::from([(call, CallState::Running(None))]);
+    let outputs = BTreeMap::from([(call, "cc a.c".to_owned())]);
     let mut transcript = Transcript::default();
     let renderers = Renderers::default();
     let shown = drawn(
@@ -894,7 +1012,9 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
             ..Highlight::default()
         }]
     });
-    let item = TranscriptItem::Call(call.id.clone());
+    let Some(item) = call_item(&app, agent, 1, 0) else {
+        return;
+    };
     let drawn = |app: &mut App| {
         on_screen(app, agent, 5);
         crate::tests::drawn(app).clone()
@@ -1054,7 +1174,9 @@ fn a_layout_is_the_drawn_transcript_on_no_screen() {
             ..Highlight::default()
         }]
     });
-    let item = TranscriptItem::Call(call.id.clone());
+    let Some(item) = call_item(&app, agent, 1, 0) else {
+        return;
+    };
     on_screen(&mut app, agent, 5);
     let drawn = crate::tests::drawn(&app).clone();
     let Some(laid) = laid_out(&mut app, agent) else {
@@ -1276,11 +1398,13 @@ fn plain(kind: &str) -> (EffectRequest, Outcome) {
 }
 
 /// The rows a `consult` renderer draws of `agent`'s transcript: one per
-/// call under its call, with its depth, name, agent, state and first line.
+/// call under its call, with its depth, name, agent, state and first line,
+/// each after a `↳ `.
 fn consult_rows(app: &mut App, agent: Entity) -> Vec<String> {
     let rows = laid_out(app, agent);
     let rows = rows.iter().flat_map(DrawnTranscript::rows);
-    rows.map(|row| row.text.clone()).collect()
+    let rows = rows.filter_map(|row| row.text.strip_prefix("↳ "));
+    rows.map(str::to_owned).collect()
 }
 
 #[test]
@@ -1303,7 +1427,7 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
                             let agent = child.agent.as_deref().unwrap_or("-");
                             let line = child.answer.as_deref().unwrap_or("-");
                             let (depth, name, state) = (child.depth, &child.name, &child.state);
-                            Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+                            Line::from(format!("↳ {depth} {name} {agent} {state:?} {line}"))
                         });
                         children.map(LookLine::from).collect()
                     };
@@ -1317,10 +1441,6 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
         return;
     };
     let consulting = ToolCall::from_wire("c1", ToolFunction::new(consult, json!({})));
-    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
-        consulting.clone(),
-    )]));
-    say(&mut app, agent, asked.clone());
     let id = app.world().get::<AgentId>(agent).cloned();
     let helper = (Name::new("helper"), AgentId("helper".to_owned()));
     let helper = app.world_mut().spawn(helper).id();
@@ -1328,11 +1448,21 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     // spawns a helper (a plain effect) and briefs it (another); the
     // helper's model call, under the brief, asks for a read.
     let model = |text: &str| ModelRequest::new(CompletionRequest::new(Message::user(text)));
-    let turn = (model("consult"), ForAgent(agent));
-    let turn = settle(&mut app, None, (turn, reply("", vec![consulting.clone()])));
-    let answered = Outcome::from(ToolResult::success("both answered".to_owned().into()));
-    let consulted = (ToolRequest { call: consulting }, ForAgent(agent), answered);
-    let consulted = settle(&mut app, turn, consulted);
+    let turn = app.world_mut().spawn(TurnOf(agent)).id();
+    let asking = (TurnCall, CallOf(turn), ForAgent(agent));
+    settle(&mut app, None, (asking, reply("", vec![consulting])));
+    app.update();
+    // The kernel spawned the consult as its reply asked for it.
+    let records = &app.world().resource::<Records>().0;
+    let consulted = records.iter().find_map(|record| match &record.kind {
+        EffectKind::ToolCall { name, .. } if name == "consult" => Some(record.id),
+        _ => None,
+    });
+    let asked = app.world().get::<Conversation>(agent);
+    let asked = asked.and_then(|conversation| conversation.messages().first().cloned());
+    let Some(asked) = asked.map(|asked| (*asked).clone()) else {
+        return;
+    };
     let spawned = settle(&mut app, consulted, plain("subagent"));
     let briefed = settle(&mut app, spawned, (plain("message"), ForAgent(helper)));
     let reading = ToolCall::from_wire("r1", ToolFunction::new(read, json!({ "path": "a.rs" })));
@@ -1360,6 +1490,148 @@ fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resum
     world.write_message(PastEffects::new(records));
     say(&mut resumed, agent, asked);
     assert_eq!(consult_rows(&mut resumed, agent), expected);
+}
+
+/// Adds a `wait` renderer: one row per call, how long it ran and how many
+/// calls it started, after a `⏱ `.
+fn timing(app: &mut App) {
+    app.add_systems(
+        TranscriptRender,
+        (|mut batch: ResMut<RenderBatch>| {
+            for (input, output) in batch.tools_mut("wait") {
+                let view = input.view();
+                let line = format!("⏱ {:?} {}", view.took, view.children.len());
+                output.lines = vec![LookLine::from(Line::from(line))];
+            }
+        })
+        .in_set(RenderSystems::Render),
+    );
+}
+
+/// The rows [`timing`] draws of `agent`'s transcript, without the `⏱ `.
+fn timed_rows(app: &mut App, agent: Entity) -> Vec<String> {
+    let rows = laid_out(app, agent);
+    let rows = rows.iter().flat_map(DrawnTranscript::rows);
+    let rows = rows.filter_map(|row| row.text.strip_prefix("⏱ "));
+    rows.map(str::to_owned).collect()
+}
+
+/// The record of the `main` agent's `wait` effect `id`, under `parent`,
+/// as the reply's call `call` when it is one, run for `took` milliseconds.
+fn waited(id: u64, parent: Option<u64>, call: Option<CallRef>, took: u64) -> EffectRecord {
+    let kind = EffectKind::ToolCall {
+        name: "wait".to_owned(),
+        args: "{}".to_owned(),
+    };
+    let Outcome(outcome) = Outcome::from(ToolResult::success("done".to_owned().into()));
+    let key = effect::HandlerKey::new("tool:wait");
+    let mut record = EffectRecord::new(EffectId::from_raw(id), key, kind, outcome);
+    record.scope = Some(Arc::from("main"));
+    (record.parent, record.call) = (parent.map(EffectId::from_raw), call);
+    (record.started_ms, record.finished_ms) = (Some(1_000), Some(1_000 + took));
+    record
+}
+
+/// A call a fork took over shows how long it ran and the calls it started,
+/// as the records of the agent that made it say, live and once resumed,
+/// even with a fork between them gone; a fork's own call at the place of
+/// a later call of its source shows its own record, or none when it has
+/// none.
+#[test]
+fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
+    let Ok(wait) = ToolName::new("wait") else {
+        return;
+    };
+    let call = |id: &str| ToolCall::from_wire(id, ToolFunction::new(wait.clone(), json!({})));
+    let asking = |call: &ToolCall| {
+        let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+        Message::Assistant(reply)
+    };
+    let answering = |call: &ToolCall| Message::tool_result(call.id.clone(), wait.clone(), "done");
+    // A fork of `from` called `id`, made now, as `ForkAgent` makes one.
+    let fork_of = |world: &mut World, from: Entity, id: &str| {
+        let copy = world.get::<Conversation>(from)?.clone();
+        let agent = world.get::<AgentId>(from)?.0.clone();
+        let since = copy.next_id();
+        let older = world.get::<ForkedFrom>(from).map(|from| from.0.clone());
+        let lineage = std::iter::once(Ancestor { agent, since }).chain(older.into_iter().flatten());
+        let fork = (Name::new("agent"), AgentId(id.to_owned()), copy);
+        Some(world.spawn((fork, ForkedFrom(lineage.collect()))).id())
+    };
+    let (c1, c2, c3) = (call("c1"), call("c2"), call("c3"));
+    // The fork's own `c3` with a record of its own, then with none.
+    for (recorded, own) in [(true, "Some(3s) 0"), (false, "None 0")] {
+        let (mut app, source) = layout_app();
+        timing(&mut app);
+        say(&mut app, source, asking(&c1));
+        say(&mut app, source, answering(&c1));
+        let Some(middle) = fork_of(app.world_mut(), source, "fork") else {
+            return;
+        };
+        // Both go on from the same message count.
+        say(&mut app, source, asking(&c2));
+        say(&mut app, source, answering(&c2));
+        say(&mut app, middle, asking(&c3));
+        say(&mut app, middle, answering(&c3));
+        assert_eq!(message_id(&app, middle, 2), message_id(&app, source, 2));
+        let Some(last) = fork_of(app.world_mut(), middle, "last") else {
+            return;
+        };
+        let at = |agent, message| {
+            Some(CallRef {
+                reply: message_id(&app, agent, message)?,
+                index: 0,
+            })
+        };
+        let mut records = vec![
+            waited(1, None, at(source, 0), 5_000),
+            waited(2, Some(1), None, 0),
+            waited(3, None, at(source, 2), 7_000),
+        ];
+        if recorded {
+            let mut record = waited(4, None, at(middle, 2), 3_000);
+            record.scope = Some(Arc::from("fork"));
+            records.push(record);
+        }
+        for record in &records {
+            app.world_mut()
+                .write_message(EffectRecorded(record.clone()));
+        }
+        app.update();
+        assert_eq!(timed_rows(&mut app, source), ["Some(5s) 1", "Some(7s) 0"]);
+        let inherited = "Some(5s) 1";
+        assert_eq!(timed_rows(&mut app, middle), [inherited, own]);
+        app.world_mut().despawn(middle);
+        app.update();
+        assert_eq!(timed_rows(&mut app, last), [inherited, own]);
+
+        // Resumed: the same conversations and records, read back.
+        let world = app.world();
+        let kept = |agent| {
+            Some((
+                world.get::<Conversation>(agent)?.clone(),
+                world.get::<ForkedFrom>(agent).cloned(),
+            ))
+        };
+        let (Some((source_conversation, _)), Some((last_conversation, Some(lineage)))) =
+            (kept(source), kept(last))
+        else {
+            return;
+        };
+        let (mut resumed, source) = layout_app();
+        timing(&mut resumed);
+        let world = resumed.world_mut();
+        world.entity_mut(source).insert(source_conversation);
+        let last = (
+            Name::new("agent"),
+            AgentId("last".to_owned()),
+            last_conversation,
+        );
+        let last = world.spawn((last, lineage)).id();
+        world.write_message(PastEffects::new(records));
+        resumed.update();
+        assert_eq!(timed_rows(&mut resumed, last), [inherited, own]);
+    }
 }
 
 /// A mark inside a saved reply's text block is drawn between the words it
@@ -1490,13 +1762,13 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
         let rows = rows.filter_map(|row| drawn.rows().get(row));
         rows.map(|row| row.text.trim().to_owned()).collect()
     };
-    let id = CallId::from_wire("c1");
-    let decoration = |name: &str| TranscriptItem::Decoration(id.clone(), name.to_owned());
+    let Some(TranscriptItem::Call(id)) = call_item(&app, agent, 0, 0) else {
+        return;
+    };
+    let decoration = |name: &str| TranscriptItem::Decoration(id, name.to_owned());
     assert_eq!(texts(decoration("late")), ["late one", "late two"]);
     assert_eq!(texts(decoration("early")), ["early"]);
-    let call = drawn
-        .rows_of(&TranscriptItem::Call(id.clone()))
-        .unwrap_or_default();
+    let call = drawn.rows_of(&TranscriptItem::Call(id)).unwrap_or_default();
     for name in ["late", "early"] {
         let rows = drawn.rows_of(&decoration(name)).unwrap_or_default();
         assert!(call.start <= rows.start && rows.end <= call.end, "{name}");

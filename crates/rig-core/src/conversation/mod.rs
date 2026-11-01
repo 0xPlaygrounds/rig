@@ -49,7 +49,8 @@ pub use author::{Author, AuthorKind, RequestId};
 pub use facts::ResultFacts;
 pub use lineage::Lineage;
 pub use note::Note;
-pub use turn::{TURN, TurnEnd, TurnRecord};
+pub use pairing::CallRef;
+pub use turn::{StopCause, TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
 
@@ -607,6 +608,12 @@ impl Conversation {
         self.meta.iter().position(|meta| meta.id == id)
     }
 
+    /// The id the next entry made gets. Every id below it was given out
+    /// before, here or in the conversation this one was copied from.
+    pub fn next_id(&self) -> MessageId {
+        MessageId(self.next_id)
+    }
+
     /// Where a span that began at entry `id` begins now, such as a turn:
     /// its index while it is there; the end for an entry not made yet; 0
     /// for one an edit took out, as a summary then stands for what came
@@ -667,9 +674,18 @@ impl Conversation {
     }
 
     /// The tool calls of the last assistant message that nothing answers
-    /// yet. See [`pairing::pending_calls`].
-    pub fn pending_calls(&self) -> Vec<ToolCall> {
-        pairing::pending_calls(&self.messages)
+    /// yet, each with its [`CallRef`]. See [`pairing::pending_calls`].
+    pub fn pending_calls(&self) -> Vec<(CallRef, ToolCall)> {
+        let Some((at, calls)) = pairing::pending(&self.messages) else {
+            return Vec::new();
+        };
+        let Some(reply) = self.id(at) else {
+            return Vec::new();
+        };
+        let calls = calls.into_iter();
+        calls
+            .map(|(index, call)| (CallRef { reply, index }, call.clone()))
+            .collect()
     }
 
     /// Whether the messages pair every tool call with its result. See

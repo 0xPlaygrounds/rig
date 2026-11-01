@@ -53,7 +53,8 @@ pub mod prelude {
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextStale, Conversation,
         EffectParent, LastUsage, Notice, NoticeLevel, Partial, PartialCall, RunTools, Spawned,
-        SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+        SpawnedBy, Stop, StopReached, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
+        TurnOutcome,
     };
     pub use crate::fork::{AgentForked, ForkAgent};
     pub use crate::inbox::{
@@ -65,7 +66,7 @@ pub mod prelude {
         SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
-    pub use crate::restore::{CarryOn, Interrupted, RESTARTED, Restored, SavedKeys};
+    pub use crate::restore::{CarryOn, Interrupted, Restored, SavedKeys};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
         ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,
@@ -79,16 +80,16 @@ pub mod prelude {
     };
     pub use crate::tasks::{Done, PollTasks, Running, Wake};
     pub use crate::tools::{
-        AppToolsExt, CallHandler, DeclaredFootprint, Footprint, ToolCalled, ToolDef, ToolOptions,
-        ToolRequest, WorldToolsExt,
+        AppToolsExt, CallHandler, DeclaredFootprint, Footprint, InReply, ToolCalled, ToolDef,
+        ToolOptions, ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
         Adapted, Backoff, DroppedOptions, Exiting, FirstStreamed, ModelRequest, Recovery,
         RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{
-        Aside, AsideId, Author, AuthorKind, Change, ChangeRecord, Entry, EntryRef, Halt, MessageId,
-        RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
+        Aside, AsideId, Author, AuthorKind, CallRef, Change, ChangeRecord, Entry, EntryRef, Halt,
+        MessageId, RequestId, STOPPED, Spliced, StopCause, TurnEnd, TurnRecord,
     };
     pub use rig_core::effect::Decider;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
@@ -223,6 +224,7 @@ impl Plugin for AgentPlugin {
             .add_observer(fork::fork_agent)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_stop_turn)
+            .add_observer(turn::reach_once_gone)
             .add_observer(inbox::unsent_on_turn_end)
             .add_observer(inbox::unmark)
             .add_observer(model::on_set_model)

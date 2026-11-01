@@ -97,7 +97,7 @@ fn stopping_a_pending_network_summary_drops_the_future_and_releases_its_hold() {
     });
     assert!(matches!(
         app.world().resource::<Ended>().0.as_slice(),
-        [TurnOutcome::Stopped(None)]
+        [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User
     ));
     let stopped = entries(app.world(), agent);
     assert_eq!(stopped.get(..original.len()), Some(original.as_slice()));

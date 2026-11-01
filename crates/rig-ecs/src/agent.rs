@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::completion::{AssistantContent, Message, Usage};
-use rig_core::conversation::{self, MessageId, short_id};
+use rig_core::conversation::{self, MessageId, StopCause, short_id};
 use rig_core::effect::EffectId;
 use rig_core::message::{CallId, LocalCallId, ToolCall, ToolFunction, ToolName};
 use rig_core::streaming::{Part, PartKind, StreamEvent, parse_partial_arguments};
@@ -625,27 +625,107 @@ impl From<ToolCall> for PartialCall {
 /// Stop the agent's running turn at once, and the running turns of every
 /// agent below it in [`Spawned`], even when the agent itself is idle:
 /// stopping follows ancestry, so work meant to outlive its parent is
-/// spawned without [`SpawnedBy`]. Each turn ends [`TurnOutcome::Stopped`]
-/// with `reason`, the text its reply streamed so far is kept, every call of
-/// it that has not settled is answered as stopped (rig-core's
+/// spawned without [`SpawnedBy`]; each agent it reached then gets a
+/// [`StopReached`]. [`plugin_alone`](Self::plugin_alone) stops the agent's
+/// turn only and sends none. Each turn ends [`TurnOutcome::Stopped`] with
+/// the stop's cause, the text its reply streamed so far is kept, every
+/// call of it that has not settled is answered as stopped (rig-core's
 /// [`not_finished`](rig_core::tool::feedback::not_finished)), and whatever
 /// held them is despawned. It cannot be reviewed or held.
+///
+/// Its fields are private, so the cause is the user's or a plugin's:
+///
+/// ```compile_fail,E0451
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::StopTurn;
+/// use rig_ecs::prelude::StopCause;
+///
+/// let agent = World::new().spawn_empty().id();
+/// let stop = StopTurn { entity: agent, cause: StopCause::User, below: true };
+/// ```
 #[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
+#[reflect(opaque, Event, Clone, Debug)]
 pub struct StopTurn {
-    /// The agent.
-    pub entity: Entity,
-    /// Why, when it is not the user who stops it.
-    pub reason: Option<String>,
+    entity: Entity,
+    pub(crate) cause: StopCause,
+    /// Whether the stop reaches the agents below the agent.
+    pub(crate) below: bool,
 }
 
 impl StopTurn {
-    /// The user stopping `agent`'s turn.
+    /// The user stopping `agent`'s turn, and those below it.
     pub fn new(agent: Entity) -> Self {
         Self {
             entity: agent,
-            reason: None,
+            cause: StopCause::User,
+            below: true,
         }
+    }
+
+    /// The plugin `by` stopping `agent`'s turn, and those below it, for
+    /// `why`. The request the turn answers is halted
+    /// [`Kept`](conversation::Halt::Kept), left for the next turn.
+    pub fn plugin(agent: Entity, by: &str, why: &str) -> Self {
+        Self {
+            entity: agent,
+            cause: StopCause::Plugin {
+                by: by.to_owned(),
+                why: why.to_owned(),
+            },
+            below: true,
+        }
+    }
+
+    /// The plugin `by` ending only `agent`'s own turn, for `why`, as its
+    /// decision about that turn: the agents below go on, and no
+    /// [`StopReached`] is sent. The user's stop always reaches below:
+    ///
+    /// ```compile_fail,E0599
+    /// use bevy_ecs::prelude::*;
+    /// use rig_ecs::agent::StopTurn;
+    ///
+    /// let agent = World::new().spawn_empty().id();
+    /// let stop = StopTurn::new(agent).alone();
+    /// ```
+    pub fn plugin_alone(agent: Entity, by: &str, why: &str) -> Self {
+        Self {
+            below: false,
+            ..Self::plugin(agent, by, why)
+        }
+    }
+}
+
+/// On each agent a [`StopTurn`] reached, idle or not, once, after its turn
+/// is gone: the stop's cause. Only the kernel makes it, so an observer
+/// reads one per agent instead of walking [`Spawned`] itself. A
+/// [`StopTurn::plugin_alone`] sends none, and neither do the stops of the
+/// app's exit and of a restart.
+///
+/// ```compile_fail,E0451
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::StopReached;
+/// use rig_ecs::prelude::StopCause;
+///
+/// let agent = World::new().spawn_empty().id();
+/// let reached = StopReached { entity: agent, cause: StopCause::User, idle: true };
+/// ```
+#[derive(EntityEvent, Clone, Debug)]
+pub struct StopReached {
+    pub(crate) entity: Entity,
+    pub(crate) cause: StopCause,
+    pub(crate) idle: bool,
+}
+
+impl StopReached {
+    /// Who or what stopped it.
+    pub fn cause(&self) -> &StopCause {
+        &self.cause
+    }
+
+    /// Whether the agent had no running turn for the stop to end. The
+    /// stopped turn is gone when this is sent, so [`ActiveTurn`] cannot say.
+    pub fn idle(&self) -> bool {
+        self.idle
     }
 }
 
@@ -722,10 +802,12 @@ impl Notice {
 ///   message the agent accepts takes an `Answered` proposal away, and its
 ///   next [`TurnCall`](super::turn::TurnCall), once admitted, takes any;
 ///   the holds on a proposal taken away are despawned with it.
-/// - **Stopped:** a plugin may insert `Failed` or `Stopped` at any time with
-///   a plain `insert`, so no pending proposal loses it. The turn's calls not
+/// - **Failed:** a plugin may insert `Failed` at any time with a plain
+///   `insert`, so no pending proposal loses it. The turn's calls not
 ///   started never start, the others are answered as stopped, and the turn
 ///   ends once they settled.
+/// - **Stopped:** only a [`StopTurn`], an exit or a restart stops a turn,
+///   at once ([`Stop`]).
 ///
 /// A turn that ended is [`Settled`](super::stage::Settled) with it until the
 /// next frame: `On<Add<Settled>>` or `Added<Settled>` readers of
@@ -737,9 +819,37 @@ pub enum TurnOutcome {
     Answered(Message),
     /// The turn failed, for the reason given.
     Failed(String),
-    /// The turn was stopped before an answer: by the user when no reason
-    /// is given, or on exit.
-    Stopped(Option<String>),
+    /// The turn was stopped before an answer.
+    Stopped(Stop),
+}
+
+/// How a turn was stopped. Only the kernel makes one, as it stops the
+/// turn, so a plugin stops a turn with a [`StopTurn`]:
+///
+/// ```compile_fail,E0451
+/// use rig_ecs::agent::{Stop, TurnOutcome};
+/// use rig_ecs::prelude::StopCause;
+///
+/// let stopped = TurnOutcome::Stopped(Stop { cause: StopCause::User, alone: false });
+/// ```
+#[derive(Clone, Debug)]
+pub struct Stop {
+    pub(crate) cause: StopCause,
+    pub(crate) alone: bool,
+}
+
+impl Stop {
+    /// Who or what stopped the turn.
+    pub fn cause(&self) -> &StopCause {
+        &self.cause
+    }
+
+    /// Whether a plugin ended only this turn, as its decision about it
+    /// ([`StopTurn::plugin_alone`]): no stop reached the agent. Never so
+    /// for the user's stop, the app's exit or a restart.
+    pub fn alone(&self) -> bool {
+        self.alone
+    }
 }
 
 impl TurnOutcome {
@@ -751,8 +861,7 @@ impl TurnOutcome {
         match self {
             Self::Answered(_) => None,
             Self::Failed(why) => Some(format!("the turn failed: {why}")),
-            Self::Stopped(None) => Some("the user stopped the turn".to_owned()),
-            Self::Stopped(Some(why)) => Some(why.clone()),
+            Self::Stopped(stop) => Some(stop.cause.to_string()),
         }
     }
 }

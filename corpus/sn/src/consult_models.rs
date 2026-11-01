@@ -601,7 +601,10 @@ fn turn_settled(
             .final_answer()
             .ok_or_else(|| "it gave no answer".to_owned()),
         TurnOutcome::Failed(why) => Err(why.clone()),
-        TurnOutcome::Stopped(why) => Err(why.clone().unwrap_or_else(|| "stopped".to_owned())),
+        TurnOutcome::Stopped(stop) => Err(match stop.cause() {
+            StopCause::User => "stopped".to_owned(),
+            cause => cause.to_string(),
+        }),
     };
     consult.end(slot, result, &spending);
     commands.trigger(CheckDone {
@@ -693,14 +696,14 @@ fn stop_consultants(
     }
 }
 
-/// Interrupting an agent ends its consults.
+/// A stop that reaches an agent ends its consults.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     consultations: Query<(Entity, &Consultation)>,
     mut commands: Commands,
 ) {
     for (entity, consult) in &consultations {
-        if consult.asker == interrupt.entity {
+        if consult.asker == interrupt.event_target() {
             commands.entity(entity).try_despawn();
         }
     }

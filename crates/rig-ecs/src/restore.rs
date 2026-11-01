@@ -47,10 +47,10 @@ use bevy_log::warn;
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
-use rig_core::completion::Message;
-use rig_core::conversation::{Aside, AsideId, Author, Entry};
+use rig_core::conversation::pairing::placed;
+use rig_core::conversation::{Aside, AsideId, Author, CallRef, Entry, StopCause};
 use rig_core::effect::Decider;
-use rig_core::message::{CallId, UserContent};
+use rig_core::message::{CallId, ToolCall};
 use rig_core::tool::{ToolResult, ToolResultContext};
 use rig_memory::Session;
 use serde::de::DeserializeSeed;
@@ -67,29 +67,33 @@ use super::session_log::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
 };
 use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
-use super::tools::{Footprint, ToolRequest};
+use super::tools::{Footprint, InReply, ToolRequest};
 use super::turn::{Stopper, TurnCall, not_finished};
-
-/// Why a turn a crash left unfinished stopped, as its record and its
-/// calls' results say it (rig-core's
-/// [`not_finished`](rig_core::tool::feedback::not_finished)).
-pub const RESTARTED: &str = "the session restarted";
 
 /// The kind of the aside that marks a call that may change something from
 /// its start, and any call once it settled, until its reply's results are
 /// in.
 const CALL_MARK: &str = "rig.call";
 
-/// A `rig.call` aside's value.
+/// A `rig.call` aside's value. `at` is the call's place in its reply; a
+/// mark saved without one is paired with a call by [`answered_by`].
+///
+/// [`answered_by`]: rig_core::conversation::pairing::answered_by
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 enum CallMark {
     /// The call started.
-    Started { call: CallId },
+    Started {
+        call: CallId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<CallRef>,
+    },
     /// The call settled with `result`, having published `facts` (as a
     /// conversation keeps them), while its reply still ran.
     Settled {
         call: CallId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<CallRef>,
         result: ToolResult,
         #[serde(default, skip_serializing_if = "ToolResultContext::is_empty")]
         facts: ToolResultContext,
@@ -104,7 +108,13 @@ pub(crate) struct KeptFacts(pub(crate) ToolResultContext);
 impl CallMark {
     fn call(&self) -> &CallId {
         match self {
-            Self::Started { call } | Self::Settled { call, .. } => call,
+            Self::Started { call, .. } | Self::Settled { call, .. } => call,
+        }
+    }
+
+    fn at(&self) -> Option<CallRef> {
+        match self {
+            Self::Started { at, .. } | Self::Settled { at, .. } => *at,
         }
     }
 }
@@ -119,16 +129,38 @@ fn marks(conversation: &rig_core::conversation::Conversation) -> Vec<(AsideId, C
         .collect()
 }
 
-/// Marks the call `call` started on `conversation`, after its last entry,
-/// in place of a mark it had, such as one a restart let run again.
-pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversation, call: &CallId) {
+/// The mark of each of `calls`, the calls a reply still owes with their
+/// places, among `marks`, in call order: the mark saved at its place for
+/// its id, else, among the rest, the one [`placed`] pairs with it.
+fn marked<'m>(
+    calls: &[(CallRef, ToolCall)],
+    marks: &'m [(AsideId, CallMark)],
+) -> Vec<Option<&'m (AsideId, CallMark)>> {
+    let calls: Vec<_> = calls.iter().map(|(at, call)| (*at, &call.id)).collect();
+    let marks: Vec<_> = marks
+        .iter()
+        .map(|mark| (mark.1.call(), mark.1.at(), mark))
+        .collect();
+    placed(&calls, &marks)
+}
+
+/// Marks the call `call`, at its place `at`, started on `conversation`,
+/// after its last entry, in place of a mark it had, such as one a restart
+/// let run again.
+pub(crate) fn mark_started(
+    conversation: &mut rig_core::conversation::Conversation,
+    (call, at): (&CallId, CallRef),
+) {
     let after = conversation.entries().next_back().map(|entry| entry.id);
-    let mark = CallMark::Started { call: call.clone() };
+    let mark = CallMark::Started {
+        call: call.clone(),
+        at: Some(at),
+    };
     let value = serde_json::to_value(mark).unwrap_or_default();
     let aside = Aside::new(CALL_MARK, Author::rig(), value).after(after);
     let had = marks(conversation)
         .into_iter()
-        .find(|(_, mark)| mark.call() == call);
+        .find(|(_, mark)| mark.at() == Some(at));
     if let Some((id, _)) = had {
         conversation.replace_aside(id, aside);
     } else {
@@ -136,24 +168,25 @@ pub(crate) fn mark_started(conversation: &mut rig_core::conversation::Conversati
     }
 }
 
-/// Marks the call `call` settled with `result` and the facts it published
-/// (`facts`, asked only for a new mark) on `conversation`: in place of its
-/// started mark, else after its last entry; a call marked settled already
-/// is left as it is.
+/// Marks the call `call`, at its place `at`, settled with `result` and the
+/// facts it published (`facts`, asked only for a new mark) on
+/// `conversation`: in place of its started mark, else after its last
+/// entry; a call marked settled already is left as it is.
 pub(crate) fn mark_settled(
     conversation: &mut rig_core::conversation::Conversation,
-    call: &CallId,
+    (call, at): (&CallId, CallRef),
     result: &ToolResult,
     facts: impl FnOnce() -> ToolResultContext,
 ) {
     let had = marks(conversation)
         .into_iter()
-        .find(|(_, mark)| mark.call() == call);
+        .find(|(_, mark)| mark.at() == Some(at));
     if matches!(had, Some((_, CallMark::Settled { .. }))) {
         return;
     }
     let mark = CallMark::Settled {
         call: call.clone(),
+        at: Some(at),
         result: result.clone(),
         facts: facts(),
     };
@@ -172,26 +205,19 @@ pub(crate) fn mark_settled(
 }
 
 /// Pushes `results`, an entry of tool results with what their calls
-/// published, to `conversation`, and removes the marks of the calls they
-/// answer.
+/// published, to `conversation`, and removes the marks of the calls no
+/// longer owed a result.
 pub(crate) fn commit_results(
     conversation: &mut rig_core::conversation::Conversation,
     results: impl Into<Entry>,
 ) {
-    let results = results.into();
-    let answered: Vec<CallId> = match &*results.message {
-        Message::User { content } => content
-            .iter()
-            .filter_map(|item| match item {
-                UserContent::ToolResult(result) => Some(result.call.clone()),
-                _ => None,
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
-    conversation.push(results);
-    for (id, mark) in marks(conversation) {
-        if answered.contains(mark.call()) {
+    conversation.push(results.into());
+    let pending = conversation.pending_calls();
+    let marks = marks(conversation);
+    let owed = marked(&pending, &marks);
+    let owed: Vec<AsideId> = owed.into_iter().flatten().map(|(id, _)| *id).collect();
+    for (id, _) in marks {
+        if !owed.contains(&id) {
             conversation.remove_aside(id);
         }
     }
@@ -250,11 +276,11 @@ pub struct CarryOn;
 /// [`GateSystems::After`](super::stage::GateSystems::After), so no one is
 /// asked to approve its calls: one a plugin lets [`CarryOn`] goes on as an
 /// ordinary turn, both taken off it; any other is stopped as the user's
-/// stop does, for [`RESTARTED`], but for its agent alone, so a turn a
-/// plugin carries on below it is left to that plugin. Nothing of a stopped
-/// turn runs and no model is called; each call keeps the result the
-/// session kept, if it settled, and is otherwise answered as not run or cut
-/// short.
+/// stop does, for [`StopCause::Restarted`], but for its agent alone, so a
+/// turn a plugin carries on below it is left to that plugin. Nothing of a
+/// stopped turn runs and no model is called; each call keeps the result
+/// the session kept, if it settled, and is otherwise answered as not run
+/// or cut short.
 pub(crate) fn stop_restored(
     turns: Query<(Entity, &TurnOf, &Calls, Has<CarryOn>), (With<Restored>, Without<TurnOutcome>)>,
     admitted: Query<(), (With<Restored>, Added<Admitted>)>,
@@ -273,7 +299,7 @@ pub(crate) fn stop_restored(
             false => stopping.push(agent),
         }
     }
-    stopper.stop_each(stopping, RESTARTED);
+    stopper.stop_each(stopping, &StopCause::Restarted);
 }
 
 /// Answers each restored call still [`Interrupted`], undecided and unheld,
@@ -296,7 +322,9 @@ pub(crate) fn answer_interrupted(
         }
         let result = match interrupted {
             Interrupted::Settled(result) => result.clone(),
-            Interrupted::Started => not_finished(RESTARTED, true, footprint),
+            Interrupted::Started => {
+                not_finished(&StopCause::Restarted.to_string(), true, footprint)
+            }
         };
         decision.decide(Decider::plugin("rig-ecs"), result);
     }
@@ -643,12 +671,11 @@ fn carry_on_restored(
     };
     let pending = conversation.pending_calls();
     let idle = pending.is_empty() && !conversation.awaits_model();
-    let mut marked = HashMap::new();
-    for (id, mark) in marks(&conversation) {
-        if pending.iter().any(|call| &call.id == mark.call()) {
-            marked.insert(mark.call().clone(), mark);
-        } else {
-            conversation.remove_aside(id);
+    let marks = marks(&conversation);
+    let owed = marked(&pending, &marks);
+    for (id, _) in &marks {
+        if !owed.iter().flatten().any(|(owed, _)| owed == id) {
+            conversation.remove_aside(*id);
         }
     }
     if !pending.is_empty() {
@@ -658,15 +685,17 @@ fn carry_on_restored(
             ..Turn::default()
         };
         let turn = commands.spawn((TurnOf(agent), state, Restored)).id();
-        for call in pending {
-            let interrupted = marked.remove(&call.id).map(|mark| match mark {
+        for ((at, call), mark) in pending.into_iter().zip(owed) {
+            let interrupted = mark.map(|(_, mark)| match mark {
                 CallMark::Started { .. } => (Interrupted::Started, None),
-                CallMark::Settled { result, facts, .. } => {
-                    (Interrupted::Settled(result), Some(KeptFacts(facts)))
-                }
+                CallMark::Settled { result, facts, .. } => (
+                    Interrupted::Settled(result.clone()),
+                    Some(KeptFacts(facts.clone())),
+                ),
             });
             let mut restored = commands.spawn((
                 ToolRequest { call },
+                InReply::new(at),
                 Effect::with_parent_id(Some(reply)),
                 CallOf(turn),
                 ForAgent(agent),

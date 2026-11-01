@@ -568,7 +568,7 @@ fn a_refused_tool_name_names_itself_on_a_carried_turn_it_cuts_off() {
             .and_then(|(_, record)| record.end)
     });
     assert!(
-        matches!(&ended, Some(rig_ecs::prelude::TurnEnd::Stopped { why: Some(said), .. }) if said == why),
+        matches!(&ended, Some(rig_ecs::prelude::TurnEnd::Stopped { by: Some(StopCause::Exit(said)), .. }) if said == why),
         "{ended:?}"
     );
 }

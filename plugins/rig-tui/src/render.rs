@@ -41,16 +41,17 @@ use super::transcript::{
     Stops, Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
-    DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
+    CallItem, DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
     TranscriptSlot, TranscriptView, TuiView, message_items,
 };
 use super::wrap::wrap_all;
 use rig_core::conversation;
-use rig_core::message::CallId;
+use rig_core::conversation::CallRef;
 use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial, PartialCall};
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Settled, Started, SupersededBy};
-use rig_ecs::tools::ToolRequest;
+use rig_ecs::tools::{InReply, ToolRequest};
 use rig_ecs::turn::{ModelRequest, SentTo};
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::pick::{PickPreview, Picker};
@@ -280,60 +281,54 @@ pub(crate) struct CallStates<'w, 's> {
         'w,
         's,
         (
-            &'static ToolRequest,
+            Option<&'static InReply>,
             Option<&'static Holds>,
             Has<Started>,
             Has<Outcome>,
             Option<&'static ToolProgress>,
         ),
+        With<ToolRequest>,
     >,
     names: Query<'w, 's, &'static Name>,
-    outputs: Query<
-        'w,
-        's,
-        (&'static ToolRequest, &'static CallOutput),
-        (With<Started>, Without<Outcome>),
-    >,
+    outputs:
+        Query<'w, 's, (&'static InReply, &'static CallOutput), (With<Started>, Without<Outcome>)>,
 }
 
 impl CallStates<'_, '_> {
-    /// Where each tool call of `calls` stands, by its id: held while it
-    /// has holds, else done once answered, running (with its progress
-    /// line) once started, else waiting.
+    /// Where each tool call of a reply among `calls` stands, by the call
+    /// ([`Self::state`]).
     pub(crate) fn of(
         &self,
         calls: impl IntoIterator<Item = Entity>,
-    ) -> BTreeMap<CallId, CallState> {
-        let found = calls
-            .into_iter()
-            .filter_map(|call| self.calls.get(call).ok());
-        found
-            .map(|(request, holds, started, answered, progress)| {
-                let state = match holds {
-                    Some(holds) => {
-                        CallState::Held(holds.iter().map(|hold| self.name(hold)).collect())
-                    }
-                    None if answered => CallState::Done,
-                    None if started => {
-                        CallState::Running(progress.map(|ToolProgress(line)| line.clone()))
-                    }
-                    None => CallState::Waiting,
-                };
-                (request.call.id.clone(), state)
-            })
-            .collect()
+    ) -> BTreeMap<CallRef, CallState> {
+        let found = calls.into_iter().filter_map(|call| self.state(call));
+        found.filter_map(|(at, state)| Some((at?, state))).collect()
     }
 
-    /// The output so far of each running call of `calls` whose tool
-    /// reported some, by its id.
+    /// Where the tool call `call` stands, with its place in its reply if
+    /// it has one: held while it has holds, else done once answered,
+    /// running (with its progress line) once started, else waiting.
+    pub(crate) fn state(&self, call: Entity) -> Option<(Option<CallRef>, CallState)> {
+        let (at, holds, started, answered, progress) = self.calls.get(call).ok()?;
+        let state = match holds {
+            Some(holds) => CallState::Held(holds.iter().map(|hold| self.name(hold)).collect()),
+            None if answered => CallState::Done,
+            None if started => CallState::Running(progress.map(|ToolProgress(line)| line.clone())),
+            None => CallState::Waiting,
+        };
+        Some((at.map(InReply::at), state))
+    }
+
+    /// The output so far of each running call of a reply among `calls`
+    /// whose tool reported some, by the call.
     pub(crate) fn outputs(
         &self,
         calls: impl IntoIterator<Item = Entity>,
-    ) -> BTreeMap<CallId, String> {
+    ) -> BTreeMap<CallRef, String> {
         let found = calls
             .into_iter()
             .filter_map(|call| self.outputs.get(call).ok());
-        let outputs = found.map(|(request, output)| (request.call.id.clone(), output.text()));
+        let outputs = found.map(|(at, output)| (at.at(), output.text()));
         outputs.filter(|(_, text)| !text.is_empty()).collect()
     }
 
@@ -350,6 +345,9 @@ pub(crate) struct ShownConversation<'a> {
     /// Its id; `None` for a conversation no agent of this app holds,
     /// which shows no notices.
     pub(crate) id: Option<&'a AgentId>,
+    /// The agents it was forked from, if it is a fork: their records say
+    /// how the calls it took over ran.
+    pub(crate) forked_from: Option<&'a ForkedFrom>,
     pub(crate) conversation: &'a conversation::Conversation,
     /// What entries of it stand for, drawn above them.
     pub(crate) replaced: Option<&'a Replaced>,
@@ -360,9 +358,9 @@ pub(crate) struct ShownConversation<'a> {
     /// came.
     pub(crate) inbox: Vec<&'a Incoming>,
     /// Where its running turn's calls stand.
-    pub(crate) calls: BTreeMap<CallId, CallState>,
+    pub(crate) calls: BTreeMap<CallRef, CallState>,
     /// The output so far of its running calls that report it.
-    pub(crate) outputs: BTreeMap<CallId, String>,
+    pub(crate) outputs: BTreeMap<CallRef, String>,
     /// The reply streaming in, if any, and the call streaming it.
     pub(crate) partial: Option<(Entity, &'a Partial)>,
     /// The asides in its conversation, in the order put.
@@ -378,6 +376,7 @@ impl<'a> ShownConversation<'a> {
         Self {
             entity,
             id: None,
+            forked_from: None,
             conversation,
             replaced: None,
             changed: true,
@@ -407,7 +406,11 @@ type LiveEffect = (
         Option<&'static ModelRequest>,
         Option<&'static SentTo>,
     ),
-    (Option<&'static ForAgent>, Option<&'static Outcome>),
+    (
+        Option<&'static ForAgent>,
+        Option<&'static Outcome>,
+        Option<&'static InReply>,
+    ),
     (Has<Started>, Has<Partial>),
 );
 
@@ -537,6 +540,8 @@ pub(crate) struct LayoutSources<'w, 's> {
             Option<&'static Replaced>,
         ),
     >,
+    /// The agents forked from another.
+    forks: Query<'w, 's, &'static ForkedFrom>,
     pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
     turns: Query<'w, 's, &'static Calls>,
     /// The replies streaming in that nothing superseded, such as a race's
@@ -578,6 +583,8 @@ impl LayoutSources<'_, '_> {
             .map(|(effect, message, _)| (effect, message))
             .collect();
         inbox.sort_by_key(|(effect, _)| effect.id());
+        let forked_from = self.forks.get(entity).ok();
+        let live = self.live_calls();
         Some(ShownConversation {
             entity,
             id: Some(id),
@@ -589,7 +596,8 @@ impl LayoutSources<'_, '_> {
             outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
             partial,
             asides: asides(conversation),
-            children: self.facts.children(&self.live_calls(), &id.0),
+            children: self.facts.children(&live, &id.0, forked_from),
+            forked_from,
         })
     }
 
@@ -597,9 +605,10 @@ impl LayoutSources<'_, '_> {
     /// calls standing as they stand now.
     fn live_calls(&self) -> CallTree {
         let mut live = CallTree::default();
-        for (entity, effect, requests, (agent, outcome), (started, streams)) in &self.live {
+        for (entity, effect, requests, (agent, outcome, in_reply), (started, streams)) in &self.live
+        {
             let state = match requests.0 {
-                Some(request) => self.calls.of([entity]).remove(&request.call.id),
+                Some(_) => self.calls.state(entity).map(|(_, state)| state),
                 None if outcome.is_some() => Some(CallState::Done),
                 None if streams => Some(CallState::Streaming),
                 None if started => Some(CallState::Running(None)),
@@ -611,8 +620,8 @@ impl LayoutSources<'_, '_> {
             let child = live_call(requests, (name, outcome), state);
             live.add(effect.parent, effect.id(), child, None);
             let id = agent.and_then(|agent| self.agents.get(agent).ok());
-            if let (Some(request), Some((id, ..))) = (requests.0, id) {
-                live.tool_call(effect.id(), &id.0, request.call.id.clone());
+            if let (Some(at), Some((id, ..))) = (in_reply, id) {
+                live.tool_call(effect.id(), &id.0, at.at());
             }
         }
         live
@@ -670,6 +679,8 @@ pub(crate) fn lay_out_transcript(
     let stops = Stops::of(conversation, &entries);
     let mut look = Look {
         renderers: sources.renderers,
+        agent: shown.id.map(|id| id.0.as_str()),
+        forked_from: shown.forked_from,
         calls: &shown.calls,
         outputs: &shown.outputs,
         inside: HashMap::new(),
@@ -789,12 +800,11 @@ pub(crate) fn lay_out_transcript(
                 let start = extra.len();
                 let (drawn, decorated) = sources.renderers.call_decorated(&view);
                 extra.extend(on_band(drawn, sources.theme.tool));
-                marks.push((TranscriptItem::Call(call.id.clone()), start..extra.len()));
+                let item = CallItem::Streaming(at);
+                marks.push((TranscriptItem::Call(item), start..extra.len()));
                 for (name, rows) in decorated {
-                    marks.push((
-                        TranscriptItem::Decoration(call.id.clone(), name),
-                        start + rows.start..start + rows.end,
-                    ));
+                    let decoration = TranscriptItem::Decoration(item, name);
+                    marks.push((decoration, start + rows.start..start + rows.end));
                 }
             }
             inbox_lines(&shown.inbox, sources.theme, &mut extra);

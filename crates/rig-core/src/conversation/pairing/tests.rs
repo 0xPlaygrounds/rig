@@ -1,5 +1,7 @@
 use super::*;
-use crate::message::{StopReason, ToolCall, ToolFunction, ToolResult, ToolResultContent};
+use crate::message::{
+    AssistantContent, StopReason, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+};
 
 fn tool_call(id: &str) -> ToolCall {
     ToolCall {
@@ -315,6 +317,30 @@ fn pending_calls_are_the_last_turns_unanswered_calls() {
 }
 
 #[test]
+fn the_nth_result_with_an_id_answers_the_nth_call_with_it() {
+    let (c1, c2) = (id("c1"), id("c2"));
+    let calls = [&c1, &c2, &c1];
+    let answers = [(&c1, 'a'), (&c1, 'b'), (&c2, 'c'), (&c1, 'd')];
+    assert_eq!(
+        answered_by(calls, answers),
+        vec![Some('a'), Some('c'), Some('b')]
+    );
+    // One result for a repeated id answers its first call; the second is
+    // still owed.
+    let history = vec![
+        assistant(vec![call("c1"), call("c2"), call("c1")]),
+        results(&["c2", "c1"]),
+    ];
+    let pending = pending(&history).map(|(_, calls)| {
+        let calls = calls.into_iter();
+        calls
+            .map(|(at, call)| (at, call.id.clone()))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(pending, Some(vec![(2, c1)]));
+}
+
+#[test]
 fn a_window_starts_past_results_whose_calls_it_cuts_off() {
     let history = vec![
         assistant(vec![call("c1")]),
@@ -440,4 +466,22 @@ fn normalize_puts_a_system_entry_after_the_results_it_waited_for() {
         Some([(Some(MessageId(2)), &answer), (Some(MessageId(1)), &note)].as_slice())
     );
     assert!(normalized.repairs.is_empty() && normalized.merged.is_empty());
+}
+
+/// An edit that deletes the first of two calls moves the second into the
+/// first's place; it keeps its own item, not the one kept at that place.
+#[test]
+fn a_call_moved_into_a_deleted_calls_place_keeps_its_own_item() {
+    let place = |index| CallRef {
+        reply: MessageId(1),
+        index,
+    };
+    let (first, second) = (id("c1"), id("c2"));
+    let items = [
+        (&first, Some(place(0)), "first's"),
+        (&second, Some(place(1)), "second's"),
+    ];
+    assert_eq!(placed(&[(place(0), &second)], &items), [Some("second's")]);
+    let both = [(place(0), &first), (place(1), &second)];
+    assert_eq!(placed(&both, &items), [Some("first's"), Some("second's")]);
 }

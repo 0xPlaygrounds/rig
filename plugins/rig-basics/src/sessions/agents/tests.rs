@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockHttpResponse, SequencedHttpClient};
 use rig_ecs::AgentPlugin;
-use rig_ecs::fork::ForkedFrom;
+use rig_ecs::fork::{Ancestor, ForkedFrom};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::model::{Connection, ModelChoice};
 use rig_ecs::prelude::{Agent, AgentId, Conversation, MessageId, TurnOf, TurnOutcome};
@@ -63,8 +63,10 @@ fn agents_marks_the_current_agent_and_forks_and_follows_their_state() {
             .unwrap_or_default()
     };
     let (source_id, source_short) = id(&app, source);
+    let (agent, since) = (source_id, MessageId::default());
+    let from = ForkedFrom(vec![Ancestor { agent, since }]);
     let fork = (app.world_mut())
-        .spawn((Agent, Name::new("agent"), ForkedFrom(source_id)))
+        .spawn((Agent, Name::new("agent"), from))
         .id();
     let (_, fork_short) = id(&app, fork);
     app.update();
