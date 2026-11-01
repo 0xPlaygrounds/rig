@@ -632,8 +632,8 @@ fn a_write_cut_off_mid_way_says_whether_it_happened() {
          said nothing",
     ];
     let found = [
-        "it does not hold what this write sent, so the write did not happen; make the change \
-         again",
+        "it does not currently hold what this write sent; the write may or may not have \
+         happened; read the file before retrying",
         "it holds what this write sent, so the write happened",
     ];
     let wanted: Vec<String> = ended
@@ -1006,4 +1006,84 @@ fn a_policy_set_later_holds_from_the_next_operation() {
     let after = bench.read(file, 4096).is_ok() && mark.exists();
     std::fs::remove_dir_all(&dir).ok();
     assert!(before && after, "{before} {after}");
+}
+
+#[cfg(unix)]
+#[test]
+fn interrupted_write_payloads_preserve_the_original_for_both_write_paths() -> std::io::Result<()> {
+    let dir = scratch("interrupted-payloads");
+    let file = dir.join("important.txt");
+    let marker = dir.join("attempted");
+    let original = "valuable original contents\n".repeat(4096);
+    let replacement = "replacement contents\n".repeat(8192);
+    for guarded in [false, true] {
+        for (forward, status, start) in [
+            (0, 255, true),
+            (4096, 255, true),
+            (4096, 0, true),
+            (replacement.len(), 0, true),
+            (replacement.len(), 255, true),
+            (0, 255, false),
+        ] {
+            std::fs::write(&file, &original)?;
+            let _ = std::fs::remove_file(&marker);
+            let transport = r#"
+                if [ ! -e "$0/attempted" ]; then
+                    touch "$0/attempted"
+                    if [ "$3" = yes ]; then head -c "$1" | sh -c "$4"; result=$?;
+                    else result=0; fi
+                    if [ "$2" -ne 0 ]; then exit "$2"; fi
+                    exit "$result"
+                fi
+                exec sh -c "$4"
+            "#;
+            let remote = Remote::new(
+                "test",
+                vec![
+                    "sh".into(),
+                    "-c".into(),
+                    transport.into(),
+                    dir.display().to_string(),
+                    forward.to_string(),
+                    status.to_string(),
+                    if start { "yes" } else { "no" }.into(),
+                ],
+                Launcher::default,
+            )?;
+            let outcome = if guarded {
+                remote
+                    .write_if(
+                        &file,
+                        replacement.as_bytes(),
+                        &rig_core::tool::content_hash(original.as_bytes()),
+                    )
+                    .map(|_| ())
+            } else {
+                remote.write(&file, replacement.as_bytes())
+            };
+            let complete = start && forward == replacement.len();
+            let expected = if complete { &replacement } else { &original };
+            if std::fs::read(&file)? != expected.as_bytes() {
+                return Err(std::io::Error::other(format!(
+                    "partial replacement committed: guarded={guarded}, forward={forward}"
+                )));
+            }
+            if (status != 0 || !complete) && outcome.is_ok() {
+                return Err(std::io::Error::other("failed transfer reported success"));
+            }
+            if complete && status == 0 {
+                outcome?;
+            } else if let Err(error) = outcome {
+                if error.to_string().contains("write did not happen") {
+                    return Err(std::io::Error::other(
+                        "verification made an unsupported claim",
+                    ));
+                }
+                if complete && !error.to_string().contains("it holds what this write sent") {
+                    return Err(std::io::Error::other("completed write was not recognized"));
+                }
+            }
+        }
+    }
+    std::fs::remove_dir_all(dir)
 }

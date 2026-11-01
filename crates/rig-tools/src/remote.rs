@@ -332,8 +332,7 @@ impl Remote {
     /// Runs `script`, which writes `bytes` to the file `path`, once. When
     /// it ends with no exit status it names, such as a transport that
     /// dropped mid-write, the file is hashed there again (a read, so tried
-    /// twice) and the error says whether it holds `bytes`: whether the
-    /// write happened.
+    /// twice) and the error says whether it currently holds `bytes`.
     fn written(&self, path: &Path, script: &str, bytes: &[u8]) -> io::Result<Vec<u8>> {
         let ran = self.once(script, Some(bytes))?;
         if matches!(
@@ -354,11 +353,11 @@ impl Remote {
             Ok(hash) if hash.trim() == sent => {
                 "it holds what this write sent, so the write happened".to_owned()
             }
-            Ok(hash) if !hash.trim().is_empty() => "it does not hold what this write sent, so \
-                 the write did not happen; make the change again"
+            Ok(hash) if !hash.trim().is_empty() => "it does not currently hold what this write sent; \
+                 the write may or may not have happened; read the file before retrying"
                 .to_owned(),
             Err(error) if error.kind() == ErrorKind::NotFound => {
-                "it is not there, so the write did not happen; make the change again".to_owned()
+                "it is not there now; the write may or may not have happened; check the path before retrying".to_owned()
             }
             Ok(_) => "it could not be hashed there, so the write may or may not have \
                  happened; read the file before going on"
