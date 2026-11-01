@@ -48,7 +48,9 @@ use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_core::tool::{ExitStatus, Scope, Tool, ToolContext, ToolExecutionError, Touches};
+use rig_core::tool::{
+    ExitStatus, Scope, Tool, ToolContext, ToolErrorKind, ToolExecutionError, Touches,
+};
 use std::sync::Arc;
 
 /// An app on `store`, after its first frame restored the session. Like
@@ -1302,7 +1304,9 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
     let mut app = tools_app(&store, &model, |app| {
         app.add_tool(Wait)
             .init_resource::<Asking>()
-            .add_systems(AgentPass, ask.in_set(Stage::Gate));
+            .init_resource::<InterruptedKinds>()
+            .add_systems(AgentPass, ask.in_set(Stage::Gate))
+            .add_observer(note_interrupted_kind);
     });
     for _ in 0..5 {
         app.update();
@@ -1327,6 +1331,34 @@ fn a_call_a_crash_interrupted_waits_while_a_plugin_holds_it() {
         said.contains("touched") && said.contains(&interrupted()),
         "{said}"
     );
+    // The call the crash cut short is answered as cancelled, not as a
+    // failure of some other kind.
+    let kinds = &app.world().resource::<InterruptedKinds>().0;
+    assert!(
+        !kinds.is_empty()
+            && kinds
+                .iter()
+                .all(|kind| *kind == Some(ToolErrorKind::Cancelled)),
+        "{kinds:?}"
+    );
+}
+
+/// The error kind of each interrupted call's answer, as it was answered.
+#[derive(Resource, Default)]
+struct InterruptedKinds(Vec<Option<ToolErrorKind>>);
+
+fn note_interrupted_kind(
+    answered: On<Add<Outcome>>,
+    outcomes: Query<&Outcome, With<Interrupted>>,
+    mut kinds: ResMut<InterruptedKinds>,
+) {
+    if let Ok(outcome) = outcomes.get(answered.entity) {
+        let result = outcome.tool_result();
+        let kind = result.error().map(ToolExecutionError::kind);
+        if kind.is_some() {
+            kinds.0.push(kind);
+        }
+    }
 }
 
 #[test]
