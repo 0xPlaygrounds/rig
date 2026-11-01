@@ -200,7 +200,7 @@ impl Offered {
                     Asking::Answered(listed) => return Ok(Arc::clone(listed)),
                     Asking::Failed(failure, at, wait) => {
                         let left = wait.saturating_sub(at.elapsed());
-                        if left > RetryPolicy::DEFAULT.max_asked_wait {
+                        if left > self.pace.retry.max_asked_wait {
                             return Err(failure.clone());
                         }
                         left
@@ -277,6 +277,10 @@ impl Offered {
                 };
                 retried += 1;
                 sleep(wait).await;
+                // A sign-in or sign-out since asks anew itself.
+                if offered.state().epoch != epoch {
+                    return;
+                }
             }
         };
         pool.spawn(asking).detach();

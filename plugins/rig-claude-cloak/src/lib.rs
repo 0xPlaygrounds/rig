@@ -101,11 +101,7 @@ fn connect(
     catalog: &Catalog,
     transport: &Transport,
 ) -> Result<ErasedHandler, ConnectError> {
-    if !auth::signed_in(home) {
-        return Err(ConnectError::Provider(
-            auth::AuthError::NotLoggedIn.to_string(),
-        ));
-    }
+    auth::signed_in(home).map_err(|why| ConnectError::Provider(why.to_string()))?;
     let client = transport::new(home.to_path_buf())
         .map_err(|error| ConnectError::Provider(error.to_string()))?;
     connect_with_client(spec, catalog, transport, client)

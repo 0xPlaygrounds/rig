@@ -416,7 +416,9 @@ impl Connector {
     /// [`reachable`](Self::reachable) ones in that order, then the others in
     /// catalog order. Only [`ModelStatus::Usable`] is reachable. Models
     /// claimed by a sign-in's plan are checked individually; other models
-    /// share one check per provider.
+    /// share one check per provider, unless the provider refused it for a
+    /// reason of its own ([`ModelStatus::Unavailable`]), which may be that
+    /// model's alone.
     pub fn statuses(&self) -> Vec<(&ModelSpec, ModelStatus)> {
         let mut checked: HashMap<ProviderId, ModelStatus> = HashMap::new();
         let mut statuses: Vec<(&ModelSpec, ModelStatus)> = self
@@ -426,10 +428,16 @@ impl Connector {
                 let status = match spec.tools {
                     false => ModelStatus::NoTools,
                     true if self.plan(spec).is_some() => self.status(spec),
-                    true => checked
-                        .entry(spec.provider)
-                        .or_insert_with(|| self.status(spec))
-                        .clone(),
+                    true => match checked.get(&spec.provider) {
+                        Some(status) => status.clone(),
+                        None => {
+                            let status = self.status(spec);
+                            if !matches!(status, ModelStatus::Unavailable(_)) {
+                                checked.insert(spec.provider, status.clone());
+                            }
+                            status
+                        }
+                    },
                 };
                 (spec, status)
             })

@@ -389,3 +389,29 @@ fn models_without_a_sign_in_plan_keep_one_check_per_provider() {
     assert_eq!(connector.reachable().len(), 2);
     assert_eq!(checks.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn a_model_its_provider_refuses_does_not_hide_the_others() {
+    let Ok(vendor) = ProviderId::declare("connector-mixed") else {
+        panic!("valid vendor");
+    };
+    let mut connector = Connector::new(Catalog::default());
+    for id in ["down", "up"] {
+        connector
+            .catalog_mut()
+            .insert(ModelSpec::new(vendor, id).with_tools(true));
+    }
+    connector.provide(
+        vendor,
+        |spec: &ModelSpec, _: &Catalog, _: &Transport| match spec.id.as_str() {
+            "down" => Err(ConnectError::Provider("its server is down".to_owned())),
+            _ => Ok(adapted(spec, MockCompletionModel::text("ok").into())),
+        },
+    );
+    let reachable: Vec<String> = connector
+        .reachable()
+        .into_iter()
+        .map(ModelSpec::reference)
+        .collect();
+    assert_eq!(reachable, ["connector-mixed/up"]);
+}

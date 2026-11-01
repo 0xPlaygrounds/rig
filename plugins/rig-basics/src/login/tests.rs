@@ -384,7 +384,8 @@ fn a_list_nobody_waits_for_retries_a_transient_failure_itself() {
     let backend = Backend::default();
     let lists = [(503, "busy"), (200, SOL)];
     let (app, _, _) = signed_in("login-retried", (&backend, &lists), NEVER, |_| {});
-    let (_offered, status) = paced(&app, &backend, pace(1, std::time::Duration::ZERO));
+    // A cooldown no listing outlasts: only the fetch's own retry asks again.
+    let (_offered, status) = paced(&app, &backend, pace(1, std::time::Duration::from_secs(600)));
     assert_eq!(status(), ModelStatus::Usable);
     assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
 }
@@ -392,18 +393,18 @@ fn a_list_nobody_waits_for_retries_a_transient_failure_itself() {
 #[test]
 fn a_listing_asks_again_once_the_cooldown_after_a_failure_passed() {
     let backend = Backend::default();
-    let lists = [(503, "busy"), (503, "busy"), (200, SOL)];
+    let lists = [(503, "busy"), (200, SOL)];
     let (app, _, _) = signed_in("login-relisted", (&backend, &lists), NEVER, |_| {});
+    let cooldown = std::time::Duration::from_secs(1);
+    let (_, status) = paced(&app, &backend, pace(0, cooldown));
     // Within the cooldown, listing says why and does not ask again.
-    let (_, status) = paced(&app, &backend, pace(0, std::time::Duration::from_secs(600)));
     assert!(matches!(status(), ModelStatus::Unavailable(_)));
     assert!(matches!(status(), ModelStatus::Unavailable(_)));
     assert_eq!(backend.listed.load(Ordering::SeqCst), 1);
-    // After it, as when a session with no model opens `/model` again: the
-    // failed answer is asked again, and the next one is the list.
-    let (_, status) = paced(&app, &backend, pace(0, std::time::Duration::ZERO));
+    // After it, as when a session with no model opens `/model` again.
+    std::thread::sleep(cooldown);
     assert_eq!(status(), ModelStatus::Usable);
-    assert_eq!(backend.listed.load(Ordering::SeqCst), 3);
+    assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
 }
 
 /// What `gate` does with a request for its model.
@@ -466,18 +467,18 @@ fn a_list_refused_with_a_wait_is_asked_again_once_it_is_over() {
     let gate = gate_on_sol(&app, &backend);
     assert!(gate.is_some(), "the catalog lists GPT-6.1 Sol");
     let Some(gate) = gate else { return };
+    let started = std::time::Instant::now();
     let first = denied(&gate);
     let asked = first
         .as_ref()
         .and_then(|report| report.retry_after(std::time::SystemTime::now()));
     assert_eq!(asked, Some(std::time::Duration::from_secs(1)), "{first:?}");
     // The next request waits out the rest, then asks.
-    let started = std::time::Instant::now();
     assert!(matches!(
         before(&gate),
         rig_core::serve::BeforeServe::Proceed
     ));
-    assert!(started.elapsed() >= std::time::Duration::from_millis(500));
+    assert!(started.elapsed() >= std::time::Duration::from_secs(1));
     assert_eq!(backend.listed.load(Ordering::SeqCst), 2);
 }
 
