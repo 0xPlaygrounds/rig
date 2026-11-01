@@ -227,11 +227,7 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
     let leaves: Vec<Option<Vec<String>>> = world
         .query_filtered::<&ToolAccess, With<SpawnedBy>>()
         .iter(world)
-        .map(|access| {
-            access
-                .names()
-                .map(|names| names.into_iter().map(str::to_owned).collect())
-        })
+        .map(|access| access.names().map(<[String]>::to_vec))
         .collect();
     assert_eq!(leaves, [Some(vec!["look".to_owned()])]);
 }

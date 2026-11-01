@@ -302,12 +302,12 @@ impl RunTools {
 }
 
 /// Why [`ToolAccess::grant`] refused: `name` is not one of the tools the
-/// granting access has, `yours`.
+/// granting access keeps, `yours`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NotYours {
     /// The tool asked for.
     pub name: String,
-    /// The registered tools the granting access allows, sorted.
+    /// The registered tools the granting access keeps, sorted.
     pub yours: Vec<String>,
 }
 
@@ -326,24 +326,26 @@ impl ToolAccess {
         Self::default()
     }
 
-    /// Whether the tool `name` may be called.
+    /// Whether the tool `name` may be called in this run.
     pub fn allows(&self, name: &str) -> bool {
-        let kept = match &self.kept {
-            Kept::All => true,
-            Kept::Only(granted) => granted.has(name),
-        };
-        kept && self.run.as_ref().is_none_or(|run| run.has(name))
+        self.keeps(name) && self.run.as_ref().is_none_or(|run| run.has(name))
     }
 
-    /// The names it allows, in the order granted; `None` for every tool.
-    pub fn names(&self) -> Option<Vec<&str>> {
-        let names = match (&self.kept, &self.run) {
-            (Kept::All, None) => return None,
-            (Kept::All, Some(run)) => &run.0,
-            (Kept::Only(granted), _) => &granted.0,
-        };
-        let allowed = names.iter().map(String::as_str);
-        Some(allowed.filter(|name| self.allows(name)).collect())
+    /// Whether the agent keeps the tool `name`, whatever this run's tools:
+    /// what the session saves, and what a child it starts may be given.
+    pub fn keeps(&self, name: &str) -> bool {
+        match &self.kept {
+            Kept::All => true,
+            Kept::Only(granted) => granted.has(name),
+        }
+    }
+
+    /// The names it keeps, in the order granted; `None` for every tool.
+    pub fn names(&self) -> Option<&[String]> {
+        match &self.kept {
+            Kept::All => None,
+            Kept::Only(granted) => Some(&granted.0),
+        }
     }
 
     /// This access kept within `other`: the tools both allow, in this
@@ -368,8 +370,9 @@ impl ToolAccess {
     }
 
     /// A child's access: the tools `asked`, each once, every one a tool of
-    /// `registered` this access allows; or why not, for the first that is
-    /// not. The child keeps them, within this run's tools.
+    /// `registered` this access keeps; or why not, for the first that is
+    /// not. The child keeps them and, as every agent, uses them within this
+    /// run's tools, so a later run gives it what it was given.
     pub fn grant<'a>(
         &self,
         asked: &[String],
@@ -377,7 +380,7 @@ impl ToolAccess {
     ) -> Result<Self, NotYours> {
         let mut yours: Vec<&str> = registered
             .into_iter()
-            .filter(|name| self.allows(name))
+            .filter(|name| self.keeps(name))
             .collect();
         yours.sort_unstable();
         yours.dedup();

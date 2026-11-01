@@ -16,7 +16,7 @@ fn a_grant_gives_only_tools_the_granting_access_has() {
     let shell = parent.grant(&owned(&["shell"]), registered);
     assert_eq!(
         shell.ok().as_ref().and_then(ToolAccess::names),
-        Some(vec!["shell"])
+        Some(&owned(&["shell"])[..])
     );
     let refused = parent.grant(&owned(&["read", "edit"]), registered);
     let refused = refused.err().map(|refused| refused.to_string());
@@ -39,23 +39,7 @@ fn narrowing_never_widens_an_access() {
     assert!(!read.within(&ToolAccess::all()).allows("shell"));
     assert_eq!(ToolAccess::all().within(&read), read);
     let none = read.narrow(["shell"]);
-    assert_eq!(none.names(), Some(Vec::new()));
-}
-
-#[test]
-fn the_runs_tools_limit_an_access_and_are_never_saved() {
-    let run = RunTools::new(["read", "edit"]);
-    let access = ToolAccess::all()
-        .narrow(["read", "shell"])
-        .for_run(Some(&run));
-    assert_eq!(access.names(), Some(vec!["read"]));
-    assert!(access.grant(&owned(&["shell"]), ["read", "shell"]).is_err());
-    // What is made from it stays within the run's tools.
-    let free = ToolAccess::all().for_run(Some(&run));
-    assert!(!free.within(&ToolAccess::all()).allows("shell"));
-    assert!(!ToolAccess::all().within(&free).allows("shell"));
-    let saved = serde_json::to_value(&access).ok();
-    assert_eq!(saved, Some(json!({ "Only": ["read", "shell"] })));
+    assert_eq!(none.names(), Some(&[][..]));
 }
 
 #[test]
@@ -90,13 +74,29 @@ fn an_agent_is_kept_within_every_agent_above_it() {
     world.run_system_once(keep_within_parents).ok();
     let names = |world: &World, agent| {
         let access = world.get::<ToolAccess>(agent);
-        access
-            .and_then(ToolAccess::names)
-            .map(|names| owned(&names))
+        access.and_then(ToolAccess::names).map(<[String]>::to_vec)
     };
     assert_eq!(names(&world, leaf), Some(owned(&["run_steel"])));
     assert_eq!(names(&world, free), Some(owned(&["run_steel"])));
     assert_eq!(names(&world, parent), Some(owned(&["read", "run_steel"])));
+}
+
+#[test]
+fn the_runs_tools_limit_an_access_and_are_never_saved() {
+    let run = RunTools::new(["read", "edit"]);
+    let access = ToolAccess::all()
+        .narrow(["read", "shell"])
+        .for_run(Some(&run));
+    assert!(access.allows("read") && !access.allows("shell") && access.keeps("shell"));
+    // A child may be given what its parent keeps, and uses it within the
+    // run's tools too.
+    let child = access.grant(&owned(&["shell"]), ["read", "shell"]);
+    assert!(child.is_ok_and(|child| child.keeps("shell") && !child.allows("shell")));
+    let free = ToolAccess::all().for_run(Some(&run));
+    assert!(!free.within(&ToolAccess::all()).allows("shell"));
+    assert!(!ToolAccess::all().within(&free).allows("shell"));
+    let saved = serde_json::to_value(&access).ok();
+    assert_eq!(saved, Some(json!({ "Only": ["read", "shell"] })));
 }
 
 #[test]
@@ -109,10 +109,7 @@ fn an_agent_is_kept_within_the_runs_tools_however_it_was_made() {
     world.run_system_once(keep_within_parents).ok();
     for agent in [parent, child] {
         let access = world.get::<ToolAccess>(agent);
-        assert_eq!(
-            access.and_then(ToolAccess::names),
-            Some(vec!["read", "task"])
-        );
+        assert!(access.is_some_and(|access| access.allows("task") && !access.allows("shell")));
         let saved = access.and_then(|access| serde_json::to_value(access).ok());
         assert_eq!(saved, Some(json!("All")));
     }

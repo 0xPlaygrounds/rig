@@ -582,7 +582,8 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     let world = session.app.world();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
     let access = world.get::<ToolAccess>(child);
-    let only_look = access.and_then(ToolAccess::names) == Some(vec!["look", MESSAGE, WAIT]);
+    let only_look =
+        access.and_then(ToolAccess::names) == Some(&["look", MESSAGE, WAIT].map(str::to_owned)[..]);
     assert!(
         only_look,
         "its profile's tools, and those that reach agents"
@@ -1215,7 +1216,7 @@ fn a_peer_without_the_tools_to_reach_its_peers_is_not_told_to() {
     let told = |session: &mut Session, child: Entity| {
         let world = session.app.world_mut();
         let access = world.get::<ToolAccess>(child).and_then(ToolAccess::names);
-        let lacks = access.is_some_and(|names| !names.iter().any(|n| *n == MESSAGE || *n == WAIT));
+        let lacks = access.is_some_and(|names| !names.iter().any(|n| n == MESSAGE || n == WAIT));
         let mut roles = world.query::<(&Name, &SectionOf)>();
         let role =
             (roles.iter(world)).any(|(name, of)| of.0 == child && name.as_str() == "peer_role");

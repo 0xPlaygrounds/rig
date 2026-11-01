@@ -313,7 +313,7 @@ fn profile_spawn(
             (None, Err(_)) => ToolAccess::all(),
         };
         if let Some(names) = profile.narrow(&asked).names() {
-            request.tools = Some(names.into_iter().map(str::to_owned).collect());
+            request.tools = Some(names.to_vec());
         }
     }
 }

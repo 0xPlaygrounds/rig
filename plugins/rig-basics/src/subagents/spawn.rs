@@ -307,11 +307,11 @@ fn inherit_settings(
             asked.clone()
         }
     };
-    // A task reaches its parent with these, when the parent has them: left
-    // out rather than refused by the grant below.
+    // A task reaches its parent with these, when the parent keeps them:
+    // left out rather than refused by the grant below.
     let reaching = [MESSAGE, WAIT]
         .into_iter()
-        .filter(|tool| request.role == Role::Task && access.allows(tool))
+        .filter(|tool| request.role == Role::Task && access.keeps(tool))
         .filter(|tool| registered.contains(tool));
     for tool in reaching {
         if !tools.iter().any(|name| name == tool) {

@@ -156,8 +156,9 @@ impl Lent {
             Some(asked) => {
                 let granted = self.access.grant(asked, lendable);
                 let granted = granted.map_err(|refused| refused.to_string())?;
-                let names = granted.names().unwrap_or_default();
-                names.into_iter().map(str::to_owned).collect()
+                // A child runs with what it may use in this run.
+                let names = granted.names().unwrap_or_default().iter();
+                names.filter(|tool| granted.allows(tool)).cloned().collect()
             }
         };
         let dir = Local.join(&self.base, Path::new(job.dir.as_deref().unwrap_or(".")));
