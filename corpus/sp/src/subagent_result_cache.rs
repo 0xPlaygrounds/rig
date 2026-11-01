@@ -155,14 +155,16 @@ fn key_of(
     let (Some(model), effort) = inherited.ok()? else {
         return None;
     };
-    let mut tools: Vec<String> = match &request.tools {
+    let listed: Vec<String> = match &request.tools {
         Some(asked) => asked.clone(),
-        None => tools
-            .iter()
-            .map(|def| def.0.name.to_string())
-            .filter(|name| access.keeps(name))
-            .collect(),
+        None => tools.iter().map(|def| def.0.name.to_string()).collect(),
     };
+    // What the subagent may call in this run: an answer given without a
+    // tool is not reused once the tool is back.
+    let mut tools: Vec<String> = listed
+        .into_iter()
+        .filter(|name| access.allows(name))
+        .collect();
     tools.sort();
     tools.dedup();
     Some(TaskKey {

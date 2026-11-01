@@ -273,6 +273,32 @@ fn a_repeated_read_only_task_is_answered_from_its_record_while_its_inputs_hold()
 }
 
 #[test]
+fn an_answer_from_a_limited_run_is_not_reused_once_the_tools_are_back() {
+    let dir = project();
+    let store = MemoryStore::default();
+    let main = MockCompletionModel::from_stream_turns(asks("t1", FIND, true));
+    let sub = MockCompletionModel::from_stream_turns([reply("I cannot read files here.")]);
+    let mut session = Session::new(&store, &dir, main, &sub);
+    session.app.insert_resource(RunTools::new([TASK]));
+    session.ask("Where is the config loaded?", 3);
+    assert_eq!(sub.requests().len(), 1);
+    drop(session);
+
+    let main = MockCompletionModel::from_stream_turns(asks("t2", FIND, true));
+    let sub = MockCompletionModel::from_stream_turns(finds(2));
+    let mut session = Session::new(&store, &dir, main, &sub);
+    let ask = Deliver::new(session.main, "And with every tool?", DeliveryMode::Queue);
+    session.app.world_mut().trigger(ask);
+    // A hit answers after two requests, a miss after three.
+    let model = session.main_model.clone();
+    run_until(&mut session.app, &session.wakes, move |world| {
+        model.requests().len() >= 2 && idle(world)
+    });
+    assert_eq!(sub.requests().len(), 3, "{}", session.output("t2"));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(SubagentResultCachePlugin);
 }
