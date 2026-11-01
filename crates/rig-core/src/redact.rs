@@ -192,10 +192,11 @@ pub const HELD_MOST: usize = 16 * 1024;
 /// return, joined, is [`text`] of the pieces joined. It holds back what a
 /// later piece may still make part of a secret: the last run of characters
 /// a key is made of, a line that names a secret (its value may follow), and
-/// a private key block not yet ended. Past [`HELD_MOST`] bytes, far more
-/// than a key, it holds only the last run of key characters and a secret's
-/// name with what follows it, so a longer line that names a secret, or a
-/// longer private key block, may show some of itself.
+/// a private key block not yet ended. Past [`HELD_MOST`] bytes held, far
+/// more than a key, as when one piece is that long, it holds only the last
+/// run of key characters, a secret's name with what follows it, and a
+/// private key block shorter than the bound, so a secret-naming line may
+/// show some of itself, and a longer key block its tail.
 ///
 /// ```
 /// use rig_core::redact::Streamed;
@@ -237,9 +238,10 @@ impl Streamed {
 /// before a line that names a secret, and before the line of a secret that
 /// runs past the cut, such as a private key block. Each such place follows
 /// a character no token continues, so a token starts after it as in the
-/// whole text. Past [`HELD_MOST`], only the last run and a secret's name
-/// with what follows it on its line are held: the last run alone if the
-/// name starts the text, and nothing if the run is all of it.
+/// whole text. Past [`HELD_MOST`], only the last run, a secret's name with
+/// what follows it on its line, and a private key block shorter than the
+/// bound are held: the last run alone if the name starts the text, and
+/// nothing if the run is all of it.
 fn settled(input: &str) -> usize {
     let word = input
         .char_indices()
@@ -269,7 +271,16 @@ fn settled(input: &str) -> usize {
         })
         .max();
     if input.len() > HELD_MOST {
-        let cut = named.map_or(word, |at| word.min(line + at));
+        // A private key block not yet ended, if it is shorter than the bound.
+        let open_key = input
+            .rfind("-----BEGIN ")
+            .filter(|&at| !input.get(at..).unwrap_or_default().contains("-----END "))
+            .map(line_of)
+            .filter(|&at| input.len() - at <= HELD_MOST);
+        let cut = [named.map(|at| line + at), open_key]
+            .into_iter()
+            .flatten()
+            .fold(word, usize::min);
         return [cut, word]
             .into_iter()
             .find(|&cut| cut > 0)
