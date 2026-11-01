@@ -517,10 +517,10 @@ fn answer_once(
     }
 }
 
-/// An edit that takes out one of two calls sharing an id is refused, as
-/// the file can't say which: the editor opens again with why, and the
-/// calls keep what each published. Taking out another call of that reply
-/// is no such edit.
+/// An edit that takes out one of two calls sharing an id, or merges their
+/// reply into another, is refused, as the file can't say which call is
+/// which: the editor opens again with why, and the calls keep what each
+/// published. Taking out a call at that reply's end is no such edit.
 #[cfg(unix)]
 #[test]
 fn an_edit_is_refused_when_it_moves_merges_or_takes_out_calls_sharing_an_id() {

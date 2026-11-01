@@ -685,9 +685,12 @@ fn build(original: &[Entry], sections: &[Section], edited: &[Section]) -> Result
 /// The entries of the edited conversation, both sides of each orphaned
 /// call taken out when `delete_both`, normalized: the model's turns left
 /// side by side are one, keeping the first's id and author. A reply whose
-/// calls moved gets a new id, so what was kept for a call at its place,
-/// such as its run time, is not drawn for the call now there. Refused when
-/// that needs more than merging turns and the original paired its calls.
+/// calls moved, in it or by a merge, gets a new id, so what was kept for a
+/// call at its place, such as its run time, is not drawn for the call now
+/// there. Refused when that needs more than merging turns and the original
+/// paired its calls, and when the edit takes out, moves or merges calls of
+/// a reply that repeats a call id, as its calls could only be told apart by
+/// order.
 fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<Entry>, String> {
     let orphan = |id: String| delete_both && built.orphans.contains(&id);
     let mut entries = Vec::new();
