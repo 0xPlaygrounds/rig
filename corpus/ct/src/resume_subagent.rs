@@ -275,10 +275,10 @@ fn answer_follow_ups(
             .final_answer()
             .ok_or_else(|| "The subagent ended without a final message.".to_owned()),
         Some(TurnOutcome::Failed(why)) => Err(format!("The subagent failed: {why}")),
-        Some(TurnOutcome::Stopped(why)) => Err(format!(
-            "The subagent was stopped: {}",
-            why.as_deref().unwrap_or("by the user")
-        )),
+        Some(TurnOutcome::Stopped(stop)) => Err(match stop.cause() {
+            StopCause::User => "The subagent was stopped: by the user".to_owned(),
+            cause => format!("The subagent was stopped: {cause}"),
+        }),
         None => Err("The subagent's turn ended without an outcome.".to_owned()),
     };
     let conversation = agents.get(agent).ok();

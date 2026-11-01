@@ -290,9 +290,7 @@ fn cap(
             ),
             _ => continue,
         };
-        commands
-            .entity(turn)
-            .insert(TurnOutcome::Stopped(Some(why)));
+        commands.trigger(StopTurn::plugin(agent, "subagent-policy", &why).alone());
     }
 }
 

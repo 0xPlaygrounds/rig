@@ -158,8 +158,8 @@ fn the_supervisor_checks_the_worker_and_steers_or_stops_it() {
     let stopped = |world: &World| {
         let ended = &world.resource::<Ended>().0;
         ended.iter().any(|outcome| {
-            matches!(outcome, TurnOutcome::Stopped(Some(why))
-                if why.contains("it reads files in circles"))
+            matches!(outcome, TurnOutcome::Stopped(stop)
+                if stop.cause().to_string().contains("it reads files in circles"))
         })
     };
     session.run_until(stopped);

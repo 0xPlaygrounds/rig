@@ -2,6 +2,8 @@
 //! kept as asides, so a saved session tells a stopped or failed turn from
 //! an answered one without the app that ran it.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use super::{Aside, AsideId, Author, Conversation, MessageId};
@@ -43,12 +45,12 @@ pub enum TurnEnd {
         /// Why.
         why: String,
     },
-    /// The turn was stopped before an answer: by the user when `why` is
-    /// `None`.
+    /// The turn was stopped before an answer, for `by`.
     Stopped {
-        /// Why, when it was not the user.
+        /// Who or what stopped it. `None` only in a record saved before
+        /// the cause was recorded.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        why: Option<String>,
+        by: Option<StopCause>,
         /// The turn's last entry when a stop cut it off, which a front draws
         /// the stop under; `None` when the turn had no entry of its own yet,
         /// or ended as stopped in its own course, such as a compaction
@@ -61,6 +63,36 @@ pub enum TurnEnd {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         calls: Vec<CallId>,
     },
+}
+
+/// Who or what stopped a turn before it answered.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopCause {
+    /// The user stopped it.
+    User,
+    /// The app exited, for the reason given.
+    Exit(String),
+    /// A restart stopped the turn a crash left unfinished.
+    Restarted,
+    /// A plugin stopped it: `by` names the plugin, `why` says what for.
+    Plugin {
+        /// The plugin.
+        by: String,
+        /// What for.
+        why: String,
+    },
+}
+
+impl fmt::Display for StopCause {
+    /// Why the turn stopped, as its unfinished calls are told.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::User => f.write_str("the user stopped the turn"),
+            Self::Exit(why) | Self::Plugin { why, .. } => f.write_str(why),
+            Self::Restarted => f.write_str("the session restarted"),
+        }
+    }
 }
 
 impl TurnRecord {

@@ -398,8 +398,8 @@ fn cancel_on_interrupt(
     mut states: Query<&mut CheckState>,
     mut commands: Commands,
 ) {
-    stop(interrupt.entity, &runs, &mut commands);
-    if let Ok(mut state) = states.get_mut(interrupt.entity) {
+    stop(interrupt.event_target(), &runs, &mut commands);
+    if let Ok(mut state) = states.get_mut(interrupt.event_target()) {
         state.running = None;
     }
 }

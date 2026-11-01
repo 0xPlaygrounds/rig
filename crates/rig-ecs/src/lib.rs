@@ -53,7 +53,7 @@ pub mod prelude {
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CacheKey, CallOf, Calls, ContextStale, Conversation,
         EffectParent, LastUsage, Notice, NoticeLevel, Partial, PartialCall, RunTools, Spawned,
-        SpawnedBy, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+        SpawnedBy, Stop, StopReached, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::fork::{AgentForked, ForkAgent};
     pub use crate::inbox::{
@@ -65,7 +65,7 @@ pub mod prelude {
         SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
-    pub use crate::restore::{CarryOn, Interrupted, RESTARTED, Restored, SavedKeys};
+    pub use crate::restore::{CarryOn, Interrupted, Restored, SavedKeys};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
         ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,
@@ -88,7 +88,7 @@ pub mod prelude {
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, CallRef, Change, ChangeRecord, Entry, EntryRef, Halt,
-        MessageId, RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
+        MessageId, RequestId, STOPPED, Spliced, StopCause, TurnEnd, TurnRecord,
     };
     pub use rig_core::effect::Decider;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};

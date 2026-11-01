@@ -48,7 +48,7 @@ use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
 use rig_core::conversation::pairing::answered_by;
-use rig_core::conversation::{Aside, AsideId, Author, CallRef, Entry};
+use rig_core::conversation::{Aside, AsideId, Author, CallRef, Entry, StopCause};
 use rig_core::effect::Decider;
 use rig_core::message::{CallId, ToolCall};
 use rig_core::tool::{ToolResult, ToolResultContext};
@@ -69,11 +69,6 @@ use super::session_log::{
 use super::stage::{Admitted, Decision, Effect, ForAgent, Holds, Outcome, Settled, Started};
 use super::tools::{Footprint, InReply, ToolRequest};
 use super::turn::{Stopper, TurnCall, not_finished};
-
-/// Why a turn a crash left unfinished stopped, as its record and its
-/// calls' results say it (rig-core's
-/// [`not_finished`](rig_core::tool::feedback::not_finished)).
-pub const RESTARTED: &str = "the session restarted";
 
 /// The kind of the aside that marks a call that may change something from
 /// its start, and any call once it settled, until its reply's results are
@@ -282,7 +277,7 @@ pub struct CarryOn;
 /// [`GateSystems::After`](super::stage::GateSystems::After), so no one is
 /// asked to approve its calls: one a plugin lets [`CarryOn`] goes on as an
 /// ordinary turn, both taken off it; any other is stopped as the user's
-/// stop does, for [`RESTARTED`], but for its agent alone, so a turn a
+/// stop does, for [`StopCause::Restarted`], but for its agent alone, so a turn a
 /// plugin carries on below it is left to that plugin. Nothing of a stopped
 /// turn runs and no model is called; each call keeps the result the
 /// session kept, if it settled, and is otherwise answered as not run or cut
@@ -305,7 +300,7 @@ pub(crate) fn stop_restored(
             false => stopping.push(agent),
         }
     }
-    stopper.stop_each(stopping, RESTARTED);
+    stopper.stop_each(stopping, &StopCause::Restarted);
 }
 
 /// Answers each restored call still [`Interrupted`], undecided and unheld,
@@ -328,7 +323,9 @@ pub(crate) fn answer_interrupted(
         }
         let result = match interrupted {
             Interrupted::Settled(result) => result.clone(),
-            Interrupted::Started => not_finished(RESTARTED, true, footprint),
+            Interrupted::Started => {
+                not_finished(&StopCause::Restarted.to_string(), true, footprint)
+            }
         };
         decision.decide(Decider::plugin("rig-ecs"), result);
     }

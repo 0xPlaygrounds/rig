@@ -783,7 +783,7 @@ fn on_interrupt(
     wake.wake();
     let owned = runs
         .iter_mut()
-        .filter(|(_, run)| run.owner == interrupt.entity);
+        .filter(|(_, run)| run.owner == interrupt.event_target());
     for (entity, mut run) in owned.filter(|(_, run)| !run.finished) {
         run.stopping = true;
         run.interrupted = true;

@@ -941,7 +941,7 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
     // `c2`, a window holding that call ends past the stop; one without
     // it does not, nor one holding the earlier turn's `c2`.
     let stopped = TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at: id(9),
         calls: vec![CallId::from_wire("c2")],
     };

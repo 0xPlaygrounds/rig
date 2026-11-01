@@ -219,8 +219,10 @@ fn ended(
             None => "rig: done".to_owned(),
         },
         TurnOutcome::Failed(reason) => format!("rig: failed — {}", first_line(reason)),
-        TurnOutcome::Stopped(None) => "rig: interrupted".to_owned(),
-        TurnOutcome::Stopped(Some(reason)) => format!("rig: stopped — {}", first_line(reason)),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => "rig: interrupted".to_owned(),
+            cause => format!("rig: stopped — {}", first_line(&cause.to_string())),
+        },
     };
     sender.send(&text);
 }

@@ -42,7 +42,7 @@ use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 use rig_harness::services::RigHome;
 
-use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopTurn};
+use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopReached};
 use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
@@ -356,15 +356,16 @@ fn on_signed_in(
     commands.entity(done.entity).despawn();
 }
 
-/// Esc cancels the agent's waiting sign-ins.
+/// A stop that reaches an agent, such as Esc, cancels its waiting
+/// sign-ins.
 fn cancel_on_interrupt(
-    interrupt: On<StopTurn>,
+    interrupt: On<StopReached>,
     pending: Query<(Entity, &PendingLogin)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     for (login, pending) in &pending {
-        if pending.agent == interrupt.entity {
+        if pending.agent == interrupt.event_target() {
             commands.entity(login).despawn();
             notices.write(Notice::info(
                 pending.agent,

@@ -9,7 +9,9 @@ use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
 use futures::StreamExt;
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::conversation::{Author, CallRef, Change, Entry, Halt, MessageId, STOPPED, TurnEnd};
+use rig_core::conversation::{
+    Author, CallRef, Change, Entry, Halt, MessageId, STOPPED, StopCause, TurnEnd,
+};
 use rig_memory::{Files, LogWriteError, MemoryStore, Store};
 use serde_json::Value;
 
@@ -21,7 +23,7 @@ use crate::agent::{
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
 use crate::model::{Connection, ModelChoice, ReasoningSetting};
-use crate::restore::{CarryOn, Interrupted, RESTARTED, Restored};
+use crate::restore::{CarryOn, Interrupted, Restored};
 use crate::retry::Verdict;
 use crate::session_log::tests::{edit, push_message};
 use crate::session_log::{
@@ -263,10 +265,9 @@ fn every_change_the_log_records_is_committed() {
 
 /// Keeps every restored agent idle: its restored turn is stopped before
 /// anything of it starts.
-fn stay_idle(turns: Query<Entity, (With<Restored>, With<TurnOf>)>, mut commands: Commands) {
-    for turn in &turns {
-        let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
-        commands.entity(turn).insert_if_new(stopped);
+fn stay_idle(turns: Query<&TurnOf, With<Restored>>, mut commands: Commands) {
+    for &TurnOf(agent) in &turns {
+        commands.trigger(StopTurn::plugin(agent, "stay-idle", "restart").alone());
     }
 }
 
@@ -600,7 +601,7 @@ fn an_exit_stops_the_running_turn_and_a_restart_carries_nothing_on() {
         .last()
         .and_then(|(_, record)| record.end);
     assert!(
-        matches!(&ended, Some(TurnEnd::Stopped { why: Some(why), .. }) if why == "the run ended"),
+        matches!(&ended, Some(TurnEnd::Stopped { by: Some(StopCause::Exit(why)), .. }) if why == "the run ended"),
         "{ended:?}"
     );
     // The restart starts nothing; the next message reaches the model after
@@ -966,7 +967,7 @@ fn a_restart_stops_what_a_crash_left_and_keeps_what_finished() {
     );
     assert!(app.world().resource::<Gated>().0.is_empty());
     let stopped = matches!(app.world().resource::<Ended>().0.as_slice(),
-        [TurnOutcome::Stopped(Some(why))] if why == RESTARTED);
+        [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::Restarted);
     assert!(stopped, "{:?}", app.world().resource::<Ended>().0);
     // Only `wait` is drawn as stopped: `touch` keeps its own look.
     let agent = first_agent(&mut app);
@@ -1211,15 +1212,14 @@ fn a_restored_turn_a_gate_stops_starts_nothing() {
     let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended));
     let stopped = matches!(app.world().resource::<Ended>().0.as_slice(),
-        [TurnOutcome::Stopped(Some(why))] if why == "restart");
+        [TurnOutcome::Stopped(stop)]
+            if matches!(stop.cause(), StopCause::Plugin { why, .. } if why == "restart"));
     assert!(stopped, "{:?}", app.world().resource::<Ended>().0);
-    // What finished keeps its result, what ran is cut short, and the model
-    // was not asked.
+    // What finished keeps its result, what ran is cut short by the gate's
+    // stop, and the model was not asked.
     let said = said(&mut app);
-    assert!(
-        said.contains("touched") && said.contains(&interrupted()),
-        "{said}"
-    );
+    let cut = "Stopped: restart. It may have partly run; check before running it again.";
+    assert!(said.contains("touched") && said.contains(cut), "{said}");
     assert_eq!(model.request_count(), 0);
 }
 
@@ -1740,5 +1740,6 @@ fn a_value_saved_under_its_key_survives_a_rename_of_its_type() {
 /// What the model reads of a call that may change something and was
 /// running when the session stopped.
 fn interrupted() -> String {
-    format!("Stopped: {RESTARTED}. It may have partly run; check before running it again.")
+    let restarted = StopCause::Restarted;
+    format!("Stopped: {restarted}. It may have partly run; check before running it again.")
 }

@@ -429,11 +429,11 @@ fn answered(
             eprintln!("ask-session: the model failed: {why}");
             return end(String::new(), 3, &mut commands);
         }
-        TurnOutcome::Stopped(why) => {
-            eprintln!(
-                "ask-session: stopped: {}",
-                why.as_deref().unwrap_or("interrupted")
-            );
+        TurnOutcome::Stopped(stop) => {
+            match stop.cause() {
+                StopCause::User => eprintln!("ask-session: stopped: interrupted"),
+                cause => eprintln!("ask-session: stopped: {cause}"),
+            }
             return end(String::new(), 3, &mut commands);
         }
     };

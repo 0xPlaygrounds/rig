@@ -380,7 +380,7 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
     assert!(
         matches!(
             app.world().resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped(None)]
+            [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User
         ),
         "{:?}",
         app.world().resource::<Ended>().0

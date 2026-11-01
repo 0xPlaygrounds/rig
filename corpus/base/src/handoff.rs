@@ -212,11 +212,10 @@ fn take_brief(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((&CallOf(turn), &ForAgent(agent), briefing, outcome)) = calls.get(settled.entity) else {
+    let Ok((_, &ForAgent(agent), briefing, outcome)) = calls.get(settled.entity) else {
         return;
     };
-    let handed_off = TurnOutcome::Stopped(Some("handed off".to_owned()));
-    commands.entity(turn).try_insert(handed_off);
+    commands.trigger(StopTurn::plugin(agent, "handoff", "handed off").alone());
     let brief = match (&outcome.0, outcome.completion()) {
         (Err(report), _) => Err(report.to_string()),
         (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),

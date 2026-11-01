@@ -258,7 +258,7 @@ fn hold(
 /// Ends `/hold`'s work as its agent is stopped.
 fn release(stop: On<StopTurn>, held: Query<(Entity, &Held)>, mut commands: Commands) {
     for (work, Held(agent)) in &held {
-        if *agent == stop.entity {
+        if *agent == stop.event_target() {
             commands.entity(work).despawn();
         }
     }

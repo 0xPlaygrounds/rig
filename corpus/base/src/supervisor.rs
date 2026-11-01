@@ -552,11 +552,9 @@ fn on_verdict(
             answer(Ok("The worker's turn is stopped and the user told why."));
             // Its calls that have not started never start, the others are
             // told why they stopped, and the turn ends.
-            if let Some(turn) = turn {
+            if turn.is_some() {
                 let why = format!("the supervisor stopped it: {reason}");
-                commands
-                    .entity(turn)
-                    .try_insert(TurnOutcome::Stopped(Some(why)));
+                commands.trigger(StopTurn::plugin(worker, NAME, &why).alone());
             }
             let told = format!("The supervisor stopped the turn: {reason}");
             notices.write(Notice::info(worker, told));

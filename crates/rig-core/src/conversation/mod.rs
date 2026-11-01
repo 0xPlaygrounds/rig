@@ -50,7 +50,7 @@ pub use facts::ResultFacts;
 pub use lineage::Lineage;
 pub use note::Note;
 pub use pairing::CallRef;
-pub use turn::{TURN, TurnEnd, TurnRecord};
+pub use turn::{StopCause, TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
 

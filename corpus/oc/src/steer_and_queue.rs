@@ -224,7 +224,12 @@ fn keep_unsent(
     let mut unsent: Vec<_> = unsent
         .iter_mut()
         .filter(|(unsent, _, message, _, decision)| {
-            matches!(unsent.ended, None | Some(TurnOutcome::Stopped(None)))
+            let by_user = match &unsent.ended {
+                None => true,
+                Some(TurnOutcome::Stopped(stop)) => *stop.cause() == StopCause::User,
+                Some(_) => false,
+            };
+            by_user
                 && typed(message)
                 && message.mode == DeliveryMode::Steer
                 && !decision.is_decided()

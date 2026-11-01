@@ -7,7 +7,7 @@ use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
-use rig_core::conversation::{CallRef, TurnEnd};
+use rig_core::conversation::{CallRef, StopCause, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, Image, Reasoning, ToolCall, ToolFunction, ToolName,
@@ -568,8 +568,8 @@ fn stop(app: &mut App, agent: Entity, calls: &[&str]) {
         conversation.halt(Halt::Stopped);
         let at = conversation.entries().next_back().map(|entry| entry.id);
         let calls = calls.iter().map(|id| CallId::from_wire(*id)).collect();
-        let why = None;
-        conversation.end_turn(TurnEnd::Stopped { why, at, calls });
+        let by = Some(StopCause::User);
+        conversation.end_turn(TurnEnd::Stopped { by, at, calls });
     }
     app.update();
 }
@@ -665,7 +665,7 @@ fn a_call_a_stop_cut_while_it_streamed_says_it_never_ran_at_once_and_after_a_rel
         conversation.halt(Halt::Stopped);
         let at = conversation.entries().next_back().map(|entry| entry.id);
         conversation.end_turn(TurnEnd::Stopped {
-            why: None,
+            by: Some(StopCause::User),
             at,
             calls,
         });
@@ -815,7 +815,7 @@ fn a_stopped_call_wins_over_its_live_state() {
     let at = conversation.push(Message::Assistant(reply));
     let calls = vec![call.id.clone()];
     conversation.end_turn(TurnEnd::Stopped {
-        why: None,
+        by: Some(StopCause::User),
         at: Some(at),
         calls,
     });

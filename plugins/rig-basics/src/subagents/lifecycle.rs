@@ -29,9 +29,6 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_observer(note_stops)
-        .init_resource::<Stopping>()
-        .add_systems(Last, forget_stops)
         .add_observer(end_waits_on_turn_end);
 }
 
@@ -280,31 +277,15 @@ fn work_on_turn_start(
     }
 }
 
-/// The agents a [`StopTurn`] stopped this frame: the agent it names and
-/// every agent below it, as the kernel stops them.
-#[derive(Resource, Default)]
-pub(super) struct Stopping(Vec<Entity>);
-
-/// Notes the agents a [`StopTurn`] stops, before their turns end.
-fn note_stops(stop: On<StopTurn>, spawned: Query<&Spawned>, mut stopping: ResMut<Stopping>) {
-    let below = spawned.iter_descendants::<Spawned>(stop.entity);
-    stopping.0.extend(std::iter::once(stop.entity).chain(below));
-}
-
-/// Forgets the agents stopped this frame, whose turns ended by now.
-fn forget_stops(mut stopping: ResMut<Stopping>) {
-    stopping.0.clear();
-}
-
-/// On a [`Lifecycle::Finished`] subagent whose turn a [`StopTurn`] stopped,
-/// of it or of an agent above it: its report is a note that starts no turn
-/// of the agent it goes to.
+/// On a [`Lifecycle::Finished`] subagent whose turn the user, the exit or
+/// a restart stopped, of it or of an agent above it: its report is a note
+/// that starts no turn of the agent it goes to.
 #[derive(Component)]
 pub(super) struct StoppedEarly;
 
 /// A subagent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
-/// [`StopTurn`], the app's exit or a restart stopped it, else
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless the
+/// user, the app's exit or a restart stopped it, else
 /// [`Lifecycle::Finished`] with its answer, or why there is none and what
 /// it said last. A stopped turn reports as rig-core's [`not_finished`] says
 /// a stopped call that may have partly run does: a turn a plugin stops,
@@ -315,8 +296,6 @@ fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent, Has<Restored>)>,
     idle: Query<&Conversation, (With<Subtask>, Without<ActiveTurn>)>,
-    stopping: Res<Stopping>,
-    exiting: Option<Res<Exiting>>,
     mut agents: Agents,
 ) {
     let Ok((outcome, &ForAgent(agent), restored)) = turns.get(settled.entity) else {
@@ -329,12 +308,11 @@ fn step_on_turn_end(
     let said = said.unwrap_or_else(|| " ".to_owned());
     let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
     let stopped = |why: &str| failed(&not_finished(why, true, &Touches::Independent));
-    // A restart or a stop ends it for good: it waits on no one.
-    // A restored turn that ends stopped, by the kernel or a plugin, ended
-    // with the restart.
-    let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
-    let early = matches!(outcome, TurnOutcome::Stopped(_))
-        && (stopping.0.contains(&agent) || exiting.is_some() || restarted || restored);
+    // A restart or a stop that is no plugin's ends it for good: it waits on
+    // no one. A restored turn that ends stopped, by the kernel or a plugin,
+    // ended with the restart.
+    let early = matches!(outcome, TurnOutcome::Stopped(stop)
+        if restored || !matches!(stop.cause(), StopCause::Plugin { .. }));
     let step = match agents.awaited(agent, true).first().filter(|_| !early) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
@@ -342,13 +320,13 @@ fn step_on_turn_end(
                 .final_answer()
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
-            TurnOutcome::Stopped(None) => {
-                stopped("the user stopped the subagent before it answered")
-            }
-            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => {
-                stopped("the session restarted before the subagent answered")
-            }
-            TurnOutcome::Stopped(Some(why)) => stopped(why),
+            TurnOutcome::Stopped(stop) => stopped(&match stop.cause() {
+                StopCause::User => "the user stopped the subagent before it answered".to_owned(),
+                StopCause::Restarted => {
+                    "the session restarted before the subagent answered".to_owned()
+                }
+                cause => cause.to_string(),
+            }),
         }),
     };
     let mut agent = agents.commands.entity(agent);

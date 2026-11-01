@@ -513,7 +513,7 @@ fn kept_reply(
         conversation.turns().any(|(_, turn)| match turn.end {
             Some(TurnEnd::Answered { answer: Some(end) }) => answered && spans(turn.start, end),
             Some(TurnEnd::Stopped {
-                why: None,
+                by: Some(StopCause::User),
                 at: Some(end),
                 ..
             }) => !answered && spans(turn.start, end),
@@ -1733,8 +1733,7 @@ fn take_summary(
         }
         // The user's own compaction turn ends with it, unless it ended.
         None if !ended => {
-            let compacted = TurnOutcome::Stopped(Some("compacted".to_owned()));
-            commands.entity(turn).try_insert(compacted);
+            commands.trigger(StopTurn::plugin(agent, "compaction", "compacted").alone())
         }
         None => {}
     }

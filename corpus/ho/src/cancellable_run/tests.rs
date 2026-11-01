@@ -102,10 +102,7 @@ fn an_interrupted_run_keeps_its_output_so_far() {
     let model = script("unused");
     let (mut app, wakes, agent, pid) = running(&model, "ho-cancellable-run-interrupt");
 
-    app.world_mut().trigger(StopTurn {
-        entity: agent,
-        reason: None,
-    });
+    app.world_mut().trigger(StopTurn::new(agent));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty() && !Path::new(&format!("/proc/{pid}")).exists()
     });

@@ -140,7 +140,7 @@ fn cancel_on_interrupt(
     status: Res<ReloadStatus>,
     mut commands: Commands,
 ) {
-    let idle = busy.get(interrupt.entity).is_ok_and(|busy| !busy);
+    let idle = busy.get(interrupt.event_target()).is_ok_and(|busy| !busy);
     if idle && matches!(*status, ReloadStatus::Building { .. }) {
         commands.trigger(CancelReload);
     }

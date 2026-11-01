@@ -844,13 +844,13 @@ fn ended(
 }
 
 /// How a prompt ended, from how the main agent's last turn since it did:
-/// cancelled by the client, or by a stop that gave no reason; a failure as
-/// an error; else the end of the answer, `max_tokens` when the output limit
-/// cut it. A turn a plugin stopped for a reason, as `/compact` does, is no
-/// cancel.
+/// cancelled by the client, or as its stop says ([`stopped`]); a failure
+/// as an error; else the end of the answer, `max_tokens` when the output
+/// limit cut it.
 fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::StopReason, Error> {
     match (cancelled, ended) {
-        (true, _) | (false, Some(TurnOutcome::Stopped(None))) => Ok(acp::StopReason::Cancelled),
+        (true, _) => Ok(acp::StopReason::Cancelled),
+        (false, Some(TurnOutcome::Stopped(stop))) => Ok(stopped(stop.cause())),
         (false, Some(TurnOutcome::Failed(why))) => Err(crate::error(Error::internal_error(), why)),
         (false, Some(TurnOutcome::Answered(Said::Assistant(reply))))
             if reply.stop == Some(Stop::Length) =>
@@ -858,6 +858,15 @@ fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::Stop
             Ok(acp::StopReason::MaxTokens)
         }
         (false, _) => Ok(acp::StopReason::EndTurn),
+    }
+}
+
+/// How a prompt whose turn was stopped ends: a plugin's stop, as `/compact`
+/// makes, is no cancel; any other is.
+fn stopped(cause: &StopCause) -> acp::StopReason {
+    match cause {
+        StopCause::Plugin { .. } => acp::StopReason::EndTurn,
+        _ => acp::StopReason::Cancelled,
     }
 }
 
@@ -872,7 +881,7 @@ fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
     let session = &mut *out.session;
     if let Some(prompt) = session.prompt.take() {
         let answer = match &prompt.ended {
-            None | Some(TurnOutcome::Stopped(_)) => Ok(acp::StopReason::Cancelled),
+            None => Ok(acp::StopReason::Cancelled),
             ended => stop_reason(prompt.cancelled, ended.as_ref()),
         };
         prompt.reply.send(answer.map(acp::PromptResponse::new));

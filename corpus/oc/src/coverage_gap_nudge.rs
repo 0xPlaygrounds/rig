@@ -808,7 +808,7 @@ fn cancel_on_interrupt(
     mut agents: Query<&mut Coverage>,
     mut commands: Commands,
 ) {
-    cancel(interrupt.entity, &runs, &mut agents, &mut commands);
+    cancel(interrupt.event_target(), &runs, &mut agents, &mut commands);
 }
 
 /// Despawns `agent`'s run, which drops its task and kills its command.

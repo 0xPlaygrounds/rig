@@ -424,12 +424,10 @@ fn post_answer(
     let text = match outcome {
         TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("The turn failed: {why}"),
-        TurnOutcome::Stopped(why) => format!(
-            "Stopped{}.",
-            why.as_ref()
-                .map(|why| format!(": {why}"))
-                .unwrap_or_default()
-        ),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => "Stopped.".to_owned(),
+            cause => format!("Stopped: {cause}."),
+        },
     };
     for part in split(&text, MAX_POST) {
         bridge.post(thread, part);

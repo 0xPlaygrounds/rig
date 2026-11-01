@@ -382,10 +382,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     app.world_mut().trigger(deliver);
     until(&mut app, &wakes, |_| fake.items() == 6);
     let last = fake.sent("And the warnings.");
-    app.world_mut().trigger(StopTurn {
-        entity: a,
-        reason: None,
-    });
+    app.world_mut().trigger(StopTurn::new(a));
     let batch = last
         .first()
         .map(|item| item.batch.clone())

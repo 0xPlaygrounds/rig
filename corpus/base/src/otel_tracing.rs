@@ -362,9 +362,12 @@ fn end_turn(
     let (how, status) = match outcome {
         TurnOutcome::Answered(_) => ("answered", Status::Ok),
         TurnOutcome::Failed(why) => ("failed", Status::error(why.clone())),
-        TurnOutcome::Stopped(why) => (
+        TurnOutcome::Stopped(stop) => (
             "interrupted",
-            Status::error(why.clone().unwrap_or_else(|| "interrupted".to_owned())),
+            Status::error(match stop.cause() {
+                StopCause::User => "interrupted".to_owned(),
+                cause => cause.to_string(),
+            }),
         ),
     };
     span.set_attribute(KeyValue::new("rig.turn.outcome", how));

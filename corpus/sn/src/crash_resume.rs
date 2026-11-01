@@ -474,10 +474,8 @@ fn resolve(
             // turn; what it commits is cut or left as it was.
             if !recovering.stopping {
                 recovering.stopping = true;
-                let why = "an interrupted turn the user did not continue".to_owned();
-                commands
-                    .entity(recovering.turn)
-                    .try_insert(TurnOutcome::Stopped(Some(why)));
+                let why = "an interrupted turn the user did not continue";
+                commands.trigger(StopTurn::plugin(agent, "crash-resume", why).alone());
             }
             continue;
         }

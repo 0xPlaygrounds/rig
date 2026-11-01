@@ -470,8 +470,11 @@ fn report(
         TurnOutcome::Failed(why) => {
             notices.write(Notice::error(owner, format!("{job} failed: {why}")));
         }
-        TurnOutcome::Stopped(why) => {
-            let why = why.as_deref().unwrap_or("by you");
+        TurnOutcome::Stopped(stop) => {
+            let why = match stop.cause() {
+                StopCause::User => "by you".to_owned(),
+                cause => cause.to_string(),
+            };
             notices.write(Notice::info(owner, format!("{job} was stopped {why}.")));
         }
     }

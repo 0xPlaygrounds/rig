@@ -558,8 +558,10 @@ fn finish(
     let answer = match outcome {
         TurnOutcome::Answered(message) => Ok(answer(turn, message.final_answer())),
         TurnOutcome::Failed(why) => Err(format!("The turn failed: {why}")),
-        TurnOutcome::Stopped(None) => Err("The turn was stopped.".to_owned()),
-        TurnOutcome::Stopped(Some(why)) => Err(format!("The turn was stopped: {why}")),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => Err("The turn was stopped.".to_owned()),
+            cause => Err(format!("The turn was stopped: {cause}")),
+        },
     };
     let answer = answer.as_deref().map_err(String::as_str);
     done_with(&mut inbox, &*workspace.0, &turn.item, answer);

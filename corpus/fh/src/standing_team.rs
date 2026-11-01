@@ -435,12 +435,10 @@ fn finished(
                 ToolResult::success(format!("`{name}` reports:\n{text}").into()).into()
             }
             TurnOutcome::Failed(why) => Outcome::refused(format!("`{name}` failed: {why}")),
-            TurnOutcome::Stopped(why) => Outcome::refused(format!(
-                "`{name}` was stopped{}",
-                why.as_ref()
-                    .map(|why| format!(": {why}"))
-                    .unwrap_or_default()
-            )),
+            TurnOutcome::Stopped(stop) => Outcome::refused(match stop.cause() {
+                StopCause::User => format!("`{name}` was stopped"),
+                cause => format!("`{name}` was stopped: {cause}"),
+            }),
         };
         call.decide(Decider::plugin("fh-standing-team"), answer);
     }
@@ -479,11 +477,8 @@ fn called_off(
     let member = members.iter().find(|(_, member)| member.0 == name);
     match (job.turn, member) {
         (Some(_), Some((agent, _))) => {
-            let reason = Some("the delegating agent was stopped".to_owned());
-            commands.trigger(StopTurn {
-                entity: agent,
-                reason,
-            });
+            let why = "the delegating agent was stopped";
+            commands.trigger(StopTurn::plugin(agent, "standing-team", why));
         }
         _ => {
             if let Some(mut message) = job

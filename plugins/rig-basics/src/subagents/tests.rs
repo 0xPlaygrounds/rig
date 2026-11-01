@@ -799,17 +799,15 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     session.call(session.parent, TASK, "t1", args);
     let child = session.children(session.parent).last().copied();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
-    let budget =
-        move |calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, ReadyToStart)>,
-              mut seen: Local<HashSet<Entity>>,
-              mut commands: Commands| {
-            for (call, &CallOf(turn), &ForAgent(agent)) in &calls {
-                if agent == child && seen.insert(call) && seen.len() > 1 {
-                    let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
-                    commands.entity(turn).insert(stopped);
-                }
+    let budget = move |calls: Query<(Entity, &ForAgent), (With<TurnCall>, ReadyToStart)>,
+                       mut seen: Local<HashSet<Entity>>,
+                       mut commands: Commands| {
+        for (call, &ForAgent(agent)) in &calls {
+            if agent == child && seen.insert(call) && seen.len() > 1 {
+                commands.trigger(StopTurn::plugin(agent, "budget", "over budget").alone());
             }
-        };
+        }
+    };
     let mark = |mut reports: Query<&mut Incoming, (With<Report>, Added<Admitted>)>| {
         for mut report in &mut reports {
             report.text_mut().insert_str(0, "[report] ");
@@ -1042,11 +1040,10 @@ fn a_restored_subagent_turn_a_plugin_stops_reports_as_a_note() {
     // for a budget: the report is a note all the same, and the parent's
     // model is not called.
     let mut session = Session::with(&store, None, |app| {
-        let over_budget = |turns: Query<Entity, (With<Restored>, Without<TurnOutcome>)>,
+        let over_budget = |turns: Query<&TurnOf, (With<Restored>, Without<TurnOutcome>)>,
                            mut commands: Commands| {
-            for turn in &turns {
-                let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
-                commands.entity(turn).insert(stopped);
+            for &TurnOf(agent) in &turns {
+                commands.trigger(StopTurn::plugin(agent, "budget", "over budget").alone());
             }
         };
         app.add_systems(AgentPass, over_budget.in_set(Stage::Gate));

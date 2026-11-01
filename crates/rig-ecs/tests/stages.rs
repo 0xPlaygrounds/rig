@@ -2949,7 +2949,9 @@ fn keep_on_stop(
     mut commands: Commands,
 ) {
     for (message, unsent) in &unsent {
-        if keep.0 && matches!(unsent.ended, Some(TurnOutcome::Stopped(None))) {
+        if keep.0
+            && matches!(&unsent.ended, Some(TurnOutcome::Stopped(stop)) if *stop.cause() == StopCause::User)
+        {
             commands.entity(message).remove::<Unsent>();
         }
     }
@@ -3276,7 +3278,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert!(world.get::<ActiveTurn>(agent).is_none());
     assert!(matches!(
         world.get::<TurnOutcome>(turn),
-        Some(TurnOutcome::Stopped(None))
+        Some(TurnOutcome::Stopped(stop)) if *stop.cause() == StopCause::User
     ));
     assert!(world.get::<Settled>(turn).is_some());
     assert!(world.get::<Started>(check).is_none());
@@ -3299,7 +3301,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
         // the reply, so the stop answered none.
         let at = conversation.entries().next_back().map(|entry| entry.id);
         let stopped = TurnEnd::Stopped {
-            why: None,
+            by: Some(StopCause::User),
             at,
             calls: Vec::new(),
         };
@@ -3314,7 +3316,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     }
     assert!(app.world().get_entity(check).is_err(), "settled, then gone");
     assert!(
-        matches!(ended(&app).as_slice(), [TurnOutcome::Stopped(None)]),
+        matches!(ended(&app).as_slice(), [TurnOutcome::Stopped(stop)] if *stop.cause() == StopCause::User),
         "{:?}",
         ended(&app)
     );
@@ -3326,9 +3328,9 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert_eq!(cancelled, ["completion", "check"], "{:?}", records(&app));
 }
 
-/// A turn a plugin stops by inserting `TurnOutcome::Stopped(Some(reason))`
-/// keeps what streamed, as a user's stop does: the streamed text is kept as
-/// an aborted reply, and the request is halted as stopped.
+/// A turn a plugin stops keeps what streamed, as a user's stop does: the
+/// streamed text is kept as an aborted reply, and the request is kept for
+/// the next turn.
 #[test]
 fn a_turn_a_plugin_stops_keeps_what_streamed() {
     let mut app = app();
@@ -3342,12 +3344,8 @@ fn a_turn_a_plugin_stops_keeps_what_streamed() {
         partials.iter(world).any(|partial| !partial.text.is_empty())
     };
     assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
-    let turn = app.world().get::<ActiveTurn>(agent).map(ActiveTurn::turn);
-    let Some(turn) = turn else {
-        return;
-    };
-    let budget = TurnOutcome::Stopped(Some("over budget".to_owned()));
-    app.world_mut().entity_mut(turn).insert(budget);
+    let budget = StopTurn::plugin(agent, "budget", "over budget").alone();
+    app.world_mut().trigger(budget);
     for _ in 0..3 {
         app.update();
     }
@@ -3367,7 +3365,7 @@ fn a_turn_a_plugin_stops_keeps_what_streamed() {
         .world()
         .get::<Conversation>(agent)
         .and_then(|conversation| conversation.halted());
-    assert_eq!(halted, Some(Halt::Stopped));
+    assert_eq!(halted, Some(Halt::Kept));
 }
 
 /// A model call superseded while it streamed is not the turn's reply: an

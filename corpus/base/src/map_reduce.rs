@@ -466,8 +466,10 @@ fn on_worker_end(
             .final_answer()
             .ok_or_else(|| "ended without a final message".to_owned()),
         TurnOutcome::Failed(why) => Err(short(why)),
-        TurnOutcome::Stopped(None) => Err("stopped".to_owned()),
-        TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),
+        TurnOutcome::Stopped(stop) => match stop.cause() {
+            StopCause::User => Err("stopped".to_owned()),
+            cause => Err(format!("stopped: {cause}")),
+        },
     };
     if let Some(answer) = map.settle(job, path.clone(), result, &mut commands) {
         decision.decide(Decider::plugin("map-reduce"), answer);

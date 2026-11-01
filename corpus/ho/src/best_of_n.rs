@@ -1073,7 +1073,10 @@ fn candidate_done(
     let failed = match outcome {
         TurnOutcome::Answered(_) => None,
         TurnOutcome::Failed(why) => Some(why.clone()),
-        TurnOutcome::Stopped(why) => Some(why.clone().unwrap_or_else(|| "stopped".to_owned())),
+        TurnOutcome::Stopped(stop) => Some(match stop.cause() {
+            StopCause::User => "stopped".to_owned(),
+            cause => cause.to_string(),
+        }),
     };
     match (failed, run.base.clone()) {
         (None, Some(base)) => {
@@ -1105,7 +1108,10 @@ fn cancel_on_interrupt(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (run_entity, run) in runs.iter().filter(|(_, run)| run.owner == interrupt.entity) {
+    for (run_entity, run) in runs
+        .iter()
+        .filter(|(_, run)| run.owner == interrupt.event_target())
+    {
         for agent in run
             .candidates
             .iter()

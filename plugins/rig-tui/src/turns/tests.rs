@@ -1,5 +1,5 @@
 use rig_core::completion::Message;
-use rig_ecs::agent::{SpawnedBy, TurnOf, TurnOutcome};
+use rig_ecs::agent::{SpawnedBy, StopTurn, TurnOf, TurnOutcome};
 
 use super::{POP_TITLE, PUSH_TITLE};
 use crate::TuiTestScreen;
@@ -79,9 +79,10 @@ fn the_terminal_is_told_of_each_turn_of_the_main_agent_only() {
     app.world_mut().spawn((TurnOf(agent), failed));
     app.update();
     told(&mut app, &mut seen);
-    for stopped in [None, Some("compacted".to_owned())] {
-        app.world_mut()
-            .spawn((TurnOf(agent), TurnOutcome::Stopped(stopped)));
+    let compacted = StopTurn::plugin(agent, "compaction", "compacted").alone();
+    for stop in [StopTurn::new(agent), compacted] {
+        app.world_mut().spawn(TurnOf(agent));
+        app.world_mut().trigger(stop);
         app.update();
         let marks = [&BUSY[..], &["133;D;0"], &IDLE[..], &["2;rig · idle"]].concat();
         assert_eq!(told(&mut app, &mut seen), marks);

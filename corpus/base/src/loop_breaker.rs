@@ -115,7 +115,7 @@ impl Plugin for LoopBreakerPlugin {
 /// Counts each tool call of a running turn when it is about to run, in the
 /// reply's order; refuses the repeated ones, and stops a turn that loops.
 fn judge(
-    mut turns: Query<(Entity, &TurnOf, &Calls, &mut TurnCalls), Without<TurnOutcome>>,
+    mut turns: Query<(&TurnOf, &Calls, &mut TurnCalls), Without<TurnOutcome>>,
     mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls, Without<Counted>)>,
     limits: Res<LoopLimits>,
     breaking: Res<LoopBreaking>,
@@ -125,7 +125,7 @@ fn judge(
     if !breaking.enabled {
         return;
     }
-    for (turn, &TurnOf(agent), of, mut counts) in &mut turns {
+    for (&TurnOf(agent), of, mut counts) in &mut turns {
         for call in of.iter() {
             let Ok((request, mut decision)) = calls.get_mut(call) else {
                 continue;
@@ -151,9 +151,7 @@ fn judge(
                 // The call and the rest of the reply never start; they are
                 // answered as stopped, and the turn ends.
                 notices.write(Notice::error(agent, format!("stopped: {why}")));
-                commands
-                    .entity(turn)
-                    .insert(TurnOutcome::Stopped(Some(why)));
+                commands.trigger(StopTurn::plugin(agent, "loop-breaker", &why).alone());
                 break;
             }
             if times >= limits.refuse_at {
