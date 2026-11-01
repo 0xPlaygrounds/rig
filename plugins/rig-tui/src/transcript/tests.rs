@@ -766,6 +766,31 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
     assert!(line_of(&lines, "the summary").is_some(), "{lines:#?}");
 }
 
+#[test]
+fn each_call_of_a_reply_shows_its_own_result_even_when_two_share_an_id() {
+    let (mut app, agent) = view_app();
+    let (Ok(look), Ok(probe)) = (ToolName::new("look"), ToolName::new("probe")) else {
+        return;
+    };
+    // Two calls of one reply with one id, as a provider may send them.
+    let both = [
+        ToolCall::from_wire("c9", ToolFunction::new(look, json!({}))),
+        ToolCall::from_wire("c9", ToolFunction::new(probe, json!({}))),
+    ];
+    say(&mut app, agent, Message::user("look and probe"));
+    let asked = both.iter().cloned().map(AssistantContent::ToolCall);
+    let reply = AssistantMessage::new(asked.collect());
+    say(&mut app, agent, Message::Assistant(reply));
+    let results = both
+        .iter()
+        .zip(["looked four", "probed five"])
+        .map(|(call, said)| call.result(vec![ToolResultContent::text(said)]));
+    say(&mut app, agent, Message::tool_results(results.collect()));
+    let lines = on_screen(&mut app, agent, 100);
+    let shown = ["looked four", "probed five"].map(|said| count_of(&lines, said));
+    assert_eq!(shown, [1, 1], "{lines:#?}");
+}
+
 /// A call a stop answered is drawn stopped whatever live state it still
 /// has.
 #[test]
