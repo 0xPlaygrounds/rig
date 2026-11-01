@@ -64,11 +64,10 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
 
 /// How long a streamed reply may send no frame, from when it was sent to its
 /// first frame or between two, before it fails as
-/// [`ProviderError::Stalled`]: five minutes. Only a frame restarts it, any
-/// event the wire reads, including a provider's own ping event; bytes that
-/// are no frame, such as an event stream's comments, never do. A model that
-/// thinks at length is cut only if its provider sends no event for that
-/// long.
+/// [`ProviderError::Stalled`]: five minutes. Only a frame restarts it: any
+/// event the wire reads, a provider's ping event included. Bytes that are no
+/// frame, such as an event stream's comments, never do. A model that thinks
+/// at length is cut only if its provider sends no event for that long.
 pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<W: Default, T: Default> Default for Model<W, T> {
@@ -533,10 +532,8 @@ fn read<W: Wire>(
     let reading = async_stream::stream! {
         let reply: &Mutex<Shared<W::Op>> = &shared;
         let opening_slot = opening.slot.clone();
-        // Only a frame restarts the timer, so opening the reply and its
-        // first frame share one wait: bytes that are no frame, such as an
-        // event stream's comments, are how a provider pings while it sends
-        // nothing.
+        // Timed from the send and restarted only by a frame, so opening the
+        // reply and its first frame share one wait.
         let mut last_frame = web_time::Instant::now();
         // A unary call sends under the call's span; a stream reads under it.
         let opened = match mode {
@@ -660,7 +657,7 @@ const LONGEST_TIMER: Duration = Duration::from_millis(2_147_483_647);
 /// it takes without `idle`: past it, the reply stalled. Timed from `since`,
 /// not from this wait, so a reader that paused between frames does not move
 /// the stall; a frame already in hand still comes.
-pub(crate) async fn idle_within<F: Future + Unpin>(
+pub(crate) async fn idle_within<F: Future>(
     idle: Option<Duration>,
     since: web_time::Instant,
     next: F,
