@@ -745,8 +745,8 @@ fn sourced(content: Vec<(Option<usize>, UserContent)>) -> (Vec<usize>, Vec<UserC
 
 /// The tool calls of the last assistant message in `messages` that no
 /// later tool result answers, in call order: what a conversation cut short
-/// still owes the model. A turn that ended in an
-/// error or was aborted owes none, as its calls never run.
+/// still owes the model. A turn that ended in an error or was aborted owes
+/// none, as its calls never run.
 pub fn pending_calls(messages: &[impl Borrow<Message>]) -> Vec<ToolCall> {
     let pending = pending(messages);
     let calls = pending.into_iter().flat_map(|(_, calls)| calls);

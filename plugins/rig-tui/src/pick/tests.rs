@@ -943,7 +943,10 @@ fn a_previews_edges_keep_calls_with_their_results_and_stops() {
     let stopped = TurnEnd::Stopped {
         by: Some(StopCause::User),
         at: id(9),
-        calls: vec![CallId::from_wire("c2")],
+        calls: id(7)
+            .map(|reply| CallRef { reply, index: 0 })
+            .into_iter()
+            .collect(),
     };
     assert!(whole.end_turn(stopped));
     let (from_second, _) = shown(&whole, id(7));

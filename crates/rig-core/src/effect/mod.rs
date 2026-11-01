@@ -944,10 +944,10 @@ pub enum Disposition {
 
 impl EffectRecord {
     /// The record of effect `id`, `kind`, routed to `key` and answered with
-    /// `outcome`, and nothing else known: no parent, scope, purpose, turn, call, times,
-    /// tool output, kept items, review or decider, and [`Disposition::Ran`]. A host
-    /// that answers or cancels an effect itself builds its record from this
-    /// and sets what it knows.
+    /// `outcome`, and nothing else known: no parent, scope, purpose, turn,
+    /// call, times, tool output, kept items, review or decider, and
+    /// [`Disposition::Ran`]. A host that answers or cancels an effect itself
+    /// builds its record from this and sets what it knows.
     pub fn new(
         id: EffectId,
         key: HandlerKey,

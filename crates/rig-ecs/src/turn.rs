@@ -503,7 +503,8 @@ pub(crate) fn on_stop_turn(
     mut stopper: Stopper,
 ) {
     let root = interrupt.event_target();
-    let below = (interrupt.below)
+    let below = interrupt
+        .below
         .then(|| spawned.iter_descendants::<Spawned>(root))
         .into_iter()
         .flatten();
@@ -567,14 +568,14 @@ impl Stopper<'_, '_> {
     /// model's message, aborted, so the model reads its text as no answer
     /// and none of its tool calls runs, and the user's request is halted:
     /// [`Halt::Kept`] for a plugin's stop, else [`Halt::Stopped`], unless
-    /// its call was superseded; every tool call of the last reply gets a result
-    /// ([`stopped_answer`]), and every call of the turn that has not
+    /// its call was superseded; every tool call of the last reply gets a
+    /// result ([`stopped_answer`]), and every call of the turn that has not
     /// settled is answered so and settled, whatever held it gone. The turn
     /// ends [`TurnOutcome::Stopped`], in its record too, set before its
     /// calls settle, so a call's owner sees it stopped them; the record
-    /// names the last entry and the calls the stop cut: the streamed ones
-    /// and those it answered. The conversation is saved at once, and the
-    /// views told, unless the app exits.
+    /// names the last entry and the places of the calls the stop cut: those
+    /// it answered and the streamed ones. The conversation is saved at
+    /// once, and the views told, unless the app exits.
     pub(crate) fn stop(&mut self, agent: Entity, cause: StopCause, alone: bool) -> bool {
         let Ok((id, mut conversation, active)) = self.agents.get_mut(agent) else {
             return false;
@@ -605,28 +606,18 @@ impl Stopper<'_, '_> {
         content.retain(
             |item| !matches!(item, AssistantContent::ToolCall(call) if started.contains(&&call.id)),
         );
-        // The streamed calls are kept never run: an aborted reply owes no
-        // results, and the stop's record names them.
-        let mut cut: Vec<CallId> = content
-            .iter()
-            .filter_map(|item| match item {
-                AssistantContent::ToolCall(call) => Some(call.id.clone()),
-                _ => None,
-            })
-            .collect();
         let reply = reply
             .zip(calls)
             .map(|(reply, calls)| reply_calls(reply, calls, &self.replies))
             .unwrap_or_default();
         // The calls the stop cut short: not one a gate decided, nor a
         // restored one that had finished.
-        let answered: Vec<CallId> = reply
+        let mut cut: Vec<CallRef> = reply
             .iter()
             .filter(|call| call.outcome.is_none() && !call.decision.is_decided())
             .filter(|call| !matches!(call.interrupted, Some(Interrupted::Settled(_))))
-            .map(|call| call.request.call.id.clone())
+            .filter_map(|call| call.in_reply.map(InReply::at))
             .collect();
-        cut.extend(answered);
         // A decided call is answered with its decision, as Start would, a
         // running one with what it says if stopped, and a restored one that
         // settled with its result, each redacted as Commit would, so what
@@ -654,9 +645,12 @@ impl Stopper<'_, '_> {
         if let Some(results) = reply_results(reply, |call| Some(stopped_answer(&why, call))) {
             commit_results(&mut conversation, results);
         }
+        // The streamed calls are kept never run: an aborted reply owes no
+        // results, and the stop's record names them.
         if !content.is_empty() {
             let aborted = AssistantMessage::aborted(None, content, format!("stopped: {why}"));
-            conversation.push(Message::Assistant(aborted));
+            let reply = conversation.push(Message::Assistant(aborted.clone()));
+            cut.extend(CallRef::calls(reply, &aborted).map(|(at, _)| at));
         }
         conversation.halt(match cause {
             StopCause::Plugin { .. } => Halt::Kept,

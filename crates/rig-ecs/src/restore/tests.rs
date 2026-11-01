@@ -973,10 +973,19 @@ fn a_restart_stops_what_a_crash_left_and_keeps_what_finished() {
     let agent = first_agent(&mut app);
     let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
     let ended = conversation.and_then(|it| it.turns().last().and_then(|(_, record)| record.end));
+    let called = |at: &CallRef| {
+        let conversation = conversation?;
+        let reply = conversation
+            .messages()
+            .get(conversation.index_of(at.reply)?)?;
+        let Message::Assistant(reply) = &**reply else {
+            return None;
+        };
+        let call = reply.tool_calls().nth(usize::try_from(at.index).ok()?)?;
+        Some(call.id.wire().into_owned())
+    };
     let calls: Option<Vec<String>> = match &ended {
-        Some(TurnEnd::Stopped { calls, .. }) => {
-            Some(calls.iter().map(|id| id.wire().into_owned()).collect())
-        }
+        Some(TurnEnd::Stopped { calls, .. }) => calls.iter().map(called).collect(),
         _ => None,
     };
     assert_eq!(calls, Some(vec!["w1".to_owned()]), "{ended:?}");

@@ -514,31 +514,11 @@ impl Stops {
             else {
                 continue;
             };
-            let Some(end) = entries.of_id(at) else {
+            if entries.of_id(at).is_none() {
                 continue;
-            };
-            stops.at.insert(at);
-            // The calls are the last reply's: the last one of the turn
-            // asking for any of them.
-            let start = entries.of_id(record.start).or_else(|| {
-                let start = conversation.start_of(record.start);
-                entries.of_live(start)
-            });
-            let turn = entries.entries.get(start.unwrap_or(end)..=end);
-            let asked = |entry: &&ShownEntry<'_>| match &**entry.message {
-                Message::Assistant(reply) => {
-                    reply.tool_calls().any(|call| calls.contains(&call.id))
-                }
-                _ => false,
-            };
-            let Some(reply) = turn.into_iter().flatten().rev().find(asked) else {
-                continue;
-            };
-            if let (Message::Assistant(message), Some(id)) = (&**reply.message, reply.id) {
-                let answered = CallRef::calls(id, message);
-                let answered = answered.filter(|(_, call)| calls.contains(&call.id));
-                stops.calls.extend(answered.map(|(at, _)| at));
             }
+            stops.at.insert(at);
+            stops.calls.extend(calls);
         }
         stops
     }

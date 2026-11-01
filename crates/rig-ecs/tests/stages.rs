@@ -55,7 +55,7 @@ use rig_core::effect::{
     Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
 };
 use rig_core::error::ErrorKind;
-use rig_core::message::{CallId, Message, StopReason, ToolFunction, ToolName};
+use rig_core::message::{Message, StopReason, ToolFunction, ToolName};
 use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
@@ -3229,9 +3229,11 @@ fn a_call_stopped_while_it_streams_is_kept_and_never_runs() {
             .turns()
             .last()
             .and_then(|(_, record)| record.end);
+        // The cut call is named by its place in the kept reply.
+        let reply = conversation.entries().next_back().map(|entry| entry.id);
+        let cut = reply.map(|reply| vec![CallRef { reply, index: 0 }]);
         assert!(
-            matches!(&ended, Some(TurnEnd::Stopped { calls, .. })
-                if calls == std::slice::from_ref(&call.id)),
+            matches!(&ended, Some(TurnEnd::Stopped { calls, .. }) if Some(calls) == cut.as_ref()),
             "{ended:?}"
         );
         // A restore finds nothing owed, so nothing of it runs then either.
@@ -3668,16 +3670,17 @@ fn a_stopped_call_says_whether_it_ran_and_whether_it_may_have_changed_something(
         .get::<Conversation>(agent)
         .and_then(|conversation| {
             let (_, record) = conversation.turns().next_back()?;
+            let mut entries = conversation.entries().rev();
+            let last = entries.next().map(|entry| entry.id);
+            // The reply's last three calls, by their places.
+            let reply = entries.next()?.id;
+            let cut: Vec<_> = (1..4).map(|index| CallRef { reply, index }).collect();
             match record.end? {
-                TurnEnd::Stopped { at, calls, .. } => Some((
-                    at == conversation.entries().next_back().map(|entry| entry.id),
-                    calls,
-                )),
+                TurnEnd::Stopped { at, calls, .. } => Some((at == last, calls == cut)),
                 _ => None,
             }
         });
-    let calls = ["s1", "p1", "t1"].map(CallId::from_wire).to_vec();
-    assert_eq!(ended, Some((true, calls)));
+    assert_eq!(ended, Some((true, true)));
 }
 
 /// Stopping an idle agent's turn stops the running turns of the agents

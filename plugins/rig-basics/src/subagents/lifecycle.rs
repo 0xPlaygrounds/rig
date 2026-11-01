@@ -288,9 +288,9 @@ pub(super) struct StoppedEarly;
 /// user, the app's exit or a restart stopped it, else
 /// [`Lifecycle::Finished`] with its answer, or why there is none and what
 /// it said last. A stopped turn reports as rig-core's [`not_finished`] says
-/// a stopped call that may have partly run does: a turn a plugin stops,
-/// such as for a budget, reports `Stopped: <reason>. It may have partly
-/// run; …`, and one the user, the exit or a restart stopped is
+/// a stopped call that may have partly run does: a turn a plugin ends
+/// alone ([`StopTurn::alone`]), such as for a budget, reports `Stopped:
+/// <reason>. It may have partly run; …`, and one any stop reached is
 /// [`StoppedEarly`].
 fn step_on_turn_end(
     settled: On<Add<Settled>>,

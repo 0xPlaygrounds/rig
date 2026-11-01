@@ -76,7 +76,9 @@ use super::turn::{Stopper, TurnCall, not_finished};
 const CALL_MARK: &str = "rig.call";
 
 /// A `rig.call` aside's value. `at` is the call's place in its reply; a
-/// mark saved without one is paired with a call by [`answered_by`](rig_core::conversation::pairing::answered_by).
+/// mark saved without one is paired with a call by [`answered_by`].
+///
+/// [`answered_by`]: rig_core::conversation::pairing::answered_by
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 enum CallMark {
@@ -129,8 +131,10 @@ fn marks(conversation: &rig_core::conversation::Conversation) -> Vec<(AsideId, C
 
 /// The mark of each of `calls`, the calls a reply still owes with their
 /// places, among `marks`, in call order: the mark saved at its place, else,
-/// among marks saved without a place, the one [`answered_by`](rig_core::conversation::pairing::answered_by) pairs with
+/// among marks saved without a place, the one [`answered_by`] pairs with
 /// it.
+///
+/// [`answered_by`]: rig_core::conversation::pairing::answered_by
 fn marked<'m>(
     calls: &[(CallRef, ToolCall)],
     marks: &'m [(AsideId, CallMark)],
@@ -275,11 +279,11 @@ pub struct CarryOn;
 /// [`GateSystems::After`](super::stage::GateSystems::After), so no one is
 /// asked to approve its calls: one a plugin lets [`CarryOn`] goes on as an
 /// ordinary turn, both taken off it; any other is stopped as the user's
-/// stop does, for [`StopCause::Restarted`], but for its agent alone, so a turn a
-/// plugin carries on below it is left to that plugin. Nothing of a stopped
-/// turn runs and no model is called; each call keeps the result the
-/// session kept, if it settled, and is otherwise answered as not run or cut
-/// short.
+/// stop does, for [`StopCause::Restarted`], but for its agent alone, so a
+/// turn a plugin carries on below it is left to that plugin. Nothing of a
+/// stopped turn runs and no model is called; each call keeps the result
+/// the session kept, if it settled, and is otherwise answered as not run
+/// or cut short.
 pub(crate) fn stop_restored(
     turns: Query<(Entity, &TurnOf, &Calls, Has<CarryOn>), (With<Restored>, Without<TurnOutcome>)>,
     admitted: Query<(), (With<Restored>, Added<Admitted>)>,

@@ -562,12 +562,24 @@ fn a_note_whose_message_was_summarized_is_drawn_right_after_the_summary() {
 }
 
 /// Ends the turn `agent` runs as a stop does: the request halted, the
-/// record ending at the last entry with the calls the stop answered.
-fn stop(app: &mut App, agent: Entity, calls: &[&str]) {
+/// record ending at the last entry with the calls the stop answered, by
+/// their indices among the last reply's calls.
+fn stop(app: &mut App, agent: Entity, calls: &[u32]) {
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.halt(Halt::Stopped);
         let at = conversation.entries().next_back().map(|entry| entry.id);
-        let calls = calls.iter().map(|id| CallId::from_wire(*id)).collect();
+        let reply = conversation
+            .entries()
+            .rev()
+            .find(|entry| matches!(entry.message, Message::Assistant(_)));
+        let reply = reply.map(|entry| entry.id);
+        let at_reply = |index: &u32| {
+            reply.map(|reply| CallRef {
+                reply,
+                index: *index,
+            })
+        };
+        let calls = calls.iter().filter_map(at_reply).collect();
         let by = Some(StopCause::User);
         conversation.end_turn(TurnEnd::Stopped { by, at, calls });
     }
@@ -658,18 +670,9 @@ fn a_call_a_stop_cut_while_it_streamed_says_it_never_ran_at_once_and_after_a_rel
     });
     let json = r#"{"path": "big.py", "content": "print("#.to_owned();
     cut.follow(&StreamEvent::Arguments { part, json });
-    let calls = cut.calls.iter().map(|call| call.call.id.clone()).collect();
     let aborted = AssistantMessage::aborted(None, cut.stopped(), "stopped");
     say(&mut app, agent, Message::Assistant(aborted));
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.halt(Halt::Stopped);
-        let at = conversation.entries().next_back().map(|entry| entry.id);
-        conversation.end_turn(TurnEnd::Stopped {
-            by: Some(StopCause::User),
-            at,
-            calls,
-        });
-    }
+    stop(&mut app, agent, &[0, 1]);
     for _ in 0..2 {
         let lines = on_screen(&mut app, agent, 100);
         let row = lines.iter().position(|line| line.starts_with(" write"));
@@ -734,7 +737,7 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
         ..call.result(vec![ToolResultContent::text(text)])
     });
     say(&mut app, agent, Message::tool_results(results.to_vec()));
-    stop(&mut app, agent, &["a", "b"]);
+    stop(&mut app, agent, &[0, 1]);
     let drawn_stopped = |lines: &[String]| {
         let headers: Vec<&str> = lines
             .iter()
@@ -801,6 +804,54 @@ fn each_call_of_a_reply_shows_its_own_result_even_when_two_share_an_id() {
     assert_eq!(shown, [1, 1], "{lines:#?}");
 }
 
+#[test]
+fn a_stop_draws_stopped_only_the_call_it_cut_of_two_that_share_an_id() {
+    let (mut app, agent) = view_app();
+    let (Ok(look), Ok(shell)) = (ToolName::new("look"), ToolName::new("shell")) else {
+        return;
+    };
+    let both = [
+        ToolCall::from_wire("c9", ToolFunction::new(look, json!({}))),
+        ToolCall::from_wire("c9", ToolFunction::new(shell, json!({}))),
+    ];
+    say(&mut app, agent, Message::user("look, then run"));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.open_turn();
+    }
+    let asked = both.iter().cloned().map(AssistantContent::ToolCall);
+    say(
+        &mut app,
+        agent,
+        Message::Assistant(AssistantMessage::new(asked.collect())),
+    );
+    // The look finished; the stop cut the shell.
+    let results = both
+        .iter()
+        .zip([
+            ("seen", false),
+            ("Stopped: the user stopped the turn.", true),
+        ])
+        .map(|(call, (said, is_error))| ToolResultMessage {
+            is_error,
+            ..call.result(vec![ToolResultContent::text(said)])
+        });
+    say(&mut app, agent, Message::tool_results(results.collect()));
+    stop(&mut app, agent, &[1]);
+    for _ in 0..2 {
+        let lines = on_screen(&mut app, agent, 100);
+        let stopped = |name: &str| {
+            let header = lines.iter().find(|line| line.starts_with(name));
+            header.map(|header| header.contains("· stopped"))
+        };
+        assert_eq!(
+            (stopped(" look"), stopped(" shell")),
+            (Some(false), Some(true)),
+            "{lines:#?}"
+        );
+        assert!(reload(&mut app, agent));
+    }
+}
+
 /// A call a stop answered is drawn stopped whatever live state it still
 /// has.
 #[test]
@@ -813,16 +864,15 @@ fn a_stopped_call_wins_over_its_live_state() {
     conversation.open_turn();
     let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
     let at = conversation.push(Message::Assistant(reply));
-    let calls = vec![call.id.clone()];
-    conversation.end_turn(TurnEnd::Stopped {
-        by: Some(StopCause::User),
-        at: Some(at),
-        calls,
-    });
     let call = CallRef {
         reply: at,
         index: 0,
     };
+    conversation.end_turn(TurnEnd::Stopped {
+        by: Some(StopCause::User),
+        at: Some(at),
+        calls: vec![call],
+    });
     let calls = BTreeMap::from([(call, CallState::Running(None))]);
     let outputs = BTreeMap::from([(call, "cc a.c".to_owned())]);
     let mut transcript = Transcript::default();

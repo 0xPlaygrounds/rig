@@ -1183,8 +1183,9 @@ something inserts a `TurnOutcome`.
 restarted turn's too: its `index`, `start`, and how it ended,
 `TurnEnd::Answered { answer }`, `Failed { why }` or
 `Stopped { by, at, calls }` (`by` the `StopCause`, absent only in a record
-saved before causes were; `calls` empty when the stop cut off no
-call, such as a crash during a model call), or `None` while it runs or once
+saved before causes were; `calls` the places (`CallRef`) of the calls it
+cut, empty when it cut off none, such as a crash during a model call, and
+in a record saved before calls had places), or `None` while it runs or once
 a crash cut it short (an exit stops it, unless a plugin carries it on);
 `conversation.turns()` lists them, for a program without the app too. A
 stop mid-reply saves what streamed as an aborted reply
@@ -1194,7 +1195,7 @@ request `halted()` `Stopped`, and the kernel's note after it by
 restart's stop; a plugin-stopped turn's request, and an agent's or a
 plugin's message a failed turn left, is halted `Kept`, left for the next
 turn. A stop's record names the turn's last entry (`at`), which a front
-draws the stop under, and the tool calls the stop answered (`calls`).
+draws the stop under, and the tool calls the stop cut (`calls`).
 
 **Ending a turn with an answer already known**, such as the JSON a
 `submit` tool was called with: a Gate system decides the turn's next

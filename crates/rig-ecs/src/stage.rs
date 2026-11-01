@@ -1136,7 +1136,8 @@ fn start(
     // Before a call that may change something starts, the reply that asked
     // for it and, for a call of a reply, the call's mark are written to the
     // store (not yet synced to disk). When they cannot be, no such call
-    // starts: a restart could not tell that it may have run.
+    // starts: a restart could not tell that it may have run. A call of no
+    // reply has no place to mark, but it too waits for that write.
     let changing: Vec<_> = ready
         .iter()
         .filter(|item| !item.message && !item.decision.is_decided() && !stopping(item))

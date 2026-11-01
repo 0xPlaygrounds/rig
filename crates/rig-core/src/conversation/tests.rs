@@ -558,7 +558,10 @@ fn turn_records_open_numbered_and_end_once() {
     let stopped = TurnEnd::Stopped {
         by: Some(StopCause::User),
         at: conversation.entries().next_back().map(|entry| entry.id),
-        calls: vec![crate::message::CallId::from_wire("c1")],
+        calls: vec![CallRef {
+            reply: answer,
+            index: 0,
+        }],
     };
     assert!(conversation.end_turn(stopped.clone()));
 
@@ -585,7 +588,8 @@ fn turn_records_open_numbered_and_end_once() {
 }
 
 /// A stop's cause reads back as it was saved, and a stop saved before
-/// causes were recorded reads as not recorded, whatever text it kept.
+/// causes and call places were recorded reads as recording neither,
+/// whatever text and call ids it kept.
 #[test]
 fn a_stop_cause_reads_back_and_an_old_stop_has_none() {
     let causes = [
@@ -607,7 +611,7 @@ fn a_stop_cause_reads_back_and_an_old_stop_has_none() {
         let read: TurnEnd = serde_json::from_value(saved).expect("a turn end reads back");
         assert_eq!(read, end);
     }
-    let old = serde_json::json!({"how": "stopped", "why": "compacted"});
+    let old = serde_json::json!({"how": "stopped", "why": "compacted", "calls": ["c1"]});
     let read: TurnEnd = serde_json::from_value(old).expect("an old stop reads");
     assert_eq!(
         read,

@@ -6,8 +6,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Aside, AsideId, Author, Conversation, MessageId};
-use crate::message::CallId;
+use super::{Aside, AsideId, Author, CallRef, Conversation, MessageId};
 
 /// The kind of an aside holding a [`TurnRecord`].
 pub const TURN: &str = "rig.turn";
@@ -57,11 +56,12 @@ pub enum TurnEnd {
         /// ending it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<MessageId>,
-        /// The tool calls the stop cut: those it answered, which had no
-        /// result of their own, and those of the reply it cut off, which
-        /// never ran and owe none.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        calls: Vec<CallId>,
+        /// The places of the tool calls the stop cut: those it answered,
+        /// which had no result of their own, and those of the reply it cut
+        /// off, which never ran and owe none. Empty in a record saved
+        /// before calls had places.
+        #[serde(default, rename = "cut", skip_serializing_if = "Vec::is_empty")]
+        calls: Vec<CallRef>,
     },
 }
 
