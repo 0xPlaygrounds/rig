@@ -154,10 +154,11 @@ fn builds(n: usize) -> Vec<Vec<MockStreamEvent>> {
     ]
 }
 
-/// A project of its own beside the test binary, with `src/config.rs`.
-fn project() -> PathBuf {
+/// A project of the test `name` beside the test binary, with
+/// `src/config.rs`.
+fn project(name: &str) -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe.with_file_name(format!("subcache-project-{}", std::process::id()));
+    let dir = exe.with_file_name(format!("subcache-{name}-{}", std::process::id()));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(dir.join("src")).ok();
     let config = "use std::fs;\n\n// Loading.\n\n\n\n\n\n\n\n\npub fn load_config() {}\n";
@@ -170,7 +171,7 @@ fn project() -> PathBuf {
 /// hit after a restart until `/subcache off`.
 #[test]
 fn a_repeated_read_only_task_is_answered_from_its_record_while_its_inputs_hold() {
-    let dir = project();
+    let dir = project("hits");
     let store = MemoryStore::default();
     let script = [
         asks("t1", FIND, true),
@@ -298,7 +299,7 @@ fn answer_to(session: &mut Session, text: &str, id: &str) -> String {
 #[test]
 fn an_answer_from_a_limited_run_is_not_reused_once_the_tools_are_back() {
     for tools in [Value::Null, json!(["read"])] {
-        let dir = project();
+        let dir = project("limited");
         let store = MemoryStore::default();
         let main = MockCompletionModel::from_stream_turns(asks_with("t1", &tools));
         let sub = MockCompletionModel::from_stream_turns([reply("I cannot message you.")]);
@@ -319,7 +320,7 @@ fn an_answer_from_a_limited_run_is_not_reused_once_the_tools_are_back() {
 
 #[test]
 fn a_list_task_refuses_is_never_answered_from_a_record() {
-    let dir = project();
+    let dir = project("refused");
     let main = MockCompletionModel::from_stream_turns(
         [
             asks_with("t1", &json!(["read"])),

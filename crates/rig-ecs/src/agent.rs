@@ -236,10 +236,11 @@ impl From<Option<String>> for SystemPrompt {
 /// Which registered tools the agent may call: those it keeps, saved with
 /// the session, within this run's tools ([`RunTools`]), which never are.
 /// Only [`within`](Self::within), [`narrow`](Self::narrow),
-/// [`grant`](Self::grant) and the kernel build a narrower one, so an access made from
-/// another never has a tool that one lacks; before it admits anything the
-/// kernel keeps each agent's access within the run's tools and the access
-/// of every agent above it ([`SpawnedBy`]), whatever made or restored it.
+/// [`grant`](Self::grant) and the kernel build a narrower one, so an
+/// access made from another never has a tool that one lacks; before it
+/// admits anything the kernel keeps each agent's access within the run's
+/// tools and the access of every agent above it ([`SpawnedBy`]), whatever
+/// made or restored it.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(from = "Kept", into = "Kept")]

@@ -59,7 +59,9 @@ tools can be named; until then the agent runs no turn, request or prompt.
 This limit also applies to subagents, including their normally supplied
 `message` and `wait` tools: include those names when children need them. A
 subagent never has a tool its parent lacks: it gets `message` and `wait`
-only when its parent has them, and asking for another tool is refused.
+only when its parent keeps them, and asking for another tool is refused. A
+tool its parent keeps but the run leaves out is given, and cannot be called
+in that run.
 The kernel keeps every agent within the run's tools (`rig_ecs::agent::RunTools`)
 before anything is admitted, as it keeps each within its parents.
 
