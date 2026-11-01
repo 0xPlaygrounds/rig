@@ -2233,7 +2233,9 @@ select), the `highlights` lit, the `marks` (a `TextMark` label inside a
 reply's text or a streaming call's) and where it is scrolled (`top()`, placed
 in `TuiSystems::Layout`; a panel fitted to it changes in `TuiSystems::Fit`,
 drawn the same frame). `ScrollTo { pane, item, row }` scrolls to a
-`TranscriptItem` (a `Message`, a tool `Call`, an `Aside`, a `Notice`), at a
+`TranscriptItem` (a `Message`, a tool `Call` by its `CallItem`: a reply's
+call by its `CallRef`, a streaming one by its place among the streaming
+reply's calls; an `Aside`, a `Notice`), at a
 row of it or its `n`th lit match; `item: None` follows the newest output. A
 `DrawnTranscript` added to a pane holds the rows it drew by item;
 `TranscriptLayout::lay_out(world, view, agent, width)` lays any agent's out

@@ -421,8 +421,9 @@ struct OriginalLook;
 
 #[test]
 fn a_later_system_can_replace_lines_and_edit_named_decorations() {
-    use crate::{TranscriptItem, TranscriptLayout, TranscriptView};
+    use crate::{CallItem, TranscriptItem, TranscriptLayout, TranscriptView};
     use rig_core::completion::{AssistantContent, AssistantMessage, Message};
+    use rig_core::conversation::CallRef;
     use rig_ecs::agent::Conversation;
 
     let (mut app, agent) = crate::tests::view_app();
@@ -430,12 +431,14 @@ fn a_later_system_can_replace_lines_and_edit_named_decorations() {
         return;
     };
     let call = ToolCall::from_wire("call", ToolFunction::new(name, json!({})));
-    let id = call.id.clone();
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(Message::Assistant(AssistantMessage::new(vec![
-            AssistantContent::ToolCall(call),
-        ])));
-    }
+    let asked = AssistantMessage::new(vec![AssistantContent::ToolCall(call)]);
+    let conversation = app.world_mut().get_mut::<Conversation>(agent);
+    let Some(reply) =
+        conversation.map(|mut conversation| conversation.push(Message::Assistant(asked)))
+    else {
+        return;
+    };
+    let id = CallItem::Reply(CallRef { reply, index: 0 });
     app.insert_resource(Label("original"))
         .add_systems(
             TranscriptRender,

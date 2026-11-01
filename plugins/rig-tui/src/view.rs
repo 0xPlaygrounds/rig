@@ -14,7 +14,7 @@ use bevy_reflect::prelude::*;
 use ratatui::style::Style;
 use rig_core::completion::Message;
 use rig_core::conversation;
-use rig_core::message::CallId;
+use rig_core::conversation::CallRef;
 use serde::{Deserialize, Serialize};
 
 use super::complete::Completion;
@@ -74,8 +74,8 @@ pub(crate) struct TuiView {
 pub enum TranscriptItem {
     /// A message, by id.
     Message(MessageId),
-    /// A tool call, by its call id.
-    Call(CallId),
+    /// A tool call, by its place.
+    Call(CallItem),
     /// An aside a look draws, such as a plugin's
     /// [`Note`](rig_harness::rig_core::conversation::Note), by its id
     /// ([`RenderBatch::asides_mut`](crate::RenderBatch::asides_mut)).
@@ -86,16 +86,28 @@ pub enum TranscriptItem {
     /// document, by the message's id and the block's place in it
     /// ([`ContentView`](crate::ContentView)).
     Content(MessageId, usize),
-    /// The rows a named decoration drew under a call, by the call's id and
-    /// the decoration's name
+    /// The rows a named decoration drew under a call, by the call's place
+    /// and the decoration's name
     /// ([`RenderOutput::decorate`](crate::RenderOutput::decorate)),
     /// inside the call's rows. Selecting moves past it.
-    Decoration(CallId, String),
+    Decoration(CallItem, String),
     /// The rows a named decoration drew under a message, by the
     /// message's id and the decoration's name
     /// ([`RenderBatch::messages_mut`](crate::RenderBatch::messages_mut)),
     /// inside the message's rows. Selecting moves past it.
     MessageDecoration(MessageId, String),
+}
+
+/// Where a tool call of the transcript is, as its items name it: a reply's
+/// call by its place, which a reply that repeats a provider's call id does
+/// not share; a call still streaming in, which has none yet, by its
+/// position among the streaming reply's calls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum CallItem {
+    /// A call of a reply of the shown conversation.
+    Reply(CallRef),
+    /// A call of the reply streaming in.
+    Streaming(usize),
 }
 
 /// A transcript pane's view, as plugins read and steer it: on each

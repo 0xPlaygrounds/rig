@@ -30,8 +30,8 @@ use super::renderers::{
 };
 use super::theme::Theme;
 use super::view::{
-    DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice, TextMark,
-    TranscriptItem,
+    CallItem, DrawnRow, DrawnTranscript, Highlight, ItemRow, MarkIn, RowWrap, ShownNotice,
+    TextMark, TranscriptItem,
 };
 use super::wrap::wrap;
 use rig_core::conversation::pairing::answered_by;
@@ -50,8 +50,9 @@ pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
 /// [`PastEffects`] brought them, before it: how long each tool call ran,
 /// by its agent and [`CallRef`]; and which calls each effect started,
 /// through any effect between, for [`ToolCallView::children`]. All of it
-/// comes from the kernel's effect records. What a call published comes from its result's
-/// entry ([`ShownEntry::facts`]), which the session keeps.
+/// comes from the kernel's effect records. What a call published comes
+/// from its result's entry ([`ShownEntry::facts`]), which the session
+/// keeps.
 #[derive(Resource, Default)]
 pub(crate) struct CallFacts {
     /// This run's effects, noted as they settle.
@@ -1640,7 +1641,6 @@ fn message_lines(
                     AssistantContent::ToolCall(call) => {
                         let ((index, result), facts) = calls.next().unwrap_or_default();
                         let at = id.map(|reply| CallRef { reply, index });
-                        let item = TranscriptItem::Call(call.id.clone());
                         let view = ToolCallView {
                             call,
                             result,
@@ -1654,10 +1654,13 @@ fn message_lines(
                         let (drawn, decorated) = look.renderers.call_decorated(&view);
                         let start = lines.len();
                         lines.extend(on_band(drawn, look.theme.tool));
-                        marks.push((item, start..lines.len()));
-                        for (name, rows) in decorated {
-                            let decoration = TranscriptItem::Decoration(call.id.clone(), name);
-                            marks.push((decoration, start + rows.start..start + rows.end));
+                        // Only an archived entry has no id, and no items.
+                        if let Some(at) = at.map(CallItem::Reply) {
+                            marks.push((TranscriptItem::Call(at), start..lines.len()));
+                            for (name, rows) in decorated {
+                                let decoration = TranscriptItem::Decoration(at, name);
+                                marks.push((decoration, start + rows.start..start + rows.end));
+                            }
                         }
                     }
                     // A provider item with no meaning here shows nothing.

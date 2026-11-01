@@ -10,7 +10,7 @@ use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage
 use rig_core::conversation::{CallRef, StopCause, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, Image, Reasoning, ToolCall, ToolFunction, ToolName,
+    AssistantContent, AssistantMessage, Image, Reasoning, ToolCall, ToolFunction, ToolName,
     ToolResult as ToolResultMessage, ToolResultContent,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
@@ -34,8 +34,9 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan, LookLine,
-    MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout, TranscriptView,
+    CallItem, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan,
+    LookLine, MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout,
+    TranscriptView,
 };
 
 use crate::{RenderBatch, RenderSystems, TranscriptRender};
@@ -340,6 +341,16 @@ fn add_aside(app: &mut App, agent: Entity, aside: Aside) -> Option<AsideId> {
 fn message_id(app: &App, agent: Entity, index: usize) -> Option<MessageId> {
     let conversation = app.world().get::<Conversation>(agent)?;
     conversation.id(index)
+}
+
+/// The item of the `index`-th call of the reply that is `agent`'s
+/// `message`-th message.
+fn call_item(app: &App, agent: Entity, message: usize, index: u32) -> Option<TranscriptItem> {
+    let reply = message_id(app, agent, message)?;
+    Some(TranscriptItem::Call(CallItem::Reply(CallRef {
+        reply,
+        index,
+    })))
 }
 
 /// Where in `lines` the first that contains `text` is.
@@ -782,6 +793,7 @@ fn a_stop_during_calls_marks_the_calls_it_answered_stopped() {
 #[test]
 fn each_call_of_a_reply_shows_its_own_result_even_when_two_share_an_id() {
     let (mut app, agent) = view_app();
+    crate::tests::keep_drawn(&mut app);
     let (Ok(look), Ok(probe)) = (ToolName::new("look"), ToolName::new("probe")) else {
         return;
     };
@@ -802,6 +814,21 @@ fn each_call_of_a_reply_shows_its_own_result_even_when_two_share_an_id() {
     let lines = on_screen(&mut app, agent, 100);
     let shown = ["looked four", "probed five"].map(|said| count_of(&lines, said));
     assert_eq!(shown, [1, 1], "{lines:#?}");
+    // Each is its own item: they draw apart, and selecting steps from the
+    // first to the second and past it.
+    let (Some(first), Some(second)) = (call_item(&app, agent, 1, 0), call_item(&app, agent, 1, 1))
+    else {
+        return;
+    };
+    let drawn = crate::tests::drawn(&app);
+    assert_ne!(drawn.rows_of(&first), drawn.rows_of(&second));
+    let selected = |app: &App| crate::tests::main_view(app).selected.clone();
+    crate::tests::steer(&mut app, |view| view.selected = Some(first.clone()));
+    press(&mut app, "alt+down");
+    assert_eq!(selected(&app), Some(second.clone()));
+    press(&mut app, "alt+down");
+    let past = selected(&app);
+    assert!(past != Some(first) && past != Some(second), "{past:?}");
 }
 
 #[test]
@@ -983,7 +1010,9 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
             ..Highlight::default()
         }]
     });
-    let item = TranscriptItem::Call(call.id.clone());
+    let Some(item) = call_item(&app, agent, 1, 0) else {
+        return;
+    };
     let drawn = |app: &mut App| {
         on_screen(app, agent, 5);
         crate::tests::drawn(app).clone()
@@ -1143,7 +1172,9 @@ fn a_layout_is_the_drawn_transcript_on_no_screen() {
             ..Highlight::default()
         }]
     });
-    let item = TranscriptItem::Call(call.id.clone());
+    let Some(item) = call_item(&app, agent, 1, 0) else {
+        return;
+    };
     on_screen(&mut app, agent, 5);
     let drawn = crate::tests::drawn(&app).clone();
     let Some(laid) = laid_out(&mut app, agent) else {
@@ -1587,13 +1618,13 @@ fn each_decorators_rows_are_an_item_inside_its_call() {
         let rows = rows.filter_map(|row| drawn.rows().get(row));
         rows.map(|row| row.text.trim().to_owned()).collect()
     };
-    let id = CallId::from_wire("c1");
-    let decoration = |name: &str| TranscriptItem::Decoration(id.clone(), name.to_owned());
+    let Some(TranscriptItem::Call(id)) = call_item(&app, agent, 0, 0) else {
+        return;
+    };
+    let decoration = |name: &str| TranscriptItem::Decoration(id, name.to_owned());
     assert_eq!(texts(decoration("late")), ["late one", "late two"]);
     assert_eq!(texts(decoration("early")), ["early"]);
-    let call = drawn
-        .rows_of(&TranscriptItem::Call(id.clone()))
-        .unwrap_or_default();
+    let call = drawn.rows_of(&TranscriptItem::Call(id)).unwrap_or_default();
     for name in ["late", "early"] {
         let rows = drawn.rows_of(&decoration(name)).unwrap_or_default();
         assert!(call.start <= rows.start && rows.end <= call.end, "{name}");

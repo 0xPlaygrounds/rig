@@ -41,7 +41,7 @@ use super::transcript::{
     Stops, Transcript, live_call, notice_lines, on_band, plain_lines,
 };
 use super::view::{
-    DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
+    CallItem, DrawnTranscript, Highlight, MarkIn, Notices, RowWrap, ShownNotice, TranscriptItem,
     TranscriptSlot, TranscriptView, TuiView, message_items,
 };
 use super::wrap::wrap_all;
@@ -789,12 +789,11 @@ pub(crate) fn lay_out_transcript(
                 let start = extra.len();
                 let (drawn, decorated) = sources.renderers.call_decorated(&view);
                 extra.extend(on_band(drawn, sources.theme.tool));
-                marks.push((TranscriptItem::Call(call.id.clone()), start..extra.len()));
+                let item = CallItem::Streaming(at);
+                marks.push((TranscriptItem::Call(item), start..extra.len()));
                 for (name, rows) in decorated {
-                    marks.push((
-                        TranscriptItem::Decoration(call.id.clone(), name),
-                        start + rows.start..start + rows.end,
-                    ));
+                    let decoration = TranscriptItem::Decoration(item, name);
+                    marks.push((decoration, start + rows.start..start + rows.end));
                 }
             }
             inbox_lines(&shown.inbox, sources.theme, &mut extra);

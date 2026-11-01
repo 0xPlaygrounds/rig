@@ -1,4 +1,4 @@
-use rig_core::message::CallId;
+use rig_core::conversation::CallRef;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;
@@ -7,7 +7,7 @@ use rig_harness_test_support::{
     tui_view,
 };
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use rig_tui::{DrawnRow, Editor, MainEditor};
+use rig_tui::{CallItem, DrawnRow, Editor, MainEditor};
 
 use super::*;
 
@@ -165,7 +165,17 @@ fn finds_an_error_in_a_tool_output_counts_regex_matches_and_scrolls_back() {
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
 
     // Turn 2's `shell` output, with the error.
-    let call = TranscriptItem::Call(CallId::from_wire("c1"));
+    let asked = app.world().get::<Conversation>(agent).and_then(|conversation| {
+        let mut entries = conversation.entries();
+        let reply = entries.find(|entry| {
+            matches!(entry.message, rig_core::message::Message::Assistant(reply) if reply.tool_calls().next().is_some())
+        });
+        reply.map(|entry| entry.id)
+    });
+    let Some(reply) = asked else {
+        return;
+    };
+    let call = TranscriptItem::Call(CallItem::Reply(CallRef { reply, index: 0 }));
     let whole = laid_out(&mut app, agent, u16::MAX);
     let rows = whole.rows_of(&call).unwrap_or_default();
     let before: Vec<&str> = whole
