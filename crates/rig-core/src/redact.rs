@@ -271,9 +271,15 @@ fn settled(input: &str) -> usize {
         }
     }
     let least = input.len().saturating_sub(HELD_MOST);
-    (cut.max(least)..=input.len())
+    let cut = (cut.max(least)..=input.len())
         .find(|&at| input.is_char_boundary(at))
-        .unwrap_or(input.len())
+        .unwrap_or(input.len());
+    // A whole secret the bound cuts through goes out whole, so it is
+    // redacted as in the whole text.
+    let through = found.iter().find(|found| {
+        found.range.start < cut && cut < found.range.end && found.range.end < input.len()
+    });
+    through.map_or(cut, |found| found.range.end)
 }
 
 /// `json`, serialized JSON such as a JSON line, with every string in it

@@ -247,13 +247,33 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
     ];
     let ended =
         format!("{words}\n-----BEGIN RSA PRIVATE KEY-----\nMII\n-----END RSA PRIVATE KEY-----");
-    let cases = open.iter().map(|first| vec![first.as_str(), body]);
+    // And a whole key before them on the line, which the bound would cut.
+    let key = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    let after_key = format!(
+        "{key} {}-----BEGIN RSA PRIVATE KEY-----\nMII",
+        "word ".repeat(3266)
+    );
+    let cases = open
+        .iter()
+        .chain([&after_key])
+        .map(|first| vec![first.as_str(), body]);
     for pieces in cases.chain([vec![ended.as_str()]]) {
         let mut streamed = Streamed::default();
         let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
         shown += &streamed.finish();
         assert_eq!(shown, text(&pieces.concat()));
     }
+    // A key on a held line the bound lets go of a few bytes at a time.
+    let line = format!("TOKEN note: {key} {}", "word ".repeat(3300));
+    let pieces: Vec<&str> = line
+        .as_bytes()
+        .chunks(5)
+        .filter_map(|piece| std::str::from_utf8(piece).ok())
+        .collect();
+    let mut streamed = Streamed::default();
+    let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
+    shown += &streamed.finish();
+    assert_eq!(shown, text(&line));
     for line in [
         format!("TOKEN {}gh", "word ".repeat(3275)),
         format!("one {}API_KEY=abcd", "word ".repeat(3275)),
