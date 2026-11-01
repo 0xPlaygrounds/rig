@@ -38,6 +38,7 @@ use rig_core::conversation::pairing::answered_by;
 use rig_core::conversation::{CallRef, ResultFacts, TurnEnd, attached_file};
 use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_ecs::agent::{AgentId, NoticeLevel};
+use rig_ecs::fork::ForkedFrom;
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
 use rig_ecs::stage::{EffectRecorded, Outcome};
 use rig_ecs::tools::ToolRequest;
@@ -81,15 +82,6 @@ impl CallFacts {
         let key = (Arc::from(agent?), at);
         let mut known = [&self.run, &*self.past].into_iter();
         known.find_map(|settled| settled.ran.get(&key).copied().flatten())
-    }
-
-    /// Whether the settled effects hold the call `at` of the agent with the
-    /// id `agent`.
-    fn ran(&self, agent: &str, at: CallRef) -> bool {
-        let key = (Arc::from(agent), at);
-        [&self.run, &*self.past]
-            .into_iter()
-            .any(|settled| settled.ran.contains_key(&key))
     }
 
     /// Notes the effect `record` settled in this run.
@@ -137,12 +129,13 @@ impl CallFacts {
         &self,
         live: &CallTree,
         agent: &str,
-        forked_from: &[&str],
+        forked_from: Option<&ForkedFrom>,
     ) -> ChildCalls {
         let settled = self.settled_children(agent);
-        let inherited = forked_from.iter().map(|from| {
+        let inherited = forked_from.into_iter().flat_map(ForkedFrom::agents);
+        let inherited = inherited.map(|from| {
             let children = self.settled_children(from);
-            ((*from).to_owned(), children)
+            (from.to_owned(), children)
         });
         let inherited = inherited.collect();
         let trees = [&self.past.calls, &self.run.calls, live];
@@ -503,9 +496,8 @@ pub(crate) struct Look<'a> {
     pub(crate) renderers: &'a Renderers,
     /// The id of the agent drawn, when it is one of this app's.
     pub(crate) agent: Option<&'a str>,
-    /// The ids of the agents it was forked from, nearest first, as far as
-    /// known.
-    pub(crate) forked_from: &'a [&'a str],
+    /// The agents it was forked from, if it is a fork.
+    pub(crate) forked_from: Option<&'a ForkedFrom>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallRef, CallState>,
     /// The output so far of each of its running calls that reports it.
@@ -648,18 +640,10 @@ impl<'a> Look<'a> {
 
     /// The id of the agent the drawn one was forked from whose effect
     /// records say how the call `at` ran, its running time and the calls
-    /// it started: the nearest that holds it, for a call the fork took
-    /// over. `None` for the drawn agent's own. Only a call `answered`
-    /// outside the running turn that the drawn agent holds no record of is
-    /// taken over, as a fork's own new call may have the place of a later
-    /// call of the agent it was forked from.
-    fn forked_call(&self, at: CallRef, answered: bool) -> Option<&'a str> {
-        let agent = self.agent?;
-        if !answered || self.calls.contains_key(&at) || self.facts.ran(agent, at) {
-            return None;
-        }
-        let mut from = self.forked_from.iter().copied();
-        from.find(|from| self.facts.ran(from, at))
+    /// it started: the one that made its reply, for a call the fork took
+    /// over ([`ForkedFrom::made_by`]). `None` for the drawn agent's own.
+    fn forked_call(&self, at: CallRef) -> Option<&'a str> {
+        self.forked_from?.made_by(at.reply)
     }
 
     /// Where the call `at` stands: stopped when a stop answered it, else
@@ -694,9 +678,7 @@ impl<'a> Look<'a> {
                 self.stops.answered(Some(at)).hash(hasher);
                 self.calls.get(&at).hash(hasher);
                 self.outputs.get(&at).hash(hasher);
-                // As if answered: an answer changes the next message,
-                // which draws this one again.
-                let from = self.forked_call(at, true);
+                let from = self.forked_call(at);
                 self.facts.took(from.or(self.agent), at).hash(hasher);
                 hash_children(self.children.get(Some(at), from), hasher);
             }
@@ -1697,8 +1679,7 @@ fn message_lines(
                     AssistantContent::ToolCall(call) => {
                         let ((index, result), facts) = calls.next().unwrap_or_default();
                         let at = id.map(|reply| CallRef { reply, index });
-                        let answered = result.is_some() || look.stops.answered(at);
-                        let from = at.and_then(|at| look.forked_call(at, answered));
+                        let from = at.and_then(|at| look.forked_call(at));
                         let view = ToolCallView {
                             call,
                             result,

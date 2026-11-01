@@ -242,8 +242,8 @@ impl Agents<'_, '_> {
                 selected = items.len();
             }
             let depth = self.parents.iter_ancestors(listed.entity).count();
-            let from = (listed.from)
-                .map(|from| format!(" · fork of {}", short_id(&from.0)))
+            let from = (listed.from.and_then(|from| from.agents().next()))
+                .map(|from| format!(" · fork of {}", short_id(from)))
                 .unwrap_or_default();
             let current = if Some(listed.entity) == main {
                 " · current"

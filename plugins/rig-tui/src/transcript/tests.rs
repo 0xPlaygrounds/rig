@@ -16,7 +16,7 @@ use rig_core::message::{
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
-use rig_ecs::fork::ForkedFrom;
+use rig_ecs::fork::{Ancestor, ForkedFrom};
 use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
 use rig_ecs::stage::{
     Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
@@ -153,7 +153,7 @@ fn drawn_at(
     let look = Look {
         renderers,
         agent: None,
-        forked_from: &[],
+        forked_from: None,
         calls,
         outputs,
         inside: HashMap::new(),
@@ -1533,9 +1533,9 @@ fn waited(id: u64, parent: Option<u64>, call: Option<CallRef>, took: u64) -> Eff
 }
 
 /// A call a fork took over shows how long it ran and the calls it started,
-/// as the records of the agent it was forked from say, live and once
-/// resumed; the fork's own call at the place of a later call of that agent
-/// takes nothing from it.
+/// as the records of the agent that made it say, live and once resumed,
+/// even with a fork between them gone; a fork's own call at the place of
+/// a later call of its source shows its own.
 #[test]
 fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
     let Ok(wait) = ToolName::new("wait") else {
@@ -1547,32 +1547,46 @@ fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
         Message::Assistant(reply)
     };
     let answering = |call: &ToolCall| Message::tool_result(call.id.clone(), wait.clone(), "done");
+    // A fork of `from` called `id`, made now, as `ForkAgent` makes one.
+    let fork_of = |world: &mut World, from: Entity, id: &str| {
+        let copy = world.get::<Conversation>(from)?.clone();
+        let agent = world.get::<AgentId>(from)?.0.clone();
+        let since = copy.next_id();
+        let older = world.get::<ForkedFrom>(from).map(|from| from.0.clone());
+        let lineage = std::iter::once(Ancestor { agent, since }).chain(older.into_iter().flatten());
+        let fork = (Name::new("agent"), AgentId(id.to_owned()), copy);
+        Some(world.spawn((fork, ForkedFrom(lineage.collect()))).id())
+    };
     let (c1, c2, c3) = (call("c1"), call("c2"), call("c3"));
     let (mut app, source) = layout_app();
     timing(&mut app);
     say(&mut app, source, asking(&c1));
     say(&mut app, source, answering(&c1));
-    let Some(copy) = app.world().get::<Conversation>(source).cloned() else {
+    let Some(middle) = fork_of(app.world_mut(), source, "fork") else {
         return;
     };
-    let fork = (Name::new("agent"), AgentId("fork".to_owned()), copy);
-    let fork = (fork, ForkedFrom("main".to_owned()));
-    let fork = app.world_mut().spawn(fork).id();
     // Both go on from the same message count.
     say(&mut app, source, asking(&c2));
     say(&mut app, source, answering(&c2));
-    say(&mut app, fork, asking(&c3));
-    assert_eq!(message_id(&app, fork, 2), message_id(&app, source, 2));
-    let at = |message| {
+    say(&mut app, middle, asking(&c3));
+    say(&mut app, middle, answering(&c3));
+    assert_eq!(message_id(&app, middle, 2), message_id(&app, source, 2));
+    let Some(last) = fork_of(app.world_mut(), middle, "last") else {
+        return;
+    };
+    let at = |agent, message| {
         Some(CallRef {
-            reply: message_id(&app, source, message)?,
+            reply: message_id(&app, agent, message)?,
             index: 0,
         })
     };
+    let mut own = waited(4, None, at(middle, 2), 3_000);
+    own.scope = Some(Arc::from("fork"));
     let records = vec![
-        waited(1, None, at(0), 5_000),
+        waited(1, None, at(source, 0), 5_000),
         waited(2, Some(1), None, 0),
-        waited(3, None, at(2), 7_000),
+        waited(3, None, at(source, 2), 7_000),
+        own,
     ];
     for record in &records {
         app.world_mut()
@@ -1580,26 +1594,38 @@ fn a_fork_shows_how_the_calls_it_took_over_ran_and_after_a_resume() {
     }
     app.update();
     assert_eq!(timed_rows(&mut app, source), ["Some(5s) 1", "Some(7s) 0"]);
-    assert_eq!(timed_rows(&mut app, fork), ["Some(5s) 1", "None 0"]);
+    let (inherited, own) = ("Some(5s) 1", "Some(3s) 0");
+    assert_eq!(timed_rows(&mut app, middle), [inherited, own]);
+    app.world_mut().despawn(middle);
+    app.update();
+    assert_eq!(timed_rows(&mut app, last), [inherited, own]);
 
     // Resumed: the same conversations and records, read back.
-    let conversations = [source, fork].map(|agent| app.world().get::<Conversation>(agent).cloned());
-    let [Some(source_conversation), Some(fork_conversation)] = conversations else {
+    let world = app.world();
+    let kept = |agent| {
+        Some((
+            world.get::<Conversation>(agent)?.clone(),
+            world.get::<ForkedFrom>(agent).cloned(),
+        ))
+    };
+    let (Some((source_conversation, _)), Some((last_conversation, Some(lineage)))) =
+        (kept(source), kept(last))
+    else {
         return;
     };
     let (mut resumed, source) = layout_app();
     timing(&mut resumed);
     let world = resumed.world_mut();
     world.entity_mut(source).insert(source_conversation);
-    let fork = (
+    let last = (
         Name::new("agent"),
-        AgentId("fork".to_owned()),
-        fork_conversation,
+        AgentId("last".to_owned()),
+        last_conversation,
     );
-    let fork = world.spawn((fork, ForkedFrom("main".to_owned()))).id();
+    let last = world.spawn((last, lineage)).id();
     world.write_message(PastEffects::new(records));
     resumed.update();
-    assert_eq!(timed_rows(&mut resumed, fork), ["Some(5s) 1", "None 0"]);
+    assert_eq!(timed_rows(&mut resumed, last), [inherited, own]);
 }
 
 /// A mark inside a saved reply's text block is drawn between the words it

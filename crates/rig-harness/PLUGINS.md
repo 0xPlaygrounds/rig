@@ -1816,7 +1816,9 @@ effect, which a holder may take as "stop waiting".
   or before `through` (`None` for the end), so a compaction made before the
   cut is undone in it too; it has the saved components `agent` has now
   (model, reasoning, tools, prompt, working directory), its connection, its
-  prompt-cache key (`CacheKey`) and a `ForkedFrom` naming `agent`.
+  prompt-cache key (`CacheKey`) and a `ForkedFrom` listing `agent` and the
+  agents it came from, nearest first; `ForkedFrom::made_by` says which of
+  them made a message the fork copied.
   `AgentForked { from, fork, through }` names it. `rig_basics::sessions`'
   `/fork`, `/agents` and rewind are built on it, and show the fork, which
   makes it the session's `CurrentAgent`.

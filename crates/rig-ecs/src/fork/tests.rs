@@ -113,6 +113,70 @@ fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_resto
     assert_eq!(prompt.as_deref(), Some("be brief"));
 }
 
+/// A fork of a fork says which agent made each message it copied, after
+/// a restart too, and none for its own.
+#[test]
+fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
+    let store = MemoryStore::default();
+    let mut app = app(&store);
+    let source = app.world_mut().spawn(Agent).id();
+    let fork = |app: &mut App, agent: Entity| {
+        app.world_mut().trigger(ForkAgent {
+            agent,
+            through: None,
+        });
+        app.update();
+        app.world().resource::<Forks>().0.last().map(|f| f.fork)
+    };
+    let say = |app: &mut App, agent: Entity, said: [&str; 2]| {
+        let [asked, answer] = said;
+        for message in [Message::user(asked), Message::assistant(answer)] {
+            push_message(app.world_mut(), agent, message);
+        }
+        app.update();
+    };
+    say(&mut app, source, ["one?", "one."]);
+    let Some(middle) = fork(&mut app, source) else {
+        return;
+    };
+    say(&mut app, middle, ["two?", "two."]);
+    let Some(last) = fork(&mut app, middle) else {
+        return;
+    };
+    say(&mut app, last, ["three?", "three."]);
+    let world = app.world();
+    let ids = [source, middle, last].map(|agent| world.get::<AgentId>(agent).cloned());
+    let [Some(source_id), Some(middle_id), Some(last_id)] = ids else {
+        return;
+    };
+    let made = |app: &mut App| {
+        let last = agent(app, &last_id)?;
+        let world = app.world();
+        let (conversation, from) = (
+            world.get::<Conversation>(last)?,
+            world.get::<ForkedFrom>(last)?,
+        );
+        let made = conversation
+            .entries()
+            .map(|entry| from.made_by(entry.id).map(str::to_owned));
+        Some(made.collect::<Vec<_>>())
+    };
+    let (source_id, middle_id) = (Some(source_id.0), Some(middle_id.0));
+    let expected = [
+        source_id.clone(),
+        source_id,
+        middle_id.clone(),
+        middle_id,
+        None,
+        None,
+    ];
+    assert_eq!(made(&mut app).as_deref(), Some(expected.as_slice()));
+    drop(app);
+
+    let mut again = self::app(&store);
+    assert_eq!(made(&mut again).as_deref(), Some(expected.as_slice()));
+}
+
 /// Without a type registry to copy the saved components with, a fork is a
 /// notice, and no log is copied for it.
 #[test]
@@ -181,7 +245,9 @@ fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
             world.get::<Setting>(entity).cloned(),
             world.get::<Meter>(entity).cloned(),
             world.get::<Duty>(entity).cloned(),
-            world.get::<ForkedFrom>(entity).cloned(),
+            world
+                .get::<ForkedFrom>(entity)
+                .map(|from| from.agents().map(str::to_owned).collect::<Vec<_>>()),
         )
     };
     let source_id = app.world().get::<AgentId>(source).cloned();
@@ -189,7 +255,7 @@ fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
     let (Some(source_id), Some(fork_id)) = (source_id, fork_id) else {
         return;
     };
-    let from = Some(ForkedFrom(source_id.0.clone()));
+    let from = Some(vec![source_id.0.clone()]);
     let forked = (Some(Setting(1)), Some(Meter(0)), None, from);
     assert_eq!(read(app.world(), fork), forked);
     assert_eq!(

@@ -608,6 +608,12 @@ impl Conversation {
         self.meta.iter().position(|meta| meta.id == id)
     }
 
+    /// The id the next entry made gets. Every id below it was given out
+    /// before, here or in the conversation this one was copied from.
+    pub fn next_id(&self) -> MessageId {
+        MessageId(self.next_id)
+    }
+
     /// Where a span that began at entry `id` begins now, such as a turn:
     /// its index while it is there; the end for an entry not made yet; 0
     /// for one an edit took out, as a summary then stands for what came
