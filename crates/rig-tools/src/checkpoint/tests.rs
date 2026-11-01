@@ -578,3 +578,195 @@ fn a_file_a_scan_could_not_look_at_is_not_deleted() {
         "{content:?}"
     );
 }
+
+#[track_caller]
+fn require(condition: bool) -> std::io::Result<()> {
+    if condition {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "check failed at {}",
+            std::panic::Location::caller()
+        )))
+    }
+}
+
+#[test]
+fn git_checkpoints_preserve_unconverted_bytes() -> Result<(), Box<dyn std::error::Error>> {
+    let repo = scratch("checkpoint-raw");
+    let keep = scratch("checkpoint-raw-keep");
+    require(git_in(&repo, &["init", "-q"]))?;
+    require(git_in(&repo, &["config", "core.autocrlf", "true"]))?;
+    require(git_in(&repo, &["config", "core.safecrlf", "false"]))?;
+    require(git_in(
+        &repo,
+        &["config", "filter.checkpoint.clean", "false"],
+    ))?;
+    require(git_in(
+        &repo,
+        &["config", "filter.checkpoint.required", "true"],
+    ))?;
+    std::fs::write(
+        repo.join(".gitattributes"),
+        "*.txt text eol=crlf filter=checkpoint ident\n*.utf16 working-tree-encoding=UTF-16LE\n",
+    )?;
+    let file = repo.join("a.txt");
+    let bytes = b"one\r\n$Id: original $\r\n";
+    std::fs::write(&file, bytes)?;
+    let encoded = repo.join("encoded.utf16");
+    std::fs::write(&encoded, b"a\0\n\0")?;
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first = snapshot(&Local, &repo, &taking, None)?;
+    require(matches!(first.0, super::Taken::Git { .. }))?;
+    require(
+        (first
+            .content(&file)
+            .ok_or("checkpoint content was not kept")??)
+            == (bytes),
+    )?;
+    require(
+        (first
+            .content(&encoded)
+            .ok_or("checkpoint content was not kept")??)
+            == (b"a\0\n\0"),
+    )?;
+    std::fs::write(&file, b"one\n$Id: original $\n")?;
+    let second = snapshot(&Local, &repo, &taking, Some(&first))?;
+    let changes = second.changes_since(&first)?;
+    require((changes.len()) == (1))?;
+    require(
+        changes
+            .iter()
+            .all(|change| change.kind == ChangeKind::Modified && Path::new(&change.path) == file),
+    )?;
+    require(
+        (first
+            .content(&file)
+            .ok_or("checkpoint content was not kept")??)
+            == (bytes),
+    )?;
+    std::fs::remove_dir_all(repo)?;
+    std::fs::remove_dir_all(keep)?;
+    Ok(())
+}
+
+#[test]
+fn sibling_git_checkpoints_do_not_share_index_entries() -> Result<(), Box<dyn std::error::Error>> {
+    let repo = scratch("checkpoint-siblings");
+    let keep = scratch("checkpoint-siblings-keep");
+    require(git_in(&repo, &["init", "-q"]))?;
+    let a = repo.join("a");
+    let b = repo.join("b");
+    std::fs::create_dir_all(&a)?;
+    std::fs::create_dir_all(&b)?;
+    std::fs::write(a.join("a.txt"), "A\n")?;
+    std::fs::write(b.join("b.txt"), "B\n")?;
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first_a = snapshot(&Local, &a, &taking, None)?;
+    let first_b = snapshot(&Local, &b, &taking, None)?;
+    let second_a = snapshot(&Local, &a, &taking, Some(&first_a))?;
+    require(second_a.changes_since(&first_a)?.is_empty())?;
+    std::fs::write(b.join("b.txt"), "changed B\n")?;
+    let second_b = snapshot(&Local, &b, &taking, Some(&first_b))?;
+    let third_a = snapshot(&Local, &a, &taking, Some(&second_a))?;
+    require(third_a.changes_since(&second_a)?.is_empty())?;
+    let changed = second_b.changes_since(&first_b)?;
+    require((changed.len()) == (1))?;
+    require(
+        changed
+            .iter()
+            .all(|change| Path::new(&change.path) == b.join("b.txt")),
+    )?;
+    std::fs::remove_dir_all(repo)?;
+    std::fs::remove_dir_all(keep)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn raw_git_checkpoints_keep_symlinks_and_unusual_names() -> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::{
+        ffi::OsStrExt,
+        fs::{PermissionsExt, symlink},
+    };
+    let repo = scratch("checkpoint-raw-paths");
+    let keep = scratch("checkpoint-raw-paths-keep");
+    require(git_in(&repo, &["init", "-q"]))?;
+    let paths = ["space name", "line\nbreak", "-dash", ":colon"];
+    for path in paths {
+        std::fs::write(repo.join(path), b"raw\r\n")?;
+    }
+    let binary_name = std::ffi::OsStr::from_bytes(b"nonutf8-\xff");
+    std::fs::write(repo.join(binary_name), b"bytes")?;
+    std::fs::set_permissions(repo.join("-dash"), std::fs::Permissions::from_mode(0o755))?;
+    symlink("missing", repo.join("link"))?;
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first = snapshot(&Local, &repo, &taking, None)?;
+    for path in paths {
+        require(
+            (first
+                .content(&repo.join(path))
+                .ok_or("checkpoint content was not kept")??)
+                == (b"raw\r\n"),
+        )?;
+    }
+    require(
+        (first
+            .content(&repo.join("link"))
+            .ok_or("checkpoint content was not kept")??)
+            == (b"missing"),
+    )?;
+    if let super::Taken::Git { git, tree } = &first.0 {
+        let entries = git.run(&["ls-tree", "-r", tree].map(std::ffi::OsStr::new))?;
+        require(String::from_utf8_lossy(&entries).contains("100755 blob"))?;
+    }
+    std::fs::remove_dir_all(repo)?;
+    std::fs::remove_dir_all(keep)?;
+    Ok(())
+}
+
+#[test]
+fn raw_git_checkpoints_keep_nested_repository_heads() -> Result<(), Box<dyn std::error::Error>> {
+    let repo = scratch("checkpoint-nested");
+    let keep = scratch("checkpoint-nested-keep");
+    let nested = repo.join("nested");
+    std::fs::create_dir_all(&nested)?;
+    require(git_in(&repo, &["init", "-q"]))?;
+    require(git_in(&nested, &["init", "-q"]))?;
+    std::fs::write(nested.join("a.txt"), "first\n")?;
+    require(git_in(&nested, &["add", "."]))?;
+    require(git_in(&nested, &["commit", "-qm", "first"]))?;
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first = snapshot(&Local, &repo, &taking, None)?;
+    let read = |snapshot: &super::Snapshot| -> std::io::Result<Vec<u8>> {
+        match &snapshot.0 {
+            super::Taken::Git { git, tree } => {
+                git.run(&["ls-tree", tree, "nested"].map(std::ffi::OsStr::new))
+            }
+            _ => Err(std::io::Error::other("expected Git snapshot")),
+        }
+    };
+    let old = read(&first)?;
+    require(old.starts_with(b"160000 commit "))?;
+    let unchanged = snapshot(&Local, &repo, &taking, Some(&first))?;
+    require(unchanged.changes_since(&first)?.is_empty())?;
+    std::fs::write(nested.join("a.txt"), "second\n")?;
+    require(git_in(&nested, &["commit", "-qam", "second"]))?;
+    let second = snapshot(&Local, &repo, &taking, Some(&first))?;
+    require(read(&second)? != old)?;
+    std::fs::remove_dir_all(repo)?;
+    std::fs::remove_dir_all(keep)?;
+    Ok(())
+}

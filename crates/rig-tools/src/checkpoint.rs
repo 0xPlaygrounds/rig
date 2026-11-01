@@ -99,8 +99,7 @@ impl Seen {
 ///
 /// With [`Taking::keep`], a local `workspace` ([`host`](Workspace::host) is
 /// `None`) and `root` in a git work tree that does not ignore it, it is a
-/// git tree: the private index makes each later snapshot cost what
-/// changed. Otherwise, or when `earlier` was a scan, it scans, hashing
+/// git tree of the working files' unconverted bytes. Otherwise, or when `earlier` was a scan, it scans, hashing
 /// only the files whose size or change time differ from `earlier`'s (every
 /// file when there is none, or the workspace cannot tell the time), and
 /// with `keep` writes the content of each file it hashed to `keep`, once
@@ -472,7 +471,7 @@ impl Git {
         {
             return None;
         }
-        let keep = private(keep, &top);
+        let keep = private(keep, &canonical);
         Some(Self {
             objects: canonical.join(objects),
             root: root.to_path_buf(),
@@ -512,7 +511,15 @@ impl Git {
 
     /// What `args` prints, or why it failed.
     fn run(&self, args: &[&OsStr]) -> io::Result<Vec<u8>> {
-        let output = Process::start(self.command(args), Spawn::default())?.output(None)?;
+        self.run_with(args, None)
+    }
+
+    fn run_with(&self, args: &[&OsStr], stdin: Option<Vec<u8>>) -> io::Result<Vec<u8>> {
+        let how = Spawn {
+            stdin,
+            merge_stderr: false,
+        };
+        let output = Process::start(self.command(args), how)?.output(None)?;
         match output.status.success() {
             true => Ok(output.stdout),
             false => Err(io::Error::other(format!(
@@ -527,8 +534,8 @@ impl Git {
     /// Adds the root's files, and every file under each of `also` that is
     /// there, to the private index and writes its tree.
     fn write_tree(&self, also: &[PathBuf]) -> io::Result<String> {
-        // Calls checkpointed at once share the private index, whose lock
-        // `git add` takes and fails on when another holds it.
+        // Listing, replacing the index and writing its tree must belong to
+        // one snapshot when calls checkpoint the same root at once.
         static INDEX: Mutex<()> = Mutex::new(());
         let _index = INDEX.lock().unwrap_or_else(PoisonError::into_inner);
         std::fs::create_dir_all(self.keep.join("objects"))?;
@@ -536,18 +543,115 @@ impl Git {
             true => OsStr::new("."),
             false => self.below.as_os_str(),
         };
-        let add = ["add", "--all", "--ignore-errors", "--"].map(OsStr::new);
-        self.run(&[add.as_slice(), &[below]].concat())?;
-        let also: Vec<PathBuf> = also
+        let list = [
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+        ]
+        .map(OsStr::new);
+        let mut listed = self.run(&[list.as_slice(), &[below]].concat())?;
+        for path in also
             .iter()
-            .filter(|path| path.exists())
-            .filter_map(|path| Some(self.below.join(path.strip_prefix(&self.root).ok()?)))
-            .collect();
-        if !also.is_empty() {
-            let force = ["add", "--all", "--force", "--ignore-errors", "--"].map(OsStr::new);
-            let also = also.iter().map(|path| path.as_os_str());
-            self.run(&force.into_iter().chain(also).collect::<Vec<_>>())?;
+            .filter_map(|path| path.strip_prefix(&self.root).ok())
+        {
+            let path = self.below.join(path);
+            let force = ["ls-files", "--cached", "--others", "-z", "--"].map(OsStr::new);
+            listed.extend(self.run(&[force.as_slice(), &[path.as_os_str()]].concat())?);
         }
+        let mut files = BTreeMap::new();
+        for bytes in listed
+            .split(|byte| *byte == 0)
+            .filter(|bytes| !bytes.is_empty())
+        {
+            let bytes = bytes.strip_suffix(b"/").unwrap_or(bytes);
+            #[cfg(unix)]
+            let path = {
+                use std::os::unix::ffi::OsStrExt;
+                PathBuf::from(OsStr::from_bytes(bytes))
+            };
+            #[cfg(not(unix))]
+            let path = PathBuf::from(std::str::from_utf8(bytes).map_err(io::Error::other)?);
+            let meta = match std::fs::symlink_metadata(self.top.join(&path)) {
+                Ok(meta) => meta,
+                Err(error) if error.kind() == ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            if meta.is_file()
+                || meta.is_symlink()
+                || meta.is_dir() && self.top.join(&path).join(".git").exists()
+            {
+                files.insert(path, meta);
+            }
+        }
+        // Hash the actual bytes, without attributes, clean filters or stat-cache
+        // shortcuts: a line-ending-only edit must change the tree too.
+        let mut entries = Vec::new();
+        let mut entry = |path: &Path, mode: &str, hash: &[u8]| {
+            entries.extend_from_slice(mode.as_bytes());
+            entries.push(b' ');
+            entries.extend_from_slice(hash);
+            entries.push(b'\t');
+            entries.extend_from_slice(path.as_os_str().as_encoded_bytes());
+            entries.push(0);
+        };
+        let regular: Vec<_> = files.iter().filter(|(_, meta)| meta.is_file()).collect();
+        for chunk in regular.chunks(100) {
+            let args = ["hash-object", "-w", "--no-filters", "--"].map(OsStr::new);
+            let paths = chunk.iter().map(|(path, _)| path.as_os_str());
+            let hashes = self.run(&args.into_iter().chain(paths).collect::<Vec<_>>())?;
+            let hashes: Vec<_> = hashes
+                .split(|byte| *byte == b'\n')
+                .filter(|hash| !hash.is_empty())
+                .collect();
+            if hashes.len() != chunk.len() {
+                return Err(io::Error::other("git did not hash every checkpoint file"));
+            }
+            for ((path, _meta), hash) in chunk.iter().zip(hashes) {
+                #[cfg(unix)]
+                let executable = {
+                    use std::os::unix::fs::PermissionsExt;
+                    _meta.permissions().mode() & 0o111 != 0
+                };
+                #[cfg(not(unix))]
+                let executable = false;
+                entry(path, if executable { "100755" } else { "100644" }, hash);
+            }
+        }
+        for (path, _) in files.iter().filter(|(_, meta)| meta.is_symlink()) {
+            let target = std::fs::read_link(self.top.join(path))?;
+            let hash = self.run_with(
+                &["hash-object", "-w", "--no-filters", "--stdin"].map(OsStr::new),
+                Some(target.as_os_str().as_encoded_bytes().to_vec()),
+            )?;
+            entry(path, "120000", hash.trim_ascii());
+        }
+        for (path, _) in files.iter().filter(|(_, meta)| meta.is_dir()) {
+            let mut command = self.launcher.command("git");
+            command
+                .arg("-C")
+                .arg(self.top.join(path))
+                .args(["rev-parse", "--verify", "HEAD"])
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_INDEX_FILE")
+                .env_remove("GIT_OBJECT_DIRECTORY")
+                .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES");
+            let head = Process::start(command, Spawn::default())?.output(None)?;
+            if !head.status.success() {
+                return Err(io::Error::other(
+                    "a nested repository has no checkpointable HEAD",
+                ));
+            }
+            entry(path, "160000", head.stdout.trim_ascii());
+        }
+        self.run(&["read-tree", "--empty"].map(OsStr::new))?;
+        self.run_with(
+            &["update-index", "-z", "--index-info"].map(OsStr::new),
+            Some(entries),
+        )?;
         let tree = self.run(&[OsStr::new("write-tree")])?;
         Ok(String::from_utf8_lossy(&tree).trim().to_owned())
     }
@@ -684,8 +788,8 @@ fn change(path: &str, before: Option<Vec<u8>>, after: Option<&[u8]>) -> FileChan
 ///
 /// `newest`, shared between the calls one host checkpoints with the same
 /// `root`, is the newest snapshot any of them took: each call hands it to [`snapshot`] as
-/// `earlier`, so a scan hashes again only what changed and git's private
-/// index stays warm, but never takes it as its "before". `first`, shared
+/// `earlier`, so a scan hashes again only what changed and git reuses its
+/// private objects, but never takes it as its "before". `first`, shared
 /// the same way, keeps the first "before" taken, the files as they were
 /// before the first of those calls, so the host can tell what all of them
 /// changed or restore a file. `before`, this call's own, keeps the
