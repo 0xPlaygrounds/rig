@@ -6,15 +6,14 @@ use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
 
 use super::ModelItem;
 
-/// What a catalog model is to `/model`: its reference, and its line with
-/// why it cannot be used, if it cannot.
+/// What a catalog model is to `/model`: its reference, and its line.
 pub(super) struct Listed {
     pub(super) reference: String,
     pub(super) line: String,
 }
 
-/// Catalog models except those a signed-in account does not offer: first
-/// those that can be reached, as rig-core orders them, then why the rest cannot.
+/// The catalog models that can be used now, as rig-core orders them, and
+/// those of a signed-in plan still being checked.
 pub(super) fn catalog(models: &Connector) -> Vec<Listed> {
     let statuses = models.statuses().into_iter();
     let listed = statuses.filter_map(|(spec, status)| {
@@ -24,11 +23,12 @@ pub(super) fn catalog(models: &Connector) -> Vec<Listed> {
                 None if spec.provider.requires_credential() => String::new(),
                 None => "  (no key needed)".to_owned(),
             },
-            ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
-            ModelStatus::NoTools => "  (calls no tools)".to_owned(),
-            ModelStatus::Unavailable(why) => format!("  (unavailable: {why})"),
             ModelStatus::Checking => "  (checking your plan)".to_owned(),
-            ModelStatus::NotOffered(_) => return None,
+            ModelStatus::NotOffered(_)
+            | ModelStatus::NoKey(_)
+            | ModelStatus::Unconfigured
+            | ModelStatus::NoTools
+            | ModelStatus::Unavailable(_) => return None,
         };
         Some(listing(spec, &note))
     });
@@ -48,9 +48,10 @@ fn listing(spec: &ModelSpec, note: &str) -> Listed {
 #[derive(Component)]
 pub(super) struct ModelList;
 
-/// The [`ModelItem`]s, then the catalog's models, each with why it cannot
-/// be used, if it cannot; the agent's `current` model says so. Returns the
-/// lines and the one to select at first.
+/// The [`ModelItem`]s, then the catalog's models that can be used, after
+/// the agent's `current` model when it is not one of them, such as one
+/// whose key is gone; the current one says so. Returns the lines and the
+/// one to select at first.
 fn model_items(
     models: &Models,
     contributed: &Query<&ModelItem>,
@@ -65,8 +66,27 @@ fn model_items(
         more: None,
         checked: false,
     });
+    let mut listed = catalog(&models.0);
+    let chosen = current.and_then(|current| models.0.catalog().resolve(&current.0).ok());
+    if let Some(chosen) = chosen
+        && !listed
+            .iter()
+            .any(|it| it.reference == chosen.spec.reference())
+    {
+        // Why it cannot be used, as it is listed anyway.
+        let note = match models.0.status(chosen.spec) {
+            ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
+            ModelStatus::Unconfigured => "  (at its default address)".to_owned(),
+            ModelStatus::NoTools => "  (calls no tools)".to_owned(),
+            ModelStatus::Unavailable(why) | ModelStatus::NotOffered(why) => {
+                format!("  (unavailable: {why})")
+            }
+            ModelStatus::Usable | ModelStatus::Checking => String::new(),
+        };
+        listed.insert(0, listing(chosen.spec, &note));
+    }
     let current = current.map(|current| format!("model {}", current.0));
-    let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
+    let listed = listed.into_iter().map(|listed| PickItem {
         label: listed.line,
         command: format!("model {}", listed.reference),
         detail: None,
@@ -84,7 +104,7 @@ fn model_items(
 }
 
 /// Lets the user pick one of the [`model_items`], selecting the agent's
-/// `current` model at first.
+/// `current` model at first; with none, says how to make one usable.
 pub(super) fn pick_model(
     agent: Entity,
     (models, contributed, current): (&Models, &Query<&ModelItem>, Option<&ModelChoice>),
@@ -93,7 +113,7 @@ pub(super) fn pick_model(
 ) {
     let (items, selected) = model_items(models, contributed, current);
     if items.is_empty() {
-        notices.write(Notice::error(agent, "The catalog lists no model."));
+        notices.write(Notice::error(agent, nothing_usable(models)));
         return;
     }
     commands.spawn((
@@ -106,22 +126,49 @@ pub(super) fn pick_model(
     ));
 }
 
+/// Why no model can be used, and how to make one usable: a sign-in's own
+/// reason, when its models are why.
+fn nothing_usable(models: &Models) -> String {
+    let statuses = models.0.statuses().into_iter();
+    let signed_in = statuses.filter(|(spec, _)| models.0.plan(spec).is_some());
+    let why = signed_in
+        .filter_map(|(_, status)| match status {
+            ModelStatus::Unavailable(why) | ModelStatus::NotOffered(why) => Some(why),
+            _ => None,
+        })
+        .next();
+    let why = why.unwrap_or_else(|| {
+        "export a provider's API key, such as OPENAI_API_KEY, sign in with /login, or name a \
+         local server with OLLAMA_API_BASE_URL"
+            .to_owned()
+    });
+    format!("No model can be used now: {why}.")
+}
+
 /// Keeps the lines of an open `/model` picker current once the [`Models`]
 /// changed, such as when a sign-in learned which models its account
-/// offers, before the terminal view finds its selection again.
+/// offers, before the terminal view finds its selection again; closes one
+/// left with no line, saying why, as opening it would have.
 pub(super) fn relist(
     models: Res<Models>,
     contributed: Query<&ModelItem>,
     chosen: Query<&ModelChoice>,
-    mut lists: Query<&mut Picker, With<ModelList>>,
+    mut lists: Query<(Entity, &mut Picker), With<ModelList>>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
     if !models.is_changed() {
         return;
     }
-    for mut picker in &mut lists {
+    for (list, mut picker) in &mut lists {
         let current = picker.agent.and_then(|agent| chosen.get(agent).ok());
         let (items, selected) = model_items(&models, &contributed, current);
-        if picker.items != items {
+        if items.is_empty() {
+            commands.entity(list).despawn();
+            if let Some(agent) = picker.agent {
+                notices.write(Notice::error(agent, nothing_usable(&models)));
+            }
+        } else if picker.items != items {
             // Read only by a picker not shown yet, such as one queued behind
             // another; a shown one keeps its own selection.
             picker.items = items;

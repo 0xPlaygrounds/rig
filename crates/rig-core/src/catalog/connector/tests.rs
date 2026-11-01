@@ -365,27 +365,29 @@ fn a_sign_in_reports_each_models_offer_and_only_offered_models_are_reachable() {
 }
 
 #[test]
-fn models_without_a_sign_in_plan_keep_one_check_per_provider() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    let Ok(vendor) = ProviderId::declare("connector-cached") else {
+fn a_registered_providers_models_are_checked_one_by_one() {
+    let Ok(vendor) = ProviderId::declare("connector-mixed") else {
         panic!("valid vendor");
     };
-    let checks = Arc::new(AtomicUsize::new(0));
-    let counted = checks.clone();
     let mut connector = Connector::new(Catalog::default());
-    for id in ["one", "two"] {
+    // Either order: a refusal must not hide the usable one, nor a success
+    // cover the refused one.
+    for id in ["a-down", "b-up", "c-down"] {
         connector
             .catalog_mut()
             .insert(ModelSpec::new(vendor, id).with_tools(true));
     }
     connector.provide(
         vendor,
-        move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
-            counted.fetch_add(1, Ordering::SeqCst);
-            Ok(adapted(spec, MockCompletionModel::text("ok").into()))
+        |spec: &ModelSpec, _: &Catalog, _: &Transport| match spec.id.ends_with("down") {
+            true => Err(ConnectError::Provider("its server is down".to_owned())),
+            false => Ok(adapted(spec, MockCompletionModel::text("ok").into())),
         },
     );
-    assert_eq!(connector.reachable().len(), 2);
-    assert_eq!(checks.load(Ordering::SeqCst), 1);
+    let reachable: Vec<String> = connector
+        .reachable()
+        .into_iter()
+        .map(ModelSpec::reference)
+        .collect();
+    assert_eq!(reachable, ["connector-mixed/b-up"]);
 }

@@ -2,36 +2,68 @@
 //! lists them: asked once per run at first need, on the IO pool, and once
 //! more after the backend said a model it was sent was not found. Until the
 //! answer comes, listings say the plan's models are being checked and
-//! requests wait for it; a failure is refused out loud, never guessed.
+//! requests wait for it. A list that could not be had is refused out loud,
+//! never guessed, and not kept. A fetch nobody's request waits for retries
+//! a transient failure itself, as a model call is retried; after a failure
+//! the next request asks again, once any wait the backend asked for is
+//! over, and so does a listing a while later.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant, SystemTime};
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::catalog::{ModelSpec, ModelStatus};
 use rig_core::client::chatgpt_models::{LIST_TIMEOUT, account_models};
+use rig_core::client::signed_in::failed_sign_in;
 use rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::http_client::DynHttpClient;
 use rig_core::providers::chatgpt::{self, auth::Authenticator};
 use rig_core::serve::{AfterServe, BeforeServe, Intercept};
-use rig_core::wasm_compat::timeout;
+use rig_core::wasm_compat::{sleep, timeout};
 
 use rig_ecs::agent::{ActiveTurn, Notice};
-use rig_ecs::model::{ChoiceTaken, Connection, ModelRefused, Models};
+use rig_ecs::model::{Connection, ModelRefused, Models};
+use rig_ecs::retry::{RetryPolicy, Verdict};
 use rig_ecs::tasks::Wake;
 
 use super::{PROVIDER, TITLE};
 
 /// What the backend answered: the slugs the account may use, or why it
-/// could not be asked.
-type Asked = Result<Arc<[String]>, String>;
+/// could not be asked, as a request refused for it reports it.
+type Asked = Result<Arc<[String]>, ErrorReport>;
+
+/// How hard asking tries.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Pace {
+    /// How a fetch nobody's request waits for retries a transient failure.
+    pub(super) retry: RetryPolicy,
+    /// How long after a failure a listing asks again, at least.
+    pub(super) cooldown: Duration,
+}
+
+/// Two retries, as a model call is retried, and a listing asks again 10 s
+/// after a failure, which keeps the listing that follows each answer from
+/// asking again at once.
+impl Default for Pace {
+    fn default() -> Self {
+        Self {
+            retry: RetryPolicy {
+                max_retries: 2,
+                ..RetryPolicy::DEFAULT
+            },
+            cooldown: LIST_TIMEOUT,
+        }
+    }
+}
 
 /// The account's models, shared by the sign-in, its models' requests and
 /// the app.
 #[derive(Default)]
 pub(super) struct Offered {
+    pace: Pace,
     state: Mutex<State>,
     /// Bumped each time an answer comes, so the app marks [`Models`]
     /// changed and listings are built again.
@@ -56,10 +88,23 @@ enum Asking {
     NotYet,
     /// A fetch runs; each request waiting for it holds one of these.
     Running(Vec<async_channel::Sender<Asked>>),
-    Answered(Asked),
+    /// The account's models.
+    Answered(Arc<[String]>),
+    /// The last fetch failed, when, and how long the backend asked not to
+    /// be asked again.
+    Failed(ErrorReport, Instant, Duration),
 }
 
 impl Offered {
+    /// No answer yet, asked at `pace`.
+    #[cfg(test)]
+    pub(super) fn paced(pace: Pace) -> Self {
+        Self {
+            pace,
+            ..Self::default()
+        }
+    }
+
     fn state(&self) -> MutexGuard<'_, State> {
         self.state
             .lock()
@@ -78,14 +123,19 @@ impl Offered {
         self.answers.load(Ordering::Acquire)
     }
 
-    /// The answer, if it came; asking starts on the IO pool if it had not.
+    /// The answer, if it came, or why the last fetch failed; asking starts
+    /// on the IO pool if it had not, or if the failure is older than the
+    /// [`Pace`]'s cooldown and the wait the backend asked for.
     fn now(self: &Arc<Self>, auth: &Authenticator, http: &DynHttpClient) -> Option<Asked> {
         let mut state = self.state();
         match &state.asked {
-            Asking::Answered(asked) => Some(asked.clone()),
+            Asking::Answered(listed) => Some(Ok(Arc::clone(listed))),
+            Asking::Failed(failure, at, wait) if at.elapsed() < self.pace.cooldown.max(*wait) => {
+                Some(Err(failure.clone()))
+            }
             Asking::Running(_) => None,
-            Asking::NotYet => {
-                self.start(&mut state, (auth, http), Vec::new());
+            Asking::NotYet | Asking::Failed(..) => {
+                self.start(&mut state, (auth, http), Vec::new(), true);
                 None
             }
         }
@@ -113,42 +163,71 @@ impl Offered {
         }
     }
 
-    /// Why a model of the plan `spec` names is refused, once the answer is
-    /// known, worded after `Cannot use <model>:`; `None` while it is not, so
-    /// a model can connect and its request waits.
+    /// Why a model of the plan `spec` names is refused, once the answer
+    /// leaves it out, worded after `Cannot use <model>:`; `None` while the
+    /// answer is not known or could not be had, so a model can connect and
+    /// its request waits for the answer or asks again.
     pub(super) fn refused(
         self: &Arc<Self>,
         spec: &ModelSpec,
         auth: &Authenticator,
         http: &DynHttpClient,
     ) -> Option<String> {
-        let asked = self.now(auth, http)?;
-        refusal(&asked, &spec.id).map(Refusal::reason)
+        let listed = self.now(auth, http)?.ok()?;
+        let offered = listed.contains(&spec.id);
+        (!offered).then(|| Refusal::NotOffered.reason())
     }
 
-    /// Why the model `slug` is refused, if the answer came and refuses it.
+    /// Why the model `slug` is refused, if the answer came and leaves it out.
     pub(super) fn known_refusal(&self, slug: &str) -> Option<Refusal> {
         match &self.state().asked {
-            Asking::Answered(asked) => refusal(asked, slug),
+            Asking::Answered(listed) if !listed.iter().any(|listed| listed == slug) => {
+                Some(Refusal::NotOffered)
+            }
             _ => None,
         }
     }
 
-    /// The answer, waiting for it, asking first if nobody had.
+    /// The answer, waiting for it, asking first if nobody had or the last
+    /// fetch failed, once the wait the backend asked for is over; the
+    /// failure itself when that wait is longer than a model call would. A
+    /// sign-in or sign-out meanwhile asks again for the new account.
     async fn answer(self: &Arc<Self>, auth: &Authenticator, http: &DynHttpClient) -> Asked {
-        let (sender, waiting) = async_channel::bounded(1);
-        {
-            let mut state = self.state();
-            match &mut state.asked {
-                Asking::Answered(asked) => return asked.clone(),
-                Asking::Running(waiting) => waiting.push(sender),
-                Asking::NotYet => self.start(&mut state, (auth, http), vec![sender]),
+        loop {
+            let (sender, waiting) = async_channel::bounded(1);
+            let left = {
+                let mut state = self.state();
+                let left = match &state.asked {
+                    Asking::Answered(listed) => return Ok(Arc::clone(listed)),
+                    Asking::Failed(failure, at, wait) => {
+                        let left = wait.saturating_sub(at.elapsed());
+                        if left > self.pace.retry.max_asked_wait {
+                            return Err(failure.clone());
+                        }
+                        left
+                    }
+                    Asking::NotYet | Asking::Running(_) => Duration::ZERO,
+                };
+                match &mut state.asked {
+                    Asking::Running(waiting) => waiting.push(sender),
+                    _ if left.is_zero() => {
+                        self.start(&mut state, (auth, http), vec![sender], false)
+                    }
+                    _ => {}
+                }
+                left
+            };
+            if !left.is_zero() {
+                // A second at a time, so a sign-in or sign-out meanwhile,
+                // which forgets the failure, is seen.
+                sleep(left.min(Duration::from_secs(1))).await;
+                continue;
+            }
+            // Dropped by a sign-in or sign-out, which asks anew.
+            if let Ok(asked) = waiting.recv().await {
+                return asked;
             }
         }
-        waiting
-            .recv()
-            .await
-            .unwrap_or_else(|_| Err("the model list request ended".to_owned()))
     }
 
     /// Asks again once in this run, after the backend did not find a model
@@ -159,7 +238,7 @@ impl Offered {
             return;
         }
         state.again = true;
-        self.start(&mut state, (auth, http), Vec::new());
+        self.start(&mut state, (auth, http), Vec::new(), true);
     }
 
     /// Forgets the answer, as a sign-in or sign-out may change the account,
@@ -174,33 +253,38 @@ impl Offered {
         self.answers.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// Starts the one request on the IO pool, which answers `waiting` too.
+    /// Starts the one fetch on the IO pool, which answers `waiting` too:
+    /// retried as the [`Pace`] says when `retries`, since no request does.
     fn start(
         self: &Arc<Self>,
         state: &mut State,
         (auth, http): (&Authenticator, &DynHttpClient),
         waiting: Vec<async_channel::Sender<Asked>>,
+        retries: bool,
     ) {
         state.asked = Asking::Running(waiting);
         let (epoch, offered) = (state.epoch, Arc::clone(self));
         let (auth, http) = (auth.clone(), http.clone());
+        let policy = self.pace.retry;
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         let asking = async move {
-            // The credential may need a refresh, which waits for other rig
-            // processes too: one deadline covers it and the list.
-            let asked = timeout(LIST_TIMEOUT, async {
-                match auth.auth_context(&http).await {
-                    Ok(context) => account_models(&context, &http)
-                        .await
-                        .map(Arc::from)
-                        .map_err(|error| error.to_string()),
-                    Err(error) => Err(format!("the sign-in gave no credential ({error})")),
+            let mut retried = 0;
+            loop {
+                let asked = fetch(&auth, &http).await;
+                let verdict = match &asked {
+                    Err(failure) if retries => policy.verdict(failure, retried, SystemTime::now()),
+                    _ => Verdict::Final,
+                };
+                let Verdict::Retry(wait) = verdict else {
+                    return offered.answered(epoch, asked);
+                };
+                retried += 1;
+                sleep(wait).await;
+                // A sign-in or sign-out since asks anew itself.
+                if offered.state().epoch != epoch {
+                    return;
                 }
-            });
-            let asked = asked
-                .await
-                .unwrap_or_else(|_| Err(format!("no answer in {} s", LIST_TIMEOUT.as_secs())));
-            offered.answered(epoch, asked);
+            }
         };
         pool.spawn(asking).detach();
     }
@@ -213,7 +297,14 @@ impl Offered {
             if state.epoch != epoch {
                 return;
             }
-            let previous = std::mem::replace(&mut state.asked, Asking::Answered(asked.clone()));
+            let kept = match &asked {
+                Ok(listed) => Asking::Answered(Arc::clone(listed)),
+                Err(failure) => {
+                    let wait = failure.retry_after(SystemTime::now()).unwrap_or_default();
+                    Asking::Failed(failure.clone(), Instant::now(), wait)
+                }
+            };
+            let previous = std::mem::replace(&mut state.asked, kept);
             // Counted under the lock: whoever sees the answer sees it counted.
             self.answers.fetch_add(1, Ordering::AcqRel);
             match previous {
@@ -232,28 +323,60 @@ impl Offered {
     }
 }
 
+/// The account's models, asked once within the list's deadline, which also
+/// covers a refresh of the credential that waits for other rig processes.
+async fn fetch(auth: &Authenticator, http: &DynHttpClient) -> Asked {
+    let asked = timeout(LIST_TIMEOUT, async {
+        match auth.auth_context(http).await {
+            Ok(context) => account_models(&context, http)
+                .await
+                .map(Arc::from)
+                .map_err(|error| ErrorReport::from(&error)),
+            Err(error) => Err(failed_sign_in(error)),
+        }
+    });
+    asked.await.unwrap_or_else(|_| {
+        let why = format!("no answer in {} s", LIST_TIMEOUT.as_secs());
+        Err(ErrorReport::new(ErrorKind::Timeout, why).with_retryable(true))
+    })
+}
+
 /// Why a model is refused by an answer.
 pub(super) enum Refusal {
     /// The account does not offer it.
     NotOffered,
     /// The backend could not be asked, for this reason.
-    Unasked(String),
+    Unasked(ErrorReport),
 }
 
 impl Refusal {
     /// The reason, worded after `Cannot use <model>:`.
-    fn reason(self) -> String {
+    fn reason(&self) -> String {
         match self {
             Self::NotOffered => format!("not offered to this {TITLE} account"),
-            Self::Unasked(why) => why,
+            Self::Unasked(failure) => format!(
+                "could not ask {TITLE} which models this account may use ({})",
+                failure.message
+            ),
         }
     }
 
     /// The refusal of the model `reference`, whole.
-    fn text(self, reference: &str) -> String {
+    fn text(&self, reference: &str) -> String {
         match self {
             Self::NotOffered => format!("{reference} is {}", self.reason()),
-            Self::Unasked(why) => why,
+            Self::Unasked(_) => self.reason(),
+        }
+    }
+
+    /// The report of a request refused for this reason: the failure's
+    /// own, with its class and any wait it asked for, when the backend
+    /// could not be asked.
+    fn report(self, reference: &str) -> ErrorReport {
+        let message = self.text(reference);
+        match self {
+            Self::NotOffered => ErrorReport::new(ErrorKind::Provider, message),
+            Self::Unasked(failure) => ErrorReport { message, ..failure },
         }
     }
 }
@@ -263,9 +386,7 @@ fn refusal(asked: &Asked, slug: &str) -> Option<Refusal> {
     match asked {
         Ok(listed) if listed.iter().any(|listed| listed == slug) => None,
         Ok(_) => Some(Refusal::NotOffered),
-        Err(why) => Some(Refusal::Unasked(format!(
-            "could not ask {TITLE} which models this account may use ({why}); sign in again with /login to ask again"
-        ))),
+        Err(failure) => Some(Refusal::Unasked(failure.clone())),
     }
 }
 
@@ -295,10 +416,7 @@ impl Intercept for Gate {
         let sent = named.unwrap_or(&self.spec.id);
         match refusal(&asked, sent) {
             None => BeforeServe::Proceed,
-            Some(why) => {
-                let why = why.text(&format!("{PROVIDER}/{sent}"));
-                BeforeServe::Deny(ErrorReport::new(ErrorKind::Provider, why).with_retryable(false))
-            }
+            Some(why) => BeforeServe::Deny(why.report(&format!("{PROVIDER}/{sent}"))),
         }
     }
 
@@ -345,31 +463,6 @@ pub(super) fn refuse_unoffered(
 ) {
     for (agent, connection) in &agents {
         refuse(agent, connection, &session, &mut commands, &mut notices);
-    }
-}
-
-/// Refuses at once a choice of the model an agent is connected to already,
-/// which connects nothing anew, when the answer refuses it: a front that
-/// asked for it, such as an editor's option, is told in the same frame.
-pub(super) fn refuse_chosen(
-    taken: On<ChoiceTaken>,
-    session: Res<super::Session>,
-    agents: Query<&Connection, Without<ModelRefused>>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok(connection) = agents.get(taken.entity) else {
-        return;
-    };
-    let chosen = taken.model.as_ref().map(|model| model.0.as_str());
-    if chosen == Some(connection.spec.reference().as_str()) {
-        refuse(
-            taken.entity,
-            connection,
-            &session,
-            &mut commands,
-            &mut notices,
-        );
     }
 }
 

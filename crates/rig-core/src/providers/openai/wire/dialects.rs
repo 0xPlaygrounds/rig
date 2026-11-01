@@ -497,12 +497,15 @@ pub const COHERE: Dialect = Dialect::gateway(
     "COHERE_API_KEY",
 );
 
-/// An Ollama daemon's OpenAI-compatible API. Its embedding and model-listing
-/// endpoints are its own wires.
+/// An Ollama daemon's OpenAI-compatible API, at `/v1` under the daemon
+/// `OLLAMA_API_BASE_URL` names, as for its other wires. Its embedding and
+/// model-listing endpoints are its own wires.
 pub const OLLAMA: Dialect = Dialect {
+    base_url_env: Some("OLLAMA_API_BASE_URL"),
     quirks: Quirks {
         // A local daemon takes no credential; a proxied one takes a token.
         auth: Auth::OptionalBearer,
+        base_url_env_path: "/v1",
         rewrite: BodyRewrite::Ollama,
         // A daemon is usually local; the catalog's prices are Ollama Cloud's.
         catalog_priced: false,

@@ -204,6 +204,17 @@ impl Registered {
         }
     }
 
+    /// The variables that point this selection at a server: its base-URL
+    /// override and that override's alias.
+    fn base_url_envs(&self) -> Vec<&'static str> {
+        let envs = match self {
+            Self::OpenAi(dialect) => [dialect.base_url_env, dialect.quirks.base_url_env_alias],
+            Self::Anthropic(dialect) => [dialect.base_url_env, None],
+            Self::Gemini => [None, None],
+        };
+        envs.into_iter().flatten().collect()
+    }
+
     /// Whether this selection's key expires within the hour.
     fn short_lived_key(&self) -> bool {
         matches!(self, Self::OpenAi(dialect) if dialect.quirks.short_lived_key)
@@ -599,6 +610,24 @@ impl ProviderId {
             Kind::CatalogOnly(provider) => provider.credential,
             Kind::Declared(_) => false,
         }
+    }
+
+    /// Whether the environment sets this selection's key or base URL to a
+    /// non-empty value: what makes a provider that needs no credential,
+    /// such as a local server, configured rather than merely reachable at
+    /// its default address. `false` for a catalog-only or declared provider.
+    pub(crate) fn configured_in_env(&self) -> bool {
+        let Kind::Registered(registered) = &self.0 else {
+            return false;
+        };
+        let set = |name: &'static str| {
+            env::optional(name).is_ok_and(|value| value.is_some_and(|value| !value.is_empty()))
+        };
+        let mut envs = registered
+            .key_envs()
+            .into_iter()
+            .chain(registered.base_url_envs());
+        envs.any(set)
     }
 
     /// Whether this selection's key is a session token that expires within

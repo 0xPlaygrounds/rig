@@ -174,6 +174,11 @@ pub enum ModelStatus {
     NotOffered(String),
     /// It calls tools, but no key is set: the variables read, in order.
     NoKey(Vec<Cow<'static, str>>),
+    /// Its provider needs no key, such as a local server, and nothing
+    /// configures it: no provider is registered for it and the environment
+    /// sets neither its key nor its base URL. It connects when named, at
+    /// its default address, but nothing says a server runs there.
+    Unconfigured,
     /// It does not call tools, so an agent cannot use it.
     NoTools,
     /// It calls tools but does not connect, for this reason.
@@ -352,8 +357,9 @@ impl Connector {
     }
 
     /// Whether `spec` can serve an agent now, and why not: it must call
-    /// tools, connect as [`Self::connect`] would connect it, and be offered
-    /// by the account when served through a sign-in.
+    /// tools, connect as [`Self::connect`] would connect it, be offered by
+    /// the account when served through a sign-in, and, when its provider
+    /// needs no key, be configured ([`ModelStatus::Unconfigured`]).
     ///
     /// ```
     /// use rig_core::catalog::{Connector, ModelSpec, ModelStatus};
@@ -378,7 +384,15 @@ impl Connector {
                 return offered;
             }
         }
+        let provider = spec.provider;
         match handler {
+            Ok(_)
+                if !provider.requires_credential()
+                    && !self.is_provided(provider)
+                    && !provider.configured_in_env() =>
+            {
+                ModelStatus::Unconfigured
+            }
             Ok(_) => ModelStatus::Usable,
             Err(ConnectError::MissingKey { tried, .. }) => ModelStatus::NoKey(tried),
             Err(error) => ModelStatus::Unavailable(error.to_string()),
@@ -388,10 +402,9 @@ impl Connector {
     /// Catalog models that call tools and can be reached through a
     /// registered provider, the environment or a sign-in: first those of
     /// providers registered, with a key set or signed in, then those of
-    /// providers that need none (local servers such as Ollama), which a
-    /// picker can mark "no key needed". Only [`ModelStatus::Usable`] models
-    /// are reachable. Sign-in plans are checked per model; other models
-    /// share one check per provider.
+    /// configured providers that need none (local servers such as Ollama),
+    /// which a picker can mark "no key needed". Only [`ModelStatus::Usable`]
+    /// models are reachable, checked as [`Self::statuses`] checks them.
     pub fn reachable(&self) -> Vec<&ModelSpec> {
         let statuses = self.statuses().into_iter();
         let usable = statuses.filter(|(_, status)| *status == ModelStatus::Usable);
@@ -401,8 +414,10 @@ impl Connector {
     /// Every catalog model with its [`ModelStatus`]: first the
     /// [`reachable`](Self::reachable) ones in that order, then the others in
     /// catalog order. Only [`ModelStatus::Usable`] is reachable. Models
-    /// claimed by a sign-in's plan are checked individually; other models
-    /// share one check per provider.
+    /// claimed by a sign-in's plan or reached through a registered provider
+    /// ([`Self::provide`]), which may answer per model, are checked
+    /// individually; the others, which the environment configures per
+    /// provider, share one check per provider.
     pub fn statuses(&self) -> Vec<(&ModelSpec, ModelStatus)> {
         let mut checked: HashMap<ProviderId, ModelStatus> = HashMap::new();
         let mut statuses: Vec<(&ModelSpec, ModelStatus)> = self
@@ -411,7 +426,9 @@ impl Connector {
             .map(|spec| {
                 let status = match spec.tools {
                     false => ModelStatus::NoTools,
-                    true if self.plan(spec).is_some() => self.status(spec),
+                    true if self.plan(spec).is_some() || self.is_provided(spec.provider) => {
+                        self.status(spec)
+                    }
                     true => checked
                         .entry(spec.provider)
                         .or_insert_with(|| self.status(spec))

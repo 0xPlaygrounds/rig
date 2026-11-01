@@ -199,10 +199,13 @@ pub struct ChoiceTaken {
     pub model: Option<ModelChoice>,
 }
 
-/// Chooses the agent's model: a known catalog model replaces the agent's
-/// [`ModelChoice`], which [`connect`] connects, and is [`ChoiceTaken`]; an
-/// unknown one keeps it, with an error notice naming the closest models
-/// and the one kept.
+/// Chooses the agent's model: a catalog model that connects replaces the
+/// agent's [`ModelChoice`], which [`connect`] connects, and is
+/// [`ChoiceTaken`]; an unknown one, or another one that does not connect,
+/// such as one with no key, keeps it and its connection, with an error
+/// notice naming the closest models or why, and the one kept. The agent's
+/// own model, chosen again when it no longer connects, is refused as
+/// [`connect`] refuses it.
 pub(crate) fn on_set_model(
     set: On<SetModel>,
     agents: Query<(Has<ActiveTurn>, Option<&ModelChoice>), With<Agent>>,
@@ -217,26 +220,40 @@ pub(crate) fn on_set_model(
         notices.write(Notice::turn_running(set.entity));
         return;
     }
-    match models.0.catalog().resolve(&set.model) {
+    let why = match models.0.catalog().resolve(&set.model) {
         Ok(found) => {
             let model = ModelChoice(found.spec.reference());
-            commands.entity(set.entity).insert(model.clone());
-            commands.trigger(ChoiceTaken {
-                entity: set.entity,
-                kind: set.kind,
-                model: Some(model),
-            });
+            match models.connect(&model.0) {
+                Ok(_) => {
+                    commands.entity(set.entity).insert(model.clone());
+                    commands.trigger(ChoiceTaken {
+                        entity: set.entity,
+                        kind: set.kind,
+                        model: Some(model),
+                    });
+                    return;
+                }
+                Err(why) if current == Some(&model) => {
+                    let mut agent = commands.entity(set.entity);
+                    agent
+                        .remove::<Connection>()
+                        .insert(ModelRefused(why.clone()));
+                    notices.write(Notice::error(set.entity, why));
+                    return;
+                }
+                Err(why) => why,
+            }
         }
         Err(why) => {
             let stop = if why.suggestions.is_empty() { "." } else { "" };
-            let kept = match current {
-                Some(ModelChoice(model)) => format!(" Still on {model}."),
-                None => String::new(),
-            };
-            let text = format!("Not picked: {why}{stop}{kept}");
-            notices.write(Notice::error(set.entity, text));
+            format!("Not picked: {why}{stop}")
         }
-    }
+    };
+    let kept = match current {
+        Some(ModelChoice(model)) => format!(" Still on {model}."),
+        None => String::new(),
+    };
+    notices.write(Notice::error(set.entity, format!("{why}{kept}")));
 }
 
 /// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`],

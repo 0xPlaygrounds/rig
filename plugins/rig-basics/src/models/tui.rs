@@ -23,10 +23,10 @@ pub(super) fn add(app: &mut App) {
 #[derive(Component)]
 struct ModelCompletions;
 
-/// Offers the [`ModelItem`]s' names and the catalog's models as `/model`'s
-/// argument, each with its line: built once the input is a `/model`
-/// command, again only after the catalog or the choices plugins add
-/// changed. Listing the catalog asks each provider whether it connects,
+/// Offers the [`ModelItem`]s' names and the catalog's usable models as
+/// `/model`'s argument, each with its line: built once the input is a
+/// `/model` command, again only after the catalog or the choices plugins
+/// add changed. Listing the catalog asks each provider whether it connects,
 /// too slow for every start.
 fn complete_models(
     models: Res<Models>,

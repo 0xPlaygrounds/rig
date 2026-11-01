@@ -52,7 +52,9 @@ rig
 
 In the agent, `/login` signs in with a ChatGPT plan or saves a provider's API
 key, or export the key (such as `OPENAI_API_KEY`) before starting. `/model` picks
-the model and `/help` lists the commands. `rig -p "fix the failing test"`
+one of the models those reach, and of a local Ollama or llama.cpp server once
+`OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL` names it (or its key is set);
+`/help` lists the commands. `rig -p "fix the failing test"`
 answers one prompt without the terminal view.
 
 - **Everything is a plugin.** The agent is a [Bevy](https://bevy.org) app; its

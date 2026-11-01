@@ -4,10 +4,10 @@
 //! ones a new session starts with, the last ones the user chose
 //! ([`DefaultsPlugin`](defaults::DefaultsPlugin)).
 //!
-//! `/model` lists the catalog's models, those that can be reached first and
-//! each other one with why not (no key, no tool calls, the provider's
-//! reason), leaving out those a signed-in account is not offered, opens on
-//! the agent's model, and completes its argument with them; a provider plugin adds
+//! `/model` lists the catalog's models that can be used now (a key is set,
+//! a sign-in offers them, or a local server is configured), says how to
+//! make one usable when none is, opens on the agent's model, and completes
+//! its argument with them; a provider plugin adds
 //! to the catalog through rig-core's [`Connector`] (in [`Models`]). It
 //! lists the [`ModelItem`]s other plugins spawn too, for choices
 //! that are no catalog model, such as a router that picks the model per
@@ -164,9 +164,10 @@ pub struct ModelLabel(pub String);
 /// session is restored and a remembered model given, so `--model` wins;
 /// a turn the restored session continues ends first, as a model is not
 /// changed under a running turn, and the agent is told so. A model the
-/// catalog does not list leaves the agent with none at once, even under a
-/// continued turn, with one error notice naming the closest ones: no
-/// request goes to a model nobody named.
+/// catalog does not list, or one that does not connect, such as one with
+/// no key, leaves the agent with none at once, even under a continued
+/// turn, with one error notice naming the closest ones or why: no request
+/// goes to a model nobody named.
 fn choose_invoked_model(
     invoked: Option<Res<Invoked>>,
     (agents, busy, models): (MainAgentQuery, Query<Has<ActiveTurn>>, Res<Models>),
@@ -182,11 +183,24 @@ fn choose_invoked_model(
         *done = true;
         return;
     };
-    if let Err(why) = models.0.catalog().resolve(&model) {
+    let refused = match models.0.catalog().resolve(&model) {
+        Ok(found) => {
+            let reference = found.spec.reference();
+            let connected = models.0.connect(&reference);
+            connected
+                .err()
+                .map(|why| format!("cannot use {reference}: {why}."))
+        }
+        Err(why) => {
+            let stop = if why.suggestions.is_empty() { "." } else { "" };
+            Some(format!("{why}{stop}"))
+        }
+    };
+    if let Some(why) = refused {
         *done = true;
-        commands.entity(agent).remove::<(ModelChoice, Connection)>();
-        let stop = if why.suggestions.is_empty() { "." } else { "" };
-        let text = format!("--model: {why}{stop} No model is picked.");
+        let mut picked = commands.entity(agent);
+        picked.remove::<(ModelChoice, Connection, ModelRefused)>();
+        let text = format!("--model: {why} No model is picked.");
         notices.write(Notice::error(agent, text));
         return;
     }
