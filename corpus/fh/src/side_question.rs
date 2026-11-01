@@ -293,7 +293,7 @@ fn ask_side(
     }
     let reading = tools
         .iter()
-        .filter(|(def, footprint)| footprint.0.reads_only() && access.allows(def.0.name.as_str()))
+        .filter(|(def, footprint)| footprint.0.reads_only() && access.keeps(def.0.name.as_str()))
         .map(|(def, _)| def.0.name.to_string())
         .collect();
     let mut request = SpawnSubagent::helper(TITLE);

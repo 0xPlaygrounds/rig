@@ -160,7 +160,7 @@ fn key_of(
         None => tools
             .iter()
             .map(|def| def.0.name.to_string())
-            .filter(|name| access.allows(name))
+            .filter(|name| access.keeps(name))
             .collect(),
     };
     tools.sort();

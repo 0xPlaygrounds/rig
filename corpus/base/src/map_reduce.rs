@@ -245,7 +245,7 @@ fn on_map(
         tools.iter().any(|def| def.0.name.as_str() == name)
             && access
                 .get(called.agent)
-                .is_ok_and(|access| access.allows(name))
+                .is_ok_and(|access| access.keeps(name))
     };
     let tools = |names: &[&str]| {
         let names = names.iter().filter(|name| has(name));

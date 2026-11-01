@@ -458,7 +458,7 @@ fn best_of(
         tools: TOOLS
             .iter()
             .filter(|tool| defs.iter().any(|def| def.0.name.as_str() == **tool))
-            .filter(|tool| access.get(agent).is_ok_and(|access| access.allows(tool)))
+            .filter(|tool| access.get(agent).is_ok_and(|access| access.keeps(tool)))
             .map(|tool| (*tool).to_owned())
             .collect(),
         candidates,

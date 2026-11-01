@@ -266,6 +266,33 @@ fn members_work_side_by_side_keep_their_memory_and_their_scope_across_a_resume()
 }
 
 #[test]
+fn a_member_hired_in_a_limited_run_keeps_the_leads_tools() {
+    let project = scratch_home("standing-team-limited").root().to_owned();
+    std::fs::create_dir_all(&project).ok();
+    std::fs::write(project.join("team.toml"), TEAM).ok();
+    let lead = MockCompletionModel::from_stream_turns([
+        vec![
+            delegate("d1", "frontend", "Look at the client"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Done."),
+    ]);
+    let frontend = MockCompletionModel::from_stream_turns([reply("Looked.")]);
+    let backend = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let store = MemoryStore::default();
+    let (mut app, wakes, agent) = start(&store, &project, [&lead, &backend, &frontend]);
+    app.insert_resource(RunTools::new([DELEGATE]));
+    ask_lead((&mut app, &wakes, agent), &lead, "Have a look.", 2);
+    let world = app.world_mut();
+    let mut members = world.query::<(&TeamMember, &ToolAccess)>();
+    let hired = members
+        .iter(world)
+        .find(|(member, _)| member.0 == "frontend");
+    // Out of this run only: a later run gives it the lead's `write`.
+    assert!(hired.is_some_and(|(_, access)| access.keeps("write") && !access.allows("write")));
+}
+
+#[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(StandingTeamPlugin);
 }

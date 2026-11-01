@@ -249,7 +249,7 @@ fn debate(
     // The agent's read-only tools; the judge gets none.
     let read_only: Vec<String> = tools
         .iter()
-        .filter(|(def, footprint)| footprint.0.reads_only() && access.allows(def.0.name.as_str()))
+        .filter(|(def, footprint)| footprint.0.reads_only() && access.keeps(def.0.name.as_str()))
         .map(|(def, _)| def.0.name.as_str().to_owned())
         .collect();
     let brief = format!("The question: {question}\n\nRound 1 of {rounds}: make your case.");

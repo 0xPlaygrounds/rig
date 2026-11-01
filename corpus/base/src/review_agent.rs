@@ -392,7 +392,7 @@ fn diff_taken(
     };
     let allowed = settings.tools.clone().unwrap_or_else(|| {
         let reads = tools.iter().filter(|(def, footprint)| {
-            footprint.0.reads_only() && access.allows(def.0.name.as_str())
+            footprint.0.reads_only() && access.keeps(def.0.name.as_str())
         });
         reads.map(|(def, _)| def.0.name.to_string()).collect()
     });

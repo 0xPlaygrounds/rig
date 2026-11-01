@@ -40,7 +40,8 @@ A conversation:
 
 Both take --model vendor/model, --tools read,shell (only those tools, for
 this run only; an empty list gives none; a name no tool has is refused,
-before any model or tool call, as at a terminal; with the MCP plugin on, an MCP server's tool is <server>__<tool>, and the run first
+before any model or tool call, as at a terminal; with the MCP plugin on,
+an MCP server's tool is <server>__<tool>, and the run first
 waits for its servers, each at most [mcp] connect_timeout_secs; with
 --json, notice lines say which connected or failed, and plain -p prints
 the failures, or every notice for a /command) and -r

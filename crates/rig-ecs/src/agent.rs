@@ -326,7 +326,8 @@ impl ToolAccess {
         Self::default()
     }
 
-    /// Whether the tool `name` may be called in this run.
+    /// Whether the tool `name` may be called in this run. A child's tools
+    /// are built with [`keeps`](Self::keeps), so they outlive the run.
     pub fn allows(&self, name: &str) -> bool {
         self.keeps(name) && self.run.as_ref().is_none_or(|run| run.has(name))
     }

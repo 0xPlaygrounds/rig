@@ -316,7 +316,7 @@ fn start(start: &Start, asked: Asked, commands: &mut Commands) -> Result<(), Str
     let tools: Vec<String> = start
         .tools
         .iter()
-        .filter(|(def, footprint)| footprint.0.reads_only() && access.allows(def.0.name.as_str()))
+        .filter(|(def, footprint)| footprint.0.reads_only() && access.keeps(def.0.name.as_str()))
         .map(|(def, _)| def.0.name.as_str().to_owned())
         .collect();
     let base = work_dir.map_or(&start.root.0, |dir| &dir.0).clone();
