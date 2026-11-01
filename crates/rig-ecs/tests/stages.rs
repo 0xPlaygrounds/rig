@@ -3326,6 +3326,50 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert_eq!(cancelled, ["completion", "check"], "{:?}", records(&app));
 }
 
+/// A turn a plugin stops by inserting `TurnOutcome::Stopped(Some(reason))`
+/// keeps what streamed, as a user's stop does: the streamed text is kept as
+/// an aborted reply, and the request is halted as stopped.
+#[test]
+fn a_turn_a_plugin_stops_keeps_what_streamed() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Halfway));
+    }
+    let streamed = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials.iter(world).any(|partial| !partial.text.is_empty())
+    };
+    assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
+    let turn = app.world().get::<ActiveTurn>(agent).map(ActiveTurn::turn);
+    let Some(turn) = turn else {
+        return;
+    };
+    let budget = TurnOutcome::Stopped(Some("over budget".to_owned()));
+    app.world_mut().entity_mut(turn).insert(budget);
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        app.world().get::<ActiveTurn>(agent).is_none(),
+        "the turn ended"
+    );
+    let said = conversation(&app, agent);
+    let kept = said.last().and_then(|message| match message {
+        Message::Assistant(reply) if matches!(reply.stop, Some(StopReason::Aborted(_))) => {
+            message.final_answer()
+        }
+        _ => None,
+    });
+    assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
+    let halted = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.halted());
+    assert_eq!(halted, Some(Halt::Stopped));
+}
+
 /// A model call superseded while it streamed is not the turn's reply: an
 /// interrupt before it settles keeps none of its text.
 #[test]
