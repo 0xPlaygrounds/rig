@@ -221,6 +221,8 @@ fn a_loaded_session_shows_each_call_under_its_live_id() {
     assert!(router.is_some());
 }
 
+/// SIGTERM ends the router, its sessions and their tools, and first
+/// answers the open prompt `cancelled`, after its tool's closing update.
 #[test]
 fn sigterm_ends_the_router_its_sessions_and_their_tools() {
     let place = Place::new("sigterm");
@@ -233,8 +235,7 @@ fn sigterm_ends_the_router_its_sessions_and_their_tools() {
         let Some(new) = new else { return };
         let id = new.session_id;
         assert!(driven.model(&id, "test/wait").await);
-        let request = acp::PromptRequest::new(id.clone(), vec!["Wait.".into()]);
-        let prompt = driven.cx.send_request(request);
+        let prompt = driven.send(&id, "Wait.");
         assert!(driven.until(|_| sleeping(place) && serving(place)).await);
         pid = driven.router;
         let Some(router) = pid else { return };
@@ -249,9 +250,77 @@ fn sigterm_ends_the_router_its_sessions_and_their_tools() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(!alive(router) && processes_of(place).is_empty());
-        prompt.block_task().await.ok();
+        let answer = prompt.await;
+        assert!(
+            matches!(answer, Ok(acp::StopReason::Cancelled)),
+            "{answer:?}"
+        );
+        let steps = tool_steps(driven, &id);
+        let closed = steps.last().is_some_and(|(_, status)| {
+            matches!(
+                status,
+                acp::ToolCallStatus::Failed | acp::ToolCallStatus::Completed
+            )
+        });
+        assert!(closed, "{steps:?}");
+        // The closing update comes before the answer.
+        let seen = driven.seen();
+        let answered = seen
+            .events
+            .iter()
+            .position(|event| matches!(event, Event::Answered(session) if *session == id));
+        let updated = seen.events.iter().rposition(
+            |event| matches!(event, Event::Update(session, acp::SessionUpdate::ToolCallUpdate(_)) if *session == id),
+        );
+        assert!(
+            updated
+                .zip(answered)
+                .is_some_and(|(updated, answered)| updated < answered)
+        );
     });
     assert!(pid.is_some() && router.is_some());
+    assert!(eventually(|| processes_of(place).is_empty()));
+}
+
+/// A line past the limit from the editor, while a prompt runs, ends what
+/// the router reads as a closed stdin does: the running prompt is still
+/// answered `cancelled`, after its tool's closing update, and the router
+/// ends.
+#[test]
+fn a_line_past_the_limit_ends_the_input_and_the_open_prompt_is_answered() {
+    let mut place = Place::new("oversized");
+    place.limit = Some(16 * 1024);
+    let place = &place;
+    let mut pid = None;
+    let router = drive(place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        assert!(driven.model(&id, "test/wait").await);
+        let request = acp::PromptRequest::new(id.clone(), vec!["Wait.".into()]);
+        let prompt = driven.cx.send_request(request);
+        assert!(driven.until(|_| sleeping(place)).await);
+        pid = driven.router;
+        let large = acp::PromptRequest::new(id.clone(), vec!["x".repeat(32 * 1024).into()]);
+        let refused = driven.cx.send_request(large);
+        let answer = prompt.block_task().await.map(|answer| answer.stop_reason);
+        assert!(
+            matches!(answer, Ok(acp::StopReason::Cancelled)),
+            "{answer:?}"
+        );
+        let steps = tool_steps(driven, &id);
+        let closed = steps.last().is_some_and(|(_, status)| {
+            matches!(
+                status,
+                acp::ToolCallStatus::Failed | acp::ToolCallStatus::Completed
+            )
+        });
+        assert!(closed, "{steps:?}");
+        drop(refused);
+    });
+    assert!(router.is_some());
+    assert!(pid.is_some_and(|pid| eventually(|| !alive(pid))));
     assert!(eventually(|| processes_of(place).is_empty()));
 }
 

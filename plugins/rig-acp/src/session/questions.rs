@@ -88,7 +88,7 @@ impl Asking<'_, '_> {
                     choices: vec![chosen.to_owned()],
                     text: None,
                 };
-                Session::post(&sender, &wake, Request::Answered(entity, Some(answer)));
+                Session::post(&sender, &wake, Request::Answered(entity, Some(answer))).await;
             })
         } else if session
             .client
@@ -109,7 +109,7 @@ impl Asking<'_, '_> {
                 let answer = answered
                     .ok()
                     .and_then(|answered| answer(&ask, answered.action));
-                Session::post(&sender, &wake, Request::Answered(entity, answer));
+                Session::post(&sender, &wake, Request::Answered(entity, answer)).await;
             })
         } else {
             decision.decide(Decider::plugin("rig-acp"), Outcome::refused(UNSHOWN));

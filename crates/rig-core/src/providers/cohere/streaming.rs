@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 
 use super::chat::PLAN;
-use crate::completion::{FinishReason, Usage};
+use crate::completion::{FinishReason, Usage, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, Source, SourceLocation, ToolName};
@@ -357,7 +357,7 @@ impl ChatDecoder {
             .or_else(|| {
                 (reason == Some("ERROR")).then(|| "Cohere ended the reply with an error".to_owned())
             });
-        let mut usage = usage_of(usage_value);
+        let mut usage = usage_of(usage_value)?;
         if let Some(billed) = billed_of(usage_value) {
             usage.cost = out
                 .catalog_pricing(None)
@@ -474,21 +474,26 @@ fn billed_of(usage: Option<&Value>) -> Option<Usage> {
 }
 
 /// Rig's usage from Cohere's: the `tokens` the model read and wrote,
-/// else the `billed_units`, with `cached_tokens` among the input.
-fn usage_of(usage: Option<&Value>) -> Usage {
+/// else the `billed_units`, with `cached_tokens` among the input; an error
+/// when their sum overflows.
+fn usage_of(usage: Option<&Value>) -> Result<Usage, ProviderError> {
     let count = |pointer: &str| usage?.at(pointer)?.as_u64_lenient();
     let input = count("/tokens/input_tokens").or_else(|| count("/billed_units/input_tokens"));
     let output = count("/tokens/output_tokens").or_else(|| count("/billed_units/output_tokens"));
-    Usage {
+    let total = input
+        .zip(output)
+        .map(|(input, output)| token_sum([input, output]))
+        .transpose()?;
+    Ok(Usage {
         input_tokens: input,
         output_tokens: output,
         cached_input_tokens: count("/cached_tokens"),
         cache_creation_input_tokens: None,
         reasoning_tokens: count("/tokens/reasoning_tokens"),
-        total_tokens: input.zip(output).map(|(input, output)| input + output),
+        total_tokens: total,
         tool_use_prompt_tokens: None,
         cost: None,
-    }
+    })
 }
 
 impl<'id> Decoder<'id, Completion> for ChatDecoder {

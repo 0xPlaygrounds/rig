@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
-use crate::completion::FinishReason;
+use crate::completion::{FinishReason, token_sum};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
 use crate::message::{CallId, DocumentRange, Source, SourceLocation, ToolName};
@@ -112,21 +112,31 @@ impl Counts {
 
     /// Rig's usage: its input is `input_tokens` plus the cache reads and
     /// writes counted beside it, its output `output_tokens` (thinking
-    /// included), and its total their sum when both are known.
-    fn usage(&self) -> crate::completion::Usage {
-        let input = self.input.map(|uncached| {
-            uncached + self.cache_read.unwrap_or(0) + self.cache_creation.unwrap_or(0)
-        });
-        crate::completion::Usage {
+    /// included), and its total their sum when both are known; an error
+    /// when a sum overflows.
+    fn usage(&self) -> Result<crate::completion::Usage, ProviderError> {
+        let (read, written) = (
+            self.cache_read.unwrap_or(0),
+            self.cache_creation.unwrap_or(0),
+        );
+        let input = self
+            .input
+            .map(|uncached| token_sum([uncached, read, written]))
+            .transpose()?;
+        let total = input
+            .zip(self.output)
+            .map(|(input, output)| token_sum([input, output]))
+            .transpose()?;
+        Ok(crate::completion::Usage {
             input_tokens: input,
             output_tokens: self.output,
             cached_input_tokens: self.cache_read,
             cache_creation_input_tokens: self.cache_creation,
             reasoning_tokens: self.thinking,
-            total_tokens: input.zip(self.output).map(|(input, output)| input + output),
+            total_tokens: total,
             tool_use_prompt_tokens: None,
             cost: None,
-        }
+        })
     }
 
     /// What the cache writes cost at `pricing` by their TTL split:
@@ -573,7 +583,7 @@ impl MessagesDecoder {
             out.whole(index, Block::Opaque { replay: true }, item, "")?;
         }
         let (reason, error) = stop_reason.map_or((None, None), |reason| finish_of(reason, details));
-        let mut counted = usage.usage();
+        let mut counted = usage.usage()?;
         if self.cache_ttl_pricing {
             counted.cost = out
                 .catalog_pricing(self.response_model.as_deref())

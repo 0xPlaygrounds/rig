@@ -2628,6 +2628,48 @@ async fn duplicate_json_credentials_and_parents_withhold_both_values_in_both_fil
     }
 }
 
+/// A body whose frame the live reader refuses as too large is no complete
+/// stopped body, though its framer then holds nothing.
+#[test]
+fn a_frame_past_the_limit_is_no_frame_boundary() {
+    let mut body = b"{\"done\":true}\n".to_vec();
+    body.resize(
+        body.len() + rig_core::http_client::framing::FRAME_LIMIT + 1,
+        b' ',
+    );
+    body.push(b'\n');
+    assert!(!stopped_at_frame_boundary(
+        [("content-type", "application/x-ndjson")],
+        &body
+    ));
+}
+
+/// A large id before many events, each arriving on its own as a stream
+/// does, is a complete recording: its id is copied once per event.
+#[test]
+fn a_large_id_before_many_events_still_ends_at_a_frame_boundary() {
+    let mut body = format!("id: {}\n", "x".repeat(1024 * 1024)).into_bytes();
+    for _ in 0..80 {
+        body.extend(b"data: {}\n\n");
+    }
+    assert!(stopped_at_frame_boundary(
+        [("content-type", "text/event-stream")],
+        &body
+    ));
+}
+
+/// Scrubbing a recording keeps every event, however often a large id is
+/// copied into them: the recording is in memory already.
+#[test]
+fn scrubbing_keeps_every_event_after_a_large_id() {
+    let mut text = format!("id: {}\n", "x".repeat(1024 * 1024));
+    for _ in 0..80 {
+        text.push_str("data: {}\n\n");
+    }
+    let events = super::parse_sse(&text, true).map(|events| events.len());
+    assert_eq!(events, Some(80));
+}
+
 #[test]
 fn frame_boundaries_use_the_same_inspected_format_and_reject_partial_records() {
     for content_type in [None, Some("text/plain"), Some("text/event-stream")] {

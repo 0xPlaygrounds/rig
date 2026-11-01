@@ -31,7 +31,7 @@ fn restricted_run(
     model: &MockCompletionModel,
     tools: Option<&str>,
     access: ToolAccess,
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     restricted_run_with(model, tools, access, |_| {})
 }
 
@@ -40,7 +40,7 @@ fn restricted_run_with(
     tools: Option<&str>,
     access: ToolAccess,
     configure: impl FnOnce(&mut App),
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     restricted_on(&MemoryStore::default(), model, tools, access, configure)
 }
 
@@ -50,7 +50,7 @@ fn restricted_on(
     tools: Option<&str>,
     access: ToolAccess,
     configure: impl FnOnce(&mut App),
-) -> (App, Receiver<()>, Lines, Sender<String>) {
+) -> (App, Receiver<()>, Lines, Sender<RequestLine>) {
     let lines = Lines::default();
     let (input, requests) = JsonIn::channel();
     let mut flags = vec![(JSON.to_owned(), None)];
@@ -194,7 +194,7 @@ fn unknown_cli_tool_names_are_refused_before_any_model_call() {
         let (mut app, wakes, lines, input) =
             restricted_run_with(&model, Some(tools), ToolAccess::All, configure);
         let line = json!({"v": 1, "type": "send", "text": "Run it."});
-        input.try_send(line.to_string()).ok();
+        input.try_send(Ok(line.to_string().into_bytes())).ok();
         test_support::run_until(&mut app, &wakes, |_| !lines.of("exit").is_empty());
         let exit = lines.of("exit").first().cloned().unwrap_or_default();
         assert_eq!(at(&exit, "code"), &json!(2), "{tools}");

@@ -359,7 +359,8 @@ fn finish_reasons_map_to_rig_endings() {
 fn usage_falls_back_to_billed_units() {
     let usage = usage_of(Some(
         &json!({"billed_units": {"input_tokens": 3, "output_tokens": 4}}),
-    ));
+    ))
+    .expect("the counts fit");
     assert_eq!(usage.input_tokens, Some(3));
     assert_eq!(usage.output_tokens, Some(4));
     assert_eq!(usage.total_tokens, Some(7));
@@ -979,4 +980,18 @@ async fn the_observed_usage_does_not_invent_a_total() {
     let totals: Vec<Option<u64>> = observed.iter().map(|usage| usage.total_tokens).collect();
     assert_eq!(totals, [None], "Cohere reports no total_tokens");
     assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
+}
+
+/// Counts whose sum passes `u64::MAX` are an error, without a panic or a
+/// wrapped total.
+#[test]
+fn usage_counts_that_overflow_are_an_error() {
+    let usage = json!({"tokens": {"input_tokens": u64::MAX, "output_tokens": 1}});
+    let failed = usage_of(Some(&usage));
+    assert!(
+        failed
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("overflow")),
+        "{failed:?}"
+    );
 }

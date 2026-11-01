@@ -19,6 +19,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
+use async_channel::{Receiver, Sender};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
@@ -29,7 +30,6 @@ use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
-use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::{turn_delivered_no_answer, turn_failure};
 use rig_core::completion::{
@@ -261,9 +261,14 @@ pub struct SideCall(pub Entity);
 #[derive(Component, Clone, Debug)]
 pub struct RetryVerdict(pub Verdict);
 
-/// The feed of a model call's stream, read in [`Stage::Arrive`].
+/// The feed of a model call's stream, read in [`Stage::Arrive`]. It holds
+/// at most [`FEED_ITEMS`]: a frame that falls behind slows the reply's read
+/// rather than growing memory.
 #[derive(Component)]
 pub(crate) struct Feed(Receiver<Fed>);
+
+/// The most items of a model call's stream that wait for a frame.
+const FEED_ITEMS: usize = 1024;
 
 /// What a model call's stream feeds its entity: an item of any kind came
 /// at this time, the reply's end too, with its event, if it is one.
@@ -1172,14 +1177,17 @@ pub(crate) async fn stream_reply(
             // Where the reply is from, before its first item.
             Ok(Relayed::Origin(_)) => continue,
             Ok(Relayed::Done(response)) => {
-                // The call may be gone; the reply still finishes.
-                feed.send(Fed(web_time::SystemTime::now(), None)).ok();
+                // The call may be gone, which closes the feed; the reply
+                // still finishes.
+                feed.send(Fed(web_time::SystemTime::now(), None)).await.ok();
                 return Ok(effect::Answered::Completion(response));
             }
             Ok(Relayed::Item(Item::Event(event))) => Some(event),
             Ok(Relayed::Item(_)) => None,
         };
-        feed.send(Fed(web_time::SystemTime::now(), event)).ok();
+        feed.send(Fed(web_time::SystemTime::now(), event))
+            .await
+            .ok();
         wake.wake();
     }
     Err(stream_truncated())
@@ -1188,7 +1196,7 @@ pub(crate) async fn stream_reply(
 /// The channel a model call streams into: the sender for its task, and
 /// the [`Feed`] for its entity.
 pub(crate) fn feed() -> (Sender<Fed>, Feed) {
-    let (sender, receiver) = crossbeam_channel::unbounded();
+    let (sender, receiver) = async_channel::bounded(FEED_ITEMS);
     (sender, Feed(receiver))
 }
 
@@ -1212,7 +1220,10 @@ pub(crate) fn stream_partials(
     for (effect, feed, mut partial, mut streamed, agent, of, turn_call) in &mut calls {
         // The stamp of a call whose first item came now.
         let mut first: Option<StreamTiming> = None;
-        for Fed(at, event) in feed.0.try_iter() {
+        // What came before this look, so a stream that keeps feeding never
+        // holds the frame; a finished reply sent all of it before it did.
+        let came = feed.0.len();
+        for Fed(at, event) in std::iter::from_fn(|| feed.0.try_recv().ok()).take(came) {
             match streamed.as_deref_mut().or(first.as_mut()) {
                 Some(stamp) => {
                     stamp.last = at;

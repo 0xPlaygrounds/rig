@@ -14,6 +14,7 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
+async-channel = { workspace = true }
 bevy_app = { workspace = true }
 # `serialize`: entities read from and written as JSON.
 bevy_ecs = { workspace = true, features = ["serialize"] }
@@ -23,7 +24,6 @@ bevy_tasks = { workspace = true }
 # The clock: `Time`, timers and the delayed commands a retried model
 # call waits on.
 bevy_time = { workspace = true }
-crossbeam-channel = { workspace = true }
 futures = { workspace = true }
 # The jitter of a retry's wait.
 fastrand = { workspace = true }

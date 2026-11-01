@@ -204,10 +204,12 @@ that has only one can link `AGENTS.md` to it. `SkillsPlugin` lists your
 skills: each directory with a `SKILL.md` (the Agent Skills format, a `name`
 and a `description` in its frontmatter) under `.rig/skills` or
 `.agents/skills` of those same directories, `RIG_HOME/skills` or
-`~/.agents/skills`. The model reads a skill's file when a task matches its
-description, and `/skill:<name> [text]` sends one with your message. A skill
-with `disable-model-invocation: true` is left out of the list and only sent
-by hand. Both are read once, so an edit takes effect on `/reload` or `/new`.
+`~/.agents/skills`; each directory is searched once, and a link that leads
+back to one being searched is named once. The model reads a skill's file
+when a task matches its description, and `/skill:<name> [text]` sends one
+with your message. A skill with `disable-model-invocation: true` is left
+out of the list and only sent by hand. Both are read once, so an edit takes
+effect on `/reload` or `/new`.
 
 When the conversation comes within 16k tokens of the model's window, older
 tool outputs are cleared and, if that is not enough, the older messages are
@@ -301,13 +303,13 @@ calls name the call that gave it its work as their parent.
 
 `rig -p "fix the failing test"` answers one prompt and exits: the answer goes
 to stdout, failures to stderr, and the exit code is 0 when the turn ended with
-an answer, 2 for a refused slash command. A command that would open a list
-to pick from, such as `/model`, `/effort`, `/resume`, `/login` or `/fork at`,
-is refused there with the commands to type instead (`/model
-chatgpt/gpt-6.1-sol`), as is text after a command that takes none (`/new
-hello`). Text piped in follows the prompt
-(`git diff | rig -p "review this"`), and piped in without `-p` it is the
-prompt: `rig` runs the terminal view only on an interactive terminal.
+an answer, 2 for a refused slash command or more than 64 MiB piped in. A
+command that would open a list to pick from, such as `/model`, `/effort`,
+`/resume`, `/login` or `/fork at`, is refused there with the commands to
+type instead (`/model chatgpt/gpt-6.1-sol`), as is text after a command
+that takes none (`/new hello`). Text piped in follows the prompt (`git diff
+| rig -p "review this"`), and piped in without `-p` it is the prompt: `rig`
+runs the terminal view only on an interactive terminal.
 
 `-r <id or name>` resumes a given session instead of starting a new one; it
 goes wherever an option goes, but not among a command's words or after `--`,

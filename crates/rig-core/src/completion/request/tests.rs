@@ -749,6 +749,16 @@ mod usage_totals {
     use super::super::dollars_label;
     use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
 
+    /// A running account stops at `u64::MAX` rather than panic or wrap.
+    #[test]
+    fn a_running_total_saturates() {
+        let mut totals = UsageTotals::default();
+        totals.record(&Usage::new().input_tokens(u64::MAX).output_tokens(1));
+        totals.record(&Usage::new().input_tokens(1).output_tokens(1));
+        assert_eq!(totals.tokens.input_tokens, Some(u64::MAX));
+        assert_eq!(totals.tokens.output_tokens, Some(2));
+    }
+
     #[test]
     fn calls_and_tokens_are_summed() {
         let mut totals = UsageTotals::default();

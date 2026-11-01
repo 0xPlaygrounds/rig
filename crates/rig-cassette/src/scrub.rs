@@ -2555,13 +2555,17 @@ fn is_json_lines_media(media: &str) -> bool {
     )
 }
 
-/// Whether the shared framer has no unfinished bytes after this body.
+/// Whether the shared framer has no unfinished bytes after this body, and
+/// refused none of its frames as too large, as the live reader would. The
+/// body goes in a line at a time, as a stream arrives, so what the framer
+/// counts per piece (an SSE id copied into each event) is one event's.
 fn ends_at_frame_boundary(framing: rig_core::http_client::framing::Framing, body: &[u8]) -> bool {
     let Some(mut framer) = framing.framer() else {
         return false;
     };
-    framer.push(body).for_each(drop);
-    framer.pending() == 0
+    let mut lines = body.split_inclusive(|byte| *byte == b'\n');
+    let framed = lines.all(|line| framer.push(line).all(|frame| frame.is_ok()));
+    framed && framer.pending() == 0
 }
 
 #[cfg(any(feature = "http", test))]

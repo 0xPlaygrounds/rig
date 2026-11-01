@@ -479,6 +479,53 @@ exit 75"
     }
 }
 
+/// A refused switch that a signal to the launcher came with does not go
+/// back: nothing starts after the signal. It signals its own process, so it
+/// needs one of its own, as nextest gives each test.
+#[cfg(unix)]
+#[test]
+fn a_refused_switch_after_a_signal_starts_nothing() {
+    let home = builds("switch-signal", "", "");
+    let back = locks::hold_run(&home).and_then(|run| {
+        let saved = || -> Result<SessionId> {
+            let (id, session) = home.new_session()?;
+            session.mark_saved()?;
+            Ok(id)
+        };
+        let (left, refused) = (saved()?, saved()?);
+        let agent = format!(
+            "echo \"$RIG_SESSION $RIG_START\" >> \"$RIG_HOME/started\"
+touch \"$RIG_RUN/ready\"
+[ \"$RIG_SESSION\" = {refused} ] && trap '' TERM && echo 'rig: too old.' > \"$RIG_RUN/refusal\" && kill -TERM $PPID && exit 2
+echo {refused} > \"$RIG_HOME/sessions/$RIG_SESSION/switch\"
+exit 75"
+        );
+        for build in [home.staged(), home.good()] {
+            fs::write(build, format!("#!/bin/sh\n{agent}\n"))?;
+        }
+        let (claimed, _) = claim(&home, Start::Resume(left.clone()), None)?;
+        let ended = launch(
+            &home,
+            run.dir(),
+            &Invocation::default(),
+            false,
+            claimed,
+            None,
+            None,
+        )?;
+        let started = fs::read_to_string(home.root().join("started"))?;
+        Ok((ended.code, started, left, refused))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let back = back.map_err(|failure| failure.to_string());
+    assert!(back.is_ok(), "{back:?}");
+    if let Ok((code, started, left, refused)) = back {
+        // The refused agent's end is the launcher's: no agent ran after it.
+        assert_eq!(code, ExitCode::from(REFUSED_EXIT_CODE));
+        assert_eq!(started, format!("{left} resumed\n{refused} resumed\n"));
+    }
+}
+
 /// Each start says why it started: a new session, a `/reload` of it, a
 /// `/new`, then the previous build after the new one stopped during
 /// startup.

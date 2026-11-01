@@ -25,9 +25,11 @@ use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
 use rig_basics::models::{FirstPick, TypedChoices};
 use rig_harness::harness_protocol::{REFUSED_EXIT_CODE, SessionId};
+use rig_harness::host::pipes::Writer;
 use rig_harness::host::signals;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::session_log::{SessionRestored, SessionStore};
+use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::rig_memory::summarized_in_log;
 use rig_harness::run::RunStartSystems;
 use rig_harness::services::WorkDir;
@@ -35,6 +37,7 @@ use rig_mcp_client::{AddMcpServer, ServerSpec};
 
 use rig_harness::rig_core::completion::message::{Message as Said, StopReason as Stop};
 
+use crate::router::GRACE;
 use crate::{Reply, translate};
 
 #[cfg(test)]
@@ -48,6 +51,9 @@ const OPENING: Duration = Duration::from_secs(60);
 
 /// How often that wait looks for the request, and for a signal.
 const WAIT: Duration = Duration::from_millis(5);
+
+/// The most requests that wait for the app; the connection waits for room.
+const REQUESTS: usize = 64;
 
 /// What the ACP connection hands the app.
 pub(crate) enum Request {
@@ -144,6 +150,13 @@ pub(crate) struct Session {
     sender: Sender<Request>,
     runtime: tokio::runtime::Handle,
     wake: Wake,
+    /// The writer of stdout: while it is behind, the agent's work waits.
+    writer: Writer,
+    /// Dropped once every request is answered, which lets the connection
+    /// end, after what it was handed is sent.
+    done: Option<tokio::sync::oneshot::Sender<()>>,
+    /// The connection, done once it ended.
+    served: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// The prompt the app works on.
@@ -193,9 +206,11 @@ impl Session {
         }
     }
 
-    /// Hands `request` from a task to the app, and wakes it.
-    fn post(sender: &Sender<Request>, wake: &Wake, request: Request) {
-        sender.try_send(request).ok();
+    /// Hands `request` from a task to the app, once there is room, and wakes
+    /// it. A request the app no longer takes is dropped, and its reply
+    /// answers that the session ended.
+    async fn post(sender: &Sender<Request>, wake: &Wake, request: Request) {
+        sender.send(request).await.ok();
         wake.wake();
     }
 }
@@ -230,8 +245,23 @@ pub(crate) fn install(app: &mut App) {
             return;
         }
     };
-    let (sender, requests) = async_channel::unbounded();
-    runtime.spawn(serve(sender.clone(), wake.clone()));
+    let (sender, requests) = async_channel::bounded(REQUESTS);
+    let interrupted = signals::interruption(app.world());
+    let writer = Writer::spawn(
+        std::io::stdout(),
+        std::io::stderr(),
+        wake.clone(),
+        interrupted,
+    );
+    let (done, finished) = tokio::sync::oneshot::channel();
+    let limit = crate::LineLimit::of(app.world());
+    let served = runtime.spawn(serve(
+        sender.clone(),
+        wake.clone(),
+        writer.clone(),
+        limit,
+        finished,
+    ));
     // A signal or the router gone ends the wait; the first frame then exits.
     let signalled = signals::interruption(app.world());
     let deadline = Instant::now() + OPENING;
@@ -287,7 +317,12 @@ pub(crate) fn install(app: &mut App) {
         sender,
         runtime,
         wake,
+        writer,
+        done: Some(done),
+        served: Some(served),
     })
+    // The agent's work waits while the router is behind reading it.
+    .configure_sets(Update, AgentLoop.run_if(has_room))
     .add_systems(PreStartup, move |mut commands: Commands| {
         for server in &servers {
             commands.trigger(server.clone());
@@ -314,7 +349,17 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(output::started)
     .add_observer(output::settled)
     .add_observer(ended)
-    .add_observer(questions::forgotten);
+    .add_observer(questions::forgotten)
+    .add_systems(
+        Last,
+        (
+            answer_open.after(StopTurnsOnExit),
+            // Last: the session log is written before output may wait.
+            finish_output.after(answer_open).after(WriteLogs),
+        )
+            .in_set(OnAppExitSystems)
+            .distributive_run_if(on_message::<AppExit>),
+    );
     let mut session = app.world_mut().resource_mut::<Session>();
     for note in renamed {
         session.note(note, NoticeLevel::Info);
@@ -395,31 +440,38 @@ fn last_of<'a>(
     kept.into_iter().collect()
 }
 
-/// Serves ACP on stdio until the connection ends, handing each request to
-/// the app.
-async fn serve(sender: Sender<Request>, wake: Wake) {
-    let post = |request| Session::post(&sender, &wake, request);
+/// Serves ACP on stdio, handing each request to the app, until the app
+/// answered every request and dropped `done`: the end of stdin is a request
+/// too ([`Request::Ended`]), so the answers the exit owes still go out.
+async fn serve(
+    sender: Sender<Request>,
+    wake: Wake,
+    writer: Writer,
+    limit: usize,
+    done: tokio::sync::oneshot::Receiver<()>,
+) {
+    let post = async |request| Session::post(&sender, &wake, request).await;
     let result = Agent
         .builder()
         .name("rig-acp-session")
         .on_receive_request(
             async |request: acp::InitializeRequest, responder, cx: ConnectionTo<Client>| {
                 let client = Box::new(request.client_capabilities.clone());
-                post(Request::Init(client, cx));
+                post(Request::Init(client, cx)).await;
                 responder.respond(crate::initialized())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |request: acp::NewSessionRequest, responder, _| {
-                post(Request::Open(Opening::New(request, Reply::new(responder))));
+                post(Request::Open(Opening::New(request, Reply::new(responder)))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |request: acp::LoadSessionRequest, responder, _| {
-                post(Request::Open(Opening::Load(request, Reply::new(responder))));
+                post(Request::Open(Opening::Load(request, Reply::new(responder)))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
@@ -429,45 +481,75 @@ async fn serve(sender: Sender<Request>, wake: Wake) {
                 post(Request::Open(Opening::Resume(
                     request,
                     Reply::new(responder),
-                )));
+                )))
+                .await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |request: acp::PromptRequest, responder, _| {
-                post(Request::Prompt(request, Reply::new(responder)));
+                post(Request::Prompt(request, Reply::new(responder))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_notification(
             async |_: acp::CancelNotification, _| {
-                post(Request::Cancel);
+                post(Request::Cancel).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_notification!(),
         )
         .on_receive_request(
             async |request: acp::SetSessionConfigOptionRequest, responder, _| {
-                post(Request::Config(request, Reply::new(responder)));
+                post(Request::Config(request, Reply::new(responder))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
         .on_receive_request(
             async |_: acp::CloseSessionRequest, responder, _| {
-                post(Request::Close(Reply::new(responder)));
+                // Closed however the session ends.
+                let closed = Ok(acp::CloseSessionResponse::new());
+                post(Request::Close(Reply::owed(responder, closed, None))).await;
                 Ok(())
             },
             agent_client_protocol::on_receive_request!(),
         )
-        .connect_to(agent_client_protocol::Stdio::new())
+        .connect_with(
+            crate::stdio::stdio(std::io::stdin(), writer.clone(), limit, "rig acp-session"),
+            async |cx: ConnectionTo<Client>| {
+                // The router left: it closed stdin, or stopped reading.
+                let read = async {
+                    futures::future::select(
+                        std::pin::pin!(cx.incoming_closed()),
+                        std::pin::pin!(writer.gone()),
+                    )
+                    .await;
+                    post(Request::Ended).await;
+                    std::future::pending::<()>().await;
+                };
+                tokio::select! {
+                    () = read => {}
+                    _ = done => {}
+                }
+                Ok(())
+            },
+        )
         .await;
     if let Err(error) = result {
-        eprintln!("rig acp-session: {error}");
+        let said = format!("rig acp-session: {error}\n");
+        writer.write(rig_harness::host::pipes::Stream::Err, said.into_bytes());
+        post(Request::Ended).await;
     }
-    post(Request::Ended);
+}
+
+/// Whether the session's work goes on: while the router keeps up reading
+/// what it writes, and once the session exits, whose exit is an effect of
+/// the agent loop.
+fn has_room(session: Res<Session>, exiting: Option<Res<ExitReason>>) -> bool {
+    exiting.is_some() || session.writer.has_room()
 }
 
 /// The main agent, and what a request reads and changes of the app.
@@ -777,6 +859,48 @@ fn stop_reason(cancelled: bool, ended: Option<&TurnOutcome>) -> Result<acp::Stop
         }
         (false, _) => Ok(acp::StopReason::EndTurn),
     }
+}
+
+/// As the app exits, after the exit stopped the turns (each cut call's
+/// update is out already): sends the text streamed and answers the prompt
+/// `cancelled` unless its turn ended otherwise; every other request owed
+/// or still queued answers as it is dropped ([`Reply`]): a close that it
+/// closed, the rest that the session ended. Then it lets the connection
+/// end ([`finish_output`] waits for it).
+fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
+    out.stream();
+    let session = &mut *out.session;
+    if let Some(prompt) = session.prompt.take() {
+        let answer = match &prompt.ended {
+            None | Some(TurnOutcome::Stopped(_)) => Ok(acp::StopReason::Cancelled),
+            ended => stop_reason(prompt.cancelled, ended.as_ref()),
+        };
+        prompt.reply.send(answer.map(acp::PromptResponse::new));
+    }
+    session.closing.clear();
+    for (_, asking) in session.asking.drain() {
+        asking.abort();
+    }
+    if let Some(changing) = changing {
+        changing.reply.send(Err(crate::ended()));
+    }
+    session.requests.close();
+    session.early.clear();
+    while session.requests.try_recv().is_ok() {}
+    session.opening.take();
+    session.done.take();
+}
+
+/// As the app exits, after the session log was written: waits (within
+/// [`GRACE`]) until the connection sent what it was handed, and until the
+/// writer wrote it.
+fn finish_output(mut session: ResMut<Session>) {
+    if let Some(served) = session.served.take() {
+        session
+            .runtime
+            .block_on(async { tokio::time::timeout(GRACE, served).await.ok() });
+    }
+    session.writer.finish();
 }
 
 /// Answers the prompt once the work it started settled.

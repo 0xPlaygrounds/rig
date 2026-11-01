@@ -43,6 +43,8 @@ use rig_harness_protocol::{
 use super::build::{self, BuildFailure, BuildOutput, Staging, child};
 use super::{Result, locks};
 
+mod stop;
+
 /// How often the launcher looks for the ready file while the agent runs.
 const POLL: Duration = Duration::from_millis(100);
 
@@ -145,13 +147,25 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         notice,
         build_failure,
     )?;
-    if ended.restore {
-        restore_terminal();
+    let code = ended.code;
+    let close = move || {
+        if ended.restore {
+            restore_terminal();
+        }
+        if let Some(said) = ended.said {
+            eprintln!("{said}");
+        }
+    };
+    // After a signal, a terminal or pipe nobody reads must not hold the
+    // launcher: its closing output gets a moment, then it ends anyway.
+    match stop::heard() {
+        None => close(),
+        Some(_) => stop::bounded(close),
     }
-    if let Some(said) = ended.said {
-        eprintln!("{said}");
-    }
-    Ok(ended.code)
+    // The run's own cleanup, before the signal ends the launcher.
+    drop(run);
+    stop::end_as_heard();
+    Ok(code)
 }
 
 /// The session `--resume` names, by id or name ([`Home::find`]), or a new
@@ -279,12 +293,14 @@ fn launch(
         if let Some(failure) = build_failure.take() {
             command.env(env::BUILD_FAILURE, failure);
         }
+        let mut watch = stop::Watch::start();
         let mut child = command.spawn()?;
         // A trial becomes the good build as soon as it is ready, so a
         // launcher killed later (a closed terminal) keeps it.
         let mut started = false;
         let mut promoted: Result<()> = Ok(());
         let status = loop {
+            watch.pass_on(&mut child);
             let status = child.try_wait()?;
             if !started && ready.exists() {
                 started = true;
@@ -297,7 +313,8 @@ fn launch(
                 None => std::thread::sleep(POLL),
             }
         };
-        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
+        drop(watch);
+        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE)) && stop::heard().is_none();
         let restart = !headless || (answers_prompt && !directory.switch().exists());
         screen |= run.screen().exists();
         // A reload that restarts leaves the jobs running, listed for the
@@ -330,6 +347,7 @@ fn launch(
         }
         if !rejected
             && !headless
+            && stop::heard().is_none()
             && let Some(left) = left
             && let Some(refusal) = absent(fs::read_to_string(run.refusal()))?
         {
@@ -351,7 +369,8 @@ fn launch(
         }
         // Only a session rolled back for someone at the terminal, or after
         // a reload of a run that answers a prompt, runs again.
-        let again = !headless || (answers_prompt && reason == StartReason::Reloaded);
+        let again = (!headless || (answers_prompt && reason == StartReason::Reloaded))
+            && stop::heard().is_none();
         let ended = !rejected || !again || !home.good().exists();
         let log = if ended {
             claimed.leave(home, run, status.success())

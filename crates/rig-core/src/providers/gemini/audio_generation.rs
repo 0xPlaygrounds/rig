@@ -429,7 +429,11 @@ impl<'id> Decoder<'id, AudioGeneration> for SpeechDecoder {
         Ok(out.end(AudioGenerationResponse {
             model: event.str("model").map(str::to_owned),
             response_id: event.str("id").map(str::to_owned),
-            usage: event.get("usage").map(usage_of).unwrap_or_default(),
+            usage: event
+                .get("usage")
+                .map(usage_of)
+                .transpose()?
+                .unwrap_or_default(),
             ..AudioGenerationResponse::new(audio)
         }))
     }

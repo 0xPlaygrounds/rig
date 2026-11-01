@@ -13907,6 +13907,7 @@ dependencies = [
  "assert_fs",
  "base64 0.22.1",
  "bytes",
+ "ctrlc",
  "futures",
  "httpmock",
  "libc",
@@ -14254,13 +14255,13 @@ dependencies = [
 name = "rig-ecs"
 version = "0.46.0"
 dependencies = [
+ "async-channel",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
  "bevy_tasks",
  "bevy_time",
- "crossbeam-channel",
  "fastrand",
  "futures",
  "rig-core",
@@ -14309,6 +14310,7 @@ dependencies = [
 name = "rig-harness"
 version = "0.46.0"
 dependencies = [
+ "async-channel",
  "bevy",
  "bevy_app",
  "bevy_ecs",
@@ -14317,6 +14319,7 @@ dependencies = [
  "bevy_tasks",
  "crossbeam-channel",
  "ctrlc",
+ "futures",
  "libc",
  "rig-basics",
  "rig-core",
