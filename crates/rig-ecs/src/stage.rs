@@ -975,14 +975,27 @@ pub(crate) fn moved<C: Component>(mut world: DeferredWorld, context: HookContext
 }
 
 /// Gives the successor of a call of a reply the call's place
-/// ([`InReply`]), unless it has one, and counts the move.
+/// ([`InReply`]), and each successor after it that has none, as a chain
+/// may be linked from its end; and counts the move.
 fn superseded(mut world: DeferredWorld, context: HookContext) {
-    let place = world.get::<InReply>(context.entity).copied();
-    let successor = world
-        .get::<SupersededBy>(context.entity)
-        .map(SupersededBy::successor);
-    if let (Some(place), Some(successor)) = (place, successor) {
-        world.commands().entity(successor).try_insert_if_new(place);
+    let next = |world: &DeferredWorld, effect: Entity| {
+        world
+            .get::<SupersededBy>(effect)
+            .map(SupersededBy::successor)
+    };
+    if let Some(&place) = world.get::<InReply>(context.entity) {
+        let mut chain = Vec::new();
+        let mut at = next(&world, context.entity);
+        while let Some(successor) = at.filter(|s| !chain.contains(s)) {
+            if world.get::<InReply>(successor).is_some() {
+                break;
+            }
+            chain.push(successor);
+            at = next(&world, successor);
+        }
+        for successor in chain {
+            world.commands().entity(successor).try_insert_if_new(place);
+        }
     }
     moved::<SupersededBy>(world, context);
 }

@@ -1504,21 +1504,42 @@ fn replace_looks(
         (Entity, &ToolRequest, &Effect, &CallOf, &ForAgent),
         (ReadyToStart, Without<SupersededBy>, Without<Supersedes>),
     >,
+    chained: Res<Chained>,
     mut commands: Commands,
 ) {
     for (call, request, effect, &CallOf(turn), &ForAgent(agent)) in &calls {
         if request.call.function.name.as_str() == "look" {
-            let parent = Effect::with_parent_id(effect.parent);
-            let successor = (request.clone(), parent, CallOf(turn), ForAgent(agent));
-            commands
-                .spawn(successor)
-                .add_related::<SupersededBy>(&[call]);
+            let parent = effect.parent;
+            let successor = || {
+                let effect = Effect::with_parent_id(parent);
+                (request.clone(), effect, CallOf(turn), ForAgent(agent))
+            };
+            let next = commands.spawn(successor()).id();
+            if chained.0 {
+                // Linked from its end: the second successor first.
+                let last = commands.spawn(successor()).id();
+                commands.entity(next).insert(SupersededBy(last));
+            }
+            commands.entity(next).add_related::<SupersededBy>(&[call]);
         }
     }
 }
 
+/// Whether [`replace_looks`] makes a chain of two successors.
+#[derive(Resource)]
+struct Chained(bool);
+
 #[test]
 fn a_successor_a_plugin_made_keeps_its_result_across_a_crash() {
+    successor_keeps_its_result_across_a_crash(false);
+}
+
+#[test]
+fn the_last_of_a_chain_of_successors_keeps_its_result_across_a_crash() {
+    successor_keeps_its_result_across_a_crash(true);
+}
+
+fn successor_keeps_its_result_across_a_crash(chained: bool) {
     let store = MemoryStore::default();
     let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
     let model = MockCompletionModel::from_stream_turns([vec![
@@ -1528,6 +1549,7 @@ fn a_successor_a_plugin_made_keeps_its_result_across_a_crash() {
     ]]);
     let mut app = tools_app(&store, &model, |app| {
         app.add_tool(Peek)
+            .insert_resource(Chained(chained))
             .add_systems(AgentPass, replace_looks.in_set(Stage::Gate));
     });
     if let Some(agent) = first_agent(&mut app) {
