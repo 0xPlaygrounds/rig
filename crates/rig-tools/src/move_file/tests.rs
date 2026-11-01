@@ -2,6 +2,65 @@ use rig_core::tool::{ChangeKind, FilesChanged, Tool, ToolContext, content_hash};
 
 use super::{Move, MoveArgs};
 
+#[track_caller]
+fn require(condition: bool) -> std::io::Result<()> {
+    if condition {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "check failed at {}",
+            std::panic::Location::caller()
+        )))
+    }
+}
+
+#[test]
+fn a_move_between_hard_links_publishes_no_deletion() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("rig-tools-move-links-{}", std::process::id()));
+    std::fs::create_dir_all(&dir)?;
+    let from = dir.join("from.txt");
+    let to = dir.join("to.txt");
+    std::fs::write(&from, b"same bytes\n")?;
+    std::fs::hard_link(&from, &to)?;
+    let tool = Move {
+        base: Some(dir.clone()),
+        ..Move::default()
+    };
+    for args in [
+        MoveArgs::new("from.txt", "to.txt"),
+        MoveArgs::new("from.txt", "to.txt").overwrite(),
+    ] {
+        let mut context = ToolContext::new();
+        let moved = futures::executor::block_on(tool.call(&mut context, args));
+        require(moved.is_err())?;
+        require(context.result::<FilesChanged>()?.is_none())?;
+        require((std::fs::read(&from)?) == (b"same bytes\n"))?;
+        require((std::fs::read(&to)?) == (b"same bytes\n"))?;
+    }
+
+    // Equal bytes in separate files still represent a real move.
+    std::fs::remove_file(&to)?;
+    std::fs::write(&to, b"same bytes\n")?;
+    let mut context = ToolContext::new();
+    let moved = futures::executor::block_on(tool.call(
+        &mut context,
+        MoveArgs::new("from.txt", "to.txt").overwrite(),
+    ));
+    require(moved.is_ok())?;
+    require(!from.exists())?;
+    let changes = context
+        .result::<FilesChanged>()?
+        .ok_or("move did not publish changes")?;
+    require(
+        changes
+            .0
+            .iter()
+            .any(|change| change.kind == ChangeKind::Deleted),
+    )?;
+    std::fs::remove_dir_all(dir)?;
+    Ok(())
+}
+
 /// A move refuses to replace an existing file unless told to; told to, it
 /// replaces it, and publishes the old path deleted and the new one changed,
 /// with the hash of the moved bytes.
