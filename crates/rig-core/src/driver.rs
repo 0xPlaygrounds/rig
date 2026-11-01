@@ -20,7 +20,6 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -59,15 +58,17 @@ pub struct Model<W, T = crate::http_client::DynHttpClient> {
     pub transport: T,
     /// What preparing the last request leaves for the next.
     prepared: crate::wire::Prepared,
-    /// How long a streamed reply may send nothing before it fails.
+    /// How long a streamed reply may send no frame before it fails.
     idle_timeout: Option<Duration>,
 }
 
-/// How long a streamed reply may send nothing, before its first frame or
-/// between two, before it fails as [`ProviderError::Stalled`]: five minutes.
-/// Every frame restarts it, and so do bytes that are no frame, such as an
-/// event stream's comments, so a model that thinks at length while its
-/// provider pings is not cut off.
+/// How long a streamed reply may send no frame, from when it was sent to its
+/// first frame or between two, before it fails as
+/// [`ProviderError::Stalled`]: five minutes. Only a frame restarts it, any
+/// event the wire reads, including a provider's own ping event; bytes that
+/// are no frame, such as an event stream's comments, never do. A model that
+/// thinks at length is cut only if its provider sends no event for that
+/// long.
 pub const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 impl<W: Default, T: Default> Default for Model<W, T> {
@@ -78,7 +79,7 @@ impl<W: Default, T: Default> Default for Model<W, T> {
 
 impl<W, T> Model<W, T> {
     /// Pair `wire` with the `transport` that sends it. A streamed reply
-    /// that sends nothing for [`STREAM_IDLE_TIMEOUT`] fails.
+    /// that sends no frame for [`STREAM_IDLE_TIMEOUT`] fails.
     pub fn new(wire: W, transport: T) -> Self {
         Self {
             wire,
@@ -89,9 +90,10 @@ impl<W, T> Model<W, T> {
     }
 
     /// This model with a streamed reply failing as
-    /// [`ProviderError::Stalled`] once it sends nothing for `timeout`, before
-    /// its first frame or between two; `None`, or a timeout longer than a
-    /// browser's timer takes (about 24.8 days), waits indefinitely. A unary reply is never
+    /// [`ProviderError::Stalled`] once it sends no frame for `timeout`, from
+    /// when it was sent to its first frame or between two, whatever other
+    /// bytes arrive; `None`, or a timeout longer than a browser's timer
+    /// takes (about 24.8 days), waits indefinitely. A unary reply is never
     /// timed: it sends nothing until it is whole.
     pub fn with_idle_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.idle_timeout = timeout;
@@ -303,9 +305,6 @@ pub struct Opened<F> {
     pub(crate) document: Option<serde_json::Value>,
     pub(crate) slot: Option<AdapterSlot>,
     pub(crate) analysis_only: Option<fn(&F) -> bool>,
-    /// When the transport last received bytes, frames or not, such as an
-    /// event stream's comments, which keep a reply from stalling.
-    pub(crate) received: Option<Arc<Received>>,
 }
 
 impl<F: WasmCompatSend + 'static> Opened<F> {
@@ -322,7 +321,6 @@ impl<F: WasmCompatSend + 'static> Opened<F> {
             document: None,
             slot: None,
             analysis_only: None,
-            received: None,
         }
     }
 
@@ -535,10 +533,15 @@ fn read<W: Wire>(
     let reading = async_stream::stream! {
         let reply: &Mutex<Shared<W::Op>> = &shared;
         let opening_slot = opening.slot.clone();
+        // Only a frame restarts the timer, so opening the reply and its
+        // first frame share one wait: bytes that are no frame, such as an
+        // event stream's comments, are how a provider pings while it sends
+        // nothing.
+        let mut last_frame = web_time::Instant::now();
         // A unary call sends under the call's span; a stream reads under it.
         let opened = match mode {
             Mode::Unary => opening.instrument(span.clone()).await,
-            Mode::Streaming => idle_within(idle, None, opening)
+            Mode::Streaming => idle_within(idle, last_frame, opening)
                 .await
                 .and_then(|opened| opened),
         };
@@ -551,7 +554,6 @@ fn read<W: Wire>(
             document,
             slot,
             analysis_only,
-            received,
         } = match opened {
             Ok(opened) => opened,
             Err(error) => {
@@ -582,8 +584,11 @@ fn read<W: Wire>(
             counted: 0,
         });
         loop {
-            let next = match idle_within(idle, received.as_deref(), frames.next()).await {
-                Ok(next) => next,
+            let next = match idle_within(idle, last_frame, frames.next()).await {
+                Ok(next) => {
+                    last_frame = web_time::Instant::now();
+                    next
+                }
                 Err(stalled) => {
                     record(reply, reassembler.map(|document| document.finish()));
                     fail(reply, slot.as_ref(), stalled);
@@ -651,58 +656,21 @@ fn read<W: Wire>(
 /// timer fires at once. A longer idle timeout waits indefinitely.
 const LONGEST_TIMER: Duration = Duration::from_millis(2_147_483_647);
 
-/// When a reply's transport last received bytes.
-pub(crate) struct Received {
-    opened: web_time::Instant,
-    /// Milliseconds from `opened` to the last bytes.
-    last: AtomicU64,
-}
-
-impl Received {
-    pub(crate) fn new() -> Self {
-        Self {
-            opened: web_time::Instant::now(),
-            last: AtomicU64::new(0),
-        }
-    }
-
-    /// Notes that bytes arrived now.
-    pub(crate) fn mark(&self) {
-        let millis = u64::try_from(self.opened.elapsed().as_millis()).unwrap_or(u64::MAX);
-        self.last.store(millis, Ordering::Relaxed);
-    }
-
-    /// How long ago the last bytes arrived, or the reply opened.
-    fn since(&self) -> Duration {
-        let last = Duration::from_millis(self.last.load(Ordering::Relaxed));
-        self.opened.elapsed().saturating_sub(last)
-    }
-}
-
-/// `next` awaited until `idle` passes with nothing from it and no bytes
-/// `received`, or for as long as it takes without `idle`: past it, the
-/// reply stalled.
-async fn idle_within<F: Future + Unpin>(
+/// `next` awaited until `idle` has passed since `since`, or for as long as
+/// it takes without `idle`: past it, the reply stalled. Timed from `since`,
+/// not from this wait, so a reader that paused between frames does not move
+/// the stall; a frame already in hand still comes.
+pub(crate) async fn idle_within<F: Future + Unpin>(
     idle: Option<Duration>,
-    received: Option<&Received>,
-    mut next: F,
+    since: web_time::Instant,
+    next: F,
 ) -> Result<F::Output, ProviderError> {
     let Some(idle) = idle.filter(|idle| *idle <= LONGEST_TIMER) else {
         return Ok(next.await);
     };
-    // Timed from the last bytes, not from this wait: frames read earlier
-    // may have waited on the reader. A frame already in hand still comes.
-    let mut wait = idle.saturating_sub(received.map_or(Duration::ZERO, Received::since));
-    loop {
-        if let Ok(output) = crate::wasm_compat::timeout(wait, &mut next).await {
-            return Ok(output);
-        }
-        let since = received.map_or(idle, Received::since);
-        if since >= idle {
-            return Err(ProviderError::Stalled(idle));
-        }
-        wait = idle.saturating_sub(since);
-    }
+    crate::wasm_compat::timeout(idle.saturating_sub(since.elapsed()), next)
+        .await
+        .map_err(|_| ProviderError::Stalled(idle))
 }
 
 /// A reply decoded from frames already in hand: its items, then its

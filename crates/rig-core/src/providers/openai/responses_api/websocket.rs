@@ -201,8 +201,9 @@ fn is_terminal_kind(kind: &str) -> bool {
 
 /// A builder for an OpenAI Responses WebSocket session.
 ///
-/// The default builder applies a 30 second connection timeout and leaves the
-/// per-event timeout disabled.
+/// The default builder applies a 30 second connection timeout and the
+/// driver's [`STREAM_IDLE_TIMEOUT`](crate::driver::STREAM_IDLE_TIMEOUT) to
+/// each wait for an event.
 pub struct ResponsesWebSocketSessionBuilder {
     wire: Responses,
     connect_timeout: Option<Duration>,
@@ -214,7 +215,7 @@ impl ResponsesWebSocketSessionBuilder {
         Self {
             wire,
             connect_timeout: Some(DEFAULT_CONNECT_TIMEOUT),
-            event_timeout: None,
+            event_timeout: Some(crate::driver::STREAM_IDLE_TIMEOUT),
         }
     }
 
@@ -226,14 +227,16 @@ impl ResponsesWebSocketSessionBuilder {
     }
 
     /// Waits for the websocket connection with no deadline. The event
-    /// timeout is off unless [`Self::event_timeout`] sets it.
+    /// timeout is unchanged.
     #[must_use]
     pub fn without_connect_timeout(mut self) -> Self {
         self.connect_timeout = None;
         self
     }
 
-    /// Sets the timeout for waiting on the next websocket event.
+    /// Sets how long the turn in flight may send no event before it fails
+    /// as [`ProviderError::Stalled`], counted from when it was sent or its
+    /// last event; pings do not restart it.
     #[must_use]
     pub fn event_timeout(mut self, timeout: Duration) -> Self {
         self.event_timeout = Some(timeout);
@@ -289,6 +292,8 @@ pub struct ResponsesWebSocketSession {
     /// The fold of the turn in flight, opened when it was sent.
     turn: Option<ReplyFold>,
     event_timeout: Option<Duration>,
+    /// When the turn in flight was sent or last sent an event.
+    last_event: web_time::Instant,
     closed: bool,
     failed: bool,
 }
@@ -313,7 +318,8 @@ impl ResponsesWebSocketSession {
     }
 
     /// Build a session over an already-open, authenticated connection.
-    /// `event_timeout: None` waits indefinitely for each event.
+    /// A turn in flight that sends no event for `event_timeout` fails as
+    /// [`ProviderError::Stalled`]; `None` waits indefinitely.
     pub fn from_connection(
         wire: Responses,
         connection: BoxedWebSocketConnection,
@@ -327,6 +333,7 @@ impl ResponsesWebSocketSession {
             in_flight: false,
             turn: None,
             event_timeout,
+            last_event: web_time::Instant::now(),
             closed: false,
             failed: false,
         }
@@ -425,6 +432,7 @@ impl ResponsesWebSocketSession {
         }
         self.in_flight = true;
         self.turn = Some(turn);
+        self.last_event = web_time::Instant::now();
 
         Ok(())
     }
@@ -461,7 +469,10 @@ impl ResponsesWebSocketSession {
             };
 
             let payload = match websocket_frame_to_text(message) {
-                Ok(Some(payload)) => payload,
+                Ok(Some(payload)) => {
+                    self.last_event = web_time::Instant::now();
+                    payload
+                }
                 Ok(None) => continue,
                 Err(error) => return Err(self.fail_session(error)),
             };
@@ -695,18 +706,17 @@ impl ResponsesWebSocketSession {
         error
     }
 
-    /// Read a frame with a WASM-compatible timeout.
-    /// Timeout failure marks the session failed; transport results remain nested.
+    /// Read a frame within the event timeout, timed as the driver times a
+    /// streamed reply. A stall marks the session failed; transport results
+    /// remain nested.
     async fn read_next_frame(
         &mut self,
     ) -> Result<http_client::Result<Option<Frame>>, ProviderError> {
-        let Some(timeout_duration) = self.event_timeout else {
-            return Ok(self.socket.recv().await);
-        };
-
-        match crate::wasm_compat::timeout(timeout_duration, self.socket.recv()).await {
+        let next =
+            crate::driver::idle_within(self.event_timeout, self.last_event, self.socket.recv());
+        match next.await {
             Ok(message) => Ok(message),
-            Err(_) => Err(self.fail_session(event_timeout_error(timeout_duration))),
+            Err(stalled) => Err(self.fail_session(stalled)),
         }
     }
 }
@@ -884,12 +894,6 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, E
     request.body(NoBody).map_err(|error| {
         EncodeError::request(format!("Failed to build OpenAI websocket request: {error}"))
     })
-}
-
-fn event_timeout_error(timeout: Duration) -> ProviderError {
-    ProviderError::Provider(format!(
-        "Timed out waiting for the next OpenAI websocket event after {timeout:?}"
-    ))
 }
 
 /// Convert transport errors, retaining rejected-upgrade status, body, and request ID.

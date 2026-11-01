@@ -535,44 +535,18 @@ async fn a_streamed_reply_that_falls_silent_stalls() {
     }
 }
 
-/// An event stream that sends only comments for longer than the idle
-/// timeout, as a provider pings while its model thinks, does not stall.
+/// An event stream that sends only comments, as a provider pings while it
+/// sends nothing, stalls an idle timeout after it opened, however often it
+/// pings.
 #[tokio::test]
-async fn comments_keep_a_streamed_reply_from_stalling() {
-    let idle = std::time::Duration::from_millis(200);
-    let pinging = PacedStreamingClient {
-        chunks: vec![
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            ": ping\n\n",
-            "data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
-             data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n",
-        ],
-        gap: idle / 4,
-    };
-    let response = Model::new(Echo::streaming(), pinging)
-        .with_idle_timeout(Some(idle))
-        .stream(prompt())
-        .expect("the stream opens")
-        .finish()
-        .await;
-    assert!(response.is_ok(), "a pinging reply ends: {response:?}");
-}
-
-/// A reply that pings once and then falls silent stalls the idle timeout
-/// after the ping, not a whole timeout after the timer next looked.
-#[tokio::test]
-async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
+async fn comments_alone_stall_a_streamed_reply() {
     let idle = std::time::Duration::from_millis(400);
-    let once = PacedStreamingClient {
-        chunks: vec![": ping\n\n"],
-        gap: idle / 4,
+    let pinging = PacedStreamingClient {
+        chunks: vec![": keep-alive\n\n"; 64],
+        gap: idle / 8,
     };
     let started = std::time::Instant::now();
-    let stalled = Model::new(Echo::streaming(), once)
+    let stalled = Model::new(Echo::streaming(), pinging)
         .with_idle_timeout(Some(idle))
         .stream(prompt())
         .expect("the stream opens")
@@ -580,15 +554,34 @@ async fn a_ping_then_silence_stalls_an_idle_timeout_after_the_ping() {
         .await;
     let took = started.elapsed();
     assert!(
-        matches!(stalled, Err(ProviderError::Stalled(_))),
-        "a silent reply stalls: {stalled:?}"
+        matches!(stalled, Err(ProviderError::Stalled(after)) if after == idle),
+        "a reply of comments stalls: {stalled:?}"
     );
-    // The ping at 100 ms moves the stall to about 500 ms; timing from the
-    // timer's next look would take 800 ms.
-    assert!(
-        took < idle + idle * 3 / 4,
-        "stalled {took:?} after it opened"
-    );
+    assert!(took < idle * 2, "stalled {took:?} after it opened");
+}
+
+/// A reply that sends a frame now and then, each within the idle timeout,
+/// never stalls, however long it runs in all and whatever comes between.
+#[tokio::test]
+async fn frames_within_the_idle_timeout_never_stall() {
+    let idle = std::time::Duration::from_millis(200);
+    let mut chunks = Vec::new();
+    for _ in 0..4 {
+        chunks.extend([": keep-alive\n\n", ": keep-alive\n\n"]);
+        chunks.push("data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n");
+    }
+    chunks.push("data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":1}}\n\n");
+    let trickle = PacedStreamingClient {
+        chunks,
+        gap: idle / 4,
+    };
+    let response = Model::new(Echo::streaming(), trickle)
+        .with_idle_timeout(Some(idle))
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await;
+    assert!(response.is_ok(), "a trickling reply ends: {response:?}");
 }
 
 /// A reader that pauses between frames does not move the stall: it comes

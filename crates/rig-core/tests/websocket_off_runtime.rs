@@ -221,9 +221,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
             .await
             .expect_err("a silent server should trip the event timeout");
         assert!(
-            error
-                .to_string()
-                .contains("Timed out waiting for the next OpenAI websocket event"),
+            matches!(error, rig_core::error::ProviderError::Stalled(_)),
             "expected the event timeout, got {error}"
         );
 

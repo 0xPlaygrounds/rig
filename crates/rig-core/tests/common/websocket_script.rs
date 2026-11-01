@@ -42,6 +42,9 @@ pub enum WhenDrained {
     /// Never resolve, so an event timeout is the only way out. This is the
     /// in-memory equivalent of a server that accepted the turn and went quiet.
     Stall,
+    /// Send a ping each period, forever: a server that keeps the connection
+    /// alive but sends no event.
+    Ping(Duration),
 }
 
 #[derive(Default)]
@@ -92,6 +95,14 @@ impl Script {
         self
     }
 
+    /// A script that pings every `period` instead of ending the stream when
+    /// it runs out.
+    #[must_use]
+    pub fn pinging(self, period: Duration) -> Self {
+        self.0.lock().expect("script lock").drained = WhenDrained::Ping(period);
+        self
+    }
+
     /// Every text payload the session has written, in order.
     pub fn sent(&self) -> Vec<String> {
         self.0.lock().expect("script lock").sent.clone()
@@ -133,6 +144,12 @@ impl WebSocketConnection for ScriptedConnection {
                 None => match state.drained {
                     WhenDrained::EndStream => Some(None),
                     WhenDrained::Stall => None,
+                    WhenDrained::Ping(period) => {
+                        return Box::pin(async move {
+                            tokio::time::sleep(period).await;
+                            Ok(Some(Frame::Ping(Default::default())))
+                        });
+                    }
                 },
             }
         };

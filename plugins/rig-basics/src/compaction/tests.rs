@@ -694,7 +694,7 @@ fn a_summary_call_that_fails_for_a_while_is_retried_with_the_turns_retries() {
     assert!(live.first().is_some_and(holds_summary), "{live:?}");
 }
 
-/// A reply that sent nothing for five minutes.
+/// A reply that sent no frame for five minutes.
 fn stalled() -> Vec<MockStreamEvent> {
     let idle = std::time::Duration::from_secs(300);
     vec![MockStreamEvent::Error(MockError::Stalled(idle))]
