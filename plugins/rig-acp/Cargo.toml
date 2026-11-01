@@ -19,9 +19,9 @@ bevy_ecs = { workspace = true }
 # A session's `updatedAt`, as RFC 3339.
 chrono = { workspace = true, features = ["std"] }
 futures = { workspace = true }
-rig-basics = { path = "../rig-basics", version = "0.46.0", default-features = false }
-rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
-rig-mcp-client = { path = "../rig-mcp-client", version = "0.46.0" }
+rig-basics = { path = "../rig-basics", version = "0.47.0", default-features = false }
+rig-harness = { path = "../../crates/rig-harness", version = "0.47.0" }
+rig-mcp-client = { path = "../rig-mcp-client", version = "0.47.0" }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
