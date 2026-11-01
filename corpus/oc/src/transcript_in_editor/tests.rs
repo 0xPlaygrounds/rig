@@ -464,7 +464,7 @@ fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
         return;
     };
     let asked = vec![
-        ("c9", serde_json::json!({ "command": "one", "exit": 3 })),
+        ("c9", serde_json::json!({ "command": "one" })),
         ("c9", serde_json::json!({ "command": "two", "exit": 7 })),
         ("c10", serde_json::json!({ "command": "three", "exit": 5 })),
     ];
@@ -495,14 +495,15 @@ fn an_edit_is_refused_only_when_it_takes_out_one_of_two_calls_sharing_an_id() {
         replies.collect::<Vec<_>>()
     };
     let before = exits(&app);
-    let exited = |codes: &[i32]| {
-        codes
-            .iter()
-            .map(|&code| Some(ExitStatus::Exited(code)))
-            .collect::<Vec<_>>()
-    };
     let ran: Vec<_> = before.iter().map(|(_, exits)| exits.clone()).collect();
-    assert_eq!(ran, [exited(&[3, 7, 5])]);
+    assert_eq!(
+        ran,
+        [vec![
+            None,
+            Some(ExitStatus::Exited(7)),
+            Some(ExitStatus::Exited(5))
+        ]]
+    );
 
     let drop_first = script(
         &home,
@@ -548,7 +549,13 @@ fence { if (/^```$/) fence = 0; next }
         &drop_unique,
         "Edited the conversation",
     );
-    let ran: Vec<_> = exits(&app).into_iter().map(|(_, exits)| exits).collect();
-    assert_eq!(ran, [exited(&[3, 7])], "{said}");
+    // Nothing moved, so the reply keeps its id and each call its own.
+    let after = exits(&app);
+    let ran: Vec<_> = after.iter().map(|(_, exits)| exits.clone()).collect();
+    assert_eq!(ran, [vec![None, Some(ExitStatus::Exited(7))]], "{said}");
+    let ids = |replies: &[(MessageId, Vec<Option<ExitStatus>>)]| {
+        replies.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&after), ids(&before), "{said}");
     std::fs::remove_dir_all(&home).ok();
 }

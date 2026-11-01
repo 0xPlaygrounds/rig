@@ -711,23 +711,18 @@ fn finish(original: &[Entry], built: &Built, delete_both: bool) -> Result<Vec<En
             Message::System { content } => content.trim().is_empty(),
         };
         let (calls, before) = (ids(&message).0, ids(&entry.message).0);
-        // Ids can repeat, so any change to the calls may have moved one.
-        let moved = calls != before;
-        // The file names a call by its id alone, so it can't tell which of
-        // a reply's calls that share one an edit took out or moved.
+        // A call that kept its place keeps its reply's id, and what was
+        // kept for it at that place.
+        let moved = calls.iter().zip(&before).any(|(call, was)| call != was);
+        // The file names a call by its id alone, so in a reply that repeats
+        // one it can't tell which call an edit took out or moved, and a new
+        // id would leave such calls to be paired by order.
         let repeats = |id: &&String| before.iter().filter(|was| was == id).count() > 1;
         let shared = |calls: &[String]| calls.iter().filter(repeats).cloned().collect::<Vec<_>>();
-        let count = |calls: &[String], id: &String| calls.iter().filter(|it| *it == id).count();
-        let changed = shared(&calls) != shared(&before);
-        let named = shared(&before)
-            .into_iter()
-            .find(|id| count(&calls, id) != count(&before, id));
-        if let Some(id) = named
-            .or_else(|| shared(&before).into_iter().next())
-            .filter(|_| changed)
-        {
+        let changed = moved || shared(&calls) != shared(&before);
+        if let Some(id) = shared(&before).first().filter(|_| changed) {
             return Err(format!(
-                "a reply asks for two calls with the id `{id}`, so the edit can't tell which one it changed; leave that reply's calls with that id as they are"
+                "a reply asks for two calls with the id `{id}`, so the edit can't keep each call in its place; leave that reply's calls as they are, or take out only calls at its end"
             ));
         }
         if !empty {
