@@ -18,9 +18,12 @@ use crate::telemetry::effect_log::EffectLogPlugin;
 
 /// Pieces of the secrets [`a_session_with_the_plugin_holds_no_key`] puts
 /// in, each long enough that no other text holds it.
-const FRAGMENTS: [&str; 8] = [
+const FRAGMENTS: [&str; 9] = [
     // Typed in the message.
     "abcdefghijklmnop1234",
+    // The name of a file the message names that is not there, which a
+    // notice quotes.
+    "nofilenofilenofile",
     // In the system prompt, as from an AGENTS.md.
     "agentsmd12345678",
     // In a file the message names.
@@ -82,6 +85,7 @@ fn a_session_meeting_secrets(redacting: bool) -> (String, String) {
         .add_observer(log_ended)
         .add_systems(AgentPass, review.in_set(ReviewSystems::Edit));
     collect::<StreamDelta>(&mut app);
+    collect::<Notice>(&mut app);
     if redacting {
         app.add_plugins(RedactPlugin);
     }
@@ -100,7 +104,8 @@ fn a_session_meeting_secrets(redacting: bool) -> (String, String) {
         "deploy",
         "Deploy with TOKEN=agentsmd12345678.",
     ));
-    let said = "Go, with my key sk-proj-abcdefghijklmnop1234 and @secret.txt";
+    let said = "Go, with my key sk-proj-abcdefghijklmnop1234 and @secret.txt and \
+        @ghp_nofilenofilenofilenofilenofile123456.txt";
     world.trigger(Deliver::new(agent, said, DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
@@ -128,7 +133,16 @@ fn a_session_meeting_secrets(redacting: bool) -> (String, String) {
         .collect();
     let effects = store.read_file(rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG);
     saved.extend(effects.unwrap_or_default());
-    let all = format!("{shown}\n{held}\n{}", String::from_utf8_lossy(&saved));
+    let noticed: Vec<&str> = world
+        .resource::<Collected<Notice>>()
+        .0
+        .iter()
+        .map(|notice| notice.text.as_str())
+        .collect();
+    let all = format!(
+        "{shown}\n{held}\n{noticed:?}\n{}",
+        String::from_utf8_lossy(&saved)
+    );
     (shown, all)
 }
 
@@ -995,6 +1009,14 @@ fn a_result_keeps_an_images_data_whole() {
     let shown = answer.and_then(|answer| serde_json::to_string(&answer).ok());
     let shown = shown.unwrap_or_default();
     assert!(!shown.contains("ghp_") && shown.contains(&data), "{shown}");
+    // A value that is no base64 is searched, though its type says base64.
+    let posing = json!({ "type": "base64", "value": format!("GITHUB_TOKEN={token}") });
+    let shown = secrets.redacted(&posing).map(|value| value.to_string());
+    let shown = shown.unwrap_or_default();
+    assert!(
+        shown.contains("GITHUB_TOKEN=‹SECRET_") && !shown.contains("ghp_"),
+        "{shown}"
+    );
 }
 
 /// The effect log keeps a model request redacted as the layer sends it,
@@ -1078,8 +1100,9 @@ impl ContextValue for LateNote {
     const KEY: &'static str = "z_note";
 }
 
-/// A secret a later part of a message, or a later fact, teaches is found
-/// in an earlier one too, where it shows bare.
+/// A secret a later part of a message, a later fact or a later field of a
+/// model request teaches is found in an earlier one too, where it shows
+/// bare; a request document's name and metadata are searched as its text is.
 #[test]
 fn a_secret_learned_late_is_found_in_what_came_before() {
     let mut world = World::new();
@@ -1125,4 +1148,27 @@ fn a_secret_learned_late_is_found_in_what_came_before() {
         Some("DB_PASSWORD=‹SECRET_2›".to_owned()),
     );
     assert_eq!(notes, expected);
+    let mut props = std::collections::HashMap::new();
+    props.insert(
+        "source".to_owned(),
+        "https://example.test/?token=ghp_abcdefghijklmnopqrstuvwxyz0123456789".to_owned(),
+    );
+    let document = Document {
+        id: "GITHUB_TOKEN=ghp_zyxwvutsrqponmlkjihgfedcba9876543210".to_owned(),
+        text: "DB_PASSWORD=hunter6hunter6".to_owned(),
+        additional_props: props,
+    };
+    let request = CompletionRequest::new("retry with hunter6hunter6").document(document);
+    let secrets = world.resource::<Secrets>().clone();
+    let sent = match as_sent(&secrets, request) {
+        Some(BeforeServe::Patch(EffectKind::Completion { request, .. })) => Some(request),
+        _ => None,
+    };
+    let shown = sent.map(|request| format!("{:?} {:?}", request.chat_history, request.documents));
+    let shown = shown.unwrap_or_default();
+    assert!(shown.contains("‹SECRET_"), "{shown}");
+    assert!(
+        !shown.contains("hunter6") && !shown.contains("ghp_"),
+        "{shown}"
+    );
 }

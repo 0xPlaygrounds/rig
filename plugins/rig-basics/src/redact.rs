@@ -150,7 +150,7 @@ impl Plugin for RedactPlugin {
                         .after(GateSystems::After)
                         .after(crate::approval::ApprovalSystems)
                         .before(GateSystems::Fallback),
-                    redact_recalled.in_set(Stage::Start),
+                    (redact_recalled, redact_notices).in_set(Stage::Start),
                 ),
             )
             .add_systems(
@@ -270,6 +270,14 @@ impl Secrets {
     /// (tools, schemas, media, settings) is the program's text or data a
     /// key's shape could match by chance. `None` when none held a secret.
     fn request(&self, request: &CompletionRequest) -> Option<CompletionRequest> {
+        let asked = self.request_once(request)?;
+        // Again, for a secret a later field taught to show bare in an
+        // earlier one.
+        Some(self.request_once(&asked).unwrap_or(asked))
+    }
+
+    /// One pass of [`Self::request`].
+    fn request_once(&self, request: &CompletionRequest) -> Option<CompletionRequest> {
         let mut asked = request.clone();
         let mut changed = false;
         for entry in &mut asked.chat_history {
@@ -306,9 +314,15 @@ impl Secrets {
             }
         }
         for document in &mut asked.documents {
-            if let Some(text) = owned(self.text(&document.text)) {
-                document.text = text;
-                changed = true;
+            let props = document.additional_props.values_mut();
+            for text in [&mut document.id, &mut document.text]
+                .into_iter()
+                .chain(props)
+            {
+                if let Some(redacted) = owned(self.text(text)) {
+                    *text = redacted;
+                    changed = true;
+                }
             }
         }
         changed.then_some(asked)
@@ -427,8 +441,13 @@ fn json(secrets: &Secrets, value: &mut Value) -> bool {
             .iter_mut()
             .fold(false, |any, item| json(secrets, item) | any),
         Value::Object(fields) => {
-            // How a media source's base64 serializes: its value stays whole.
-            let encoded = fields.get("type").and_then(Value::as_str) == Some("base64");
+            // How a media source's base64 serializes: its value stays whole
+            // when it is base64.
+            let encoded = fields.get("type").and_then(Value::as_str) == Some("base64")
+                && fields
+                    .get("value")
+                    .and_then(Value::as_str)
+                    .is_some_and(is_base64);
             fields
                 .iter_mut()
                 .filter(|(key, _)| !(encoded && key.as_str() == "value"))
@@ -444,11 +463,7 @@ fn json_text(secrets: &Secrets, text: &str) -> Option<String> {
     let data_url = text
         .strip_prefix("data:")
         .and_then(|url| url.split_once(";base64,"));
-    if data_url.is_some_and(|(_, encoded)| {
-        encoded
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
-    }) {
+    if data_url.is_some_and(|(_, encoded)| is_base64(encoded)) {
         return None;
     }
     let mut changed = owned(secrets.text(text));
@@ -460,6 +475,12 @@ fn json_text(secrets: &Secrets, text: &str) -> Option<String> {
         changed = Some(inner.to_string());
     }
     changed
+}
+
+/// Whether `text` is made of base64's characters only.
+fn is_base64(text: &str) -> bool {
+    text.bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
 }
 
 /// The text a [`Cow`] holds when it was changed.
@@ -710,6 +731,16 @@ fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
         }
     }
     changed
+}
+
+/// A notice, which may quote what the user typed, such as a file a message
+/// names that is not there; before the fronts read it, after the agent loop.
+fn redact_notices(mut notices: MessageMutator<Notice>, secrets: Res<Secrets>) {
+    for notice in notices.read() {
+        if let Some(text) = owned(secrets.text(&notice.text)) {
+            notice.text = text;
+        }
+    }
 }
 
 /// A refused command's line, and why it was refused, which may quote it.
