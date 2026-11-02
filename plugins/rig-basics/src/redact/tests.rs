@@ -700,6 +700,12 @@ fn a_known_secret_is_found_again_where_it_shows_bare() {
     let printed = json!({ "output": "it is hunter2hunter2" });
     let redacted = secrets.redacted(&printed);
     assert_eq!(redacted, Some(json!({ "output": "it is ‹SECRET_1›" })));
+    // Learned from a later string, it is found in an earlier one too.
+    let fresh = Secrets::default();
+    let both = json!({ "a": "hunter3hunter3", "z": "DB_PASSWORD=hunter3hunter3" });
+    let redacted = fresh.redacted(&both);
+    let found = json!({ "a": "‹SECRET_1›", "z": "DB_PASSWORD=‹SECRET_1›" });
+    assert_eq!(redacted, Some(found));
 }
 
 /// A message delivered after the agent loop of the frame the app exits on,
@@ -894,11 +900,12 @@ fn a_secret_like_a_name_leaves_the_name_alone() {
     );
 }
 
-/// An image's base64, as a `read` of a PNG gives it, whose start is a
+/// A one-pixel PNG's base64, as a `read` of it gives it, whose start is a
 /// secret the run knows.
 fn png(secrets: &Secrets) -> String {
     let _ = secrets.text("B_TOKEN=iVBORw0K");
-    format!("iVBORw0K{}", "A".repeat(300))
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        .to_owned()
 }
 
 /// A model request is redacted in its own text: its system prompt, its

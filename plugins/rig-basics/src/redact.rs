@@ -241,6 +241,9 @@ impl Secrets {
         if !json(self, &mut redacted) {
             return None;
         }
+        // Again, for a secret a later string taught to show bare in an
+        // earlier one.
+        json(self, &mut redacted);
         let reads = |json: &Value| T::deserialize(json).is_ok();
         if !reads(&redacted) {
             let mut strings = Vec::new();
@@ -408,37 +411,47 @@ fn changed(before: &Value, after: &Value, at: String, out: &mut Vec<String>) {
 
 /// Every string in `value` redacted as [`Secrets::text`] redacts it, and
 /// one that holds JSON, such as a call's arguments, as that JSON too, where
-/// an escape would hide a secret; whether any was. A string of encoded data,
-/// such as an image's base64, is left whole: a key's shape or a known
-/// secret could match it by chance and break it.
+/// an escape would hide a secret; whether any was. A file's encoded bytes,
+/// such as an image's base64, are left whole: a key's shape or a known
+/// secret could match them by chance and break them.
 fn json(secrets: &Secrets, value: &mut Value) -> bool {
-    each_string(value, &mut |text| {
-        if is_data(text) {
-            return None;
+    match value {
+        Value::String(text) => match json_text(secrets, text) {
+            Some(changed) => {
+                *text = changed;
+                true
+            }
+            None => false,
+        },
+        Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |any, item| json(secrets, item) | any),
+        // How a media source's base64 serializes.
+        Value::Object(fields) if fields.get("type").and_then(Value::as_str) == Some("base64") => {
+            false
         }
-        let mut changed = owned(secrets.text(text));
-        let current = changed.as_deref().unwrap_or(text);
-        if current.trim_start().starts_with(['{', '['])
-            && let Ok(mut inner) = serde_json::from_str::<Value>(current)
-            && json(secrets, &mut inner)
-        {
-            changed = Some(inner.to_string());
-        }
-        changed
-    })
+        Value::Object(fields) => fields
+            .values_mut()
+            .fold(false, |any, field| json(secrets, field) | any),
+        Value::Null | Value::Bool(_) | Value::Number(_) => false,
+    }
 }
 
-/// Whether `text` is encoded data: at least 256 characters of base64, or a
-/// `data:` URL of it.
-fn is_data(text: &str) -> bool {
-    let encoded = text
-        .strip_prefix("data:")
-        .and_then(|url| url.get(url.find(";base64,")? + ";base64,".len()..))
-        .unwrap_or(text);
-    encoded.len() >= 256
-        && encoded
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
+/// One string of [`json`]: as text, then as the JSON it holds; `None` when
+/// unchanged. A `data:` URL of base64 is left whole.
+fn json_text(secrets: &Secrets, text: &str) -> Option<String> {
+    if text.starts_with("data:") && text.contains(";base64,") {
+        return None;
+    }
+    let mut changed = owned(secrets.text(text));
+    let current = changed.as_deref().unwrap_or(text);
+    if current.trim_start().starts_with(['{', '['])
+        && let Ok(mut inner) = serde_json::from_str::<Value>(current)
+        && json(secrets, &mut inner)
+    {
+        changed = Some(inner.to_string());
+    }
+    changed
 }
 
 /// The text a [`Cow`] holds when it was changed.
