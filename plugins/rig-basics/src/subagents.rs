@@ -33,13 +33,12 @@
 //!
 //! Every agent is spawned through a [`SpawnSubagent`] effect, so other
 //! plugins shape spawning with ordinary stage systems, as below.
-//! The kernel's [`SpawnPolicy`] caps nesting; a plugin spawns its own
-//! [`Role::Helper`] the same way. Reports are messages like any other, so a
+//! A plugin spawns its own [`Role::Helper`] the same way. Reports are messages like any other, so a
 //! plugin edits or takes them over as it would any message.
 //!
 //! ```
 //! use rig_harness::prelude::*;
-//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent, SubagentSystems};
+//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
 //!
 //! /// Subagents (not helpers) get only the read-only tools.
 //! fn read_only(
@@ -79,7 +78,7 @@
 //! let mut app = App::new();
 //! app.add_systems(AgentPass, (
 //!     read_only.in_set(Stage::Prepare),
-//!     one_at_a_time.in_set(Stage::Gate).after(SubagentSystems::Gate),
+//!     one_at_a_time.in_set(Stage::Gate),
 //!     with_notes.in_set(Stage::Review),
 //! ));
 //! ```
@@ -108,13 +107,6 @@ pub use tools::{MESSAGE, TASK, WAIT};
 /// conversations: the module's.
 pub const ORIGIN: &str = "subagents";
 
-/// The plugin's stage system sets.
-#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SubagentSystems {
-    /// In Gate: refuses a request deeper than the [`SpawnPolicy`] allows.
-    Gate,
-}
-
 /// Adds the `task`, `message` and `wait` tools, spawning the agents
 /// [`SpawnSubagent`] asks for, the subagents' lifecycle and the reports
 /// that answer their requests; with the `tui` feature (on by default),
@@ -127,8 +119,7 @@ impl Plugin for SubagentsPlugin {
         if !app.is_plugin_added::<ApprovalPlugin>() {
             app.add_plugins(ApprovalPlugin);
         }
-        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
-            .keeps_saved::<Subtask>()
+        app.keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()
             .keeps_saved::<Environment>()

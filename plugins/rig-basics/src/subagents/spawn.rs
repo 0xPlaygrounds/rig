@@ -11,8 +11,8 @@ use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, WAIT};
 use super::{
-    Awaiting, Environment, Helper, Lifecycle, ORIGIN, Peers, Request, SubagentSystems,
-    SubagentsPlugin, Subtask, answered, refused,
+    Awaiting, Environment, Helper, Lifecycle, ORIGIN, Peers, Request, SubagentsPlugin, Subtask,
+    answered, refused,
 };
 use rig_ecs::session_log::Never;
 use rig_harness::prelude::*;
@@ -172,8 +172,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(follow_successor::<TaskCall>)
         .add_observer(answer_task)
         .add_observer(despawn_open_children::<TaskCall>)
-        .add_observer(retire_once)
-        .add_systems(AgentPass, refuse_too_deep.in_set(SubagentSystems::Gate));
+        .add_observer(retire_once);
 }
 
 /// Makes the request an open effect the kernel records.
@@ -196,29 +195,6 @@ fn open_effect(request: &SpawnSubagent) -> EffectRequest {
     EffectRequest {
         kind,
         handler: None,
-    }
-}
-
-/// Refuses a request for an agent deeper than the [`SpawnPolicy`] allows,
-/// before it may be asked about.
-fn refuse_too_deep(
-    mut requests: Query<
-        (&ForAgent, &mut Decision),
-        (
-            ReadyToStart,
-            PluginEffects,
-            With<SpawnSubagent>,
-            Without<Ask>,
-        ),
-    >,
-    lineage: Query<&SpawnedBy>,
-    policy: Res<SpawnPolicy>,
-) {
-    for (&ForAgent(parent), mut decision) in &mut requests {
-        if let Some(refused) = policy.refuses(policy.depth(parent, &lineage) + 1) {
-            let why = format!("{refused}; do the work yourself");
-            decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
-        }
     }
 }
 

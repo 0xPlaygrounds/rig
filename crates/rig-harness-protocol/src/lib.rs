@@ -80,10 +80,6 @@ pub mod env {
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
     /// A rig checkout the agent is built from instead of crates.io.
     pub const SOURCE: &str = "RIG_SOURCE";
-    /// How deep the agent a nested agent works for is, plus one: set by
-    /// the agent that starts it, so its first agent starts at that depth
-    /// and agents nest no deeper across processes than within one.
-    pub const AGENT_DEPTH: &str = "RIG_AGENT_DEPTH";
 }
 
 /// The launcher that started this agent, if one did: it sets both

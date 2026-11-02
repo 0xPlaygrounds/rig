@@ -74,7 +74,7 @@ pub mod prelude {
     pub use crate::session_log::{
         ConversationChanged, ReflectSaved, Retire, SessionLogPlugin, SessionRestored,
     };
-    pub use crate::spawn::{AgentSpec, Origin, SpawnPolicy, SpawnRefused, Spawner, spawn_root};
+    pub use crate::spawn::{AgentSpec, Origin, SpawnRefused, Spawner, spawn_root};
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
         ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
@@ -192,7 +192,6 @@ impl Plugin for AgentPlugin {
             .add_systems(SaveConversations, save_conversations)
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
-            .init_resource::<spawn::SpawnPolicy>()
             .add_message::<Notice>()
             .add_message::<session_log::ConversationChanged>()
             .add_message::<inbox::Recalled>()
@@ -228,7 +227,6 @@ impl Plugin for AgentPlugin {
             .add_observer(session_log::retire)
             .add_observer(requests::end_with_settled)
             .add_observer(requests::refuse_ended)
-            .add_observer(spawn::within_depth)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_stop_turn)
             .add_observer(turn::reach_once_gone)

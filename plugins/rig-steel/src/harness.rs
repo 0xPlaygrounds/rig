@@ -83,8 +83,8 @@ impl Harness {
 
     /// Spawns an agent from `spec`, a child of the agent `parent` when
     /// given, as a [`Spawner`](rig_ecs::spawn::Spawner) does, and returns
-    /// its id. It is idle until a message is sent to it. Refused past the
-    /// depth limit, or for a tool in `spec.tools` the parent may not call.
+    /// its id. It is idle until a message is sent to it. Refused for a tool
+    /// in `spec.tools` the parent may not call.
     pub async fn spawn_agent(
         &self,
         spec: AgentSpec,

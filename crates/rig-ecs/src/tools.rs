@@ -218,10 +218,6 @@ impl Default for Footprint {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
 
-/// On a tool whose calls start agents ([`AppToolsExt::starts_agents`]).
-#[derive(Component)]
-pub(crate) struct StartsAgents;
-
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
 #[derive(Clone, Debug, Default)]
 pub struct ToolOptions {
@@ -270,12 +266,6 @@ pub trait AppToolsExt {
     ) -> &mut Self
     where
         A: DeserializeOwned + JsonSchema + Send + Sync + 'static;
-
-    /// Marks the registered tool `name` as one whose calls start agents,
-    /// such as a `task` tool: an agent spawned at the depth limit of the
-    /// [`SpawnPolicy`](crate::spawn::SpawnPolicy) is not given it. A root
-    /// keeps it, and the tool refuses a call there.
-    fn starts_agents(&mut self, name: &str) -> &mut Self;
 }
 
 impl AppToolsExt for App {
@@ -308,19 +298,6 @@ impl AppToolsExt for App {
         let changes = Touches::Writes(Scope::Anything);
         if let Some(tool) = register_tool(world, definition, serves, options, changes) {
             world.entity_mut(tool).observe(observer);
-        }
-        self
-    }
-
-    fn starts_agents(&mut self, name: &str) -> &mut Self {
-        let world = self.world_mut();
-        let mut tools = world.query::<(Entity, &ToolDef)>();
-        let tool = tools
-            .iter(world)
-            .find(|(_, def)| def.0.name.as_str() == name)
-            .map(|(tool, _)| tool);
-        if let Some(mut tool) = tool.and_then(|tool| world.get_entity_mut(tool).ok()) {
-            tool.insert(StartsAgents);
         }
         self
     }

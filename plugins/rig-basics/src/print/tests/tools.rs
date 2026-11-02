@@ -483,10 +483,6 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
                     ("test/child", &child_model),
                 ]));
                 rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "path plugins/rig-basics");
-                app.insert_resource(SpawnPolicy {
-                    max_depth: 2,
-                    ..SpawnPolicy::default()
-                });
             },
         );
         let world = app.world_mut();

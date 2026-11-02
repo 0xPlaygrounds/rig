@@ -81,7 +81,6 @@ pub(super) fn add(app: &mut App) {
         footprint: Some(Touches::Independent),
     };
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(), on_task)
-        .starts_agents(TASK)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(), on_message)
         .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(), on_wait)
         .add_systems(

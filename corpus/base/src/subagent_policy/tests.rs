@@ -111,7 +111,7 @@ fn read_by(model: &MockCompletionModel, n: usize) -> String {
 #[test]
 fn a_spawn_beyond_max_depth_is_refused_for_the_model_to_read() {
     let policy = SubagentsConfig {
-        max_depth: 1,
+        max_depth: Some(1),
         ..SubagentsConfig::default()
     };
     let parent = MockCompletionModel::from_stream_turns([
@@ -126,11 +126,8 @@ fn a_spawn_beyond_max_depth_is_refused_for_the_model_to_read() {
 
     assert_eq!(session.subagents().len(), 1);
     let nested = session.output("t2");
-    // At the depth limit the subagent is not given `task`, so the kernel
-    // refuses the call before any gate; either way the model reads why.
     assert!(
-        nested.contains("subagent depth limit 1 reached")
-            || nested.contains("no tool named `task`"),
+        nested.contains("subagent depth limit 1 reached"),
         "{nested}"
     );
     assert!(read_by(&parent, 2).contains("Did it myself."));
@@ -248,20 +245,4 @@ fn a_subagent_over_a_cap_is_stopped_and_reported_with_its_partial_answer() {
 #[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(SubagentPolicyPlugin);
-}
-
-/// The policy takes its depth from these settings and keeps the start
-/// depth a nested `rig -p` was given (`RIG_AGENT_DEPTH`).
-#[test]
-fn the_policy_keeps_the_depth_its_process_started_at() {
-    let mut app = App::new();
-    app.add_plugins((AgentPlugin, SubagentPolicyPlugin))
-        .insert_resource(SubagentsConfig {
-            max_depth: 3,
-            ..SubagentsConfig::default()
-        });
-    app.world_mut().resource_mut::<SpawnPolicy>().root_depth = 2;
-    app.finish();
-    let policy = app.world().resource::<SpawnPolicy>();
-    assert_eq!((policy.max_depth, policy.root_depth), (3, 2));
 }

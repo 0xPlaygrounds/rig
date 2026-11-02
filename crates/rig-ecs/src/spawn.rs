@@ -1,6 +1,6 @@
 //! The one way an agent is made. A [`Spawner`], or [`spawn`] with the world,
 //! makes it from an [`Origin`] and an [`AgentSpec`]: what the spec leaves out
-//! is the origin's, within the [`SpawnPolicy`]. [`spawn_root`] cannot fail.
+//! is the origin's. [`spawn_root`] cannot fail.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
@@ -24,72 +24,24 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{EntityCommands, SystemParam, SystemState};
 use rig_core::effect::EffectId;
-use serde::Deserialize;
 
-use super::agent::{
-    Agent, AgentId, EffectParent, NotYours, Notice, Spawned, SpawnedBy, SystemPrompt, ToolAccess,
-};
+use super::agent::{Agent, AgentId, EffectParent, NotYours, SpawnedBy, SystemPrompt, ToolAccess};
 use super::model::{Connection, ModelChoice, Models, ReasoningSetting};
-use super::tools::{StartsAgents, ToolDef};
-
-/// How deep agents nest: the `[subagents]` depth settings.
-#[derive(Resource, Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct SpawnPolicy {
-    /// No agent is deeper, and one spawned this deep gets no tool that starts
-    /// agents ([`starts_agents`](super::tools::AppToolsExt::starts_agents)).
-    /// 2 when not set.
-    pub max_depth: usize,
-    /// The depth of a root: 0, or one more than the agent of another process
-    /// this one works for. Not a setting.
-    #[serde(skip)]
-    pub root_depth: usize,
-}
-
-impl Default for SpawnPolicy {
-    fn default() -> Self {
-        Self {
-            max_depth: 2,
-            root_depth: 0,
-        }
-    }
-}
-
-impl SpawnPolicy {
-    /// How deep `agent` is: the [`root_depth`](Self::root_depth) plus the
-    /// agents above it ([`SpawnedBy`]), counted only until past the limit.
-    pub fn depth(&self, agent: Entity, lineage: &Query<&SpawnedBy>) -> usize {
-        self.depth_by(agent, |agent| {
-            lineage.get(agent).ok().map(SpawnedBy::parent)
-        })
-    }
-
-    fn depth_by(&self, agent: Entity, parent: impl Fn(Entity) -> Option<Entity>) -> usize {
-        let above = std::iter::successors(parent(agent), |&agent| parent(agent));
-        self.root_depth + above.take(self.max_depth + 1).count()
-    }
-
-    /// Why no agent may be at `depth`, when none may.
-    pub fn refuses(&self, depth: usize) -> Option<SpawnRefused> {
-        let max = self.max_depth;
-        (depth > max).then_some(SpawnRefused::TooDeep { depth, max })
-    }
-}
+use super::tools::ToolDef;
 
 /// Where a new agent comes from: whose settings it takes, and where it goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Origin {
     /// An agent nothing spawned, with the defaults.
     Root,
-    /// A child of the agent: below it ([`SpawnedBy`]), one deeper.
+    /// A child of the agent: below it ([`SpawnedBy`]).
     ChildOf(Entity),
-    /// Beside the agent, under its parent if any, at its depth, such as its successor.
+    /// Beside the agent, under its parent if any, such as its successor.
     Like(Entity),
 }
 
 /// What a new agent is given; each setting left out is its origin's, the
-/// connection and reasoning setting with the model. At the depth limit it
-/// has no tool that starts agents, and naming one is refused.
+/// connection and reasoning setting with the model.
 #[derive(Clone, Debug, Default)]
 pub struct AgentSpec {
     /// Its name, shown in views; `agent` when empty.
@@ -115,12 +67,8 @@ pub enum SpawnRefused {
     NotAnAgent,
     /// An agent has the id asked for.
     IdTaken(AgentId),
-    /// It would be deeper than the [`SpawnPolicy`] allows.
-    TooDeep { depth: usize, max: usize },
     /// A tool asked for is not one its origin keeps.
     Tool(NotYours),
-    /// A tool asked for starts agents, and it would be at the depth limit.
-    StartsAgents { tool: String, depth: usize },
     /// The model or effort asked for cannot be used, for the reason given.
     Model(String),
 }
@@ -130,15 +78,7 @@ impl std::fmt::Display for SpawnRefused {
         match self {
             Self::NotAnAgent => f.write_str("the agent to spawn from is gone"),
             Self::IdTaken(id) => write!(f, "an agent with the id `{}` exists", id.0),
-            Self::TooDeep { depth, max } => write!(
-                f,
-                "Agents nest at most {max} deep, and this one would be at depth {depth}"
-            ),
             Self::Tool(refused) => refused.fmt(f),
-            Self::StartsAgents { tool, depth } => write!(
-                f,
-                "A subagent at depth {depth} cannot start subagents of its own; leave `{tool}` out"
-            ),
             Self::Model(why) => f.write_str(why),
         }
     }
@@ -163,9 +103,8 @@ pub struct Spawner<'w, 's> {
     origins: Query<'w, 's, Settings, With<Agent>>,
     lineage: Query<'w, 's, &'static SpawnedBy>,
     ids: Query<'w, 's, &'static AgentId>,
-    tools: Query<'w, 's, (&'static ToolDef, Has<StartsAgents>)>,
+    tools: Query<'w, 's, &'static ToolDef>,
     models: Option<Res<'w, Models>>,
-    policy: Option<Res<'w, SpawnPolicy>>,
     commands: Commands<'w, 's>,
 }
 
@@ -177,7 +116,6 @@ impl Spawner<'_, '_> {
         origin: Origin,
         spec: AgentSpec,
     ) -> Result<EntityCommands<'_>, SpawnRefused> {
-        let policy = self.policy.as_deref().cloned().unwrap_or_default();
         let (from, parent) = match origin {
             Origin::Root => (None, None),
             Origin::ChildOf(agent) => (Some(agent), Some(agent)),
@@ -188,21 +126,6 @@ impl Spawner<'_, '_> {
         };
         let from = from.map(|agent| self.origins.get(agent)).transpose();
         let from = from.map_err(|_| SpawnRefused::NotAnAgent)?;
-        let depth = parent.map_or(policy.root_depth, |parent| {
-            policy.depth(parent, &self.lineage) + 1
-        });
-        if let Some(refused) = policy.refuses(depth) {
-            return Err(refused);
-        }
-        let at_limit = depth >= policy.max_depth;
-        let starts = |name: &str| {
-            let mut tools = self.tools.iter();
-            tools.any(|(def, starts)| starts && def.0.name.as_str() == name)
-        };
-        if at_limit && let Some(tool) = spec.tools.iter().flatten().find(|name| starts(name)) {
-            let tool = tool.clone();
-            return Err(SpawnRefused::StartsAgents { tool, depth });
-        }
         let id = spec.id.unwrap_or_default();
         if self.ids.iter().any(|taken| *taken == id) {
             return Err(SpawnRefused::IdTaken(id));
@@ -225,18 +148,11 @@ impl Spawner<'_, '_> {
         let access = match &spec.tools {
             None => access,
             Some(asked) => {
-                let registered = self.tools.iter().map(|(def, _)| def.0.name.as_str());
+                let registered = self.tools.iter().map(|def| def.0.name.as_str());
                 access
                     .grant(asked, registered)
                     .map_err(SpawnRefused::Tool)?
             }
-        };
-        // At the limit, without the tools that start agents; narrowed only
-        // when there are some, so tools registered later still reach it.
-        let others = self.tools.iter().filter(|&(_, starts)| !starts);
-        let access = match at_limit && self.tools.iter().any(|(_, starts)| starts) {
-            true => access.narrow(others.map(|(def, _)| def.0.name.as_str())),
-            false => access,
         };
         let prompt = spec.system_prompt.map(SystemPrompt);
         let prompt = prompt.or_else(|| from.as_ref().map(|from| from.prompt.clone()));
@@ -286,53 +202,9 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
 }
 
 /// Spawns an agent nothing spawned, with the defaults, named `agent`. It
-/// keeps every tool, those registered later too; at or past the depth
-/// limit, as in a process working for a deep agent, a call that would
-/// start an agent is refused.
+/// keeps every tool, those registered later too.
 pub fn spawn_root(world: &mut World) -> EntityWorldMut<'_> {
     world.spawn((Name::new("agent"), Agent::new(), ToolAccess::all()))
-}
-
-/// Removes a [`SpawnedBy`] link that puts the agent, or one below it,
-/// deeper than the [`SpawnPolicy`] allows, with a [`Notice`]. An observer,
-/// so it runs after the relationship's own hook has listed the agent in its
-/// parent's [`Spawned`], and the removal takes it out again.
-pub(crate) fn within_depth(
-    linked: On<Insert<SpawnedBy>>,
-    links: Query<&SpawnedBy>,
-    children: Query<&Spawned>,
-    policy: Option<Res<SpawnPolicy>>,
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    let agent = linked.entity;
-    let Ok(parent) = links.get(agent).map(SpawnedBy::parent) else {
-        return;
-    };
-    let policy = policy.as_deref().cloned().unwrap_or_default();
-    let above = policy.depth_by(parent, |agent| links.get(agent).ok().map(SpawnedBy::parent));
-    let depth = above + 1 + below(&children, agent, policy.max_depth + 1);
-    if let Some(refused) = policy.refuses(depth) {
-        commands.entity(agent).try_remove::<SpawnedBy>();
-        let text = format!("An agent was not linked below another: {refused}.");
-        notices.write(Notice::error(agent, text));
-    }
-}
-
-/// How many levels of agents are below `agent` ([`Spawned`]), counted to
-/// at most `cap`.
-fn below(children: &Query<&Spawned>, agent: Entity, cap: usize) -> usize {
-    let mut level = vec![agent];
-    let mut depth = 0;
-    while depth < cap {
-        let spawned = level.iter().filter_map(|agent| children.get(*agent).ok());
-        level = spawned.flat_map(|spawned| spawned.iter()).collect();
-        if level.is_empty() {
-            break;
-        }
-        depth += 1;
-    }
-    depth
 }
 
 #[cfg(test)]

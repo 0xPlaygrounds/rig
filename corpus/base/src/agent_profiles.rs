@@ -23,7 +23,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, SubagentSystems, TASK};
+use rig_basics::subagents::{SpawnSubagent, SpawnedAgent, TASK};
 use rig_core::json_utils::remove_preserving_order;
 use rig_harness::prelude::*;
 use serde::Deserialize;
@@ -61,10 +61,7 @@ impl Plugin for AgentProfilesPlugin {
                 AgentPass,
                 (
                     AgentProfilesSystems::Prepare.in_set(Stage::Prepare),
-                    // A request `rig_basics::subagents` let through.
-                    AgentProfilesSystems::Gate
-                        .in_set(Stage::Gate)
-                        .after(SubagentSystems::Gate),
+                    AgentProfilesSystems::Gate.in_set(Stage::Gate),
                     AgentProfilesSystems::Review.in_set(Stage::Review),
                 ),
             )
@@ -90,8 +87,7 @@ pub enum AgentProfilesSystems {
     /// Gives a spawn request that names a profile the profile's model,
     /// reasoning setting and tools.
     Prepare,
-    /// Refuses a spawn request naming an unknown profile, after
-    /// [`SubagentSystems::Gate`].
+    /// Refuses a spawn request naming an unknown profile.
     Gate,
     /// Gives the agent spawned the profile's prompt.
     Review,

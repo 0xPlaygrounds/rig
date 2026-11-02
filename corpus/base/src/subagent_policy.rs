@@ -1,13 +1,13 @@
 //! Plugin corpus: 39. Subagent policy (spec `39-subagent-policy.md`).
 //!
 //! One policy for every subagent, read from `RIG_HOME/subagents.toml` into
-//! [`SubagentsConfig`]: how deep subagents nest, how many work at once (per
+//! [`SubagentsConfig`]: how deep subagents may nest, how many work at once (per
 //! parent and in total), the model and tools a new one gets, and how many
 //! model calls a turn of one makes and how much one spends before it is
 //! stopped. It shapes `rig_basics::subagents`' [`SpawnSubagent`] requests in the
 //! stages: Prepare gives them the defaults, Gate holds those without a free
-//! slot and releases them as slots free, and a `task` call deeper than the
-//! policy allows is refused for the model to read. A subagent over a cap
+//! slot and releases them as slots free, and a `task` call deeper than a
+//! `max_depth` set is refused for the model to read. A subagent over a cap
 //! has its turn stopped with the reason, which `rig_basics::subagents` reports with
 //! what it had said. `/agents` shows each subagent's depth and spend, and
 //! the parent's status line how many of its tasks are queued.
@@ -16,9 +16,7 @@ use std::path::Path;
 
 use bevy_log::warn;
 use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
-use rig_basics::subagents::{
-    Lifecycle, Role, SpawnSubagent, SubagentSystems, SubagentsPlugin, TASK,
-};
+use rig_basics::subagents::{Lifecycle, Role, SpawnSubagent, SubagentsPlugin, TASK};
 use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -28,8 +26,9 @@ use serde::Deserialize;
 #[derive(Resource, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct SubagentsConfig {
-    /// How deep subagents nest; an agent nothing spawned is at depth 0.
-    pub max_depth: usize,
+    /// How deep subagents of this process may nest, counted from an agent
+    /// nothing spawned, at depth 0; no limit if none.
+    pub max_depth: Option<usize>,
     /// How many subagents of one parent work at once; more wait.
     pub max_concurrent: Option<usize>,
     /// How many subagents work at once in the whole session.
@@ -50,7 +49,7 @@ pub struct SubagentsConfig {
 impl Default for SubagentsConfig {
     fn default() -> Self {
         Self {
-            max_depth: 2,
+            max_depth: None,
             max_concurrent: None,
             max_concurrent_total: None,
             default_model: None,
@@ -101,8 +100,7 @@ pub enum SubagentPolicySystems {
     /// In [`Stage::Prepare`]: gives `task` requests the default model and
     /// tools.
     Prepare,
-    /// In [`Stage::Gate`], after [`SubagentSystems::Gate`]: refuses a
-    /// `task` call too deep, holds requests without a free slot, and stops
+    /// In [`Stage::Gate`]: refuses a `task` call too deep, holds requests without a free slot, and stops
     /// a subagent's turn over a cap.
     Gate,
 }
@@ -130,9 +128,7 @@ impl Plugin for SubagentPolicyPlugin {
                 AgentPass,
                 (
                     SubagentPolicySystems::Prepare.in_set(Stage::Prepare),
-                    SubagentPolicySystems::Gate
-                        .in_set(Stage::Gate)
-                        .after(SubagentSystems::Gate),
+                    SubagentPolicySystems::Gate.in_set(Stage::Gate),
                 ),
             )
             .add_systems(
@@ -144,17 +140,6 @@ impl Plugin for SubagentPolicyPlugin {
             )
             .add_systems(Update, show_column)
             .add_systems(PostUpdate, show_queued.in_set(StatusSystems::Show));
-    }
-
-    /// Once `rig_basics::subagents` read its own settings: its depth is this policy's.
-    fn finish(&self, app: &mut App) {
-        if let Some(config) = app.world().get_resource::<SubagentsConfig>() {
-            let max_depth = config.max_depth;
-            // Only the depth: the process's start depth stays as the kernel read it.
-            app.world_mut()
-                .get_resource_or_init::<SpawnPolicy>()
-                .max_depth = max_depth;
-        }
     }
 }
 
@@ -186,9 +171,8 @@ fn with_defaults(
     }
 }
 
-/// Refuses a `task` call whose subagent would be deeper than the policy
-/// allows, for its model to read. An agent at the limit is not offered
-/// `task`, but its model may call it anyway.
+/// Refuses a `task` call whose subagent would be deeper than `max_depth`,
+/// for its model to read.
 fn refuse_too_deep(
     mut calls: Query<(&ToolRequest, &ForAgent, &mut Decision), (ReadyToStart, ToolCalls)>,
     lineage: Query<&SpawnedBy>,
@@ -196,11 +180,9 @@ fn refuse_too_deep(
 ) {
     for (request, &ForAgent(agent), mut decision) in &mut calls {
         let depth = lineage.iter_ancestors(agent).count() + 1;
-        if request.call.function.name.as_str() == TASK && depth > config.max_depth {
-            let why = format!(
-                "subagent depth limit {} reached; do it yourself",
-                config.max_depth
-            );
+        let too_deep = config.max_depth.filter(|&max| depth > max);
+        if let Some(max) = too_deep.filter(|_| request.call.function.name.as_str() == TASK) {
+            let why = format!("subagent depth limit {max} reached; do it yourself");
             decision.decide(Decider::plugin("subagent-policy"), Outcome::refused(why));
         }
     }

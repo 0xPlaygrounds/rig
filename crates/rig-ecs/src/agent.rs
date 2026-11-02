@@ -130,10 +130,8 @@ impl CacheKey {
 /// restore links the agents again by their logs' headers, and views list
 /// agents by it.
 ///
-/// A [`Spawner`](super::spawn::Spawner) links a child. A link made any
-/// other way that would put an agent deeper than the
-/// [`SpawnPolicy`](super::spawn::SpawnPolicy) allows is removed again, with
-/// a [`Notice`]. Its field is private:
+/// A [`Spawner`](super::spawn::Spawner) links a child, and a restore links
+/// them again. Its field is private:
 ///
 /// ```compile_fail,E0423
 /// use bevy_ecs::prelude::*;

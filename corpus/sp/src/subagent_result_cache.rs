@@ -15,7 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use rig_basics::subagents::{MESSAGE, Role, SpawnSubagent, SpawnedAgent, TASK, WAIT};
+use rig_basics::subagents::{MESSAGE, Role, SpawnSubagent, SpawnedAgent, WAIT};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_tools::workspace::{Listing as Files, Stat, Workspace};
@@ -135,17 +135,16 @@ type Parent<'a> = (
     &'a ToolAccess,
 );
 
-/// The key of `request` from `parent`'s settings, for a subagent at
-/// `depth` of at most `max_depth`, as `rig_basics::subagents` would settle
-/// them, or `None` when it is no task the cache takes or its tools or
-/// depth are refused.
+/// The key of `request` from `parent`'s settings, as
+/// `rig_basics::subagents` would settle them, or `None` when it is no task
+/// the cache takes or its tools are refused.
 fn key_of(
     request: &SpawnSubagent,
     (model, &effort, access): Parent,
-    (tools, depth, max_depth): (&Query<&ToolDef>, usize, usize),
+    tools: &Query<&ToolDef>,
     models: &Models,
 ) -> Option<TaskKey> {
-    if request.role != Role::Task || request.peers || depth > max_depth {
+    if request.role != Role::Task || request.peers {
         return None;
     }
     let inherited = ModelChoice::inherit(
@@ -158,14 +157,10 @@ fn key_of(
         return None;
     };
     let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
-    // The access `task` gives: the parent's own (but `task` at the deepest),
-    // or the tools asked with those that reach the parent; a list it
-    // refuses is no task to take.
-    let may_delegate = depth < max_depth;
+    // The access `task` gives: the parent's own, or the tools asked with
+    // those that reach the parent; a list it refuses is no task to take.
     let given = match &request.tools {
-        None if may_delegate => access.clone(),
-        None => access.narrow(registered.iter().copied().filter(|name| *name != TASK)),
-        Some(asked) if !may_delegate && asked.iter().any(|name| name == TASK) => return None,
+        None => access.clone(),
         Some(asked) => {
             let mut asked = asked.clone();
             let reaching = [MESSAGE, WAIT].into_iter();
@@ -254,9 +249,8 @@ fn reuse(
     >,
     mut calls: Query<(&mut Decision, Option<&CallOf>), ToolCalls>,
     (parents, tools, turns): (Query<Parent>, Query<&ToolDef>, Query<&Turn>),
-    (mut caches, lineage): (Query<&mut SubagentCache>, Query<&SpawnedBy>),
+    mut caches: Query<&mut SubagentCache>,
     (models, workspace, switch): (Res<Models>, Res<ProjectWorkspace>, Res<SubcacheSwitch>),
-    policy: Option<Res<SpawnPolicy>>,
     mut commands: Commands,
 ) {
     for (request_entity, request, &ForAgent(parent), of, mut decision) in &mut requests {
@@ -267,12 +261,10 @@ fn reuse(
         let Ok((mut call, call_of)) = calls.get_mut(of.parent()) else {
             continue;
         };
-        let policy = policy.as_deref().cloned().unwrap_or_default();
-        let (depth, max_depth) = (policy.depth(parent, &lineage) + 1, policy.max_depth);
         let Some(key) = parents
             .get(parent)
             .ok()
-            .and_then(|parent| key_of(request, parent, (&tools, depth, max_depth), &models))
+            .and_then(|parent| key_of(request, parent, &tools, &models))
         else {
             continue;
         };

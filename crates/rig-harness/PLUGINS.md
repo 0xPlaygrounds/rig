@@ -332,7 +332,6 @@ The sets of Gate systems that edit shared data:
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
 | `PrintSystems` | `rig_basics::print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
-| `SubagentSystems::Gate` | `rig_basics::subagents` | refuses a `SpawnSubagent` deeper than the `SpawnPolicy` allows | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1335,29 +1334,23 @@ fn track(
 # Spawning an agent
 
 Every agent is made by the kernel, by one rule, so a new agent never has a
-setting its origin would not give it and never nests deeper than allowed.
+setting its origin would not give it.
 In a system, a `Spawner` makes one from an `Origin` and an `AgentSpec`;
 with the world, `rig_ecs::spawn::spawn` does the same, and `spawn_root`
 makes a root with the defaults (as tests do). `Agent` cannot be built or
 required otherwise, and `SpawnedBy` cannot be built: read its `parent()`.
 
 - **Origin.** `Root` has the defaults; `ChildOf(agent)` goes below the
-  agent, one deeper; `Like(agent)` goes beside it, under its parent, such
+  agent; `Like(agent)` goes beside it, under its parent, such
   as a successor.
 - **What it takes.** Each setting the spec leaves `None` is the origin's:
   the model (`ModelChoice::inherit`) with its connection, the reasoning
   setting with that model, the system prompt, and the tools. Named tools
   are granted from the origin's (`ToolAccess::grant`), and the model calls
   are recorded under the spec's effect, else the origin's.
-- **Depth.** `SpawnPolicy` is the `[subagents]` table (`max_depth = 2`): an
-  agent past it is refused with `SpawnRefused::TooDeep`, and one spawned at
-  it is given no tool registered with `starts_agents`, such as `task` and
-  `helper` (naming one is refused). A root at it, as in a `rig -p` a deep
-  agent started, keeps them, and each refuses a call that would go past
-  the limit. A `SpawnedBy` inserted any other way that puts an agent past
-  it is removed again, with a notice. A `rig` process an agent starts, as
-  `helper` does, gets `RIG_AGENT_DEPTH` (that agent's depth plus one), and
-  its own agents start there.
+- **Depth.** The kernel sets no limit on how deep agents nest. A plugin
+  that wants one counts an agent's `SpawnedBy` ancestors and refuses in
+  Gate, as the corpus `subagent_policy` does with its `max_depth`.
 
 ```rust
 use rig_harness::prelude::*;

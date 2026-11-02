@@ -96,35 +96,3 @@ fn no_secret_reaches_a_process_started_through_processes() {
     let seen = output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
     assert_eq!(seen.ok().as_deref(), Some("none"));
 }
-
-/// A rig started by an agent of another process (`RIG_AGENT_DEPTH`) starts
-/// its agents at that depth.
-#[cfg(unix)]
-#[test]
-fn a_rig_started_at_a_depth_starts_its_agents_there() {
-    // The copy is told by its own marker, not by the depth, which a test
-    // run inside a deep agent's `rig` already has.
-    const COPY: &str = "RIG_DEPTH_PROBE";
-    if std::env::var_os(COPY).is_none() {
-        let name = "services::tests::a_rig_started_at_a_depth_starts_its_agents_there";
-        let output = std::env::current_exe().and_then(|test| {
-            std::process::Command::new(test)
-                .args(["--exact", name, "--nocapture", "--test-threads", "1"])
-                .env(env::AGENT_DEPTH, "2")
-                .env(COPY, "1")
-                .output()
-        });
-        let passed = output.is_ok_and(|output| {
-            output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
-        });
-        assert!(passed, "the run at depth 2 failed");
-        return;
-    }
-    let mut app = App::new();
-    app.add_plugins(ServicesPlugin);
-    let depth = app
-        .world()
-        .get_resource::<rig_ecs::spawn::SpawnPolicy>()
-        .map(|policy| policy.root_depth);
-    assert_eq!(depth, Some(2));
-}

@@ -524,6 +524,32 @@ fn a_plugins_stop_that_reaches_a_subagent_ends_it_early_and_its_report_starts_no
     assert_eq!(model.request_count(), 0);
 }
 
+/// Agents nest as deep as their models ask: a subagent's subagent's
+/// subagent starts, and can start its own.
+#[test]
+fn a_task_subagents_subagents_subagent_starts() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let mut agent = session.parent;
+    for depth in 1..=3 {
+        let args = json!({ "description": format!("d{depth}"), "prompt": "Go one deeper." });
+        let said = session.call(agent, TASK, &format!("t{depth}"), args);
+        assert!(said.starts_with("Started subagent"), "{depth}: {said}");
+        let child = session.children(agent).last().copied();
+        agent = child.unwrap_or(Entity::PLACEHOLDER);
+    }
+    let world = session.app.world();
+    let lineage = std::iter::successors(Some(agent), |&agent| {
+        world.get::<SpawnedBy>(agent).map(SpawnedBy::parent)
+    });
+    assert_eq!(lineage.count(), 4, "three below the root");
+    let access = world.get::<ToolAccess>(agent);
+    assert!(access.is_some_and(|access| access.allows(TASK)));
+}
+
 #[test]
 fn what_a_parent_knows_of_the_environment_goes_to_every_subagent_below_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
@@ -576,29 +602,20 @@ fn add_task_argument(world: &mut World, name: &str) {
 
 #[test]
 fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
-    // At depth 1 of 2 it may start its own; at the deepest it may not.
-    for max_depth in [2, 1] {
-        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-        let mut session = Session::new(&MemoryStore::default(), Some(&model));
-        session
-            .app
-            .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]))
-            .insert_resource(SpawnPolicy {
-                max_depth,
-                ..SpawnPolicy::default()
-            });
-        let args = json!({ "description": "Look", "prompt": "Look around." });
-        let said = session.call(session.parent, TASK, "t1", args);
-        assert!(said.starts_with("Started subagent"), "{said}");
-        let child = session.children(session.parent).last().copied();
-        let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
-        // A later run without the limit gives it every tool its parent
-        // keeps, but `task` at the deepest.
-        let kept = access.is_some_and(|access| {
-            access.keeps("look") && !access.allows("look") && access.keeps(TASK) == (max_depth > 1)
-        });
-        assert!(kept, "{max_depth}: {access:?}");
-    }
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]));
+    let args = json!({ "description": "Look", "prompt": "Look around." });
+    let said = session.call(session.parent, TASK, "t1", args);
+    assert!(said.starts_with("Started subagent"), "{said}");
+    let child = session.children(session.parent).last().copied();
+    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+    // A later run without the limit gives it every tool its parent keeps.
+    let kept = access
+        .is_some_and(|access| access.keeps("look") && !access.allows("look") && access.keeps(TASK));
+    assert!(kept, "{access:?}");
 }
 
 #[test]
@@ -684,7 +701,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
 }
 
 #[test]
-fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
+fn a_gate_holds_spawns_until_a_slot_frees() {
     /// On a hold of a request until its parent has a slot free.
     #[derive(Component)]
     struct Slot;
@@ -727,16 +744,10 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     };
     let model = MockCompletionModel::from_stream_turns((0..5).map(|_| reply("Done.")));
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
-    session
-        .app
-        .insert_resource(SpawnPolicy {
-            max_depth: 1,
-            ..SpawnPolicy::default()
-        })
-        .add_systems(
-            AgentPass,
-            (queue.in_set(Stage::Gate), release.in_set(Stage::Review)),
-        );
+    session.app.add_systems(
+        AgentPass,
+        (queue.in_set(Stage::Gate), release.in_set(Stage::Review)),
+    );
     let mut tasks = Vec::new();
     for at in 0..4 {
         let args = json!({ "description": format!("t{at}"), "prompt": "Count the files." });
@@ -789,29 +800,6 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     let mut requests: Vec<&str> = reports.iter().map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["t0", "t1", "t2"]);
-
-    // At the policy's depth, a subagent has no `task`, and a request for an
-    // agent of its is refused.
-    let child = session.children(session.parent).first().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
-    let access = session.app.world().get::<ToolAccess>(child);
-    assert!(
-        access.is_some_and(|access| !access.allows(TASK)),
-        "no `task`"
-    );
-    let deeper = SpawnSubagent::helper("deeper");
-    let request = session
-        .app
-        .world_mut()
-        .spawn((deeper, ForAgent(child)))
-        .id();
-    session.passes(|world| world.get::<Outcome>(request).is_some());
-    let outcome = session.app.world().get::<Outcome>(request);
-    let refused = outcome.and_then(|outcome| outcome.0.as_ref().err());
-    let why = refused
-        .map(|report| report.message.as_str())
-        .unwrap_or_default();
-    assert!(why.contains("at most 1 deep"), "{why}");
 }
 
 #[test]
