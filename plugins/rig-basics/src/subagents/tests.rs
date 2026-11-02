@@ -303,9 +303,15 @@ fn a_subagents_question_is_a_message_and_only_its_final_answer_reports() {
     // known by where its reply asked for it (`m1/0`), not by the provider's
     // call id (`p1`), which a later reply may use again.
     let to_parent = session.to(session.parent);
+    let parent_id = session.app.world().get::<AgentId>(session.parent).cloned();
+    let parent_place = format!("{}:m1/0", parent_id.unwrap_or_default().0);
     let expected = [
         ("", DeliveryMode::Steer, "Which file?"),
-        ("m1/0", DeliveryMode::Steer, "Fixed src/lib.rs."),
+        (
+            parent_place.as_str(),
+            DeliveryMode::Steer,
+            "Fixed src/lib.rs.",
+        ),
     ];
     assert_eq!(to_parent, expected);
     let read = format!("{:?}", child_model.requests().last());
@@ -1517,4 +1523,42 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
     let narrowed = ToolAccess::all().narrow(["look"]);
     session.app.world_mut().entity_mut(child).insert(narrowed);
     assert_eq!(roles(&mut session), 0);
+}
+
+/// A peer's question is a request named by its asker and the place its
+/// reply asked from: the same place in another agent's conversation is
+/// another request, so one agent's question can't settle what another
+/// waits for after a restore.
+#[test]
+fn a_peers_request_is_named_by_its_asker() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted."), reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let (a, b) = (session.task("Ask"), session.task("Answer"));
+    let ask = json!({ "agent": session.short(b), "text": "Which name?" });
+    let asker = MockCompletionModel::from_stream_turns([
+        calls("q1", MESSAGE, ask),
+        reply("Asked."),
+        reply("Answered."),
+    ]);
+    let answerer = MockCompletionModel::from_stream_turns([reply("Lumen."), reply("Done.")]);
+    session.answer_by(a, &asker);
+    session.answer_by(b, &answerer);
+    run_until(&mut session.app, &session.wakes, |world| {
+        let delivered = &world.resource::<Delivered>().0;
+        delivered
+            .iter()
+            .any(|(to, .., text, _)| *to == b && text == "Which name?")
+    });
+    let asked = session
+        .to(b)
+        .into_iter()
+        .find(|(.., text)| *text == "Which name?");
+    let request = asked
+        .map(|(request, ..)| request.to_owned())
+        .unwrap_or_default();
+    let id = session.app.world().get::<AgentId>(a).map(|id| id.0.clone());
+    assert!(
+        id.is_some_and(|id| request.starts_with(&format!("{id}:m"))),
+        "{request}"
+    );
 }

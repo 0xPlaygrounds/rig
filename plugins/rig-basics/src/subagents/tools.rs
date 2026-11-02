@@ -149,14 +149,15 @@ struct WaitArgs {
     agent: String,
 }
 
-/// The request a call makes: where its reply asked for it (`m4/1`), which
-/// no later call of the asker repeats, else, for a call no reply made, its
-/// own id. A provider may use a call id again.
+/// The request a call makes: its asker and where its reply asked for it
+/// (`<agent>:m4/1`), which no later call of any agent repeats, else, for a
+/// call no reply made, its own id. A provider may use a call id again.
 fn request_of<A: Send + Sync + 'static>(
     called: &ToolCalled<A>,
     places: &Query<&InReply>,
 ) -> RequestId {
-    let place = places.get(called.call).ok().map(|place| place.at().wire());
+    let place = places.get(called.call).ok();
+    let place = place.map(|place| format!("{}:{}", called.agent_id.0, place.at().wire()));
     RequestId(place.unwrap_or_else(|| called.tool_call.id.to_string()))
 }
 

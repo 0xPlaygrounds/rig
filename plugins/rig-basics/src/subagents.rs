@@ -202,7 +202,8 @@ impl Awaiting {
 /// A request an agent waits for a report on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
-    /// The call that asked, which the report names.
+    /// The call that asked, by its asker and its place, which the report
+    /// names.
     pub id: RequestId,
     /// The agent asked, which owes the report.
     pub to: AgentId,

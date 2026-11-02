@@ -156,7 +156,7 @@ pub(super) struct Once;
 pub struct SpawnedAgent(pub Entity);
 
 /// On a [`SpawnSubagent`] a `task` call made: the request it opens, by
-/// the call's id, which the report names.
+/// its asker and the call's place, which the report names.
 #[derive(Component)]
 pub(super) struct TaskCall(pub(super) RequestId);
 
