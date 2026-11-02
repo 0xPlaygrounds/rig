@@ -18,9 +18,11 @@ use crate::telemetry::effect_log::EffectLogPlugin;
 
 /// Pieces of the secrets [`a_session_with_the_plugin_holds_no_key`] puts
 /// in, each long enough that no other text holds it.
-const FRAGMENTS: [&str; 7] = [
+const FRAGMENTS: [&str; 8] = [
     // Typed in the message.
     "abcdefghijklmnop1234",
+    // In the system prompt, as from an AGENTS.md.
+    "agentsmd12345678",
     // In a file the message names.
     "hunter2hunter2",
     // Printed by a command: a token and a private key block's body.
@@ -93,6 +95,11 @@ fn a_session_meeting_secrets(redacting: bool) -> (String, String) {
         WorkDir(dir.clone()),
     );
     let agent = world.spawn(agent).id();
+    world.spawn(PromptSection::new(
+        400,
+        "deploy",
+        "Deploy with TOKEN=agentsmd12345678.",
+    ));
     let said = "Go, with my key sk-proj-abcdefghijklmnop1234 and @secret.txt";
     world.trigger(Deliver::new(agent, said, DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
@@ -138,7 +145,8 @@ fn review(mut answers: Query<&mut Outcome, (ToolCalls, Added<Outcome>)>) {
 }
 
 /// With the plugin, no secret reaches the streamed text, the conversation,
-/// the session log or the effect log; without it, every one does.
+/// the session log or the effect log, a key in the system prompt included;
+/// without it, every one does.
 #[test]
 fn a_session_with_the_plugin_holds_no_key() {
     let (shown, all) = a_session_meeting_secrets(true);
@@ -386,12 +394,15 @@ fn a_private_key_block_is_one_placeholder_for_the_whole_block() {
 }
 
 /// A message going to its agent is redacted: its text, an attached file
-/// and its label, and an image's link and label. One a gate took, such as a
-/// line answering a question, reaches the gate as typed.
+/// and its label, and an image's link and label, but not an image's data.
+/// One a gate took, such as a line answering a question, reaches the gate
+/// as typed.
 #[test]
 fn a_message_is_redacted_unless_a_gate_took_it() {
     let mut world = World::new();
-    world.insert_resource(Secrets::default());
+    let secrets = Secrets::default();
+    let data = png(&secrets);
+    world.insert_resource(secrets);
     let key = "sk-proj-abcdefghijklmnop1234";
     let mut message = Incoming::new(format!("my {key}"), DeliveryMode::Queue);
     message.parts.push(MessagePart::Attachment(Attachment {
@@ -414,6 +425,14 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
     message.parts.push(MessagePart::Attachment(Attachment {
         label: format!("{key}.png"),
         content: UserContent::Image(image),
+    }));
+    let pasted = message::Image {
+        data: message::DocumentSourceKind::Base64(data.clone()),
+        ..Default::default()
+    };
+    message.parts.push(MessagePart::Attachment(Attachment {
+        label: "pasted.png".to_owned(),
+        content: UserContent::Image(pasted),
     }));
     let sent = world.spawn((message, Decision::default())).id();
     let mut taken = Decision::default();
@@ -438,10 +457,11 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
     };
     let sent = texts(sent);
     assert!(
-        sent.starts_with("my ‹SECRET_1› ") && sent.contains("PASSWORD=‹SECRET_1›"),
+        sent.starts_with("my ‹SECRET_2› ") && sent.contains("PASSWORD=‹SECRET_2›"),
         "{sent}"
     );
     assert!(!sent.contains(key), "{sent}");
+    assert!(sent.contains(&data), "a pasted image's data is whole");
     assert_eq!(texts(answer), format!("here: {key}"));
 }
 
