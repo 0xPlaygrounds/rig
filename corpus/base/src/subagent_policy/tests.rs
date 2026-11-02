@@ -249,3 +249,19 @@ fn a_subagent_over_a_cap_is_stopped_and_reported_with_its_partial_answer() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(SubagentPolicyPlugin);
 }
+
+/// The policy takes its depth from these settings and keeps the start
+/// depth a nested `rig -p` was given (`RIG_AGENT_DEPTH`).
+#[test]
+fn the_policy_keeps_the_depth_its_process_started_at() {
+    let mut app = App::new();
+    app.add_plugins((AgentPlugin, SubagentPolicyPlugin))
+        .insert_resource(SubagentsConfig {
+            max_depth: 3,
+            ..SubagentsConfig::default()
+        });
+    app.world_mut().resource_mut::<SpawnPolicy>().root_depth = 2;
+    app.finish();
+    let policy = app.world().resource::<SpawnPolicy>();
+    assert_eq!((policy.max_depth, policy.root_depth), (3, 2));
+}

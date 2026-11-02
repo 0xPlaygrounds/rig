@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 
 use super::model::ReasoningSetting;
 use super::session_log::{ReflectSaved, Reset, save_discarded};
-use super::spawn::within_depth;
 use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
 
@@ -145,7 +144,6 @@ impl CacheKey {
 /// world.spawn(SpawnedBy(parent));
 /// ```
 #[derive(Component, Reflect, Debug)]
-#[component(on_insert = within_depth)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
 pub struct SpawnedBy(Entity);

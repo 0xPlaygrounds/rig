@@ -13,9 +13,7 @@
 //! assert!(world.get_entity(request).is_err());
 //! ```
 
-use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
-use bevy_ecs::world::DeferredWorld;
 
 use super::stage::Settled;
 
@@ -23,7 +21,6 @@ use super::stage::Settled;
 /// gone or [`Settled`] is despawned. Moved to a retry with the marker a
 /// [`follow_successor`](super::stage::follow_successor) follows.
 #[derive(Component, Debug)]
-#[component(on_insert = refuse_ended)]
 #[relationship(relationship_target = Requests)]
 pub struct RequestOf(pub Entity);
 
@@ -41,16 +38,19 @@ impl Requests {
     }
 }
 
-/// Despawns a request inserted for an owner that is gone or settled.
-fn refuse_ended(mut world: DeferredWorld, context: HookContext) {
-    let Some(&RequestOf(owner)) = world.get::<RequestOf>(context.entity) else {
+/// Despawns a request inserted for an owner that is gone or settled. An
+/// observer, so it runs after the relationship's own hook.
+pub(crate) fn refuse_ended(
+    inserted: On<Insert<RequestOf>>,
+    requests: Query<&RequestOf>,
+    owners: Query<Has<Settled>>,
+    mut commands: Commands,
+) {
+    let Ok(&RequestOf(owner)) = requests.get(inserted.entity) else {
         return;
     };
-    let ended = world
-        .get_entity(owner)
-        .map_or(true, |owner| owner.contains::<Settled>());
-    if ended {
-        world.commands().entity(context.entity).try_despawn();
+    if owners.get(owner).unwrap_or(true) {
+        commands.entity(inserted.entity).try_despawn();
     }
 }
 

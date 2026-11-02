@@ -9,10 +9,12 @@ use crate::tools::{AppToolsExt, ToolCalled, ToolOptions};
 /// agents nest at most `max_depth` deep.
 fn app(max_depth: usize) -> App {
     let mut app = App::new();
-    app.add_message::<Notice>().insert_resource(SpawnPolicy {
-        max_depth,
-        root_depth: 0,
-    });
+    app.add_message::<Notice>()
+        .add_observer(within_depth)
+        .insert_resource(SpawnPolicy {
+            max_depth,
+            root_depth: 0,
+        });
     for tool in ["read", "task"] {
         let options = ToolOptions::default();
         app.add_open_tool(tool, "A tool.", options, |_: On<ToolCalled<Value>>| {});
@@ -88,12 +90,20 @@ fn a_link_made_round_the_spawner_never_puts_an_agent_past_the_limit() {
         .insert(<SpawnedBy as Relationship>::from(child));
     world.flush();
     assert_eq!(parent(world, other), None);
+    // Its parent doesn't list it either, so it neither stops nor goes with it.
+    let lists = |world: &World, of: Entity, agent: Entity| {
+        world
+            .get::<Spawned>(of)
+            .is_some_and(|spawned| spawned.iter().any(|listed| listed == agent))
+    };
+    assert!(!lists(world, child, other));
     // A root with an agent below it is too deep to go below another.
     let top = spawn_root(world).id();
     world
         .entity_mut(root)
         .insert(<SpawnedBy as Relationship>::from(top));
     world.flush();
+    assert!(!lists(world, top, root));
     assert_eq!(
         (parent(world, root), parent(world, child)),
         (None, Some(root))

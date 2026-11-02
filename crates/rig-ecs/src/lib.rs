@@ -227,6 +227,8 @@ impl Plugin for AgentPlugin {
             )
             .add_observer(session_log::retire)
             .add_observer(requests::end_with_settled)
+            .add_observer(requests::refuse_ended)
+            .add_observer(spawn::within_depth)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_stop_turn)
             .add_observer(turn::reach_once_gone)

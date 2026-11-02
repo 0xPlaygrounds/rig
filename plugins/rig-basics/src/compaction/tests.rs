@@ -1326,6 +1326,9 @@ fn a_stop_while_reading_again_clears_nothing() {
     app.world_mut().trigger(StopTurn::new(agent));
     app.world_mut().flush();
     app.update();
+    // The stop ends the reads themselves, still blocked, not only the re-read.
+    let world = app.world_mut();
+    assert_eq!(world.query::<&ReadAgain>().iter(world).count(), 0);
     drop(release);
     for _ in 0..20 {
         app.update();

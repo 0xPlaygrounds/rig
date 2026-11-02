@@ -16,11 +16,9 @@
 //! # let _ = add_reviewer;
 //! ```
 
-use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::{EntityCommands, SystemParam, SystemState};
-use bevy_ecs::world::DeferredWorld;
 use rig_core::effect::EffectId;
 use serde::Deserialize;
 
@@ -306,36 +304,38 @@ pub fn spawn_root(world: &mut World) -> EntityWorldMut<'_> {
 }
 
 /// Removes a [`SpawnedBy`] link that puts the agent, or one below it,
-/// deeper than the [`SpawnPolicy`] allows, with a [`Notice`].
-pub(crate) fn within_depth(mut world: DeferredWorld, context: HookContext) {
-    let agent = context.entity;
-    let Some(parent) = world.get::<SpawnedBy>(agent).map(SpawnedBy::parent) else {
+/// deeper than the [`SpawnPolicy`] allows, with a [`Notice`]. An observer,
+/// so it runs after the relationship's own hook has listed the agent in its
+/// parent's [`Spawned`], and the removal takes it out again.
+pub(crate) fn within_depth(
+    linked: On<Insert<SpawnedBy>>,
+    links: Query<&SpawnedBy>,
+    children: Query<&Spawned>,
+    policy: Option<Res<SpawnPolicy>>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let agent = linked.entity;
+    let Ok(parent) = links.get(agent).map(SpawnedBy::parent) else {
         return;
     };
-    let policy = world
-        .get_resource::<SpawnPolicy>()
-        .cloned()
-        .unwrap_or_default();
-    let above = policy.depth_by(parent, |agent| {
-        world.get::<SpawnedBy>(agent).map(SpawnedBy::parent)
-    });
-    let depth = above + 1 + below(&world, agent, policy.max_depth + 1);
+    let policy = policy.as_deref().cloned().unwrap_or_default();
+    let above = policy.depth_by(parent, |agent| links.get(agent).ok().map(SpawnedBy::parent));
+    let depth = above + 1 + below(&children, agent, policy.max_depth + 1);
     if let Some(refused) = policy.refuses(depth) {
-        world.commands().entity(agent).try_remove::<SpawnedBy>();
+        commands.entity(agent).try_remove::<SpawnedBy>();
         let text = format!("An agent was not linked below another: {refused}.");
-        world.write_message(Notice::error(agent, text));
+        notices.write(Notice::error(agent, text));
     }
 }
 
 /// How many levels of agents are below `agent` ([`Spawned`]), counted to
 /// at most `cap`.
-fn below(world: &World, agent: Entity, cap: usize) -> usize {
+fn below(children: &Query<&Spawned>, agent: Entity, cap: usize) -> usize {
     let mut level = vec![agent];
     let mut depth = 0;
     while depth < cap {
-        let spawned = level
-            .iter()
-            .filter_map(|agent| world.get::<Spawned>(*agent));
+        let spawned = level.iter().filter_map(|agent| children.get(*agent).ok());
         level = spawned.flat_map(|spawned| spawned.iter()).collect();
         if level.is_empty() {
             break;

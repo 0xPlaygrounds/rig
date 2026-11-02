@@ -150,10 +150,10 @@ impl Plugin for SubagentPolicyPlugin {
     fn finish(&self, app: &mut App) {
         if let Some(config) = app.world().get_resource::<SubagentsConfig>() {
             let max_depth = config.max_depth;
-            app.insert_resource(SpawnPolicy {
-                max_depth,
-                ..SpawnPolicy::default()
-            });
+            // Only the depth: the process's start depth stays as the kernel read it.
+            app.world_mut()
+                .get_resource_or_init::<SpawnPolicy>()
+                .max_depth = max_depth;
         }
     }
 }
