@@ -231,7 +231,7 @@ fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<
     }
     match handed.0.against(spent) {
         Some((used, true)) => Some(format!(
-            "Budget reached: {used} spent of what the rig that started this one left it \
+            "Budget reached: {used} spent, all the rig that started this one left it \
              ({USD_VARIABLE}, {TOKENS_VARIABLE})."
         )),
         _ => None,
