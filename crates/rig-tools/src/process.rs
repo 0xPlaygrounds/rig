@@ -168,8 +168,9 @@ pub struct Spawn {
     /// and every line arrives as [`OutputLine::Out`].
     pub merge_stderr: bool,
     /// How long a stop gives its group to end once asked (`SIGTERM`)
-    /// before it kills it: [`STOP_GRACE`] when `None`. A process that
-    /// stops processes of its own, such as a `rig`, needs the time it takes.
+    /// before it kills it: [`STOP_GRACE`] when `None`, and never less. A
+    /// process that stops processes of its own, such as a `rig`, needs the
+    /// time it takes.
     pub grace: Option<Duration>,
 }
 
@@ -263,7 +264,8 @@ impl Process {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
         // From here on, an error drops the process, which kills it.
-        let (mut process, sender) = Self::owned(command, how.grace.unwrap_or(STOP_GRACE))?;
+        let grace = how.grace.map_or(STOP_GRACE, |grace| grace.max(STOP_GRACE));
+        let (mut process, sender) = Self::owned(command, grace)?;
         let (stdout, stderr) = (process.child.stdout.take(), process.child.stderr.take());
         #[cfg(unix)]
         let (stdout, stderr) = match (stdout, stderr) {

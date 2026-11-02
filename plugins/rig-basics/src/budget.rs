@@ -12,18 +12,18 @@
 //! counts the input and output tokens providers reported, priced or not.
 //! The status line shows it, red past 80%. Once the budget is reached,
 //! every model call about to start is refused, and every running turn is
-//! stopped, with an error notice of the reason, which fails a `-p` run; on unix a stopped
-//! turn's `helper` call stops its children, and they theirs. A call
-//! already sent finishes, so a tree can pass the budget by the calls it had
-//! in flight.
+//! stopped, with an error notice of the reason, which fails a `-p` run;
+//! on unix a stopped turn's `helper` call stops its children, and they
+//! theirs. A call already sent finishes, so a tree can pass the budget by
+//! the calls it had in flight.
 //!
 //! A `helper` child gets what was left when its call started in
 //! [`USD_VARIABLE`] and [`TOKENS_VARIABLE`], and a run with this plugin
 //! that has them holds its session to them as to a budget, whatever its
 //! own: so a child whose parent is gone stops too. They count the whole
-//! session's spend, its earlier runs' included. What a child starts inherits the
-//! variables as the child got them. An amount that is not a number allows
-//! nothing.
+//! session's spend, its earlier runs' included. What a child starts
+//! inherits the variables as the child got them. An amount that is not a
+//! number allows nothing.
 
 use bevy_log::warn;
 use rig_core::completion::{UsageTotals, tokens_label};
@@ -234,7 +234,7 @@ fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<
         Some((used, true)) => Some(format!(
             "Budget reached: {used} spent, all that {USD_VARIABLE} and {TOKENS_VARIABLE} \
              allow (a helper's parent rig sets them): raise them, or the parent's budget, \
-             and ask again."
+             and send again."
         )),
         _ => None,
     }
