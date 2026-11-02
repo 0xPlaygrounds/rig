@@ -109,6 +109,7 @@ Rig supports the following LLM providers out of the box:
 - Anthropic
 - Azure OpenAI
 - ChatGPT and GitHub Copilot auth-backed clients
+- Cheaper Inference
 - Cohere
 - DeepSeek
 - Doubleword
