@@ -76,10 +76,10 @@ pub mod prelude {
     };
     pub use crate::spawn::{AgentSpec, Origin, SpawnRefused, Spawner, spawn_root};
     pub use crate::stage::{
-        Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRecorded, EffectRequest,
-        ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
-        PluginEffects, PrepareSystems, Published, ReadyToSettle, ReadyToStart, ReviewSystems,
-        Settled, Stage, Started, SupersededBy, Supersedes, ToolCalls, Waiting,
+        Admitted, AgentLoop, AgentPass, AgentWork, BetweenStages, Decision, Effect, EffectRecorded,
+        EffectRequest, ForAgent, GateSystems, HoldOf, Holds, IfStopped, IncomingMessages,
+        ModelCalls, Outcome, PluginEffects, PrepareSystems, Published, ReadyToSettle, ReadyToStart,
+        ReviewSystems, Settled, Stage, Started, SupersededBy, Supersedes, ToolCalls, Waiting,
         despawn_open_children, follow_successor,
     };
     pub use crate::tasks::{Done, PollTasks, Running, Wake};

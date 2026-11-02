@@ -22,6 +22,7 @@ use std::future::ready;
 use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use bevy_ecs::message::{MessageCursor, Messages};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
@@ -150,9 +151,9 @@ impl Plugin for RedactPlugin {
                         .after(GateSystems::After)
                         .after(crate::approval::ApprovalSystems)
                         .before(GateSystems::Fallback),
-                    (redact_recalled, redact_notices).in_set(Stage::Start),
                 ),
             )
+            .add_systems(BetweenStages, (redact_recalled, redact_notices))
             .add_systems(
                 Last,
                 (
@@ -734,18 +735,21 @@ fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
 }
 
 /// A notice, which may quote what the user typed, such as a file a message
-/// names that is not there; before the fronts read it, after the agent loop.
-fn redact_notices(mut notices: MessageMutator<Notice>, secrets: Res<Secrets>) {
-    for notice in notices.read() {
+/// names that is not there; between the stages, before a later stage, a
+/// front's observer of it or a front after the agent loop reads it. Every
+/// one kept, each time, so a secret learned since is found in it too.
+fn redact_notices(mut notices: ResMut<Messages<Notice>>, secrets: Res<Secrets>) {
+    for notice in MessageCursor::default().read_mut(&mut notices) {
         if let Some(text) = owned(secrets.text(&notice.text)) {
             notice.text = text;
         }
     }
 }
 
-/// A refused command's line, and why it was refused, which may quote it.
-fn redact_recalled(mut recalled: MessageMutator<Recalled>, secrets: Res<Secrets>) {
-    for recalled in recalled.read() {
+/// A refused command's line, and why it was refused, which may quote it;
+/// every one kept, as [`redact_notices`] does.
+fn redact_recalled(mut recalled: ResMut<Messages<Recalled>>, secrets: Res<Secrets>) {
+    for recalled in MessageCursor::default().read_mut(&mut recalled) {
         let texts = std::iter::once(&mut recalled.text).chain(&mut recalled.why);
         for text in texts {
             if let Cow::Owned(redacted) = secrets.text(text) {

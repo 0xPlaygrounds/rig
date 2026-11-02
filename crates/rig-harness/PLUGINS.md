@@ -226,6 +226,10 @@ losers do. Slow work holds the outcome first.
 ran waits for the next frame, so a system that does so every frame runs in
 `Update` `.before(AgentLoop)`. One that reacts to what the loop did that
 frame (an agent it started, a call it settled) runs `.after(AgentLoop)`.
+A system in the `BetweenStages` schedule runs between each two stages and
+once a pass ends, so it reads and may rewrite what earlier stages wrote, such
+as a `Notice`, before a later stage, an observer it triggers, or a system
+after `AgentLoop` reads it.
 
 ```rust,no_run
 use rig_harness::prelude::*;
