@@ -90,18 +90,6 @@ impl PromptHistory {
         }
     }
 
-    /// Rewrites each prompt, those still to be saved too, that `rewrite`
-    /// returns a new text for, such as one with its secrets redacted: a
-    /// filter between [`HistorySystems::Record`] and [`HistorySystems::Save`]
-    /// that changes prompts instead of leaving them out.
-    pub fn rewrite(&mut self, rewrite: impl Fn(&str) -> Option<String>) {
-        for prompt in self.entries.iter_mut().chain(&mut self.unsaved) {
-            if let Some(rewritten) = rewrite(prompt) {
-                *prompt = rewritten;
-            }
-        }
-    }
-
     /// Puts `prompts`, in order, as the newest, moving any already there,
     /// without saving them: the prompts of a conversation shown, which
     /// the file has unless its retention dropped them.

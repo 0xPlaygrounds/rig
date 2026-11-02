@@ -184,14 +184,10 @@ pub fn text(input: &str) -> Cow<'_, str> {
 /// longest secret, is a few kilobytes.
 const HELD_MOST: usize = 16 * 1024;
 
-/// A text that arrives in pieces, such as a streamed reply, redacted as
-/// [`text`] redacts it whole: what [`Self::push`] and [`Self::finish`]
-/// return, joined, is [`text`] of the pieces joined. It holds back what a
-/// later piece may still make part of a secret: the last run of characters
-/// a key is made of, a line that names a secret (its value may follow), and
-/// a private key block not yet ended. It holds at most 16 KiB,
-/// far more than a key, so a line that names a secret, a private key block
-/// or a run of key characters longer than that may show some of itself.
+/// A text that arrives in pieces, such as a streamed reply: what
+/// [`Self::push`] and [`Self::finish`] return, joined, is [`text`] of the
+/// pieces joined. It holds back only what a later piece may still make part
+/// of a secret, and at most 16 KiB.
 ///
 /// ```
 /// use rig_core::redact::Streamed;
@@ -227,13 +223,10 @@ impl Streamed {
     }
 }
 
-/// How much of `input`, a text that may still grow, ends where no secret
-/// [`find`] finds in the grown text can start before it and end after it:
-/// before the last run of characters a key or a JSON Web Token is made of,
-/// before a line that names a secret, and before the line of a secret that
-/// runs past the cut, such as a private key block. Each such place follows
-/// a character no token continues, so a token starts after it as in the
-/// whole text. At most [`HELD_MOST`] bytes stay held.
+/// How much of `input`, a text that may still grow, no secret found in the
+/// grown text can cross: up to the last run of key characters, the line
+/// that names a secret, or the line of a secret that runs to the end, such
+/// as a private key block. At most [`HELD_MOST`] bytes stay held.
 fn settled(input: &str) -> usize {
     let word = input
         .char_indices()

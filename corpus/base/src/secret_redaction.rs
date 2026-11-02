@@ -14,7 +14,8 @@
 //!   their secrets.
 //! - Gate: a tool call still naming a placeholder, one this run does not
 //!   know, is refused.
-//! - Review: every tool result is redacted before it is committed.
+//! - Review: every tool result, and what its call published, is redacted
+//!   before it is committed.
 //! - `Last`: every effect record is redacted before it is written.
 
 use std::future::ready;
@@ -382,21 +383,27 @@ fn refuse_forgotten(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStar
 #[component(storage = "SparseSet")]
 struct Redacted;
 
-/// Every tool result reaches the conversation, the session log and the
-/// views with placeholders.
+/// Every tool result and what its call published (an edit's diff) reach
+/// the conversation, the session log and the views with placeholders.
 fn redact_results(
     mut answered: Query<
-        (Entity, &mut Outcome, &ToolRequest),
+        (Entity, &mut Outcome, &ToolRequest, Option<&mut Published>),
         (ReadyToSettle, ToolCalls, Without<Redacted>),
     >,
     secrets: Res<Secrets>,
     mut commands: Commands,
 ) {
-    for (call, mut outcome, request) in &mut answered {
+    for (call, mut outcome, request, published) in &mut answered {
         let source = format!("the result of `{}`", request.call.function.name.as_str());
         let mut redacted = outcome.0.clone();
         if secrets.redact_data(&mut redacted, &source) {
             outcome.0 = redacted;
+        }
+        if let Some(mut published) = published {
+            let mut facts = published.0.clone();
+            if secrets.redact_data(&mut facts, &source) {
+                published.0 = facts;
+            }
         }
         // Once: Review sees the outcome each pass until it settles.
         commands.entity(call).insert(Redacted);

@@ -198,29 +198,6 @@ fn a_prompt_filtered_out_before_the_save_never_reaches_the_file() {
     assert_eq!(PromptHistory::load(files).entries, ["hello", "bye"]);
 }
 
-/// A prompt a plugin rewrites before the save, such as with a key
-/// redacted, is kept and saved rewritten.
-#[test]
-fn a_prompt_rewritten_before_the_save_is_saved_rewritten() {
-    let (mut app, _) = view_app();
-    let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
-    app.world_mut().resource_mut::<PromptHistory>().file = Some(files.clone());
-    app.add_systems(
-        Update,
-        (|mut history: ResMut<PromptHistory>| {
-            history.rewrite(|prompt| Some(prompt.replace("sk-123", "[REDACTED]")));
-        })
-        .after(HistorySystems::Record)
-        .before(HistorySystems::Save),
-    );
-    type_text(&mut app, "my key is sk-123");
-    press(&mut app, "enter");
-    edit(&mut app, |input| drop(input.take()));
-    let kept = ["my key is [REDACTED]"];
-    assert_eq!(app.world().resource::<PromptHistory>().entries, kept);
-    assert_eq!(PromptHistory::load(files).entries, kept);
-}
-
 #[test]
 fn a_repeated_prompt_moves_to_the_newest_and_is_kept_once() {
     let (mut app, _) = view_app();

@@ -2505,7 +2505,7 @@ any run and inert without the view:
   a plugin writes too) and the text an editor dropped unsent, in the
   order they happened, as the newest in `HistorySystems::Record` and
   saves in `HistorySystems::Save`; a system between the two filters what
-  is kept, or `rewrite`s it, as the redaction plugin does. After another agent is
+  is kept, as the redaction plugin does. After another agent is
   shown, `HistorySystems::Seed` puts its conversation's typed prompts as
   the newest, unsaved, in `TuiKeys` before the next key; a filter that
   should also keep them from Up runs there too, after it and before
