@@ -113,6 +113,13 @@ fn json_redacts_every_string_and_a_cut_off_key_to_the_end() {
         native,
         json!({ "arguments": r#"{"content":"\n[REDACTED]"}"# })
     );
+    // With space before it, and a secret named in it, as text finds it.
+    let mut spaced = json!(format!(" {raw}"));
+    assert!(json(&mut spaced));
+    assert_eq!(spaced, json!(r#"{"content":"\n[REDACTED]"}"#));
+    let mut named = json!(r#"{"PASSWORD":"hunter2hunter2"}"#);
+    assert!(json(&mut named));
+    assert!(!named.to_string().contains("hunter2"), "{named}");
     assert_eq!(
         value,
         json!({

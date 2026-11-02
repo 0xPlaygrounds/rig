@@ -101,7 +101,9 @@ plugin = "rig_basics::coding_tools::ShellTool"
 crate = "rig-basics"
 plugin = "rig_basics::coding_tools::AttachPlugin"
 
-# API keys, tokens and private keys become placeholders (‹SECRET_1›) where they come in, so the model, logs and views never see them; a tool call naming one runs with the real value. Without it nothing is redacted.
+# API keys, tokens and private keys become placeholders (‹SECRET_1›) where
+# they come in, so the model, logs and views never see them; a tool call
+# naming one runs with the real value. Without it nothing is redacted.
 # [[plugin]]
 # crate = "rig-basics"
 # plugin = "rig_basics::redact::RedactPlugin"

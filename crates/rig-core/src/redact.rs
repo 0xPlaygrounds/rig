@@ -291,9 +291,9 @@ fn settled(input: &str) -> usize {
 }
 
 /// Every string in `value` redacted as [`text`] redacts it, and one that
-/// holds JSON, such as a provider's raw tool-call arguments, as that JSON:
-/// an escape such as `\n` would hide where a secret starts. Whether any
-/// was. Object keys are left as they are.
+/// holds JSON, such as a provider's raw tool-call arguments, as that JSON
+/// too: an escape such as `\n` would hide where a secret starts. Whether
+/// any was. Object keys are left as they are.
 pub fn json(value: &mut Value) -> bool {
     json_with(value, &mut |_| REDACTED.to_owned())
 }
@@ -301,23 +301,23 @@ pub fn json(value: &mut Value) -> bool {
 /// [`json`], each secret replaced by what `replace` gives for it.
 pub fn json_with(value: &mut Value, replace: &mut impl FnMut(&str) -> String) -> bool {
     match value {
-        Value::String(string)
-            if string.starts_with(['{', '['])
-                && let Ok(mut inner) = serde_json::from_str::<Value>(string) =>
-        {
-            let changed = json_with(&mut inner, replace);
-            if changed {
+        Value::String(string) => {
+            let mut changed = match text_with(string, &mut *replace) {
+                Cow::Owned(redacted) => {
+                    *string = redacted;
+                    true
+                }
+                Cow::Borrowed(_) => false,
+            };
+            if string.trim_start().starts_with(['{', '['])
+                && let Ok(mut inner) = serde_json::from_str::<Value>(string)
+                && json_with(&mut inner, replace)
+            {
                 *string = inner.to_string();
+                changed = true;
             }
             changed
         }
-        Value::String(string) => match text_with(string, &mut *replace) {
-            Cow::Owned(redacted) => {
-                *string = redacted;
-                true
-            }
-            Cow::Borrowed(_) => false,
-        },
         Value::Array(items) => items
             .iter_mut()
             .fold(false, |any, item| json_with(item, replace) | any),

@@ -17,6 +17,7 @@
 //! ```
 
 use std::borrow::Cow;
+use std::cmp::Reverse;
 use std::future::ready;
 use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -30,7 +31,8 @@ use rig_harness::rig_core::streaming::{Item, Relayed};
 use rig_harness::rig_core::tool::{ContextValue, FilesChanged, Hunk, HunkLine};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_ecs::tools::ResultFilter;
-use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
+use rig_harness::rig_ecs::{SaveSystems, StopTurnsOnExit};
+use rig_harness::run::RunExitSystems;
 use rig_tools::LineFilter;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -41,6 +43,10 @@ mod tests;
 
 /// The layers' and the decider's name.
 const NAME: &str = "redact";
+
+/// The shortest original found again where it shows bare: shorter text is
+/// too likely to be something else.
+const SHORTEST: usize = 6;
 
 /// What the model is told of the placeholders.
 const PROMPT: &str = "A secret, such as an API key, shows as a placeholder such as \
@@ -89,8 +95,6 @@ impl Plugin for RedactPlugin {
             .add_observer(redact_if_stopped)
             .add_observer(redact_facts)
             .add_systems(Startup, (keep_count, tell_the_model))
-            // After the frame's agent work, so the count saved is what it handed out.
-            .add_systems(PostUpdate, keep_count)
             .add_systems(
                 AgentPass,
                 // Each after every other plugin that edits the same data.
@@ -117,10 +121,22 @@ impl Plugin for RedactPlugin {
             )
             .add_systems(
                 Last,
-                redact_records
-                    .run_if(resource_exists::<crate::telemetry::effect_log::EffectLog>)
-                    .after(StopTurnsOnExit)
-                    .before(WriteLogs),
+                (
+                    // On the exit frame: what is kept and printed as it is.
+                    (redact_messages, redact_stopped)
+                        .run_if(on_message::<AppExit>)
+                        .before(RunExitSystems)
+                        .before(StopTurnsOnExit),
+                    (
+                        redact_records
+                            .run_if(resource_exists::<crate::telemetry::effect_log::EffectLog>),
+                        // Every number handed out, the exit's too, is saved.
+                        keep_count,
+                    )
+                        .chain()
+                        .after(StopTurnsOnExit)
+                        .before(SaveSystems),
+                ),
             );
         #[cfg(feature = "tui")]
         app.add_systems(
@@ -158,10 +174,15 @@ impl Secrets {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// `input` with each secret replaced by its placeholder, learned when new.
+    /// `input` with each secret replaced by its placeholder, learned when
+    /// new, and each one this run knows wherever it shows bare.
     fn text<'a>(&self, input: &'a str) -> Cow<'a, str> {
         let mut vault = self.vault();
-        redact::text_with(input, |secret| name(&mut vault, secret))
+        let mut redacted = redact::text_with(input, |secret| name(&mut vault, secret));
+        if let Some(bare) = known(&vault, &redacted) {
+            redacted = Cow::Owned(bare);
+        }
+        redacted
     }
 
     /// `data` with every string in it redacted, through its JSON form;
@@ -171,7 +192,9 @@ impl Secrets {
         let mut json = serde_json::to_value(data).ok()?;
         let mut vault = self.vault();
         let changed = redact::json_with(&mut json, &mut |secret| name(&mut vault, secret));
+        let bare = each_string(&mut json, &mut |text| known(&vault, text));
         drop(vault);
+        let changed = changed | bare;
         changed.then(|| serde_json::from_value(json).ok()).flatten()
     }
 
@@ -208,6 +231,27 @@ fn name(vault: &mut Vec<Option<String>>, secret: &str) -> String {
         vault.len() - 1
     });
     placeholder(at + 1)
+}
+
+/// `text` with each secret `vault` knows replaced by its placeholder,
+/// longest first, so one inside another goes with it, such as a password a
+/// tool printed without the name that made it a secret; `None` when none
+/// shows.
+fn known(vault: &[Option<String>], text: &str) -> Option<String> {
+    let mut shown: Vec<(usize, &str)> = (1..)
+        .zip(vault)
+        .filter_map(|(number, secret)| Some((number, secret.as_deref()?)))
+        .filter(|(_, secret)| secret.len() >= SHORTEST && text.contains(secret))
+        .collect();
+    if shown.is_empty() {
+        return None;
+    }
+    shown.sort_by_key(|(_, secret)| Reverse(secret.len()));
+    let mut text = text.to_owned();
+    for (number, secret) in shown {
+        text = text.replace(secret, &placeholder(number));
+    }
+    Some(text)
 }
 
 /// The numbers earlier runs handed out stay taken; the ones this run hands
@@ -259,6 +303,16 @@ fn redact_if_stopped(
         && let Some(redacted) = redacted_answer(&answer.0, &secrets)
     {
         answer.0.0 = redacted;
+    }
+}
+
+/// What a running call answers if stopped, changed in place since it was
+/// inserted, as the exit prints and keeps it.
+fn redact_stopped(mut answers: Query<&mut IfStopped, Changed<IfStopped>>, secrets: Res<Secrets>) {
+    for mut answer in &mut answers {
+        if let Some(redacted) = redacted_answer(&answer.0, &secrets) {
+            answer.0.0 = redacted;
+        }
     }
 }
 
@@ -404,21 +458,23 @@ fn reveal_to_tools(
     secrets: Res<Secrets>,
 ) {
     for mut handler in &mut calls {
-        let revealing = handler.0.0.clone().layered(Reveal(secrets.clone()));
+        let revealing = handler.0.0.clone().layered(AsSent(secrets.clone()));
         handler.0 = Handler(revealing);
     }
 }
 
-/// Puts the secrets back in a tool call's arguments as it is sent.
-struct Reveal(Secrets);
+/// What a call sends: a tool call's arguments with their secrets put back,
+/// a model request with every secret in it redacted, the system prompt's
+/// too.
+struct AsSent(Secrets);
 
-impl Intercept for Reveal {
+impl Intercept for AsSent {
     fn name(&self) -> String {
         NAME.to_owned()
     }
 
     fn before(&self, _: EffectId, kind: &EffectKind) -> impl Future<Output = BeforeServe> + Send {
-        let revealed = match kind {
+        let sent = match kind {
             EffectKind::ToolCall { name, args } => serde_json::from_str::<Value>(args)
                 .ok()
                 .and_then(|mut args| {
@@ -431,9 +487,9 @@ impl Intercept for Reveal {
                         args: args.to_string(),
                     })
                 }),
-            _ => None,
+            kind => self.0.redacted(kind),
         };
-        ready(revealed.map_or(BeforeServe::Proceed, BeforeServe::Patch))
+        ready(sent.map_or(BeforeServe::Proceed, BeforeServe::Patch))
     }
 
     fn after(
@@ -477,7 +533,8 @@ fn refuse_unknown(
         if let Some((at, _)) = unknown {
             let why = format!(
                 "{} is not a secret this run knows: secrets are kept in memory only, so one \
-                 from before a restart is gone. Nothing ran; ask the user for the value again.",
+                 from before a restart, a /reload or a /resume is gone. Nothing ran; ask the \
+                 user for the value again.",
                 args.get(at).unwrap_or_default()
             );
             decision.decide(Decider::plugin(NAME), Outcome::refused(why));
@@ -485,14 +542,14 @@ fn refuse_unknown(
     }
 }
 
-/// Every model call streams its reply redacted, wrapping the outermost
-/// adapters too, such as a replay.
+/// Every model call is sent redacted and streams its reply redacted,
+/// wrapping the outermost adapters too, such as a replay.
 fn adapt_model_calls(
     mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>,
     secrets: Res<Secrets>,
 ) {
     for mut adapted in &mut calls {
-        let handler = adapted.0.handler.0.clone();
+        let handler = adapted.0.handler.0.clone().layered(AsSent(secrets.clone()));
         let secrets = secrets.clone();
         let redacting = handler.map_stream(NAME, move |_| redact_stream(secrets.clone()));
         adapted.0.handler = Handler(redacting);
@@ -630,36 +687,43 @@ fn filter_output(
     secrets: Res<Secrets>,
 ) {
     for mut place in &mut places {
-        let in_key = Mutex::new(false);
+        let block = Mutex::new(None);
         let secrets = secrets.clone();
         place.filter = Some(LineFilter::new(move |line| {
-            let mut in_key = in_key.lock().unwrap_or_else(PoisonError::into_inner);
-            redact_line(line, &mut in_key, &secrets)
+            let mut block = block.lock().unwrap_or_else(PoisonError::into_inner);
+            redact_line(line, &mut block, &secrets)
         }));
     }
 }
 
-/// `line` redacted; a private key block's lines after its first, through
-/// its end line, are left out (`in_key`).
-fn redact_line(line: &str, in_key: &mut bool, secrets: &Secrets) -> String {
-    if *in_key {
-        *in_key = !line.contains("-----END ");
-        return String::new();
+/// `line` redacted. A private key block spans lines: it is held (`block`)
+/// through its end line and goes out as one placeholder, so a call naming
+/// it gets the whole key.
+fn redact_line(line: &str, block: &mut Option<String>, secrets: &Secrets) -> String {
+    if let Some(held) = block {
+        held.push_str(line);
+        if !line.contains("-----END ") {
+            return String::new();
+        }
+        let whole = std::mem::take(held);
+        *block = None;
+        let mut redacted = secrets.text(&whole).into_owned();
+        if !redacted.ends_with('\n') {
+            redacted.push('\n');
+        }
+        return redacted;
     }
-    let Cow::Owned(mut redacted) = secrets.text(line) else {
-        return line.to_owned();
-    };
-    *in_key = redact::find(line).any(|secret| {
+    let opens = redact::find(line).any(|secret| {
         secret.kind == redact::Kind::PrivateKey
             && line
                 .get(secret.range)
                 .is_some_and(|key| !key.contains("-----END "))
     });
-    // A key redacted to the line's end took its newline.
-    if line.ends_with('\n') && !redacted.ends_with('\n') {
-        redacted.push('\n');
+    if opens {
+        *block = Some(line.to_owned());
+        return String::new();
     }
-    redacted
+    secrets.text(line).into_owned()
 }
 
 /// Every record reaches the effect log, when it is written, redacted: the

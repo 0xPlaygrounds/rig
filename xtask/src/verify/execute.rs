@@ -175,28 +175,11 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
                 let Ok(text) = fs::read_to_string(root.join(&path)) else {
                     continue;
                 };
-                // Inside a `rig_core::{ … }` list, which rustfmt may spread
-                // over lines.
-                let mut in_core = false;
-                for (number, line) in text.lines().enumerate() {
-                    let code = line.split("//").next().unwrap_or_default();
-                    in_core |= code.contains("rig_core::{");
-                    let braced = in_core
-                        && paths(code, "redact")
-                            .any(|after| after.starts_with([',', '}', ' ']) || after.is_empty());
-                    if code.contains('}') {
-                        in_core = false;
-                    }
-                    if paths(code, "redact::").next().is_some()
-                        || code.contains("rig_core::redact")
-                        || braced
-                    {
-                        return Err(invalid(format!(
-                            "{path}:{}: names `rig_core::redact`; redaction is \
-                             `rig_basics::redact::RedactPlugin`'s",
-                            number + 1
-                        )));
-                    }
+                if let Some(number) = names_redact(&text) {
+                    return Err(invalid(format!(
+                        "{path}:{number}: names `rig_core::redact`; redaction is \
+                         `rig_basics::redact::RedactPlugin`'s"
+                    )));
                 }
             }
             Ok(())
@@ -300,6 +283,38 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
         start.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+/// The first line, counted from 1, of `text`, Rust source, that names
+/// `rig_core::redact`: a path through it, or `redact` in a
+/// `use rig_core::{…}` list, however rustfmt spreads and nests the list.
+/// Comments are skipped.
+pub(super) fn names_redact(text: &str) -> Option<usize> {
+    // How deep in a `rig_core::{…}` list the line starts.
+    let mut depth = 0_usize;
+    for (number, line) in (1..).zip(text.lines()) {
+        let code = line.split("//").next().unwrap_or_default();
+        let opens = code.find("rig_core::{");
+        let listed = (depth > 0 || opens.is_some())
+            && paths(code, "redact")
+                .any(|after| after.is_empty() || after.starts_with([',', '}', ' ']));
+        if listed || paths(code, "redact::").next().is_some() || code.contains("rig_core::redact") {
+            return Some(number);
+        }
+        let from = if depth > 0 { Some(0) } else { opens };
+        for ch in from
+            .and_then(|from| code.get(from..))
+            .unwrap_or_default()
+            .chars()
+        {
+            match ch {
+                '{' => depth += 1,
+                '}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// What follows each `prefix` (such as `rig::`) in `code` that starts a

@@ -335,25 +335,24 @@ The sets of Gate systems that edit shared data:
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_core::redact;
 
-/// The redaction plugin's stage systems, for others to order against.
+/// The tidying plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RedactSystems;
+pub struct TidySystems;
 
 fn build(app: &mut App) {
     // After attachments and the default prompt, before compaction.
-    app.configure_sets(AgentPass, RedactSystems.in_set(PrepareSystems::Edit))
-        .add_systems(AgentPass, redact_messages.in_set(RedactSystems));
+    app.configure_sets(AgentPass, TidySystems.in_set(PrepareSystems::Edit))
+        .add_systems(AgentPass, tidy_messages.in_set(TidySystems));
 }
 
-/// Takes API keys out of each message as it comes in, attached files
-/// included.
-fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
+/// Takes the spaces off the end of each line of each message as it comes
+/// in, attached files included.
+fn tidy_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
     for mut incoming in &mut messages {
         for part in &mut incoming.parts {
             if let MessagePart::Text(text) | MessagePart::Attachment(Attachment { content: UserContent::Text(message::Text { text, .. }), .. }) = part {
-                *text = redact::text(text).into_owned();
+                *text = text.lines().map(str::trim_end).collect::<Vec<_>>().join("\n");
             }
         }
     }
