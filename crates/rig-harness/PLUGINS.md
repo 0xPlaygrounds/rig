@@ -1454,7 +1454,9 @@ the end of the last frame.
 **Redacting.** A record holds what its effect really carried (tool output,
 file changes with the text before, the request as sent); the log is written
 as it is given. `rig_basics::redact::RedactPlugin`, when it is enabled,
-redacts every record this way. A plugin changes records before they are written
+redacts every record this way, but for a model request, which it redacts in
+its own text, its system prompt, documents and user messages' text. A plugin
+changes records before they are written
 (`MessageMutator<EffectRecorded>`, below) and
 [rewrites](#rewriting-saved-history-a-redaction) those written once the
 session stopped. A plugin that saves text of its own, such as a command's

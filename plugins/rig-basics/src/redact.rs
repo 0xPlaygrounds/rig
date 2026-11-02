@@ -23,6 +23,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message;
@@ -237,13 +238,7 @@ impl Secrets {
     fn redacted<T: Serialize + DeserializeOwned>(&self, data: &T) -> Option<T> {
         let given = serde_json::to_value(data).ok()?;
         let mut redacted = given.clone();
-        let mut vault = self.vault();
-        let found = redact::json_with(&mut redacted, &mut |secret| {
-            name(&mut vault.secrets, secret)
-        });
-        let shown = known_json(&vault, &mut redacted);
-        drop(vault);
-        if !(found || shown) {
+        if !json(self, &mut redacted) {
             return None;
         }
         let reads = |json: &Value| T::deserialize(json).is_ok();
@@ -264,6 +259,56 @@ impl Secrets {
             }
         }
         T::deserialize(&redacted).ok()
+    }
+
+    /// `request` redacted in its own text: its system prompt, its documents
+    /// and each user message's text, such as a plugin's request-only ask.
+    /// Its other messages were redacted as they came in, and the rest
+    /// (tools, schemas, media, settings) is the program's text or data a
+    /// key's shape could match by chance. `None` when none held a secret.
+    fn request(&self, request: &CompletionRequest) -> Option<CompletionRequest> {
+        let mut asked = request.clone();
+        let mut changed = false;
+        for entry in &mut asked.chat_history {
+            let redacted = match &**entry {
+                message::Message::System { content } => {
+                    owned(self.text(content)).map(|content| message::Message::System { content })
+                }
+                message::Message::User { content } => {
+                    let texts: Vec<_> = content
+                        .iter()
+                        .map(|part| match part {
+                            UserContent::Text(text) => owned(self.text(&text.text)),
+                            _ => None,
+                        })
+                        .collect();
+                    texts.iter().any(Option::is_some).then(|| {
+                        let parts = content.iter().zip(texts).map(|(part, text)| {
+                            let mut part = part.clone();
+                            if let (UserContent::Text(was), Some(text)) = (&mut part, text) {
+                                was.text = text;
+                            }
+                            part
+                        });
+                        message::Message::User {
+                            content: parts.collect(),
+                        }
+                    })
+                }
+                _ => None,
+            };
+            if let Some(redacted) = redacted {
+                *entry = Arc::new(redacted);
+                changed = true;
+            }
+        }
+        for document in &mut asked.documents {
+            if let Some(text) = owned(self.text(&document.text)) {
+                document.text = text;
+                changed = true;
+            }
+        }
+        changed.then_some(asked)
     }
 
     /// `text` with each placeholder this run knows replaced by its secret.
@@ -361,21 +406,47 @@ fn changed(before: &Value, after: &Value, at: String, out: &mut Vec<String>) {
     }
 }
 
-/// Every string in `value` with each secret `vault` knows replaced, and
-/// in each string that holds JSON, such as a call's arguments, each one in
-/// that JSON, where an escape would hide it; whether any was.
-fn known_json(vault: &Vault, value: &mut Value) -> bool {
+/// Every string in `value` redacted as [`Secrets::text`] redacts it, and
+/// one that holds JSON, such as a call's arguments, as that JSON too, where
+/// an escape would hide a secret; whether any was. A string of encoded data,
+/// such as an image's base64, is left whole: a key's shape or a known
+/// secret could match it by chance and break it.
+fn json(secrets: &Secrets, value: &mut Value) -> bool {
     each_string(value, &mut |text| {
-        let mut changed = known(vault, text);
+        if is_data(text) {
+            return None;
+        }
+        let mut changed = owned(secrets.text(text));
         let current = changed.as_deref().unwrap_or(text);
         if current.trim_start().starts_with(['{', '['])
             && let Ok(mut inner) = serde_json::from_str::<Value>(current)
-            && known_json(vault, &mut inner)
+            && json(secrets, &mut inner)
         {
             changed = Some(inner.to_string());
         }
         changed
     })
+}
+
+/// Whether `text` is encoded data: at least 256 characters of base64, or a
+/// `data:` URL of it.
+fn is_data(text: &str) -> bool {
+    let encoded = text
+        .strip_prefix("data:")
+        .and_then(|url| url.get(url.find(";base64,")? + ";base64,".len()..))
+        .unwrap_or(text);
+    encoded.len() >= 256
+        && encoded
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
+}
+
+/// The text a [`Cow`] holds when it was changed.
+fn owned(text: Cow<'_, str>) -> Option<String> {
+    match text {
+        Cow::Owned(text) => Some(text),
+        Cow::Borrowed(_) => None,
+    }
 }
 
 /// The longest end of `text` that starts a secret `vault` knows, which a
@@ -625,7 +696,7 @@ fn reveal_to_tools(
 }
 
 /// What a call sends: a tool call's arguments with their secrets put back,
-/// a model request with its system prompt and documents redacted, and any
+/// a model request redacted in its own text ([`Secrets::request`]), and any
 /// other effect redacted whole.
 struct AsSent(Secrets);
 
@@ -657,32 +728,7 @@ impl Intercept for AsSent {
                     }
                 }
                 drop(vault);
-                // Only the request's own text, its system prompt and
-                // documents: its messages were redacted as they came in, and
-                // the rest (tools, schemas, media, settings) is the
-                // program's text or data a key's shape could match by chance.
-                let mut asked = (**request).clone();
-                let mut changed = false;
-                for entry in &mut asked.chat_history {
-                    let redacted = match &**entry {
-                        message::Message::System { content } => match self.0.text(content) {
-                            Cow::Owned(content) => Some(content),
-                            Cow::Borrowed(_) => None,
-                        },
-                        _ => None,
-                    };
-                    if let Some(content) = redacted {
-                        *entry = Arc::new(message::Message::System { content });
-                        changed = true;
-                    }
-                }
-                for document in &mut asked.documents {
-                    if let Cow::Owned(text) = self.0.text(&document.text) {
-                        document.text = text;
-                        changed = true;
-                    }
-                }
-                changed.then(|| EffectKind::Completion {
+                self.0.request(request).map(|asked| EffectKind::Completion {
                     request: Arc::new(asked),
                     stream: *stream,
                 })
@@ -964,23 +1010,24 @@ fn redact_line(line: &str, block: &mut Option<usize>, secrets: &Secrets) -> Stri
     format!("{before}{}\n", placeholder(vault.secrets.len()))
 }
 
-/// Every record reaches the effect log, when it is written, redacted: a
-/// call's arguments, its first answer, what it published, a stream's items.
-/// A model request is logged as [`AsSent`] sent it.
+/// Every record reaches the effect log, when it is written, redacted: the
+/// record whole, but for a model request, redacted in its own text
+/// ([`Secrets::request`]) as [`AsSent`] sends it, which also covers one a
+/// gate refused before it was sent.
 fn redact_records(mut records: MessageMutator<EffectRecorded>, secrets: Res<Secrets>) {
     for EffectRecorded(record) in records.read() {
-        let asked = matches!(record.kind, EffectKind::Completion { .. });
-        if !asked && let Some(kind) = secrets.redacted(&record.kind) {
-            record.kind = kind;
+        let asked = match &mut record.kind {
+            EffectKind::Completion { request, .. } => Some(std::mem::replace(
+                request,
+                Arc::new(CompletionRequest::new("")),
+            )),
+            _ => None,
+        };
+        if let Some(redacted) = secrets.redacted(&*record) {
+            *record = redacted;
         }
-        if let Some(published) = secrets.redacted(&record.published) {
-            record.published = published;
-        }
-        if let Some(outcome) = secrets.redacted(&record.outcome) {
-            record.outcome = outcome;
-        }
-        if let Some(events) = secrets.redacted(&record.events) {
-            record.events = events;
+        if let (EffectKind::Completion { request, .. }, Some(asked)) = (&mut record.kind, asked) {
+            *request = secrets.request(&asked).map_or(asked, Arc::new);
         }
     }
 }

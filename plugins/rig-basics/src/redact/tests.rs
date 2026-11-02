@@ -874,21 +874,38 @@ fn a_secret_like_a_name_leaves_the_name_alone() {
     );
 }
 
-/// A model request is redacted in its own text, its system prompt and
-/// documents; its messages, redacted as they came in, its tools and their
-/// schemas, and data such as an image's, go as given, though a known secret
-/// shows in them.
+/// An image's base64, as a `read` of a PNG gives it, whose start is a
+/// secret the run knows.
+fn png(secrets: &Secrets) -> String {
+    let _ = secrets.text("B_TOKEN=iVBORw0K");
+    format!("iVBORw0K{}", "A".repeat(300))
+}
+
+/// A model request is redacted in its own text: its system prompt, its
+/// documents and its user messages' text, such as a plugin's request-only
+/// ask. Its tools and their schemas, and an image's data, go as given,
+/// though a known secret shows in them.
 #[test]
 fn a_request_is_redacted_in_its_own_text_only() {
     let secrets = Secrets::default();
-    let learned = secrets.text("A_TOKEN=old_text B_TOKEN=iVBORw0K");
-    assert_eq!(learned, "A_TOKEN=‹SECRET_1› B_TOKEN=‹SECRET_2›");
+    let _ = secrets.text("A_TOKEN=old_text");
+    let data = png(&secrets);
     let document = Document {
         id: "notes".to_owned(),
         text: "deploy with old_text".to_owned(),
         additional_props: Default::default(),
     };
-    let request = CompletionRequest::new("an image iVBORw0KGgo")
+    let image = message::Image {
+        data: message::DocumentSourceKind::Base64(data.clone()),
+        ..Default::default()
+    };
+    let asked = message::Message::User {
+        content: vec![
+            UserContent::text("focus on GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789"),
+            UserContent::Image(image),
+        ],
+    };
+    let request = CompletionRequest::new(asked)
         .preamble("my PASSWORD=hunter2hunter2")
         .document(document)
         .tools(get_weather());
@@ -908,12 +925,47 @@ fn a_request_is_redacted_in_its_own_text_only() {
         .map(|document| document.text.as_str())
         .collect();
     assert_eq!(documents, ["deploy with ‹SECRET_1›"]);
-    assert!(format!("{:?}", sent.chat_history).contains("an image iVBORw0KGgo"));
+    let shown = format!("{:?}", sent.chat_history);
+    assert!(
+        shown.contains("GITHUB_TOKEN=‹SECRET_4›") && !shown.contains("ghp_"),
+        "{shown}"
+    );
+    assert!(shown.contains(&data), "the image's data is whole");
     assert_eq!(serde_json::to_value(&sent.tools).ok(), tools);
 }
 
-/// The effect log keeps a model request as the layer sent it, its tools
-/// whole, and a call's arguments and answer redacted.
+/// A tool's result is redacted but for its encoded data: an image a call
+/// read keeps its base64 whole.
+#[test]
+fn a_result_keeps_an_images_data_whole() {
+    let secrets = Secrets::default();
+    let data = png(&secrets);
+    let image = message::Image {
+        data: message::DocumentSourceKind::Base64(data.clone()),
+        ..Default::default()
+    };
+    let content = vec![
+        message::ToolResultContent::Text("TOKEN=hunter2hunter2".into()),
+        message::ToolResultContent::Image(image),
+    ];
+    let output = ToolOutput::content(content);
+    assert!(output.is_ok(), "{output:?}");
+    let Ok(output) = output else {
+        return;
+    };
+    let answer = redacted_answer(&Outcome::from(ToolResult::success(output)), &secrets);
+    let shown = answer.and_then(|answer| serde_json::to_string(&answer).ok());
+    let shown = shown.unwrap_or_default();
+    assert!(
+        shown.contains("TOKEN=‹SECRET_2›") && shown.contains(&data),
+        "{shown}"
+    );
+}
+
+/// The effect log keeps a model request redacted as the layer sends it,
+/// its tools whole, though it was recorded as given, and the rest of each
+/// record redacted: a call's arguments, its answer and what a reviewer
+/// made of it.
 #[test]
 fn a_record_keeps_its_request_as_sent() {
     let mut world = World::new();
@@ -921,7 +973,10 @@ fn a_record_keeps_its_request_as_sent() {
     let _ = secrets.text("A_TOKEN=old_text");
     world.insert_resource(secrets);
     world.init_resource::<Messages<EffectRecorded>>();
-    let request = CompletionRequest::new("hi").tools(get_weather());
+    // Recorded as given, as a request a gate refused before it was sent is.
+    let request = CompletionRequest::new("hi")
+        .preamble("my PASSWORD=hunter2hunter2")
+        .tools(get_weather());
     let tools = serde_json::to_value(&request.tools).ok();
     let asked = EffectKind::Completion {
         request: Arc::new(request),
@@ -934,7 +989,10 @@ fn a_record_keeps_its_request_as_sent() {
     };
     let printed = Outcome::from(ToolResult::success(ToolOutput::text("old_text"))).0;
     for (id, kind, outcome) in [(1, asked, reply), (2, called, printed)] {
-        let record = EffectRecord::new(EffectId::from_raw(id), "test".into(), kind, outcome);
+        let mut record = EffectRecord::new(EffectId::from_raw(id), "test".into(), kind, outcome);
+        // What a reviewer made of the answer, such as a prefilled reply.
+        let reviewed = json!({ "text": "ghp_abcdefghijklmnopqrstuvwxyz0123456789" });
+        record.reviewed = Some(Ok(Answered::Custom { payload: reviewed }));
         world.write_message(EffectRecorded(record));
     }
     assert!(world.run_system_once(redact_records).is_ok());
@@ -950,6 +1008,15 @@ fn a_record_keeps_its_request_as_sent() {
         _ => None,
     });
     assert_eq!(logged, tools);
+    let asked = records
+        .first()
+        .and_then(|record| serde_json::to_string(record).ok());
+    let asked = asked.unwrap_or_default();
+    assert!(
+        asked.contains("PASSWORD=‹SECRET_") && !asked.contains("hunter2"),
+        "{asked}"
+    );
+    assert!(!asked.contains("ghp_"), "{asked}");
     let call = records
         .get(1)
         .and_then(|record| serde_json::to_string(record).ok());

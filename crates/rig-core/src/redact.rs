@@ -301,7 +301,7 @@ pub fn json(value: &mut Value) -> bool {
 }
 
 /// [`json`], each secret replaced by what `replace` gives for it.
-pub fn json_with(value: &mut Value, replace: &mut impl FnMut(&str) -> String) -> bool {
+fn json_with(value: &mut Value, replace: &mut impl FnMut(&str) -> String) -> bool {
     match value {
         Value::String(string) => {
             let mut changed = match text_with(string, &mut *replace) {
