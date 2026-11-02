@@ -124,13 +124,15 @@ impl Limit {
         Some((labels.join(" and "), reached))
     }
 
-    /// The variables that hand it down, of those it sets: `RIG_BUDGET_USD`
-    /// and `RIG_BUDGET_TOKENS`.
+    /// The variables that hand it down, of those it sets, as `the limit in
+    /// RIG_BUDGET_TOKENS` or `the limits in RIG_BUDGET_USD and
+    /// RIG_BUDGET_TOKENS`.
     fn variables(&self) -> String {
         let usd = self.usd.map(|_| USD_VARIABLE);
         let tokens = self.tokens.map(|_| TOKENS_VARIABLE);
         let names: Vec<&str> = usd.into_iter().chain(tokens).collect();
-        names.join(" and ")
+        let limits = if names.len() > 1 { "limits" } else { "limit" };
+        format!("the {limits} in {}", names.join(" and "))
     }
 
     /// Whether 80% of it is spent.
@@ -251,8 +253,8 @@ fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<
     }
     match handed.0.against(spent) {
         Some((used, true)) => Some(format!(
-            "Budget reached: {used} spent, all that {} allow (a helper's parent rig sets \
-             them): start this rig again with them raised.",
+            "Budget reached: {used} spent, {}, which a helper's parent rig sets: start \
+             this rig again with more.",
             handed.0.variables()
         )),
         _ => None,
@@ -340,7 +342,7 @@ fn budget(
     };
     if let Some((used, _)) = handed.0.against(spent) {
         let variables = handed.0.variables();
-        text.push_str(&format!(" Against what {variables} allow: {used} spent."));
+        text.push_str(&format!(" Against {variables}: {used} spent."));
     }
     if limit.lower(handed.0).usd.is_some() && spent.unpriced > 0 {
         text.push_str(&format!(

@@ -164,8 +164,8 @@ fn a_child_holds_to_what_its_parent_left_it() {
         usd: None,
         tokens: Some(20),
     };
-    let why = "all that RIG_BUDGET_TOKENS allow (a helper's parent rig sets them): start \
-               this rig again with them raised.";
+    let why = "the limit in RIG_BUDGET_TOKENS, which a helper's parent rig sets: start this \
+               rig again with more.";
     stops_the_helper_and_refuses_the_next_call("handed-stop", "", left, why);
 }
 
@@ -246,8 +246,8 @@ fn what_was_handed_down_holds_a_run_without_a_budget_of_its_own() {
     assert_eq!(
         command(&mut app, "budget"),
         [
-            "No budget: 0 tokens spent. Against what RIG_BUDGET_USD and RIG_BUDGET_TOKENS \
-             allow: $0.00 of $0.00 and 0 of 0 tokens spent."
+            "No budget: 0 tokens spent. Against the limits in RIG_BUDGET_USD and \
+             RIG_BUDGET_TOKENS: $0.00 of $0.00 and 0 of 0 tokens spent."
         ]
     );
     if let Some(agent) = first_agent(app.world_mut()) {
@@ -276,7 +276,7 @@ fn what_was_handed_down_holds_a_run_without_a_budget_of_its_own() {
     assert_eq!(
         command(&mut app, "budget"),
         [
-            "No budget: 3.0k tokens spent. Against what RIG_BUDGET_TOKENS allow: 3.0k of 8.0k tokens spent."
+            "No budget: 3.0k tokens spent. Against the limit in RIG_BUDGET_TOKENS: 3.0k of 8.0k tokens spent."
         ]
     );
 }
