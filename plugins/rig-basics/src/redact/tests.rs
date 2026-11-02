@@ -524,6 +524,39 @@ fn a_prompt_kept_for_up_is_kept_redacted() {
     );
 }
 
+/// A prompt seeded from a conversation the terminal view shows, such as a
+/// resumed one's, comes back with the first Up as `[REDACTED]`.
+#[cfg(feature = "tui")]
+#[test]
+fn a_prompt_seeded_from_a_shown_conversation_comes_back_redacted() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = app_on(&store);
+    app.add_plugins((AgentPlugin, RedactPlugin))
+        .insert_resource(rig_tui::TuiTestScreen::new(100, 30));
+    rig_harness_test_support::tui_view(&mut app);
+    app.finish();
+    app.cleanup();
+    app.update();
+    let mut conversation = rig_harness::rig_core::conversation::Conversation::new();
+    conversation.push(rig_harness::rig_core::completion::Message::user(
+        "deploy ‹SECRET_1› now",
+    ));
+    let agent = app
+        .world_mut()
+        .spawn((Agent, Conversation::from(conversation)))
+        .id();
+    app.world_mut()
+        .trigger(rig_tui::ShowAgent { entity: agent });
+    rig_harness_test_support::press(&mut app, "up");
+    let world = app.world_mut();
+    let mut input = world.query_filtered::<&rig_tui::Editor, With<rig_tui::MainEditor>>();
+    let typed = input
+        .single(world)
+        .ok()
+        .map(|input| input.text().to_owned());
+    assert_eq!(typed.as_deref(), Some("deploy [REDACTED] now"));
+}
+
 /// A tool call that names a placeholder runs with its secret, found again
 /// in its output though it shows there bare, while the model's requests,
 /// the conversation and the call every view reads keep the placeholder;

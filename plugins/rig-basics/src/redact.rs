@@ -184,6 +184,8 @@ impl Plugin for RedactPlugin {
                         .before(SaveSystems),
                 ),
             );
+        // In the key schedule too, so a prompt seeded from a conversation
+        // shown is redacted before the key after it recalls it.
         #[cfg(feature = "tui")]
         app.add_systems(
             Update,
@@ -191,6 +193,13 @@ impl Plugin for RedactPlugin {
                 .run_if(resource_exists_and_changed::<rig_tui::PromptHistory>)
                 .after(rig_tui::HistorySystems::Record)
                 .before(rig_tui::HistorySystems::Save),
+        )
+        .add_systems(
+            rig_tui::TuiKeys,
+            redact_history
+                .run_if(resource_exists_and_changed::<rig_tui::PromptHistory>)
+                .after(rig_tui::HistorySystems::Seed)
+                .before(rig_tui::InputSystems::Filter),
         );
     }
 }
