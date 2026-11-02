@@ -149,11 +149,23 @@ struct WaitArgs {
     agent: String,
 }
 
+/// The request a call makes: where its reply asked for it (`m4/1`), which
+/// no later call of the asker repeats, else, for a call no reply made, its
+/// own id. A provider may use a call id again.
+fn request_of<A: Send + Sync + 'static>(
+    called: &ToolCalled<A>,
+    places: &Query<&InReply>,
+) -> RequestId {
+    let place = places.get(called.call).ok().map(|place| place.at().wire());
+    RequestId(place.unwrap_or_else(|| called.tool_call.id.to_string()))
+}
+
 /// Asks for the subagent of a `task` call: a [`SpawnSubagent`], a child of
 /// the call, which answers the call once it settled.
 fn on_task(
     called: On<ToolCalled<TaskArgs>>,
     me: Option<Res<PluginEntity<SubagentsPlugin>>>,
+    places: Query<&InReply>,
     mut commands: Commands,
 ) {
     let args = &called.args;
@@ -175,7 +187,7 @@ fn on_task(
         request,
         ForAgent(called.agent),
         ChildOf(called.call),
-        TaskCall(RequestId(called.effect.to_string())),
+        TaskCall(request_of(&called, &places)),
     ));
     if let Some(me) = me {
         spawned.insert(ProvidedBy(me.entity()));
@@ -309,7 +321,12 @@ impl Agents<'_, '_> {
     /// agent the caller owes, as a message; to any other, as a new request,
     /// unless that agent waits on the caller's own report and not for this
     /// message.
-    fn send(&mut self, called: &ToolCalled<MessageArgs>, target: Reachable) -> Outcome {
+    fn send(
+        &mut self,
+        called: &ToolCalled<MessageArgs>,
+        target: Reachable,
+        request: RequestId,
+    ) -> Outcome {
         let (caller, text) = (called.agent, called.args.text.trim());
         let waiting = !self.wait_calls(target.entity, caller).is_empty();
         let busy = self.agents.get(target.entity).is_ok_and(|agent| agent.busy);
@@ -327,7 +344,6 @@ impl Agents<'_, '_> {
                 target.id.short()
             ));
         } else {
-            let request = RequestId(called.effect.to_string());
             let asked = Request {
                 id: request.clone(),
                 to: target.id.clone(),
@@ -388,13 +404,13 @@ enum Arrival {
 
 /// Sends a `message` call's text to an agent the caller can reach, as
 /// [`Agents::send`] says, and answers the call.
-fn on_message(called: On<ToolCalled<MessageArgs>>, mut agents: Agents) {
+fn on_message(called: On<ToolCalled<MessageArgs>>, places: Query<&InReply>, mut agents: Agents) {
     let output = match agents.reachable(called.agent, &called.args.agent) {
         Err(why) => refused(format!("{why} Nothing was sent.")),
         Ok(_) if called.args.text.trim().is_empty() => {
             refused("`text` must not be empty. Nothing was sent.".to_owned())
         }
-        Ok(target) => agents.send(&called, target),
+        Ok(target) => agents.send(&called, target, request_of(&called, &places)),
     };
     agents.answer(called.call, output);
 }

@@ -265,7 +265,7 @@ fn delegated(
             call: called.call,
             task: called.args.task.clone(),
             asker: called.agent_id.clone(),
-            request: RequestId(called.effect.to_string()),
+            request: RequestId(called.tool_call.id.to_string()),
             message: None,
             turn: None,
         });

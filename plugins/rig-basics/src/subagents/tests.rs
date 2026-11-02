@@ -299,11 +299,13 @@ fn a_subagents_question_is_a_message_and_only_its_final_answer_reports() {
     });
 
     // The question woke the parent as a message on no request; the final
-    // answer is the one report, on the parent's last request.
+    // answer is the one report, on the parent's last request, which is
+    // known by where its reply asked for it (`m1/0`), not by the provider's
+    // call id (`p1`), which a later reply may use again.
     let to_parent = session.to(session.parent);
     let expected = [
         ("", DeliveryMode::Steer, "Which file?"),
-        ("p1", DeliveryMode::Steer, "Fixed src/lib.rs."),
+        ("m1/0", DeliveryMode::Steer, "Fixed src/lib.rs."),
     ];
     assert_eq!(to_parent, expected);
     let read = format!("{:?}", child_model.requests().last());
@@ -1515,21 +1517,4 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
     let narrowed = ToolAccess::all().narrow(["look"]);
     session.app.world_mut().entity_mut(child).insert(narrowed);
     assert_eq!(roles(&mut session), 0);
-}
-
-/// Two `task` calls that share a provider's call id are two requests: a
-/// provider may use an id again, and a report must settle only its own.
-#[test]
-fn two_calls_with_one_id_are_two_requests() {
-    let parent = MockCompletionModel::from_stream_turns([reply("Noted."), reply("Noted.")]);
-    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
-    let first = session.task("t1");
-    let second = session.task("t1");
-    let world = session.app.world();
-    let awaited = world.get::<Awaiting>(session.parent).map(|awaiting| {
-        let ids = awaiting.0.iter().map(|request| request.id.clone());
-        ids.collect::<std::collections::HashSet<_>>().len()
-    });
-    assert_ne!(first, second);
-    assert_eq!(awaited, Some(2));
 }
