@@ -124,7 +124,9 @@ RIG_BUDGET_TOKENS hold a run's session to them as a budget does, besides
 its own budget, its earlier runs' spend included: once they are spent it
 refuses its model calls and stops its turns; a model call in flight then is
 cancelled, and what its provider bills for it is not counted. They are read
-as rig starts. A helper child gets what its parent has left in them.
+as rig starts; an empty or garbled value allows nothing, so unset one to
+lift it (env -u RIG_BUDGET_USD). A helper child gets what its parent has
+left in them.
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.
