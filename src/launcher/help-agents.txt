@@ -92,9 +92,10 @@ Events, each with "agent" when it is an agent's:
         an approval (choices deny and allow) or a question, waiting
   turn_end {outcome, answer, error, usage, first_token_ms}   answered
         with its final answer, or failed or stopped with why (a turn
-        that ends with no answer text failed); usage has
-        the turn's tokens, calls, and cost in USD, which leaves out the
-        "unpriced" calls, such as a subscription model's; first_token_ms
+        that ends with no answer text failed); usage has the turn's
+        tokens, calls, and cost in USD, with what its helpers reported
+        while it ran, which leaves out the "unpriced" calls, such as a
+        subscription model's; first_token_ms
         is when a reply first streamed
   notice {level, text}                 info, warn or error; what is
         written at once puts its notices before the text streamed with it
@@ -118,8 +119,8 @@ Events, each with "agent" when it is an agent's:
         bound
 
 With rig_basics::budget::BudgetPlugin enabled, RIG_BUDGET_USD and
-RIG_BUDGET_TOKENS hold a run's session to them as a budget does, whatever
-its own, its earlier runs' spend included: once they are spent it refuses
+RIG_BUDGET_TOKENS hold a run's session to them as a budget does, besides
+its own budget, its earlier runs' spend included: once they are spent it refuses
 its model calls and stops its turns (a call already sent finishes). A
 helper child gets what its parent has left in them.
 

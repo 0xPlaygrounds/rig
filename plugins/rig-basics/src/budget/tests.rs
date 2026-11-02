@@ -234,6 +234,13 @@ fn what_was_handed_down_holds_a_run_without_a_budget_of_its_own() {
         }
     );
     assert_eq!(handed_down(None, None), Limit::default());
+    let not_utf8 = std::env::VarError::NotUnicode(std::ffi::OsString::new());
+    let unread = handed_down(variable(Err(not_utf8)), None);
+    assert_eq!(
+        unread.usd,
+        Some(0.0),
+        "a value that is not UTF-8 allows nothing"
+    );
     app.insert_resource(HandedDown(handed));
     assert_eq!(
         command(&mut app, "budget"),

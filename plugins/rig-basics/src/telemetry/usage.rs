@@ -77,7 +77,7 @@ impl Plugin for UsagePlugin {
 )]
 #[serde(default)]
 pub struct AgentUsage {
-    /// Every call of its own.
+    /// Every call of its own, and those its helpers reported.
     pub total: UsageTotals,
     /// Every call of the agents below it ([`Spawned`]), including those
     /// since despawned; `total` and `below` added are its tree's spend.

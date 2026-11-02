@@ -496,8 +496,11 @@ impl Runner {
         let mut process = match launcher.spawn(&self.command.program, args, how) {
             Ok(process) => process,
             Err(error) => {
-                settle(&self.reports.unsettled);
-                return (Err(format!("it could not start: {error}")), String::new());
+                // It may have been made before the error, as when its
+                // output could not be read, and spent.
+                self.reports.ended(false);
+                let why = format!("it could not start: {error}");
+                return (Err(why), "\n[helper spend unknown]".to_owned());
             }
         };
         let mut read = Read::new(self.reports.clone());

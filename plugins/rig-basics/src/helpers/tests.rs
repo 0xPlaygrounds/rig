@@ -311,9 +311,10 @@ fn a_helper_still_working_at_the_exit_has_its_spend_unknown() {
     assert_eq!(app.world().resource::<UnknownSpend>().0, 1);
 }
 
-/// A child that could not start is settled again: it spent nothing.
+/// A child that could not start is settled, its spend unknown: an error
+/// after its process was made does not prove it spent nothing.
 #[test]
-fn a_helper_that_could_not_start_spent_nothing() {
+fn a_helper_that_could_not_start_has_its_spend_unknown() {
     let (mut app, wakes, _) = helped("no-start", &[json!({ "task": "one" })]);
     app.insert_resource(HelperCommand {
         program: "/nonexistent/rig".into(),
@@ -321,9 +322,10 @@ fn a_helper_that_could_not_start_spent_nothing() {
     });
     let said = output(&mut app, &wakes, 0);
     assert!(said.starts_with("it could not start"), "{said}");
+    assert!(said.ends_with("[helper spend unknown]"), "{said}");
     app.world_mut().write_message(AppExit::Success);
     app.update();
-    assert_eq!(app.world().resource::<UnknownSpend>().0, 0);
+    assert_eq!(app.world().resource::<UnknownSpend>().0, 1, "once");
 }
 
 /// What the exit-order test queues, as a child's reports that come on the

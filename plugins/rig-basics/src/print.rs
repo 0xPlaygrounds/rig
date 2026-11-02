@@ -1484,8 +1484,8 @@ fn json_exit(
         "answer": answer,
         "error": error,
         "session": session_id(paths),
-        "usage": usage.map(|usage| usage.0.total),
-        "usage_complete": unknown.is_none_or(|unknown| unknown.0 == 0),
+        "usage": usage.as_ref().map(|usage| usage.0.total),
+        "usage_complete": usage.is_some() && unknown.is_none_or(|unknown| unknown.0 == 0),
     });
     out.emit(agent, "exit", fields);
     // Nothing after it.

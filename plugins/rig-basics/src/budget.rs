@@ -64,8 +64,8 @@ impl Plugin for BudgetPlugin {
         let limit = app.world().get_resource::<Limit>().copied();
         let limit = limit.unwrap_or_default().checked("[budget] usd");
         let handed = handed_down(
-            std::env::var(USD_VARIABLE).ok(),
-            std::env::var(TOKENS_VARIABLE).ok(),
+            variable(std::env::var(USD_VARIABLE)),
+            variable(std::env::var(TOKENS_VARIABLE)),
         );
         app.insert_resource(Budget(limit))
             .insert_resource(HandedDown(handed))
@@ -199,6 +199,16 @@ pub(crate) fn hand_down(
         .tokens
         .map(|tokens| (TOKENS_VARIABLE, tokens.to_string()));
     usd.into_iter().chain(tokens).collect()
+}
+
+/// A variable's value: none when it is unset, and one that is not UTF-8
+/// as a value that is no amount, so it allows nothing.
+fn variable(value: Result<String, std::env::VarError>) -> Option<String> {
+    match value {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => Some(String::new()),
+    }
 }
 
 /// What [`USD_VARIABLE`] and [`TOKENS_VARIABLE`] allow, from their
