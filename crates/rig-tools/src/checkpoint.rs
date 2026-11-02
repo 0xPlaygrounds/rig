@@ -562,6 +562,7 @@ impl Git {
         let how = Spawn {
             stdin: Some(input.into_bytes()),
             merge_stderr: false,
+            ..Spawn::default()
         };
         let cat = self.command(&["cat-file", "--batch=%(objectsize)"].map(OsStr::new));
         let output = Process::start(cat, how)?.output(None)?;

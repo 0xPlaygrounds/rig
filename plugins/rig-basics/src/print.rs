@@ -58,7 +58,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::models::FirstPick;
-use crate::telemetry::usage::{SessionUsage, TurnUsage};
+use crate::telemetry::usage::{SessionUsage, Spent, TurnUsage};
 
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";
@@ -74,7 +74,7 @@ pub const ORIGIN: &str = "print";
 pub const ANSWER: &str = "answer";
 
 /// The version of the JSON lines, `v` on every line both ways.
-pub const VERSION: u64 = 2;
+pub const VERSION: u64 = 3;
 
 /// What a print run writes to stdout after the answer, such as a todo
 /// list: spawn one and keep its `text` current. Sections follow the
@@ -179,6 +179,7 @@ impl Plugin for PrintPlugin {
             app.add_observer(turn_started)
                 .add_observer(started)
                 .add_observer(settled)
+                .add_observer(spent)
                 .add_observer(json_ended)
                 .add_systems(
                     Update,
@@ -1557,6 +1558,20 @@ fn settled(
         let fields = turn_end_fields(TurnEnd::of(ended), used, first);
         out.emit(Some(agent), "turn_end", fields);
     }
+}
+
+/// A model call's usage was recorded ([`Spent`]): its agent's, a
+/// plugin's for a call made elsewhere, such as a helper's, included.
+fn spent(spent: On<Spent>, mut out: Out) {
+    let Spent {
+        agent,
+        model,
+        purpose,
+        usage,
+        ..
+    } = spent.event();
+    let fields = json!({ "model": model, "purpose": purpose, "usage": usage });
+    out.emit(*agent, "usage", fields);
 }
 
 /// The fields of a `turn_end` line.

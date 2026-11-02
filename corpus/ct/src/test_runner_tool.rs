@@ -276,6 +276,7 @@ fn run(plan: Plan, events: &UnboundedSender<RunEvent>) {
     let how = Spawn {
         stdin: None,
         merge_stderr: true,
+        ..Spawn::default()
     };
     let spawned = plan
         .workspace

@@ -5,7 +5,7 @@
 //! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`redact`], [`reload`], [`print`](mod@print), [`helpers`],
-//! [`subagents`] and [`welcome`].
+//! [`budget`], [`subagents`] and [`welcome`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
 //! services only some plugins add.
 
@@ -20,6 +20,7 @@ use unicode_width::UnicodeWidthStr;
 pub mod activity;
 pub mod agents_md;
 pub mod approval;
+pub mod budget;
 pub mod checkpoint;
 pub mod coding_tools;
 pub mod compaction;

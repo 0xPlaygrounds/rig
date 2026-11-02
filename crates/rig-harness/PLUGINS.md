@@ -1352,8 +1352,10 @@ required otherwise, and `SpawnedBy` has no public constructor (Bevy's
   setting with that model, the system prompt, and the tools. Named tools
   are granted from the origin's (`ToolAccess::grant`), and the model calls
   are recorded under the spec's effect, else the origin's.
-- **Depth.** The kernel sets no limit on how deep agents nest. Each agent's
-  `SpawnedBy` lineage is there for a plugin that wants to count its depth.
+- **Depth.** The kernel sets no limit on how deep agents nest. What a tree
+  spends is `rig_basics::telemetry::usage`'s: each agent's `AgentUsage`
+  keeps its own calls and, in `below`, those of every agent below it, and
+  `rig_basics::budget` bounds the session's.
 
 ```rust
 use rig_harness::prelude::*;
@@ -1774,7 +1776,9 @@ rig-tools `Launcher` (a wrapper command, a directory, environment): the
 shell tool reads it for each command, so a sandbox plugin that sets it
 (`processes.set(..)`) wraps every later process. A plugin builds its own
 with `processes.launcher().command(program)`, or `.spawn(program, args,
-Spawn { stdin, merge_stderr })`, a `Process`. Every launcher it hands out
+Spawn { stdin, merge_stderr, grace })`, a `Process`; `grace` is how long a
+stop gives it to end before it is killed, for one that stops processes of
+its own, such as a `rig`. Every launcher it hands out
 drops the session's [secrets](#sessions-their-store-secrets-and-exiting),
 which a bare `std::process::Command` passes on; one that runs in the
 project goes through the workspace (`workspace.0.spawn(&launcher, ..)`).
@@ -2047,13 +2051,17 @@ A provider plugin's models are catalog models: it declares its vendor and
 adds them to the catalog in `Models` (rig-core's `ProviderId::declare`,
 `Connector::provide`, `catalog_mut`) at any time.
 
-Spending is data too. `rig_basics::telemetry` adds each settled model call's
-usage to its agent's `AgentUsage`, the session's `SessionUsage` (both saved)
-and its turn's `TurnUsage`, per model and per purpose (`turn`, `compaction`, a
-plugin's `Effect::with_purpose`), and shows the session's in its `/resume`
-line (the `spent` label); a plugin that pays for work that is no model request
-`record`s it, and one whose model call settles without a reply (superseded,
-cancelled) puts its usage on it, `CallUsage`.
+Spending is data too. `rig_basics::telemetry` records each settled model
+call's usage as a `Spent`: on its agent's `AgentUsage`, in the `below` of every
+agent above it, on the session's `SessionUsage` (all saved) and its turn's
+`TurnUsage`, per model and per purpose (`turn`, `compaction`, a plugin's
+`Effect::with_purpose`), and shows the session's in its `/resume` line (the
+`spent` label). A plugin that pays for a call made elsewhere triggers a `Spent`
+of its own, as `helper` does for its children's, and `rig -p --json` writes
+each as a `usage` line; one whose model call settles without a reply
+(superseded, cancelled) puts its usage on it, `CallUsage`. The shipped
+`rig_basics::budget::BudgetPlugin` holds the session to `[budget]` and
+`/budget`; a plugin's own cap reads the same data:
 
 ```rust,no_run
 use rig_harness::prelude::*;

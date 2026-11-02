@@ -11,21 +11,34 @@
 //! built from a plugin list changed since the parent started may lack one:
 //! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
 //! stdin. Past its timeout or dead, it fails its task; stopping the turn
-//! kills every child, so none outlives the call.
+//! stops every child, so none outlives the call: each gets the time a
+//! launcher takes to end ([`STOP_WINDOW`]) before it is killed, so its own
+//! helpers are stopped in turn.
+//!
+//! What a child spends is the calling agent's, as purpose `helper`: each
+//! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
+//! its own helpers' are among them. A child that is not on this protocol
+//! version, or that ended before its `exit` line, has its spend unknown,
+//! and its result says so. With a [`budget`](crate::budget), a child is
+//! started with what is left of it.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use rig_harness::harness_protocol;
+use rig_harness::harness_protocol::{self, STOP_WINDOW};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::UsageTotals;
+use rig_harness::rig_core::completion::{Usage, UsageTotals};
 use rig_harness::rig_core::tool::{ToolExecutionError, ToolOutput, ToolResult};
-use rig_tools::process::{Ended, OutputLine, Scope, Spawn};
+use rig_tools::process::{Ended, Launcher, OutputLine, Scope, Spawn};
 use rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
+
+use crate::budget::{Budget, HandedDown, hand_down};
+use crate::print::VERSION;
+use crate::telemetry::usage::{SessionUsage, Spent, UsagePlugin};
 
 /// The tool's name.
 pub const HELPER: &str = "helper";
@@ -52,7 +65,7 @@ impl Default for HelperCommand {
     }
 }
 
-/// Adds the `helper` tool.
+/// Adds the `helper` tool, and [`UsagePlugin`] when it is missing.
 #[derive(Default)]
 pub struct HelpersPlugin;
 
@@ -72,10 +85,16 @@ impl Plugin for HelpersPlugin {
              what it cost.",
             2 * AT_ONCE
         );
+        if !app.is_plugin_added::<UsagePlugin>() {
+            app.add_plugins(UsagePlugin);
+        }
         app.init_resource::<HelperCommand>()
             .init_resource::<Processes>()
             .init_resource::<ProjectRoot>()
-            .add_open_tool(HELPER, &description, ToolOptions::default(), start);
+            .init_resource::<Reported>()
+            .add_open_tool(HELPER, &description, ToolOptions::default(), start)
+            .add_systems(AgentPass, record.in_set(Stage::Review))
+            .add_systems(Update, record.before(AgentLoop));
     }
 
     /// Notes the tools every plugin registered by now, which a child has
@@ -87,6 +106,31 @@ impl Plugin for HelpersPlugin {
         let names = tools.iter(world).map(|tool| tool.0.name.to_string());
         let lendable = Lendable(names.collect());
         world.insert_resource(lendable);
+    }
+}
+
+/// The spend children reported and not yet recorded, sent from their
+/// threads.
+#[derive(Resource)]
+struct Reported {
+    sender: async_channel::Sender<Spent>,
+    receiver: async_channel::Receiver<Spent>,
+}
+
+impl Default for Reported {
+    fn default() -> Self {
+        let (sender, receiver) = async_channel::unbounded();
+        Self { sender, receiver }
+    }
+}
+
+/// Records what children reported: in the pass a call's result arrives,
+/// which comes after everything its children reported, so the spend is
+/// in before the next model call; and before the agent loop, for what
+/// came while no call ended, such as from a stopped call's children.
+fn record(reported: Res<Reported>, mut commands: Commands) {
+    while let Ok(spent) = reported.receiver.try_recv() {
+        commands.trigger(spent);
     }
 }
 
@@ -183,10 +227,18 @@ impl Lent {
 /// Starts a `helper` call, whose children run off the main thread.
 fn start(
     called: On<ToolCalled<Args>>,
-    agents: Query<(Option<&ModelChoice>, Option<&ToolAccess>, Option<&WorkDir>)>,
+    (agents, turns): (
+        Query<(Option<&ModelChoice>, Option<&ToolAccess>, Option<&WorkDir>)>,
+        Query<&CallOf>,
+    ),
     lendable: Option<Res<Lendable>>,
     (root, processes, command): (Res<ProjectRoot>, Res<Processes>, Res<HelperCommand>),
-    wake: Res<Wake>,
+    (budget, handed, spent): (
+        Option<Res<Budget>>,
+        Option<Res<HandedDown>>,
+        Res<SessionUsage>,
+    ),
+    (wake, reported): (Res<Wake>, Res<Reported>),
     mut commands: Commands,
 ) {
     let Ok((model, access, dir)) = agents.get(called.agent) else {
@@ -224,10 +276,20 @@ fn start(
             .map(|job| Ok((job.task.clone(), lent.child(job)?)))
             .collect(),
     };
+    let mut launcher = processes.launcher();
+    for (name, left) in hand_down(budget.as_deref(), handed.as_deref(), &spent) {
+        launcher = launcher.with_env(name, left);
+    }
     let runner = Runner {
         command: command.clone(),
-        processes: processes.clone(),
+        launcher,
         timeout: Duration::from_secs(args.timeout.unwrap_or(600).clamp(1, 3600)),
+        reports: Reports {
+            agent: called.agent,
+            turn: turns.get(called.call).ok().map(|&CallOf(turn)| turn),
+            sender: reported.sender.clone(),
+            wake: wake.clone(),
+        },
     };
     // Dropped with the call, as a stop drops it: every child dies.
     let work = async move {
@@ -246,8 +308,36 @@ fn start(
 /// Runs a call's children, on a thread of its own.
 struct Runner {
     command: HelperCommand,
-    processes: Processes,
+    /// The call's launcher: what [`Processes`] gives, with what is left of
+    /// the budget.
+    launcher: Launcher,
     timeout: Duration,
+    reports: Reports,
+}
+
+/// Where a call's children's spend goes: the calling agent's, in its turn.
+#[derive(Clone)]
+struct Reports {
+    agent: Entity,
+    turn: Option<Entity>,
+    sender: async_channel::Sender<Spent>,
+    wake: Wake,
+}
+
+impl Reports {
+    /// Records `usage`, answered by `model`, as soon as the app can.
+    fn send(&self, model: Option<String>, usage: Usage) {
+        let spent = Spent {
+            agent: Some(self.agent),
+            turn: self.turn,
+            model,
+            purpose: Some(HELPER.to_owned()),
+            usage,
+        };
+        if self.sender.try_send(spent).is_ok() {
+            self.wake.wake();
+        }
+    }
 }
 
 /// How a child ended: its answer or why it has none, and a note of its
@@ -319,12 +409,16 @@ impl Runner {
     /// Runs one child to its end.
     fn child(&self, args: &[OsString], dir: &Path) -> Report {
         let args = self.command.args.iter().chain(args);
-        let launcher = self.processes.launcher().in_dir(dir);
-        let mut process = match launcher.spawn(&self.command.program, args, Spawn::default()) {
+        let launcher = self.launcher.clone().in_dir(dir);
+        let how = Spawn {
+            grace: Some(STOP_WINDOW),
+            ..Spawn::default()
+        };
+        let mut process = match launcher.spawn(&self.command.program, args, how) {
             Ok(process) => process,
             Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
         };
-        let mut read = Read::default();
+        let mut read = Read::new(self.reports.clone());
         let ended = process.run(Some(Instant::now() + self.timeout), |line| {
             read.line(line);
             true
@@ -340,18 +434,32 @@ impl Runner {
     }
 }
 
-/// What a child wrote: its `exit` line's code and answer, its last error,
-/// its last lines on stderr, its session and its usage.
-#[derive(Default)]
+/// What a child wrote: its lines' version, its `exit` line's code and
+/// answer, its last error, its last lines on stderr, its session, and the
+/// spend it reported, each `usage` line recorded as it is read.
 struct Read {
+    version: Option<u64>,
     exit: Option<(u64, Option<String>)>,
     error: Option<String>,
     stderr: Vec<String>,
     session: Option<String>,
-    usage: Option<UsageTotals>,
+    spent: UsageTotals,
+    reports: Reports,
 }
 
 impl Read {
+    fn new(reports: Reports) -> Self {
+        Self {
+            version: None,
+            exit: None,
+            error: None,
+            stderr: Vec::new(),
+            session: None,
+            spent: UsageTotals::default(),
+            reports,
+        }
+    }
+
     fn line(&mut self, line: OutputLine) {
         let text = match &line {
             OutputLine::Out(_) => line.text(),
@@ -366,11 +474,17 @@ impl Read {
             return;
         };
         let field = |key: &str| event.get(key).and_then(Value::as_str).map(str::to_owned);
+        self.version = self.version.or(event.get("v").and_then(Value::as_u64));
         match field("type").as_deref() {
             Some("ready") => self.session = field("session"),
-            Some("exit") => {
+            Some("usage") if self.version == Some(VERSION) => {
                 let usage = event.get("usage").cloned().unwrap_or_default();
-                self.usage = serde_json::from_value(usage).ok();
+                if let Ok(usage) = serde_json::from_value::<Usage>(usage) {
+                    self.spent.record(&usage);
+                    self.reports.send(field("model"), usage);
+                }
+            }
+            Some("exit") => {
                 let code = event.get("code").and_then(Value::as_u64).unwrap_or(1);
                 self.exit = Some((code, field("answer")));
                 self.error = field("error").or(self.error.take());
@@ -401,18 +515,22 @@ impl Read {
         }
     }
 
-    /// Its session and cost, for the end of its text.
+    /// Its session and what it spent, for the end of its text: known once
+    /// it wrote its `exit` line on this protocol version.
     fn note(&self) -> String {
         let session = self
             .session
             .as_ref()
             .map(|session| format!("session {session}"));
-        let cost = self.usage.map(|usage| usage.cost_or_tokens());
-        let said: Vec<String> = session.into_iter().chain(cost).collect();
-        match said.is_empty() {
-            true => String::new(),
-            false => format!("\n[helper {}]", said.join(", ")),
-        }
+        let known = self.version == Some(VERSION) && self.exit.is_some();
+        let spent = match (known, self.spent.calls) {
+            (true, 0) => "no model call".to_owned(),
+            (true, _) => self.spent.cost_or_tokens(),
+            (false, 0) => "spend unknown".to_owned(),
+            (false, _) => format!("at least {}, the rest unknown", self.spent.cost_or_tokens()),
+        };
+        let said: Vec<String> = session.into_iter().chain([spent]).collect();
+        format!("\n[helper {}]", said.join(", "))
     }
 }
 

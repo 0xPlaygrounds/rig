@@ -51,8 +51,8 @@ impl Session {
         Self::with(store, model, |_| {})
     }
 
-    /// As [`Session::new`], with what `configure` adds before the first
-    /// frame.
+    /// As [`Session::new`], with what `configure` adds before the
+    /// subagents plugin.
     fn with(
         store: &MemoryStore,
         model: Option<&MockCompletionModel>,
@@ -77,12 +77,12 @@ impl Session {
                     delivered.0.push(entry);
                 },
             );
+        configure(&mut app);
         rig_harness::load::<SubagentsPlugin>(&mut app, "rig-basics", "path plugins/rig-basics");
         if let Some(connection) = model.and_then(connect) {
             let choice = ModelChoice(connection.spec.reference());
             spawn_root(app.world_mut()).insert((connection, choice));
         }
-        configure(&mut app);
         app.finish();
         app.update();
         let world = app.world_mut();
@@ -617,6 +617,63 @@ fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
     let kept = access
         .is_some_and(|access| access.keeps("look") && !access.allows("look") && access.keeps(TASK));
     assert!(kept, "{access:?}");
+}
+
+#[test]
+fn a_task_naming_no_model_or_tools_gets_the_defaults_its_description_names() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let settings = "[subagents]\nmodel = \"deepseek/deepseek-flash\"\ntools = [\"look\"]";
+    let mut session = Session::with(&MemoryStore::default(), Some(&model), |app| {
+        // The catalog knows the default model, the parent's own, whose
+        // connection the subagent shares.
+        app.add_open_tool("edit", "Edit.", ToolOptions::default(), look)
+            .insert_resource(Settings::from_toml(settings))
+            .insert_resource(Models(Connector::new(Catalog::builtin().clone())));
+    });
+    let world = session.app.world_mut();
+    let mut defs = world.query::<&ToolDef>();
+    let task = defs.iter(world).find(|def| def.0.name.as_str() == TASK);
+    let said = |name: &str| {
+        let property = task.and_then(|def| def.0.parameters.get("properties")?.get(name));
+        let text = property.and_then(|property| property.get("description")?.as_str());
+        text.unwrap_or_default().to_owned()
+    };
+    let (model_said, tools_said) = (said("model"), said("tools"));
+    assert!(
+        model_said.contains("deepseek/deepseek-flash when absent ([subagents] model)"),
+        "{model_said}"
+    );
+    assert!(
+        tools_said.contains("When absent: look ([subagents] tools)"),
+        "{tools_said}"
+    );
+
+    let args = json!({ "description": "Look", "prompt": "Look around." });
+    let started = session.call(session.parent, TASK, "t1", args);
+    assert!(started.starts_with("Started subagent"), "{started}");
+    let child = session.children(session.parent).last().copied();
+    let world = session.app.world();
+    let access = child.and_then(|child| world.get::<ToolAccess>(child));
+    let only_look = access.is_some_and(|access| access.allows("look") && !access.allows("edit"));
+    assert!(only_look, "{access:?}");
+    let choice = child.and_then(|child| world.get::<ModelChoice>(child));
+    assert_eq!(
+        choice.map(|choice| choice.0.as_str()),
+        Some("deepseek/deepseek-flash")
+    );
+
+    // A default the parent cannot give is refused, naming where it came from.
+    let world = session.app.world_mut();
+    let parent = session.parent;
+    if let Some(mut access) = world.get_mut::<ToolAccess>(parent) {
+        *access = access.narrow([TASK, "edit"]);
+    }
+    let args = json!({ "description": "Look", "prompt": "Look around." });
+    let refused = session.call(parent, TASK, "t2", args);
+    assert!(
+        refused.contains("[subagents] in settings.toml"),
+        "{refused}"
+    );
 }
 
 #[test]

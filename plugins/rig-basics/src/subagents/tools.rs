@@ -4,10 +4,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::lifecycle::{AgentDataItem, Agents};
-use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
+use super::spawn::{Brief, Defaulted, Role, SpawnSubagent, TaskCall};
 use super::{
-    Awaiting, Awaits, Lifecycle, ORIGIN, Peers, Request, SubagentsPlugin, Subtask, answered,
-    refused,
+    Awaiting, Awaits, Lifecycle, ORIGIN, Peers, Request, SubagentDefaults, SubagentsPlugin,
+    Subtask, answered, refused,
 };
 use rig_harness::prelude::*;
 
@@ -89,6 +89,44 @@ pub(super) fn add(app: &mut App) {
                 .run_if(any_with_component::<Brief>)
                 .before(AgentLoop),
         );
+    describe_defaults(app.world_mut());
+}
+
+/// Says in `task`'s `model` and `tools` parameters what [`SubagentDefaults`]
+/// gives a call that names none, so the description stays true.
+fn describe_defaults(world: &mut World) {
+    let defaults = world.get_resource::<SubagentDefaults>().cloned();
+    let Some(SubagentDefaults { model, tools }) = defaults else {
+        return;
+    };
+    let model = model.map(|model| {
+        format!("A catalog model as vendor/model for the subagent. {model} when absent ([subagents] model).")
+    });
+    let tools = tools.map(|tools| {
+        format!(
+            "The tools the subagent may use, from yours, besides `message` and `wait`, which it \
+             has whenever you do. When absent: {} ([subagents] tools), refused if you lack \
+             one; an empty list gives it no others.",
+            match tools.is_empty() {
+                true => "none".to_owned(),
+                false => tools.join(", "),
+            }
+        )
+    });
+    let mut defs = world.query::<&mut ToolDef>();
+    for mut def in defs.iter_mut(world) {
+        if def.0.name.as_str() != TASK {
+            continue;
+        }
+        let def = std::sync::Arc::make_mut(&mut def.0);
+        let mut properties = def.parameters.get_mut("properties");
+        for (name, text) in [("model", &model), ("tools", &tools)] {
+            let property = properties.as_mut().and_then(|all| all.get_mut(name));
+            if let (Some(serde_json::Value::Object(property)), Some(text)) = (property, text) {
+                property.insert("description".to_owned(), text.clone().into());
+            }
+        }
+    }
 }
 
 /// The arguments of a `task` call. Any argument besides these is one
@@ -165,17 +203,20 @@ fn request_of<A: Send + Sync + 'static>(
 fn on_task(
     called: On<ToolCalled<TaskArgs>>,
     me: Option<Res<PluginEntity<SubagentsPlugin>>>,
+    defaults: Res<SubagentDefaults>,
     places: Query<&InReply>,
     mut commands: Commands,
 ) {
     let args = &called.args;
+    let defaulted = (args.model.is_none() && defaults.model.is_some())
+        || (args.tools.is_none() && defaults.tools.is_some());
     let request = SpawnSubagent {
         title: args.description.clone(),
         brief: args.prompt.clone(),
         role: Role::Task,
-        model: args.model.clone(),
+        model: args.model.clone().or_else(|| defaults.model.clone()),
         effort: args.effort.clone(),
-        tools: args.tools.clone(),
+        tools: args.tools.clone().or_else(|| defaults.tools.clone()),
         system_prompt: None,
         environment: args.environment.clone(),
         peers: args.peers,
@@ -192,6 +233,7 @@ fn on_task(
     if let Some(me) = me {
         spawned.insert(ProvidedBy(me.entity()));
     }
+    spawned.insert_if(Defaulted, || defaulted);
 }
 
 /// Sends each subagent started since it last ran its task, naming its

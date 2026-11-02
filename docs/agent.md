@@ -127,7 +127,12 @@ the keys and the bottom row the status line: the model, the reasoning
 setting, what the agent is doing, the session's tokens (uncached input,
 output, cache reads and writes), its cost (the provider's figure, else the
 catalog's list price; `+` when some calls had no price) and the context in
-use against the model's window. `/usage` breaks them down.
+use against the model's window. `/usage` breaks them down. With the optional
+`rig_basics::budget::BudgetPlugin` (`rig plugin enable
+rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
+bounds what the session spends, helpers included: at the limit the running
+turns stop and new model calls are refused, naming `/budget`. `[budget] usd`
+and `tokens` in `settings.toml` set it for new sessions.
 
 Typing while the agent works is fine. Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
@@ -311,9 +316,11 @@ by default; `/plugins` or `rig plugin enable
 rig_basics::subagents::SubagentsPlugin` enables it), the model can hand work
 to subagents with the `task` tool. Each is a new agent in the same process,
 with its own conversation and, if the call asks, another model, reasoning
-setting or a subset of the tools. `task` returns the subagent's id at once,
-and `message` sends one of the model's own subagents a follow-up, which it
-reads with its conversation kept.
+setting or a subset of the tools; a call that names no model or tools gets
+`[subagents] model` and `tools` from `settings.toml` when they are set, else
+the parent's, and `task`'s description says which. `task` returns the
+subagent's id at once, and `message` sends one of the model's own subagents a
+follow-up, which it reads with its conversation kept.
 
 Each `task` or `message` call is a request, and exactly one report for it
 (done, failed or stopped) arrives later as a message to the agent that asked,
@@ -329,7 +336,8 @@ is answered.
 Esc stops the shown agent's turn and the turns of every subagent below it,
 even when the shown agent is idle: stopping follows who started whom.
 `/agents` (`rig_basics::sessions::agents::AgentsPlugin`) lists every agent
-with its model and state, and shows the one picked: its transcript, and what
+with its model, state and what it and the agents below it spent, and shows
+the one picked: its transcript, and what
 you type then goes to it. A subagent can start subagents of its own, as
 deep as they go. Subagents started with `peers` can also send each other
 requests with `message` and `wait` for each other; a request or `wait` that
@@ -364,6 +372,9 @@ per line on stdin and one event per line on stdout, until stdin closes.
 `rig help-agents` is the whole protocol, with a Python driver. The optional
 `rig_basics::helpers::HelpersPlugin` gives the model the `helper` tool, which
 hands tasks to such one-shot rig children and returns their final answers.
+What a child spends, its own helpers included, is the caller's as it reports
+it: `/usage` shows it live as purpose `helper`, beside what each agent and
+the agents below it spent.
 A call accepts up to eight tasks, run four at a time or in order as a chain.
 
 ## Reload and builds

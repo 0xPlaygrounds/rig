@@ -8,22 +8,33 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
+use crate::budget::Limit;
+use crate::telemetry::usage::AgentUsage;
 
-/// A stand-in for `rig -p --json`: it notes its arguments and how many
-/// run at once in the directory it is given, and answers its task (the
-/// last argument) by what the task says.
+/// A stand-in for `rig -p --json`: it notes its arguments, how many run
+/// at once and the budget it was left in the directory it is given, and
+/// answers its task (the last argument) by what the task says. A `spend`
+/// task reports a call of 15 tokens, waits for `go` in the directory, then
+/// reports another, and its `exit` line's usage, which nothing records,
+/// says something else.
 const CHILD: &str = r#"d=$1; shift
 for a; do task=$a; done
 mkdir -p "$d/run"; echo "$@" >> "$d/args"
+echo "${RIG_BUDGET_USD-none} ${RIG_BUDGET_TOKENS-none}" >> "$d/budget"
 touch "$d/run/$$"; ls "$d/run" | wc -l >> "$d/counts"
+usage='{"v":3,"type":"usage","model":"test/model","purpose":"turn","usage":{"input_tokens":10,"output_tokens":5}}'
 case "$task" in
-  fail*) echo '{"v":2,"type":"exit","code":1,"error":"it broke"}'; rm "$d/run/$$"; exit 1;;
+  fail*) echo '{"v":3,"type":"exit","code":1,"error":"it broke"}'; rm "$d/run/$$"; exit 1;;
   crash*) echo boom >&2; rm "$d/run/$$"; exit 3;;
   slow*) sleep 30;;
   wait*) sleep 0.3;;
+  old*) echo '{"v":2,"type":"exit","code":0,"answer":"old"}'; rm "$d/run/$$"; exit 0;;
+  partial*) echo "$usage"; rm "$d/run/$$"; exit 3;;
+  spend*) echo "$usage"; while [ ! -e "$d/go" ]; do sleep 0.05; done; echo "$usage";
+    echo '{"v":3,"type":"exit","code":0,"answer":"spent","usage":{"calls":99}}'; rm "$d/run/$$"; exit 0;;
 esac
 rm "$d/run/$$"
-printf '{"v":2,"type":"exit","code":0,"answer":"did: %s"}\n' "$task"
+printf '{"v":3,"type":"exit","code":0,"answer":"did: %s"}\n' "$task"
 "#;
 
 /// An app whose agent's model calls `helper` with each of `args` in turn,
@@ -104,8 +115,14 @@ fn a_helper_answers_and_a_chain_hands_each_answer_on() {
             json!({ "task": "four", "tools": ["shell"] }),
         ],
     );
-    assert_eq!(output(&mut app, &wakes, 0), "did: one");
-    assert_eq!(output(&mut app, &wakes, 1), "did: three after did: two");
+    assert_eq!(
+        output(&mut app, &wakes, 0),
+        "did: one\n[helper no model call]"
+    );
+    assert_eq!(
+        output(&mut app, &wakes, 1),
+        "did: three after did: two\n[helper no model call]\n[helper no model call]"
+    );
     let refused = output(&mut app, &wakes, 2);
     assert!(
         refused.contains("`shell` is not one of your tools"),
@@ -130,8 +147,8 @@ fn a_helper_gets_only_the_tools_of_this_run() {
     );
     // The caller keeps `read`; this run leaves it only `helper`.
     app.insert_resource(RunTools::new([HELPER]));
-    assert_eq!(output(&mut app, &wakes, 0), "did: one");
-    assert_eq!(output(&mut app, &wakes, 1), "did: two");
+    assert!(output(&mut app, &wakes, 0).starts_with("did: one"));
+    assert!(output(&mut app, &wakes, 1).starts_with("did: two"));
     let args = std::fs::read_to_string(dir.join("args")).unwrap_or_default();
     let mut lines = args.lines();
     for task in ["one", "two"] {
@@ -208,6 +225,75 @@ fn stopping_the_turn_kills_the_helpers() {
     }
     let left: Vec<String> = pids(&running).into_iter().filter(alive).collect();
     assert!(left.is_empty(), "the helper still runs: {left:?}");
+}
+
+/// What the agent's calls for its helpers used: its calls of purpose
+/// `helper`, and their tokens.
+fn helpers_spent(world: &World) -> (u64, u64) {
+    let agent = world
+        .iter_entities()
+        .find(|entity| entity.contains::<Agent>())
+        .and_then(|entity| entity.get::<AgentUsage>());
+    let helper = agent.and_then(|spent| spent.purposes.get(HELPER));
+    helper.map_or((0, 0), |spent| (spent.calls, spent.total_tokens()))
+}
+
+#[test]
+fn a_helpers_spend_is_the_callers_as_it_reports_it_and_counts_once() {
+    let (mut app, wakes, dir) = helped("spend", &[json!({ "task": "spend" })]);
+    run_until(&mut app, &wakes, |world| helpers_spent(world).0 == 1);
+    let returned = app.world().resource::<ToolOutputs>().0.contains_key("h0");
+    assert!(!returned, "recorded while the helper still works");
+    std::fs::write(dir.join("go"), "").ok();
+    let said = output(&mut app, &wakes, 0);
+    assert_eq!(said, "spent\n[helper 30 tokens]");
+    assert_eq!(helpers_spent(app.world()), (2, 30), "not its exit line's");
+    let session = &app.world().resource::<SessionUsage>().0;
+    let helper = session.purposes.get(HELPER).map(|spent| spent.calls);
+    assert_eq!(helper, Some(2));
+    assert_eq!(
+        session.models.get("test/model").map(|spent| spent.calls),
+        Some(2)
+    );
+}
+
+#[test]
+fn a_helper_off_this_version_or_cut_short_has_its_spend_unknown() {
+    let (mut app, wakes, _) = helped(
+        "unknown",
+        &[
+            json!({ "task": "old" }),
+            json!({ "task": "crash" }),
+            json!({ "task": "partial" }),
+        ],
+    );
+    let old = output(&mut app, &wakes, 0);
+    assert!(old.ends_with("[helper spend unknown]"), "{old}");
+    let crashed = output(&mut app, &wakes, 1);
+    assert!(crashed.ends_with("[helper spend unknown]"), "{crashed}");
+    let partial = output(&mut app, &wakes, 2);
+    assert!(
+        partial.ends_with("[helper at least 15 tokens, the rest unknown]"),
+        "{partial}"
+    );
+    assert_eq!(helpers_spent(app.world()), (1, 15), "what it did report");
+}
+
+#[test]
+fn a_helper_is_left_what_is_left_of_the_budget() {
+    let (mut app, wakes, dir) = helped("budget", &[json!({ "task": "one" })]);
+    let limit = Limit {
+        usd: Some(0.5),
+        tokens: Some(1000),
+    };
+    app.insert_resource(Budget {
+        limit,
+        warned: false,
+    });
+    output(&mut app, &wakes, 0);
+    let left = std::fs::read_to_string(dir.join("budget")).unwrap_or_default();
+    // The caller's call that asked for it reported no tokens.
+    assert_eq!(left.trim(), "0.5 1000");
 }
 
 /// A helper's directory is joined as the file tools join a path: `~` is

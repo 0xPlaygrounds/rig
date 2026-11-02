@@ -519,6 +519,7 @@ impl Tool for RunTests {
             let how = Spawn {
                 stdin: None,
                 merge_stderr: true,
+                ..Spawn::default()
             };
             let launcher = launcher.in_dir(&dir);
             let process = workspace

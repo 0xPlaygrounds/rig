@@ -7,7 +7,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 use super::*;
-use rig_ecs::spawn::spawn;
+use rig_ecs::spawn::{AgentSpec, Origin, spawn};
 
 /// An app on `store` that counts spending, after its first frame.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
@@ -104,6 +104,69 @@ fn usage_labels_catalog_costs_as_estimates_not_subscription_charges() {
         shown.contains("not subscription charges or verified invoices"),
         "{shown}"
     );
+}
+
+/// What `tokens` output tokens used, as one call reports it.
+fn output(tokens: u64) -> Usage {
+    Usage::new().input_tokens(0).output_tokens(tokens)
+}
+
+#[test]
+fn a_call_counts_below_every_agent_above_it_after_its_agent_is_gone() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = start(&store);
+    let world = app.world_mut();
+    let root = spawn_root(world).id();
+    let below = |world: &mut World, parent| {
+        spawn(world, Origin::ChildOf(parent), AgentSpec::default()).ok()
+    };
+    let child = below(world, root);
+    let grandchild = child.and_then(|child| below(world, child));
+    assert!(grandchild.is_some(), "a child and a grandchild");
+    let (Some(child), Some(grandchild)) = (child, grandchild) else {
+        return;
+    };
+    let spent = |agent, tokens, purpose: &str| Spent {
+        agent: Some(agent),
+        turn: None,
+        model: Some("test/model".to_owned()),
+        purpose: Some(purpose.to_owned()),
+        usage: output(tokens),
+    };
+    world.trigger(spent(child, 10, "turn"));
+    world.trigger(spent(grandchild, 100, "helper"));
+    world.flush();
+    // The grandchild is done and gone, as a one-job helper is.
+    world.despawn(grandchild);
+    app.update();
+
+    let usage = |world: &World, agent| world.get::<AgentUsage>(agent).cloned().unwrap_or_default();
+    let tokens = |totals: &UsageTotals| (totals.calls, totals.total_tokens());
+    let world = app.world();
+    assert_eq!(tokens(&usage(world, root).total), (0, 0));
+    assert_eq!(tokens(&usage(world, root).below), (2, 110));
+    assert_eq!(tokens(&usage(world, child).total), (1, 10));
+    assert_eq!(tokens(&usage(world, child).below), (1, 100));
+    let session = &world.resource::<SessionUsage>().0;
+    assert_eq!(tokens(&session.total), (2, 110), "each call once");
+    let helper = session.purposes.get("helper").map(tokens);
+    assert_eq!(helper, Some((1, 100)));
+
+    // `/usage` and `/agents` say what the root's tree spent.
+    let world = app.world_mut();
+    notices(world);
+    world.trigger(RunCommand::new(root, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(
+        shown.contains("This agent: no model call yet.")
+            && shown.contains("This agent and below: 2 model calls"),
+        "{shown}"
+    );
+    let mut columns = world.query::<(&AgentColumn, &ColumnOf)>();
+    let column = (columns.iter(world)).find(|(column, of)| of.0 == child && column.tag == "spent");
+    let text = column.map(|(column, _)| column.text.clone());
+    assert_eq!(text.as_deref(), Some("spent 10 tokens, 100 tokens below"));
 }
 
 /// Sends each turn call to its connection instead of the agent's model, as

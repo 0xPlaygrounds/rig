@@ -10,7 +10,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// The exit code with which the agent asks its launcher to restart it on
 /// the staged build.
@@ -22,6 +22,20 @@ pub const REFUSED_EXIT_CODE: u8 = 2;
 
 /// The exit code of a run a signal ended, as a shell reports Ctrl+C.
 pub const SIGNAL_EXIT_CODE: u8 = 130;
+
+/// How long the launcher gives its agent to end once a signal told it to,
+/// before it kills it: the agent's own clean exit takes at most a few
+/// seconds, and an ACP router's at most about eleven, while its sessions
+/// answer and end.
+pub const STOP_WAIT: Duration = Duration::from_secs(15);
+
+/// How long a launcher takes at most to end once told to (`SIGTERM`):
+/// [`STOP_WAIT`] for its agent, [`RunDir::STOP_GRACE`] for the process
+/// groups its agent left, and a second for its closing output. What starts
+/// a `rig` gives it this long before it kills it, so the `rig` stops its own
+/// children in turn.
+pub const STOP_WINDOW: Duration =
+    Duration::from_secs(STOP_WAIT.as_secs() + RunDir::STOP_GRACE.as_secs() + 1);
 
 /// The version of rig: of the workspace, the launcher and the harness they
 /// build together. It stamps generated projects, so a new launcher

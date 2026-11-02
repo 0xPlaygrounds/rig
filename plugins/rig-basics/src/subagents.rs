@@ -7,6 +7,8 @@
 //!
 //! - `task` spawns a child with its own model, reasoning setting, tools
 //!   and what it must know of its [`Environment`], and answers with its id;
+//!   a call that names no model or tools gets the [`SubagentDefaults`] of
+//!   the `[subagents]` settings table, as `task`'s description says;
 //!   `message` sends a child or a peer a request, or any agent it can reach
 //!   a message; `wait` keeps the caller's turn open until an agent messages
 //!   it or ends its turn.
@@ -120,7 +122,8 @@ impl Plugin for SubagentsPlugin {
         if !app.is_plugin_added::<ApprovalPlugin>() {
             app.add_plugins(ApprovalPlugin);
         }
-        app.keeps_saved::<Subtask>()
+        app.add_setting::<SubagentDefaults>("subagents")
+            .keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()
             .keeps_saved::<Environment>()
@@ -133,6 +136,17 @@ impl Plugin for SubagentsPlugin {
         #[cfg(feature = "tui")]
         agents::add(app);
     }
+}
+
+/// The `[subagents]` settings table: what a `task` call that names no
+/// `model` or `tools` gives its subagent.
+#[derive(Resource, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct SubagentDefaults {
+    /// A catalog model as `vendor/model`; the parent's when `None`.
+    pub model: Option<String>,
+    /// Tools of the parent's; all of the parent's when `None`.
+    pub tools: Option<Vec<String>>,
 }
 
 /// On a subagent: it runs a task, whose short title is its
