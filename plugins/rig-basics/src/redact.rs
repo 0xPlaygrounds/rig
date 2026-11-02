@@ -5,10 +5,6 @@
 //! every front, subagents and a resumed session then hold them redacted,
 //! and so does the model. Without this plugin nothing is redacted.
 //!
-//! A slash command and a line that answers a question reach the plugin
-//! that takes them as typed, and a plugin's own saved values are saved as
-//! it gives them.
-//!
 //! ```no_run
 //! use rig_harness::prelude::*;
 //!
@@ -36,32 +32,46 @@ mod tests;
 #[derive(Default)]
 pub struct RedactPlugin;
 
+/// After every [`ReviewSystems`] phase, in [`Stage::Review`]: each tool
+/// call's answer redacted again, as a reviewer may have changed it in
+/// place. A system that reads answers there to keep them goes after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RedactSystems;
+
 impl Plugin for RedactPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(redact_outcome)
-            .add_observer(redact_if_stopped)
-            .add_observer(redact_facts)
-            .add_systems(
-                AgentPass,
-                (
-                    adapt_model_calls.in_set(PrepareSystems::AdaptOutermost),
-                    filter_output
-                        .after(PerCallSystems::Place)
-                        .before(PerCallSystems::Build),
-                    redact_reviewed
-                        .in_set(Stage::Review)
-                        .after(ReviewSystems::Act),
-                    redact_messages
-                        .after(GateSystems::After)
-                        .after(crate::approval::ApprovalSystems)
-                        .before(GateSystems::Fallback),
-                    redact_recalled.in_set(Stage::Start),
-                ),
-            )
-            .add_systems(
-                Last,
-                redact_records.after(StopTurnsOnExit).before(WriteLogs),
-            );
+        app.configure_sets(
+            AgentPass,
+            RedactSystems
+                .in_set(Stage::Review)
+                .after(ReviewSystems::Act),
+        )
+        .add_observer(redact_outcome)
+        .add_observer(redact_if_stopped)
+        .add_observer(redact_facts)
+        .add_systems(
+            AgentPass,
+            // Each after every other plugin that edits the same data.
+            (
+                adapt_model_calls
+                    .in_set(Stage::Prepare)
+                    .after(PrepareSystems::AdaptOutermost)
+                    .before(PrepareSystems::Fit),
+                filter_output
+                    .after(PerCallSystems::Place)
+                    .before(PerCallSystems::Build),
+                redact_reviewed.in_set(RedactSystems),
+                redact_messages
+                    .after(GateSystems::After)
+                    .after(crate::approval::ApprovalSystems)
+                    .before(GateSystems::Fallback),
+                redact_recalled.in_set(Stage::Start),
+            ),
+        )
+        .add_systems(
+            Last,
+            redact_records.after(StopTurnsOnExit).before(WriteLogs),
+        );
         #[cfg(feature = "tui")]
         app.add_systems(
             Update,
@@ -92,8 +102,7 @@ fn redact_outcome(inserted: On<Insert<Outcome>>, mut answers: Query<&mut Outcome
     }
 }
 
-/// What a running call answers if it is stopped, which a stop and the
-/// exit read as it is.
+/// What a running call answers if stopped, which a stop reads as it is.
 fn redact_if_stopped(inserted: On<Insert<IfStopped>>, mut answers: Query<&mut IfStopped>) {
     if let Ok(mut answer) = answers.get_mut(inserted.entity)
         && let Some(redacted) = redacted(&answer.0.0)
@@ -114,10 +123,8 @@ fn redact_reviewed(
     }
 }
 
-/// What a call published, which the conversation keeps with its result
-/// and a view draws it from. A changed file's whole old text, which the
-/// conversation never keeps and a plugin may restore the file from, is
-/// left as it is.
+/// What a call published, which the conversation keeps with its result.
+/// A changed file's old text, which it never keeps, stays whole.
 fn redact_facts(inserted: On<Insert<Published>>, mut published: Query<&mut Published>) {
     let Ok(mut published) = published.get_mut(inserted.entity) else {
         return;
@@ -147,10 +154,9 @@ fn redact_facts(inserted: On<Insert<Published>>, mut published: Query<&mut Publi
     }
 }
 
-/// Redacts each line of `hunks` on its own: its JSON form starts with the
-/// line's diff sign, which would hide a secret at the line's start. A
-/// secret across lines, such as a private key block, is found in the lines
-/// together first, and takes every hunk with it. Whether any changed.
+/// Redacts each line of `hunks` alone, as its JSON form's diff sign would
+/// hide a secret at its start; a secret across lines takes every hunk.
+/// Whether any changed.
 fn redact_hunks(hunks: &mut Vec<Hunk>) -> bool {
     // Each line ends in a break, so one without its ending (the file's
     // last) does not run into the next.
@@ -181,10 +187,8 @@ fn redact_hunks(hunks: &mut Vec<Hunk>) -> bool {
 }
 
 /// Each message that goes to its agent, its files attached, once every
-/// gate decided the lines it takes: a slash command's, or one answering a
-/// question, reaches the plugin that took it as typed. The kernel's
-/// fallback after it puts a message a turn did not send in the
-/// conversation or hands it back ([`Recalled`]), redacted.
+/// gate took the lines it takes as typed (a slash command, an answer), and
+/// before the fallback keeps or hands back one a turn did not send.
 fn redact_messages(
     mut messages: Query<(&mut Incoming, &Decision), (IncomingMessages, Without<Started>)>,
 ) {
@@ -222,8 +226,8 @@ fn redact_recalled(mut recalled: MessageMutator<Recalled>) {
     }
 }
 
-/// Every model call streams its reply redacted, whichever model it goes
-/// to. It adapts outermost, so what any other adapter streams is redacted.
+/// Every model call streams its reply redacted, wrapping the outermost
+/// adapters too, such as a replay.
 fn adapt_model_calls(mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls)>) {
     for mut adapted in &mut calls {
         let handler = adapted.0.handler.0.clone();
@@ -238,11 +242,9 @@ enum Held {
     Arguments(String),
 }
 
-/// Rewrites one reply's stream redacted: each text or reasoning part as it
-/// streams, holding only what may still become part of a secret
-/// ([`Streamed`]); each tool call's arguments at its end; every other event
-/// and the response it ends with as JSON. What a part holds goes out
-/// before its end, and what every part holds before the response.
+/// One reply's stream redacted: text and reasoning as they stream
+/// ([`Streamed`]), a call's arguments at its end, the rest as JSON. What a
+/// part holds goes out before its end, and all of it before the response.
 fn redact_stream() -> impl FnMut(Relayed) -> Vec<Relayed> {
     let mut held: Vec<(Part, Held)> = Vec::new();
     move |item| {
@@ -276,9 +278,8 @@ fn redact_stream() -> impl FnMut(Relayed) -> Vec<Relayed> {
     }
 }
 
-/// Takes the next `piece` of `part`'s text, or reasoning (`Some(true)`),
-/// putting what can be shown in `out`, or of its tool call's arguments
-/// (`None`).
+/// Takes the next `piece` of `part`: text, reasoning (`Some(true)`) or a
+/// call's arguments (`None`).
 fn grow(
     held: &mut Vec<(Part, Held)>,
     (part, reasoning): (Part, Option<bool>),
@@ -315,8 +316,7 @@ fn event(part: Part, reasoning: bool, text: String) -> Option<Relayed> {
     Some(Relayed::Item(Item::Event(event)))
 }
 
-/// Puts in `out` what `part` holds, or every part when `None`, and forgets
-/// it.
+/// Puts in `out` what `part`, or every part, holds.
 fn let_go(held: &mut Vec<(Part, Held)>, part: Option<Part>, out: &mut Vec<Relayed>) {
     let (going, staying) = std::mem::take(held)
         .into_iter()
@@ -349,9 +349,8 @@ fn filter_output(mut places: Query<&mut CallPlace, (ToolCalls, Added<CallPlace>)
     }
 }
 
-/// `line` redacted, given and keeping whether it is inside a private key
-/// block, which spans lines: its first is redacted to its end and the lines
-/// after it, through its end line, are left out.
+/// `line` redacted; a private key block's lines after its first, through
+/// its end line, are left out (`in_key`).
 fn redact_line(line: &str, in_key: &mut bool) -> String {
     if *in_key {
         *in_key = !line.contains("-----END ");
@@ -383,12 +382,15 @@ fn redact_records(mut records: MessageMutator<EffectRecorded>) {
     }
 }
 
-/// Every prompt the terminal view keeps for Up and saves.
+/// A prompt holding a secret is left out of the terminal view's history,
+/// so Up never shows it and it is never saved.
 #[cfg(feature = "tui")]
 fn redact_history(mut history: ResMut<rig_tui::PromptHistory>) {
-    let rewrite = |prompt: &str| match redact::text(prompt) {
-        Cow::Owned(redacted) => Some(redacted),
-        Cow::Borrowed(_) => None,
-    };
-    history.bypass_change_detection().rewrite(rewrite);
+    if history
+        .entries
+        .iter()
+        .any(|prompt| redact::has_secret(prompt))
+    {
+        history.entries.retain(|prompt| !redact::has_secret(prompt));
+    }
 }

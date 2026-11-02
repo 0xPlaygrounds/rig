@@ -121,6 +121,7 @@ impl Plugin for AuditLogPlugin {
                 AuditSystems::Gate.in_set(Stage::Gate),
                 AuditSystems::Record
                     .after(ReviewSystems::Act)
+                    .after(rig_basics::redact::RedactSystems)
                     .in_set(Stage::Review),
             ),
         )
