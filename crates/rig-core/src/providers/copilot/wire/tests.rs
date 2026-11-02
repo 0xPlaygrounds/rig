@@ -13,6 +13,7 @@ use crate::wire::Mode;
 use crate::wire::Wire;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
+use serde_json::Value;
 
 /// One recorded interaction's request or reply body, read out of a cassette.
 ///
@@ -336,6 +337,7 @@ fn the_embeddings_request_sends_the_resolved_width() {
 #[tokio::test]
 async fn the_model_listing_folds_its_recorded_catalogue() {
     let body = cassette_body("models/list_models_smoke.yaml", "then");
+    let recorded: Value = serde_json::from_str(&body).expect("the recorded catalogue is JSON");
     let models = crate::driver::Model::new(
         super::super::model_listing::Models::new(copilot()),
         RecordingHttpClient::new(Bytes::from(body)),
@@ -344,12 +346,27 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
     .await
     .expect("the recorded catalogue folds");
 
+    let entries = recorded["data"].as_array().expect("recorded model entries");
+    assert_eq!(models.len(), entries.len());
+    for (model, entry) in models.iter().zip(entries) {
+        assert_eq!(Some(model.id.as_str()), entry["id"].as_str());
+        assert_eq!(
+            model.supports_tool_calls,
+            entry
+                .pointer("/capabilities/supports/tool_calls")
+                .and_then(Value::as_bool),
+            "tool-calling support for {}",
+            model.id
+        );
+    }
+
     let opus = models
         .iter()
         .find(|model| model.id == "claude-opus-4.7")
         .expect("the recorded catalogue names claude-opus-4.7");
     assert_eq!(opus.name.as_deref(), Some("Claude Opus 4.7"));
     assert_eq!(opus.r#type.as_deref(), Some("chat"));
+    assert_eq!(opus.supports_tool_calls, Some(true));
 }
 
 // ── the configuration is storable data ──────────────────────────────────
