@@ -268,7 +268,7 @@ fn a_new_sessions_automatic_pick_is_never_the_default() {
 }
 
 #[test]
-fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
+fn an_allowed_call_runs_and_a_denied_one_does_not() {
     let place = Place::new("permission");
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         for (answering, status) in [
@@ -315,6 +315,14 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
         assert_eq!(at, [project(&place).join("guarded.txt")]);
         let why = format!("{:?}", fields.content);
         assert!(why.contains("It reads the guarded file."), "{why}");
+    });
+    assert!(router.is_some());
+}
+
+#[test]
+fn a_question_whose_turn_is_stopped_is_cancelled_and_leaves_nothing_behind() {
+    let place = Place::new("stopped-question");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         driven.answering(Answering::Later);
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");
@@ -336,6 +344,23 @@ fn an_allowed_call_runs_a_denied_one_does_not_and_cancel_answers_an_open_one() {
         let cancelled = open.cancellation();
         let told = tokio::time::timeout(Duration::from_secs(10), cancelled.cancelled()).await;
         assert!(told.is_ok(), "the open question was not cancelled");
+        // A late answer to it reaches nothing: the call never runs, and the
+        // next prompt is answered as if it was never asked.
+        let allow = acp::RequestPermissionOutcome::Selected(acp::SelectedPermissionOutcome::new(
+            rig_basics::approval::ALLOW,
+        ));
+        open.respond(acp::RequestPermissionResponse::new(allow))
+            .ok();
+        assert_eq!(
+            driven.prompt(&id, "Go on.").await.ok(),
+            Some(acp::StopReason::EndTurn)
+        );
+        let steps = tool_steps(driven, &id);
+        let ran = steps
+            .iter()
+            .any(|(_, status)| *status == acp::ToolCallStatus::Completed);
+        assert!(!ran, "{steps:?}");
+        assert_eq!(driven.seen().asked.len(), 1);
     });
     assert!(router.is_some());
 }

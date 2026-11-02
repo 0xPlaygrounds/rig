@@ -139,8 +139,6 @@ pub(crate) struct Session {
     early: VecDeque<Request>,
     /// The client's closes, answered once the prompt they cancelled is.
     closing: Vec<Reply<acp::CloseSessionResponse>>,
-    /// The tasks asking the client a question, by the question's entity.
-    asking: HashMap<Entity, tokio::task::AbortHandle>,
     /// The ACP id of each running call the client was shown, or sees
     /// settle, by the call's entity.
     calls: HashMap<Entity, String>,
@@ -310,7 +308,6 @@ pub(crate) fn install(app: &mut App) {
         prompt: None,
         early,
         closing: Vec::new(),
-        asking: HashMap::new(),
         calls: HashMap::new(),
         replay: None,
         requests,
@@ -349,7 +346,6 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(output::started)
     .add_observer(output::settled)
     .add_observer(ended)
-    .add_observer(questions::forgotten)
     .add_systems(
         Last,
         (
@@ -876,7 +872,11 @@ fn stopped(cause: &StopCause) -> acp::StopReason {
 /// or still queued answers as it is dropped ([`Reply`]): a close that it
 /// closed, the rest that the session ended. Then it lets the connection
 /// end ([`finish_output`] waits for it).
-fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
+fn answer_open(
+    mut out: output::Out,
+    changing: Option<Res<options::Changing>>,
+    asking: Query<&questions::ClientAsk>,
+) {
     out.stream();
     let session = &mut *out.session;
     if let Some(prompt) = session.prompt.take() {
@@ -887,8 +887,8 @@ fn answer_open(mut out: output::Out, changing: Option<Res<options::Changing>>) {
         prompt.reply.send(answer.map(acp::PromptResponse::new));
     }
     session.closing.clear();
-    for (_, asking) in session.asking.drain() {
-        asking.abort();
+    for asking in &asking {
+        asking.0.abort();
     }
     if let Some(changing) = changing {
         changing.reply.send(Err(crate::ended()));

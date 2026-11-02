@@ -1,10 +1,14 @@
+use std::pin::pin;
 use std::sync::mpsc::Receiver;
+use std::time::Duration;
+
+use futures::FutureExt;
 
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::effect::{Disposition, EffectKind, EffectRecord};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::prelude::*;
-use rig_harness_test_support::{MemoryStore, app_on, calls, connect, run_until, start_call};
+use rig_harness_test_support::{MemoryStore, app_on, calls, connect, reply, run_until, start_call};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
@@ -111,6 +115,25 @@ fn held_touches(world: &World) -> usize {
         .iter(world)
         .filter(|request| request.call.function.name.as_str() == "touch")
         .count()
+}
+
+/// Runs frames of `app` until `asked` answers, or gives up.
+fn answered<T>(app: &mut App, wakes: &Receiver<()>, asked: impl Future<Output = T>) -> Option<T> {
+    let mut asked = pin!(asked);
+    for _ in 0..100 {
+        if let Some(answer) = asked.as_mut().now_or_never() {
+            return Some(answer);
+        }
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(100)).ok();
+    }
+    None
+}
+
+/// Whether `agent`'s conversation holds `text`.
+fn heard(world: &World, agent: Entity, text: &str) -> bool {
+    let messages = world.get::<Conversation>(agent).map(|said| said.messages());
+    format!("{messages:?}").contains(text)
 }
 
 #[test]
@@ -260,4 +283,89 @@ fn a_program_never_spawns_an_agent_deeper_than_the_subagent_limit() {
         .filter(|by| by.parent() == deepest)
         .count();
     assert_eq!(too_deep, 0, "an agent was spawned at depth 3");
+}
+
+#[test]
+fn a_queued_job_whose_call_was_stopped_does_nothing() {
+    let model = MockCompletionModel::from_stream_turns([calls("t1", "touch", json!({}))]);
+    let (mut app, wakes, agent) = app(&model);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Touch it.", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| held_touches(world) > 0);
+    let world = app.world_mut();
+    let call = world
+        .query_filtered::<Entity, (With<ToolRequest>, With<Holds>)>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let id = world.get::<AgentId>(agent).cloned().unwrap_or_default();
+    let harness = world.resource::<Harness>().within(call);
+    let author = Author::agent(id.0.clone(), None);
+    let before = harness.send(id.clone(), "Sent before.".to_owned(), author.clone());
+    let before = answered(&mut app, &wakes, before).and_then(Result::ok);
+    let text = "Sent for a stopped call.";
+    let mut sent = pin!(harness.send(id, text.to_owned(), author));
+    assert!(
+        sent.as_mut().now_or_never().is_none(),
+        "answered before its frame"
+    );
+
+    app.world_mut().trigger(StopTurn::new(agent));
+    app.world_mut().flush();
+    let sent = answered(&mut app, &wakes, sent);
+    assert!(matches!(sent, Some(Err(_))), "{sent:?}");
+    app.update();
+    assert!(!heard(app.world(), agent, text));
+    // The receipt of what it sent before went with the call.
+    assert!(before.is_some());
+    let unbound = app.world().resource::<Harness>().clone();
+    let reply = unbound.reply(before.unwrap_or(RequestId(String::new())));
+    let reply = answered(&mut app, &wakes, reply);
+    let gone = matches!(&reply, Some(Err(why)) if why.starts_with("no request"));
+    assert!(gone, "{reply:?}");
+}
+
+#[test]
+fn a_reply_read_after_a_compaction_still_arrives_and_only_once() {
+    let model = MockCompletionModel::from_stream_turns([reply("Done.")]);
+    let (mut app, wakes, agent) = app(&model);
+    let id = app
+        .world()
+        .get::<AgentId>(agent)
+        .cloned()
+        .unwrap_or_default();
+    let harness = app.world().resource::<Harness>().clone();
+    let author = Author::agent(id.0.clone(), None);
+    let sent = answered(
+        &mut app,
+        &wakes,
+        harness.send(id, "Do it.".to_owned(), author),
+    );
+    let request = sent
+        .and_then(Result::ok)
+        .unwrap_or(RequestId(String::new()));
+    run_until(&mut app, &wakes, |world| heard(world, agent, "Done."));
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ActiveTurn>(agent).is_none()
+    });
+
+    // A compaction the user asked for is a turn of its own, which a plugin
+    // ends.
+    app.world_mut()
+        .spawn((Name::new("compaction"), TurnOf(agent)));
+    app.world_mut()
+        .trigger(StopTurn::plugin_alone(agent, "compaction", "compacted"));
+    app.world_mut().flush();
+    run_until(&mut app, &wakes, |world| {
+        world.get::<ActiveTurn>(agent).is_none()
+    });
+
+    let first = answered(&mut app, &wakes, harness.reply(request.clone()));
+    let text = match &first {
+        Some(Ok(TurnOutcome::Answered(message))) => message.final_answer(),
+        _ => None,
+    };
+    assert_eq!(text.as_deref(), Some("Done."), "{first:?}");
+    let again = answered(&mut app, &wakes, harness.reply(request));
+    assert!(matches!(again, Some(Err(_))), "{again:?}");
 }
