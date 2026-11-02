@@ -300,8 +300,8 @@ fn a_subagents_question_is_a_message_and_only_its_final_answer_reports() {
 
     // The question woke the parent as a message on no request; the final
     // answer is the one report, on the parent's last request, which is
-    // known by where its reply asked for it (`m1/0`), not by the provider's
-    // call id (`p1`), which a later reply may use again.
+    // known by its asker and where its reply asked for it (`<asker>:m1/0`),
+    // not by the provider's call id (`p1`), which a later reply may use again.
     let to_parent = session.to(session.parent);
     let parent_id = session.app.world().get::<AgentId>(session.parent).cloned();
     let parent_place = format!("{}:m1/0", parent_id.unwrap_or_default().0);
