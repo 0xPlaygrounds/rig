@@ -1070,18 +1070,32 @@ fn put_answer_with_key(
     }
 }
 
+/// The text of each call's answer as it settles.
+#[derive(Resource, Default)]
+struct Settling(Vec<String>);
+
 /// A stop puts an answer it commits for a call that never settled, a gate's
-/// decision or an answer on the call, in the conversation through the
-/// `ResultFilter`.
+/// decision or an answer on the call, through the `ResultFilter`, in the
+/// conversation and on the call as it settles.
 #[test]
 fn a_stop_puts_an_unsettled_answer_through_the_result_filter() {
     for decided in [true, false] {
-        let (_, said, _) = restart_after_crash(|app| {
+        let (app, said, _) = restart_after_crash(|app| {
             let filter = |result: &rig_core::tool::ToolResult| {
                 let text = result.output().render().replace("ghp_secret", "[hidden]");
                 Some(rig_core::tool::ToolResult::success(text.into()))
             };
-            app.insert_resource(crate::tools::ResultFilter(Arc::new(filter)));
+            app.insert_resource(crate::tools::ResultFilter(Arc::new(filter)))
+                .init_resource::<Settling>()
+                .add_observer(
+                    |settled: On<Add<Settled>>,
+                     calls: Query<&Outcome, With<ToolRequest>>,
+                     mut settling: ResMut<Settling>| {
+                        if let Ok(outcome) = calls.get(settled.entity) {
+                            settling.0.push(outcome.tool_result().output().render());
+                        }
+                    },
+                );
             match decided {
                 true => app.add_systems(AgentPass, answer_with_key.in_set(Stage::Gate)),
                 false => app.add_systems(AgentPass, put_answer_with_key.in_set(Stage::Gate)),
@@ -1089,6 +1103,10 @@ fn a_stop_puts_an_unsettled_answer_through_the_result_filter() {
         });
         let kept = said.contains("token [hidden]") && !said.contains("ghp_secret");
         assert!(kept, "{decided}: {said}");
+        // The call settles with it too, as what reads the call sees it.
+        let settled = &app.world().resource::<Settling>().0;
+        let hidden = !settled.is_empty() && settled.iter().all(|text| !text.contains("ghp_secret"));
+        assert!(hidden, "{decided}: {settled:?}");
     }
 }
 

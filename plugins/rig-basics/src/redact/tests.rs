@@ -369,6 +369,14 @@ fn a_private_key_block_is_one_placeholder_for_the_whole_block() {
     assert_eq!(kept, shown);
     let key = lines.get(1..4).map(|key| key.concat()).unwrap_or_default();
     assert_eq!(secrets.reveal("‹SECRET_2›"), key);
+    // A block that never ends stops holding lines past its most.
+    let opening = "-----BEGIN RSA PRIVATE KEY-----\n";
+    assert_eq!(redact_line(opening, &mut block, &secrets), "‹SECRET_3›\n");
+    let body = format!("{}\n", "A".repeat(63));
+    let held = (0..BLOCK_MOST / body.len()).map(|_| redact_line(&body, &mut block, &secrets));
+    assert_eq!(held.collect::<String>(), "");
+    assert_eq!(redact_line("ls\n", &mut block, &secrets), "ls\n");
+    assert!(secrets.reveal("‹SECRET_3›").len() <= BLOCK_MOST + body.len());
 }
 
 /// A message going to its agent is redacted, text and attached file; one a
@@ -484,18 +492,30 @@ fn a_key_block_takes_the_hunks_whatever_its_lines_end_with() {
 }
 
 /// A prompt the terminal view keeps is kept redacted, for Up and the file
-/// other sessions read, its secrets as `[REDACTED]`, which names none.
+/// other sessions read, its secrets and placeholders as `[REDACTED]`,
+/// which names none.
 #[cfg(feature = "tui")]
 #[test]
 fn a_prompt_kept_for_up_is_kept_redacted() {
     let mut world = World::new();
     let mut history = rig_tui::PromptHistory::default();
-    history.entries = vec!["deploy with GITHUB_TOKEN=abcdefgh12345678".to_owned()];
+    history.entries = vec![
+        "deploy with GITHUB_TOKEN=abcdefgh12345678".to_owned(),
+        "then hunter2hunter2 and ‹SECRET_1› again".to_owned(),
+    ];
     world.insert_resource(history);
-    world.insert_resource(Secrets::default());
+    let secrets = Secrets::default();
+    let _ = secrets.text("PASSWORD=hunter2hunter2");
+    world.insert_resource(secrets);
     assert!(world.run_system_once(redact_history).is_ok());
     let entries = &world.resource::<rig_tui::PromptHistory>().entries;
-    assert_eq!(entries, &["deploy with GITHUB_TOKEN=[REDACTED]"]);
+    assert_eq!(
+        entries,
+        &[
+            "deploy with GITHUB_TOKEN=[REDACTED]",
+            "then [REDACTED] and [REDACTED] again"
+        ]
+    );
 }
 
 /// A tool call that names a placeholder runs with its secret, found again
@@ -667,9 +687,10 @@ fn what_the_exit_frame_keeps_is_redacted() {
     );
     let issued = saved
         .lines()
-        .rfind(|line| line.contains("redact::Issued"))
-        .unwrap_or_default();
-    assert!(issued.contains(":2") || issued.contains("[2]"), "{issued}");
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .rfind(|line| line.get("key") == Some(&json!("rig_basics::redact::Issued")))
+        .and_then(|line| line.get("value").cloned());
+    assert_eq!(issued, Some(json!(2)));
 }
 
 /// A secret the run knows is found again though the stream cuts it at its
@@ -679,27 +700,51 @@ fn what_the_exit_frame_keeps_is_redacted() {
 fn a_known_secret_is_found_however_it_arrives() {
     let secrets = Secrets::default();
     let _ = secrets.text("PASSWORD='hunter2!hunter2' and SECRET=tool_result and TOKEN=abc\\defgh1");
-    let mut streaming = redact_stream(secrets.clone());
-    let out: String = [text(0, "say hunter2!"), text(0, "hunter2 now.")]
-        .into_iter()
-        .chain([Relayed::Item(Item::Event(StreamEvent::End {
+    let streamed = |pieces: [&str; 2]| -> String {
+        let end = Relayed::Item(Item::Event(StreamEvent::End {
             part: Part::new(0),
             content: AssistantContent::text("ended"),
-        }))])
-        .flat_map(&mut streaming)
-        .filter_map(|item| match item {
-            Relayed::Item(Item::Event(StreamEvent::Text { text, .. })) => Some(text),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(out, "say ‹SECRET_1› now.");
+        }));
+        pieces
+            .map(|piece| text(0, piece))
+            .into_iter()
+            .chain([end])
+            .flat_map(redact_stream(secrets.clone()))
+            .filter_map(|item| match item {
+                Relayed::Item(Item::Event(StreamEvent::Text { text, .. })) => Some(text),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        streamed(["say hunter2!", "hunter2 now."]),
+        "say ‹SECRET_1› now."
+    );
+    // Whole in one piece, though its end could start it again.
+    assert_eq!(
+        streamed(["it is hunter2!hunter2", " ok"]),
+        "it is ‹SECRET_1› ok"
+    );
     // A tag equal to an original: the result is still redacted by shape.
     let printed = ToolResult::success(ToolOutput::text(
         "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789",
     ));
-    let redacted = redacted_answer(&Outcome::from(printed), &secrets);
-    let shown = format!("{redacted:?}");
-    assert!(redacted.is_some() && !shown.contains("ghp_"), "{shown}");
+    let shown_of = |printed| {
+        let redacted = redacted_answer(&Outcome::from(printed), &secrets);
+        redacted.and_then(|answer| serde_json::to_string(&answer).ok())
+    };
+    let shown = shown_of(printed).unwrap_or_default();
+    assert!(
+        shown.contains("‹SECRET_4›") && !shown.contains("ghp_"),
+        "{shown}"
+    );
+    // With no secret to find by its shape, the known ones still go.
+    let printed = ToolResult::success(ToolOutput::text("hunter2!hunter2 and tool_result"));
+    let shown = shown_of(printed).unwrap_or_default();
+    assert!(
+        shown.contains("‹SECRET_1› and ‹SECRET_2›") && !shown.contains("hunter2"),
+        "{shown}"
+    );
     // An original a JSON string holds escaped, as a call's arguments do.
     let args = json!({ "args": serde_json::to_string(&json!({ "cmd": "echo abc\\defgh1" })).unwrap_or_default() });
     let shown = secrets

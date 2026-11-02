@@ -183,13 +183,15 @@ tool's output and result, and in your messages and the files they name. The
 model, the session's logs, the terminal view, `--json`, ACP, subagents and a
 resumed session see only the placeholders. A tool call that names one runs
 with the real value, so the model can still put your key in a file or a
-command without seeing it; a shell command is refused one whose value holds
-what the shell would read as code, such as a quote, a space or `$`. The values are kept in memory for the run only:
-after a restart, `/reload` or `/resume` a call naming an old placeholder is
-refused, and you give the value again. A file that already holds text such
-as `‹SECRET_1›` is not told apart: a call that writes it gets this run's
-first secret, or is refused. What a session saved while redaction was off
-stays as it was.
+command without seeing it. A shell command naming one whose value the shell
+would read as code, such as a quote, a space or `$`, is refused. The values
+are kept in memory for the run only: after a restart, `/reload` or
+`/resume` a call naming an old placeholder is refused, and you give the
+value again. A file that already holds text such as `‹SECRET_1›` is not
+told apart: a call that writes it gets this run's first secret, or is
+refused. What a session saved while redaction was off stays as it was, and
+one saved while it was on keeps its placeholders after you turn it off,
+where a tool call writes them as they are.
 
 The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages (each tool result

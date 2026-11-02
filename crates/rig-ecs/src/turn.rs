@@ -773,6 +773,21 @@ impl Stopper<'_, '_> {
                     None => apply_decision(world, call),
                 }
             }
+            // An answer that came this pass, or one a reviewer changed in
+            // place, settles through the filter, as the conversation has it.
+            let filter = world.get_resource::<ResultFilter>().cloned();
+            for &call in calls.iter().filter(|_| filter.is_some()) {
+                let unsettled = !world.entity(call).contains::<Settled>();
+                let Some(mut outcome) = world.get_mut::<Outcome>(call).filter(|_| unsettled) else {
+                    continue;
+                };
+                if let (Ok(effect::Answered::ToolResult { result }), Some(filter)) =
+                    (&outcome.0, &filter)
+                    && let Some(filtered) = (filter.0)(result)
+                {
+                    outcome.0 = Ok(effect::Answered::ToolResult { result: filtered });
+                }
+            }
             for call in calls {
                 let said = world.get_entity(call).ok().and_then(|call| {
                     let footprint = call.get::<Footprint>();

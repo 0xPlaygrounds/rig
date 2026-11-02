@@ -144,7 +144,7 @@ pub struct InReply(CallRef);
 /// does: an answer that came this pass, a gate's decision not yet applied,
 /// or what the call says it answers if stopped. A settled call's answer is
 /// its [`Outcome`], which plugins change in Review. `None` keeps the
-/// result. A redaction plugin sets it.
+/// result. One per app; a redaction plugin sets it.
 #[derive(Resource, Clone)]
 pub struct ResultFilter(pub Arc<dyn Fn(&ToolResult) -> Option<ToolResult> + Send + Sync>);
 
