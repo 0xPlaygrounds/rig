@@ -350,7 +350,8 @@ subagent's model calls name the call that gave it its work as their parent.
 
 `rig -p "fix the failing test"` answers one prompt and exits: the answer goes
 to stdout, failures to stderr, and the exit code is 0 when the turn ended with
-an answer, 2 for a refused slash command or more than 64 MiB piped in. A
+an answer, 1 when it failed or a plugin such as the budget stopped its work
+(answer or not), 2 for a refused slash command or more than 64 MiB piped in. A
 command that would open a list to pick from, such as `/model`, `/effort`,
 `/resume`, `/login` or `/fork at`, is refused there with the commands to
 type instead (`/model chatgpt/gpt-6.1-sol`), as is text after a command

@@ -480,11 +480,15 @@ impl Runner {
             grace: Some(STOP_WINDOW),
             ..Spawn::default()
         };
+        // Unsettled from before it can spend until what it spent is known.
+        self.reports.unsettled.fetch_add(1, Ordering::SeqCst);
         let mut process = match launcher.spawn(&self.command.program, args, how) {
             Ok(process) => process,
-            Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
+            Err(error) => {
+                settle(&self.reports.unsettled);
+                return (Err(format!("it could not start: {error}")), String::new());
+            }
         };
-        self.reports.unsettled.fetch_add(1, Ordering::SeqCst);
         let mut read = Read::new(self.reports.clone());
         let ended = process.run(Some(Instant::now() + self.timeout), |line| {
             read.line(line);

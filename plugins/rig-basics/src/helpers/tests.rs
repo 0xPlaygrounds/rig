@@ -304,6 +304,22 @@ fn a_helper_still_working_at_the_exit_has_its_spend_unknown() {
     assert_eq!(app.world().resource::<UnknownSpend>().0, 1);
 }
 
+/// A child counts from before it starts, so one starting as the run exits
+/// is not missed, and one that could not start spent nothing.
+#[test]
+fn a_helper_that_could_not_start_spent_nothing() {
+    let (mut app, wakes, _) = helped("no-start", &[json!({ "task": "one" })]);
+    app.insert_resource(HelperCommand {
+        program: "/nonexistent/rig".into(),
+        args: Vec::new(),
+    });
+    let said = output(&mut app, &wakes, 0);
+    assert!(said.starts_with("it could not start"), "{said}");
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert_eq!(app.world().resource::<UnknownSpend>().0, 0);
+}
+
 #[test]
 fn a_helper_is_left_what_is_left_of_the_budget() {
     let (mut app, wakes, dir) = helped("budget", &[json!({ "task": "one" })]);
