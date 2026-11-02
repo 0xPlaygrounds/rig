@@ -488,9 +488,18 @@ fn redact_facts(
             true => serde_json::from_value::<FilesChanged>(value.clone())
                 .ok()
                 .and_then(|mut files| {
-                    let hunks = files.0.iter_mut().map(|change| &mut change.hunks);
-                    let changed =
-                        hunks.fold(false, |any, hunks| redact_hunks(hunks, &secrets) | any);
+                    let changed = files.0.iter_mut().fold(false, |any, change| {
+                        // A path can hold a secret, as one a call wrote a
+                        // file named after.
+                        let renamed = match secrets.text(&change.path) {
+                            Cow::Owned(path) => {
+                                change.path = path;
+                                true
+                            }
+                            Cow::Borrowed(_) => false,
+                        };
+                        redact_hunks(&mut change.hunks, &secrets) | renamed | any
+                    });
                     changed.then(|| serde_json::to_value(files).ok()).flatten()
                 }),
             false => secrets.redacted(value),

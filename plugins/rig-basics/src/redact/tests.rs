@@ -281,6 +281,7 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
             .with_hunks(vec![same])
             .with_before_text(format!("old {key}\n")),
         FileChange::created("id_rsa", 3).with_hunks(vec![keyed]),
+        FileChange::created(format!("{key}.txt"), 1),
     ]);
     let mut context = ToolContext::new();
     assert!(context.insert_result(changes).is_ok());
@@ -326,6 +327,9 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
     assert_eq!(line.map(HunkLine::text), Some("‹SECRET_1›\n"));
     // A key block is in no one line: the change keeps no hunks.
     assert_eq!(changed.0.get(1).map(|change| change.hunks.len()), Some(0));
+    // A file named after a secret.
+    let named = changed.0.get(2).map(|change| change.path.as_str());
+    assert_eq!(named, Some("‹SECRET_1›.txt"));
 
     // A refused command's line, handed back.
     world.init_resource::<Messages<Recalled>>();
@@ -381,9 +385,9 @@ fn a_private_key_block_is_one_placeholder_for_the_whole_block() {
     assert!(secrets.reveal("‹SECRET_3›").len() <= BLOCK_MOST + body.len());
 }
 
-/// A message going to its agent is redacted, text, attached file, its label
-/// and an image's link; one a gate took, such as a line answering a question, reaches the
-/// gate as typed.
+/// A message going to its agent is redacted: its text, an attached file
+/// and its label, and an image's link and label. One a gate took, such as a
+/// line answering a question, reaches the gate as typed.
 #[test]
 fn a_message_is_redacted_unless_a_gate_took_it() {
     let mut world = World::new();
@@ -408,7 +412,7 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
         ..Default::default()
     };
     message.parts.push(MessagePart::Attachment(Attachment {
-        label: "a.png".to_owned(),
+        label: format!("{key}.png"),
         content: UserContent::Image(image),
     }));
     let sent = world.spawn((message, Decision::default())).id();
@@ -834,7 +838,9 @@ fn a_secret_like_a_name_leaves_the_name_alone() {
         "properties": { "old_text": { "type": "string" } },
         "required": ["old_text"],
     });
-    let Ok(name) = ToolName::new("get_weather") else {
+    let name = ToolName::new("get_weather");
+    assert!(name.is_ok(), "{name:?}");
+    let Ok(name) = name else {
         return;
     };
     let tool = ToolDefinition::new(name, "", parameters);
