@@ -154,7 +154,10 @@ impl Default for Reported {
 /// in before the next model call; and before the agent loop, for what came
 /// while no call ended, such as from a stopped call's children.
 fn record(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, mut commands: Commands) {
-    drain(&reported, &mut unknown, &mut commands);
+    let unknowns = drain(&reported, &mut commands);
+    if unknowns > 0 {
+        unknown.0 += unknowns;
+    }
 }
 
 /// On the exit, before the session is saved and the `exit` line written:
@@ -166,24 +169,27 @@ fn record_at_exit(
     mut unknown: ResMut<UnknownSpend>,
     mut commands: Commands,
 ) {
-    drain(&reported, &mut unknown, &mut commands);
-    unknown.0 += reported.unsettled.swap(0, Ordering::SeqCst);
+    let unknowns = drain(&reported, &mut commands);
+    unknown.0 += unknowns + reported.unsettled.swap(0, Ordering::SeqCst);
 }
 
 /// Records each report that came: a spend, or how a child ended, which
 /// settles it; so at the exit a child whose end was not recorded yet,
-/// with the spend it reported before it, is counted as unknown.
-fn drain(reported: &Reported, unknown: &mut UnknownSpend, commands: &mut Commands) {
+/// with the spend it reported before it, is counted as unknown. How many
+/// children ended with some of their spend unknown.
+fn drain(reported: &Reported, commands: &mut Commands) -> u64 {
+    let mut unknowns = 0;
     while let Ok(heard) = reported.receiver.try_recv() {
         match heard {
             Heard::Spent(spent) => commands.trigger(spent),
             Heard::Known => settle(&reported.unsettled),
             Heard::Unknown => {
-                unknown.0 += 1;
+                unknowns += 1;
                 settle(&reported.unsettled);
             }
         }
     }
+    unknowns
 }
 
 /// One child fewer that has not settled what it spent.
@@ -521,6 +527,8 @@ struct Read {
     exit: Option<(u64, Option<String>)>,
     /// Whether its `exit` line says its spend is all known.
     complete: bool,
+    /// Whether a `usage` line of it did not read.
+    unread: bool,
     error: Option<String>,
     stderr: Vec<String>,
     session: Option<String>,
@@ -534,6 +542,7 @@ impl Read {
             version: None,
             exit: None,
             complete: false,
+            unread: false,
             error: None,
             stderr: Vec::new(),
             session: None,
@@ -561,9 +570,12 @@ impl Read {
             Some("ready") => self.session = field("session"),
             Some("usage") if self.version == Some(VERSION) => {
                 let usage = event.get("usage").cloned().unwrap_or_default();
-                if let Ok(usage) = serde_json::from_value::<Usage>(usage) {
-                    self.spent.record(&usage);
-                    self.reports.send(field("model"), usage);
+                match serde_json::from_value::<Usage>(usage) {
+                    Ok(usage) => {
+                        self.spent.record(&usage);
+                        self.reports.send(field("model"), usage);
+                    }
+                    Err(_) => self.unread = true,
                 }
             }
             Some("exit") => {
@@ -599,9 +611,9 @@ impl Read {
     }
 
     /// Whether all it spent is known: once it wrote its `exit` line on
-    /// this protocol version, saying so.
+    /// this protocol version, saying so, and every `usage` line read.
     fn known(&self) -> bool {
-        self.version == Some(VERSION) && self.exit.is_some() && self.complete
+        self.version == Some(VERSION) && self.exit.is_some() && self.complete && !self.unread
     }
 
     /// Its session and what it spent, for the end of its text.

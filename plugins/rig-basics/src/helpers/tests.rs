@@ -33,6 +33,7 @@ case "$task" in
   partial*) echo "$usage"; rm "$d/run/$$"; exit 3;;
   spend*) echo "$usage"; while [ ! -e "$d/go" ]; do sleep 0.05; done; echo "$usage";
     echo '{"v":3,"type":"exit","code":0,"answer":"spent","usage":{"calls":99},"usage_complete":true}'; rm "$d/run/$$"; exit 0;;
+  garbled*) echo '{"v":3,"type":"usage","usage":{"input_tokens":"many"}}'; echo '{"v":3,"type":"exit","code":0,"answer":"odd","usage_complete":true}'; rm "$d/run/$$"; exit 0;;
   incomplete*) echo "$usage"; echo '{"v":3,"type":"exit","code":0,"answer":"some","usage_complete":false}'; rm "$d/run/$$"; exit 0;;
 esac
 rm "$d/run/$$"
@@ -268,6 +269,7 @@ fn a_helper_off_this_version_or_cut_short_has_its_spend_unknown() {
             json!({ "task": "crash" }),
             json!({ "task": "partial" }),
             json!({ "task": "incomplete" }),
+            json!({ "task": "garbled" }),
         ],
     );
     let old = output(&mut app, &wakes, 0);
@@ -285,8 +287,13 @@ fn a_helper_off_this_version_or_cut_short_has_its_spend_unknown() {
         "{incomplete}"
     );
     assert_eq!(helpers_spent(app.world()), (2, 30), "what they did report");
+    let garbled = output(&mut app, &wakes, 4);
+    assert!(
+        garbled.ends_with("[helper spend unknown]"),
+        "a usage line that does not read: {garbled}"
+    );
     let unknown = app.world().resource::<UnknownSpend>().0;
-    assert_eq!(unknown, 4, "each counts as not all known");
+    assert_eq!(unknown, 5, "each counts as not all known");
 }
 
 /// A run that exits while a helper works cannot hear the rest of its
@@ -319,17 +326,26 @@ fn a_helper_that_could_not_start_spent_nothing() {
     assert_eq!(app.world().resource::<UnknownSpend>().0, 0);
 }
 
+/// What the exit-order test queues, as a child's reports that come on the
+/// exit frame, after the frame's other drains.
+#[derive(Resource)]
+struct Late(Vec<Heard>);
+
+/// Queues the [`Late`] reports.
+fn queue_late(mut late: ResMut<Late>, reported: Res<Reported>) {
+    for heard in late.0.drain(..) {
+        reported.sender.try_send(heard).ok();
+    }
+}
+
 /// At the exit, a child's end is known only once its report of it is
-/// drained, after the spend it reported before: a child that reported a
-/// call and its end counts fully, and one whose end is not in counts as
-/// unknown, its call recorded all the same.
+/// drained, after the spend it reported before: a child whose call and
+/// end come on the exit frame counts fully, and one whose end is not in
+/// counts as unknown, its call recorded all the same.
 #[test]
 fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
     for (ended, unknown) in [(true, 0), (false, 1)] {
         let (mut app, _wakes, _) = helped("exit-order", &[]);
-        let reported = app.world().resource::<Reported>();
-        let (sender, unsettled) = (reported.sender.clone(), reported.unsettled.clone());
-        unsettled.fetch_add(1, Ordering::SeqCst);
         let spent = Spent {
             agent: None,
             turn: None,
@@ -337,10 +353,19 @@ fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
             purpose: Some(HELPER.to_owned()),
             usage: Usage::new().input_tokens(10).output_tokens(5),
         };
-        assert!(sender.try_send(Heard::Spent(spent)).is_ok());
+        let mut late = vec![Heard::Spent(spent)];
         if ended {
-            assert!(sender.try_send(Heard::Known).is_ok());
+            late.push(Heard::Known);
         }
+        let unsettled = app.world().resource::<Reported>().unsettled.clone();
+        unsettled.fetch_add(1, Ordering::SeqCst);
+        app.insert_resource(Late(late)).add_systems(
+            Last,
+            queue_late
+                .after(rig_ecs::StopTurnsOnExit)
+                .before(record_at_exit)
+                .run_if(on_message::<AppExit>),
+        );
         app.world_mut().write_message(AppExit::Success);
         app.update();
         let world = app.world();
