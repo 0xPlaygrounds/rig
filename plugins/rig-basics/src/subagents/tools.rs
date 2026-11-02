@@ -6,7 +6,7 @@ use serde::Deserialize;
 use super::lifecycle::{AgentDataItem, Agents};
 use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
 use super::{
-    Awaits, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentsPlugin, Subtask, answered,
+    Awaiting, Awaits, Lifecycle, ORIGIN, Peers, Request, SubagentsPlugin, Subtask, answered,
     refused,
 };
 use rig_harness::prelude::*;
@@ -252,10 +252,10 @@ impl Agents<'_, '_> {
         let Ok(me) = self.agents.get(caller) else {
             return Err("You are not an agent that can reach others.".to_owned());
         };
-        let owed = self.open.get(caller).into_iter();
-        let askers = owed
-            .flat_map(|open| open.0.iter())
-            .filter_map(|request| Some((self.find(&request.asker)?, true)));
+        let askers = self
+            .askers(caller)
+            .into_iter()
+            .map(|(asker, _)| (asker, true));
         let (spawned, parent) = (me.children, me.parent);
         // Its subagents, not the helpers plugins spawned for it.
         let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
@@ -330,13 +330,16 @@ impl Agents<'_, '_> {
             let request = RequestId(called.tool_call.id.to_string());
             let asked = Request {
                 id: request.clone(),
-                asker: called.agent_id.clone(),
+                to: target.id.clone(),
             };
-            let mut entity = self.commands.entity(target.entity);
-            let mut open = entity.entry::<OpenRequests>();
-            open.or_default().and_modify(|mut open| open.0.push(asked));
+            let mut awaiting = self.commands.entity(caller);
+            let mut awaiting = awaiting.entry::<Awaiting>();
+            awaiting
+                .or_default()
+                .and_modify(|mut awaiting| awaiting.0.push(asked));
             if !busy {
-                entity.insert(EffectParent(called.effect));
+                let effect = EffectParent(called.effect);
+                self.commands.entity(target.entity).insert(effect);
             }
             Some(request)
         };

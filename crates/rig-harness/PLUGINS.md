@@ -1386,7 +1386,10 @@ hold it, and at Start the plugin spawns the agent through the `Spawner`,
 as `SpawnedAgent(agent)` on it.
 
 - `SpawnSubagent::task(title, brief)` works on a task and reports to its
-  parent, as `task` starts it.
+  parent, as `task` starts it. Each request, by `task` or `message`, stays
+  in the asker's `Awaiting` until the report on it arrives there. The
+  report and the clearing go into the asker's log with one append, so a
+  restore sends again a report that log lost, and never one it kept.
 - `SpawnSubagent::helper(title)` works for the plugin, which talks to it:
   it has a `Helper` and an `AgentTitle`, reports to no one, and `message`
   cannot reach it; `.brief(text)` sends it a first message, and with

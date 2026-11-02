@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::io;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionResponse, Message, Usage};
@@ -12,6 +14,8 @@ use serde_json::json;
 
 use super::*;
 use rig_ecs::fork::{ForkAgent, ForkedFrom};
+use rig_ecs::session_log::{SessionLog, SessionStore};
+use rig_harness::rig_memory::{Files, LogWriteError, Store};
 use rig_harness_test_support::{
     MemoryStore, app_on, calls, commit_message, connect, reply, run_until, start_call,
 };
@@ -971,8 +975,16 @@ fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
         world.get::<Subtask>(fork).is_none(),
         "the fork is no subagent"
     );
-    let owed = world.get::<OpenRequests>(fork).map(|open| open.0.len());
-    assert_eq!(owed, Some(0), "the fork owes no report");
+    let awaited = world.get::<Awaiting>(session.parent).map(|awaiting| {
+        let owing = awaiting.0.iter().map(|request| request.to.clone());
+        owing.collect::<Vec<AgentId>>()
+    });
+    let child_id = world.get::<AgentId>(child).cloned();
+    assert_eq!(
+        awaited,
+        child_id.map(|id| vec![id]),
+        "the fork owes no report"
+    );
 
     let fork_model = MockCompletionModel::from_stream_turns([reply("FORK")]);
     session.answer_by(fork, &fork_model);
@@ -1016,7 +1028,7 @@ fn a_fork_of_a_helper_for_one_job_is_not_retired() {
 }
 
 #[test]
-fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume() {
+fn a_quit_stops_every_subagent_and_each_report_reaches_the_parent_once_across_resumes() {
     let store = MemoryStore::default();
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&store, Some(&model));
@@ -1030,6 +1042,8 @@ fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume()
     );
     assert!(asked.is_ok(), "{asked:?}");
     let (a, b) = (session.task("ta"), session.task("tb"));
+    let world = session.app.world();
+    let ids = [a, b].map(|agent| world.get::<AgentId>(agent).cloned().unwrap_or_default());
     // `a` asks `b` and waits on it, so `b` owes `a` a report as the app
     // quits.
     let ask = json!({ "agent": session.short(b), "text": "Hi." });
@@ -1044,7 +1058,7 @@ fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume()
 
     // Each stopped as the user's stop would: a note to the parent, kept
     // for the restart, whatever order the exit stopped them in.
-    let session = Session::new(&store, None);
+    let mut session = Session::new(&store, None);
     let reports = session.to(session.parent);
     let stopped = reports.iter().filter(|(_, mode, text)| {
         *mode == DeliveryMode::Inform && text.starts_with("Stopped: the run ended")
@@ -1052,6 +1066,187 @@ fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume()
     let mut requests: Vec<&str> = stopped.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["ta", "tb"], "{reports:?}");
+
+    // Each reached the parent once, and no later resume sends it again.
+    for resume in 0..2 {
+        session.app.update();
+        let world = session.app.world_mut();
+        let parent = session.parent;
+        let held = [(&ids[0], "ta"), (&ids[1], "tb")]
+            .map(|(from, request)| reports_held(world, parent, from, request));
+        assert_eq!(held, [1, 1], "resume {resume}");
+        session.app.world_mut().write_message(AppExit::Success);
+        session.app.update();
+        drop(session);
+        session = Session::new(&store, None);
+    }
+}
+
+/// A session store that fails the appends to one log that hold a text,
+/// once told the log: refused whole, or torn, its last line cut short.
+#[derive(Clone)]
+struct Failing {
+    store: MemoryStore,
+    log: Arc<Mutex<String>>,
+    text: &'static str,
+    torn: bool,
+}
+
+impl Failing {
+    /// Whether an append of `bytes` to the log `name` fails.
+    fn fails(&self, name: &str, bytes: &[u8]) -> bool {
+        let text = self.text.as_bytes();
+        let held = bytes.windows(text.len()).any(|part| part == text);
+        held && self.log.lock().is_ok_and(|log| *log == name)
+    }
+}
+
+impl Files for Failing {
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.store.write_file(name, bytes)
+    }
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.store.append_file(name, bytes)
+    }
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.store.read_file(name)
+    }
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        self.store.remove_file(name)
+    }
+    fn files(&self) -> io::Result<Vec<String>> {
+        self.store.files()
+    }
+}
+
+impl Store for Failing {
+    fn logs(&self) -> io::Result<Vec<String>> {
+        self.store.logs()
+    }
+    fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.store.read_log(name)
+    }
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        if !self.fails(name, bytes) {
+            return self.store.append_log(name, len, bytes);
+        }
+        if self.torn {
+            let body = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+            let last = body
+                .iter()
+                .rposition(|&byte| byte == b'\n')
+                .map_or(0, |at| at + 1);
+            let cut = last + (bytes.len() - last) / 2;
+            self.store
+                .append_log(name, len, bytes.get(..cut).unwrap_or_default())?;
+        }
+        Err(io::Error::other("disk full").into())
+    }
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        self.store.replace_log(name, len, bytes)
+    }
+    fn destroy(&self) -> io::Result<()> {
+        self.store.destroy()
+    }
+}
+
+/// The agent whose model calls [`hold_unreleased`] lets through.
+#[derive(Resource, Default)]
+struct Released(Option<Entity>);
+
+/// Holds every model call of a turn but those of the agent [`Released`]
+/// names.
+fn hold_unreleased(
+    calls: Query<(Entity, &ForAgent), (ReadyToStart, With<TurnCall>)>,
+    released: Res<Released>,
+    mut commands: Commands,
+) {
+    for (call, &ForAgent(agent)) in &calls {
+        if released.0 != Some(agent) {
+            commands.spawn(HoldOf(call));
+        }
+    }
+}
+
+/// How many times `agent` holds the report of `from` on `request`: in its
+/// conversation, or as a message it has not been given yet.
+fn reports_held(world: &mut World, agent: Entity, from: &AgentId, request: &str) -> usize {
+    let reports = |author: &Author| {
+        author.from.as_deref() == Some(from.0.as_str())
+            && author
+                .request
+                .as_ref()
+                .is_some_and(|asked| asked.0 == request)
+    };
+    let conversation = world.get::<Conversation>(agent);
+    let entries = conversation.map_or(0, |conversation| {
+        let authors = conversation.entries().filter_map(|entry| entry.author);
+        authors.filter(|author| reports(author)).count()
+    });
+    let mut messages = world.query_filtered::<(&Incoming, &ForAgent), Without<Outcome>>();
+    let waiting = messages
+        .iter(world)
+        .filter(|(message, at)| at.0 == agent && reports(&message.author))
+        .count();
+    entries + waiting
+}
+
+#[test]
+fn a_report_the_parents_log_failed_to_keep_reaches_it_once_after_the_restore() {
+    for torn in [false, true] {
+        let store = MemoryStore::default();
+        let failing = Failing {
+            store: store.clone(),
+            log: Arc::default(),
+            text: "Fixed src/lib.rs.",
+            torn,
+        };
+        let model = MockCompletionModel::from_stream_turns([reply("Fixed src/lib.rs.")]);
+        let mut session = Session::with(&store, Some(&model), |app| {
+            app.insert_resource(SessionStore::new(failing.clone()))
+                .init_resource::<Released>()
+                .add_systems(AgentPass, hold_unreleased.in_set(Stage::Gate));
+        });
+        let parent_id = session.app.world().get::<AgentId>(session.parent).cloned();
+        if let (Ok(mut log), Some(id)) = (failing.log.lock(), parent_id) {
+            *log = id.0;
+        }
+        let args = json!({ "description": "Fix", "prompt": "Fix the bug." });
+        session.call(session.parent, TASK, "t1", args);
+        let child = session.children(session.parent).last().copied();
+        let child = child.unwrap_or(Entity::PLACEHOLDER);
+        let child_id = session.app.world().get::<AgentId>(child).cloned();
+        session.app.update();
+        // The subagent answers; its log keeps the answer, and the parent's
+        // append with the report fails.
+        let world = session.app.world_mut();
+        world.resource_mut::<Released>().0 = Some(child);
+        let holds: Vec<Entity> = world
+            .query::<(Entity, &HoldOf)>()
+            .iter(world)
+            .filter(|(_, hold)| {
+                world
+                    .get::<ForAgent>(hold.0)
+                    .is_some_and(|of| of.0 == child)
+            })
+            .map(|(hold, _)| hold)
+            .collect();
+        for hold in holds {
+            world.despawn(hold);
+        }
+        run_until(&mut session.app, &session.wakes, |world| {
+            world.resource::<SessionLog>().failure().is_some()
+        });
+        drop(session);
+
+        let mut session = Session::new(&store, None);
+        for _ in 0..3 {
+            session.app.update();
+        }
+        let from = child_id.unwrap_or_default();
+        let held = reports_held(session.app.world_mut(), session.parent, &from, "t1");
+        assert_eq!(held, 1, "torn: {torn}");
+    }
 }
 
 #[test]

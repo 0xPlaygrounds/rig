@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, WAIT};
 use super::{
-    Environment, Helper, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentSystems,
+    Awaiting, Environment, Helper, Lifecycle, ORIGIN, Peers, Request, SubagentSystems,
     SubagentsPlugin, Subtask, answered, refused,
 };
 use rig_ecs::session_log::Never;
@@ -323,16 +323,17 @@ fn spawn_requested(
     }
     match request.role {
         Role::Task => {
-            child.insert((
-                Subtask,
-                AgentTitle(title),
-                OpenRequests(vec![Request {
-                    id: asked,
-                    asker: from.id.clone(),
-                }]),
-                Lifecycle::Working,
-            ));
+            child.insert((Subtask, AgentTitle(title), Lifecycle::Working));
             child.insert_if(Peers, || request.peers);
+            let asked = Request {
+                id: asked,
+                to: id.clone(),
+            };
+            let mut awaiting = commands.entity(parent);
+            let mut awaiting = awaiting.entry::<Awaiting>();
+            awaiting
+                .or_default()
+                .and_modify(|mut awaiting| awaiting.0.push(asked));
         }
         Role::Helper => {
             child.insert((Helper, AgentTitle(title)));

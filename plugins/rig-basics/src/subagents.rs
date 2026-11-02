@@ -10,10 +10,11 @@
 //!   `message` sends a child or a peer a request, or any agent it can reach
 //!   a message; `wait` keeps the caller's turn open until an agent messages
 //!   it or ends its turn.
-//! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
-//!   its turn ends: its final answer is its report on every request it
-//!   owes, a message marked [`Report`] to each asker. Until then it can
-//!   reach its askers. A restart reports open requests as stopped.
+//! - Each request stays in the asker's [`Awaiting`] (saved) until the
+//!   report on it arrives: the asked agent's final answer is its report on
+//!   every request it owes, a message marked [`Report`] to each asker.
+//!   Until then it can reach its askers. A restart reports open requests
+//!   as stopped, and those a finished agent owes as it finished.
 //! - Every message between agents, and every report, goes with its
 //!   addressee's next model call, or starts a turn of an idle one.
 //! - Stopping an agent's turn stops its subagents' turns too
@@ -83,7 +84,7 @@
 //! ));
 //! ```
 
-use rig_ecs::session_log::{Never, Reset};
+use rig_ecs::session_log::Never;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -131,7 +132,7 @@ impl Plugin for SubagentsPlugin {
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()
             .keeps_saved::<Environment>()
-            .keeps_saved::<OpenRequests>();
+            .keeps_saved::<Awaiting>();
         spawn::add(app);
         tools::add(app);
         lifecycle::add(app);
@@ -165,14 +166,17 @@ pub struct Report;
 #[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Peers;
 
-/// On an agent: the requests other agents sent it, oldest first, until it
-/// reports on them. Each gets exactly one report, to its asker, so a fork
-/// owes none. Saved through serde, as it holds rig-core's [`RequestId`].
+/// On an agent: the requests it sent other agents, oldest first, until the
+/// report on each arrives. A report goes into this agent's conversation or
+/// inbox in the frame its requests leave this, so one append to its log
+/// saves both, and a restore that finds a report here takes its requests
+/// off. A fork waits for none. Saved through serde, as it holds rig-core's
+/// [`RequestId`].
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(
     opaque,
     Component,
-    Saved(Reset),
+    Saved(Never),
     Default,
     Clone,
     Debug,
@@ -180,15 +184,33 @@ pub struct Peers;
     Deserialize
 )]
 #[serde(transparent)]
-pub struct OpenRequests(pub Vec<Request>);
+pub struct Awaiting(pub Vec<Request>);
 
-/// A request an agent owes a report on.
+impl Awaiting {
+    /// Takes off the requests a message by `author` reports on: when it
+    /// names one of the requests to its agent, that one and those to the
+    /// same agent before it.
+    pub(super) fn settle(&mut self, author: &Author) {
+        let (Some(from), Some(named)) = (&author.from, &author.request) else {
+            return;
+        };
+        let to = |request: &Request| request.to.0 == *from;
+        let Some(last) = self.0.iter().rposition(|r| to(r) && r.id == *named) else {
+            return;
+        };
+        let mut at = 0..;
+        self.0
+            .retain(|request| at.next().is_some_and(|at| at > last) || !to(request));
+    }
+}
+
+/// A request an agent waits for a report on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
     /// The call that asked, which the report names.
     pub id: RequestId,
-    /// The agent that asked, which the report goes to.
-    pub asker: AgentId,
+    /// The agent asked, which owes the report.
+    pub to: AgentId,
 }
 
 /// On a subagent: what it must know of its environment that it cannot see,
