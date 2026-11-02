@@ -10,7 +10,7 @@ One task:
   rig -p --json "task"    The same run as JSON lines (below); its last line
                           is {"v":3,"type":"exit","ms":…,"code":0,
                           "answer":"…","error":null,"session":"…",
-                          "usage":{…}}.
+                          "usage":{…},"usage_complete":true}.
   Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
   no answer text), 2 no task, a refused /command, an unknown --tools name
   or a --model the catalog lacks, 130 interrupted: by a signal, the
@@ -101,9 +101,10 @@ Events, each with "agent" when it is an agent's:
         or send, taken out of the session: a failed turn's, which go
         again only if sent again, or a refused /command, with why
   usage {model, purpose, usage}        one per model call, when its
-        usage is recorded: the agent's own (purpose turn, compaction, …)
-        and each one its helpers (`rig -p --json` children) reported
-        (purpose helper); usage has its tokens and, when known, its cost
+        usage is recorded, with the agent it counts for: the agent's own
+        calls (purpose turn, compaction, …), and each call its helpers
+        (`rig -p --json` children) reported (purpose helper, the agent
+        that ran helper); usage has its tokens and, when known, its cost
   reply {id, ok, error, state}         one per request
   exit {code, answer, error, session, usage, usage_complete}
         the last line of `rig -p --json`, and of a conversation that

@@ -19,7 +19,7 @@ use rig_harness_test_support::{
 
 use super::*;
 use crate::approval::{ApprovalPlugin, NeedsApproval};
-use crate::telemetry::usage::UsagePlugin;
+use crate::telemetry::usage::{UnknownSpend, UsagePlugin};
 
 mod tools;
 
@@ -1170,7 +1170,9 @@ fn each_recorded_call_is_a_usage_line() {
             .map(|(at, _)| at)
     };
     let end = kinds.iter().position(|kind| kind == "turn_end");
-    assert!(usage(1) < end && usage(2) > end, "{kinds:?}");
+    let before = usage(1).zip(end).is_some_and(|(usage, end)| usage < end);
+    let after = usage(2).zip(end).is_some_and(|(usage, end)| usage > end);
+    assert!(before && after, "{kinds:?}");
     let used = lines.of("usage");
     let fields = |line: &Value| {
         (
@@ -1847,6 +1849,52 @@ fn a_tool_call_of_no_turn_cut_off_by_a_signal_is_closed_too() {
         "{:?}",
         lines.parsed()
     );
+}
+
+/// A plugin's stop of the run's work fails the run with its reason, also
+/// after the agent answered, as a budget's stop of a subagent's helper
+/// does once the main agent's turn ended.
+#[test]
+fn a_plugins_stop_of_the_work_fails_the_run_after_an_answer() {
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.add_observer(
+            |settled: On<Add<Settled>>,
+             turns: Query<(&TurnOutcome, &ForAgent)>,
+             mut commands: Commands| {
+                if let Ok((TurnOutcome::Answered(_), &ForAgent(agent))) = turns.get(settled.entity)
+                {
+                    commands.trigger(StopTurn::plugin(agent, "budget", "Budget reached."));
+                }
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+    let exits = lines.of("exit");
+    let fields = exits
+        .first()
+        .map(|exit| ["code", "answer", "error"].map(|key| at(exit, key).clone()));
+    assert_eq!(
+        fields,
+        Some([json!(1), json!("hello"), json!("Budget reached.")]),
+        "{exits:?}"
+    );
+}
+
+/// The `exit` line says whether all the session's spend is known: not
+/// once a helper's was not.
+#[test]
+fn the_exit_line_says_whether_all_spend_is_known() {
+    for (unknown, complete) in [(0, true), (1, false)] {
+        let model = answering(&["hello"]);
+        let (_app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+            app.add_plugins(UsagePlugin)
+                .insert_resource(UnknownSpend(unknown));
+        });
+        let exits = lines.of("exit");
+        let said = exits.first().map(|exit| at(exit, "usage_complete").clone());
+        assert_eq!(said, Some(json!(complete)), "{exits:?}");
+    }
 }
 
 /// Holds each exit asked for until the run's own end, as a plugin that

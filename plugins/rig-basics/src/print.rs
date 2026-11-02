@@ -34,7 +34,8 @@
 //! for no prompt, a refused slash command, a `--tools` name no tool has or
 //! a `--model` the catalog lacks or that does not connect, 130 when cut off, as by a signal or a
 //! reader of stdout gone, else 1, such as for a failed turn, a turn that
-//! ended with no answer, or an error notice about the agent and no answer;
+//! ended with no answer, an error notice about the agent and no answer, or
+//! a plugin's stop of the run's work, such as a budget's, answer or not;
 //! a run of several turns exits with the worst. A `--json` run that exits
 //! before its work ends still closes each tool call and turn it started,
 //! and a one-shot one writes its `exit` line.
@@ -511,6 +512,7 @@ impl AppHeadlessExt for App {
         // prompt sees the tools still coming, or a refused `--tools`.
         .run_after_start()
         .add_observer(keep_answer)
+        .add_observer(fail_on_plugin_stop)
         .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
     }
 }
@@ -891,6 +893,15 @@ enum Reason<'a> {
     Told(String),
     /// The worst failure so far, else the latest error notice.
     Worst,
+}
+
+/// A plugin's stop of the run's work, such as a budget's, which reached an
+/// agent of it, fails the run with code 1 and its reason, even after an
+/// answer: the work it cut off never ended.
+fn fail_on_plugin_stop(reached: On<StopReached>, mut run: ResMut<Run>) {
+    if let StopCause::Plugin { why, .. } = reached.cause() {
+        run.fail(1, why.clone(), false);
+    }
 }
 
 /// Notes each turn of the agent the prompts go to that ended, with its

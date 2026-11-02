@@ -12,6 +12,7 @@ use serde_json::json;
 
 use super::*;
 use crate::helpers::{HELPER, HelperCommand, HelpersPlugin};
+use crate::telemetry::usage::Spent;
 use rig_ecs::inbox::Recalled;
 
 /// A stand-in for `rig -p --json` that reports two calls of 15 tokens,
@@ -93,8 +94,8 @@ fn alive(dir: &Path) -> bool {
 }
 
 /// Has the agent call `helper`, whose child reports 30 tokens and works
-/// on, past a limit of 20: the turn stops with `why`, an error notice says
-/// it, the child is stopped, and the next turn's model call is refused.
+/// on, past a limit of 20: the turn stops with `why`, the child is
+/// stopped, and the next turn's model call is refused.
 fn stops_the_helper_and_refuses_the_next_call(
     name: &str,
     settings: &str,
@@ -118,11 +119,6 @@ fn stops_the_helper_and_refuses_the_next_call(
     assert!(ended.contains("Stopped") && ended.contains(why), "{ended}");
     let spent = app.world().resource::<SessionUsage>().0.total;
     assert_eq!(spent.total_tokens(), 30, "both reports are in");
-    let errors = &app.world().resource::<Collected<Notice>>().0;
-    let said = errors
-        .iter()
-        .any(|notice| notice.level == NoticeLevel::Error && notice.text.contains(why));
-    assert!(said, "an error notice, which fails a -p run, says why");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while alive(&dir) && std::time::Instant::now() < deadline {
         app.update();
@@ -275,6 +271,42 @@ fn budget_sets_shows_and_removes_the_sessions_budget() {
         ["No budget: 0 tokens spent."]
     );
     assert_eq!(app.world().resource::<Budget>().0, Limit::default());
+
+    // A call with no price is in no dollar budget, and both say so.
+    let world = app.world_mut();
+    let agent = first_agent(world);
+    world.trigger(Spent {
+        agent,
+        turn: None,
+        model: None,
+        purpose: None,
+        usage: Usage::new().input_tokens(900).output_tokens(100),
+    });
+    let said = command(&mut app, "budget 1.00");
+    assert_eq!(
+        said,
+        [
+            "Budget: $0.00 of $1.00 spent. 1 of 1 calls had no price, such as a subscription \
+             model's, and are not in the dollars: /budget 500000 tokens counts them."
+        ]
+    );
+    command(&mut app, "budget 1200 tokens");
+    #[cfg(feature = "tui")]
+    shows_in_the_status_line(&app);
+}
+
+/// The status line's budget: the dollars marked as leaving out a call,
+/// red past 80% of the tokens.
+#[cfg(feature = "tui")]
+fn shows_in_the_status_line(app: &App) {
+    let status = &app.world().resource::<rig_tui::AppStatus>().0;
+    let item = status.iter().find(|item| item.name == "budget");
+    let shown = item.map(|item| (item.text.as_str(), item.tone));
+    assert_eq!(
+        shown,
+        Some(("$0.00+/$1.00 1.0k/1.2k tokens", rig_tui::Tone::Red)),
+        "past 80% of the tokens"
+    );
 }
 
 #[test]
@@ -297,11 +329,7 @@ fn lowering_the_budget_below_what_was_spent_stops_the_running_helper() {
     assert!(!seen || alive(&dir), "the helper works");
     assert_eq!(
         command(&mut app, "budget 25 tokens"),
-        [
-            "Budget: 30 of 25 tokens spent.",
-            "Budget reached: 30 of 25 tokens spent. Raise it with /budget, or [budget] in \
-             settings.toml for new sessions."
-        ]
+        ["Budget: 30 of 25 tokens spent."]
     );
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1

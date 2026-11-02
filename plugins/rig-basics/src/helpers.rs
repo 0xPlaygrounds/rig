@@ -11,9 +11,9 @@
 //! built from a plugin list changed since the parent started may lack one:
 //! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
 //! stdin. Past its timeout or dead, it fails its task; stopping the turn
-//! stops every child, so none outlives the call: each gets the time a
-//! launcher takes to end ([`STOP_WINDOW`]) before it is killed, so its own
-//! helpers are stopped in turn.
+//! stops every child, so none outlives the call: on unix each gets the
+//! time a launcher takes to end ([`STOP_WINDOW`]) before it is killed, so
+//! its own helpers are stopped in turn.
 //!
 //! What a child spends is the calling agent's, as purpose `helper`: each
 //! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
@@ -25,6 +25,8 @@
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use rig_harness::harness_protocol::{self, STOP_WINDOW};
@@ -83,7 +85,7 @@ impl Plugin for HelpersPlugin {
              them separate files or directories (such as git worktrees). Helpers pay for \
              independent parts and for slow work beside yours, not for edits you already \
              know. You get back each one's final answer, or why it failed, its session and \
-             what it cost.",
+             what it cost, or that some of that is unknown.",
             2 * AT_ONCE
         );
         if !app.is_plugin_added::<UsagePlugin>() {
@@ -98,7 +100,7 @@ impl Plugin for HelpersPlugin {
             .add_systems(Update, record.before(AgentLoop))
             .add_systems(
                 Last,
-                record
+                record_at_exit
                     .after(rig_ecs::StopTurnsOnExit)
                     .before(rig_ecs::SaveSystems)
                     .run_if(on_message::<AppExit>),
@@ -118,11 +120,12 @@ impl Plugin for HelpersPlugin {
 }
 
 /// What children reported and is not yet recorded, sent from their
-/// threads.
+/// threads, and how many still run.
 #[derive(Resource)]
 struct Reported {
     sender: async_channel::Sender<Heard>,
     receiver: async_channel::Receiver<Heard>,
+    running: Arc<AtomicU64>,
 }
 
 /// A child's report: a call's spend, or that some of its spend is unknown.
@@ -134,15 +137,18 @@ enum Heard {
 impl Default for Reported {
     fn default() -> Self {
         let (sender, receiver) = async_channel::unbounded();
-        Self { sender, receiver }
+        Self {
+            sender,
+            receiver,
+            running: Arc::default(),
+        }
     }
 }
 
 /// Records what children reported: in the pass a call's result arrives,
 /// which comes after everything its children reported, so the spend is
-/// in before the next model call; before the agent loop, for what came
-/// while no call ended, such as from a stopped call's children; and on the
-/// exit, before the session is saved and the `exit` line written.
+/// in before the next model call; and before the agent loop, for what came
+/// while no call ended, such as from a stopped call's children.
 fn record(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, mut commands: Commands) {
     while let Ok(heard) = reported.receiver.try_recv() {
         match heard {
@@ -150,6 +156,15 @@ fn record(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, mut comman
             Heard::Unknown => unknown.0 += 1,
         }
     }
+}
+
+/// On the exit, before the session is saved and the `exit` line written:
+/// records what came this frame, such as as the exit stopped the turns,
+/// and counts each child still running, which reports after this run is
+/// gone, as spend unknown.
+fn record_at_exit(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, commands: Commands) {
+    unknown.0 += reported.running.load(Ordering::SeqCst);
+    record(reported, unknown, commands);
 }
 
 /// The tools a child has: those registered as the app started.
@@ -306,6 +321,7 @@ fn start(
             agent: called.agent,
             turn: turns.get(called.call).ok().map(|&CallOf(turn)| turn),
             sender: reported.sender.clone(),
+            running: reported.running.clone(),
             wake: wake.clone(),
         },
     };
@@ -339,6 +355,7 @@ struct Reports {
     agent: Entity,
     turn: Option<Entity>,
     sender: async_channel::Sender<Heard>,
+    running: Arc<AtomicU64>,
     wake: Wake,
 }
 
@@ -445,6 +462,7 @@ impl Runner {
             Ok(process) => process,
             Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
         };
+        let _live = Live::of(&self.reports.running);
         let mut read = Read::new(self.reports.clone());
         let ended = process.run(Some(Instant::now() + self.timeout), |line| {
             read.line(line);
@@ -461,6 +479,22 @@ impl Runner {
             Err(error) => Err(error.to_string()),
         };
         (answer, note)
+    }
+}
+
+/// Counts a child as running while it lives.
+struct Live(Arc<AtomicU64>);
+
+impl Live {
+    fn of(running: &Arc<AtomicU64>) -> Self {
+        running.fetch_add(1, Ordering::SeqCst);
+        Self(running.clone())
+    }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

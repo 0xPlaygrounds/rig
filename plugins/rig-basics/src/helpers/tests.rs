@@ -9,7 +9,7 @@ use serde_json::json;
 
 use super::*;
 use crate::budget::Limit;
-use crate::telemetry::usage::{AgentUsage, UnknownSpend};
+use crate::telemetry::usage::{AgentUsage, Spent, UnknownSpend};
 
 /// A stand-in for `rig -p --json`: it notes its arguments, how many run
 /// at once and the budget it was left in the directory it is given, and
@@ -289,6 +289,21 @@ fn a_helper_off_this_version_or_cut_short_has_its_spend_unknown() {
     assert_eq!(unknown, 4, "each counts as not all known");
 }
 
+/// A run that exits while a helper works cannot hear the rest of its
+/// spend: that helper counts as not all known, before the session is
+/// saved and the `exit` line written.
+#[test]
+fn a_helper_still_working_at_the_exit_has_its_spend_unknown() {
+    let (mut app, wakes, dir) = helped("exit", &[json!({ "task": "slow" })]);
+    let running = dir.join("run");
+    run_until(&mut app, &wakes, |_| {
+        std::fs::read_dir(&running).is_ok_and(|mut entries| entries.next().is_some())
+    });
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert_eq!(app.world().resource::<UnknownSpend>().0, 1);
+}
+
 #[test]
 fn a_helper_is_left_what_is_left_of_the_budget() {
     let (mut app, wakes, dir) = helped("budget", &[json!({ "task": "one" })]);
@@ -297,10 +312,17 @@ fn a_helper_is_left_what_is_left_of_the_budget() {
         tokens: Some(1000),
     };
     app.insert_resource(Budget(limit));
+    // The session spent 100 tokens with no price before the call.
+    app.world_mut().trigger(Spent {
+        agent: None,
+        turn: None,
+        model: None,
+        purpose: None,
+        usage: Usage::new().input_tokens(60).output_tokens(40),
+    });
     output(&mut app, &wakes, 0);
     let left = std::fs::read_to_string(dir.join("budget")).unwrap_or_default();
-    // The caller's call that asked for it reported no tokens.
-    assert_eq!(left.trim(), "0.5 1000");
+    assert_eq!(left.trim(), "0.5 900");
 }
 
 /// A helper's directory is joined as the file tools join a path: `~` is

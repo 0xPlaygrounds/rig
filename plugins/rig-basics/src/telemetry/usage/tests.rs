@@ -167,6 +167,16 @@ fn a_call_counts_below_every_agent_above_it_after_its_agent_is_gone() {
     let column = (columns.iter(world)).find(|(column, of)| of.0 == child && column.tag == "spent");
     let text = column.map(|(column, _)| column.text.clone());
     assert_eq!(text.as_deref(), Some("spent 10 tokens, 100 tokens below"));
+
+    // A helper whose spend is not all known makes these a lower bound.
+    world.insert_resource(UnknownSpend(1));
+    world.trigger(RunCommand::new(root, "usage".to_owned()));
+    world.flush();
+    let shown = notices(world).join("\n");
+    assert!(
+        shown.contains("One helper's spend is not all known: these are at least what was spent."),
+        "{shown}"
+    );
 }
 
 /// Sends each turn call to its connection instead of the agent's model, as
