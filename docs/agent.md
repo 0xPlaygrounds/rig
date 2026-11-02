@@ -183,7 +183,9 @@ API keys, tokens, private keys and the values of secret-named variables
 secret, where they come in: in the model's reply as it streams, in each
 tool's output and result, and in your messages and the files they name. The
 model, the session's logs, the terminal view, `--json`, ACP, subagents and a
-resumed session see only the placeholders. A tool call that names one runs
+resumed session see only the placeholders, so an image or audio link that
+holds a key, such as a presigned URL, reaches the model with its
+placeholder and no longer fetches. A tool call that names one runs
 with the real value, so the model can still put your key in a file or a
 command without seeing it. A shell command naming one whose value the shell
 would read as code, such as a quote, a space or `$`, is refused. The values
