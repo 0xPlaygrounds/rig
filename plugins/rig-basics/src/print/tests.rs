@@ -2165,7 +2165,10 @@ fn a_notice_is_redacted_of_a_secret_learned_after_it() {
     let model = answering(&["done"]);
     let prompt = "PASSWORD=hunter2hunter2 Read @hunter2hunter2.txt";
     let (_, lines) = one_shot_on(&MemoryStore::default(), prompt, None, &model, true, |app| {
-        app.add_plugins((crate::coding_tools::AttachPlugin, crate::redact::RedactPlugin));
+        app.add_plugins((
+            crate::coding_tools::AttachPlugin,
+            crate::redact::RedactPlugin,
+        ));
     });
     let notices = lines.of("notice");
     let texts: Vec<_> = notices.iter().map(|line| at(line, "text")).collect();
