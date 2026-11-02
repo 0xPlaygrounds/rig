@@ -316,9 +316,10 @@ impl AppToolsExt for App {
         let mut tools = world.query::<(Entity, &ToolDef)>();
         let tool = tools
             .iter(world)
-            .find(|(_, def)| def.0.name.as_str() == name);
-        if let Some(tool) = tool.map(|(tool, _)| tool) {
-            world.entity_mut(tool).insert(StartsAgents);
+            .find(|(_, def)| def.0.name.as_str() == name)
+            .map(|(tool, _)| tool);
+        if let Some(mut tool) = tool.and_then(|tool| world.get_entity_mut(tool).ok()) {
+            tool.insert(StartsAgents);
         }
         self
     }

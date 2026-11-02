@@ -1363,7 +1363,7 @@ use rig_harness::prelude::*;
 /// A successor of each agent whose turn ended, with its settings.
 fn hand_off(
     settled: On<Add<Settled>>,
-    turns: Query<&ForAgent>,
+    turns: Query<&ForAgent, With<TurnOutcome>>,
     mut spawner: Spawner,
     mut notices: MessageWriter<Notice>,
 ) {

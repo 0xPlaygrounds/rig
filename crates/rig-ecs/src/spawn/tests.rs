@@ -111,3 +111,28 @@ fn a_link_made_round_the_spawner_never_puts_an_agent_past_the_limit() {
     let notices = world.resource::<Messages<Notice>>();
     assert_eq!(notices.iter_current_update_messages().count(), 2);
 }
+
+/// A root at the depth limit, as in a `rig -p` a deep agent started, keeps
+/// a tool registered after it, such as an MCP server's, and still starts
+/// no agent.
+#[test]
+fn a_root_at_the_limit_keeps_later_tools_and_starts_no_agent() {
+    let mut app = app(0);
+    let root = spawn_root(app.world_mut()).id();
+    app.add_open_tool(
+        "later",
+        "A tool.",
+        ToolOptions::default(),
+        |_: On<ToolCalled<Value>>| {},
+    );
+    let world = app.world_mut();
+    let keeps = world
+        .get::<ToolAccess>(root)
+        .is_some_and(|access| access.allows("later"));
+    assert!(keeps);
+    let child = spawn(world, Origin::ChildOf(root), AgentSpec::default());
+    assert!(
+        matches!(child, Err(SpawnRefused::TooDeep { .. })),
+        "{child:?}"
+    );
+}

@@ -231,7 +231,7 @@ fn spawn_agent(
         Some(parent) => Origin::ChildOf(find(world, &parent)?),
         None => Origin::Root,
     };
-    let id = AgentId::default();
+    let id = spec.id.clone().unwrap_or_default();
     let spec = AgentSpec {
         id: Some(id.clone()),
         under: under.or(spec.under),

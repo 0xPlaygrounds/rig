@@ -979,12 +979,10 @@ fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
         let owing = awaiting.0.iter().map(|request| request.to.clone());
         owing.collect::<Vec<AgentId>>()
     });
-    let child_id = world.get::<AgentId>(child).cloned();
-    assert_eq!(
-        awaited,
-        child_id.map(|id| vec![id]),
-        "the fork owes no report"
-    );
+    // The child may have reported already; the fork is never waited on.
+    let fork_id = world.get::<AgentId>(fork).cloned();
+    let owes = awaited.is_some_and(|awaited| fork_id.is_some_and(|id| awaited.contains(&id)));
+    assert!(!owes, "the fork owes no report");
 
     let fork_model = MockCompletionModel::from_stream_turns([reply("FORK")]);
     session.answer_by(fork, &fork_model);

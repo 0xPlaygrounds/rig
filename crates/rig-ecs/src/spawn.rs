@@ -7,7 +7,11 @@
 //! use rig_ecs::spawn::{AgentSpec, Origin, Spawner};
 //!
 //! /// Each agent whose turn ended gets a reviewer below it.
-//! fn add_reviewer(settled: On<Add<Settled>>, turns: Query<&ForAgent>, mut spawner: Spawner) {
+//! fn add_reviewer(
+//!     settled: On<Add<Settled>>,
+//!     turns: Query<&ForAgent, With<TurnOutcome>>,
+//!     mut spawner: Spawner,
+//! ) {
 //!     if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
 //!         let spec = AgentSpec { name: "reviewer".into(), ..AgentSpec::default() };
 //!         spawner.spawn(Origin::ChildOf(agent), spec).ok();
@@ -290,17 +294,12 @@ pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entit
     spawned
 }
 
-/// Spawns an agent nothing spawned, with the defaults, named `agent`. At
-/// or past the depth limit, as in a process working for a deep agent, it
-/// has no tool that starts agents.
+/// Spawns an agent nothing spawned, with the defaults, named `agent`. It
+/// keeps every tool, those registered later too; at or past the depth
+/// limit, as in a process working for a deep agent, a call that would
+/// start an agent is refused.
 pub fn spawn_root(world: &mut World) -> EntityWorldMut<'_> {
-    let policy = world.get_resource::<SpawnPolicy>();
-    let mut access = ToolAccess::all();
-    if policy.is_some_and(|policy| policy.root_depth >= policy.max_depth) {
-        let mut tools = world.query::<(&ToolDef, Has<StartsAgents>)>();
-        access = without_starters(access, tools.iter(world));
-    }
-    world.spawn((Name::new("agent"), Agent::new(), access))
+    world.spawn((Name::new("agent"), Agent::new(), ToolAccess::all()))
 }
 
 /// Removes a [`SpawnedBy`] link that puts the agent, or one below it,
