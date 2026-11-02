@@ -286,10 +286,7 @@ fn a_helper_is_left_what_is_left_of_the_budget() {
         usd: Some(0.5),
         tokens: Some(1000),
     };
-    app.insert_resource(Budget {
-        limit,
-        warned: false,
-    });
+    app.insert_resource(Budget(limit));
     output(&mut app, &wakes, 0);
     let left = std::fs::read_to_string(dir.join("budget")).unwrap_or_default();
     // The caller's call that asked for it reported no tokens.

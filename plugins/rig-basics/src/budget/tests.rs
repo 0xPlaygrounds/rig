@@ -175,7 +175,7 @@ fn budget_sets_shows_and_removes_the_sessions_budget_and_lowering_it_stops_work(
         command(&mut app, "budget off"),
         ["No budget: 0 tokens spent."]
     );
-    assert_eq!(app.world().resource::<Budget>().limit, Limit::default());
+    assert_eq!(app.world().resource::<Budget>().0, Limit::default());
 }
 
 #[test]

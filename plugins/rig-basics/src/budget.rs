@@ -7,9 +7,8 @@
 //! What counts is [`SessionUsage`]: every model call of every agent, those
 //! of agents since despawned and those a `helper` child reported included,
 //! priced as rig-core prices them, so `usd` is a lower bound of the bill,
-//! and `tokens` counts the input and output tokens providers reported. At
-//! 80% a warning is shown once. Once the budget
-//! is reached, every model call about to start is refused, and every
+//! and `tokens` counts the input and output tokens providers reported.
+//! The status line shows it, red past 80%. Once the budget is reached, every model call about to start is refused, and every
 //! running turn is stopped, which stops its `helper` children and theirs,
 //! each with the reason. A call already sent finishes, so a tree can pass
 //! the budget by the calls it had in flight.
@@ -39,7 +38,8 @@ pub const USD_VARIABLE: &str = "RIG_BUDGET_USD";
 /// budget in.
 pub const TOKENS_VARIABLE: &str = "RIG_BUDGET_TOKENS";
 
-/// The share of the budget past which it is nearly spent.
+/// The share of the budget past which the status line is red.
+#[cfg(feature = "tui")]
 const WARN_AT: f64 = 0.8;
 
 /// Keeps the session within its budget, and adds `/budget`; adds
@@ -58,26 +58,20 @@ impl Plugin for BudgetPlugin {
             usd: variable(USD_VARIABLE),
             tokens: variable(TOKENS_VARIABLE),
         };
-        app.insert_resource(Budget {
-            limit: limit.unwrap_or_default(),
-            warned: false,
-        })
-        .insert_resource(HandedDown(handed))
-        .add_command(
-            "budget",
-            "Show what the session spent against its budget, set it (/budget 2.00, \
+        app.insert_resource(Budget(limit.unwrap_or_default()))
+            .insert_resource(HandedDown(handed))
+            .add_command(
+                "budget",
+                "Show what the session spent against its budget, set it (/budget 2.00, \
              /budget 500000 tokens) or remove it (/budget off)",
-            budget,
-        )
-        .add_systems(AgentPass, refuse_when_reached.in_set(Stage::Gate))
-        .add_systems(
-            PostUpdate,
-            (
+                budget,
+            )
+            .add_systems(AgentPass, refuse_when_reached.in_set(Stage::Gate))
+            .add_systems(
+                PostUpdate,
                 stop_when_reached
                     .run_if(resource_changed::<SessionUsage>.or_eager(resource_changed::<Budget>)),
-                warn.run_if(resource_changed::<SessionUsage>),
-            ),
-        );
+            );
         #[cfg(feature = "tui")]
         app.init_resource::<rig_tui::AppStatus>().add_systems(
             PostUpdate,
@@ -122,6 +116,7 @@ impl Limit {
     }
 
     /// Whether 80% of it is spent.
+    #[cfg(feature = "tui")]
     fn near(&self, spent: &UsageTotals) -> bool {
         let usd = self.usd.is_some_and(|usd| spent.cost >= usd * WARN_AT);
         let tokens = (self.tokens)
@@ -152,14 +147,9 @@ impl Limit {
 }
 
 /// The session's budget, saved with it.
-#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq)]
+#[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq)]
 #[reflect(Resource, Saved, Default)]
-pub struct Budget {
-    /// What it allows.
-    pub limit: Limit,
-    /// Whether the warning at 80% of it was shown.
-    pub warned: bool,
-}
+pub struct Budget(pub Limit);
 
 /// What the run that started this one as a `helper` child left of its
 /// budget ([`USD_VARIABLE`], [`TOKENS_VARIABLE`]): this run never spends
@@ -176,7 +166,7 @@ pub(crate) fn hand_down(
     spent: &SessionUsage,
 ) -> Vec<(&'static str, String)> {
     let spent = &spent.0.total;
-    let own = budget.map(|budget| budget.limit.left(spent));
+    let own = budget.map(|budget| budget.0.left(spent));
     let handed = handed.map(|HandedDown(limit)| limit.left(spent));
     let left = own.unwrap_or_default().lower(handed.unwrap_or_default());
     let usd = left.usd.map(|usd| (USD_VARIABLE, usd.to_string()));
@@ -203,7 +193,7 @@ fn variable<T: std::str::FromStr + Default>(name: &str) -> Option<T> {
 /// Why the session may spend no more: its budget's or the handed-down
 /// one's, as reached, naming how to raise it; `None` while neither is.
 fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<String> {
-    if let Some((used, true)) = budget.limit.against(spent) {
+    if let Some((used, true)) = budget.0.against(spent) {
         return Some(format!(
             "Budget reached: {used} spent. Raise it with /budget, or [budget] in settings.toml \
              for new sessions."
@@ -258,22 +248,6 @@ fn stop_when_reached(
     }
 }
 
-/// Warns once when 80% of the budget is spent.
-fn warn(
-    spending: Res<SessionUsage>,
-    mut budget: ResMut<Budget>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let spent = &spending.0.total;
-    if budget.warned || !budget.limit.near(spent) {
-        return;
-    }
-    budget.warned = true;
-    if let Some((used, _)) = budget.limit.against(spent) {
-        notices.write(Notice::info(None, format!("Budget nearly spent: {used}.")));
-    }
-}
-
 /// `/budget`, `/budget 2.00`, `/budget 500000 tokens`, `/budget off`.
 fn budget(
     In(args): In<CommandArgs>,
@@ -285,18 +259,18 @@ fn budget(
     let words: Vec<&str> = args.args.split_whitespace().collect();
     let positive = |usd: &f64| usd.is_finite() && *usd > 0.0;
     let set = match words.as_slice() {
-        [] => Some(budget.limit),
+        [] => Some(budget.0),
         ["off"] => Some(Limit::default()),
         [amount] => {
             (amount.trim_start_matches('$').parse().ok().filter(positive)).map(|usd| Limit {
                 usd: Some(usd),
-                ..budget.limit
+                ..budget.0
             })
         }
         [amount, "tokens"] => {
             (amount.parse().ok().filter(|tokens| *tokens > 0)).map(|tokens| Limit {
                 tokens: Some(tokens),
-                ..budget.limit
+                ..budget.0
             })
         }
         _ => None,
@@ -309,11 +283,7 @@ fn budget(
         notices.write(Notice::error(args.agent, why));
         return;
     };
-    if limit != budget.limit {
-        budget.limit = limit;
-        // A budget nearly spent already says so here.
-        budget.warned = limit.near(spent);
-    }
+    budget.set_if_neq(Budget(limit));
     let mut text = match limit.against(spent) {
         Some((used, _)) => format!("Budget: {used} spent."),
         None => format!("No budget: {} spent.", spent.cost_or_tokens()),
@@ -339,7 +309,7 @@ fn show(
     mut status: ResMut<rig_tui::AppStatus>,
 ) {
     let spent = &spending.0.total;
-    let limit = budget.limit.lower(handed.0);
+    let limit = budget.0.lower(handed.0);
     let usd = limit.usd.map(|usd| format!("${:.2}/${usd:.2}", spent.cost));
     let tokens = limit.tokens.map(|tokens| {
         let used = tokens_label(spent.total_tokens());
