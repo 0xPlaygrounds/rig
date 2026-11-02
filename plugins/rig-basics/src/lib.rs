@@ -4,8 +4,8 @@
 //! `plugins.toml` by the path of the module that defines it, its only
 //! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
-//! [`coding_tools`], [`reload`], [`print`](mod@print), [`helpers`], [`subagents`] and
-//! [`welcome`].
+//! [`coding_tools`], [`redact`], [`reload`], [`print`](mod@print), [`helpers`],
+//! [`subagents`] and [`welcome`].
 //! [`approval`], [`preview`], [`checkpoint`] and [`session_picker`] are the
 //! services only some plugins add.
 
@@ -29,6 +29,7 @@ pub mod models;
 pub mod preview;
 pub mod print;
 pub mod prompt;
+pub mod redact;
 pub mod reload;
 pub mod session_picker;
 pub mod sessions;

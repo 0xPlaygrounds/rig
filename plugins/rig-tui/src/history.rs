@@ -21,9 +21,8 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// included.
 ///
 /// The view loads it in `PreStartup`, puts each prompt [`Sent`] and the
-/// text an [`Editor`] dropped unsent (its secrets redacted), in the order
-/// they happened, as the newest in [`HistorySystems::Record`], and in
-/// [`HistorySystems::Save`]
+/// text an [`Editor`] dropped unsent, in the order they happened, as the
+/// newest in [`HistorySystems::Record`], and in [`HistorySystems::Save`]
 /// adds to the file those recorded since that are still in `entries`,
 /// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
 /// the two, such as to keep secrets out. After another agent is shown,
@@ -88,6 +87,18 @@ impl PromptHistory {
             entries,
             file: Some(files),
             unsaved: Vec::new(),
+        }
+    }
+
+    /// Rewrites each prompt, those still to be saved too, that `rewrite`
+    /// returns a new text for, such as one with its secrets redacted: a
+    /// filter between [`HistorySystems::Record`] and [`HistorySystems::Save`]
+    /// that changes prompts instead of leaving them out.
+    pub fn rewrite(&mut self, rewrite: impl Fn(&str) -> Option<String>) {
+        for prompt in self.entries.iter_mut().chain(&mut self.unsaved) {
+            if let Some(rewritten) = rewrite(prompt) {
+                *prompt = rewritten;
+            }
         }
     }
 

@@ -162,7 +162,7 @@ this order, until nothing moves:
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
 | `Review` | kernel, then plugins | outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
-| `Commit` | kernel | redacts keys in tool answers, then settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
+| `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
 | `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`ReadyToStart`): hold it or decide it (`Decision`) |
@@ -1399,8 +1399,10 @@ its `EffectLog`: `read()`, or `read_matching(&filter)` by agent, kind name
 the end of the last frame.
 
 **Redacting.** A record holds what its effect really carried (tool output,
-file changes with the text before, the request as sent). A plugin changes
-records before they are written (`MessageMutator<EffectRecorded>`, below) and
+file changes with the text before, the request as sent); the log is written
+as it is given. `rig_basics::redact::RedactPlugin`, on by default, redacts
+every record this way. A plugin changes records before they are written
+(`MessageMutator<EffectRecorded>`, below) and
 [rewrites](#rewriting-saved-history-a-redaction) those written once the
 session stopped. rig-core's `redact` finds keys and tokens by their shapes
 (`json`, `text`).
@@ -1597,8 +1599,8 @@ fn undo(In(args): In<NoArgs>, mut agents: Query<&mut Conversation, Without<Activ
 Records are only appended. A session no rig runs is rewritten in place with
 `rewrite_stopped(&stores, &paths, &dir, by, &with)`, under its lock: every
 saved record keeps its place and stamp, and the store's files, the scratch
-files and the name are mapped too. The running session is refused; keys are
-already redacted as its logs are written. `with` is a `Rewrite`: `Strings`
+files and the name are mapped too. The running session is refused; with
+`rig_basics::redact::RedactPlugin`, keys never reach its logs. `with` is a `Rewrite`: `Strings`
 maps every string (a redaction, a path remap), `rig_memory::Messages` only
 messages, or its own hooks per message, aside, saved value, text and file. A
 program without an app calls `rig_memory::rewrite(&store, by, &with)` on a
@@ -2500,10 +2502,10 @@ any run and inert without the view:
   history, so a plugin that replaces it calls `clear` before `set`.
   `PromptHistory` is the prompts Up and Down browse, each text once, kept
   in `PluginData.project`: the view puts each prompt sent (`Sent`, which
-  a plugin writes too) and the text an editor dropped unsent (redacted),
-  in the order they happened, as the newest in `HistorySystems::Record`
-  and saves in `HistorySystems::Save`;
-  a system between the two filters what is kept. After another agent is
+  a plugin writes too) and the text an editor dropped unsent, in the
+  order they happened, as the newest in `HistorySystems::Record` and
+  saves in `HistorySystems::Save`; a system between the two filters what
+  is kept, or `rewrite`s it, as the redaction plugin does. After another agent is
   shown, `HistorySystems::Seed` puts its conversation's typed prompts as
   the newest, unsaved, in `TuiKeys` before the next key; a filter that
   should also keep them from Up runs there too, after it and before

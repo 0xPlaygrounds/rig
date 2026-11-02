@@ -32,7 +32,7 @@ use rig_ecs::prelude::{
     ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
 use rig_tools::workspace::Workspace;
-use rig_tools::{Delete, Edit, List, Live, Move, Read, Search, Shell, Spill, Write};
+use rig_tools::{Delete, Edit, LineFilter, List, Live, Move, Read, Search, Shell, Spill, Write};
 
 use crate::host::session::Scratch;
 use crate::progress::CallOutput;
@@ -59,6 +59,10 @@ pub struct CallPlace {
     /// read by the front as the call's [`CallOutput`]. `None` from
     /// [`PerCallTools::place`]; the harness sets it for a call it runs.
     pub live: Option<Live>,
+    /// What each line of the call's output goes through first, such as a
+    /// redaction plugin's, set before [`PerCallSystems::Build`]; `None`
+    /// until a plugin sets it.
+    pub filter: Option<LineFilter>,
     /// Where output cut short is kept whole, if anywhere
     /// ([`Scratch::spill`]). `None` from [`PerCallTools::place`]; the
     /// harness sets it for a call it runs.
@@ -105,6 +109,7 @@ impl PerCallTool for Shell {
             launcher: self.launcher.clone().in_dir(&place.base),
             workspace: place.workspace,
             live: place.live,
+            filter: place.filter,
             spill: place.spill,
             confine: place.confine,
             ..self.clone()
@@ -305,6 +310,7 @@ impl PerCallTools<'_, '_> {
             base: dir.map_or(&self.root.0, |dir| &dir.0).clone(),
             confine: dir.is_some(),
             live: None,
+            filter: None,
             spill: None,
         }
     }

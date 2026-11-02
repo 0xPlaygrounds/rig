@@ -71,7 +71,7 @@ use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
 use super::tools::{
     CallHandler, Footprint, InReply, ToolRequest, ToolStart, ToolStarts, complete_calls,
-    compute_footprints, redact_results, refuse_calls,
+    compute_footprints, refuse_calls,
 };
 use super::turn::{
     Adapted, DroppedOptions, ModelRequest, NO_MODEL, SentTo, StreamDelta, TurnCall, back_off,
@@ -102,8 +102,7 @@ pub enum Stage {
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
     /// ([`ReadyToSettle`]), and a turn's proposed [`TurnOutcome`], in the
-    /// [`ReviewSystems`] phases. Before them the kernel redacts every
-    /// secret in a tool call's answer ([`rig_core::redact`]).
+    /// [`ReviewSystems`] phases.
     Review,
     /// The kernel settles what is answered and unheld, writes its
     /// [`EffectRecorded`], commits replies and their tool results, and ends the
@@ -697,14 +696,7 @@ pub(crate) fn build(app: &mut App) {
         )
         .add_systems(
             AgentPass,
-            // After every reviewer and before anything is committed: no
-            // key reaches the model, the conversation or a log, and no
-            // plugin has to order itself against it. A plugin that swaps
-            // secrets for placeholders in Review leaves nothing to redact.
-            (
-                redact_results.in_set(Enter(Stage::Commit)),
-                super::tools::keep_within_parents.in_set(Enter(Stage::Admit)),
-            ),
+            super::tools::keep_within_parents.in_set(Enter(Stage::Admit)),
         )
         .configure_sets(
             AgentPass,

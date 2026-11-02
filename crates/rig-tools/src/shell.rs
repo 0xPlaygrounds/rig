@@ -11,7 +11,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rig_core::completion::ToolAnnotations;
-use rig_core::redact;
 use rig_core::tool::{
     ExitStatus, KeptEnd, OutputCut, Tool, ToolContext, ToolExecutionError, args_schema,
 };
@@ -20,7 +19,9 @@ use serde::Deserialize;
 
 use crate::process::{Ended, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
-use crate::{Excerpt, Live, MAX_LINE_CHARS, OutputLimit, Source, Spill, blocking, shell_path};
+use crate::{
+    Excerpt, LineFilter, Live, MAX_LINE_CHARS, OutputLimit, Source, Spill, blocking, shell_path,
+};
 
 /// Output past which the command is killed. While it runs, only what the
 /// [`OutputLimit`] keeps, and each stream's unfinished line, is held in
@@ -35,7 +36,8 @@ const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 /// errors and failures from between. Publishes how the
 /// command ended ([`ExitStatus`]) beside its output, and how the output was
 /// cut ([`OutputCut`]) when it was, and reports the output
-/// as it comes to its [`Live`], if it has one.
+/// as it comes to its [`Live`], if it has one. Each line goes through its
+/// [`LineFilter`], if it has one, before anything else sees it.
 #[derive(Clone, Debug)]
 pub struct Shell {
     /// Where the command runs.
@@ -45,6 +47,9 @@ pub struct Shell {
     /// Where each piece of output is reported as it comes, before the
     /// command ends.
     pub live: Option<Live>,
+    /// What each line of output goes through before it is reported,
+    /// spilled or kept.
+    pub filter: Option<LineFilter>,
     /// Where output that is cut is kept whole, named in the cut output.
     pub spill: Option<Spill>,
     /// How much of the output the result keeps; `None` keeps all of it, up
@@ -65,6 +70,7 @@ impl Default for Shell {
             workspace: Arc::new(Local),
             launcher: Launcher::default(),
             live: None,
+            filter: None,
             spill: None,
             cut: Some(OutputLimit::default()),
             confine: false,
@@ -227,6 +233,7 @@ impl Shell {
             spill: self.spill.clone(),
             cut: self.cut,
             live: self.live.clone(),
+            filter: self.filter.clone(),
             local: process.remote().is_none(),
             ..Kept::default()
         };
@@ -575,9 +582,8 @@ struct Kept {
     spilled: Option<(PathBuf, File)>,
     /// Where each line is reported as it comes.
     live: Option<Live>,
-    /// Whether the output is inside a private key block, whose lines are
-    /// left out until its end line.
-    in_key: bool,
+    /// What each line goes through first.
+    filter: Option<LineFilter>,
     /// Whether the command runs on this machine, where the spill file is.
     local: bool,
 }
@@ -615,12 +621,14 @@ impl Kept {
     }
 
     /// Takes the next whole `line`, its terminal escape sequences dropped
-    /// ([`plain`]) and its secrets redacted, reporting it live and spilling
-    /// it, and cuts what no longer fits: no key it printed is shown,
-    /// spilled or returned.
+    /// ([`plain`]) and passed through the filter, reporting it live and
+    /// spilling it, and cuts what no longer fits.
     fn line(&mut self, line: String) {
         let line = plain(&line);
-        let mut line = self.redact(&line).into_owned();
+        let mut line = match &self.filter {
+            Some(filter) => filter.apply(&line),
+            None => line.into_owned(),
+        };
         if line.is_empty() {
             return;
         }
@@ -726,30 +734,6 @@ impl Kept {
                 }
             }
         }
-    }
-
-    /// `piece`, a line, with its secrets redacted ([`redact::text`]). A
-    /// private key block spans lines: its first is redacted to its end, and
-    /// the lines after it, through its end line, are left out.
-    fn redact<'a>(&mut self, piece: &'a str) -> Cow<'a, str> {
-        if self.in_key {
-            self.in_key = !piece.contains("-----END ");
-            return Cow::Borrowed("");
-        }
-        let mut redacted = redact::text(piece);
-        if let Cow::Owned(line) = &mut redacted {
-            self.in_key = redact::find(piece).any(|secret| {
-                secret.kind == redact::Kind::PrivateKey
-                    && piece
-                        .get(secret.range)
-                        .is_some_and(|key| !key.contains("-----END "))
-            });
-            // A key redacted to the line's end took its newline.
-            if piece.ends_with('\n') && !line.ends_with('\n') {
-                line.push('\n');
-            }
-        }
-        redacted
     }
 
     /// Starts keeping the whole output, from the lines kept so far, which

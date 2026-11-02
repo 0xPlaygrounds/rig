@@ -556,30 +556,3 @@ fn shared_messages_are_written_as_unshared_ones() {
         );
     }
 }
-
-/// A key in a request never reaches the file, and a continuation of that
-/// request still reads back whole, the key redacted in both.
-#[test]
-fn a_key_in_a_request_never_reaches_the_file() {
-    let dir = assert_fs::TempDir::new().expect("scratch directory");
-    let path = dir.path().join("effects.jsonl");
-    let said = "run env:\nOPENAI_API_KEY=sk-test-probe-1234567890abcdef";
-    let mut writer = writer_at(&path);
-    let written = [
-        completion(1, "agent", &[said]),
-        completion(2, "agent", &[said, "and then?"]),
-    ];
-    writer
-        .append(&LogHeader::default(), &written)
-        .expect("appended");
-    let text = std::fs::read_to_string(&path).expect("the file");
-    assert!(!text.contains("sk-test-probe"), "{text}");
-    let log = read(&path).expect("read back");
-    let histories: Vec<Vec<String>> = log.records.iter().map(history_of).collect();
-    assert_eq!(histories.len(), 2);
-    for history in &histories {
-        let first = history.first().expect("a message");
-        assert!(first.contains("OPENAI_API_KEY=[REDACTED]"), "{first}");
-    }
-    assert_eq!(histories.get(1).map(Vec::len), Some(2));
-}

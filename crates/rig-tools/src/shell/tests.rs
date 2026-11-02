@@ -589,24 +589,37 @@ fn a_cut_output_publishes_the_cut() {
     std::fs::remove_dir_all(dir).ok();
 }
 
-/// A key the command prints is redacted before it is kept, spilled or
-/// returned, and a private key block is left out through its end line.
+/// Each line goes through the filter before it is reported, kept, spilled
+/// or returned, and a line it empties is left out.
 #[cfg(unix)]
 #[test]
-fn printed_keys_are_neither_returned_nor_spilled() {
-    let dir = std::env::temp_dir().join(format!("rig-tools-keys-{}", std::process::id()));
-    let printed = "printf 'OPENAI_API_KEY=sk-test-probe-1234567890abcdef\\n\
-        -----BEGIN RSA PRIVATE KEY-----\\nMIIEsecretbody\\n-----END RSA PRIVATE KEY-----\\n\
-        after\\n'";
-    let output = shell(printed, None);
-    assert_eq!(
-        output,
-        "OPENAI_API_KEY=[REDACTED]\n[REDACTED]\nafter\n[exit code 0]"
-    );
-    let spilled = shell(
-        &format!("{printed}; seq 1 3000"),
-        Some(crate::Spill(dir.clone())),
-    );
+fn each_line_goes_through_the_filter_first() {
+    use std::sync::{Arc, Mutex};
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-filter-{}", std::process::id()));
+    let seen = Arc::new(Mutex::new(String::new()));
+    let shell = Shell {
+        filter: Some(crate::LineFilter::new(|line| {
+            match line.contains("secret") {
+                true => String::new(),
+                false => line.to_uppercase(),
+            }
+        })),
+        live: Some(crate::Live::new({
+            let seen = seen.clone();
+            move |line| {
+                seen.lock()
+                    .map(|mut seen| seen.push_str(line))
+                    .unwrap_or_default()
+            }
+        })),
+        spill: Some(crate::Spill(dir.clone())),
+        ..Shell::default()
+    };
+    let printed = "printf 'one\\nsecret\\ntwo\\n'; seq 1 3000";
+    let output = futures::executor::block_on(shell.run(ShellArgs::new(printed)))
+        .map(|ran| ran.output)
+        .unwrap_or_default();
     let spill = std::fs::read_dir(&dir)
         .ok()
         .and_then(|mut files| files.next())
@@ -615,8 +628,10 @@ fn printed_keys_are_neither_returned_nor_spilled() {
         .unwrap_or_default();
     std::fs::remove_dir_all(dir).ok();
     assert!(
-        spill.starts_with("OPENAI_API_KEY=[REDACTED]\n[REDACTED]\nafter\n1\n"),
-        "{spill:.200}"
+        output.contains("ONE\nTWO\n1\n") && !output.contains("SECRET"),
+        "{output:.200}"
     );
-    assert!(!spilled.contains("secret"));
+    assert!(spill.starts_with("ONE\nTWO\n1\n"), "{spill:.200}");
+    let seen = seen.lock().map(|seen| seen.clone()).unwrap_or_default();
+    assert!(seen.starts_with("ONE\nTWO\n1\n"), "{seen:.200}");
 }

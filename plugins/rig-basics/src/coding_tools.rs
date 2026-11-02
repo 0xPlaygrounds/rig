@@ -214,6 +214,7 @@ impl PerCallTool for SharedShell {
             shell: Shell {
                 workspace: place.workspace,
                 live: place.live,
+                filter: place.filter,
                 confine: place.confine,
                 spill: place.spill,
                 ..self.shell.clone()

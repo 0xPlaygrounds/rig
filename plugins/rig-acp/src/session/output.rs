@@ -165,10 +165,7 @@ pub(super) fn notices(
         .filter(|recalled| Some(recalled.agent) == agent && !cancelled)
         .map(|recalled| match &recalled.why {
             Some(why) => why.clone(),
-            None => {
-                let text = rig_harness::rig_core::redact::text(&recalled.text);
-                format!("{TAKEN_OUT} It said: {text}")
-            }
+            None => format!("{TAKEN_OUT} It said: {}", recalled.text),
         })
         .map(|why| (why, NoticeLevel::Error))
         .collect();

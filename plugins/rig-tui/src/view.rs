@@ -782,7 +782,6 @@ pub(crate) fn keep_notices(
 /// Keeps what was typed and not sent for the build a reload starts, such
 /// as a command typed during the rebuild that only the new build knows.
 /// While a question is answered in the input, what was typed before it.
-/// No key reaches the disk: it is redacted as the session log is.
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     data: Option<Res<PluginData>>,
@@ -799,7 +798,6 @@ pub(crate) fn keep_draft(
     if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
-    let text = rig_core::redact::text(text);
     if let Err(failure) = data.session.write_file(DRAFT_FILE, text.as_bytes()) {
         warn!("could not keep the input for the next build: {failure}");
     }

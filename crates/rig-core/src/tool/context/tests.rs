@@ -117,25 +117,23 @@ fn insert_replaces_an_undecodable_displaced_value_and_returns_none() {
     );
 }
 
-/// What a conversation keeps of a call's facts: secrets redacted, no old
-/// file text, and past the budget the largest values left out while a
-/// small one stays.
+/// What a conversation keeps of a call's facts: no old file text, and past
+/// the budget the largest values left out while a small one stays.
 #[test]
-fn kept_facts_are_redacted_without_old_text_and_bounded() {
+fn kept_facts_are_without_old_text_and_bounded() {
     use crate::tool::{
         ExitStatus, FileChange, FileRead, FilesChanged, FilesRead, Hunk, HunkLine, Lines,
         content_hash,
     };
 
     let mut context = ToolContext::new();
-    let secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz";
-    let read = FileRead::new(format!("/work/key {secret}"), content_hash(b""));
+    let read = FileRead::new("/work/a.rs", content_hash(b""));
     let hunk = Hunk {
         old: Lines { start: 1, count: 1 },
         new: Lines { start: 1, count: 1 },
         lines: vec![
-            HunkLine::Removed(format!("{secret}\n")),
-            HunkLine::Added("removed\n".to_owned()),
+            HunkLine::Removed("old\n".to_owned()),
+            HunkLine::Added("new\n".to_owned()),
         ],
     };
     let change = FileChange::modified("a.rs", 1, 1)
@@ -149,52 +147,18 @@ fn kept_facts_are_redacted_without_old_text_and_bounded() {
     assert_eq!(inserted, [true; 3]);
     let kept = context.result_context().kept();
     let paths = kept.get::<FilesRead>().ok().flatten().unwrap_or_default();
-    assert_eq!(paths.paths().collect::<Vec<_>>(), ["/work/key [REDACTED]"]);
+    assert_eq!(paths.paths().collect::<Vec<_>>(), ["/work/a.rs"]);
     let changed = kept
         .get::<FilesChanged>()
         .ok()
         .flatten()
         .unwrap_or_default();
-    let old = changed.0.first().map(|change| change.before_text.is_none());
-    assert_eq!(old, Some(true));
-    let removed = changed
-        .0
-        .first()
-        .map(FileChange::unified)
-        .unwrap_or_default();
-    assert!(
-        removed.contains("-[REDACTED]\n") && !removed.contains(secret),
-        "{removed}"
+    let change = changed.0.first();
+    assert_eq!(
+        change.map(|change| change.before_text.is_none()),
+        Some(true)
     );
-
-    // A key block is in no one line, whichever its line ends: the change
-    // keeps no hunks.
-    for end in ["\n", "\r\n", "\r"] {
-        let block = [
-            "-----BEGIN RSA PRIVATE KEY-----",
-            "MIIEowIBAAKCAQEAabc",
-            "-----END RSA PRIVATE KEY-----",
-        ];
-        // The old file's last line had no ending.
-        let old = HunkLine::Removed("old".to_owned());
-        let added = block.map(|line| HunkLine::Added(format!("{line}{end}")));
-        let hunk = Hunk {
-            old: Lines { start: 1, count: 1 },
-            new: Lines { start: 1, count: 3 },
-            lines: [old].into_iter().chain(added).collect(),
-        };
-        let mut keyed = ToolContext::new();
-        let change = FileChange::created("id_rsa", 3).with_hunks(vec![hunk]);
-        assert!(keyed.insert_result(FilesChanged(vec![change])).is_ok());
-        let kept = keyed.result_context().kept();
-        let changed = kept
-            .get::<FilesChanged>()
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let hunks = changed.0.first().map(|change| change.hunks.len());
-        assert_eq!(hunks, Some(0), "{end:?}");
-    }
+    assert_eq!(change.map(|change| change.hunks.len()), Some(1));
 
     let huge = FileRead::new("x".repeat(MAX_KEPT_FACTS_BYTES), content_hash(b""));
     assert!(context.insert_result(FilesRead(vec![huge])).is_ok());

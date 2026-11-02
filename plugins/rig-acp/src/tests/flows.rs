@@ -619,6 +619,11 @@ fn a_tool_result_reads_the_same_live_and_after_session_load() {
         let replayed = results(driven.updates(&id).into_iter().skip(before).collect());
         assert_eq!(live.len(), 1, "{live:?}");
         assert_eq!(replayed, live);
+        let shown = format!("{live:?}");
+        assert!(
+            shown.contains("OPENAI_API_KEY=[REDACTED]") && !shown.contains("sk-proj"),
+            "{shown}"
+        );
     });
     assert!(router.is_some());
 }

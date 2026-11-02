@@ -52,7 +52,6 @@ use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
 use rig_harness::host::pipes::{self, Stream, TooLarge, Writer};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::redact;
 use rig_harness::rig_core::tool::feedback::not_finished;
 use rig_harness::run::{RunExitSystems, RunPlugin, RunStartSystems};
 use serde::Deserialize;
@@ -1114,10 +1113,7 @@ fn print_notices(
         for recalled in recalled.read() {
             match &recalled.why {
                 Some(why) => printed.error(why),
-                None => {
-                    let text = rig_harness::rig_core::redact::text(&recalled.text);
-                    printed.error(&format!("not answered: {}", excerpt(&text)));
-                }
+                None => printed.error(&format!("not answered: {}", excerpt(&recalled.text))),
             }
         }
         for notice in notices.read() {
@@ -1275,8 +1271,7 @@ impl Out<'_, '_> {
         }
         let recalled: Vec<Recalled> = self.read.recalled.read(&self.recalled).cloned().collect();
         for recalled in recalled {
-            let text = rig_harness::rig_core::redact::text(&recalled.text);
-            let fields = json!({ "text": text, "why": recalled.why });
+            let fields = json!({ "text": recalled.text, "why": recalled.why });
             self.write(Some(recalled.agent), "recalled", fields);
         }
         self.text();
@@ -1401,9 +1396,7 @@ fn note_cut_off(
             continue;
         }
         let kept = outcome.or(if_stopped.map(|stopped| &stopped.0));
-        let kept = kept.map(Outcome::tool_result);
-        let kept = kept.map(|result| redact::tool_result(&result).unwrap_or(result));
-        let (ok, output) = match kept {
+        let (ok, output) = match kept.map(Outcome::tool_result) {
             Some(result) => (result.is_success(), result.output().render()),
             None => {
                 let footprint = footprint.cloned().unwrap_or_default();

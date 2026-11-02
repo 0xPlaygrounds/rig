@@ -450,6 +450,7 @@ fn prepare(
             workspace: parts.workspace.0.clone(),
             launcher,
             live: Some(live),
+            filter: None,
             spill: parts.scratch.as_ref().and_then(|scratch| scratch.spill()),
             cut: parts
                 .output
