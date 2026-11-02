@@ -15,6 +15,8 @@ use std::borrow::Cow;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::effect::Answered;
+use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::redact::{self, Streamed};
 use rig_harness::rig_core::streaming::{Item, Relayed};
 use rig_harness::rig_core::tool::{ContextValue, FilesChanged, Hunk, HunkLine};
@@ -70,7 +72,10 @@ impl Plugin for RedactPlugin {
         )
         .add_systems(
             Last,
-            redact_records.after(StopTurnsOnExit).before(WriteLogs),
+            redact_records
+                .run_if(resource_exists::<crate::telemetry::effect_log::EffectLog>)
+                .after(StopTurnsOnExit)
+                .before(WriteLogs),
         );
         #[cfg(feature = "tui")]
         app.add_systems(
@@ -92,11 +97,21 @@ fn redacted<T: Serialize + DeserializeOwned>(data: &T) -> Option<T> {
         .flatten()
 }
 
+/// A tool call's result or an error, redacted; `None` when it holds no
+/// secret. A plugin's own answer, such as the line that answers its
+/// question, reaches it as given.
+fn redacted_answer(answer: &Outcome) -> Option<Result<Answered, ErrorReport>> {
+    match &answer.0 {
+        Ok(Answered::ToolResult { .. }) | Err(_) => redacted(&answer.0),
+        Ok(_) => None,
+    }
+}
+
 /// An answer as it is inserted: a result, a stop's answer, one kept at
 /// exit, a model call's error.
 fn redact_outcome(inserted: On<Insert<Outcome>>, mut answers: Query<&mut Outcome>) {
     if let Ok(mut answer) = answers.get_mut(inserted.entity)
-        && let Some(redacted) = redacted(&answer.0)
+        && let Some(redacted) = redacted_answer(&answer)
     {
         answer.0 = redacted;
     }
@@ -105,7 +120,7 @@ fn redact_outcome(inserted: On<Insert<Outcome>>, mut answers: Query<&mut Outcome
 /// What a running call answers if stopped, which a stop reads as it is.
 fn redact_if_stopped(inserted: On<Insert<IfStopped>>, mut answers: Query<&mut IfStopped>) {
     if let Ok(mut answer) = answers.get_mut(inserted.entity)
-        && let Some(redacted) = redacted(&answer.0.0)
+        && let Some(redacted) = redacted_answer(&answer.0)
     {
         answer.0.0 = redacted;
     }
@@ -117,7 +132,7 @@ fn redact_reviewed(
     mut answers: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,
 ) {
     for mut answer in &mut answers {
-        if let Some(redacted) = redacted(&answer.0) {
+        if let Some(redacted) = redacted_answer(&answer) {
             answer.0 = redacted;
         }
     }
@@ -200,11 +215,20 @@ fn redact_messages(
         for part in &mut message.bypass_change_detection().parts {
             let text = match part {
                 MessagePart::Text(text) => text,
-                MessagePart::Attachment(Attachment {
-                    content: UserContent::Text(text),
-                    ..
-                }) => &mut text.text,
-                MessagePart::Attachment(_) => continue,
+                MessagePart::Attachment(Attachment { content, .. }) => match content {
+                    UserContent::Text(text) => &mut text.text,
+                    UserContent::Image(_) | UserContent::Audio(_) | UserContent::Video(_) => {
+                        continue;
+                    }
+                    // A document's or a result's text, as JSON.
+                    content => {
+                        if let Some(redacted) = redacted(&*content) {
+                            *content = redacted;
+                            changed = true;
+                        }
+                        continue;
+                    }
+                },
             };
             if let Cow::Owned(redacted) = redact::text(text) {
                 *text = redacted;
@@ -235,11 +259,50 @@ fn adapt_model_calls(mut calls: Query<&mut Adapted, (Added<Admitted>, ModelCalls
     }
 }
 
-/// What one part of a reply holds back: its text or reasoning (`true`), or
-/// a tool call's argument JSON, which is not text and is redacted whole.
+/// What one part of a reply holds back; a call's argument JSON is not
+/// text, and is redacted whole at its end.
 enum Held {
-    Text(Streamed, bool),
+    Text(Streamed),
+    Reasoning(Streamed),
     Arguments(String),
+}
+
+impl Held {
+    /// Takes `piece`; what can go out now.
+    fn push(&mut self, piece: &str) -> String {
+        match self {
+            Self::Text(text) | Self::Reasoning(text) => text.push(piece),
+            Self::Arguments(json) => {
+                json.push_str(piece);
+                String::new()
+            }
+        }
+    }
+
+    /// What it still holds, redacted: arguments that are no JSON, of a call
+    /// that fails, as text.
+    fn finish(&mut self) -> String {
+        match self {
+            Self::Text(text) | Self::Reasoning(text) => text.finish(),
+            Self::Arguments(json) => match serde_json::from_str::<Value>(json) {
+                Ok(value) => {
+                    redacted(&value).map_or_else(|| json.clone(), |value| value.to_string())
+                }
+                Err(_) => redact::text(json).into_owned(),
+            },
+        }
+    }
+
+    /// `text` as an event of `part`, of this kind; none when empty.
+    fn event(&self, part: Part, text: String) -> Option<Relayed> {
+        let event = match self {
+            _ if text.is_empty() => return None,
+            Self::Text(_) => StreamEvent::Text { part, text },
+            Self::Reasoning(_) => StreamEvent::Reasoning { part, text },
+            Self::Arguments(_) => StreamEvent::Arguments { part, json: text },
+        };
+        Some(Relayed::Item(Item::Event(event)))
+    }
 }
 
 /// One reply's stream redacted: text and reasoning as they stream
@@ -251,13 +314,16 @@ fn redact_stream() -> impl FnMut(Relayed) -> Vec<Relayed> {
         let mut out = Vec::new();
         match item {
             Relayed::Item(Item::Event(StreamEvent::Text { part, text })) => {
-                grow(&mut held, (part, Some(false)), &text, &mut out);
+                let new = || Held::Text(Streamed::default());
+                grow(&mut held, (part, new), &text, &mut out);
             }
             Relayed::Item(Item::Event(StreamEvent::Reasoning { part, text })) => {
-                grow(&mut held, (part, Some(true)), &text, &mut out);
+                let new = || Held::Reasoning(Streamed::default());
+                grow(&mut held, (part, new), &text, &mut out);
             }
             Relayed::Item(Item::Event(StreamEvent::Arguments { part, json })) => {
-                grow(&mut held, (part, None), &json, &mut out);
+                let new = || Held::Arguments(String::new());
+                grow(&mut held, (part, new), &json, &mut out);
             }
             Relayed::Item(item) => {
                 if let Item::Event(StreamEvent::End { part, .. }) = &item {
@@ -278,11 +344,11 @@ fn redact_stream() -> impl FnMut(Relayed) -> Vec<Relayed> {
     }
 }
 
-/// Takes the next `piece` of `part`: text, reasoning (`Some(true)`) or a
-/// call's arguments (`None`).
+/// Takes the next `piece` of `part`, held as `new` makes it when it is the
+/// part's first, putting what can go out in `out`.
 fn grow(
     held: &mut Vec<(Part, Held)>,
-    (part, reasoning): (Part, Option<bool>),
+    (part, new): (Part, fn() -> Held),
     piece: &str,
     out: &mut Vec<Relayed>,
 ) {
@@ -290,30 +356,13 @@ fn grow(
         .iter()
         .position(|(at, _)| *at == part)
         .unwrap_or_else(|| {
-            let new = match reasoning {
-                Some(reasoning) => Held::Text(Streamed::default(), reasoning),
-                None => Held::Arguments(String::new()),
-            };
-            held.push((part, new));
+            held.push((part, new()));
             held.len() - 1
         });
-    match held.get_mut(at) {
-        Some((_, Held::Text(streamed, reasoning))) => {
-            out.extend(event(part, *reasoning, streamed.push(piece)));
-        }
-        Some((_, Held::Arguments(json))) => json.push_str(piece),
-        None => {}
+    if let Some((_, held)) = held.get_mut(at) {
+        let shown = held.push(piece);
+        out.extend(held.event(part, shown));
     }
-}
-
-/// `text` of `part` as an event, if any.
-fn event(part: Part, reasoning: bool, text: String) -> Option<Relayed> {
-    let event = match reasoning {
-        _ if text.is_empty() => return None,
-        true => StreamEvent::Reasoning { part, text },
-        false => StreamEvent::Text { part, text },
-    };
-    Some(Relayed::Item(Item::Event(event)))
 }
 
 /// Puts in `out` what `part`, or every part, holds.
@@ -322,18 +371,9 @@ fn let_go(held: &mut Vec<(Part, Held)>, part: Option<Part>, out: &mut Vec<Relaye
         .into_iter()
         .partition(|(at, _)| part.is_none_or(|part| part == *at));
     *held = staying;
-    for (part, going) in going {
-        out.extend(match going {
-            Held::Text(mut streamed, reasoning) => event(part, reasoning, streamed.finish()),
-            Held::Arguments(json) => (!json.is_empty()).then(|| {
-                // Arguments that are no JSON, a call that fails, as text.
-                let json = match serde_json::from_str::<Value>(&json) {
-                    Ok(value) => redacted(&value).map_or(json, |value| value.to_string()),
-                    Err(_) => redact::text(&json).into_owned(),
-                };
-                Relayed::Item(Item::Event(StreamEvent::Arguments { part, json }))
-            }),
-        });
+    for (part, mut going) in going {
+        let text = going.finish();
+        out.extend(going.event(part, text));
     }
 }
 
@@ -372,8 +412,8 @@ fn redact_line(line: &str, in_key: &mut bool) -> String {
     redacted
 }
 
-/// Every record reaches the effect log redacted: the request as sent, a
-/// call's first answer, what it published.
+/// Every record reaches the effect log, when it is written, redacted: the
+/// request as sent, a call's first answer, what it published.
 fn redact_records(mut records: MessageMutator<EffectRecorded>) {
     for EffectRecorded(record) in records.read() {
         if let Some(redacted) = redacted(&*record) {
