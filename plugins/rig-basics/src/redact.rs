@@ -625,8 +625,8 @@ fn reveal_to_tools(
 }
 
 /// What a call sends: a tool call's arguments with their secrets put back,
-/// a model request with every secret in it redacted, the system prompt's
-/// too.
+/// a model request with its system prompt and documents redacted, and any
+/// other effect redacted whole.
 struct AsSent(Secrets);
 
 impl Intercept for AsSent {
@@ -657,18 +657,34 @@ impl Intercept for AsSent {
                     }
                 }
                 drop(vault);
-                // The tools are sent as given: their names and schemas are
-                // the program's text, which a known secret must not change.
+                // Only the request's own text, its system prompt and
+                // documents: its messages were redacted as they came in, and
+                // the rest (tools, schemas, media, settings) is the
+                // program's text or data a key's shape could match by chance.
                 let mut asked = (**request).clone();
-                asked.tools = Vec::new();
-                self.0.redacted(&asked).map(|mut redacted| {
-                    redacted.tools.clone_from(&request.tools);
-                    // Not serialized, so the round trip drops it.
-                    redacted.record_telemetry_content = request.record_telemetry_content;
-                    EffectKind::Completion {
-                        request: Arc::new(redacted),
-                        stream: *stream,
+                let mut changed = false;
+                for entry in &mut asked.chat_history {
+                    let redacted = match &**entry {
+                        message::Message::System { content } => match self.0.text(content) {
+                            Cow::Owned(content) => Some(content),
+                            Cow::Borrowed(_) => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(content) = redacted {
+                        *entry = Arc::new(message::Message::System { content });
+                        changed = true;
                     }
+                }
+                for document in &mut asked.documents {
+                    if let Cow::Owned(text) = self.0.text(&document.text) {
+                        document.text = text;
+                        changed = true;
+                    }
+                }
+                changed.then(|| EffectKind::Completion {
+                    request: Arc::new(asked),
+                    stream: *stream,
                 })
             }
             kind => self.0.redacted(kind),
@@ -948,12 +964,23 @@ fn redact_line(line: &str, block: &mut Option<usize>, secrets: &Secrets) -> Stri
     format!("{before}{}\n", placeholder(vault.secrets.len()))
 }
 
-/// Every record reaches the effect log, when it is written, redacted: the
-/// request as sent, a call's first answer, what it published.
+/// Every record reaches the effect log, when it is written, redacted: a
+/// call's arguments, its first answer, what it published, a stream's items.
+/// A model request is logged as [`AsSent`] sent it.
 fn redact_records(mut records: MessageMutator<EffectRecorded>, secrets: Res<Secrets>) {
     for EffectRecorded(record) in records.read() {
-        if let Some(redacted) = secrets.redacted(&*record) {
-            *record = redacted;
+        let asked = matches!(record.kind, EffectKind::Completion { .. });
+        if !asked && let Some(kind) = secrets.redacted(&record.kind) {
+            record.kind = kind;
+        }
+        if let Some(published) = secrets.redacted(&record.published) {
+            record.published = published;
+        }
+        if let Some(outcome) = secrets.redacted(&record.outcome) {
+            record.outcome = outcome;
+        }
+        if let Some(events) = secrets.redacted(&record.events) {
+            record.events = events;
         }
     }
 }

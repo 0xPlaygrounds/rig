@@ -1,6 +1,6 @@
 use bevy_ecs::system::RunSystemOnce;
-use rig_harness::rig_core::completion::{CompletionRequest, ToolDefinition};
-use rig_harness::rig_core::effect::Answered;
+use rig_harness::rig_core::completion::{CompletionRequest, Document, ToolDefinition};
+use rig_harness::rig_core::effect::{Answered, EffectRecord};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::message::ToolName;
 use rig_harness::rig_core::serde_json::json;
@@ -821,33 +821,8 @@ fn a_secret_like_a_placeholder_leaves_placeholders_alone() {
     assert_eq!(secrets.reveal("‹SECRET_1›"), "SECRET_1");
 }
 
-/// A secret that is, or is part of, a name a model request gives, its
-/// model's or a tool's, is never found in that name: a call to the tool the
-/// reply streams keeps it. The request's tools go as given, schema and all,
-/// while its messages are redacted.
-#[test]
-fn a_secret_like_a_name_leaves_the_name_alone() {
-    let secrets = Secrets::default();
-    let learned =
-        secrets.text("A_TOKEN=get_weather B_TOKEN=big-model-9 C_TOKEN=get_weat D_TOKEN=old_text");
-    let placeholders =
-        "A_TOKEN=‹SECRET_1› B_TOKEN=‹SECRET_2› C_TOKEN=‹SECRET_3› D_TOKEN=‹SECRET_4›";
-    assert_eq!(learned, placeholders);
-    let parameters = json!({
-        "type": "object",
-        "properties": { "old_text": { "type": "string" } },
-        "required": ["old_text"],
-    });
-    let name = ToolName::new("get_weather");
-    assert!(name.is_ok(), "{name:?}");
-    let Ok(name) = name else {
-        return;
-    };
-    let tool = ToolDefinition::new(name, "", parameters);
-    let request = CompletionRequest::new("my PASSWORD=hunter2hunter2")
-        .model("big-model-9")
-        .tool(tool);
-    let tools = serde_json::to_value(&request.tools).ok();
+/// What the request layer does with `request`.
+fn as_sent(secrets: &Secrets, request: CompletionRequest) -> Option<BeforeServe> {
     let kind = EffectKind::Completion {
         request: Arc::new(request),
         stream: true,
@@ -855,26 +830,132 @@ fn a_secret_like_a_name_leaves_the_name_alone() {
     let layer = AsSent(secrets.clone());
     let before = std::pin::pin!(layer.before(EffectId::from_raw(1), &kind));
     let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    let patched = match before.poll(&mut context) {
-        std::task::Poll::Ready(BeforeServe::Patch(EffectKind::Completion { request, .. })) => {
-            Some(request)
-        }
-        _ => None,
-    };
-    assert!(patched.is_some(), "the request is patched");
-    let Some(request) = patched else {
-        return;
-    };
-    assert_eq!(serde_json::to_value(&request.tools).ok(), tools);
-    let sent = format!("{:?}", request.chat_history);
-    assert!(
-        sent.contains("PASSWORD=‹SECRET_5›") && !sent.contains("hunter2"),
-        "{sent}"
+    match before.poll(&mut context) {
+        std::task::Poll::Ready(sent) => Some(sent),
+        std::task::Poll::Pending => None,
+    }
+}
+
+/// The `edit`-like tool `get_weather`, whose schema requires `old_text`.
+fn get_weather() -> Option<ToolDefinition> {
+    let parameters = json!({
+        "type": "object",
+        "properties": { "old_text": { "type": "string" } },
+        "required": ["old_text"],
+    });
+    let name = ToolName::new("get_weather");
+    assert!(name.is_ok(), "{name:?}");
+    Some(ToolDefinition::new(name.ok()?, "", parameters))
+}
+
+/// A secret that is, or is part of, a name a model request gives, its
+/// model's or a tool's, is never found again in that name once a request
+/// gave it: a call to the tool the reply streams keeps it.
+#[test]
+fn a_secret_like_a_name_leaves_the_name_alone() {
+    let secrets = Secrets::default();
+    let learned = secrets.text("A_TOKEN=get_weather B_TOKEN=big-model-9 C_TOKEN=get_weat");
+    assert_eq!(
+        learned,
+        "A_TOKEN=‹SECRET_1› B_TOKEN=‹SECRET_2› C_TOKEN=‹SECRET_3›"
     );
+    let request = CompletionRequest::new("call it")
+        .model("big-model-9")
+        .tools(get_weather());
+    assert!(matches!(
+        as_sent(&secrets, request),
+        Some(BeforeServe::Proceed)
+    ));
     let call = json!({ "name": "get_weather", "model": "big-model-9" });
     assert_eq!(secrets.redacted(&call), None);
     assert_eq!(
         secrets.text("I will call get_weather"),
         "I will call get_weather"
+    );
+}
+
+/// A model request is redacted in its own text, its system prompt and
+/// documents; its messages, redacted as they came in, its tools and their
+/// schemas, and data such as an image's, go as given, though a known secret
+/// shows in them.
+#[test]
+fn a_request_is_redacted_in_its_own_text_only() {
+    let secrets = Secrets::default();
+    let learned = secrets.text("A_TOKEN=old_text B_TOKEN=iVBORw0K");
+    assert_eq!(learned, "A_TOKEN=‹SECRET_1› B_TOKEN=‹SECRET_2›");
+    let document = Document {
+        id: "notes".to_owned(),
+        text: "deploy with old_text".to_owned(),
+        additional_props: Default::default(),
+    };
+    let request = CompletionRequest::new("an image iVBORw0KGgo")
+        .preamble("my PASSWORD=hunter2hunter2")
+        .document(document)
+        .tools(get_weather());
+    let tools = serde_json::to_value(&request.tools).ok();
+    let sent = match as_sent(&secrets, request) {
+        Some(BeforeServe::Patch(EffectKind::Completion { request, .. })) => Some(request),
+        _ => None,
+    };
+    assert!(sent.is_some(), "the request is patched");
+    let Some(sent) = sent else {
+        return;
+    };
+    assert_eq!(sent.system_instructions(), Some("my PASSWORD=‹SECRET_3›"));
+    let documents: Vec<&str> = sent
+        .documents
+        .iter()
+        .map(|document| document.text.as_str())
+        .collect();
+    assert_eq!(documents, ["deploy with ‹SECRET_1›"]);
+    assert!(format!("{:?}", sent.chat_history).contains("an image iVBORw0KGgo"));
+    assert_eq!(serde_json::to_value(&sent.tools).ok(), tools);
+}
+
+/// The effect log keeps a model request as the layer sent it, its tools
+/// whole, and a call's arguments and answer redacted.
+#[test]
+fn a_record_keeps_its_request_as_sent() {
+    let mut world = World::new();
+    let secrets = Secrets::default();
+    let _ = secrets.text("A_TOKEN=old_text");
+    world.insert_resource(secrets);
+    world.init_resource::<Messages<EffectRecorded>>();
+    let request = CompletionRequest::new("hi").tools(get_weather());
+    let tools = serde_json::to_value(&request.tools).ok();
+    let asked = EffectKind::Completion {
+        request: Arc::new(request),
+        stream: true,
+    };
+    let reply = Ok(Answered::Custom { payload: json!({}) });
+    let called = EffectKind::ToolCall {
+        name: "shell".to_owned(),
+        args: json!({ "command": "echo old_text" }).to_string(),
+    };
+    let printed = Outcome::from(ToolResult::success(ToolOutput::text("old_text"))).0;
+    for (id, kind, outcome) in [(1, asked, reply), (2, called, printed)] {
+        let record = EffectRecord::new(EffectId::from_raw(id), "test".into(), kind, outcome);
+        world.write_message(EffectRecorded(record));
+    }
+    assert!(world.run_system_once(redact_records).is_ok());
+    let records = world.run_system_once(|mut records: MessageReader<EffectRecorded>| {
+        records
+            .read()
+            .map(|EffectRecorded(record)| record.clone())
+            .collect::<Vec<_>>()
+    });
+    let records = records.unwrap_or_default();
+    let logged = records.first().and_then(|record| match &record.kind {
+        EffectKind::Completion { request, .. } => serde_json::to_value(&request.tools).ok(),
+        _ => None,
+    });
+    assert_eq!(logged, tools);
+    let call = records
+        .get(1)
+        .and_then(|record| serde_json::to_string(record).ok());
+    let call = call.unwrap_or_default();
+    assert!(
+        call.contains("echo ‹SECRET_1›") && !call.contains("old_text"),
+        "{call}"
     );
 }
