@@ -1286,6 +1286,15 @@ moves the marker and the effect's hold to each successor. Make a plugin's
 model call an effect (a `ModelRequest`) so the effect log and spending see
 it; a call made directly, they never see.
 
+**Work owned by what made it.** A request, any entity of work a plugin
+starts for an owner, such as a sign-in, a read or a fork, carries
+`RequestOf(owner)` and keeps its task, payload and result as components on
+itself, not in a map of the plugin's. It goes when its owner goes, when its
+owner effect settles, and when a stop that reaches below reaches its owner
+agent, idle or not; one inserted for an owner already gone or settled is
+despawned. `follow_successor` moves a request's link to the effect's
+successor with the marker.
+
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
@@ -1861,15 +1870,17 @@ effect, which a holder may take as "stop waiting".
 - **Start:** `AppStart` says why this app started (`StartReason`): `New`,
   `Resumed`, `Reloaded` after `/reload`, or `Restarted` on the
   previous build after a rollback; a switch is `New` or `Resumed`.
-- **Fork an agent:** `ForkAgent { agent, through }` makes a new agent in this
-  session, no restart: its log is a copy of `agent`'s up to a turn boundary at
-  or before `through` (`None` for the end), so a compaction made before the
-  cut is undone in it too; it has the saved components `agent` has now
-  (model, reasoning, tools, prompt, working directory), its connection, its
-  prompt-cache key (`CacheKey`) and a `ForkedFrom` listing `agent` and the
-  agents it came from, nearest first; `ForkedFrom::made_by` says which of
-  them made a message the fork copied.
-  `AgentForked { from, fork, through }` names it. `rig_basics::sessions`'
+- **Fork an agent:** spawn the request `ForkAgent::new(agent, through)` to
+  make a new agent in this session, no restart: its log is a copy of
+  `agent`'s up to a turn boundary at or before `through` (`None` for the
+  end), so a compaction made before the cut is undone in it too; it has the
+  saved components `agent` has now (model, reasoning, tools, prompt, working
+  directory), its connection, its prompt-cache key (`CacheKey`) and a
+  `ForkedFrom` listing `agent` and the agents it came from, nearest first;
+  `ForkedFrom::made_by` says which of them made a message the fork copied.
+  The request gets a `ForkResult`, the fork or a `ForkError`, for an
+  observer of `Add<ForkResult>` on it, then goes; `AgentForked { from, fork,
+  through }` announces each fork made to everyone. `rig_basics::sessions`'
   `/fork`, `/agents` and rewind are built on it, and show the fork, which
   makes it the session's `CurrentAgent`.
 - **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
@@ -1960,10 +1971,17 @@ fn fork_at(In(args): In<NoArgs>, mut commands: Commands) {
     let agent = args.agent;
     let fork = move |picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Commands| {
         if let Ok(SessionPicked { entry: Some(through), .. }) = chosen.get(picked.entity) {
-            commands.trigger(ForkAgent { agent, through: Some(*through) });
+            commands.spawn(ForkAgent::new(agent, Some(*through))).observe(made);
         }
     };
     commands.spawn((picker, SessionPicker { source, ..Default::default() })).observe(fork);
+}
+
+/// Says why a fork was not made.
+fn made(made: On<Add<ForkResult>>, results: Query<(&ForkResult, &RequestOf)>, mut notices: MessageWriter<Notice>) {
+    if let Ok((ForkResult(Err(why)), &RequestOf(agent))) = results.get(made.entity) {
+        notices.write(Notice::error(agent, format!("Could not fork: {why}.")));
+    }
 }
 ```
 

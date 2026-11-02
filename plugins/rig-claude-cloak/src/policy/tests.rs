@@ -383,16 +383,10 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
     )
     .map_err(anyhow::Error::msg)?;
     app.update();
-    app.world_mut().trigger(ForkAgent {
-        agent: first,
-        through: None,
-    });
+    app.world_mut().spawn(ForkAgent::new(first, None));
     app.update();
     for through in [before_human, human] {
-        app.world_mut().trigger(ForkAgent {
-            agent: first,
-            through: Some(through),
-        });
+        app.world_mut().spawn(ForkAgent::new(first, Some(through)));
         app.update();
     }
     let mut fingerprints = app.world_mut().query::<&HumanFingerprint>();

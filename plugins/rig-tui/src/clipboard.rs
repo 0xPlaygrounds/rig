@@ -7,9 +7,10 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
 
-use super::editor::{Editor, MainEditor};
+use super::editor::Editor;
 use super::terminal::CopyToClipboard;
 use rig_ecs::agent::Notice;
+use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Running, Wake};
 use rig_harness::main_agent::ShownAgent;
 use rig_harness::prelude::Processes;
@@ -29,11 +30,12 @@ impl From<Result<PathBuf, String>> for PastedImage {
 }
 
 /// Reads the clipboard's image into `directory` off the main thread,
-/// starting the reader as `launcher` says.
+/// starting the reader as `launcher` says, for the editor `editor`: a
+/// [`RequestOf`] it, which goes with it.
 pub(crate) fn paste_image(
     directory: PathBuf,
     launcher: Launcher,
-    wake: &Wake,
+    (editor, wake): (Entity, &Wake),
     commands: &mut Commands,
 ) {
     let read = blocking(move || Ok(read_image(&launcher, &directory)));
@@ -43,7 +45,7 @@ pub(crate) fn paste_image(
     };
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     let running = Running::spawn_into::<PastedImage, _>(pool, wake, read);
-    commands.spawn((Name::new("rig-tui: paste"), running));
+    commands.spawn((Name::new("rig-tui: paste"), RequestOf(editor), running));
 }
 
 /// Saves the clipboard's image in `directory`, or says why there is none.
@@ -87,23 +89,23 @@ pub(crate) fn copy_to_system(
     }
 }
 
-/// Types `@path` for an image a paste read from the clipboard, or says why
-/// there is none.
+/// Types `@path` in the editor that asked for an image a paste read from
+/// the clipboard, or says why there is none.
 pub(crate) fn type_pasted(
     pasted: On<Insert<PastedImage>>,
-    images: Query<&PastedImage>,
+    images: Query<(&PastedImage, &RequestOf)>,
     shown: Res<ShownAgent>,
-    mut input: Query<&mut Editor, With<MainEditor>>,
+    mut editors: Query<&mut Editor>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    match images.get(pasted.entity).map(|image| &image.0) {
-        Ok(Ok(path)) => {
-            if let Ok(mut input) = input.single_mut() {
+    match images.get(pasted.entity) {
+        Ok((PastedImage(Ok(path)), &RequestOf(editor))) => {
+            if let Ok(mut input) = editors.get_mut(editor) {
                 type_path(&mut input, path);
             }
         }
-        Ok(Err(why)) => {
+        Ok((PastedImage(Err(why)), _)) => {
             notices.write(Notice::info(shown.0, why.clone()));
         }
         Err(_) => {}
@@ -159,3 +161,6 @@ fn unescape(text: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests;

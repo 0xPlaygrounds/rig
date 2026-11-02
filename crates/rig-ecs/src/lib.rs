@@ -27,6 +27,7 @@ pub mod fork;
 pub mod inbox;
 pub mod model;
 pub mod prompt;
+pub mod requests;
 pub mod restore;
 pub mod retry;
 pub mod session_log;
@@ -57,7 +58,7 @@ pub mod prelude {
         SpawnedBy, Stop, StopReached, StopTurn, SystemPrompt, ToolAccess, Turn, TurnOf,
         TurnOutcome,
     };
-    pub use crate::fork::{AgentForked, ForkAgent};
+    pub use crate::fork::{AgentForked, ForkAgent, ForkError, ForkResult};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled, Unsent,
@@ -67,6 +68,7 @@ pub mod prelude {
         SetModel, SetReasoning,
     };
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf};
+    pub use crate::requests::{RequestOf, Requests};
     pub use crate::restore::{CarryOn, Interrupted, Restored, SavedKeys};
     pub use crate::retry::Verdict;
     pub use crate::session_log::{
@@ -224,7 +226,7 @@ impl Plugin for AgentPlugin {
                 ),
             )
             .add_observer(session_log::retire)
-            .add_observer(fork::fork_agent)
+            .add_observer(requests::end_with_settled)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_stop_turn)
             .add_observer(turn::reach_once_gone)

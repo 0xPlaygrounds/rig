@@ -237,10 +237,7 @@ fn a_fork_copies_the_list_and_diverges_and_a_subagent_starts_empty() {
         "2",
         json!({ "action": "add", "text": "two" }),
     );
-    app.world_mut().trigger(ForkAgent {
-        agent: parent,
-        through: None,
-    });
+    app.world_mut().spawn(ForkAgent::new(parent, None));
     app.update();
     let found = app.world().resource::<Forks>().0.first();
     assert!(found.is_some(), "a fork");

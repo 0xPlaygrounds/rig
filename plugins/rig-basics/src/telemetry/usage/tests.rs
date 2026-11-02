@@ -441,10 +441,8 @@ fn a_fork_starts_with_no_calls_and_an_unknown_context() {
         through: MessageId::default(),
     }));
     app.world_mut().entity_mut(source).insert((spent, last));
-    app.world_mut().trigger(rig_ecs::fork::ForkAgent {
-        agent: source,
-        through: None,
-    });
+    app.world_mut()
+        .spawn(rig_ecs::fork::ForkAgent::new(source, None));
     app.update();
     let world = app.world_mut();
     let mut forks = world.query_filtered::<Entity, With<rig_ecs::fork::ForkedFrom>>();

@@ -5,9 +5,9 @@ use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_memory::{MemoryStore, Store};
 
-use super::{AgentForked, ForkAgent, ForkedFrom};
+use super::{AgentForked, ForkAgent, ForkError, ForkResult, ForkedFrom};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, CacheKey, Conversation, Notice, SystemPrompt, ToolAccess};
+use crate::agent::{Agent, AgentId, CacheKey, Conversation, SystemPrompt, ToolAccess};
 use crate::session_log::tests::push_message;
 use crate::session_log::{Never, ReflectSaved, Reset, SessionLogPlugin, SessionStore};
 use crate::spawn::spawn_root;
@@ -58,10 +58,7 @@ fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_resto
         ToolAccess::all().narrow(["read"]),
     ));
     app.update();
-    app.world_mut().trigger(ForkAgent {
-        agent: source,
-        through: None,
-    });
+    app.world_mut().spawn(ForkAgent::new(source, None));
     app.update();
     let forks = &app.world().resource::<Forks>().0;
     let fork = forks.first().map(|forked| (forked.from, forked.fork));
@@ -122,10 +119,7 @@ fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
     let mut app = app(&store);
     let source = spawn_root(app.world_mut()).id();
     let fork = |app: &mut App, agent: Entity| {
-        app.world_mut().trigger(ForkAgent {
-            agent,
-            through: None,
-        });
+        app.world_mut().spawn(ForkAgent::new(agent, None));
         app.update();
         app.world().resource::<Forks>().0.last().map(|f| f.fork)
     };
@@ -182,10 +176,10 @@ fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
     assert_eq!(made(&mut again).as_deref(), Some(expected.as_slice()));
 }
 
-/// Without a type registry to copy the saved components with, a fork is a
-/// notice, and no log is copied for it.
+/// Without a type registry to copy the saved components with, a fork is
+/// refused on its request, which goes, and no log is copied for it.
 #[test]
-fn a_fork_without_a_type_registry_is_a_notice_and_copies_no_log() {
+fn a_fork_without_a_type_registry_is_refused_on_its_request_and_copies_no_log() {
     let store = MemoryStore::default();
     let mut app = app(&store);
     let source = spawn_root(app.world_mut()).id();
@@ -195,18 +189,27 @@ fn a_fork_without_a_type_registry_is_a_notice_and_copies_no_log() {
     app.update();
     let logs = Store::logs(&store).map(|logs| logs.len()).ok();
     app.world_mut().remove_resource::<AppTypeRegistry>();
-    app.world_mut().trigger(ForkAgent {
-        agent: source,
-        through: None,
-    });
+    app.init_resource::<Refused>();
+    let refused =
+        |made: On<Add<ForkResult>>, results: Query<&ForkResult>, mut refused: ResMut<Refused>| {
+            let result = results.get(made.entity).map(|result| &result.0);
+            refused.0 = matches!(result, Ok(Err(ForkError::NoRegistry)));
+        };
+    let request = app
+        .world_mut()
+        .spawn(ForkAgent::new(source, None))
+        .observe(refused)
+        .id();
     app.update();
     assert!(app.world().resource::<Forks>().0.is_empty());
-    let notices = app.world().resource::<Messages<Notice>>();
-    let refused = (notices.get_cursor().read(notices))
-        .any(|notice| notice.text.starts_with("Could not fork the agent"));
-    assert!(refused);
+    assert!(app.world().resource::<Refused>().0);
+    assert!(app.world().get_entity(request).is_err());
     assert_eq!(Store::logs(&store).map(|logs| logs.len()).ok(), logs);
 }
+
+/// Whether a fork was refused for want of a type registry.
+#[derive(Resource, Default)]
+struct Refused(bool);
 
 /// A plugin's setting, which a fork copies.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
@@ -237,10 +240,7 @@ fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
         .entity_mut(source)
         .insert((Setting(1), Meter(2), Duty(3)));
     app.update();
-    app.world_mut().trigger(ForkAgent {
-        agent: source,
-        through: None,
-    });
+    app.world_mut().spawn(ForkAgent::new(source, None));
     app.update();
     let fork = app.world().resource::<Forks>().0.first().map(|f| f.fork);
     assert!(fork.is_some(), "a fork is made");

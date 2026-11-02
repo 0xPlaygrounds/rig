@@ -945,12 +945,9 @@ fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
 
 /// Forks `agent` at its end; the fork.
 fn fork(session: &mut Session, agent: Entity) -> Entity {
+    session.app.world_mut().spawn(ForkAgent::new(agent, None));
+    session.app.update();
     let world = session.app.world_mut();
-    world.trigger(ForkAgent {
-        agent,
-        through: None,
-    });
-    world.flush();
     let mut forks = world.query_filtered::<Entity, With<ForkedFrom>>();
     let fork = forks.iter(world).next();
     fork.unwrap_or(Entity::PLACEHOLDER)
@@ -966,6 +963,8 @@ fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
     session.call(session.parent, TASK, "t1", args);
     let child = session.children(session.parent).last().copied();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child_model = MockCompletionModel::from_stream_turns([reply("ORIGINAL")]);
+    session.answer_by(child, &child_model);
     let fork = fork(&mut session, child);
     let world = session.app.world();
     assert!(
@@ -976,9 +975,7 @@ fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
     assert_eq!(owed, Some(0), "the fork owes no report");
 
     let fork_model = MockCompletionModel::from_stream_turns([reply("FORK")]);
-    let child_model = MockCompletionModel::from_stream_turns([reply("ORIGINAL")]);
     session.answer_by(fork, &fork_model);
-    session.answer_by(child, &child_model);
     let deliver = Deliver::new(fork, "Reply FORK now.", DeliveryMode::Queue);
     session.app.world_mut().trigger(deliver);
     let parent = session.parent;

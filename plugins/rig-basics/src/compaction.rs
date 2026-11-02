@@ -367,10 +367,8 @@ impl Rereads<'_, '_> {
                 ToolRequest { call },
                 Effect::with_parent_id(parent),
                 ForAgent(agent),
-                ReadAgain {
-                    of: rereading,
-                    content,
-                },
+                RequestOf(rereading),
+                ReadAgain { content },
             ));
         }
         true
@@ -387,11 +385,11 @@ struct Rereading {
     plan: ClearPlan,
 }
 
-/// One read of a re-read ([`Rereading`]), `of`, and the content of the
-/// output it reads again; a read sent again carries it to its successor.
+/// One read of a re-read, the [`Rereading`] it is a [`RequestOf`], and the
+/// content of the output it reads again; a read sent again carries it to
+/// its successor. Dropping the re-read ends its reads.
 #[derive(Component)]
 struct ReadAgain {
-    of: Entity,
     content: Vec<ToolResultContent>,
 }
 
@@ -414,18 +412,17 @@ impl Reread {
 
 /// Counts each read of a re-read as it settles, redacted as every tool
 /// answer is, and once all are in gives the [`Reread`] to the call it held,
-/// which it releases. A read whose re-read is gone, as after a stop, goes
-/// nowhere.
+/// which it releases.
 fn take_read_again(
     settled: On<Add<Settled>>,
-    reads: Query<(&ReadAgain, &Outcome)>,
+    reads: Query<(&ReadAgain, &RequestOf, &Outcome)>,
     mut rereads: Query<(&mut Rereading, &HoldOf)>,
     mut commands: Commands,
 ) {
-    let Ok((read, outcome)) = reads.get(settled.entity) else {
+    let Ok((read, &RequestOf(of), outcome)) = reads.get(settled.entity) else {
         return;
     };
-    let Ok((mut rereading, &HoldOf(call))) = rereads.get_mut(read.of) else {
+    let Ok((mut rereading, &HoldOf(call))) = rereads.get_mut(of) else {
         return;
     };
     let result = outcome.tool_result();
@@ -438,7 +435,7 @@ fn take_read_again(
             plan: rereading.plan.clone(),
         };
         commands.entity(call).try_insert(reread);
-        commands.entity(read.of).despawn();
+        commands.entity(of).despawn();
     }
 }
 

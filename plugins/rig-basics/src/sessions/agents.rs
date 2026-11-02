@@ -11,10 +11,11 @@ use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 use rig_core::conversation::short_id;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
-use rig_ecs::fork::{AgentForked, ForkAgent, ForkedFrom};
+use rig_ecs::fork::{ForkAgent, ForkResult, ForkedFrom};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::model::ModelChoice;
 use rig_ecs::prelude::MessageId;
+use rig_ecs::requests::RequestOf;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{PickItem, Picker};
 use rig_harness::prelude::{
@@ -40,19 +41,17 @@ impl Plugin for AgentsPlugin {
         if !app.is_plugin_added::<CurrentAgentPlugin>() {
             app.add_plugins(CurrentAgentPlugin);
         }
-        app.init_resource::<Forking>()
-            .add_command(
-                "fork",
-                "Fork the shown agent into a new one and show it: /fork at the end, \
-                 /fork at to pick a message, /fork <message> through it",
-                fork,
-            )
-            .add_command(
-                "agents",
-                "Pick an agent to show; /agents <id> shows it",
-                agents,
-            )
-            .add_observer(forked);
+        app.add_command(
+            "fork",
+            "Fork the shown agent into a new one and show it: /fork at the end, \
+             /fork at to pick a message, /fork <message> through it",
+            fork,
+        )
+        .add_command(
+            "agents",
+            "Pick an agent to show; /agents <id> shows it",
+            agents,
+        );
         let relist = relist
             .run_if(any_with_component::<AgentList>)
             .after(CurrentAgentSystems);
@@ -101,24 +100,20 @@ pub struct ColumnOf(pub Entity);
 #[relationship_target(relationship = ColumnOf, linked_spawn)]
 pub struct AgentColumns(Vec<Entity>);
 
-/// The forks this plugin asked for, until the kernel made them: the agent,
-/// the message, and the text to put back in the input once the fork is
-/// shown.
-#[derive(Resource, Default)]
-struct Forking(Vec<(Entity, Option<MessageId>, Option<String>)>);
+/// On a fork this plugin asked for: the text to put back in the input once
+/// the fork is shown.
+#[derive(Component)]
+struct Recall(Option<String>);
 
-impl Forking {
-    /// Forks `agent` through `through`, then shows the fork with `recall`
-    /// in its input.
-    fn ask(
-        &mut self,
-        commands: &mut Commands,
-        (agent, through): (Entity, Option<MessageId>),
-        recall: Option<String>,
-    ) {
-        self.0.push((agent, through, recall));
-        commands.trigger(ForkAgent { agent, through });
-    }
+/// Forks `agent` through `through`, then shows the fork with `recall` in
+/// its input, or says why there is none.
+fn ask_fork(
+    commands: &mut Commands,
+    (agent, through): (Entity, Option<MessageId>),
+    recall: Option<String>,
+) {
+    let fork = ForkAgent::new(agent, through);
+    commands.spawn((fork, Recall(recall))).observe(forked);
 }
 
 /// Shows `agent` in the front the user uses, and makes it the
@@ -139,7 +134,6 @@ fn show(agent: Entity, commands: &mut Commands) {
 fn fork(
     In(args): In<CommandArgs>,
     ids: Query<&AgentId>,
-    mut forking: ResMut<Forking>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -169,32 +163,39 @@ fn fork(
             }
         },
     };
-    forking.ask(&mut commands, (args.agent, through), None);
+    ask_fork(&mut commands, (args.agent, through), None);
 }
 
-/// Shows each fork this plugin asked for, with what it puts back in the
-/// input.
+/// Shows a fork this plugin asked for, with what it puts back in the
+/// input, or says why it was not made.
 fn forked(
-    forked: On<AgentForked>,
-    mut forking: ResMut<Forking>,
+    made: On<Add<ForkResult>>,
+    requests: Query<(&ForkResult, &RequestOf, &Recall)>,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let asked = forking
-        .0
-        .iter()
-        .position(|(agent, through, _)| (*agent, *through) == (forked.from, forked.through));
-    let Some((_, _, recall)) = asked.map(|at| forking.0.remove(at)) else {
+    let Ok((ForkResult(result), &RequestOf(agent), Recall(recall))) = requests.get(made.entity)
+    else {
         return;
     };
-    show(forked.fork, &mut commands);
+    let fork = match result {
+        Ok(fork) => *fork,
+        Err(why) => {
+            notices.write(Notice::error(
+                agent,
+                format!("Could not fork the agent: {why}."),
+            ));
+            return;
+        }
+    };
+    show(fork, &mut commands);
     let said = "Forked into a new agent; /agents shows the other.";
-    notices.write(Notice::info(forked.fork, said));
+    notices.write(Notice::info(fork, said));
     if let Some(text) = recall {
         recalled.write(Recalled {
-            agent: forked.fork,
-            text,
+            agent: fork,
+            text: text.clone(),
             why: None,
         });
     }

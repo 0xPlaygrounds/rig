@@ -3438,10 +3438,7 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     let child_taken = child_sets.first().map(|(_, taken)| taken.len());
     assert_eq!(child_taken, Some(2), "{child_sets:?}");
 
-    restarted.world_mut().trigger(ForkAgent {
-        agent,
-        through: None,
-    });
+    restarted.world_mut().spawn(ForkAgent::new(agent, None));
     restarted.update();
     let world = restarted.world_mut();
     let mut agents = world.query_filtered::<Entity, With<Agent>>();
@@ -3453,10 +3450,7 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     // A fork through the first summary ends before the compaction that
     // made it, so its next entries, which may reuse the summary's id, draw
     // nothing above them.
-    restarted.world_mut().trigger(ForkAgent {
-        agent,
-        through: first,
-    });
+    restarted.world_mut().spawn(ForkAgent::new(agent, first));
     restarted.update();
     let world = restarted.world_mut();
     let mut agents = world.query_filtered::<Entity, With<Agent>>();
