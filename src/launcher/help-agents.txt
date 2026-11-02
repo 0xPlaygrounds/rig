@@ -115,9 +115,10 @@ Events, each with "agent" when it is an agent's:
         which nothing is written; error says why for any code but 0;
         usage is the session's total: its usage lines, and those of runs
         before when it went on with a session; usage_complete is false
-        when a helper's spend was not all reported, so usage is a lower
-        bound, or when no usage is kept; it does not count a model call a
-        stop cancelled, whose bill the provider alone knows
+        when a helper's spend in the session (earlier runs included) was
+        not all reported, so usage is a lower bound, or when no usage is
+        kept; it does not count a model call a stop cancelled, whose bill
+        the provider alone knows
 
 With rig_basics::budget::BudgetPlugin enabled, RIG_BUDGET_USD and
 RIG_BUDGET_TOKENS hold a run's session to them as a budget does, besides

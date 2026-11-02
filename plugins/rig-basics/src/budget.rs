@@ -279,10 +279,11 @@ fn refuse_when_reached(
 }
 
 /// Once the budget is reached, as spending grows or the budget is lowered,
-/// stops every running turn with the reason, which an error notice tells,
-/// as the user's stop does: from each agent nothing spawned whose tree has
-/// one, so a subagent's report says it was stopped and starts no turn. A
-/// turn's running `helper` call stops its children, and they theirs.
+/// stops every running turn with the reason, as the user's stop does: from
+/// each agent nothing spawned whose tree has one, so a subagent's report
+/// says it was stopped and starts no turn. An error notice tells the root,
+/// and each agent stopped working, why. A turn's running `helper` call
+/// stops its children, and they theirs.
 fn stop_when_reached(
     roots: Query<Entity, (With<Agent>, Without<SpawnedBy>)>,
     (busy, below): (Query<(), With<ActiveTurn>>, Query<&Spawned>),
@@ -294,10 +295,16 @@ fn stop_when_reached(
         return;
     };
     for root in &roots {
-        let mut tree = std::iter::once(root).chain(below.iter_descendants(root));
-        if tree.any(|agent| busy.contains(agent)) {
-            commands.trigger(StopTurn::plugin(root, ORIGIN, &why));
-            notices.write(Notice::error(root, why.clone()));
+        let working: Vec<Entity> = (below.iter_descendants(root))
+            .filter(|agent| busy.contains(*agent))
+            .collect();
+        if working.is_empty() && !busy.contains(root) {
+            continue;
+        }
+        commands.trigger(StopTurn::plugin(root, ORIGIN, &why));
+        // Each stopped agent's view says why, as the root's does.
+        for agent in std::iter::once(root).chain(working) {
+            notices.write(Notice::error(agent, why.clone()));
         }
     }
 }

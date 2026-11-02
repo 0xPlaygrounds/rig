@@ -415,7 +415,11 @@ fn a_helper_a_stopped_call_never_started_spent_nothing() {
         app.update();
         std::thread::sleep(Duration::from_millis(50));
     }
-    app.update();
+    // The fifth's start comes a moment after the fourth settles: let it.
+    for _ in 0..5 {
+        std::thread::sleep(Duration::from_millis(100));
+        app.update();
+    }
     assert_eq!(
         app.world().resource::<UnknownSpend>().0,
         AT_ONCE as u64,

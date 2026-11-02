@@ -149,6 +149,42 @@ fn stops_the_helper_and_refuses_the_next_call(
     assert_eq!(model.request_count(), 1, "the refused call was never sent");
 }
 
+/// A subagent the budget stops is told why in its own view, as its idle
+/// root is.
+#[test]
+fn a_stopped_subagent_is_told_why() {
+    let model = MockCompletionModel::from_stream_turns([
+        calls("h0", HELPER, json!({ "task": "spend" })),
+        reply("never sent"),
+    ]);
+    let (mut app, wakes, _) = budgeted("subagent", "[budget]\ntokens = 20", &model);
+    let world = app.world_mut();
+    let root = first_agent(world);
+    let spec = rig_ecs::spawn::AgentSpec::default();
+    let child = root.and_then(|root| {
+        rig_ecs::spawn::spawn(world, rig_ecs::spawn::Origin::ChildOf(root), spec).ok()
+    });
+    let connection = connect(&model);
+    assert!(root.is_some() && child.is_some() && connection.is_some());
+    let (Some(root), Some(child), Some(connection)) = (root, child, connection) else {
+        return;
+    };
+    world.entity_mut(child).insert(connection);
+    world.trigger(Deliver::new(child, "Go.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    let errors = &app.world().resource::<Collected<Notice>>().0;
+    let told = |agent: Entity| {
+        errors.iter().any(|notice| {
+            notice.level == NoticeLevel::Error
+                && notice.agent == Some(agent)
+                && notice.text.starts_with("Budget reached")
+        })
+    };
+    assert!(told(child) && told(root), "{errors:?}");
+}
+
 #[test]
 fn a_reached_budget_stops_the_running_helper_and_refuses_the_next_call() {
     let why = "Raise it with /budget";
