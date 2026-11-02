@@ -87,6 +87,13 @@ use super::turn::{
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AgentPass;
 
+/// Runs between each two stages of a pass, once it ends and at the end of
+/// [`AgentLoop`]: a system there reads what was written before it ahead of
+/// any later stage, an observer it triggers, or a reader after
+/// [`AgentLoop`], such as a [`Notice`] it rewrites.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BetweenStages;
+
 /// The system in `Update` that runs [`AgentPass`] until nothing moves. Work
 /// done after it in a frame, such as an effect spawned in `PostUpdate`, waits
 /// for the next frame: a system that spawns, answers or releases effects
@@ -651,6 +658,9 @@ pub(crate) fn build(app: &mut App) {
     app.init_resource::<Passes>()
         .add_message::<EffectRecorded>()
         .add_message::<StreamDelta>()
+        .edit_schedule(BetweenStages, |between| {
+            between.set_executor(SingleThreadedExecutor::new());
+        })
         .edit_schedule(AgentPass, |pass| {
             pass.set_executor(SingleThreadedExecutor::new());
             if cfg!(debug_assertions) {
@@ -778,9 +788,16 @@ pub(crate) fn build(app: &mut App) {
         )
         .add_systems(
             Update,
-            run_passes
-                .in_set(AgentLoop)
-                .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>, With<Forking>)>>),
+            (
+                run_passes
+                    .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>, With<Forking>)>>),
+                // In a frame with no pass too, for what came before the loop.
+                |world: &mut World| {
+                    world.try_run_schedule(BetweenStages).ok();
+                },
+            )
+                .chain()
+                .in_set(AgentLoop),
         );
     for stage in Stage::ALL {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));
@@ -804,11 +821,12 @@ pub(crate) fn build(app: &mut App) {
     app.add_systems(AgentPass, save_in_pass.after(Stage::Start));
 }
 
-/// Saves the agent conversations changed since it last ran, so a change
-/// made in a stage is announced to the later stages of the pass; one that
-/// saved any counts as a move, so the loop runs another pass, where the
-/// earlier stages see it too.
+/// Runs [`BetweenStages`], then saves the agent conversations changed since
+/// it last ran, so a change made in a stage is announced to the later
+/// stages of the pass; one that saved any counts as a move, so the loop
+/// runs another pass, where the earlier stages see it too.
 fn save_in_pass(world: &mut World) {
+    world.try_run_schedule(BetweenStages).ok();
     if let Some(agent) = save_now(world)
         && let Some(mut passes) = world.get_resource_mut::<Passes>()
     {

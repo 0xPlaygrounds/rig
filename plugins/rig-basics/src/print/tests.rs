@@ -2136,3 +2136,24 @@ fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
         "{saved}"
     );
 }
+
+/// A notice quoting a file the prompt names that is not there is redacted
+/// on its line, whichever stage after the one that wrote it reads it: here
+/// `--json` also flushes in Gate, before the turn starts.
+#[test]
+fn a_notice_naming_a_missing_file_is_redacted_on_its_line() {
+    let model = answering(&["done"]);
+    let prompt = "Read @ghp_nofilenofilenofilenofilenofile123456.txt";
+    let (_, lines) = one_shot_on(&MemoryStore::default(), prompt, None, &model, true, |app| {
+        app.add_plugins((
+            crate::coding_tools::AttachPlugin,
+            crate::redact::RedactPlugin,
+        ))
+        .add_systems(AgentPass, flush.in_set(Stage::Gate));
+    });
+    let notices = lines.of("notice");
+    let texts: Vec<_> = notices.iter().map(|line| at(line, "text")).collect();
+    assert_eq!(texts, [&json!("@‹SECRET_1›.txt: no such file")]);
+    let all = lines.text().concat();
+    assert!(!all.contains("nofilenofile"), "{all}");
+}

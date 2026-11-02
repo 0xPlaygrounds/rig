@@ -150,9 +150,9 @@ impl Plugin for RedactPlugin {
                         .after(GateSystems::After)
                         .after(crate::approval::ApprovalSystems)
                         .before(GateSystems::Fallback),
-                    (redact_recalled, redact_notices).in_set(Stage::Start),
                 ),
             )
+            .add_systems(BetweenStages, (redact_recalled, redact_notices))
             .add_systems(
                 Last,
                 (
@@ -734,7 +734,8 @@ fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
 }
 
 /// A notice, which may quote what the user typed, such as a file a message
-/// names that is not there; before the fronts read it, after the agent loop.
+/// names that is not there; between the stages, before a later stage, a
+/// front's observer of it or a front after the agent loop reads it.
 fn redact_notices(mut notices: MessageMutator<Notice>, secrets: Res<Secrets>) {
     for notice in notices.read() {
         if let Some(text) = owned(secrets.text(&notice.text)) {
