@@ -426,13 +426,14 @@ fn json(secrets: &Secrets, value: &mut Value) -> bool {
         Value::Array(items) => items
             .iter_mut()
             .fold(false, |any, item| json(secrets, item) | any),
-        // How a media source's base64 serializes.
-        Value::Object(fields) if fields.get("type").and_then(Value::as_str) == Some("base64") => {
-            false
+        Value::Object(fields) => {
+            // How a media source's base64 serializes: its value stays whole.
+            let encoded = fields.get("type").and_then(Value::as_str) == Some("base64");
+            fields
+                .iter_mut()
+                .filter(|(key, _)| !(encoded && key.as_str() == "value"))
+                .fold(false, |any, (_, field)| json(secrets, field) | any)
         }
-        Value::Object(fields) => fields
-            .values_mut()
-            .fold(false, |any, field| json(secrets, field) | any),
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }
@@ -440,7 +441,14 @@ fn json(secrets: &Secrets, value: &mut Value) -> bool {
 /// One string of [`json`]: as text, then as the JSON it holds; `None` when
 /// unchanged. A `data:` URL of base64 is left whole.
 fn json_text(secrets: &Secrets, text: &str) -> Option<String> {
-    if text.starts_with("data:") && text.contains(";base64,") {
+    let data_url = text
+        .strip_prefix("data:")
+        .and_then(|url| url.split_once(";base64,"));
+    if data_url.is_some_and(|(_, encoded)| {
+        encoded
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
+    }) {
         return None;
     }
     let mut changed = owned(secrets.text(text));
@@ -566,32 +574,40 @@ fn redact_facts(
     let Ok(Value::Object(mut slots)) = serde_json::to_value(&published.0) else {
         return;
     };
-    let mut changed = false;
-    for (key, value) in &mut slots {
-        let redacted = match key == FilesChanged::KEY {
-            true => serde_json::from_value::<FilesChanged>(value.clone())
-                .ok()
-                .and_then(|mut files| {
-                    let changed = files.0.iter_mut().fold(false, |any, change| {
-                        // A path can hold a secret, as one a call wrote a
-                        // file named after.
-                        let renamed = match secrets.text(&change.path) {
-                            Cow::Owned(path) => {
-                                change.path = path;
-                                true
-                            }
-                            Cow::Borrowed(_) => false,
-                        };
-                        redact_hunks(&mut change.hunks, &secrets) | renamed | any
-                    });
-                    changed.then(|| serde_json::to_value(files).ok()).flatten()
-                }),
-            false => secrets.redacted(value),
-        };
-        if let Some(redacted) = redacted {
-            *value = redacted;
-            changed = true;
+    let pass = |slots: &mut serde_json::Map<String, Value>| {
+        let mut changed = false;
+        for (key, value) in slots {
+            let redacted = match key == FilesChanged::KEY {
+                true => serde_json::from_value::<FilesChanged>(value.clone())
+                    .ok()
+                    .and_then(|mut files| {
+                        let changed = files.0.iter_mut().fold(false, |any, change| {
+                            // A path can hold a secret, as one a call wrote a
+                            // file named after.
+                            let renamed = match secrets.text(&change.path) {
+                                Cow::Owned(path) => {
+                                    change.path = path;
+                                    true
+                                }
+                                Cow::Borrowed(_) => false,
+                            };
+                            redact_hunks(&mut change.hunks, &secrets) | renamed | any
+                        });
+                        changed.then(|| serde_json::to_value(files).ok()).flatten()
+                    }),
+                false => secrets.redacted(value),
+            };
+            if let Some(redacted) = redacted {
+                *value = redacted;
+                changed = true;
+            }
         }
+        changed
+    };
+    // Again, for a secret a later slot taught to show bare in an earlier one.
+    let changed = pass(&mut slots);
+    if changed {
+        pass(&mut slots);
     }
     if changed && let Ok(redacted) = serde_json::from_value(Value::Object(slots)) {
         published.0 = redacted;
@@ -641,46 +657,59 @@ fn redact_messages(
         if decision.is_decided() {
             continue;
         }
-        let mut changed = false;
-        for part in &mut message.bypass_change_detection().parts {
-            let text = match part {
-                MessagePart::Text(text) => text,
-                MessagePart::Attachment(Attachment { label, content }) => {
-                    // A label is a path or a URI, which may hold a key too.
-                    if let Cow::Owned(redacted) = secrets.text(label) {
-                        *label = redacted;
-                        changed = true;
-                    }
-                    match content {
-                        UserContent::Text(text) => &mut text.text,
-                        // A medium's link, not its data, which a key's shape
-                        // could match by chance.
-                        UserContent::Image(message::Image { data, .. })
-                        | UserContent::Audio(message::Audio { data, .. })
-                        | UserContent::Video(message::Video { data, .. }) => match data {
-                            message::DocumentSourceKind::Url(url) => url,
-                            _ => continue,
-                        },
-                        // A document's or a result's text, as JSON.
-                        content => {
-                            if let Some(redacted) = secrets.redacted(&*content) {
-                                *content = redacted;
-                                changed = true;
-                            }
-                            continue;
-                        }
-                    }
-                }
-            };
-            if let Cow::Owned(redacted) = secrets.text(text) {
-                *text = redacted;
-                changed = true;
-            }
+        let parts = &mut message.bypass_change_detection().parts;
+        // Again, for a secret a later part taught to show bare in an earlier
+        // one.
+        let changed = redact_parts(parts, &secrets);
+        if changed {
+            redact_parts(parts, &secrets);
         }
         if changed {
             message.set_changed();
         }
     }
+}
+
+/// Each of a message's parts redacted: its text, an attachment's label,
+/// text and link, a document's or a result's text; whether any was.
+fn redact_parts(parts: &mut [MessagePart], secrets: &Secrets) -> bool {
+    let mut changed = false;
+    for part in parts {
+        let text = match part {
+            MessagePart::Text(text) => text,
+            MessagePart::Attachment(Attachment { label, content }) => {
+                // A label is a path or a URI, which may hold a key too.
+                if let Cow::Owned(redacted) = secrets.text(label) {
+                    *label = redacted;
+                    changed = true;
+                }
+                match content {
+                    UserContent::Text(text) => &mut text.text,
+                    // A medium's link, not its data, which a key's shape
+                    // could match by chance.
+                    UserContent::Image(message::Image { data, .. })
+                    | UserContent::Audio(message::Audio { data, .. })
+                    | UserContent::Video(message::Video { data, .. }) => match data {
+                        message::DocumentSourceKind::Url(url) => url,
+                        _ => continue,
+                    },
+                    // A document's or a result's text, as JSON.
+                    content => {
+                        if let Some(redacted) = secrets.redacted(&*content) {
+                            *content = redacted;
+                            changed = true;
+                        }
+                        continue;
+                    }
+                }
+            }
+        };
+        if let Cow::Owned(redacted) = secrets.text(text) {
+            *text = redacted;
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// A refused command's line, and why it was refused, which may quote it.

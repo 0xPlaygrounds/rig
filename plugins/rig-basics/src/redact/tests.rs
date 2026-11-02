@@ -987,6 +987,14 @@ fn a_result_keeps_an_images_data_whole() {
         shown.contains("TOKEN=‹SECRET_2›") && shown.contains(&data),
         "{shown}"
     );
+    // Only a source's data: a key beside it is still found.
+    let token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    let beside = json!({ "type": "base64", "value": data, "token": token });
+    let output = ToolOutput::json(beside);
+    let answer = redacted_answer(&Outcome::from(ToolResult::success(output)), &secrets);
+    let shown = answer.and_then(|answer| serde_json::to_string(&answer).ok());
+    let shown = shown.unwrap_or_default();
+    assert!(!shown.contains("ghp_") && shown.contains(&data), "{shown}");
 }
 
 /// The effect log keeps a model request redacted as the layer sends it,
@@ -1052,4 +1060,69 @@ fn a_record_keeps_its_request_as_sent() {
         call.contains("echo ‹SECRET_1›") && !call.contains("old_text"),
         "{call}"
     );
+}
+
+/// A fact a call published, under the slot `a_note`.
+#[derive(Serialize, serde::Deserialize)]
+struct EarlyNote(String);
+
+impl ContextValue for EarlyNote {
+    const KEY: &'static str = "a_note";
+}
+
+/// A fact a call published, under the slot `z_note`.
+#[derive(Serialize, serde::Deserialize)]
+struct LateNote(String);
+
+impl ContextValue for LateNote {
+    const KEY: &'static str = "z_note";
+}
+
+/// A secret a later part of a message, or a later fact, teaches is found
+/// in an earlier one too, where it shows bare.
+#[test]
+fn a_secret_learned_late_is_found_in_what_came_before() {
+    let mut world = World::new();
+    world.insert_resource(Secrets::default());
+    world.add_observer(redact_facts);
+    let mut message = Incoming::new("it fails with hunter4hunter4", DeliveryMode::Queue);
+    message
+        .parts
+        .push(MessagePart::Text("DB_PASSWORD=hunter4hunter4".to_owned()));
+    let sent = world.spawn((message, Decision::default())).id();
+    assert!(world.run_system_once(redact_messages).is_ok());
+    let parts = world
+        .get::<Incoming>(sent)
+        .map(|message| format!("{:?}", message.parts));
+    let parts = parts.unwrap_or_default();
+    assert!(
+        parts.contains("‹SECRET_1›") && !parts.contains("hunter4"),
+        "{parts}"
+    );
+    let mut context = ToolContext::new();
+    assert!(
+        context
+            .insert_result(EarlyNote("saw hunter5hunter5".to_owned()))
+            .is_ok()
+    );
+    assert!(
+        context
+            .insert_result(LateNote("DB_PASSWORD=hunter5hunter5".to_owned()))
+            .is_ok()
+    );
+    let published = world.spawn(Published(context.result_context())).id();
+    let facts = world
+        .get::<Published>(published)
+        .map(|facts| facts.0.clone());
+    let notes = facts.map(|facts| {
+        let early = facts.get::<EarlyNote>().ok().flatten().map(|note| note.0);
+        let late = facts.get::<LateNote>().ok().flatten().map(|note| note.0);
+        (early, late)
+    });
+    let notes = notes.unwrap_or_default();
+    let expected = (
+        Some("saw ‹SECRET_2›".to_owned()),
+        Some("DB_PASSWORD=‹SECRET_2›".to_owned()),
+    );
+    assert_eq!(notes, expected);
 }
