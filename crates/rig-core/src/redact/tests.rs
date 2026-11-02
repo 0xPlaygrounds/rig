@@ -136,6 +136,11 @@ fn json_redacts_every_string_and_a_cut_off_key_to_the_end() {
 /// secret word are not secrets, and a known key keeps its own kind.
 #[test]
 fn a_value_assigned_to_a_secret_name_is_redacted_and_counts_are_not() {
+    // A sentence's full stop after the value is not part of it.
+    assert_eq!(
+        text("The password is DB_PASSWORD=hunter2hunter2. Write it."),
+        "The password is DB_PASSWORD=[REDACTED]. Write it."
+    );
     let line = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY region=us-east-1";
     assert_eq!(
         text(line),

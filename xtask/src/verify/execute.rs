@@ -298,7 +298,9 @@ pub(super) fn names_redact(text: &str) -> Option<usize> {
         let listed = (depth > 0 || opens.is_some())
             && paths(code, "redact")
                 .any(|after| after.is_empty() || after.starts_with([',', '}', ' ']));
-        if listed || paths(code, "redact::").next().is_some() || code.contains("rig_core::redact") {
+        // The plugin's own path, such as `rig_basics::redact::RedactSystems`, is not the library.
+        let pathed = paths(code, "redact::").count() > code.matches("rig_basics::redact::").count();
+        if listed || pathed || code.contains("rig_core::redact") {
             return Some(number);
         }
         let from = if depth > 0 { Some(0) } else { opens };

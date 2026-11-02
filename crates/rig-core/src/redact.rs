@@ -63,7 +63,8 @@ pub enum Kind {
     /// `SECRET_KEY` or `PRIVATE_KEY` (so `AWS_SECRET_ACCESS_KEY` and
     /// `GITHUB_TOKEN`, not `MAX_TOKENS` or `TOKEN_COUNT`). The value runs
     /// to its closing quote when quoted, else to whitespace, a quote, `,`,
-    /// `;` or `&` (the next assignment of a query string); one of at most
+    /// `;` or `&` (the next assignment of a query string), less a sentence's
+    /// closing `.`, `,`, `:`, `!`, `?` or `)`; one of at most
     /// 7 characters, all digits, starting with `$` (a reference such as
     /// `$GITHUB_TOKEN`), with characters other than printable ASCII (a
     /// placeholder such as `‹SECRET_1›`), or one holding [`REDACTED`] is
@@ -415,9 +416,13 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
             let inner = after.get(1..)?;
             (start + 1, inner.get(..inner.find(quote)?)?)
         }
+        // A sentence's closing punctuation, which a space or the text's end
+        // follows, is not part of the value.
         _ => (
             start,
-            after.get(..after.find(ends_value).unwrap_or(after.len()))?,
+            after
+                .get(..after.find(ends_value).unwrap_or(after.len()))?
+                .trim_end_matches(['.', ',', ':', '!', '?', ')']),
         ),
     };
     let plausible = value.len() >= 8

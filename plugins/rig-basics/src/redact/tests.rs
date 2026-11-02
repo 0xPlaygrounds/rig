@@ -343,10 +343,10 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
 }
 
 /// A command's output loses its secrets line by line; a private key block
-/// goes out as one placeholder at its end line, and the whole block is what
-/// a call naming it gets.
+/// goes out as one placeholder with its first line, and the whole block is
+/// what a call naming it gets.
 #[test]
-fn a_private_key_block_goes_out_whole_at_its_end_line() {
+fn a_private_key_block_is_one_placeholder_for_the_whole_block() {
     let (mut block, secrets) = (None, Secrets::default());
     let lines = [
         "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789\n",
@@ -361,14 +361,14 @@ fn a_private_key_block_goes_out_whole_at_its_end_line() {
         .collect();
     let shown = [
         "GITHUB_TOKEN=‹SECRET_1›\n",
-        "",
-        "",
         "‹SECRET_2›\n",
+        "",
+        "",
         "after\n",
     ];
     assert_eq!(kept, shown);
     let key = lines.get(1..4).map(|key| key.concat()).unwrap_or_default();
-    assert_eq!(secrets.reveal("‹SECRET_2›"), key.trim_end());
+    assert_eq!(secrets.reveal("‹SECRET_2›"), key);
 }
 
 /// A message going to its agent is redacted, text and attached file; one a
@@ -483,7 +483,8 @@ fn a_key_block_takes_the_hunks_whatever_its_lines_end_with() {
     }
 }
 
-/// A prompt the terminal view keeps is kept redacted, for Up and the file.
+/// A prompt the terminal view keeps is kept redacted, for Up and the file
+/// other sessions read, its secrets as `[REDACTED]`, which names none.
 #[cfg(feature = "tui")]
 #[test]
 fn a_prompt_kept_for_up_is_kept_redacted() {
@@ -494,7 +495,7 @@ fn a_prompt_kept_for_up_is_kept_redacted() {
     world.insert_resource(Secrets::default());
     assert!(world.run_system_once(redact_history).is_ok());
     let entries = &world.resource::<rig_tui::PromptHistory>().entries;
-    assert_eq!(entries, &["deploy with GITHUB_TOKEN=‹SECRET_1›"]);
+    assert_eq!(entries, &["deploy with GITHUB_TOKEN=[REDACTED]"]);
 }
 
 /// A tool call that names a placeholder runs with its secret, found again
@@ -513,6 +514,7 @@ fn a_call_naming_a_placeholder_runs_with_its_secret() {
     let model = MockCompletionModel::from_stream_turns([
         calls("s1", "shell", json!({ "command": command })),
         calls("s2", "shell", json!({ "command": "echo ‹SECRET_7›" })),
+        calls("s3", "shell", json!({ "command": "echo ‹SECRET_2›" })),
         reply("Done."),
     ]);
     let (mut app, wakes) = app_on(&MemoryStore::default());
@@ -536,7 +538,7 @@ fn a_call_naming_a_placeholder_runs_with_its_secret() {
         "deploy",
         "Deploy with TOKEN=prompted12345678.",
     ));
-    let said = format!("Save DB_PASSWORD={key} to out.txt");
+    let said = format!("Save DB_PASSWORD={key} to out.txt; API_KEY=\"two words here\"");
     world.trigger(Deliver::new(agent, said, DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
@@ -552,6 +554,12 @@ fn a_call_naming_a_placeholder_runs_with_its_secret() {
     assert!(held.contains("‹SECRET_1›") && !held.contains(key), "{held}");
     assert!(
         held.contains("‹SECRET_7› is not a secret this run knows"),
+        "{held}"
+    );
+    // A secret a shell would read as code is not put in a command.
+    let special = "‹SECRET_2› holds characters a shell reads as code";
+    assert!(
+        held.contains(special) && !held.contains("two words"),
         "{held}"
     );
     let mut requests = world.query::<&ToolRequest>();
@@ -603,10 +611,12 @@ fn a_known_secret_is_found_again_where_it_shows_bare() {
     assert_eq!(redacted, Some(json!({ "output": "it is ‹SECRET_1›" })));
 }
 
-/// A message on its way when the app exits, which the exit keeps for the
-/// restart, is saved redacted, and so is the count of numbers handed out.
+/// A message delivered after the agent loop of the frame the app exits on,
+/// which the exit keeps for the restart, and what a running call answers if
+/// stopped, changed in place that frame, are redacted before the exit
+/// keeps them; the count of numbers handed out is saved with them.
 #[test]
-fn a_message_kept_at_exit_is_saved_redacted() {
+fn what_the_exit_frame_keeps_is_redacted() {
     let store = MemoryStore::default();
     let (mut app, _) = app_on(&store);
     app.add_plugins((AgentPlugin, SessionLogPlugin, RedactPlugin));
@@ -614,10 +624,37 @@ fn a_message_kept_at_exit_is_saved_redacted() {
     app.update();
     let world = app.world_mut();
     let agent = world.spawn(Agent).id();
-    let said = "deploy with DB_PASSWORD=hunter2hunter2";
-    world.trigger(Deliver::new(agent, said, DeliveryMode::Queue));
-    world.write_message(AppExit::Success);
+    let quiet = ToolResult::success(ToolOutput::text("so far nothing"));
+    let call = world.spawn(IfStopped(Outcome::from(quiet))).id();
+    // After `AgentLoop`, in the frame that exits.
+    app.add_systems(
+        PostUpdate,
+        move |mut stopped: Query<&mut IfStopped>,
+              mut commands: Commands,
+              mut exits: MessageWriter<AppExit>,
+              mut done: Local<bool>| {
+            if std::mem::replace(&mut *done, true) {
+                return;
+            }
+            let said = "deploy with DB_PASSWORD=hunter2hunter2";
+            commands.trigger(Deliver::new(agent, said, DeliveryMode::Queue));
+            if let Ok(mut stopped) = stopped.get_mut(call) {
+                let printed =
+                    ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
+                stopped.0 = Outcome::from(printed);
+            }
+            exits.write(AppExit::Success);
+        },
+    );
     app.update();
+    let stopped = app
+        .world()
+        .get::<IfStopped>(call)
+        .map(|stopped| stopped.0.tool_result());
+    let stopped = stopped
+        .map(|result| result.output().render())
+        .unwrap_or_default();
+    assert!(stopped.starts_with("GITHUB_TOKEN=‹SECRET_"), "{stopped}");
     let logs = store.logs().unwrap_or_default();
     let saved: Vec<u8> = logs
         .iter()
@@ -625,28 +662,63 @@ fn a_message_kept_at_exit_is_saved_redacted() {
         .collect();
     let saved = String::from_utf8_lossy(&saved);
     assert!(
-        saved.contains("DB_PASSWORD=‹SECRET_1›") && !saved.contains("hunter2"),
+        saved.contains("DB_PASSWORD=‹SECRET_") && !saved.contains("hunter2"),
         "{saved}"
     );
-    assert!(saved.contains("redact::Issued"), "{saved}");
+    let issued = saved
+        .lines()
+        .rfind(|line| line.contains("redact::Issued"))
+        .unwrap_or_default();
+    assert!(issued.contains(":2") || issued.contains("[2]"), "{issued}");
 }
 
-/// What a running call answers if stopped, changed in place, is redacted on
-/// the exit frame before the exit prints and keeps it.
+/// A secret the run knows is found again though the stream cuts it at its
+/// punctuation; a known original that is also a field's tag, or that a
+/// JSON string holds escaped, hides no other secret.
 #[test]
-fn an_answer_if_stopped_changed_in_place_is_redacted_at_exit() {
-    let mut world = World::new();
-    world.insert_resource(Secrets::default());
-    let quiet = ToolResult::success(ToolOutput::text("so far nothing"));
-    let call = world.spawn(IfStopped(Outcome::from(quiet))).id();
-    let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
-    if let Some(mut stopped) = world.get_mut::<IfStopped>(call) {
-        stopped.0 = Outcome::from(printed);
-    }
-    assert!(world.run_system_once(redact_stopped).is_ok());
-    let stopped = world
-        .get::<IfStopped>(call)
-        .map(|stopped| stopped.0.tool_result());
-    let stopped = stopped.map(|result| result.output().render());
-    assert_eq!(stopped.as_deref(), Some("GITHUB_TOKEN=‹SECRET_1›"));
+fn a_known_secret_is_found_however_it_arrives() {
+    let secrets = Secrets::default();
+    let _ = secrets.text("PASSWORD='hunter2!hunter2' and SECRET=tool_result and TOKEN=abc\\defgh1");
+    let mut streaming = redact_stream(secrets.clone());
+    let out: String = [text(0, "say hunter2!"), text(0, "hunter2 now.")]
+        .into_iter()
+        .chain([Relayed::Item(Item::Event(StreamEvent::End {
+            part: Part::new(0),
+            content: AssistantContent::text("ended"),
+        }))])
+        .flat_map(&mut streaming)
+        .filter_map(|item| match item {
+            Relayed::Item(Item::Event(StreamEvent::Text { text, .. })) => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(out, "say ‹SECRET_1› now.");
+    // A tag equal to an original: the result is still redacted by shape.
+    let printed = ToolResult::success(ToolOutput::text(
+        "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+    ));
+    let redacted = redacted_answer(&Outcome::from(printed), &secrets);
+    let shown = format!("{redacted:?}");
+    assert!(redacted.is_some() && !shown.contains("ghp_"), "{shown}");
+    // An original a JSON string holds escaped, as a call's arguments do.
+    let args = json!({ "args": serde_json::to_string(&json!({ "cmd": "echo abc\\defgh1" })).unwrap_or_default() });
+    let shown = secrets
+        .redacted(&args)
+        .map(|args| args.to_string())
+        .unwrap_or_default();
+    assert!(
+        shown.contains("‹SECRET_3›") && !shown.contains("defgh1"),
+        "{shown}"
+    );
+}
+
+/// A secret that reads like a placeholder's inside is never found in one:
+/// redacting again changes nothing, and revealing gives it back.
+#[test]
+fn a_secret_like_a_placeholder_leaves_placeholders_alone() {
+    let secrets = Secrets::default();
+    let once = secrets.text("DB_PASSWORD=SECRET_1 and more").into_owned();
+    assert_eq!(once, "DB_PASSWORD=‹SECRET_1› and more");
+    assert_eq!(secrets.text(&once), once);
+    assert_eq!(secrets.reveal("‹SECRET_1›"), "SECRET_1");
 }

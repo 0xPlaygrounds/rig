@@ -1526,6 +1526,7 @@ fn the_redact_guard_finds_every_way_to_name_the_library() {
         "self.redact_model_feedback()",
         "/// See [`rig_core::redact`].",
         "use rig_core::{message, tool};\nlet redact = 1;",
+        ".after(rig_basics::redact::RedactSystems)",
     ];
     for source in not {
         assert_eq!(names_redact(source), None, "{source}");

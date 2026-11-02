@@ -44,9 +44,19 @@ mod tests;
 /// The layers' and the decider's name.
 const NAME: &str = "redact";
 
-/// The shortest original found again where it shows bare: shorter text is
-/// too likely to be something else.
-const SHORTEST: usize = 6;
+/// The shortest original found again where it shows bare, as short as a
+/// secret [`redact::find`] finds: shorter text is likely something else.
+const SHORTEST: usize = 8;
+
+/// The most of a private key block a command's output holds for it.
+const BLOCK_MOST: usize = 16 * 1024;
+
+/// What a secret revealed into a shell command may not hold: the shell would
+/// read it as code, not the value the call was approved with.
+const SHELL_SPECIAL: &[char] = &[
+    '\'', '"', '`', '$', '\\', ';', '&', '|', '<', '>', '(', ')', '\n', '\r', ' ', '\t', '*', '?',
+    '!', '#', '~', '{', '}', '[', ']',
+];
 
 /// What the model is told of the placeholders.
 const PROMPT: &str = "A secret, such as an API key, shows as a placeholder such as \
@@ -188,14 +198,23 @@ impl Secrets {
     /// `data` with every string in it redacted, through its JSON form;
     /// `None` when it holds no secret or its redacted form does not read
     /// back.
+    /// A known original equal to a field's tag would change the tag, so a
+    /// form that does not read back is tried again with secrets found by
+    /// their shape alone.
     fn redacted<T: Serialize + DeserializeOwned>(&self, data: &T) -> Option<T> {
-        let mut json = serde_json::to_value(data).ok()?;
+        let json = serde_json::to_value(data).ok()?;
         let mut vault = self.vault();
-        let changed = redact::json_with(&mut json, &mut |secret| name(&mut vault, secret));
-        let bare = each_string(&mut json, &mut |text| known(&vault, text));
+        let (mut shaped, mut bare) = (json.clone(), json);
+        let found = redact::json_with(&mut shaped, &mut |secret| name(&mut vault, secret));
+        bare.clone_from(&shaped);
+        let shown = known_json(&vault, &mut bare);
         drop(vault);
-        let changed = changed | bare;
-        changed.then(|| serde_json::from_value(json).ok()).flatten()
+        let read = |json| serde_json::from_value(json).ok();
+        match (found, shown) {
+            (_, true) => read(bare).or_else(|| found.then(|| read(shaped)).flatten()),
+            (true, false) => read(shaped),
+            (false, false) => None,
+        }
     }
 
     /// `text` with each placeholder this run knows replaced by its secret.
@@ -235,23 +254,71 @@ fn name(vault: &mut Vec<Option<String>>, secret: &str) -> String {
 
 /// `text` with each secret `vault` knows replaced by its placeholder,
 /// longest first, so one inside another goes with it, such as a password a
-/// tool printed without the name that made it a secret; `None` when none
-/// shows.
+/// tool printed without the name that made it a secret, but never inside a
+/// placeholder; `None` when none shows.
 fn known(vault: &[Option<String>], text: &str) -> Option<String> {
     let mut shown: Vec<(usize, &str)> = (1..)
         .zip(vault)
         .filter_map(|(number, secret)| Some((number, secret.as_deref()?)))
         .filter(|(_, secret)| secret.len() >= SHORTEST && text.contains(secret))
         .collect();
-    if shown.is_empty() {
-        return None;
-    }
     shown.sort_by_key(|(_, secret)| Reverse(secret.len()));
-    let mut text = text.to_owned();
+    let mut out = Cow::Borrowed(text);
     for (number, secret) in shown {
-        text = text.replace(secret, &placeholder(number));
+        // Between the placeholders already there, `SECRET_1` is not found in
+        // `‹SECRET_1›`.
+        let mut replaced = String::with_capacity(out.len());
+        let mut from = 0;
+        let spans = placeholders(&out).map(|(at, _)| at);
+        for span in spans.chain(std::iter::once(out.len()..out.len())) {
+            let gap = out.get(from..span.start).unwrap_or_default();
+            replaced.push_str(&gap.replace(secret, &placeholder(number)));
+            replaced.push_str(out.get(span.clone()).unwrap_or_default());
+            from = span.end;
+        }
+        if replaced != *out {
+            out = Cow::Owned(replaced);
+        }
     }
-    Some(text)
+    match out {
+        Cow::Owned(out) => Some(out),
+        Cow::Borrowed(_) => None,
+    }
+}
+
+/// Every string in `value` with each secret `vault` knows replaced, and
+/// in each string that holds JSON, such as a call's arguments, each one in
+/// that JSON, where an escape would hide it; whether any was.
+fn known_json(vault: &[Option<String>], value: &mut Value) -> bool {
+    each_string(value, &mut |text| {
+        let mut changed = known(vault, text);
+        let current = changed.as_deref().unwrap_or(text);
+        if current.trim_start().starts_with(['{', '['])
+            && let Ok(mut inner) = serde_json::from_str::<Value>(current)
+            && known_json(vault, &mut inner)
+        {
+            changed = Some(inner.to_string());
+        }
+        changed
+    })
+}
+
+/// The longest end of `text` that starts a secret `vault` knows, which a
+/// later piece may finish: held back from a stream until it does.
+fn starts_known(vault: &[Option<String>], text: &str) -> usize {
+    let secrets = vault
+        .iter()
+        .flatten()
+        .filter(|secret| secret.len() >= SHORTEST);
+    secrets
+        .flat_map(|secret| {
+            (1..secret.len().min(text.len() + 1))
+                .rev()
+                .filter(|&len| secret.is_char_boundary(len))
+                .find(|&len| secret.get(..len).is_some_and(|start| text.ends_with(start)))
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 /// The numbers earlier runs handed out stay taken; the ones this run hands
@@ -487,6 +554,16 @@ impl Intercept for AsSent {
                         args: args.to_string(),
                     })
                 }),
+            EffectKind::Completion { request, stream } => {
+                self.0.redacted(request.as_ref()).map(|mut redacted| {
+                    // Not serialized, so the round trip drops it.
+                    redacted.record_telemetry_content = request.record_telemetry_content;
+                    EffectKind::Completion {
+                        request: Arc::new(redacted),
+                        stream: *stream,
+                    }
+                })
+            }
             kind => self.0.redacted(kind),
         };
         ready(sent.map_or(BeforeServe::Proceed, BeforeServe::Patch))
@@ -518,7 +595,9 @@ fn each_string(value: &mut Value, change: &mut impl FnMut(&str) -> Option<String
 
 /// A tool call naming a placeholder this run does not know, such as one
 /// from before a restart, is refused: nothing runs with the placeholder
-/// as its value.
+/// as its value. So is a shell command naming one whose secret holds what
+/// the shell reads as code: the command that ran would not be the one
+/// approved.
 fn refuse_unknown(
     mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToStart, ToolCalls)>,
     secrets: Res<Secrets>,
@@ -530,7 +609,23 @@ fn refuse_unknown(
             let at = number.checked_sub(1);
             at.and_then(|at| vault.get(at)?.as_ref()).is_none()
         });
-        if let Some((at, _)) = unknown {
+        let shell = request.call.function.name.as_str() == rig_tools::Shell::NAME;
+        let special = shell.then(|| {
+            placeholders(&args).find(|(_, number)| {
+                let at = number.checked_sub(1);
+                let secret = at.and_then(|at| vault.get(at)?.as_deref());
+                secret.is_some_and(|secret| secret.contains(SHELL_SPECIAL))
+            })
+        });
+        if let Some(Some((at, _))) = special {
+            let why = format!(
+                "{} holds characters a shell reads as code, such as a quote, a space or `$`, \
+                 so it is not put in a command. Nothing ran; ask the user to run the command \
+                 with the value themselves.",
+                args.get(at).unwrap_or_default()
+            );
+            decision.decide(Decider::plugin(NAME), Outcome::refused(why));
+        } else if let Some((at, _)) = unknown {
             let why = format!(
                 "{} is not a secret this run knows: secrets are kept in memory only, so one \
                  from before a restart, a /reload or a /resume is gone. Nothing ran; ask the \
@@ -556,11 +651,12 @@ fn adapt_model_calls(
     }
 }
 
-/// What one part of a reply holds back; a call's argument JSON is not
-/// text, and is redacted whole at its end.
+/// What one part of a reply holds back: text or reasoning, and the end of
+/// what it settled that may start a secret the run knows; a call's argument
+/// JSON, which is not text and is redacted whole at its end.
 enum Held {
-    Text(Streamed),
-    Reasoning(Streamed),
+    Text(Streamed, String),
+    Reasoning(Streamed, String),
     Arguments(String),
 }
 
@@ -568,8 +664,12 @@ impl Held {
     /// Takes `piece`; what can go out now, redacted.
     fn push(&mut self, piece: &str, secrets: &Secrets) -> String {
         match self {
-            Self::Text(text) | Self::Reasoning(text) => {
-                secrets.text(&text.push(piece)).into_owned()
+            Self::Text(text, start) | Self::Reasoning(text, start) => {
+                let mut settled = std::mem::take(start);
+                settled.push_str(&text.push(piece));
+                let cut = settled.len() - starts_known(&secrets.vault(), &settled);
+                *start = settled.split_off(cut);
+                secrets.text(&settled).into_owned()
             }
             Self::Arguments(json) => {
                 json.push_str(piece);
@@ -582,7 +682,11 @@ impl Held {
     /// that fails, as text.
     fn finish(&mut self, secrets: &Secrets) -> String {
         match self {
-            Self::Text(text) | Self::Reasoning(text) => secrets.text(&text.finish()).into_owned(),
+            Self::Text(text, start) | Self::Reasoning(text, start) => {
+                let mut rest = std::mem::take(start);
+                rest.push_str(&text.finish());
+                secrets.text(&rest).into_owned()
+            }
             Self::Arguments(json) => match serde_json::from_str::<Value>(json) {
                 Ok(value) => secrets
                     .redacted(&value)
@@ -596,8 +700,8 @@ impl Held {
     fn event(&self, part: Part, text: String) -> Option<Relayed> {
         let event = match self {
             _ if text.is_empty() => return None,
-            Self::Text(_) => StreamEvent::Text { part, text },
-            Self::Reasoning(_) => StreamEvent::Reasoning { part, text },
+            Self::Text(..) => StreamEvent::Text { part, text },
+            Self::Reasoning(..) => StreamEvent::Reasoning { part, text },
             Self::Arguments(_) => StreamEvent::Arguments { part, json: text },
         };
         Some(Relayed::Item(Item::Event(event)))
@@ -613,11 +717,11 @@ fn redact_stream(secrets: Secrets) -> impl FnMut(Relayed) -> Vec<Relayed> {
         let mut out = Vec::new();
         match item {
             Relayed::Item(Item::Event(StreamEvent::Text { part, text })) => {
-                let new = || Held::Text(Streamed::default());
+                let new = || Held::Text(Streamed::default(), String::new());
                 grow(&mut held, (part, new), &text, (&secrets, &mut out));
             }
             Relayed::Item(Item::Event(StreamEvent::Reasoning { part, text })) => {
-                let new = || Held::Reasoning(Streamed::default());
+                let new = || Held::Reasoning(Streamed::default(), String::new());
                 grow(&mut held, (part, new), &text, (&secrets, &mut out));
             }
             Relayed::Item(Item::Event(StreamEvent::Arguments { part, json })) => {
@@ -696,34 +800,42 @@ fn filter_output(
     }
 }
 
-/// `line` redacted. A private key block spans lines: it is held (`block`)
-/// through its end line and goes out as one placeholder, so a call naming
-/// it gets the whole key.
-fn redact_line(line: &str, block: &mut Option<String>, secrets: &Secrets) -> String {
-    if let Some(held) = block {
-        held.push_str(line);
-        if !line.contains("-----END ") {
-            return String::new();
+/// `line` redacted. A private key block spans lines: its placeholder goes
+/// out with its first line, which stands for the whole block, and the lines
+/// after it, through its end line or past [`BLOCK_MOST`], are added to that
+/// secret and left out, so a call naming it gets the whole key. `block` is
+/// the secret's number while one is open.
+fn redact_line(line: &str, block: &mut Option<usize>, secrets: &Secrets) -> String {
+    if let Some(number) = *block {
+        let mut vault = secrets.vault();
+        let held = number
+            .checked_sub(1)
+            .and_then(|at| vault.get_mut(at)?.as_mut());
+        let full = held.is_none_or(|held| {
+            held.push_str(line);
+            held.len() > BLOCK_MOST
+        });
+        if full || line.contains("-----END ") {
+            *block = None;
         }
-        let whole = std::mem::take(held);
-        *block = None;
-        let mut redacted = secrets.text(&whole).into_owned();
-        if !redacted.ends_with('\n') {
-            redacted.push('\n');
-        }
-        return redacted;
-    }
-    let opens = redact::find(line).any(|secret| {
-        secret.kind == redact::Kind::PrivateKey
-            && line
-                .get(secret.range)
-                .is_some_and(|key| !key.contains("-----END "))
-    });
-    if opens {
-        *block = Some(line.to_owned());
         return String::new();
     }
-    secrets.text(line).into_owned()
+    let opened = redact::find(line).find(|secret| {
+        secret.kind == redact::Kind::PrivateKey
+            && line
+                .get(secret.range.clone())
+                .is_some_and(|key| !key.contains("-----END "))
+    });
+    let Some(opened) = opened else {
+        return secrets.text(line).into_owned();
+    };
+    let before = secrets
+        .text(line.get(..opened.range.start).unwrap_or_default())
+        .into_owned();
+    let mut vault = secrets.vault();
+    vault.push(Some(line.get(opened.range).unwrap_or_default().to_owned()));
+    *block = Some(vault.len());
+    format!("{before}{}\n", placeholder(vault.len()))
 }
 
 /// Every record reaches the effect log, when it is written, redacted: the
@@ -736,12 +848,29 @@ fn redact_records(mut records: MessageMutator<EffectRecorded>, secrets: Res<Secr
     }
 }
 
-/// Every prompt the terminal view keeps for Up and saves.
+/// Every prompt the terminal view keeps for Up and saves across sessions,
+/// each secret as [`redact::REDACTED`]: a placeholder there would name
+/// another session's secret of that number.
 #[cfg(feature = "tui")]
 fn redact_history(mut history: ResMut<rig_tui::PromptHistory>, secrets: Res<Secrets>) {
-    let rewrite = |prompt: &str| match secrets.text(prompt) {
-        Cow::Owned(redacted) => Some(redacted),
-        Cow::Borrowed(_) => None,
+    let vault = secrets.vault();
+    let rewrite = |prompt: &str| {
+        let shaped = redact::text(prompt);
+        let known = vault
+            .iter()
+            .flatten()
+            .filter(|secret| secret.len() >= SHORTEST);
+        let mut bare = None::<String>;
+        for secret in known {
+            let current = bare.as_deref().unwrap_or(&shaped);
+            if current.contains(secret.as_str()) {
+                bare = Some(current.replace(secret.as_str(), redact::REDACTED));
+            }
+        }
+        bare.or(match shaped {
+            Cow::Owned(redacted) => Some(redacted),
+            Cow::Borrowed(_) => None,
+        })
     };
     history.bypass_change_detection().rewrite(rewrite);
 }

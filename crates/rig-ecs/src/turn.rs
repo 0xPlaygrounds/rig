@@ -851,8 +851,9 @@ pub(crate) fn not_finished(why: &str, started: bool, footprint: Option<&Footprin
 
 /// The results of a reply's tool calls, in call order: each answered
 /// call's result, else what it says its result is if stopped
-/// ([`IfStopped`]), else what `missing` gives it, through `filter`, else
-/// nothing for it; with what each call published ([`ReplyCallItem::facts`]).
+/// ([`IfStopped`]), else what `missing` gives it, else nothing for it, a
+/// call that never settled through `filter`; with what each call published
+/// ([`ReplyCallItem::facts`]).
 /// `None` when that leaves no result.
 fn reply_results(
     calls: Vec<ReplyCallItem>,
@@ -877,11 +878,13 @@ fn reply_results(
                 Some(outcome) => outcome.tool_result(),
                 None => {
                     let stopped = call.if_stopped.map(|stopped| stopped.0.tool_result());
-                    let result = stopped.or_else(|| missing(&call))?;
-                    let filtered = filter.and_then(|filter| (filter.0)(&result));
-                    filtered.unwrap_or(result)
+                    stopped.or_else(|| missing(&call))?
                 }
             };
+            let filtered = filter
+                .filter(|_| !call.settled)
+                .and_then(|filter| (filter.0)(&result));
+            let result = filtered.unwrap_or(result);
             Some(call.request.call.answer(&result))
         })
         .collect();
