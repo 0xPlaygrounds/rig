@@ -91,8 +91,8 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
 same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
 `CheckpointPlugin`, `HelpersPlugin`, `SubagentsPlugin`, `EffectLogPlugin`,
-`DiagnosticsPlugin` and `RedactPlugin` are listed disabled by default. A plugin that needs
-another adds it when it is missing, as `SessionsPlugin` adds
+`DiagnosticsPlugin` and `RedactPlugin` are listed disabled by default. A
+plugin that needs another adds it when it is missing, as `SessionsPlugin` adds
 `SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
 
 With the default `tui` feature, each plugin also draws its part in the

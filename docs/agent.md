@@ -106,9 +106,10 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab (while a turn runs, Tab queues it). Text you drop
 without sending (Ctrl+C, sending an earlier prompt in its place) goes into
-the history, so Up brings it back, its secrets as `[REDACTED]` while
-redaction is on (below). Ctrl+P and Ctrl+N move
-the same way, even with a completion list open, but Ctrl+P goes to the
+the history, so Up brings it back. While redaction is on (below), every
+prompt Up brings back, sent or not, shows its secrets and placeholders as
+`[REDACTED]`, and sending it again sends `[REDACTED]`. Ctrl+P and Ctrl+N
+move the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
 empty input quits. A leading `/` completes command names and `@` completes
@@ -154,9 +155,10 @@ in its own way, always whole: every call's arguments and result, every diff
 and every note, nothing cut or folded. A diff is drawn from what the session
 keeps of it, so with redaction on (below) a secret in it shows as a
 placeholder and an edit whose diff holds a private key block shows its reply
-instead, as one whose diff passes 256 KiB always does. A call's row is tinted by where it stands (waiting,
-running, done, failed). Code is highlighted in the terminal's own palette, so
-it follows the terminal's theme.
+instead, as one whose diff passes 256 KiB always does. A call's row is
+tinted by where it stands (waiting, running, done, failed). Code is
+highlighted in the terminal's own palette, so it follows the terminal's
+theme.
 PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
 nothing is drawn in color. A plugin draws its tools' calls with ordinary systems in
 `rig_tui::TranscriptRender`, selecting inputs through
