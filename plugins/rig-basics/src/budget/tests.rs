@@ -68,6 +68,8 @@ fn budgeted_on(
     collect::<Recalled>(&mut app);
     app.finish();
     app.cleanup();
+    // Not what a budget run this test runs under handed down.
+    app.insert_resource(HandedDown(Limit::default()));
     app.update();
     let world = app.world_mut();
     if let (Some(agent), Some(connection)) = (first_agent(world), connect(model)) {
@@ -94,8 +96,9 @@ fn alive(dir: &Path) -> bool {
 }
 
 /// Has the agent call `helper`, whose child reports 30 tokens and works
-/// on, past a limit of 20: the turn stops with `why`, the child is
-/// stopped, and the next turn's model call is refused.
+/// on, past a limit of 20: the turn stops with `why`, which an error
+/// notice tells, the child is stopped, and the next turn's model call is
+/// refused.
 fn stops_the_helper_and_refuses_the_next_call(
     name: &str,
     settings: &str,
@@ -119,6 +122,11 @@ fn stops_the_helper_and_refuses_the_next_call(
     assert!(ended.contains("Stopped") && ended.contains(why), "{ended}");
     let spent = app.world().resource::<SessionUsage>().0.total;
     assert_eq!(spent.total_tokens(), 30, "both reports are in");
+    let errors = &app.world().resource::<Collected<Notice>>().0;
+    let said = errors
+        .iter()
+        .any(|notice| notice.level == NoticeLevel::Error && notice.text.contains(why));
+    assert!(said, "an error notice says why");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while alive(&dir) && std::time::Instant::now() < deadline {
         app.update();
@@ -329,7 +337,11 @@ fn lowering_the_budget_below_what_was_spent_stops_the_running_helper() {
     assert!(!seen || alive(&dir), "the helper works");
     assert_eq!(
         command(&mut app, "budget 25 tokens"),
-        ["Budget: 30 of 25 tokens spent."]
+        [
+            "Budget: 30 of 25 tokens spent.",
+            "Budget reached: 30 of 25 tokens spent. Raise it with /budget, or [budget] in \
+             settings.toml for new sessions."
+        ]
     );
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1

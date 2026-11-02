@@ -12,7 +12,7 @@
 //! counts the input and output tokens providers reported, priced or not.
 //! The status line shows it, red past 80%. Once the budget is reached,
 //! every model call about to start is refused, and every running turn is
-//! stopped with the reason, which fails a `-p` run; on unix a stopped
+//! stopped, with an error notice of the reason, which fails a `-p` run; on unix a stopped
 //! turn's `helper` call stops its children, and they theirs. A call
 //! already sent finishes, so a tree can pass the budget by the calls it had
 //! in flight.
@@ -256,16 +256,16 @@ fn refuse_when_reached(
 }
 
 /// Once the budget is reached, as spending grows or the budget is lowered,
-/// stops every running turn with the reason, as the user's stop does: from
-/// each agent nothing spawned whose tree has one, so a subagent's report
-/// says it was stopped and starts no turn. A turn's running `helper` call
-/// stops its children, and they theirs.
+/// stops every running turn with the reason, which an error notice tells,
+/// as the user's stop does: from each agent nothing spawned whose tree has
+/// one, so a subagent's report says it was stopped and starts no turn. A
+/// turn's running `helper` call stops its children, and they theirs.
 fn stop_when_reached(
     roots: Query<Entity, (With<Agent>, Without<SpawnedBy>)>,
     (busy, below): (Query<(), With<ActiveTurn>>, Query<&Spawned>),
     (budget, handed): (Res<Budget>, Res<HandedDown>),
     spending: Res<SessionUsage>,
-    mut commands: Commands,
+    (mut commands, mut notices): (Commands, MessageWriter<Notice>),
 ) {
     let Some(why) = reached(&budget, &handed, &spending.0.total) else {
         return;
@@ -274,6 +274,7 @@ fn stop_when_reached(
         let mut tree = std::iter::once(root).chain(below.iter_descendants(root));
         if tree.any(|agent| busy.contains(agent)) {
             commands.trigger(StopTurn::plugin(root, ORIGIN, &why));
+            notices.write(Notice::error(root, why.clone()));
         }
     }
 }

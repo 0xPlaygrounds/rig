@@ -120,12 +120,13 @@ impl Plugin for HelpersPlugin {
 }
 
 /// What children reported and is not yet recorded, sent from their
-/// threads, and how many still run.
+/// threads, and how many have not settled what they spent: still running,
+/// or ended with some of it unknown, which is not recorded yet.
 #[derive(Resource)]
 struct Reported {
     sender: async_channel::Sender<Heard>,
     receiver: async_channel::Receiver<Heard>,
-    running: Arc<AtomicU64>,
+    unsettled: Arc<AtomicU64>,
 }
 
 /// A child's report: a call's spend, or that some of its spend is unknown.
@@ -140,7 +141,7 @@ impl Default for Reported {
         Self {
             sender,
             receiver,
-            running: Arc::default(),
+            unsettled: Arc::default(),
         }
     }
 }
@@ -150,21 +151,42 @@ impl Default for Reported {
 /// in before the next model call; and before the agent loop, for what came
 /// while no call ended, such as from a stopped call's children.
 fn record(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, mut commands: Commands) {
+    drain(&reported, &mut unknown, &mut commands);
+}
+
+/// On the exit, before the session is saved and the `exit` line written:
+/// records what came, such as from the turns the exit stopped, then counts
+/// each child that has not settled what it spent, which it would report
+/// after this run is gone, as spend unknown: each child once.
+fn record_at_exit(
+    reported: Res<Reported>,
+    mut unknown: ResMut<UnknownSpend>,
+    mut commands: Commands,
+) {
+    drain(&reported, &mut unknown, &mut commands);
+    unknown.0 += reported.unsettled.swap(0, Ordering::SeqCst);
+}
+
+/// Records each report that came: a spend, or a child's unknown spend,
+/// which settles it.
+fn drain(reported: &Reported, unknown: &mut UnknownSpend, commands: &mut Commands) {
     while let Ok(heard) = reported.receiver.try_recv() {
         match heard {
             Heard::Spent(spent) => commands.trigger(spent),
-            Heard::Unknown => unknown.0 += 1,
+            Heard::Unknown => {
+                unknown.0 += 1;
+                settle(&reported.unsettled);
+            }
         }
     }
 }
 
-/// On the exit, before the session is saved and the `exit` line written:
-/// records what came this frame, such as as the exit stopped the turns,
-/// and counts each child still running, which reports after this run is
-/// gone, as spend unknown.
-fn record_at_exit(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, commands: Commands) {
-    unknown.0 += reported.running.load(Ordering::SeqCst);
-    record(reported, unknown, commands);
+/// One child fewer that has not settled what it spent.
+fn settle(unsettled: &AtomicU64) {
+    let fewer = |count: u64| count.checked_sub(1);
+    unsettled
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, fewer)
+        .ok();
 }
 
 /// The tools a child has: those registered as the app started.
@@ -321,7 +343,7 @@ fn start(
             agent: called.agent,
             turn: turns.get(called.call).ok().map(|&CallOf(turn)| turn),
             sender: reported.sender.clone(),
-            running: reported.running.clone(),
+            unsettled: reported.unsettled.clone(),
             wake: wake.clone(),
         },
     };
@@ -355,7 +377,7 @@ struct Reports {
     agent: Entity,
     turn: Option<Entity>,
     sender: async_channel::Sender<Heard>,
-    running: Arc<AtomicU64>,
+    unsettled: Arc<AtomicU64>,
     wake: Wake,
 }
 
@@ -462,15 +484,17 @@ impl Runner {
             Ok(process) => process,
             Err(error) => return (Err(format!("it could not start: {error}")), String::new()),
         };
-        let _live = Live::of(&self.reports.running);
+        self.reports.unsettled.fetch_add(1, Ordering::SeqCst);
         let mut read = Read::new(self.reports.clone());
         let ended = process.run(Some(Instant::now() + self.timeout), |line| {
             read.line(line);
             true
         });
         let note = read.note();
-        if !read.known() {
-            self.reports.unknown();
+        // An unknown spend stays unsettled until its report is recorded.
+        match read.known() {
+            true => settle(&self.reports.unsettled),
+            false => self.reports.unknown(),
         }
         let answer = match ended {
             Ok(Ended::Exited(status)) => read.answer(status.code()),
@@ -479,22 +503,6 @@ impl Runner {
             Err(error) => Err(error.to_string()),
         };
         (answer, note)
-    }
-}
-
-/// Counts a child as running while it lives.
-struct Live(Arc<AtomicU64>);
-
-impl Live {
-    fn of(running: &Arc<AtomicU64>) -> Self {
-        running.fetch_add(1, Ordering::SeqCst);
-        Self(running.clone())
-    }
-}
-
-impl Drop for Live {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

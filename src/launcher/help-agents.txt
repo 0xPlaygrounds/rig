@@ -12,7 +12,8 @@ One task:
                           "answer":"…","error":null,"session":"…",
                           "usage":{…},"usage_complete":true}.
   Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
-  no answer text), 2 no task, a refused /command, an unknown --tools name
+  no answer text, and one a plugin stopped, such as at a budget, even
+  after an answer), 2 no task, a refused /command, an unknown --tools name
   or a --model the catalog lacks, 130 interrupted: by a signal, the
   launcher's death, or nobody reading stdout any more (`| head -1`), which
   plain -p says on stderr. A reader that leaves while the final answer is

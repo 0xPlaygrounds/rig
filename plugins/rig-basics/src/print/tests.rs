@@ -1851,9 +1851,9 @@ fn a_tool_call_of_no_turn_cut_off_by_a_signal_is_closed_too() {
     );
 }
 
-/// A plugin's stop of the run's work fails the run with its reason, also
-/// after the agent answered, as a budget's stop of a subagent's helper
-/// does once the main agent's turn ended.
+/// A plugin's stop that reaches the agent fails the run with its reason,
+/// also after the agent answered, as a budget's stop of a subagent's
+/// helper does once the main agent's turn ended.
 #[test]
 fn a_plugins_stop_of_the_work_fails_the_run_after_an_answer() {
     let model = answering(&["hello"]);

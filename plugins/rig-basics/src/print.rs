@@ -35,7 +35,8 @@
 //! a `--model` the catalog lacks or that does not connect, 130 when cut off, as by a signal or a
 //! reader of stdout gone, else 1, such as for a failed turn, a turn that
 //! ended with no answer, an error notice about the agent and no answer, or
-//! a plugin's stop of the run's work, such as a budget's, answer or not;
+//! a plugin's stop that reached the agent, such as a budget's, answer or
+//! not;
 //! a run of several turns exits with the worst. A `--json` run that exits
 //! before its work ends still closes each tool call and turn it started,
 //! and a one-shot one writes its `exit` line.
@@ -895,12 +896,17 @@ enum Reason<'a> {
     Worst,
 }
 
-/// A plugin's stop of the run's work, such as a budget's, which reached an
-/// agent of it, fails the run with code 1 and its reason, even after an
-/// answer: the work it cut off never ended.
-fn fail_on_plugin_stop(reached: On<StopReached>, mut run: ResMut<Run>) {
+/// A plugin's stop that reached the agent the run follows, and so the
+/// work below it, such as a budget's, fails the run with code 1 and its
+/// reason, even after an answer: the work it cut off never ended. The
+/// plugin tells why itself, as the kernel leaves it to; a stop of only a
+/// plugin's own agents, such as its helpers', fails nothing.
+fn fail_on_plugin_stop(reached: On<StopReached>, primary: MainAgentQuery, mut run: ResMut<Run>) {
+    if run.agent(&primary) != Some(reached.event_target()) {
+        return;
+    }
     if let StopCause::Plugin { why, .. } = reached.cause() {
-        run.fail(1, why.clone(), false);
+        run.fail(1, why.clone(), true);
     }
 }
 

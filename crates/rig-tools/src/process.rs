@@ -1085,18 +1085,20 @@ pub fn end_left() {
 
 /// Ends the groups a stopped call asked to stop and would kill later, as
 /// the agent exits, also for a reload, whose jobs live on: asks each to
-/// stop (`SIGTERM`), waits at most their grace for them to empty, then
+/// stop (`SIGTERM`), waits at most [`STOP_GRACE`] for them to empty, then
 /// kills what is left (`SIGKILL`). A blocking call.
 pub fn end_stopping() {
     let ids: Vec<u32> = ledger().stopping.iter().copied().collect();
     end(&ids);
 }
 
-/// Asks the groups `ids` to stop, waits at most the longest grace of
-/// theirs for them to empty, kills what is left and lists none of them.
+/// Asks the groups `ids` to stop, waits at most [`STOP_GRACE`] for them
+/// to empty, kills what is left and lists none of them. As the agent exits,
+/// a longer grace is not given: its launcher kills an agent that takes
+/// longer than a few seconds, then ends what it left.
 fn end(ids: &[u32]) {
     signal_listed(ids, Signal::Terminate);
-    let deadline = Instant::now() + ledger().grace(ids);
+    let deadline = Instant::now() + STOP_GRACE;
     while ids.iter().any(|&id| has_members(id)) && Instant::now() < deadline {
         thread::sleep(POLL);
     }
