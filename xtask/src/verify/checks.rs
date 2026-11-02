@@ -87,6 +87,7 @@ pub(super) fn all() -> Vec<Check> {
                 ),
                 Step::new("@fixture-paths", &[]),
                 Step::new("@ecs-boundary", &[]),
+                Step::new("@redact-boundary", &[]),
                 Step::new("@options-guards", &[]),
                 Step::new("@stage-order", &[]),
                 Step::new(

@@ -101,6 +101,11 @@ plugin = "rig_basics::coding_tools::ShellTool"
 crate = "rig-basics"
 plugin = "rig_basics::coding_tools::AttachPlugin"
 
+# API keys, tokens and private keys become [REDACTED] where they come in:
+# the model's reply, tool output and results, messages. Off, nothing is redacted.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::redact::RedactPlugin"
 # Paths written HOST:PATH reach the hosts [remote.hosts] in settings.toml
 # names (ssh, koh exec, ...); nothing without hosts.
 [[plugin]]

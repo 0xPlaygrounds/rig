@@ -6,7 +6,6 @@ use ratatui::layout::Position;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Padding, Paragraph};
-use rig_core::redact;
 use rig_ecs::agent::ActiveTurn;
 use rig_harness::main_agent::ShownAgent;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -65,7 +64,7 @@ pub struct Editor {
     /// What was typed before browsing started; empty while not browsing.
     draft: String,
     /// The texts for the history, in the order the editor gave them up:
-    /// the person's dropped unsent, redacted, and those sent (`true`).
+    /// the person's dropped unsent and those sent (`true`).
     kept: Vec<(String, bool)>,
     /// While it holds a question's answer, which is not a prompt to keep,
     /// the person's text taken out for it.
@@ -241,11 +240,11 @@ impl Editor {
         }
     }
 
-    /// Keeps `text`, redacted, for the history as the newest, unless it is
-    /// blank or an answer.
+    /// Keeps `text` for the history as the newest, unless it is blank or an
+    /// answer.
     fn keep(&mut self, text: String) {
         if self.answering.is_none() && !text.trim().is_empty() {
-            self.kept.push((redact::text(&text).into_owned(), false));
+            self.kept.push((text, false));
         }
     }
 

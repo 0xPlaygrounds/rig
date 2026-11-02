@@ -1,6 +1,6 @@
 //! [`Live`]: where a running tool reports its output as it comes, for a
 //! host that shows it before the call ends or keeps it in case the call is
-//! stopped.
+//! stopped; and [`LineFilter`], what each line goes through first.
 
 use std::fmt;
 use std::sync::Arc;
@@ -40,5 +40,39 @@ impl Live {
 impl fmt::Debug for Live {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("Live")
+    }
+}
+
+/// What each line of a running tool's output, such as
+/// [`Shell`](crate::Shell)'s, goes through before it is reported, spilled or
+/// kept, such as a host's redaction. Cloning shares it, and its state: give
+/// each call its own.
+///
+/// ```
+/// use rig_tools::LineFilter;
+///
+/// let filter = LineFilter::new(|line| line.replace("hunter2", "*******"));
+/// assert_eq!(filter.apply("password hunter2\n"), "password *******\n");
+/// ```
+#[derive(Clone)]
+pub struct LineFilter(Arc<dyn Fn(&str) -> String + Send + Sync>);
+
+impl LineFilter {
+    /// A filter that hands each line to `filter`, in order, on the thread
+    /// the tool runs on.
+    pub fn new(filter: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
+        Self(Arc::new(filter))
+    }
+
+    /// `line`, a line with its `\n` or the end of the output without one,
+    /// as the filter changes it; an empty text leaves it out.
+    pub fn apply(&self, line: &str) -> String {
+        (self.0)(line)
+    }
+}
+
+impl fmt::Debug for LineFilter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("LineFilter")
     }
 }

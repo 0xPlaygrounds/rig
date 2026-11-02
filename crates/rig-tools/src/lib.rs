@@ -71,7 +71,7 @@ pub use blocking::blocking;
 pub use delete::{Delete, DeleteArgs};
 pub use edit::{Edit, EditArgs, Replacement};
 pub use list::{FilesListed, List, ListArgs};
-pub use live::Live;
+pub use live::{LineFilter, Live};
 pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, Seen, show_lines};
 pub use search::{

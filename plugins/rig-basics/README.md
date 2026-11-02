@@ -31,6 +31,10 @@ so each can be turned off alone.
   `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments
   (`AttachPlugin`), and `HOST:PATH` paths on other machines
   (`RemoteHostsPlugin`, below);
+- `redact`: API keys, tokens and private keys become `[REDACTED]` where
+  they come in, the model's reply, tool output and results, and messages,
+  so no log or view holds them (`RedactPlugin`); without it nothing is
+  redacted;
 - `approval`: one question for every effect a plugin wants approved
   (`ApprovalPlugin`);
 - `preview`: what a tool call would change on disk, before it runs

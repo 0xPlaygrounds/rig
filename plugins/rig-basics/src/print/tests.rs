@@ -222,7 +222,8 @@ fn a_failed_headless_run_names_the_unanswered_message() {
     let (mut app, _) = noting(&MemoryStore::default(), invoked);
     app.insert_resource(scripted_models([(MODEL, &model)]))
         .insert_resource(Printed::to(lines.clone()))
-        .add_plugins((ExitPlugin, PrintPlugin));
+        // The key it said is redacted where it came in.
+        .add_plugins((ExitPlugin, PrintPlugin, crate::redact::RedactPlugin));
     app.finish();
     app.cleanup();
     run_until(&mut app, |_| false);
@@ -1617,6 +1618,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
         let store = MemoryStore::default();
         let model = MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({}))]);
         let (app, lines) = one_shot_on(&store, "Wait.", Some(MODEL), &model, true, |app| {
+            app.add_plugins(crate::redact::RedactPlugin);
             // The signal comes while the call runs, as Ctrl+C or the
             // launcher's death does.
             app.add_open_tool(
@@ -2086,4 +2088,51 @@ fn a_command_that_opens_a_picker_is_refused_with_what_to_type_instead() {
     let lines = stderr.text();
     let said = "rig: Pick a model first: /model <vendor/model>.";
     assert!(lines.iter().any(|line| line == said), "{lines:?}");
+}
+
+/// A key the model streams in pieces reaches no line: the text, the turn's
+/// answer and the exit's answer say it redacted, and so does the session.
+#[test]
+fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
+    let pieces = [
+        "Use (GITHUB_TOKEN=gh",
+        "p_abcdefghijklmnopqrst",
+        "uvwxyz0123456789). Now.",
+    ];
+    let mut events: Vec<_> = pieces
+        .iter()
+        .map(|piece| MockStreamEvent::text(*piece))
+        .collect();
+    events.push(MockStreamEvent::final_response_with_default_usage());
+    let model = MockCompletionModel::from_stream_turns([events]);
+    let store = MemoryStore::default();
+    let (_, lines) = one_shot_on(&store, "Key?", None, &model, true, |app| {
+        app.add_plugins(crate::redact::RedactPlugin);
+    });
+    let redacted = "Use (GITHUB_TOKEN=[REDACTED]). Now.";
+    let text: String = lines
+        .of("text")
+        .iter()
+        .filter_map(|line| at(line, "text").as_str())
+        .collect();
+    assert_eq!(text, redacted);
+    let answers = ["turn_end", "exit"].map(|kind| {
+        lines
+            .of(kind)
+            .first()
+            .map(|line| at(line, "answer").clone())
+    });
+    assert_eq!(answers, [Some(json!(redacted)), Some(json!(redacted))]);
+    let all = lines.text().concat();
+    assert!(!all.contains("ghp_"), "{all}");
+    let logs = store.logs().unwrap_or_default();
+    let saved: Vec<u8> = logs
+        .iter()
+        .flat_map(|log| store.read_log(log).unwrap_or_default())
+        .collect();
+    let saved = String::from_utf8_lossy(&saved);
+    assert!(
+        saved.contains(redacted) && !saved.contains("ghp_"),
+        "{saved}"
+    );
 }
