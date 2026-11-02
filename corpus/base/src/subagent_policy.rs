@@ -100,8 +100,8 @@ pub enum SubagentPolicySystems {
     /// In [`Stage::Prepare`]: gives `task` requests the default model and
     /// tools.
     Prepare,
-    /// In [`Stage::Gate`]: refuses a `task` call too deep, holds requests without a free slot, and stops
-    /// a subagent's turn over a cap.
+    /// In [`Stage::Gate`]: refuses a `task` call too deep, holds requests
+    /// without a free slot, and stops a subagent's turn over a cap.
     Gate,
 }
 

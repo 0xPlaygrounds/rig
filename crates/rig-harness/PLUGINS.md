@@ -1338,19 +1338,23 @@ setting its origin would not give it.
 In a system, a `Spawner` makes one from an `Origin` and an `AgentSpec`;
 with the world, `rig_ecs::spawn::spawn` does the same, and `spawn_root`
 makes a root with the defaults (as tests do). `Agent` cannot be built or
-required otherwise, and `SpawnedBy` cannot be built: read its `parent()`.
+required otherwise, and `SpawnedBy` has no public constructor (Bevy's
+`Relationship::from` still makes one, unchecked): read its `parent()`.
 
 - **Origin.** `Root` has the defaults; `ChildOf(agent)` goes below the
-  agent; `Like(agent)` goes beside it, under its parent, such
-  as a successor.
+  agent; `Like(agent)` goes beside it, under its parent, such as a
+  successor.
 - **What it takes.** Each setting the spec leaves `None` is the origin's:
   the model (`ModelChoice::inherit`) with its connection, the reasoning
   setting with that model, the system prompt, and the tools. Named tools
   are granted from the origin's (`ToolAccess::grant`), and the model calls
   are recorded under the spec's effect, else the origin's.
 - **Depth.** The kernel sets no limit on how deep agents nest. A plugin
-  that wants one counts an agent's `SpawnedBy` ancestors and refuses in
-  Gate, as the corpus `subagent_policy` does with its `max_depth`.
+  that wants one for spawns that pass through the stages, such as `task`'s
+  `SpawnSubagent`, counts an agent's `SpawnedBy` ancestors and refuses in
+  Gate, as the corpus `subagent_policy` does with its `max_depth`. A steel
+  program's `spawn-agent` goes through no stage, and a `helper` child is a
+  new process whose agents start at the top.
 
 ```rust
 use rig_harness::prelude::*;

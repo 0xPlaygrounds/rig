@@ -612,7 +612,8 @@ fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
     assert!(said.starts_with("Started subagent"), "{said}");
     let child = session.children(session.parent).last().copied();
     let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
-    // A later run without the limit gives it every tool its parent keeps.
+    // A later run without the run's tool limit gives it every tool its
+    // parent keeps.
     let kept = access
         .is_some_and(|access| access.keeps("look") && !access.allows("look") && access.keeps(TASK));
     assert!(kept, "{access:?}");

@@ -33,8 +33,9 @@
 //!
 //! Every agent is spawned through a [`SpawnSubagent`] effect, so other
 //! plugins shape spawning with ordinary stage systems, as below.
-//! A plugin spawns its own [`Role::Helper`] the same way. Reports are messages like any other, so a
-//! plugin edits or takes them over as it would any message.
+//! A plugin spawns its own [`Role::Helper`] the same way. Reports are
+//! messages like any other, so a plugin edits or takes them over as it
+//! would any message.
 //!
 //! ```
 //! use rig_harness::prelude::*;

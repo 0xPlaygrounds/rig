@@ -131,7 +131,8 @@ impl CacheKey {
 /// agents by it.
 ///
 /// A [`Spawner`](super::spawn::Spawner) links a child, and a restore links
-/// them again. Its field is private:
+/// them again. Its constructor is private; a link made through Bevy's
+/// `Relationship::from` is not checked. Its field is private:
 ///
 /// ```compile_fail,E0423
 /// use bevy_ecs::prelude::*;
