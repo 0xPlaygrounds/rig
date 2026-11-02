@@ -1349,12 +1349,8 @@ required otherwise, and `SpawnedBy` has no public constructor (Bevy's
   setting with that model, the system prompt, and the tools. Named tools
   are granted from the origin's (`ToolAccess::grant`), and the model calls
   are recorded under the spec's effect, else the origin's.
-- **Depth.** The kernel sets no limit on how deep agents nest. A plugin
-  that wants one for spawns that pass through the stages, such as `task`'s
-  `SpawnSubagent`, counts an agent's `SpawnedBy` ancestors and refuses in
-  Gate, as the corpus `subagent_policy` does with its `max_depth`. A steel
-  program's `spawn-agent` goes through no stage, and a `helper` child is a
-  new process whose agents start at the top.
+- **Depth.** The kernel sets no limit on how deep agents nest. Each agent's
+  `SpawnedBy` lineage is there for a plugin that wants to count its depth.
 
 ```rust
 use rig_harness::prelude::*;
