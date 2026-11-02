@@ -255,6 +255,26 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
     assert_eq!(leaves, [Some(vec!["look".to_owned()])]);
 }
 
+/// A program's agent on its parent's model shares its parent's
+/// connection: the catalog here connects nothing, so it has no other.
+#[test]
+fn a_programs_agent_shares_its_parents_connection() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
+    let code = json!({ "code": r#"(spawn-agent "leaf")"# });
+    let call = start_call(app.world_mut(), agent, (RUN_STEEL, "s1"), code);
+    let call = call.unwrap_or(Entity::PLACEHOLDER);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(call).is_some()
+    });
+    let world = app.world_mut();
+    let leaves: Vec<bool> = world
+        .query_filtered::<Has<rig_ecs::model::Connection>, With<SpawnedBy>>()
+        .iter(world)
+        .collect();
+    assert_eq!(leaves, [true]);
+}
+
 #[test]
 fn a_queued_job_whose_call_was_stopped_does_nothing() {
     let model = MockCompletionModel::from_stream_turns([calls("t1", "touch", json!({}))]);

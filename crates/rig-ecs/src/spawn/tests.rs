@@ -39,7 +39,7 @@ fn a_child_takes_what_its_spec_leaves_out_from_its_origin_at_any_depth() {
     assert_eq!(prompt.as_deref(), Some("root"));
     let under = |world: &World, agent| world.get::<EffectParent>(agent).map(|under| under.0);
     assert_eq!(under(world, child), under(world, root));
-    // Each agent below keeps the tools that start agents.
+    // Each agent below keeps its origin's tools.
     let mut deepest = child;
     for _ in 0..3 {
         let below = spawn(world, Origin::ChildOf(deepest), AgentSpec::default());
