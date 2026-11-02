@@ -304,8 +304,7 @@ fn a_helper_still_working_at_the_exit_has_its_spend_unknown() {
     assert_eq!(app.world().resource::<UnknownSpend>().0, 1);
 }
 
-/// A child counts from before it starts, so one starting as the run exits
-/// is not missed, and one that could not start spent nothing.
+/// A child that could not start is settled again: it spent nothing.
 #[test]
 fn a_helper_that_could_not_start_spent_nothing() {
     let (mut app, wakes, _) = helped("no-start", &[json!({ "task": "one" })]);
@@ -318,6 +317,41 @@ fn a_helper_that_could_not_start_spent_nothing() {
     app.world_mut().write_message(AppExit::Success);
     app.update();
     assert_eq!(app.world().resource::<UnknownSpend>().0, 0);
+}
+
+/// At the exit, a child's end is known only once its report of it is
+/// drained, after the spend it reported before: a child that reported a
+/// call and its end counts fully, and one whose end is not in counts as
+/// unknown, its call recorded all the same.
+#[test]
+fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
+    for (ended, unknown) in [(true, 0), (false, 1)] {
+        let (mut app, _wakes, _) = helped("exit-order", &[]);
+        let reported = app.world().resource::<Reported>();
+        let (sender, unsettled) = (reported.sender.clone(), reported.unsettled.clone());
+        unsettled.fetch_add(1, Ordering::SeqCst);
+        let spent = Spent {
+            agent: None,
+            turn: None,
+            model: None,
+            purpose: Some(HELPER.to_owned()),
+            usage: Usage::new().input_tokens(10).output_tokens(5),
+        };
+        assert!(sender.try_send(Heard::Spent(spent)).is_ok());
+        if ended {
+            assert!(sender.try_send(Heard::Known).is_ok());
+        }
+        app.world_mut().write_message(AppExit::Success);
+        app.update();
+        let world = app.world();
+        assert_eq!(
+            world.resource::<UnknownSpend>().0,
+            unknown,
+            "ended: {ended}"
+        );
+        let session = world.resource::<SessionUsage>().0.total;
+        assert_eq!(session.total_tokens(), 15, "the call it reported is in");
+    }
 }
 
 #[test]

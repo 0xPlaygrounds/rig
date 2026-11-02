@@ -1881,6 +1881,39 @@ fn a_plugins_stop_of_the_work_fails_the_run_after_an_answer() {
     );
 }
 
+/// A plugin's stop of only its own other agent, as a plugin ends its
+/// helpers' work, fails nothing.
+#[test]
+fn a_plugins_stop_of_another_agent_fails_nothing() {
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.add_observer(
+            |settled: On<Add<Settled>>,
+             turns: Query<&TurnOutcome>,
+             mut spawner: Spawner,
+             mut commands: Commands| {
+                if let Ok(TurnOutcome::Answered(_)) = turns.get(settled.entity) {
+                    let spec = rig_ecs::spawn::AgentSpec::default();
+                    let spawned = spawner.spawn(rig_ecs::spawn::Origin::Root, spec);
+                    if let Ok(helper) = spawned.map(|helper| helper.id()) {
+                        commands.trigger(StopTurn::plugin(helper, "review", "the review ended"));
+                    }
+                }
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let exits = lines.of("exit");
+    let fields = exits
+        .first()
+        .map(|exit| ["code", "answer", "error"].map(|key| at(exit, key).clone()));
+    assert_eq!(
+        fields,
+        Some([json!(0), json!("hello"), Value::Null]),
+        "{exits:?}"
+    );
+}
+
 /// The `exit` line says whether all the session's spend is known: not
 /// once a helper's was not.
 #[test]
