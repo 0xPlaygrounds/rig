@@ -60,7 +60,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
 
-pub use harness::{AgentSpec, Harness};
+pub use harness::Harness;
 use program::{Ended, Host};
 
 /// The tool that runs a program.
@@ -97,7 +97,7 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     (spawn-agent name [options]) -> string\n    \
     Starts an idle agent spawned by you and returns its id. options is a hash with any of \
     'model (\"vendor/model\"), 'system-prompt (string) and 'tools (list of tool names, each one \
-    of yours); unset settings are yours.\n\
+    of yours); unset settings are yours. Raises an error when agents may nest no deeper.\n\
     (send agent text) -> string\n    \
     Sends text to an agent this program spawned, as a request, and returns the request's id \
     at once. The agent starts on it, or queues it when busy, and keeps its conversation \

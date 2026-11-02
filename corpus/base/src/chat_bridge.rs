@@ -15,7 +15,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use bevy_log::info;
+use bevy_log::{info, warn};
 use rig_harness::pick::PickPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
@@ -232,7 +232,7 @@ fn receive(
     threads: Query<(Entity, &ChatThread)>,
     asks: OpenAsks,
     primaries: MainAgentQuery,
-    models: Query<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
+    mut spawner: Spawner,
     mut commands: Commands,
 ) {
     let Some(transport) = &mut bridge.transport else {
@@ -260,8 +260,10 @@ fn receive(
         let agent = match bound {
             Some(agent) => agent,
             None if message.mentions_bot => {
-                let parent = main_agent(&primaries).and_then(|agent| models.get(agent).ok());
-                let agent = spawn_agent(&mut commands, thread.clone(), parent);
+                let main = main_agent(&primaries);
+                let Some(agent) = spawn_agent(&mut spawner, main, thread.clone()) else {
+                    continue;
+                };
                 spawned.push((agent, thread));
                 agent
             }
@@ -298,27 +300,21 @@ fn choice(ask: &Ask, reply: &str) -> Option<usize> {
     })
 }
 
-/// A top-level agent for `thread`, on the model of the agent the user
-/// talks to.
-fn spawn_agent(
-    commands: &mut Commands,
-    thread: ChatThread,
-    parent: Option<(Option<&ModelChoice>, &ReasoningSetting, Option<&Connection>)>,
-) -> Entity {
-    let name = Name::new(format!("chat {}", thread.thread));
-    let mut agent = commands.spawn((name, thread));
-    if let Some((choice, effort, connection)) = parent {
-        // Before the model choice, so connecting it keeps this connection.
-        if let Some(connection) = connection {
-            agent.insert(connection.clone());
-        }
-        agent.insert(*effort);
-        if let Some(choice) = choice {
-            agent.insert(choice.clone());
+/// A top-level agent for `thread`, like the agent the user talks to,
+/// `main`; `None` when it may not be made.
+fn spawn_agent(spawner: &mut Spawner, main: Option<Entity>, thread: ChatThread) -> Option<Entity> {
+    let name = format!("chat {}", thread.thread);
+    let spec = AgentSpec {
+        name,
+        ..AgentSpec::default()
+    };
+    match spawner.spawn(main.map_or(Origin::Root, Origin::Like), spec) {
+        Ok(mut agent) => Some(agent.insert(thread).id()),
+        Err(why) => {
+            warn!("chat bridge: no agent for a thread: {why}");
+            None
         }
     }
-    agent.insert(Agent);
-    agent.id()
 }
 
 /// Posts each question asked about an agent with a thread.

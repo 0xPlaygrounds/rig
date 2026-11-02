@@ -9,12 +9,12 @@ use serde_json::json;
 
 use super::*;
 
-/// A stand-in for `rig -p --json`: it notes its arguments and how many
-/// run at once in the directory it is given, and answers its task (the
+/// A stand-in for `rig -p --json`: it notes its arguments, its depth and
+/// how many run at once in the directory it is given, and answers its task (the
 /// last argument) by what the task says.
 const CHILD: &str = r#"d=$1; shift
 for a; do task=$a; done
-mkdir -p "$d/run"; echo "$@" >> "$d/args"
+mkdir -p "$d/run"; echo "$@" >> "$d/args"; echo "$RIG_AGENT_DEPTH" >> "$d/depths"
 touch "$d/run/$$"; ls "$d/run" | wc -l >> "$d/counts"
 case "$task" in
   fail*) echo '{"v":2,"type":"exit","code":1,"error":"it broke"}'; rm "$d/run/$$"; exit 1;;
@@ -141,6 +141,18 @@ fn a_helper_gets_only_the_tools_of_this_run() {
             "{args}"
         );
     }
+}
+
+#[test]
+fn a_helper_starts_one_deeper_than_its_caller() {
+    let (mut app, wakes, dir) = helped("depth", &[json!({ "task": "one" })]);
+    // The process works for an agent of another, so its own agent is deeper.
+    if let Some(mut policy) = app.world_mut().get_resource_mut::<SpawnPolicy>() {
+        policy.root_depth = 1;
+    }
+    assert_eq!(output(&mut app, &wakes, 0), "did: one");
+    let depths = std::fs::read_to_string(dir.join("depths")).unwrap_or_default();
+    assert_eq!(depths.trim(), "2");
 }
 
 #[test]

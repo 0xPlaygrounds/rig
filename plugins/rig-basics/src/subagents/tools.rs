@@ -81,6 +81,7 @@ pub(super) fn add(app: &mut App) {
         footprint: Some(Touches::Independent),
     };
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(), on_task)
+        .starts_agents(TASK)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(), on_message)
         .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(), on_wait)
         .add_systems(
@@ -198,7 +199,7 @@ fn send_briefs(
         let mut brief = brief.clone();
         if let Ok(me) = peers.get(child) {
             let family = families
-                .get(parent.0)
+                .get(parent.parent())
                 .into_iter()
                 .flat_map(|family| family.iter());
             let siblings = family.filter(|&sibling| sibling != child);
@@ -260,7 +261,7 @@ impl Agents<'_, '_> {
         let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
         let children = children.filter(|&child| self.agents.get(child).is_ok_and(|a| a.subtask));
         let peer = |agent: &AgentDataItem| {
-            agent.peers && agent.parent.map(|of| of.0) == parent.map(|of| of.0)
+            agent.peers && agent.parent.map(SpawnedBy::parent) == parent.map(SpawnedBy::parent)
         };
         let siblings = self
             .agents

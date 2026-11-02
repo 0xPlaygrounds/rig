@@ -32,7 +32,7 @@
 //!
 //! Every agent is spawned through a [`SpawnSubagent`] effect, so other
 //! plugins shape spawning with ordinary stage systems, as below.
-//! [`SubagentPolicy`] caps nesting; a plugin spawns its own
+//! The kernel's [`SpawnPolicy`] caps nesting; a plugin spawns its own
 //! [`Role::Helper`] the same way. Reports are messages like any other, so a
 //! plugin edits or takes them over as it would any message.
 //!
@@ -99,7 +99,7 @@ mod tools;
 
 #[cfg(feature = "tui")]
 pub use looks::SubagentLooks;
-pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
+pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent};
 pub use tools::{MESSAGE, TASK, WAIT};
 
 /// The name the subagent tools decide effects and write notes as
@@ -110,7 +110,7 @@ pub const ORIGIN: &str = "subagents";
 /// The plugin's stage system sets.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SubagentSystems {
-    /// In Gate: refuses a request deeper than [`SubagentPolicy`] allows.
+    /// In Gate: refuses a request deeper than the [`SpawnPolicy`] allows.
     Gate,
 }
 

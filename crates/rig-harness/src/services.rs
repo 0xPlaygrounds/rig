@@ -146,7 +146,9 @@ pub struct TokioRuntime(pub tokio::runtime::Handle);
 /// Inserts [`RigHome`], [`ProjectRoot`], [`Processes`] and
 /// [`TokioRuntime`], each unless the app has it, and gives an agent
 /// spawned by one with a [`WorkDir`] that directory. Inserts the kernel's
-/// [`SpawnPolicy`] from the `[subagents]` settings.
+/// [`SpawnPolicy`] from the `[subagents]` settings, its roots at the depth
+/// [`env::AGENT_DEPTH`] says, when an agent of another process started
+/// this one.
 pub struct ServicesPlugin;
 
 impl Plugin for ServicesPlugin {
@@ -164,6 +166,12 @@ impl Plugin for ServicesPlugin {
             .init_resource::<Processes>()
             .add_setting::<SpawnPolicy>("subagents")
             .add_observer(inherit_work_dir);
+        let depth = std::env::var(env::AGENT_DEPTH).ok();
+        let depth = depth.and_then(|depth| depth.trim().parse().ok());
+        let policy = app.world_mut().get_resource_mut::<SpawnPolicy>();
+        if let (Some(depth), Some(mut policy)) = (depth, policy) {
+            policy.root_depth = depth;
+        }
     }
 }
 

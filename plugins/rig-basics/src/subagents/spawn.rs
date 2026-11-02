@@ -5,11 +5,11 @@
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::DeferredWorld;
-use rig_core::effect::EffectKind;
+use rig_core::effect::{EffectId, EffectKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::tools::{MESSAGE, TASK, WAIT};
+use super::tools::{MESSAGE, WAIT};
 use super::{
     Environment, Helper, Lifecycle, ORIGIN, OpenRequests, Peers, Request, SubagentSystems,
     SubagentsPlugin, Subtask, answered, refused,
@@ -29,10 +29,8 @@ pub const SUBAGENT: &str = "subagent";
 /// child (`ChildOf`); a plugin spawns one for agents of its own, such as
 /// the sides of a debate.
 ///
-/// Each setting left `None` is the parent's: the model (with its
-/// connection and reasoning setting), the system prompt, the
-/// [`Environment`], and the tools, minus `task` once
-/// [`SubagentPolicy::max_depth`] is reached. A task's subagent has
+/// Each setting left `None` is the parent's, as a [`Spawner`] gives it,
+/// and so is the [`Environment`]. A task's subagent has
 /// `message` and `wait`, to reach the agents it works with, whenever its
 /// parent has them: never a tool its parent lacks.
 #[derive(Component, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,27 +155,6 @@ pub(super) struct Once;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SpawnedAgent(pub Entity);
 
-/// How deep agents nest, as the `[subagents]` table of the settings says:
-///
-/// ```toml
-/// [subagents]
-/// max_depth = 2
-/// ```
-#[derive(Resource, Clone, Debug, PartialEq, Eq, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct SubagentPolicy {
-    /// An agent nothing spawned is at depth 0. A request for an agent
-    /// deeper than this is refused, and an agent at this depth is not given
-    /// the tools that start subagents. 2 when not set.
-    pub max_depth: usize,
-}
-
-impl Default for SubagentPolicy {
-    fn default() -> Self {
-        Self { max_depth: 2 }
-    }
-}
-
 /// On a [`SpawnSubagent`] a `task` call made: the request it opens, by
 /// the call's id, which the report names.
 #[derive(Component)]
@@ -189,8 +166,7 @@ pub(super) struct TaskCall(pub(super) RequestId);
 pub(super) struct Brief(pub(super) Deliver);
 
 pub(super) fn add(app: &mut App) {
-    app.add_setting::<SubagentPolicy>("subagents")
-        .keeps_saved::<Once>()
+    app.keeps_saved::<Once>()
         .add_observer(spawn_requested)
         .add_observer(follow_successor::<SpawnSubagent>)
         .add_observer(follow_successor::<TaskCall>)
@@ -223,7 +199,8 @@ fn open_effect(request: &SpawnSubagent) -> EffectRequest {
     }
 }
 
-/// Refuses a request for an agent deeper than [`SubagentPolicy`] allows.
+/// Refuses a request for an agent deeper than the [`SpawnPolicy`] allows,
+/// before it may be asked about.
 fn refuse_too_deep(
     mut requests: Query<
         (&ForAgent, &mut Decision),
@@ -235,98 +212,56 @@ fn refuse_too_deep(
         ),
     >,
     lineage: Query<&SpawnedBy>,
-    policy: Res<SubagentPolicy>,
+    policy: Res<SpawnPolicy>,
 ) {
     for (&ForAgent(parent), mut decision) in &mut requests {
-        let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
-        if depth > policy.max_depth {
-            let why = format!(
-                "Agents nest at most {} deep, and this one would be at depth {depth}; do the work \
-                 yourself",
-                policy.max_depth
-            );
+        if let Some(refused) = policy.refuses(policy.depth(parent, &lineage) + 1) {
+            let why = format!("{refused}; do the work yourself");
             decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
         }
     }
 }
 
-/// The parent of a request, as its settings are inherited.
+impl SpawnSubagent {
+    /// What the agent asked for is given, under the effect `under`, by a
+    /// parent that keeps `access` to the `registered` tools: a task's
+    /// subagent also has `message` and `wait` when its parent keeps them.
+    fn spec(&self, under: EffectId, access: &ToolAccess, registered: &[&str]) -> AgentSpec {
+        let reaching = [MESSAGE, WAIT]
+            .into_iter()
+            .filter(|tool| self.role == Role::Task && access.keeps(tool))
+            .filter(|tool| registered.contains(tool));
+        let tools = self.tools.clone().map(|mut tools| {
+            for tool in reaching {
+                if !tools.iter().any(|name| name == tool) {
+                    tools.push(tool.to_owned());
+                }
+            }
+            tools
+        });
+        AgentSpec {
+            name: String::new(),
+            id: self.id.clone(),
+            model: self.model.clone(),
+            effort: self.effort.clone(),
+            tools,
+            system_prompt: self.system_prompt.clone(),
+            under: Some(under),
+        }
+    }
+}
+
+/// The parent of a request.
 #[derive(QueryData)]
 struct Parent {
     id: &'static AgentId,
     access: &'static ToolAccess,
     model: Option<&'static ModelChoice>,
-    reasoning: &'static ReasoningSetting,
-    prompt: &'static SystemPrompt,
-    connection: Option<&'static Connection>,
     environment: Option<&'static Environment>,
 }
 
-/// The new agent's model, reasoning setting and tools for `request`,
-/// checked against its parent's model and reasoning setting, the new
-/// agent's depth and the parent's `access` to the `registered` tools: the
-/// new agent never gets a tool its parent lacks.
-fn inherit_settings(
-    request: &SpawnSubagent,
-    parent_model: Option<&ModelChoice>,
-    parent_reasoning: ReasoningSetting,
-    depth: usize,
-    (access, registered): (&ToolAccess, &[&str]),
-    (models, policy): (&Models, &SubagentPolicy),
-) -> Result<(ModelChoice, ReasoningSetting, ToolAccess), String> {
-    let briefless = request.role == Role::Task && request.brief.trim().is_empty();
-    if request.title.trim().is_empty() || briefless {
-        return Err(
-            "the title and brief (`task`'s `description` and `prompt`) must not be empty"
-                .to_owned(),
-        );
-    }
-    let (model, effort) = ModelChoice::inherit(
-        &models.0,
-        (parent_model, parent_reasoning),
-        request.model.as_deref(),
-        request.effort.as_deref(),
-    )?;
-    let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
-    let may_delegate = depth < policy.max_depth;
-    let mut tools: Vec<String> = match &request.tools {
-        // The parent's own access, not this run's tools of it, so a later
-        // run gives the new agent what its parent keeps.
-        None if may_delegate => return Ok((model, effort, access.clone())),
-        None => {
-            let delegating = registered.iter().copied().filter(|name| *name != TASK);
-            return Ok((model, effort, access.narrow(delegating)));
-        }
-        Some(asked) => {
-            if let Some(name) = asked.iter().find(|name| !may_delegate && *name == TASK) {
-                return Err(format!(
-                    "A subagent at depth {depth} cannot start subagents of its own; leave \
-                     `{name}` out"
-                ));
-            }
-            asked.clone()
-        }
-    };
-    // A task reaches its parent with these, when the parent keeps them:
-    // left out rather than refused by the grant below.
-    let reaching = [MESSAGE, WAIT]
-        .into_iter()
-        .filter(|tool| request.role == Role::Task && access.keeps(tool))
-        .filter(|tool| registered.contains(tool));
-    for tool in reaching {
-        if !tools.iter().any(|name| name == tool) {
-            tools.push(tool.to_owned());
-        }
-    }
-    let tools = access
-        .grant(&tools, registered.iter().copied())
-        .map_err(|refused| refused.to_string())?;
-    Ok((model, effort, tools))
-}
-
 /// Spawns the agent of a request that started, and answers the request
-/// with its id, or with why none was spawned. An agent on its parent's
-/// model shares the parent's connection.
+/// with its id, or with why none was spawned.
 fn spawn_requested(
     started: On<Add<Started>>,
     mut requests: Query<(
@@ -336,11 +271,11 @@ fn spawn_requested(
         Option<&TaskCall>,
         &mut Decision,
     )>,
-    (parents, taken): (Query<Parent>, Query<&AgentId>),
-    lineage: Query<&SpawnedBy>,
+    parents: Query<Parent>,
     tools: Query<&ToolDef>,
-    (models, policy, wake): (Res<Models>, Res<SubagentPolicy>, Res<Wake>),
+    wake: Res<Wake>,
     me: Option<Res<PluginEntity<SubagentsPlugin>>>,
+    mut spawner: Spawner,
     mut commands: Commands,
 ) {
     let entity = started.entity;
@@ -349,56 +284,30 @@ fn spawn_requested(
         return;
     };
     commands.entity(entity).insert(open_effect(request));
-    let Ok(from) = parents.get(parent) else {
-        decision.decide(
-            Decider::plugin(ORIGIN),
-            Outcome::refused("its parent is not an agent"),
-        );
-        return;
-    };
-    let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
-    let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
-    let inherited = inherit_settings(
-        request,
-        from.model,
-        *from.reasoning,
-        depth,
-        (from.access, &registered),
-        (&models, &policy),
-    );
-    let (choice, effort, allowed) = match inherited {
-        Ok(inherited) => inherited,
-        Err(why) => {
-            decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
-            return;
-        }
-    };
-    let id = request.id.clone().unwrap_or_default();
-    if taken.iter().any(|taken| *taken == id) {
-        let why = format!("an agent with the id `{}` exists", id.0);
+    let mut refuse = |why: String| {
         decision.decide(Decider::plugin(ORIGIN), Outcome::refused(why));
-        return;
+    };
+    let Ok(from) = parents.get(parent) else {
+        return refuse("its parent is not an agent".to_owned());
+    };
+    let briefless = request.role == Role::Task && request.brief.trim().is_empty();
+    if request.title.trim().is_empty() || briefless {
+        return refuse(
+            "the title and brief (`task`'s `description` and `prompt`) must not be empty"
+                .to_owned(),
+        );
     }
+    if from.model.is_none() && request.model.is_none() {
+        return refuse("You have no model to give the subagent; name one in `model`".to_owned());
+    }
+    let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
+    let mut spec = request.spec(effect.id(), from.access, &registered);
+    let id = spec.id.get_or_insert_with(AgentId::default).clone();
+    let mut child = match spawner.spawn(Origin::ChildOf(parent), spec) {
+        Ok(child) => child,
+        Err(why) => return refuse(why.to_string()),
+    };
     let title = request.title.trim().to_owned();
-    let mut child = commands.spawn_empty();
-    // Before the model choice, so connecting it keeps this connection.
-    if let Some(connection) = from.connection.filter(|_| from.model == Some(&choice)) {
-        child.insert(connection.clone());
-    }
-    let prompt = request
-        .system_prompt
-        .clone()
-        .map_or(from.prompt.clone(), SystemPrompt);
-    child.insert((
-        Agent,
-        id.clone(),
-        SpawnedBy(parent),
-        choice,
-        effort,
-        allowed,
-        prompt,
-        EffectParent(effect.id()),
-    ));
     let asked = match task {
         Some(TaskCall(request)) => request.clone(),
         None => RequestId(format!("{SUBAGENT}-{}", effect.id())),

@@ -10,7 +10,8 @@
 //! same build has those, and refuses a `--tools` name it has not. A child
 //! built from a plugin list changed since the parent started may lack one:
 //! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
-//! stdin. Past its timeout or dead, it fails its task; stopping the turn
+//! stdin, at its parent's depth plus one (`RIG_AGENT_DEPTH`), so agents
+//! nest no deeper through helpers than the [`SpawnPolicy`] allows. Past its timeout or dead, it fails its task; stopping the turn
 //! kills every child, so none outlives the call.
 
 use std::ffi::OsString;
@@ -75,7 +76,8 @@ impl Plugin for HelpersPlugin {
         app.init_resource::<HelperCommand>()
             .init_resource::<Processes>()
             .init_resource::<ProjectRoot>()
-            .add_open_tool(HELPER, &description, ToolOptions::default(), start);
+            .add_open_tool(HELPER, &description, ToolOptions::default(), start)
+            .starts_agents(HELPER);
     }
 
     /// Notes the tools every plugin registered by now, which a child has
@@ -185,6 +187,7 @@ fn start(
     called: On<ToolCalled<Args>>,
     agents: Query<(Option<&ModelChoice>, Option<&ToolAccess>, Option<&WorkDir>)>,
     lendable: Option<Res<Lendable>>,
+    (lineage, policy): (Query<&SpawnedBy>, Option<Res<SpawnPolicy>>),
     (root, processes, command): (Res<ProjectRoot>, Res<Processes>, Res<HelperCommand>),
     wake: Res<Wake>,
     mut commands: Commands,
@@ -224,9 +227,11 @@ fn start(
             .map(|job| Ok((job.task.clone(), lent.child(job)?)))
             .collect(),
     };
+    let policy = policy.as_deref().cloned().unwrap_or_default();
     let runner = Runner {
         command: command.clone(),
         processes: processes.clone(),
+        depth: policy.depth(called.agent, &lineage) + 1,
         timeout: Duration::from_secs(args.timeout.unwrap_or(600).clamp(1, 3600)),
     };
     // Dropped with the call, as a stop drops it: every child dies.
@@ -247,6 +252,8 @@ fn start(
 struct Runner {
     command: HelperCommand,
     processes: Processes,
+    /// The depth its children start at.
+    depth: usize,
     timeout: Duration,
 }
 
@@ -320,6 +327,8 @@ impl Runner {
     fn child(&self, args: &[OsString], dir: &Path) -> Report {
         let args = self.command.args.iter().chain(args);
         let launcher = self.processes.launcher().in_dir(dir);
+        let launcher =
+            launcher.with_env(harness_protocol::env::AGENT_DEPTH, self.depth.to_string());
         let mut process = match launcher.spawn(&self.command.program, args, Spawn::default()) {
             Ok(process) => process,
             Err(error) => return (Err(format!("it could not start: {error}")), String::new()),

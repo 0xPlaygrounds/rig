@@ -17,17 +17,15 @@ use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::ToolResult;
-use rig_ecs::agent::{
-    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnOutcome,
-};
+use rig_ecs::agent::{Agent, AgentId, TurnOutcome};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
-use rig_ecs::model::{ModelChoice, Models, ReasoningSetting};
 use rig_ecs::prelude::{Author, RequestId};
+use rig_ecs::spawn::{AgentSpec, Origin, spawn};
 use rig_ecs::stage::{
     AgentLoop, Effect, ForAgent, Outcome, Settled, despawn_open_children, follow_successor,
 };
 use rig_ecs::tasks::{PollTasks, Wake};
-use rig_ecs::tools::{ToolDef, ToolRequest};
+use rig_ecs::tools::ToolRequest;
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
 pub(crate) struct HarnessPlugin;
@@ -59,22 +57,6 @@ const CLOSED: &str = "the app stopped before it answered";
 /// Why a tool call was not made for a call that ended.
 const ENDED: &str = "the call it was made for ended";
 
-/// What [`Harness::spawn_agent`] starts. Each setting left out is taken
-/// from the parent, or is the default without one; the effort is the
-/// parent's only when the model is too.
-#[derive(Clone, Debug, Default)]
-pub struct AgentSpec {
-    /// The agent's name, shown in views.
-    pub name: String,
-    /// A catalog model as `vendor/model`.
-    pub model: Option<String>,
-    /// The agent's own part of its system prompt.
-    pub system_prompt: Option<String>,
-    /// The tools it may call, by name: each a registered tool its parent
-    /// may call, or every tool without a parent.
-    pub tools: Option<Vec<String>>,
-}
-
 /// A handle that drives the agents from async code. Clone it out of the
 /// world; every call is answered in a later frame, so awaiting one never
 /// blocks the app's loop. Available from `PreStartup` on.
@@ -97,9 +79,10 @@ impl Harness {
         }
     }
 
-    /// Spawns an agent from `spec`, [`SpawnedBy`] the agent `parent` when
-    /// given, and returns its id. It is idle until a message is sent to it.
-    /// Refused for a tool in `spec.tools` the parent may not call.
+    /// Spawns an agent from `spec`, a child of the agent `parent` when
+    /// given, as a [`Spawner`](rig_ecs::spawn::Spawner) does, and returns
+    /// its id. It is idle until a message is sent to it. Refused past the
+    /// depth limit, or for a tool in `spec.tools` the parent may not call.
     pub async fn spawn_agent(
         &self,
         spec: AgentSpec,
@@ -226,58 +209,20 @@ fn spawn_agent(
     parent: Option<AgentId>,
     call: Option<Entity>,
 ) -> Result<AgentId, String> {
-    let effect = call
+    let under = call
         .and_then(|call| world.get::<Effect>(call))
         .map(Effect::id);
-    let parent = parent.map(|parent| find(world, &parent)).transpose()?;
-    let inherited = parent.map(|parent| {
-        (
-            world.get::<ModelChoice>(parent).cloned(),
-            world
-                .get::<ReasoningSetting>(parent)
-                .copied()
-                .unwrap_or_default(),
-            world.get::<SystemPrompt>(parent).cloned(),
-            world.get::<ToolAccess>(parent).cloned(),
-        )
-    });
-    let (parent_model, parent_effort, parent_prompt, parent_access) = inherited.unwrap_or_default();
-    let models = world.get_resource_or_init::<Models>();
-    let (model, effort) = ModelChoice::inherit(
-        &models.0,
-        (parent_model.as_ref(), parent_effort),
-        spec.model.as_deref(),
-        None,
-    )?;
-    let prompt = spec
-        .system_prompt
-        .map(SystemPrompt)
-        .or(parent_prompt)
-        .unwrap_or_default();
-    let parent_access = parent_access.unwrap_or_default();
-    let access = match &spec.tools {
-        Some(asked) => {
-            let mut tools = world.query::<&ToolDef>();
-            let registered = tools.iter(world).map(|def| def.0.name.as_str());
-            parent_access
-                .grant(asked, registered)
-                .map_err(|refused| refused.to_string())?
-        }
-        None => parent_access,
+    let origin = match parent {
+        Some(parent) => Origin::ChildOf(find(world, &parent)?),
+        None => Origin::Root,
     };
     let id = AgentId::default();
-    let mut agent = world.spawn((Agent, id.clone(), Name::new(spec.name), prompt, access));
-    // The parent first, so the agent's log opens naming it.
-    if let Some(parent) = parent {
-        agent.insert(SpawnedBy(parent));
-    }
-    if let Some(effect) = effect {
-        agent.insert(EffectParent(effect));
-    }
-    agent.insert(effort);
-    if let Some(model) = model {
-        agent.insert(model);
-    }
+    let spec = AgentSpec {
+        id: Some(id.clone()),
+        under: under.or(spec.under),
+        ..spec
+    };
+    spawn(world, origin, spec).map_err(|why| why.to_string())?;
     Ok(id)
 }
 
