@@ -66,6 +66,8 @@ pub(super) struct Agents<'w, 's> {
     /// The open tool calls' answers.
     calls: Query<'w, 's, &'static mut Decision, ToolCalls>,
     wake: Res<'w, Wake>,
+    /// Where each reply call is, which names its request.
+    pub(super) places: Query<'w, 's, &'static InReply>,
     pub(super) commands: Commands<'w, 's>,
 }
 

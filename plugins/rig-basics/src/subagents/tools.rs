@@ -322,12 +322,7 @@ impl Agents<'_, '_> {
     /// agent the caller owes, as a message; to any other, as a new request,
     /// unless that agent waits on the caller's own report and not for this
     /// message.
-    fn send(
-        &mut self,
-        called: &ToolCalled<MessageArgs>,
-        target: Reachable,
-        request: RequestId,
-    ) -> Outcome {
+    fn send(&mut self, called: &ToolCalled<MessageArgs>, target: Reachable) -> Outcome {
         let (caller, text) = (called.agent, called.args.text.trim());
         let waiting = !self.wait_calls(target.entity, caller).is_empty();
         let busy = self.agents.get(target.entity).is_ok_and(|agent| agent.busy);
@@ -345,6 +340,7 @@ impl Agents<'_, '_> {
                 target.id.short()
             ));
         } else {
+            let request = request_of(called, &self.places);
             let asked = Request {
                 id: request.clone(),
                 to: target.id.clone(),
@@ -405,13 +401,13 @@ enum Arrival {
 
 /// Sends a `message` call's text to an agent the caller can reach, as
 /// [`Agents::send`] says, and answers the call.
-fn on_message(called: On<ToolCalled<MessageArgs>>, places: Query<&InReply>, mut agents: Agents) {
+fn on_message(called: On<ToolCalled<MessageArgs>>, mut agents: Agents) {
     let output = match agents.reachable(called.agent, &called.args.agent) {
         Err(why) => refused(format!("{why} Nothing was sent.")),
         Ok(_) if called.args.text.trim().is_empty() => {
             refused("`text` must not be empty. Nothing was sent.".to_owned())
         }
-        Ok(target) => agents.send(&called, target, request_of(&called, &places)),
+        Ok(target) => agents.send(&called, target),
     };
     agents.answer(called.call, output);
 }

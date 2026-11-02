@@ -230,11 +230,9 @@ fn start(
     };
     let policy = policy.as_deref().cloned().unwrap_or_default();
     let depth = policy.depth(called.agent, &lineage) + 1;
-    // A helper's agent is one deeper than its caller, in another process.
-    let planned = match policy.refuses(depth) {
-        Some(refused) => Err(format!("{refused}; do the work yourself")),
-        None => planned,
-    };
+    let planned = policy.refuses(depth).map_or(planned, |refused| {
+        Err(format!("{refused}; do the work yourself"))
+    });
     let runner = Runner {
         command: command.clone(),
         processes: processes.clone(),
