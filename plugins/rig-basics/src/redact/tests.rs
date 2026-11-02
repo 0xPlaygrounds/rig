@@ -381,8 +381,8 @@ fn a_private_key_block_is_one_placeholder_for_the_whole_block() {
     assert!(secrets.reveal("‹SECRET_3›").len() <= BLOCK_MOST + body.len());
 }
 
-/// A message going to its agent is redacted, text, attached file and its
-/// label; one a gate took, such as a line answering a question, reaches the
+/// A message going to its agent is redacted, text, attached file, its label
+/// and an image's link; one a gate took, such as a line answering a question, reaches the
 /// gate as typed.
 #[test]
 fn a_message_is_redacted_unless_a_gate_took_it() {
@@ -402,6 +402,14 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
     message.parts.push(MessagePart::Attachment(Attachment {
         label: format!("notes-{key}.md"),
         content: UserContent::Document(document),
+    }));
+    let image = message::Image {
+        data: message::DocumentSourceKind::Url(format!("https://example.com/a.png?token={key}")),
+        ..Default::default()
+    };
+    message.parts.push(MessagePart::Attachment(Attachment {
+        label: "a.png".to_owned(),
+        content: UserContent::Image(image),
     }));
     let sent = world.spawn((message, Decision::default())).id();
     let mut taken = Decision::default();
@@ -809,21 +817,31 @@ fn a_secret_like_a_placeholder_leaves_placeholders_alone() {
     assert_eq!(secrets.reveal("‹SECRET_1›"), "SECRET_1");
 }
 
-/// A secret that is also a name a model request gives, its model's or a
-/// tool's, is never found as that name: the request keeps it, and so does
-/// a call to that tool the reply streams.
+/// A secret that is, or is part of, a name a model request gives, its
+/// model's or a tool's, is never found in that name: a call to the tool the
+/// reply streams keeps it. The request's tools go as given, schema and all,
+/// while its messages are redacted.
 #[test]
 fn a_secret_like_a_name_leaves_the_name_alone() {
     let secrets = Secrets::default();
-    let _ = secrets.text("DB_PASSWORD=get_weather and API_KEY=big-model-9");
-    let parameters = json!({ "type": "object" });
+    let learned =
+        secrets.text("A_TOKEN=get_weather B_TOKEN=big-model-9 C_TOKEN=get_weat D_TOKEN=old_text");
+    let placeholders =
+        "A_TOKEN=‹SECRET_1› B_TOKEN=‹SECRET_2› C_TOKEN=‹SECRET_3› D_TOKEN=‹SECRET_4›";
+    assert_eq!(learned, placeholders);
+    let parameters = json!({
+        "type": "object",
+        "properties": { "old_text": { "type": "string" } },
+        "required": ["old_text"],
+    });
     let Ok(name) = ToolName::new("get_weather") else {
         return;
     };
     let tool = ToolDefinition::new(name, "", parameters);
-    let request = CompletionRequest::new("call it")
+    let request = CompletionRequest::new("my PASSWORD=hunter2hunter2")
         .model("big-model-9")
         .tool(tool);
+    let tools = serde_json::to_value(&request.tools).ok();
     let kind = EffectKind::Completion {
         request: Arc::new(request),
         stream: true,
@@ -831,15 +849,26 @@ fn a_secret_like_a_name_leaves_the_name_alone() {
     let layer = AsSent(secrets.clone());
     let before = std::pin::pin!(layer.before(EffectId::from_raw(1), &kind));
     let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    let ready = before.poll(&mut context);
-    assert!(matches!(
-        ready,
-        std::task::Poll::Ready(BeforeServe::Proceed)
-    ));
+    let patched = match before.poll(&mut context) {
+        std::task::Poll::Ready(BeforeServe::Patch(EffectKind::Completion { request, .. })) => {
+            Some(request)
+        }
+        _ => None,
+    };
+    assert!(patched.is_some(), "the request is patched");
+    let Some(request) = patched else {
+        return;
+    };
+    assert_eq!(serde_json::to_value(&request.tools).ok(), tools);
+    let sent = format!("{:?}", request.chat_history);
+    assert!(
+        sent.contains("PASSWORD=‹SECRET_5›") && !sent.contains("hunter2"),
+        "{sent}"
+    );
+    let call = json!({ "name": "get_weather", "model": "big-model-9" });
+    assert_eq!(secrets.redacted(&call), None);
     assert_eq!(
         secrets.text("I will call get_weather"),
         "I will call get_weather"
     );
-    let call = json!({ "name": "get_weather", "model": "big-model-9" });
-    assert_eq!(secrets.redacted(&call), None);
 }

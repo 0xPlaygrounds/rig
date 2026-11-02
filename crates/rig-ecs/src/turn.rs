@@ -777,9 +777,7 @@ impl Stopper<'_, '_> {
             // place, settles through the filter, as the conversation has it.
             if let Some(filter) = world.get_resource::<ResultFilter>().cloned() {
                 for &call in &calls {
-                    let unsettled = world
-                        .get_entity(call)
-                        .is_ok_and(|call| !call.contains::<Settled>());
+                    let unsettled = world.get::<Settled>(call).is_none();
                     let outcome = world.get_mut::<Outcome>(call).filter(|_| unsettled);
                     if let Some(mut outcome) = outcome
                         && let Some(filtered) = (filter.0)(&outcome)

@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{Answered, EffectId, EffectKind};
 use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::message;
 use rig_harness::rig_core::redact::{self, Streamed};
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::streaming::{Item, Relayed};
@@ -80,7 +81,7 @@ struct Secrets(Arc<Mutex<Vault>>);
 
 /// The secrets, `‹SECRET_n›` being the n-th, `None` for a number an earlier
 /// run handed out; and the names a model request gives, its model's and its
-/// tools', which a secret the run knows is never found as, a name being the
+/// tools', which a secret the run knows is never found in, a name being the
 /// program's text.
 #[derive(Default)]
 struct Vault {
@@ -88,29 +89,15 @@ struct Vault {
     names: Vec<String>,
 }
 
-impl std::ops::Deref for Vault {
-    type Target = Vec<Option<String>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.secrets
-    }
-}
-
-impl std::ops::DerefMut for Vault {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.secrets
-    }
-}
-
 impl Vault {
     /// Each secret found again wherever it shows, with its number: one of
-    /// at least [`SHORTEST`] characters that is no name.
+    /// at least [`SHORTEST`] characters that is no name, nor part of one.
     fn findable(&self) -> impl Iterator<Item = (usize, &str)> {
         (1..)
             .zip(&self.secrets)
             .filter_map(|(number, secret)| Some((number, secret.as_deref()?)))
             .filter(|(_, secret)| {
-                secret.len() >= SHORTEST && !self.names.iter().any(|name| name == secret)
+                secret.len() >= SHORTEST && !self.names.iter().any(|name| name.contains(secret))
             })
     }
 }
@@ -233,7 +220,7 @@ impl Secrets {
     /// new, and each one this run knows wherever it shows bare.
     fn text<'a>(&self, input: &'a str) -> Cow<'a, str> {
         let mut vault = self.vault();
-        let mut redacted = redact::text_with(input, |secret| name(&mut vault, secret));
+        let mut redacted = redact::text_with(input, |secret| name(&mut vault.secrets, secret));
         if let Some(bare) = known(&vault, &redacted) {
             redacted = Cow::Owned(bare);
         }
@@ -251,7 +238,9 @@ impl Secrets {
         let given = serde_json::to_value(data).ok()?;
         let mut redacted = given.clone();
         let mut vault = self.vault();
-        let found = redact::json_with(&mut redacted, &mut |secret| name(&mut vault, secret));
+        let found = redact::json_with(&mut redacted, &mut |secret| {
+            name(&mut vault.secrets, secret)
+        });
         let shown = known_json(&vault, &mut redacted);
         drop(vault);
         if !(found || shown) {
@@ -285,7 +274,7 @@ impl Secrets {
         for (at, number) in placeholders(text) {
             let known = number
                 .checked_sub(1)
-                .and_then(|at| vault.get(at)?.as_deref());
+                .and_then(|at| vault.secrets.get(at)?.as_deref());
             if let Some(secret) = known {
                 out.push_str(text.get(from..at.start).unwrap_or_default());
                 out.push_str(secret);
@@ -409,10 +398,10 @@ fn starts_known(vault: &Vault, text: &str) -> usize {
 /// out are saved as taken.
 fn keep_count(mut issued: ResMut<Issued>, secrets: Res<Secrets>) {
     let mut vault = secrets.vault();
-    while vault.len() < issued.0 {
-        vault.push(None);
+    while vault.secrets.len() < issued.0 {
+        vault.secrets.push(None);
     }
-    issued.set_if_neq(Issued(vault.len()));
+    issued.set_if_neq(Issued(vault.secrets.len()));
 }
 
 /// Tells every agent's model how to use a placeholder.
@@ -571,9 +560,14 @@ fn redact_messages(
                     }
                     match content {
                         UserContent::Text(text) => &mut text.text,
-                        UserContent::Image(_) | UserContent::Audio(_) | UserContent::Video(_) => {
-                            continue;
-                        }
+                        // A medium's link, not its data, which a key's shape
+                        // could match by chance.
+                        UserContent::Image(message::Image { data, .. })
+                        | UserContent::Audio(message::Audio { data, .. })
+                        | UserContent::Video(message::Video { data, .. }) => match data {
+                            message::DocumentSourceKind::Url(url) => url,
+                            _ => continue,
+                        },
                         // A document's or a result's text, as JSON.
                         content => {
                             if let Some(redacted) = secrets.redacted(&*content) {
@@ -654,7 +648,12 @@ impl Intercept for AsSent {
                     }
                 }
                 drop(vault);
-                self.0.redacted(request.as_ref()).map(|mut redacted| {
+                // The tools are sent as given: their names and schemas are
+                // the program's text, which a known secret must not change.
+                let mut asked = (**request).clone();
+                asked.tools = Vec::new();
+                self.0.redacted(&asked).map(|mut redacted| {
+                    redacted.tools.clone_from(&request.tools);
                     // Not serialized, so the round trip drops it.
                     redacted.record_telemetry_content = request.record_telemetry_content;
                     EffectKind::Completion {
@@ -706,12 +705,12 @@ fn refuse_unknown(
         let vault = secrets.vault();
         let unknown = placeholders(&args).find(|(_, number)| {
             let at = number.checked_sub(1);
-            at.and_then(|at| vault.get(at)?.as_ref()).is_none()
+            at.and_then(|at| vault.secrets.get(at)?.as_ref()).is_none()
         });
         let shell = request.call.function.name.as_str() == rig_tools::Shell::NAME;
         let special = placeholders(&args).filter(|_| shell).find(|(_, number)| {
             let at = number.checked_sub(1);
-            let secret = at.and_then(|at| vault.get(at)?.as_deref());
+            let secret = at.and_then(|at| vault.secrets.get(at)?.as_deref());
             secret.is_some_and(|secret| secret.contains(SHELL_SPECIAL))
         });
         if let Some((at, _)) = special {
@@ -910,7 +909,7 @@ fn redact_line(line: &str, block: &mut Option<usize>, secrets: &Secrets) -> Stri
         let mut vault = secrets.vault();
         let held = number
             .checked_sub(1)
-            .and_then(|at| vault.get_mut(at)?.as_mut());
+            .and_then(|at| vault.secrets.get_mut(at)?.as_mut());
         let full = held.is_none_or(|held| {
             held.push_str(line);
             held.len() > BLOCK_MOST
@@ -933,9 +932,11 @@ fn redact_line(line: &str, block: &mut Option<usize>, secrets: &Secrets) -> Stri
         .text(line.get(..opened.range.start).unwrap_or_default())
         .into_owned();
     let mut vault = secrets.vault();
-    vault.push(Some(line.get(opened.range).unwrap_or_default().to_owned()));
-    *block = Some(vault.len());
-    format!("{before}{}\n", placeholder(vault.len()))
+    vault
+        .secrets
+        .push(Some(line.get(opened.range).unwrap_or_default().to_owned()));
+    *block = Some(vault.secrets.len());
+    format!("{before}{}\n", placeholder(vault.secrets.len()))
 }
 
 /// Every record reaches the effect log, when it is written, redacted: the
