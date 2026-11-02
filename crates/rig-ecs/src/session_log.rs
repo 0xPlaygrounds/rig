@@ -407,7 +407,7 @@ fn open_child_log(
     log: Res<SessionLog>,
 ) {
     if let Ok((child, parent)) = agents.get(spawned.entity)
-        && let Ok(parent) = ids.get(parent.0)
+        && let Ok(parent) = ids.get(parent.parent())
     {
         log.0.open_log(&child.0, Some(&parent.0));
     }

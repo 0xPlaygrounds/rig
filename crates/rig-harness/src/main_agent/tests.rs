@@ -1,7 +1,8 @@
 use bevy_app::TaskPoolPlugin;
 use rig_ecs::AgentPlugin;
-use rig_ecs::agent::{AgentId, SpawnedBy};
+use rig_ecs::agent::AgentId;
 use rig_ecs::prelude::*;
+use rig_ecs::spawn::spawn;
 
 use super::*;
 
@@ -50,11 +51,16 @@ fn showing_an_agent_makes_its_top_level_agent_current() {
         id(&app, first).map(|id| id.0),
         "the shown first agent is current"
     );
-    let other = app.world_mut().spawn(Agent).id();
+    let other = spawn_root(app.world_mut()).id();
     app.update();
     assert_eq!(app.world().resource::<Main>().0, Some(first));
 
-    let child = app.world_mut().spawn((Agent, SpawnedBy(other))).id();
+    let child = spawn(
+        app.world_mut(),
+        Origin::ChildOf(other),
+        AgentSpec::default(),
+    );
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
     assert_eq!(show(&mut app, child), Some(other));
     assert_eq!(app.world().resource::<ShownAgent>().0, Some(child));
     assert_eq!(

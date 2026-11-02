@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use bevy_time::TimeUpdateStrategy;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::rig_ecs::spawn::spawn;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
 
@@ -53,11 +54,14 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
     let Some((top_line, sub_line)) = lines else {
         return;
     };
-    let parent = app.world_mut().spawn((Agent, top_line)).id();
-    let child = app
-        .world_mut()
-        .spawn((Agent, sub_line, SpawnedBy(parent)))
-        .id();
+    let parent = spawn_root(app.world_mut()).insert(top_line).id();
+    let child = spawn(
+        app.world_mut(),
+        Origin::ChildOf(parent),
+        AgentSpec::default(),
+    );
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut().entity_mut(child).insert(sub_line);
     app.finish();
     // The terminal view is the front, and the user is in another window.
     app.insert_resource(TerminalView(true))

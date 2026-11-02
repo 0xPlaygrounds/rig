@@ -347,8 +347,8 @@ fn the_turns_listed_follow_the_branch_switched_to() {
     app.finish();
     app.update();
     let choice = || ModelChoice(MODEL.to_owned());
-    let long = app.world_mut().spawn((Agent, choice())).id();
-    let short = app.world_mut().spawn((Agent, choice())).id();
+    let long = spawn_root(app.world_mut()).insert(choice()).id();
+    let short = spawn_root(app.world_mut()).insert(choice()).id();
     for (n, agent) in [long, long, short].into_iter().enumerate() {
         let ask = Deliver::new(agent, "Go on.", DeliveryMode::Steer);
         app.world_mut().trigger(ask);

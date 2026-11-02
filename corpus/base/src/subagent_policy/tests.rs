@@ -71,7 +71,7 @@ impl Session {
                 },
             );
         let choice = ModelChoice(PARENT.to_owned());
-        let parent = app.world_mut().spawn((Agent, choice)).id();
+        let parent = spawn_root(app.world_mut()).insert(choice).id();
         app.finish();
         Self { app, wakes, parent }
     }

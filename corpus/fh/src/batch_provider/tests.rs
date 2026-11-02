@@ -278,7 +278,7 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     let store = MemoryStore::default();
     let fake = Fake::default();
     let (mut app, wakes) = start(&store, &fake);
-    app.world_mut().spawn(Agent);
+    spawn_root(app.world_mut());
     app.update();
     let found = agents(&mut app);
     assert_eq!(found.len(), 2, "{found:?}");

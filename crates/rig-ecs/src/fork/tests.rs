@@ -10,6 +10,7 @@ use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, CacheKey, Conversation, Notice, SystemPrompt, ToolAccess};
 use crate::session_log::tests::push_message;
 use crate::session_log::{Never, ReflectSaved, Reset, SessionLogPlugin, SessionStore};
+use crate::spawn::spawn_root;
 
 /// The forks made, in order.
 #[derive(Resource, Default)]
@@ -48,7 +49,7 @@ fn agent(app: &mut App, id: &AgentId) -> Option<Entity> {
 fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_restored() {
     let store = MemoryStore::default();
     let mut app = app(&store);
-    let source = app.world_mut().spawn(Agent).id();
+    let source = spawn_root(app.world_mut()).id();
     for message in [Message::user("one?"), Message::assistant("one.")] {
         push_message(app.world_mut(), source, message);
     }
@@ -119,7 +120,7 @@ fn a_fork_keeps_the_conversation_the_saved_components_and_the_cache_and_is_resto
 fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
     let store = MemoryStore::default();
     let mut app = app(&store);
-    let source = app.world_mut().spawn(Agent).id();
+    let source = spawn_root(app.world_mut()).id();
     let fork = |app: &mut App, agent: Entity| {
         app.world_mut().trigger(ForkAgent {
             agent,
@@ -187,7 +188,7 @@ fn a_fork_of_a_fork_says_which_agent_made_each_message_it_copied() {
 fn a_fork_without_a_type_registry_is_a_notice_and_copies_no_log() {
     let store = MemoryStore::default();
     let mut app = app(&store);
-    let source = app.world_mut().spawn(Agent).id();
+    let source = spawn_root(app.world_mut()).id();
     for message in [Message::user("one?"), Message::assistant("one.")] {
         push_message(app.world_mut(), source, message);
     }
@@ -229,7 +230,7 @@ struct Duty(u32);
 fn a_fork_copies_resets_or_leaves_out_each_saved_component_as_its_type_says() {
     let store = MemoryStore::default();
     let mut app = app(&store);
-    let source = app.world_mut().spawn(Agent).id();
+    let source = spawn_root(app.world_mut()).id();
     push_message(app.world_mut(), source, Message::user("one?"));
     push_message(app.world_mut(), source, Message::assistant("one."));
     app.world_mut()

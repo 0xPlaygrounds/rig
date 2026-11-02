@@ -47,7 +47,7 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
     collect::<Notice>(&mut app);
     app.finish();
     app.update();
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut()).insert(connection).id();
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {

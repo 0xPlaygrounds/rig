@@ -185,7 +185,7 @@ impl Context<'_, '_> {
     /// An entry of `event` for `agent`, with its parents.
     fn entry(&self, event: Event, agent: Option<Entity>) -> Entry {
         let id = |agent| self.agents.get(agent).ok().map(|(id, _)| id.0.clone());
-        let by = |agent| self.agents.get(agent).ok()?.1.map(|by| by.0);
+        let by = |agent| self.agents.get(agent).ok()?.1.map(SpawnedBy::parent);
         let parents = std::iter::successors(agent.and_then(by), |&parent| by(parent))
             .filter_map(id)
             .collect();

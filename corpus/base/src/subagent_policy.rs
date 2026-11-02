@@ -17,7 +17,7 @@ use std::path::Path;
 use bevy_log::warn;
 use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
 use rig_basics::subagents::{
-    Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
+    Lifecycle, Role, SpawnSubagent, SubagentSystems, SubagentsPlugin, TASK,
 };
 use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_harness::prelude::*;
@@ -150,7 +150,10 @@ impl Plugin for SubagentPolicyPlugin {
     fn finish(&self, app: &mut App) {
         if let Some(config) = app.world().get_resource::<SubagentsConfig>() {
             let max_depth = config.max_depth;
-            app.insert_resource(SubagentPolicy { max_depth });
+            app.insert_resource(SpawnPolicy {
+                max_depth,
+                ..SpawnPolicy::default()
+            });
         }
     }
 }
@@ -223,7 +226,8 @@ fn queue(
     let at_work = subagents
         .iter()
         .filter(|(.., step)| matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_)));
-    let mut at_work: Vec<(Entity, Entity)> = at_work.map(|(agent, by, _)| (agent, by.0)).collect();
+    let mut at_work: Vec<(Entity, Entity)> =
+        at_work.map(|(agent, by, _)| (agent, by.parent())).collect();
     let free = |at_work: &[(Entity, Entity)], parent: Entity| {
         let mine = at_work.iter().filter(|(_, by)| *by == parent).count();
         let above: Vec<Entity> = lineage.iter_ancestors(parent).collect();

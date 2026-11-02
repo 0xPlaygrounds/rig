@@ -218,6 +218,10 @@ impl Default for Footprint {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DeclaredFootprint;
 
+/// On a tool whose calls start agents ([`AppToolsExt::starts_agents`]).
+#[derive(Component)]
+pub(crate) struct StartsAgents;
+
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
 #[derive(Clone, Debug, Default)]
 pub struct ToolOptions {
@@ -266,6 +270,11 @@ pub trait AppToolsExt {
     ) -> &mut Self
     where
         A: DeserializeOwned + JsonSchema + Send + Sync + 'static;
+
+    /// Marks the registered tool `name` as one whose calls start agents,
+    /// such as a `task` tool: an agent at the depth limit of the
+    /// [`SpawnPolicy`](crate::spawn::SpawnPolicy) is not given it.
+    fn starts_agents(&mut self, name: &str) -> &mut Self;
 }
 
 impl AppToolsExt for App {
@@ -298,6 +307,18 @@ impl AppToolsExt for App {
         let changes = Touches::Writes(Scope::Anything);
         if let Some(tool) = register_tool(world, definition, serves, options, changes) {
             world.entity_mut(tool).observe(observer);
+        }
+        self
+    }
+
+    fn starts_agents(&mut self, name: &str) -> &mut Self {
+        let world = self.world_mut();
+        let mut tools = world.query::<(Entity, &ToolDef)>();
+        let tool = tools
+            .iter(world)
+            .find(|(_, def)| def.0.name.as_str() == name);
+        if let Some(tool) = tool.map(|(tool, _)| tool) {
+            world.entity_mut(tool).insert(StartsAgents);
         }
         self
     }
@@ -485,11 +506,16 @@ pub(crate) fn keep_within_parents(
         return;
     }
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
-        .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|parent| parent.0))))
+        .map(|(agent, access, parent)| {
+            (
+                agent,
+                ((*access).clone(), parent.map(|parent| parent.parent())),
+            )
+        })
         .collect();
     for (agent, access, parent) in &agents {
         let mut within = access.for_run(run.as_deref());
-        let mut next = parent.map(|parent| parent.0);
+        let mut next = parent.map(|parent| parent.parent());
         // A cycle of parents ends once every agent was passed.
         for _ in 0..above.len() {
             let Some((upper, parent)) = next.and_then(|up| above.get(&up)) else {

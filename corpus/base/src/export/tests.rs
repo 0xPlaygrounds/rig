@@ -78,7 +78,9 @@ fn exports_the_saved_session_with_the_subagent_under_its_task_call() {
         return;
     };
     let choice = ModelChoice(connection.spec.reference());
-    let parent = app.world_mut().spawn((Agent, connection, choice)).id();
+    let parent = spawn_root(app.world_mut())
+        .insert((connection, choice))
+        .id();
     app.finish();
     app.update();
 

@@ -32,7 +32,7 @@ fn start(
         .add_observer(log_ended);
     if let Some(connection) = model.and_then(connect) {
         let choice = ModelChoice(connection.spec.reference());
-        app.world_mut().spawn((Agent, connection, choice));
+        spawn_root(app.world_mut()).insert((connection, choice));
     }
     collect::<Notice>(&mut app).finish();
     app.update();

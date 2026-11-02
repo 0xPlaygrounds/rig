@@ -248,8 +248,8 @@ impl Work<'_> {
 
 /// The agent at the top of `agent`'s tree.
 fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
-    while let Ok(SpawnedBy(parent)) = parents.get(agent) {
-        agent = *parent;
+    while let Ok(parent) = parents.get(agent).map(SpawnedBy::parent) {
+        agent = parent;
     }
     agent
 }

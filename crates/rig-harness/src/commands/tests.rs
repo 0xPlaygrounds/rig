@@ -26,7 +26,7 @@ fn app() -> (App, Entity) {
                 echoed.0.push((args.args, args.mode));
             },
         );
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.update();
     (app, agent)
 }

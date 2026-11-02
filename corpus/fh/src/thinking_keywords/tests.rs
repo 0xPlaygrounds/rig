@@ -28,7 +28,7 @@ fn app(models: Models, model: &str) -> (App, std::sync::mpsc::Receiver<()>, Enti
     };
     app.add_open_tool("read", "Read a file.", ToolOptions::default(), read);
     collect::<Notice>(&mut app);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.finish();
     app.update();
     let model = model.to_owned();

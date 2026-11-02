@@ -30,7 +30,7 @@ fn routed() -> (App, Entity) {
         );
     let world = app.world_mut();
     world.spawn(ModelItem::new("router", "router  per request", "route on"));
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     (app, agent)
 }
 
@@ -85,7 +85,7 @@ fn model_waits_for_the_turn_a_resumed_session_continues() {
     tell(&mut app);
     // The continued turn, there before the first frame.
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let turn = world.spawn(TurnOf(agent)).id();
     app.update();
     let told = &app.world().resource::<Told>().0;
@@ -139,7 +139,7 @@ fn an_unknown_model_given_with_model_leaves_the_agent_without_one() {
             }
         },
     );
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.update();
     app.update();
     let world = app.world();
@@ -570,7 +570,7 @@ fn with_no_model_to_use_the_picker_says_how_to_get_one() {
     let mut app = App::new();
     app.add_plugins((AgentPlugin, ModelsPlugin))
         .insert_resource(Models(Connector::new(Catalog::default())));
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     run(&mut app, agent, "model");
     assert_eq!(
         recalled(&app),
@@ -637,7 +637,7 @@ fn a_model_without_its_key_given_with_model_leaves_the_agent_without_one() {
             }
         },
     );
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.update();
     app.update();
     let world = app.world();

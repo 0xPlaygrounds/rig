@@ -18,6 +18,7 @@ use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
 
 use super::*;
 use crate::telemetry::usage::{AgentUsage, UsagePlugin};
+use rig_ecs::spawn::spawn;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, advance, app_on, collect, commit_message, connect, log_ended,
     reply, run_until,
@@ -3400,7 +3401,8 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
 
     // A subagent compacted too.
     let world = app.world_mut();
-    let child = world.spawn((Agent, SpawnedBy(agent))).id();
+    let child = spawn(world, Origin::ChildOf(agent), AgentSpec::default());
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
     for text in ["one", "two", "three"] {
         assert!(commit_message(world, child, Message::user(text)).is_ok());
     }

@@ -152,7 +152,7 @@ fn a_skill_is_listed_and_sent_with_its_command() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut()).insert(connection).id();
     let line = Deliver::new(agent, "/skill:haiku about rust", DeliveryMode::Steer);
     app.world_mut().trigger(line);
     run_until(&mut app, &wakes, |world| {

@@ -242,13 +242,14 @@ fn ask(
         let question = args
             .map(|args| args.question.trim().to_owned())
             .unwrap_or_default();
-        let Ok((id, Some(&SpawnedBy(parent)), title)) = agents.get(child) else {
+        let Ok((id, Some(parent), title)) = agents.get(child) else {
             decision.decide(
                 Decider::plugin(DECIDER),
                 refused("No agent started you, so there is nobody to ask."),
             );
             continue;
         };
+        let parent = parent.parent();
         if question.is_empty() {
             decision.decide(
                 Decider::plugin(DECIDER),

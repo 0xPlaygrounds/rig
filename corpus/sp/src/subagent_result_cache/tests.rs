@@ -57,7 +57,7 @@ impl Session {
             .add_observer(log_tool_outputs);
         collect::<Notice>(&mut app);
         if fresh {
-            app.world_mut().spawn((Agent, ModelChoice(MAIN.to_owned())));
+            spawn_root(app.world_mut()).insert(ModelChoice(MAIN.to_owned()));
         }
         app.finish();
         app.update();
@@ -357,7 +357,10 @@ fn a_task_refused_at_the_deepest_level_is_never_answered_from_a_record() {
     );
     let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
     let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
-    session.app.insert_resource(SubagentPolicy { max_depth: 1 });
+    session.app.insert_resource(SpawnPolicy {
+        max_depth: 1,
+        ..SpawnPolicy::default()
+    });
     let keeps = ToolAccess::all().narrow([TASK, "read", MESSAGE, WAIT]);
     session
         .app

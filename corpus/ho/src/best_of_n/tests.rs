@@ -78,9 +78,8 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
         .add_plugins((AgentPlugin, SessionLogPlugin, WriteTool, BestOfPlugin))
         .add_observer(note_before_apply);
     collect::<Notice>(&mut app);
-    let host = app
-        .world_mut()
-        .spawn((Agent, ModelChoice("best-main/m".to_owned())))
+    let host = spawn_root(app.world_mut())
+        .insert(ModelChoice("best-main/m".to_owned()))
         .id();
     app.finish();
     app.update();

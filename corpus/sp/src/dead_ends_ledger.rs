@@ -305,12 +305,12 @@ fn count_changes(
 fn lineage(agent: Entity, parents: &Query<&SpawnedBy>) -> Vec<Entity> {
     let mut chain = vec![agent];
     let mut at = agent;
-    while let Ok(SpawnedBy(parent)) = parents.get(at)
+    while let Ok(parent) = parents.get(at).map(SpawnedBy::parent)
         && chain.len() < MAX_DEPTH
-        && !chain.contains(parent)
+        && !chain.contains(&parent)
     {
-        chain.push(*parent);
-        at = *parent;
+        chain.push(parent);
+        at = parent;
     }
     chain
 }

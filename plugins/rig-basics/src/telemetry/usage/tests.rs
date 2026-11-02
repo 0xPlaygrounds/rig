@@ -7,6 +7,7 @@ use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 use super::*;
+use rig_ecs::spawn::spawn;
 
 /// An app on `store` that counts spending, after its first frame.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
@@ -35,7 +36,7 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     };
     let reference = connection.spec.reference();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, connection)).id();
+    let agent = spawn_root(world).insert(connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
@@ -92,7 +93,7 @@ fn usage_labels_catalog_costs_as_estimates_not_subscription_charges() {
     );
     let world = app.world_mut();
     world.resource_mut::<SessionUsage>().0 = spent.clone();
-    let agent = world.spawn((Agent, spent)).id();
+    let agent = spawn_root(world).insert(spent).id();
     notices(world);
     world.trigger(RunCommand::new(agent, "usage".to_owned()));
     world.flush();
@@ -135,7 +136,7 @@ fn the_context_is_against_the_window_of_the_model_a_call_went_to() {
     app.insert_resource(RouteTo(routed))
         .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
     let world = app.world_mut();
-    let agent = world.spawn((Agent, connection)).id();
+    let agent = spawn_root(world).insert(connection).id();
     world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1
@@ -178,7 +179,7 @@ fn a_superseded_call_counts_its_call_usage_under_the_model_it_went_to() {
     };
     let reference = connection.spec.reference();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let winner = world.spawn_empty().id();
     let mut used = Usage::default();
@@ -221,7 +222,7 @@ fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut()).insert(connection).id();
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -248,10 +249,13 @@ fn stale_context_survives_restore_and_unreported_replies_for_each_agent() {
         )
         .is_ok()
     );
-    let child = app
-        .world_mut()
-        .spawn((Agent, SpawnedBy(agent), ContextStale {}))
-        .id();
+    let child = spawn(
+        app.world_mut(),
+        Origin::ChildOf(agent),
+        AgentSpec::default(),
+    );
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut().entity_mut(child).insert(ContextStale {});
     for message in [Message::user("child task"), Message::assistant("done")] {
         assert!(rig_harness_test_support::commit_message(app.world_mut(), child, message).is_ok());
     }
@@ -333,9 +337,8 @@ fn a_context_change_after_a_reply_in_the_same_pass_stays_stale() {
     let Some(connection) = connect(&model) else {
         return;
     };
-    let agent = app
-        .world_mut()
-        .spawn((Agent, connection, ContextStale {}))
+    let agent = spawn_root(app.world_mut())
+        .insert((connection, ContextStale {}))
         .id();
     app.add_systems(
         AgentPass,
@@ -376,10 +379,8 @@ fn the_meter_shows_unknown_until_the_stale_marker_is_removed() {
         .output_tokens(100);
     let mut spent = AgentUsage::default();
     spent.total.calls = 1;
-    let agent = app
-        .world_mut()
-        .spawn((
-            Agent,
+    let agent = spawn_root(app.world_mut())
+        .insert((
             connection,
             spent,
             LastUsage(Some(rig_memory::Anchor {
@@ -425,7 +426,7 @@ fn a_fork_starts_with_no_calls_and_an_unknown_context() {
     };
     connection.spec = Arc::new((*connection.spec).clone().with_context_window(2_000));
     let world = app.world_mut();
-    let source = world.spawn((Agent, connection)).id();
+    let source = spawn_root(world).insert(connection).id();
     world.trigger(Deliver::new(source, "hello", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 1

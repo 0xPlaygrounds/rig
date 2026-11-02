@@ -41,6 +41,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::error::{FallbackErrorHandler, warn};
+use bevy_ecs::relationship::Relationship;
 use bevy_ecs::schedule::{
     LogLevel, ScheduleBuildError, ScheduleBuildSettings, ScheduleBuildWarning,
 };
@@ -3735,9 +3736,11 @@ fn stopping_an_idle_agent_stops_the_agents_it_spawned() {
         return;
     };
     let world = app.world_mut();
-    let parent = world.spawn(Agent).id();
-    let other = world.spawn(Agent).id();
-    world.entity_mut(child).insert(SpawnedBy(parent));
+    let parent = spawn_root(world).id();
+    let other = spawn_root(world).id();
+    world
+        .entity_mut(child)
+        .insert(<SpawnedBy as Relationship>::from(parent));
     world.flush();
     world.trigger(StopTurn::new(other));
     world.flush();
@@ -4543,10 +4546,12 @@ fn a_child_never_calls_or_is_offered_a_tool_its_parent_lacks() {
     app.init_resource::<Ended>().add_observer(log_ended);
     let child = connected(&mut app, &model);
     let world = app.world_mut();
-    let parent = world
-        .spawn((Agent, ToolAccess::all().narrow(["look"])))
+    let parent = spawn_root(world)
+        .insert(ToolAccess::all().narrow(["look"]))
         .id();
-    world.entity_mut(child).insert(SpawnedBy(parent));
+    world
+        .entity_mut(child)
+        .insert(<SpawnedBy as Relationship>::from(parent));
     world.trigger(Deliver::new(child, "go", DeliveryMode::Steer));
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));

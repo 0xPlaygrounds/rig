@@ -356,9 +356,10 @@ fn check_by_time(
     mut commands: Commands,
 ) {
     let supervisor = due.entity;
-    let Ok((mut settings, &SpawnedBy(worker))) = supervisors.get_mut(supervisor) else {
+    let Ok((mut settings, worker)) = supervisors.get_mut(supervisor) else {
         return;
     };
+    let worker = worker.parent();
     if let Ok(conversation) = workers.get(worker)
         && unseen(conversation, settings.seen) < conversation.messages().len()
     {
@@ -521,7 +522,7 @@ fn on_verdict(
             decision.decide(Decider::plugin("supervisor"), outcome);
         }
     };
-    let Ok(&SpawnedBy(worker)) = supervisors.get(called.agent) else {
+    let Ok(worker) = supervisors.get(called.agent).map(SpawnedBy::parent) else {
         answer(Err("Only a supervisor gives verdicts."));
         return;
     };

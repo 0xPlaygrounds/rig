@@ -367,10 +367,8 @@ fn saved_fingerprints_restore_and_forks_inherit_without_crossing_agents() -> any
             version: crate::profile::VERSION.into(),
         },
     ));
-    let second = app
-        .world_mut()
-        .spawn((
-            Agent,
+    let second = spawn_root(app.world_mut())
+        .insert((
             HumanFingerprint(Some(other.clone()), Some(0)),
             FingerprintSeed {
                 units: Some(crate::profile::seed("second agent distinct")),

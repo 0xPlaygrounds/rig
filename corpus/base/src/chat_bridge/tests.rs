@@ -94,7 +94,7 @@ fn bridge_app(
         );
     if let Some(connection) = model.and_then(connect) {
         let choice = ModelChoice(connection.spec.reference());
-        app.world_mut().spawn((Agent, connection, choice));
+        spawn_root(app.world_mut()).insert((connection, choice));
     }
     app.finish();
     app.update();
@@ -206,7 +206,7 @@ fn a_turn_ended_in_the_frame_its_calls_started_still_posts_its_work() {
         channel: "C1".to_owned(),
         thread: "T1".to_owned(),
     };
-    let agent = world.spawn((Agent, thread)).id();
+    let agent = spawn_root(world).insert(thread).id();
     let call = start_call(world, agent, ("read", "r1"), serde_json::json!({}));
     assert!(call.is_some());
     let answered = TurnOutcome::Answered(message::Message::assistant("fixed"));

@@ -31,8 +31,7 @@ fn start(
 ) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     if new {
-        app.world_mut()
-            .spawn((Name::new("agent"), Agent, AgentId("main".to_owned())));
+        spawn_root(app.world_mut()).insert((Name::new("agent"), AgentId("main".to_owned())));
     }
     app.insert_resource(ProjectRoot(project.to_path_buf()))
         .insert_resource(Models(Connector::new(Catalog::default())))

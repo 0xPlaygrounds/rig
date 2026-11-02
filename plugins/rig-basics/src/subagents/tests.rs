@@ -76,7 +76,7 @@ impl Session {
         rig_harness::load::<SubagentsPlugin>(&mut app, "rig-basics", "path plugins/rig-basics");
         if let Some(connection) = model.and_then(connect) {
             let choice = ModelChoice(connection.spec.reference());
-            app.world_mut().spawn((Agent, connection, choice));
+            spawn_root(app.world_mut()).insert((connection, choice));
         }
         configure(&mut app);
         app.finish();
@@ -571,7 +571,10 @@ fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
         session
             .app
             .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]))
-            .insert_resource(SubagentPolicy { max_depth });
+            .insert_resource(SpawnPolicy {
+                max_depth,
+                ..SpawnPolicy::default()
+            });
         let args = json!({ "description": "Look", "prompt": "Look around." });
         let said = session.call(session.parent, TASK, "t1", args);
         assert!(said.starts_with("Started subagent"), "{said}");
@@ -676,7 +679,7 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     const SLOTS: usize = 2;
     let working = |children: &Query<(&SpawnedBy, &Lifecycle)>, parent: Entity| {
         let working = |(by, step): &(&SpawnedBy, &Lifecycle)| {
-            by.0 == parent && matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_))
+            by.parent() == parent && matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_))
         };
         children.iter().filter(working).count()
     };
@@ -714,7 +717,10 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
     session
         .app
-        .insert_resource(SubagentPolicy { max_depth: 1 })
+        .insert_resource(SpawnPolicy {
+            max_depth: 1,
+            ..SpawnPolicy::default()
+        })
         .add_systems(
             AgentPass,
             (queue.in_set(Stage::Gate), release.in_set(Stage::Review)),

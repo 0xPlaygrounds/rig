@@ -1209,7 +1209,7 @@ fn a_terminal_run_can_name_a_servers_tool_in_its_tools() {
     app.insert_resource(scripted_models([(MODEL, &model)]))
         .add_front(Front::new("view").on_terminal())
         .add_plugins((ExitPlugin, PrintPlugin));
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.finish();
     app.cleanup();
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));

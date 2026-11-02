@@ -412,7 +412,7 @@ fn archive_of(
     let mut archive = read(agent, OWN)?;
     let parent = agents.get(agent).ok().and_then(|(_, _, by)| by);
     if settings.share_with_subagents
-        && let Some(&SpawnedBy(parent)) = parent
+        && let Some(parent) = parent.map(SpawnedBy::parent)
     {
         archive.extend(read(parent, PARENT)?);
     }

@@ -68,7 +68,7 @@ fn settled(id: &'static str) -> impl Fn(&World) -> bool {
 
 /// A new agent answered by `model`.
 fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
-    let mut agent = app.world_mut().spawn(Agent);
+    let mut agent = spawn_root(app.world_mut());
     if let Some(connection) = connect(model) {
         let choice = ModelChoice(connection.spec.reference());
         agent.insert((connection, choice));
@@ -91,8 +91,8 @@ fn run_tests_runs_where_each_calling_agent_works_and_a_confined_one_stays_inside
     "#;
     let (mut app, wakes) = start(&MemoryStore::default(), &dir, settings, None);
     let world = app.world_mut();
-    let a = world.spawn((Agent, WorkDir(dir.join("a")))).id();
-    let b = world.spawn((Agent, WorkDir(dir.join("b")))).id();
+    let a = spawn_root(world).insert(WorkDir(dir.join("a"))).id();
+    let b = spawn_root(world).insert(WorkDir(dir.join("b"))).id();
     app.update();
     // Both agents' calls in one frame, and the confined agent reaching out.
     let world = app.world_mut();
@@ -135,7 +135,7 @@ fn deny_refuses_before_anything_runs_and_ask_with_nobody_to_answer_refuses_at_on
         rules = [{ tool = "shell", command = "rm -rf", action = "deny", reason = "Deleting trees is blocked by policy." }]
     "#;
     let (mut app, wakes) = start(&MemoryStore::default(), &dir, settings, None);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.update();
     let world = app.world_mut();
     let shell = json!({ "command": format!("touch {} && rm -rf junk", marker.display()) });
@@ -169,7 +169,7 @@ fn deny_refuses_before_anything_runs_and_ask_with_nobody_to_answer_refuses_at_on
     let broken = "[policy]\nrules = \"allow everything\"";
     let (mut app, _wakes) = start(&MemoryStore::default(), &dir, broken, None);
     assert!(!app.world().resource::<Settings>().problems().is_empty());
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.update();
     let edit = json!({
         "path": file.display().to_string(),

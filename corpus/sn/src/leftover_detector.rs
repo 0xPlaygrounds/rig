@@ -291,7 +291,7 @@ fn scan(
 /// The agent at the root of `agent`'s spawns, whose turn a subagent's
 /// changes count for.
 fn root_of(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
-    while let Ok(&SpawnedBy(parent)) = parents.get(agent) {
+    while let Ok(parent) = parents.get(agent).map(SpawnedBy::parent) {
         agent = parent;
     }
     agent

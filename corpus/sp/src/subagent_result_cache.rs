@@ -15,9 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use rig_basics::subagents::{
-    MESSAGE, Role, SpawnSubagent, SpawnedAgent, SubagentPolicy, TASK, WAIT,
-};
+use rig_basics::subagents::{MESSAGE, Role, SpawnSubagent, SpawnedAgent, TASK, WAIT};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, content_hash};
 use rig_harness::rig_tools::workspace::{Listing as Files, Stat, Workspace};
@@ -258,7 +256,7 @@ fn reuse(
     (parents, tools, turns): (Query<Parent>, Query<&ToolDef>, Query<&Turn>),
     (mut caches, lineage): (Query<&mut SubagentCache>, Query<&SpawnedBy>),
     (models, workspace, switch): (Res<Models>, Res<ProjectWorkspace>, Res<SubcacheSwitch>),
-    policy: Option<Res<SubagentPolicy>>,
+    policy: Option<Res<SpawnPolicy>>,
     mut commands: Commands,
 ) {
     for (request_entity, request, &ForAgent(parent), of, mut decision) in &mut requests {
@@ -416,9 +414,10 @@ fn record_first_turn(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok((watching, &SpawnedBy(parent))) = watched.get(agent) else {
+    let Ok((watching, parent)) = watched.get(agent) else {
         return;
     };
+    let parent = parent.parent();
     commands.entity(agent).remove::<Watching>();
     let TurnOutcome::Answered(message) = outcome else {
         return;

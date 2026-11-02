@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::*;
+use rig_ecs::spawn::spawn;
 
 /// Every effect recorded so far.
 #[derive(Resource, Default)]
@@ -82,7 +83,7 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     if let Some(connection) = connect(model) {
         let choice = ModelChoice(connection.spec.reference());
         app.world_mut()
@@ -236,10 +237,16 @@ fn a_program_never_gives_an_agent_a_tool_its_parent_lacks() {
 fn a_program_never_spawns_an_agent_deeper_than_the_subagent_limit() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes, root) = app(&model);
-    // At depth 2, rig-basics' default `SubagentPolicy::max_depth`: `task`
-    // refuses this agent a child.
-    let child = app.world_mut().spawn((Agent, SpawnedBy(root))).id();
-    let deepest = app.world_mut().spawn((Agent, SpawnedBy(child))).id();
+    // At depth 2, the default `SpawnPolicy::max_depth`: `task` refuses
+    // this agent a child.
+    let child = spawn(app.world_mut(), Origin::ChildOf(root), AgentSpec::default());
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let deepest = spawn(
+        app.world_mut(),
+        Origin::ChildOf(child),
+        AgentSpec::default(),
+    );
+    let deepest = deepest.unwrap_or(Entity::PLACEHOLDER);
     let code = json!({ "code": r#"(spawn-agent "leaf")"# });
     let call = start_call(app.world_mut(), deepest, (RUN_STEEL, "s1"), code);
     let call = call.unwrap_or(Entity::PLACEHOLDER);
@@ -248,6 +255,9 @@ fn a_program_never_spawns_an_agent_deeper_than_the_subagent_limit() {
     });
     let world = app.world_mut();
     let mut parents = world.query::<&SpawnedBy>();
-    let too_deep = parents.iter(world).filter(|by| by.0 == deepest).count();
+    let too_deep = parents
+        .iter(world)
+        .filter(|by| by.parent() == deepest)
+        .count();
     assert_eq!(too_deep, 0, "an agent was spawned at depth 3");
 }

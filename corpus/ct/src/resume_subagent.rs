@@ -125,7 +125,7 @@ fn on_follow_up(
 ) {
     let own: Vec<_> = subagents
         .iter()
-        .filter(|(_, _, by, _)| by.0 == called.agent)
+        .filter(|(_, _, by, _)| by.parent() == called.agent)
         .collect();
     let target = own
         .iter()

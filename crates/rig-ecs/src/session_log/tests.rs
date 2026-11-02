@@ -16,6 +16,7 @@ use super::{
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use crate::inbox::{Deliver, DeliveryMode};
+use crate::spawn::{AgentSpec, Origin, spawn};
 use crate::stage::{Admitted, AgentPass, ForAgent, Stage};
 use crate::turn::TurnCall;
 
@@ -132,8 +133,18 @@ fn a_cut_and_a_retired_agent_are_logged_and_a_restore_follows_them() {
     };
     talk(&mut first, agent);
     // A subagent, and the one it spawned: retiring the first takes both.
-    let child = first.world_mut().spawn((Agent, SpawnedBy(agent))).id();
-    let grandchild = first.world_mut().spawn((Agent, SpawnedBy(child))).id();
+    let child = spawn(
+        first.world_mut(),
+        Origin::ChildOf(agent),
+        AgentSpec::default(),
+    );
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let grandchild = spawn(
+        first.world_mut(),
+        Origin::ChildOf(child),
+        AgentSpec::default(),
+    );
+    let grandchild = grandchild.unwrap_or(Entity::PLACEHOLDER);
     for spawned in [child, grandchild] {
         push_message(first.world_mut(), spawned, Message::user("work"));
     }

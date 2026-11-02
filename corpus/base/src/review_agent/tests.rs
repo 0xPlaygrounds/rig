@@ -50,7 +50,7 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
         .add_plugins((UsagePlugin, ReviewAgentPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.finish();
     app.update();
     let model = "corpus/main".to_owned();

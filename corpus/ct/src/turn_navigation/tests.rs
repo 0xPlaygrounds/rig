@@ -100,9 +100,8 @@ fn keys_jump_between_prompts_and_the_header_follows_the_top_row() {
         .insert_resource(TuiTestScreen::new(120, 24));
     tui_view(&mut app);
     app.add_plugins(TurnNavigationPlugin);
-    let agent = app
-        .world_mut()
-        .spawn((Agent, ModelChoice("test/model".to_owned())))
+    let agent = spawn_root(app.world_mut())
+        .insert(ModelChoice("test/model".to_owned()))
         .id();
     app.finish();
     app.cleanup();

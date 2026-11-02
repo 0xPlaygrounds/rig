@@ -395,7 +395,7 @@ fn step(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok(&SpawnedBy(host)) = parents.get(agent) else {
+    let Ok(host) = parents.get(agent).map(SpawnedBy::parent) else {
         return;
     };
     let Ok(mut debate) = debates.get_mut(host) else {

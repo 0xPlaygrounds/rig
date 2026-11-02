@@ -360,7 +360,7 @@ fn on_schedule(
     let args = &called.args;
     let owner = runs
         .get(called.agent)
-        .and_then(|&SpawnedBy(owner)| ids.get(owner));
+        .and_then(|owner| ids.get(owner.parent()));
     let owner = owner.cloned().unwrap_or_else(|_| called.agent_id.clone());
     let fields = (args.schedule.as_str(), args.prompt.as_str(), args.catch_up);
     let result = match add(&mut jobs, fields, &owner) {
@@ -453,9 +453,10 @@ fn report(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok((run, &SpawnedBy(owner), from)) = runs.get(agent) else {
+    let Ok((run, owner, from)) = runs.get(agent) else {
         return;
     };
+    let owner = owner.parent();
     let job = name(run.job);
     match outcome {
         TurnOutcome::Answered(message) => {

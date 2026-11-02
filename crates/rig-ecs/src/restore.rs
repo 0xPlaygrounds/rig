@@ -420,7 +420,7 @@ pub(crate) fn restore_session(world: &mut World) {
                 Err(failure) => notices.push(skipped("component", key, failure)),
             }
         }
-        let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        let mut spawned = world.spawn((Name::new("agent"), Agent::new(), id.clone(), conversation));
         for (component, value) in read {
             component.insert(&mut spawned, value.as_partial_reflect(), &registry);
         }
@@ -432,7 +432,7 @@ pub(crate) fn restore_session(world: &mut World) {
         if let Some(&parent) = parent.as_ref().and_then(|parent| entities.get(parent))
             && let Ok(mut child) = world.get_entity_mut(*child)
         {
-            child.insert(SpawnedBy(parent));
+            child.insert(SpawnedBy::new(parent));
         }
     }
     let mut parents = world.query::<&SpawnedBy>();

@@ -5,7 +5,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::fork::{Ancestor, ForkedFrom};
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::model::{Connection, ModelChoice};
-use rig_ecs::prelude::{Agent, AgentId, Conversation, MessageId, TurnOf, TurnOutcome};
+use rig_ecs::prelude::{AgentId, Conversation, MessageId, TurnOf, TurnOutcome};
 use rig_ecs::session_log::SessionLogPlugin;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::{PickPlugin, Picker};
@@ -19,13 +19,14 @@ use rig_tui::{
 };
 
 use super::*;
+use rig_ecs::spawn::spawn_root;
 
 #[test]
 fn agents_shows_the_columns_other_plugins_add_to_an_agents_line() {
     let mut app = App::new();
     app.add_plugins((AgentPlugin, AgentsPlugin));
     let world = app.world_mut();
-    let agent = world.spawn((Agent, Name::new("main"))).id();
+    let agent = spawn_root(world).insert(Name::new("main")).id();
     let short = world.get::<AgentId>(agent).map(|id| id.short().to_owned());
     world.spawn((AgentColumn::new("spent", "$0.10"), ColumnOf(agent)));
     world.spawn((AgentColumn::new("queued", "2 queued"), ColumnOf(agent)));
@@ -53,9 +54,8 @@ fn agents_marks_the_current_agent_and_forks_and_follows_their_state() {
     let mut app = App::new();
     app.add_plugins((AgentPlugin, AgentsPlugin));
     let first = AgentId("00000000-0000-4000-8000-000000000000".to_owned());
-    let source = app
-        .world_mut()
-        .spawn((Agent, Name::new("agent"), first))
+    let source = spawn_root(app.world_mut())
+        .insert((Name::new("agent"), first))
         .id();
     let id = |app: &App, agent: Entity| {
         let id = app.world().get::<AgentId>(agent);
@@ -65,9 +65,7 @@ fn agents_marks_the_current_agent_and_forks_and_follows_their_state() {
     let (source_id, source_short) = id(&app, source);
     let (agent, since) = (source_id, MessageId::default());
     let from = ForkedFrom(vec![Ancestor { agent, since }]);
-    let fork = (app.world_mut())
-        .spawn((Agent, Name::new("agent"), from))
-        .id();
+    let fork = spawn_root(app.world_mut()).insert(from).id();
     let (_, fork_short) = id(&app, fork);
     app.update();
     app.world_mut()
@@ -113,7 +111,11 @@ fn enter_in_agents_shows_the_agent_selected_after_a_line_above_left() {
     tui_view(&mut app);
     app.add_plugins((PickPlugin, AgentsPlugin));
     let ids = [1, 2, 3, 4].map(|n| AgentId(format!("0000000{n}-0000-4000-8000-000000000000")));
-    let agents = ids.map(|id| app.world_mut().spawn((Agent, Name::new("agent"), id)).id());
+    let agents = ids.map(|id| {
+        spawn_root(app.world_mut())
+            .insert((Name::new("agent"), id))
+            .id()
+    });
     app.finish();
     app.cleanup();
     app.update();
@@ -168,9 +170,8 @@ fn rewind_forks_before_a_message_shows_the_fork_and_a_resume_continues_it() {
     tui_view(&mut app);
     app.add_plugins(AgentsPlugin);
     let first = AgentId("00000000-0000-4000-8000-000000000000".to_owned());
-    let agent = app
-        .world_mut()
-        .spawn((Agent, first, ModelChoice("test/model".to_owned())))
+    let agent = spawn_root(app.world_mut())
+        .insert((first, ModelChoice("test/model".to_owned())))
         .id();
     app.finish();
     app.cleanup();
@@ -253,7 +254,7 @@ fn a_failed_fork_leaves_nothing_pending_for_a_later_rewind() {
     tui_view(&mut app);
     app.add_plugins(AgentsPlugin);
     let model = ModelChoice("test/model".to_owned());
-    let agent = app.world_mut().spawn((Agent, model)).id();
+    let agent = spawn_root(app.world_mut()).insert(model).id();
     app.finish();
     app.cleanup();
     app.update();
@@ -383,7 +384,7 @@ fn a_forks_first_request_starts_with_the_bytes_of_its_sources_last() {
         let Some(connection) = responses((dialect, model), &http) else {
             return;
         };
-        let agent = app.world_mut().spawn((Agent, connection)).id();
+        let agent = spawn_root(app.world_mut()).insert(connection).id();
         app.finish();
         app.update();
         ask(&mut app, &wakes, (agent, "first question"), 1);

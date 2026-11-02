@@ -55,7 +55,7 @@ fn answered_by(app: &mut App, model: &MockCompletionModel) -> Entity {
         .query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>()
         .iter(world)
         .next();
-    let agent = found.unwrap_or_else(|| world.spawn(Agent).id());
+    let agent = found.unwrap_or_else(|| spawn_root(world).id());
     if let Some(connection) = connect(model) {
         let choice = ModelChoice(connection.spec.reference());
         world.entity_mut(agent).insert((connection, choice));

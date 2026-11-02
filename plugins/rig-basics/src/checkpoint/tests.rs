@@ -110,7 +110,7 @@ fn each_shell_call_of_a_turn_reports_what_it_changed() {
         return;
     };
     let world = app.world_mut();
-    let agent = world.spawn((Agent, connection)).id();
+    let agent = spawn_root(world).insert(connection).id();
     world.trigger(Deliver::new(agent, "make files", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
         world.resource::<Changed>().reported.contains_key("s3")

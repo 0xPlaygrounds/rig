@@ -28,8 +28,11 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_ecs::agent::SpawnedBy;
 use rig_ecs::session_log::ReflectSaved;
+use rig_ecs::spawn::SpawnPolicy;
 use rig_harness_protocol::{Home, env, secret_variables};
 use rig_tools::process::Launcher;
+
+use crate::settings::AppSettingsExt;
 
 /// The `RIG_HOME` this agent runs under: where its sessions, settings,
 /// sign-ins and builds are.
@@ -142,7 +145,8 @@ pub struct TokioRuntime(pub tokio::runtime::Handle);
 
 /// Inserts [`RigHome`], [`ProjectRoot`], [`Processes`] and
 /// [`TokioRuntime`], each unless the app has it, and gives an agent
-/// spawned by one with a [`WorkDir`] that directory.
+/// spawned by one with a [`WorkDir`] that directory. Inserts the kernel's
+/// [`SpawnPolicy`] from the `[subagents]` settings.
 pub struct ServicesPlugin;
 
 impl Plugin for ServicesPlugin {
@@ -158,6 +162,7 @@ impl Plugin for ServicesPlugin {
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
+            .add_setting::<SpawnPolicy>("subagents")
             .add_observer(inherit_work_dir);
     }
 }
@@ -169,7 +174,7 @@ fn inherit_work_dir(
     dirs: Query<&WorkDir>,
     mut commands: Commands,
 ) {
-    let parent = parents.get(spawned.entity).map(|&SpawnedBy(parent)| parent);
+    let parent = parents.get(spawned.entity).map(SpawnedBy::parent);
     if let Some(dir) = parent.ok().and_then(|parent| dirs.get(parent).ok()) {
         commands
             .entity(spawned.entity)

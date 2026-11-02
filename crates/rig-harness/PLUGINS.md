@@ -50,7 +50,9 @@ each plugin added): ask it before reading rig's source.
   for libraries, kernel and harness; `plugins/rig-basics/src/<module>` for
   the default plugins, `plugins/<name>` for rig-tui and the optional ones.
 - **Agents.** An **agent** is an entity with `Agent`, a conversation and a
-  model; a **subagent** is one another agent spawned (`SpawnedBy`). The **main
+  model, made only through the kernel's `Spawner` ([Spawning an
+  agent](#spawning-an-agent)); a **subagent** is one another agent spawned
+  (`SpawnedBy`). The **main
   agent** is the session's **current agent** (`CurrentAgent`, saved), always an
   unspawned one; the **shown agent** is the one a front shows and sends typed
   text to (`ShownAgent`), and showing it makes its top-level agent current;
@@ -330,7 +332,7 @@ The sets of Gate systems that edit shared data:
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
 | `PrintSystems` | `rig_basics::print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
-| `SubagentSystems::Gate` | `rig_basics::subagents` | refuses a `SpawnSubagent` deeper than the policy allows | `.after` it to decide or hold a request it let through |
+| `SubagentSystems::Gate` | `rig_basics::subagents` | refuses a `SpawnSubagent` deeper than the `SpawnPolicy` allows | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1321,13 +1323,58 @@ fn track(
 }
 ```
 
+# Spawning an agent
+
+Every agent is made by the kernel, by one rule, so a new agent never has a
+setting its origin would not give it and never nests deeper than allowed.
+In a system, a `Spawner` makes one from an `Origin` and an `AgentSpec`;
+with the world, `rig_ecs::spawn::spawn` does the same, and `spawn_root`
+makes a root with the defaults (as tests do). `Agent` cannot be built or
+required otherwise, and `SpawnedBy` cannot be built: read its `parent()`.
+
+- **Origin.** `Root` has the defaults; `ChildOf(agent)` goes below the
+  agent, one deeper; `Like(agent)` goes beside it, under its parent, such
+  as a successor.
+- **What it takes.** Each setting the spec leaves `None` is the origin's:
+  the model (`ModelChoice::inherit`) with its connection, the reasoning
+  setting with that model, the system prompt, and the tools. Named tools
+  are granted from the origin's (`ToolAccess::grant`), and the model calls
+  are recorded under the spec's effect, else the origin's.
+- **Depth.** `SpawnPolicy` is the `[subagents]` table (`max_depth = 2`): an
+  agent past it is refused with `SpawnRefused::TooDeep`, and one at it is
+  given no tool registered with `starts_agents`, such as `task` and
+  `helper` (naming one is refused). A `SpawnedBy` inserted any other way that puts an agent past it
+  is removed again, with a notice. A `rig` process an agent starts, as
+  `helper` does, gets `RIG_AGENT_DEPTH` (that agent's depth plus one), and
+  its own agents start there.
+
+```rust
+use rig_harness::prelude::*;
+
+/// A successor of each agent whose turn ended, with its settings.
+fn hand_off(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent>,
+    mut spawner: Spawner,
+    mut notices: MessageWriter<Notice>,
+) {
+    if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
+        let spec = AgentSpec { name: "successor".into(), ..AgentSpec::default() };
+        if let Err(why) = spawner.spawn(Origin::Like(agent), spec) {
+            notices.write(Notice::error(agent, format!("No successor: {why}.")));
+        }
+    }
+}
+# let _ = hand_off;
+```
+
 # Subagents
 
 The `rig_basics::subagents` plugin spawns an agent for a `SpawnSubagent`
 effect `ForAgent` its parent, made by the model's `task` tool or a plugin.
 Prepare systems edit it (model, tools, system prompt), Gate systems refuse or
-hold it, and at Start the plugin spawns the agent, with what the request
-leaves out from the parent, as `SpawnedAgent(agent)` on it.
+hold it, and at Start the plugin spawns the agent through the `Spawner`,
+as `SpawnedAgent(agent)` on it.
 
 - `SpawnSubagent::task(title, brief)` works on a task and reports to its
   parent, as `task` starts it.
