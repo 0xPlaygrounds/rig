@@ -1057,15 +1057,25 @@ fn answer_with_key(mut calls: Query<(&ToolRequest, &mut Decision), With<Interrup
     }
 }
 
-/// Answers each restored `wait` with a key, on the call itself.
+/// Answers each restored `wait` with a key, on the call itself: a result,
+/// or an error.
 fn put_answer_with_key(
-    calls: Query<(Entity, &ToolRequest), (With<Interrupted>, Without<Outcome>)>,
-    mut commands: Commands,
-) {
-    for (call, request) in &calls {
-        if request.call.function.name.as_str() == "wait" {
-            let answer = rig_core::tool::ToolResult::success("token ghp_secret".into());
-            commands.entity(call).insert(Outcome::from(answer));
+    error: bool,
+) -> impl FnMut(Query<(Entity, &ToolRequest), (With<Interrupted>, Without<Outcome>)>, Commands) {
+    move |calls, mut commands| {
+        for (call, request) in &calls {
+            if request.call.function.name.as_str() == "wait" {
+                let answer = match error {
+                    false => Outcome::from(rig_core::tool::ToolResult::success(
+                        "token ghp_secret".into(),
+                    )),
+                    true => Outcome(Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::Other,
+                        "token ghp_secret",
+                    ))),
+                };
+                commands.entity(call).insert(answer);
+            }
         }
     }
 }
@@ -1075,15 +1085,18 @@ fn put_answer_with_key(
 struct Settling(Vec<String>);
 
 /// A stop puts an answer it commits for a call that never settled, a gate's
-/// decision or an answer on the call, through the `ResultFilter`, in the
-/// conversation and on the call as it settles.
+/// decision or a result or error on the call, through the `ResultFilter`,
+/// in the conversation and on the call as it settles.
 #[test]
 fn a_stop_puts_an_unsettled_answer_through_the_result_filter() {
-    for decided in [true, false] {
+    for answered in ["decided", "result", "error"] {
         let (app, said, _) = restart_after_crash(|app| {
-            let filter = |result: &rig_core::tool::ToolResult| {
-                let text = result.output().render().replace("ghp_secret", "[hidden]");
-                Some(rig_core::tool::ToolResult::success(text.into()))
+            let filter = |answer: &Outcome| {
+                let text = answer.tool_result().output().render();
+                let text = text.replace("ghp_secret", "[hidden]");
+                Some(Outcome::from(rig_core::tool::ToolResult::success(
+                    text.into(),
+                )))
             };
             app.insert_resource(crate::tools::ResultFilter(Arc::new(filter)))
                 .init_resource::<Settling>()
@@ -1096,17 +1109,18 @@ fn a_stop_puts_an_unsettled_answer_through_the_result_filter() {
                         }
                     },
                 );
-            match decided {
-                true => app.add_systems(AgentPass, answer_with_key.in_set(Stage::Gate)),
-                false => app.add_systems(AgentPass, put_answer_with_key.in_set(Stage::Gate)),
+            let error = answered == "error";
+            match answered {
+                "decided" => app.add_systems(AgentPass, answer_with_key.in_set(Stage::Gate)),
+                _ => app.add_systems(AgentPass, put_answer_with_key(error).in_set(Stage::Gate)),
             };
         });
         let kept = said.contains("token [hidden]") && !said.contains("ghp_secret");
-        assert!(kept, "{decided}: {said}");
+        assert!(kept, "{answered}: {said}");
         // The call settles with it too, as what reads the call sees it.
         let settled = &app.world().resource::<Settling>().0;
         let hidden = !settled.is_empty() && settled.iter().all(|text| !text.contains("ghp_secret"));
-        assert!(hidden, "{decided}: {settled:?}");
+        assert!(hidden, "{answered}: {settled:?}");
     }
 }
 

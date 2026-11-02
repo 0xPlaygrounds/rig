@@ -20,7 +20,7 @@ use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::{arguments_refusal, unknown_tool_feedback};
 use rig_core::tool::{
-    Scope, Tool, ToolErrorKind, ToolResult, Touches, args_schema, decode_args, tool_definition,
+    Scope, Tool, ToolErrorKind, Touches, args_schema, decode_args, tool_definition,
 };
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -139,14 +139,15 @@ pub struct ToolRequest {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InReply(CallRef);
 
-/// What the kernel passes a tool call's result through when it puts it in
-/// the conversation though the call never settled, as a stop or the exit
-/// does: an answer that came this pass, a gate's decision not yet applied,
-/// or what the call says it answers if stopped. A settled call's answer is
-/// its [`Outcome`], which plugins change in Review. `None` keeps the
-/// result. One per app; a redaction plugin sets it.
+/// What the kernel passes a tool call's answer through when it commits it
+/// though the call never settled, as a stop or the exit does: an answer
+/// that came this pass, a gate's decision not yet applied, or what the call
+/// says it answers if stopped, in the conversation and on the call as it
+/// settles. A settled call's answer is its [`Outcome`], which plugins change
+/// in Review. `None` keeps the answer. One per app; a redaction plugin sets
+/// it.
 #[derive(Resource, Clone)]
-pub struct ResultFilter(pub Arc<dyn Fn(&ToolResult) -> Option<ToolResult> + Send + Sync>);
+pub struct ResultFilter(pub Arc<dyn Fn(&Outcome) -> Option<Outcome> + Send + Sync>);
 
 impl InReply {
     pub(crate) fn new(at: CallRef) -> Self {

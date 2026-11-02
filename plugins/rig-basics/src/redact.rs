@@ -90,8 +90,8 @@ impl Plugin for RedactPlugin {
         let secrets = Secrets::default();
         let filter = secrets.clone();
         app.insert_resource(secrets)
-            .insert_resource(ResultFilter(Arc::new(move |result| {
-                filter.redacted(result)
+            .insert_resource(ResultFilter(Arc::new(move |answer| {
+                redacted_answer(answer, &filter).map(Outcome)
             })))
             .init_resource::<Issued>()
             .register_type::<Issued>()
@@ -199,24 +199,37 @@ impl Secrets {
     /// `None` when it holds no secret or its redacted form does not read
     /// back.
     ///
-    /// A known original equal to a field's tag would change the tag, so a
-    /// form that does not read back is tried again leaving a string that is
-    /// a whole original alone, a tag being a whole string, then with
-    /// secrets found by their shape alone.
+    /// A secret that is, or holds, a field's tag would change the tag, so a
+    /// string whose change alone keeps `data` from reading back is kept as
+    /// given: a tag is the program's text, not data.
     fn redacted<T: Serialize + DeserializeOwned>(&self, data: &T) -> Option<T> {
-        let mut shaped = serde_json::to_value(data).ok()?;
+        let given = serde_json::to_value(data).ok()?;
+        let mut redacted = given.clone();
         let mut vault = self.vault();
-        let found = redact::json_with(&mut shaped, &mut |secret| name(&mut vault, secret));
-        let tries = [Whole::Too, Whole::Not].map(|whole| {
-            let mut bare = shaped.clone();
-            known_json(&vault, &mut bare, whole).then_some(bare)
-        });
+        let found = redact::json_with(&mut redacted, &mut |secret| name(&mut vault, secret));
+        let shown = known_json(&vault, &mut redacted);
         drop(vault);
-        let read = |json| serde_json::from_value(json).ok();
-        let [all, parts] = tries;
-        all.and_then(read)
-            .or_else(|| parts.and_then(read))
-            .or_else(|| found.then(|| read(shaped)).flatten())
+        if !(found || shown) {
+            return None;
+        }
+        let reads = |json: &Value| T::deserialize(json).is_ok();
+        if !reads(&redacted) {
+            let mut strings = Vec::new();
+            changed(&given, &redacted, String::new(), &mut strings);
+            for at in strings {
+                let mut alone = given.clone();
+                if let (Some(string), Some(new)) = (alone.pointer_mut(&at), redacted.pointer(&at)) {
+                    string.clone_from(new);
+                }
+                if !reads(&alone)
+                    && let (Some(string), Some(old)) =
+                        (redacted.pointer_mut(&at), given.pointer(&at))
+                {
+                    string.clone_from(old);
+                }
+            }
+        }
+        T::deserialize(&redacted).ok()
     }
 
     /// `text` with each placeholder this run knows replaced by its secret.
@@ -297,24 +310,38 @@ fn known_as(
     }
 }
 
-/// Whether [`known_json`] replaces a string that is a whole original.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Whole {
-    Too,
-    Not,
+/// The JSON pointer of each string in `before` that `after`, the same JSON
+/// but for its strings, changes.
+fn changed(before: &Value, after: &Value, at: String, out: &mut Vec<String>) {
+    match (before, after) {
+        (Value::String(before), Value::String(after)) if before != after => out.push(at),
+        (Value::Array(before), Value::Array(after)) => {
+            for (index, (before, after)) in before.iter().zip(after).enumerate() {
+                changed(before, after, format!("{at}/{index}"), out);
+            }
+        }
+        (Value::Object(before), Value::Object(after)) => {
+            for (key, before) in before {
+                if let Some(after) = after.get(key) {
+                    let key = key.replace('~', "~0").replace('/', "~1");
+                    changed(before, after, format!("{at}/{key}"), out);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Every string in `value` with each secret `vault` knows replaced, and
 /// in each string that holds JSON, such as a call's arguments, each one in
 /// that JSON, where an escape would hide it; whether any was.
-fn known_json(vault: &[Option<String>], value: &mut Value, whole: Whole) -> bool {
+fn known_json(vault: &[Option<String>], value: &mut Value) -> bool {
     each_string(value, &mut |text| {
-        let tag = whole == Whole::Not && vault.iter().flatten().any(|secret| secret == text);
-        let mut changed = known(vault, text).filter(|_| !tag);
+        let mut changed = known(vault, text);
         let current = changed.as_deref().unwrap_or(text);
         if current.trim_start().starts_with(['{', '['])
             && let Ok(mut inner) = serde_json::from_str::<Value>(current)
-            && known_json(vault, &mut inner, whole)
+            && known_json(vault, &mut inner)
         {
             changed = Some(inner.to_string());
         }

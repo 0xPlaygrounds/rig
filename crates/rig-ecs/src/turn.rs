@@ -775,17 +775,17 @@ impl Stopper<'_, '_> {
             }
             // An answer that came this pass, or one a reviewer changed in
             // place, settles through the filter, as the conversation has it.
-            let filter = world.get_resource::<ResultFilter>().cloned();
-            for &call in calls.iter().filter(|_| filter.is_some()) {
-                let unsettled = !world.entity(call).contains::<Settled>();
-                let Some(mut outcome) = world.get_mut::<Outcome>(call).filter(|_| unsettled) else {
-                    continue;
-                };
-                if let (Ok(effect::Answered::ToolResult { result }), Some(filter)) =
-                    (&outcome.0, &filter)
-                    && let Some(filtered) = (filter.0)(result)
-                {
-                    outcome.0 = Ok(effect::Answered::ToolResult { result: filtered });
+            if let Some(filter) = world.get_resource::<ResultFilter>().cloned() {
+                for &call in &calls {
+                    let unsettled = world
+                        .get_entity(call)
+                        .is_ok_and(|call| !call.contains::<Settled>());
+                    let outcome = world.get_mut::<Outcome>(call).filter(|_| unsettled);
+                    if let Some(mut outcome) = outcome
+                        && let Some(filtered) = (filter.0)(&outcome)
+                    {
+                        *outcome = filtered;
+                    }
                 }
             }
             for call in calls {
@@ -898,8 +898,8 @@ fn reply_results(
             };
             let filtered = filter
                 .filter(|_| !call.settled)
-                .and_then(|filter| (filter.0)(&result));
-            let result = filtered.unwrap_or(result);
+                .and_then(|filter| (filter.0)(&Outcome::from(result.clone())));
+            let result = filtered.map_or(result, |outcome| outcome.tool_result());
             Some(call.request.call.answer(&result))
         })
         .collect();

@@ -1461,7 +1461,7 @@ session stopped. A plugin that saves text of its own, such as a command's
 argument, saves it as it gives it. rig-core's `redact` finds keys and tokens
 by their shapes (`json`, `text`). Text that comes in elsewhere has its own
 hook: a shell's output lines (`rig_tools::LineFilter`, set on a call's
-`CallPlace`), the result of a call put in the conversation unsettled
+`CallPlace`), the answer of a call a stop or the exit commits unsettled
 (`rig_ecs::tools::ResultFilter`, one per app) and the prompts kept for Up
 (`rig_tui::PromptHistory::rewrite`).
 

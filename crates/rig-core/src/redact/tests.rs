@@ -143,6 +143,8 @@ fn a_value_assigned_to_a_secret_name_is_redacted_and_counts_are_not() {
     );
     // Unless the value is too short without it.
     assert_eq!(text("DB_PASSWORD=abcdefg!"), "DB_PASSWORD=[REDACTED]");
+    // Not when it is no value without it.
+    assert_eq!(text("DB_PASSWORD=20241031."), "DB_PASSWORD=20241031.");
     let line = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY region=us-east-1";
     assert_eq!(
         text(line),

@@ -430,7 +430,7 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
             // A sentence's closing punctuation is not part of the value,
             // unless the value is too short without it.
             let trimmed = whole.trim_end_matches(['.', ',', ':', '!', '?', ')']);
-            (start, if plausible(trimmed) { trimmed } else { whole })
+            (start, if trimmed.len() >= 8 { trimmed } else { whole })
         }
     };
     plausible(value).then(|| from..from + value.len())

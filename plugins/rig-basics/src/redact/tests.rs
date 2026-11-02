@@ -463,7 +463,8 @@ fn a_spilled_commands_output_holds_no_key() {
         if redacting {
             let filter = app.world().resource::<ResultFilter>();
             let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
-            let filtered = (filter.0)(&printed).map(|result| result.output().render());
+            let filtered = (filter.0)(&Outcome::from(printed));
+            let filtered = filtered.map(|answer| answer.tool_result().output().render());
             assert!(filtered.is_some_and(|text| text.starts_with("GITHUB_TOKEN=‹SECRET_")));
         }
     }
@@ -725,26 +726,28 @@ fn a_known_secret_is_found_however_it_arrives() {
         streamed(["it is hunter2!hunter2", " ok"]),
         "it is ‹SECRET_1› ok"
     );
-    // A tag equal to an original: the result is still redacted by shape.
-    let printed = ToolResult::success(ToolOutput::text(
-        "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789",
-    ));
-    let shown_of = |printed| {
-        let redacted = redacted_answer(&Outcome::from(printed), &secrets);
-        redacted.and_then(|answer| serde_json::to_string(&answer).ok())
+    // An original that is, or is part of, a field's tag: the tag is kept,
+    // and the output is redacted, whatever finds its secrets.
+    let output = |printed: &str, secrets: &Secrets| {
+        let printed = Outcome::from(ToolResult::success(ToolOutput::text(printed)));
+        let redacted = redacted_answer(&printed, secrets).map(Outcome);
+        redacted.map(|answer| answer.tool_result().output().render())
     };
-    let shown = shown_of(printed).unwrap_or_default();
-    assert!(
-        shown.contains("‹SECRET_4›") && !shown.contains("ghp_"),
-        "{shown}"
+    let shaped = output(
+        "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        &secrets,
     );
-    // With no secret to find by its shape, the known ones still go.
-    let printed = ToolResult::success(ToolOutput::text("hunter2!hunter2 and tool_result"));
-    let shown = shown_of(printed).unwrap_or_default();
-    assert!(
-        shown.contains("‹SECRET_1› and ‹SECRET_2›") && !shown.contains("hunter2"),
-        "{shown}"
+    assert_eq!(shaped.as_deref(), Some("GITHUB_TOKEN=‹SECRET_4›"));
+    let bare = output("hunter2!hunter2 and tool_result", &secrets);
+    assert_eq!(bare.as_deref(), Some("‹SECRET_1› and ‹SECRET_2›"));
+    assert_eq!(
+        output("tool_result", &secrets).as_deref(),
+        Some("‹SECRET_2›")
     );
+    let part = Secrets::default();
+    let _ = part.text("SECRET=tool_res and PASSWORD=hunter2hunter2");
+    let inside = output("value hunter2hunter2", &part);
+    assert_eq!(inside.as_deref(), Some("value ‹SECRET_2›"));
     // An original a JSON string holds escaped, as a call's arguments do.
     let args = json!({ "args": serde_json::to_string(&json!({ "cmd": "echo abc\\defgh1" })).unwrap_or_default() });
     let shown = secrets
