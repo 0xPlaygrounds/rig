@@ -198,8 +198,11 @@ fn a_streamed_text_redacts_as_the_whole_text_wherever_it_is_cut() {
             .collect::<Vec<_>>();
         for pieces in splits.chain(std::iter::once(chars)) {
             let mut streamed = Streamed::default();
-            let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
-            shown += &streamed.finish();
+            let mut shown: String = pieces
+                .iter()
+                .map(|piece| text(&streamed.push(piece)).into_owned())
+                .collect();
+            shown += &text(&streamed.finish());
             assert_eq!(shown, whole, "{pieces:?}");
         }
     }
@@ -238,8 +241,11 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
         .map(|first| vec![first.as_str(), body]);
     for pieces in cases.chain([vec![ended.as_str()]]) {
         let mut streamed = Streamed::default();
-        let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
-        shown += &streamed.finish();
+        let mut shown: String = pieces
+            .iter()
+            .map(|piece| text(&streamed.push(piece)).into_owned())
+            .collect();
+        shown += &text(&streamed.finish());
         assert_eq!(shown, text(&pieces.concat()));
     }
     // A key, or an assigned value with its name and quotes, on a held line
@@ -255,8 +261,11 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
             .filter_map(|piece| std::str::from_utf8(piece).ok())
             .collect();
         let mut streamed = Streamed::default();
-        let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
-        shown += &streamed.finish();
+        let mut shown: String = pieces
+            .iter()
+            .map(|piece| text(&streamed.push(piece)).into_owned())
+            .collect();
+        shown += &text(&streamed.finish());
         assert_eq!(shown, text(&line));
     }
     for line in [
@@ -265,8 +274,11 @@ fn a_streamed_text_past_its_bound_streams_and_still_holds_a_forming_key() {
     ] {
         let pieces = [line.as_str(), "p_", "efghijklmnopqrstuvwxyz0123456789 end"];
         let mut streamed = Streamed::default();
-        let mut shown: String = pieces.iter().map(|piece| streamed.push(piece)).collect();
-        shown += &streamed.finish();
+        let mut shown: String = pieces
+            .iter()
+            .map(|piece| text(&streamed.push(piece)).into_owned())
+            .collect();
+        shown += &text(&streamed.finish());
         assert_eq!(shown, text(&pieces.concat()), "{}", &line[..8]);
     }
 }

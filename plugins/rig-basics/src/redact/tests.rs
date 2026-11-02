@@ -6,7 +6,8 @@ use rig_harness::rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_core::tool::{FileChange, Lines, ToolOutput, ToolResultContext};
 use rig_harness::rig_ecs::tools::ResultFilter;
 use rig_harness_test_support::{
-    Collected, Ended, MemoryStore, app_on, calls, collect, log_ended, run_until, scripted_models,
+    Collected, Ended, MemoryStore, app_on, calls, collect, log_ended, reply, run_until,
+    scripted_models,
 };
 
 use super::*;
@@ -139,11 +140,14 @@ fn review(mut answers: Query<&mut Outcome, (ToolCalls, Added<Outcome>)>) {
 #[test]
 fn a_session_with_the_plugin_holds_no_key() {
     let (shown, all) = a_session_meeting_secrets(true);
-    assert_eq!(shown, "Use GITHUB_TOKEN=[REDACTED] now.");
+    assert!(
+        shown.starts_with("Use GITHUB_TOKEN=‹SECRET_") && shown.ends_with("› now."),
+        "{shown}"
+    );
     for fragment in FRAGMENTS {
         assert!(!all.contains(fragment), "{fragment} in {all}");
     }
-    assert!(all.contains("TOKEN=[REDACTED]"), "{all}");
+    assert!(all.contains("TOKEN=‹SECRET_"), "{all}");
     let (shown, all) = a_session_meeting_secrets(false);
     assert_eq!(
         shown,
@@ -167,7 +171,7 @@ fn text(part: u32, text: &str) -> Relayed {
 /// whole at its end, and what a part holds goes out before its end.
 #[test]
 fn a_reply_streams_redacted_however_its_parts_interleave() {
-    let mut redacting = redact_stream();
+    let mut redacting = redact_stream(Secrets::default());
     let event = |event: StreamEvent| Relayed::Item(Item::Event(event));
     let end = |part: u32| {
         event(StreamEvent::End {
@@ -214,7 +218,7 @@ fn a_reply_streams_redacted_however_its_parts_interleave() {
     });
     assert_eq!(
         (shown.as_str(), thought.as_str()),
-        ("Here: [REDACTED] done", "thinking ")
+        ("Here: ‹SECRET_1› done", "thinking ")
     );
     let arguments: Vec<usize> = (0..out.len())
         .filter(|&at| matches!(out.get(at), Some(StreamEvent::Arguments { .. })))
@@ -226,7 +230,7 @@ fn a_reply_streams_redacted_however_its_parts_interleave() {
         StreamEvent::Arguments { json, .. } => Some(json),
         _ => None,
     });
-    assert_eq!(arguments, r#"{"command":"echo \nGITHUB_TOKEN=[REDACTED]"}"#);
+    assert_eq!(arguments, r#"{"command":"echo \nGITHUB_TOKEN=‹SECRET_1›"}"#);
     // The last of the text goes out before its part's end.
     let last_text = out
         .iter()
@@ -244,6 +248,7 @@ fn a_reply_streams_redacted_however_its_parts_interleave() {
 #[test]
 fn whatever_comes_in_is_redacted_as_it_comes() {
     let mut world = World::new();
+    world.insert_resource(Secrets::default());
     world.add_observer(redact_outcome);
     world.add_observer(redact_if_stopped);
     world.add_observer(redact_facts);
@@ -296,13 +301,13 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
         .and_then(|outcome| outcome.0.as_ref().err());
     assert_eq!(
         error.map(|report| report.message.as_str()),
-        Some("no [REDACTED]")
+        Some("no ‹SECRET_1›")
     );
     let stopped = world
         .get::<IfStopped>(stopped)
         .map(|stopped| stopped.0.tool_result());
     let stopped = stopped.map(|result| result.output().render());
-    assert_eq!(stopped.as_deref(), Some("printed [REDACTED]"));
+    assert_eq!(stopped.as_deref(), Some("printed ‹SECRET_1›"));
     let facts: Option<ToolResultContext> = world
         .get::<Published>(published)
         .map(|facts| facts.0.clone());
@@ -316,7 +321,7 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
     let line = first
         .and_then(|change| change.hunks.first())
         .and_then(|hunk| hunk.lines.first());
-    assert_eq!(line.map(HunkLine::text), Some("[REDACTED]\n"));
+    assert_eq!(line.map(HunkLine::text), Some("‹SECRET_1›\n"));
     // A key block is in no one line: the change keeps no hunks.
     assert_eq!(changed.0.get(1).map(|change| change.hunks.len()), Some(0));
 
@@ -333,15 +338,15 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
         .drain()
         .map(|recalled| (recalled.text, recalled.why))
         .collect();
-    let refused = Some("No command `/missing [REDACTED]`.".to_owned());
-    assert_eq!(texts, [("/missing [REDACTED]".to_owned(), refused)]);
+    let refused = Some("No command `/missing ‹SECRET_1›`.".to_owned());
+    assert_eq!(texts, [("/missing ‹SECRET_1›".to_owned(), refused)]);
 }
 
 /// A command's output loses its secrets line by line, a private key block
 /// through its end line, before the tool sees it.
 #[test]
 fn a_private_key_block_is_left_out_through_its_end_line() {
-    let mut in_key = false;
+    let (mut in_key, secrets) = (false, Secrets::default());
     let lines = [
         "GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789\n",
         "-----BEGIN RSA PRIVATE KEY-----\n",
@@ -351,13 +356,13 @@ fn a_private_key_block_is_left_out_through_its_end_line() {
     ];
     let kept: Vec<String> = lines
         .iter()
-        .map(|line| redact_line(line, &mut in_key))
+        .map(|line| redact_line(line, &mut in_key, &secrets))
         .collect();
     assert_eq!(
         kept,
         [
-            "GITHUB_TOKEN=[REDACTED]\n",
-            "[REDACTED]\n",
+            "GITHUB_TOKEN=‹SECRET_1›\n",
+            "‹SECRET_2›\n",
             "",
             "",
             "after\n"
@@ -370,6 +375,7 @@ fn a_private_key_block_is_left_out_through_its_end_line() {
 #[test]
 fn a_message_is_redacted_unless_a_gate_took_it() {
     let mut world = World::new();
+    world.insert_resource(Secrets::default());
     let key = "sk-proj-abcdefghijklmnop1234";
     let mut message = Incoming::new(format!("my {key}"), DeliveryMode::Queue);
     message.parts.push(MessagePart::Attachment(Attachment {
@@ -406,7 +412,7 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
     };
     let sent = texts(sent);
     assert!(
-        sent.starts_with("my [REDACTED] ") && sent.contains("PASSWORD=[REDACTED]"),
+        sent.starts_with("my ‹SECRET_1› ") && sent.contains("PASSWORD=‹SECRET_1›"),
         "{sent}"
     );
     assert!(!sent.contains(key), "{sent}");
@@ -449,7 +455,7 @@ fn a_spilled_commands_output_holds_no_key() {
             let filter = app.world().resource::<ResultFilter>();
             let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
             let filtered = (filter.0)(&printed).map(|result| result.output().render());
-            assert_eq!(filtered.as_deref(), Some("GITHUB_TOKEN=[REDACTED]"));
+            assert!(filtered.is_some_and(|text| text.starts_with("GITHUB_TOKEN=‹SECRET_")));
         }
     }
 }
@@ -471,7 +477,7 @@ fn a_key_block_takes_the_hunks_whatever_its_lines_end_with() {
             new: Lines { start: 1, count: 3 },
             lines: [old].into_iter().chain(added).collect(),
         }];
-        assert!(redact_hunks(&mut hunks));
+        assert!(redact_hunks(&mut hunks, &Secrets::default()));
         assert!(hunks.is_empty(), "{end:?}");
     }
 }
@@ -484,7 +490,91 @@ fn a_prompt_kept_for_up_is_kept_redacted() {
     let mut history = rig_tui::PromptHistory::default();
     history.entries = vec!["deploy with GITHUB_TOKEN=abcdefgh12345678".to_owned()];
     world.insert_resource(history);
+    world.insert_resource(Secrets::default());
     assert!(world.run_system_once(redact_history).is_ok());
     let entries = &world.resource::<rig_tui::PromptHistory>().entries;
-    assert_eq!(entries, &["deploy with GITHUB_TOKEN=[REDACTED]"]);
+    assert_eq!(entries, &["deploy with GITHUB_TOKEN=‹SECRET_1›"]);
+}
+
+/// A tool call that names a placeholder runs with its secret, while the
+/// conversation and the call every view reads keep the placeholder; one
+/// naming a placeholder this run does not know is refused.
+#[test]
+fn a_call_naming_a_placeholder_runs_with_its_secret() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("redact-reveal-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let key = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    let model = MockCompletionModel::from_stream_turns([
+        calls(
+            "s1",
+            "shell",
+            json!({ "command": "printf %s ‹SECRET_1› > out.txt" }),
+        ),
+        calls("s2", "shell", json!({ "command": "echo ‹SECRET_7›" })),
+        reply("Done."),
+    ]);
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(scripted_models([("test/model", &model)]))
+        .add_plugins((AgentPlugin, ShellTool, RedactPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = (
+        Agent,
+        ModelChoice("test/model".to_owned()),
+        WorkDir(dir.clone()),
+    );
+    let agent = world.spawn(agent).id();
+    world.trigger(Deliver::new(
+        agent,
+        format!("Save {key} to out.txt"),
+        DeliveryMode::Queue,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let written = std::fs::read_to_string(dir.join("out.txt")).unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(written, key);
+    let world = app.world_mut();
+    let held = world
+        .get::<Conversation>(agent)
+        .map(|conversation| format!("{:?}", conversation.messages()))
+        .unwrap_or_default();
+    assert!(
+        held.contains("‹SECRET_1›") && !held.contains("ghp_"),
+        "{held}"
+    );
+    assert!(
+        held.contains("‹SECRET_7› is not a secret this run knows"),
+        "{held}"
+    );
+    let mut requests = world.query::<&ToolRequest>();
+    let asked: Vec<String> = requests
+        .iter(world)
+        .map(|request| format!("{:?}", request.call.function.arguments))
+        .collect();
+    assert!(asked.iter().all(|args| !args.contains("ghp_")), "{asked:?}");
+}
+
+/// A run after a restart hands out numbers after the session's last, so an
+/// old placeholder names no new secret.
+#[test]
+fn a_later_run_never_gives_an_old_number_to_a_new_secret() {
+    let mut world = World::new();
+    world.insert_resource(Secrets::default());
+    world.insert_resource(Issued(3));
+    assert!(world.run_system_once(keep_count).is_ok());
+    let secrets = world.resource::<Secrets>().clone();
+    let text = secrets.text("TOKEN=abcdefgh12345678").into_owned();
+    assert_eq!(text, "TOKEN=‹SECRET_4›");
+    assert_eq!(
+        secrets.reveal("‹SECRET_2› ‹SECRET_4›"),
+        "‹SECRET_2› abcdefgh12345678"
+    );
+    assert!(world.run_system_once(keep_count).is_ok());
+    assert_eq!(world.resource::<Issued>().0, 4);
 }

@@ -237,7 +237,7 @@ fn a_failed_headless_run_names_the_unanswered_message() {
     let stderr = String::from_utf8_lossy(&bytes);
     assert!(
         stderr.lines().any(
-            |line| line == "rig: not answered: Explain this failure. OPENAI_API_KEY=[REDACTED]"
+            |line| line == "rig: not answered: Explain this failure. OPENAI_API_KEY=‹SECRET_1›"
         ),
         "{stderr}"
     );
@@ -1669,7 +1669,7 @@ fn a_one_shot_json_run_cut_off_by_a_signal_closes_what_it_started() {
                 "Stopped: the run was interrupted. It may have partly run; check before running it again.",
             ),
             // A key it printed is redacted, on the line and in the session.
-            Cut::WithOutput => (true, true, "half [REDACTED]"),
+            Cut::WithOutput => (true, true, "half ‹SECRET_1›"),
             Cut::Answered => (true, false, "Waited."),
         };
         let results = lines.of("tool_result");
@@ -2109,7 +2109,7 @@ fn a_key_streamed_in_pieces_is_redacted_on_every_line() {
     let (_, lines) = one_shot_on(&store, "Key?", None, &model, true, |app| {
         app.add_plugins(crate::redact::RedactPlugin);
     });
-    let redacted = "Use (GITHUB_TOKEN=[REDACTED]). Now.";
+    let redacted = "Use (GITHUB_TOKEN=‹SECRET_1›). Now.";
     let text: String = lines
         .of("text")
         .iter()

@@ -31,10 +31,10 @@ so each can be turned off alone.
   `EditTool`, `WriteTool`, `ShellTool`), `@path` attachments
   (`AttachPlugin`), and `HOST:PATH` paths on other machines
   (`RemoteHostsPlugin`, below);
-- `redact`: API keys, tokens and private keys become `[REDACTED]` where
+- `redact`: API keys, tokens and private keys become placeholders where
   they come in, the model's reply, tool output and results, and messages,
-  so no log or view holds them (`RedactPlugin`); without it nothing is
-  redacted;
+  so no model, log or view holds them, while a tool call naming one runs
+  with the real value (`RedactPlugin`); without it nothing is redacted;
 - `approval`: one question for every effect a plugin wants approved
   (`ApprovalPlugin`);
 - `preview`: what a tool call would change on disk, before it runs
@@ -90,8 +90,8 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 `rig plugin disable rig_basics::compaction::CompactionPlugin` comments an
 entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
 same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
-`CheckpointPlugin`, `HelpersPlugin`, `SubagentsPlugin`, `EffectLogPlugin` and
-`DiagnosticsPlugin` are listed disabled by default. A plugin that needs
+`CheckpointPlugin`, `HelpersPlugin`, `SubagentsPlugin`, `EffectLogPlugin`,
+`DiagnosticsPlugin` and `RedactPlugin` are listed disabled by default. A plugin that needs
 another adds it when it is missing, as `SessionsPlugin` adds
 `SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
 

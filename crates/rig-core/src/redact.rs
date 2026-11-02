@@ -165,6 +165,12 @@ pub fn has_secret(input: &str) -> bool {
 /// `input` with every secret replaced by [`REDACTED`]; borrowed when it has
 /// none.
 pub fn text(input: &str) -> Cow<'_, str> {
+    text_with(input, |_| REDACTED.to_owned())
+}
+
+/// `input` with every secret replaced by what `replace` gives for it, such
+/// as a placeholder that names it; borrowed when it has none.
+pub fn text_with(input: &str, mut replace: impl FnMut(&str) -> String) -> Cow<'_, str> {
     let mut found = find(input).peekable();
     if found.peek().is_none() {
         return Cow::Borrowed(input);
@@ -173,8 +179,8 @@ pub fn text(input: &str) -> Cow<'_, str> {
     let mut from = 0;
     for secret in found {
         out.push_str(input.get(from..secret.range.start).unwrap_or_default());
-        out.push_str(REDACTED);
         from = secret.range.end;
+        out.push_str(&replace(input.get(secret.range).unwrap_or_default()));
     }
     out.push_str(input.get(from..).unwrap_or_default());
     Cow::Owned(out)
@@ -184,19 +190,21 @@ pub fn text(input: &str) -> Cow<'_, str> {
 /// longest secret, is a few kilobytes.
 const HELD_MOST: usize = 16 * 1024;
 
-/// A text that arrives in pieces, such as a streamed reply: what
-/// [`Self::push`] and [`Self::finish`] return, joined, is [`text`] of the
-/// pieces joined. It holds back only what a later piece may still make part
-/// of a secret, and at most 16 KiB.
+/// A text that arrives in pieces, such as a streamed reply, cut where no
+/// secret crosses: what [`Self::push`] and [`Self::finish`] return, each
+/// redacted on its own, joined, is the pieces joined redacted. It holds back
+/// only what a later piece may still make part of a secret, and at most
+/// 16 KiB.
 ///
 /// ```
-/// use rig_core::redact::Streamed;
+/// use rig_core::redact::{self, Streamed};
 ///
 /// let mut streamed = Streamed::default();
-/// let mut shown = streamed.push("export GITHUB_TOKEN=gh");
-/// assert_eq!(shown, "");
-/// shown += &streamed.push("p_abcdefghijklmnopqrstuvwxyz0123456789\nnext ");
-/// shown += &streamed.finish();
+/// let mut shown = String::new();
+/// for piece in ["export GITHUB_TOKEN=gh", "p_abcdefghijklmnopqrstuvwxyz0123456789\nnext "] {
+///     shown += &redact::text(&streamed.push(piece));
+/// }
+/// shown += &redact::text(&streamed.finish());
 /// assert_eq!(shown, "export GITHUB_TOKEN=[REDACTED]\nnext ");
 /// ```
 #[derive(Clone, Debug, Default)]
@@ -206,20 +214,16 @@ pub struct Streamed {
 }
 
 impl Streamed {
-    /// Takes `piece` and returns, redacted, what no later piece can change.
+    /// Takes `piece` and returns what no later piece can change.
     pub fn push(&mut self, piece: &str) -> String {
         self.held.push_str(piece);
         let rest = self.held.split_off(settled(&self.held));
-        let shown = text(&self.held).into_owned();
-        self.held = rest;
-        shown
+        std::mem::replace(&mut self.held, rest)
     }
 
-    /// Returns, redacted, what it still holds: the text ended.
+    /// Returns what it still holds: the text ended.
     pub fn finish(&mut self) -> String {
-        let shown = text(&self.held).into_owned();
-        self.held.clear();
-        shown
+        std::mem::take(&mut self.held)
     }
 }
 
@@ -291,28 +295,35 @@ fn settled(input: &str) -> usize {
 /// an escape such as `\n` would hide where a secret starts. Whether any
 /// was. Object keys are left as they are.
 pub fn json(value: &mut Value) -> bool {
+    json_with(value, &mut |_| REDACTED.to_owned())
+}
+
+/// [`json`], each secret replaced by what `replace` gives for it.
+pub fn json_with(value: &mut Value, replace: &mut impl FnMut(&str) -> String) -> bool {
     match value {
         Value::String(string)
             if string.starts_with(['{', '['])
                 && let Ok(mut inner) = serde_json::from_str::<Value>(string) =>
         {
-            let changed = json(&mut inner);
+            let changed = json_with(&mut inner, replace);
             if changed {
                 *string = inner.to_string();
             }
             changed
         }
-        Value::String(string) => match text(string) {
+        Value::String(string) => match text_with(string, &mut *replace) {
             Cow::Owned(redacted) => {
                 *string = redacted;
                 true
             }
             Cow::Borrowed(_) => false,
         },
-        Value::Array(items) => items.iter_mut().fold(false, |any, item| json(item) | any),
+        Value::Array(items) => items
+            .iter_mut()
+            .fold(false, |any, item| json_with(item, replace) | any),
         Value::Object(fields) => fields
             .values_mut()
-            .fold(false, |any, field| json(field) | any),
+            .fold(false, |any, field| json_with(field, replace) | any),
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }

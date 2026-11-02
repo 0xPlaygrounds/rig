@@ -646,7 +646,7 @@ fn a_tool_result_reads_the_same_live_and_after_session_load() {
         assert_eq!(replayed, live);
         let shown = format!("{live:?}");
         assert!(
-            shown.contains("OPENAI_API_KEY=[REDACTED]") && !shown.contains("sk-proj"),
+            shown.contains("OPENAI_API_KEY=‹SECRET_1›") && !shown.contains("sk-proj"),
             "{shown}"
         );
     });
