@@ -1,8 +1,6 @@
-//! The one way an agent is made. A [`Spawner`] in a system, or [`spawn`]
-//! with the world, makes an agent from an [`Origin`] and an [`AgentSpec`]
-//! by one rule: each setting the spec leaves out is the origin's, and no
-//! agent is deeper than the [`SpawnPolicy`] allows. [`spawn_root`] makes a
-//! root with the defaults, and cannot fail.
+//! The one way an agent is made. A [`Spawner`], or [`spawn`] with the world,
+//! makes it from an [`Origin`] and an [`AgentSpec`]: what the spec leaves out
+//! is the origin's, within the [`SpawnPolicy`]. [`spawn_root`] cannot fail.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
@@ -32,24 +30,15 @@ use super::agent::{
 use super::model::{Connection, ModelChoice, Models, ReasoningSetting};
 use super::tools::{StartsAgents, ToolDef};
 
-/// How deep agents nest, as the `[subagents]` table of the settings says:
-///
-/// ```toml
-/// [subagents]
-/// max_depth = 2
-/// ```
+/// How deep agents nest: the `[subagents]` depth settings.
 #[derive(Resource, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SpawnPolicy {
-    /// No agent is made deeper than this, and one at this depth is given no
-    /// tool that starts agents ([`AppToolsExt::starts_agents`]). 2 when not
-    /// set.
-    ///
-    /// [`AppToolsExt::starts_agents`]: super::tools::AppToolsExt::starts_agents
+    /// No agent is deeper, and one this deep gets no tool that starts agents
+    /// ([`starts_agents`](super::tools::AppToolsExt::starts_agents)). 2 when not set.
     pub max_depth: usize,
-    /// The depth of an agent nothing spawned: 0, unless this process works
-    /// for an agent of another process, at that agent's depth plus one. Not
-    /// a setting.
+    /// The depth of a root: 0, or one more than the agent of another process
+    /// this one works for. Not a setting.
     #[serde(skip)]
     pub root_depth: usize,
 }
@@ -84,24 +73,20 @@ impl SpawnPolicy {
     }
 }
 
-/// Where a new agent comes from: the agent whose settings it takes, and
-/// where it goes.
+/// Where a new agent comes from: whose settings it takes, and where it goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Origin {
     /// An agent nothing spawned, with the defaults.
     Root,
     /// A child of the agent: below it ([`SpawnedBy`]), one deeper.
     ChildOf(Entity),
-    /// An agent like this one, beside it: under its parent if it has one,
-    /// at its depth, such as its successor.
+    /// Beside the agent, under its parent if any, at its depth, such as its successor.
     Like(Entity),
 }
 
-/// What a new agent is given. Each setting left out is its origin's: the
-/// model, with its connection, and the reasoning setting with that model;
-/// the system prompt; the tools, without those that start agents at the
-/// depth limit, where naming one is refused; and the effect its model
-/// calls are recorded under.
+/// What a new agent is given; each setting left out is its origin's, the
+/// connection and reasoning setting with the model. At the depth limit it
+/// has no tool that starts agents, and naming one is refused.
 #[derive(Clone, Debug, Default)]
 pub struct AgentSpec {
     /// Its name, shown in views; `agent` when empty.
@@ -128,21 +113,11 @@ pub enum SpawnRefused {
     /// An agent has the id asked for.
     IdTaken(AgentId),
     /// It would be deeper than the [`SpawnPolicy`] allows.
-    TooDeep {
-        /// Its depth.
-        depth: usize,
-        /// The deepest an agent may be.
-        max: usize,
-    },
+    TooDeep { depth: usize, max: usize },
     /// A tool asked for is not one its origin keeps.
     Tool(NotYours),
     /// A tool asked for starts agents, and it would be at the depth limit.
-    StartsAgents {
-        /// The tool.
-        tool: String,
-        /// Its depth.
-        depth: usize,
-    },
+    StartsAgents { tool: String, depth: usize },
     /// The model or effort asked for cannot be used, for the reason given.
     Model(String),
 }
@@ -311,10 +286,7 @@ fn without_starters<'a>(
 /// returns it; or why it may not be made.
 pub fn spawn(world: &mut World, origin: Origin, spec: AgentSpec) -> Result<Entity, SpawnRefused> {
     let mut state = SystemState::<Spawner>::new(world);
-    // Its parameters never fail to validate.
-    let Ok(mut spawner) = state.get_mut(world) else {
-        return Err(SpawnRefused::NotAnAgent);
-    };
+    let mut spawner = state.get_mut(world).map_err(|_| SpawnRefused::NotAnAgent)?;
     let spawned = spawner.spawn(origin, spec).map(|agent| agent.id());
     state.apply(world);
     spawned

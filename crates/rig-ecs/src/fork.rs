@@ -1,8 +1,6 @@
 //! Forking an agent: a [`ForkAgent`] request makes a new agent in the same
-//! session whose log is a copy of another's up to a turn boundary, so it
-//! goes on from there by itself, a compaction made before the cut can be
-//! undone in it, and its requests share the source's prompt cache. The
-//! request gets its [`ForkResult`], then goes.
+//! session that goes on by itself from a copy of another's log, where an
+//! earlier compaction can be undone. The request gets its [`ForkResult`], then goes.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
@@ -34,22 +32,15 @@ use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 
 /// A request to fork the agent `agent`: a new agent in the same session
 /// whose log is a copy of `agent`'s up to a turn boundary at or before
-/// `through` (its end with `None`; rig-memory's `Writer::fork_log`), its
-/// conversation that copy. A user message that asked for a turn is at no
-/// boundary, so a fork through it ends just before it. The new agent has
-/// the saved components `agent` has now (its model, reasoning setting,
-/// tools, system prompt and working directory among them) as their fork
-/// rules say ([`ReflectSaved`]), its connection, and a [`ForkedFrom`]
-/// naming it and the agents it came from, and shares its prompt cache
-/// ([`CacheKey`]). Its context is [`ContextStale`] until its first reply.
-/// It has no parent.
-///
-/// Spawn it with what the requester needs back. The kernel makes the fork
-/// as the pass enters [`Stage::Arrive`](super::stage::Stage::Arrive),
-/// after the source's unsaved changes are saved, and announces it
-/// ([`AgentForked`]). Then it inserts the request's [`ForkResult`], for an
-/// observer of `Add<ForkResult>` on the request, and despawns the request.
-/// The request is [`RequestOf`] `agent`, so it goes unmade with it.
+/// `through` (its end with `None`; rig-memory's `Writer::fork_log`). A user
+/// message that asked for a turn is at no boundary, so a fork through it
+/// ends just before it. The fork has `agent`'s saved components as their
+/// fork rules say ([`ReflectSaved`]), its connection and prompt cache
+/// ([`CacheKey`]), a [`ForkedFrom`], and no parent. Its context is
+/// [`ContextStale`] until its first reply. The kernel makes it as the pass
+/// enters [`Stage::Arrive`](super::stage::Stage::Arrive), after `agent`'s
+/// unsaved changes are saved, announces it ([`AgentForked`]), inserts the
+/// [`ForkResult`] and despawns the request, which is [`RequestOf`] `agent`.
 ///
 /// It is no event:
 ///
@@ -61,27 +52,19 @@ use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 /// }
 /// ```
 #[derive(Bundle)]
-pub struct ForkAgent {
-    of: RequestOf,
-    fork: Forking,
-}
+pub struct ForkAgent(RequestOf, Forking);
 
 impl ForkAgent {
     /// Forks `agent` through `through`, its last message the fork may keep
     /// (`None` for its end).
     pub fn new(agent: Entity, through: Option<MessageId>) -> Self {
-        Self {
-            of: RequestOf(agent),
-            fork: Forking { through },
-        }
+        Self(RequestOf(agent), Forking(through))
     }
 }
 
 /// On a [`ForkAgent`] request not made yet: the message it is through.
 #[derive(Component)]
-pub(crate) struct Forking {
-    through: Option<MessageId>,
-}
+pub(crate) struct Forking(Option<MessageId>);
 
 /// On a [`ForkAgent`] request, once the kernel tried it: the new agent, or
 /// why there is none.
@@ -199,14 +182,11 @@ pub(crate) fn make_forks(
 ) {
     let asked: Vec<(Entity, Entity, Option<MessageId>)> = asked
         .iter(world)
-        .map(|(request, &RequestOf(from), fork)| (request, from, fork.through))
+        .map(|(request, &RequestOf(from), fork)| (request, from, fork.0))
         .collect();
     for (request, from, through) in asked {
         // The observer of an earlier result may have ended it.
-        if !world
-            .get_entity(request)
-            .is_ok_and(|it| it.contains::<Forking>())
-        {
+        if world.get::<Forking>(request).is_none() {
             continue;
         }
         let made = fork_now(world, from, through);

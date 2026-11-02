@@ -1,10 +1,7 @@
-//! Requests owned by what made them: an entity of work a plugin or the
-//! kernel starts for an owner, such as a fork
-//! ([`ForkAgent`](super::fork::ForkAgent)), a sign-in or a read, carries
-//! [`RequestOf`] the owner, and its payload, task and result are components
-//! on it. It goes when its owner goes, when its owner settles, and when a
-//! stop that reaches below reaches its owner agent, idle or not, so no
-//! plugin keeps a map of what is pending.
+//! Requests owned by what made them: an entity of work carries [`RequestOf`]
+//! its owner, with its payload, task and result as components. It goes when
+//! its owner goes or settles, and when a stop that reaches below reaches its
+//! owner agent, idle or not.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
@@ -22,10 +19,9 @@ use bevy_ecs::world::DeferredWorld;
 
 use super::stage::Settled;
 
-/// On a request: its owner, which it ends with. A request whose owner is
-/// gone or [`Settled`] when it is inserted is despawned. Moved to a retry
-/// with the marker a [`follow_successor`](super::stage::follow_successor)
-/// follows.
+/// On a request: its owner, which it ends with. One inserted for an owner
+/// gone or [`Settled`] is despawned. Moved to a retry with the marker a
+/// [`follow_successor`](super::stage::follow_successor) follows.
 #[derive(Component, Debug)]
 #[component(on_insert = refuse_ended)]
 #[relationship(relationship_target = Requests)]

@@ -51,8 +51,7 @@ pub(super) struct AgentData {
     effect_parent: Option<&'static EffectParent>,
 }
 
-/// The agents, the reports they wait for and the open `wait` calls: who
-/// waits on whom, and the reports.
+/// The agents, the reports they wait for and the open `wait` calls.
 #[derive(SystemParam)]
 pub(super) struct Agents<'w, 's> {
     pub(super) agents: Query<'w, 's, AgentData>,
@@ -111,8 +110,7 @@ impl Agents<'_, '_> {
             .collect()
     }
 
-    /// The requests `agent` waits for a report on, oldest first, but those
-    /// a report on its way to it answers.
+    /// The requests `agent` awaits, oldest first, but those a report on its way answers.
     fn open(&self, agent: Entity) -> Vec<Request> {
         let Ok((_, awaiting)) = self.awaiting.get(agent) else {
             return Vec::new();
@@ -124,8 +122,7 @@ impl Agents<'_, '_> {
         open.0
     }
 
-    /// The agents that wait for a report from `owing`, each with the last
-    /// request it waits on.
+    /// The agents awaiting a report from `owing`, each with its last request.
     pub(super) fn askers(&self, owing: Entity) -> Vec<(Entity, RequestId)> {
         let Ok(id) = self.agents.get(owing).map(|agent| agent.id) else {
             return Vec::new();
@@ -297,19 +294,15 @@ fn work_on_turn_start(
     }
 }
 
-/// On a [`Lifecycle::Finished`] subagent a stop reached, from it or from
-/// an agent above it, by the user, a plugin, the exit or a restart; not one
-/// a plugin ended alone: its report is a note that starts no turn of the
-/// agent it goes to.
+/// On a [`Lifecycle::Finished`] subagent a stop reached, not one a plugin
+/// ended alone: its report is a note that starts no turn.
 #[derive(Component)]
 pub(super) struct StoppedEarly;
 
 /// A subagent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless the
-/// user, the app's exit or a restart stopped it, else
-/// [`Lifecycle::Finished`] with what it [`finished`] with: a turn a
-/// plugin ends alone ([`StopTurn::plugin_alone`]), such as for a budget,
-/// reports as any other, and one any stop reached is [`StoppedEarly`].
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, else
+/// [`Lifecycle::Finished`] with what it [`finished`] with. One a stop
+/// reached is [`StoppedEarly`] and waits on no one.
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent, Has<Restored>)>,
@@ -322,10 +315,7 @@ fn step_on_turn_end(
     let Ok(conversation) = idle.get(agent) else {
         return;
     };
-    // A stop that reached the agent ends it for good: it waits on no one.
-    // Only a plugin ending this one turn alone, as a budget does, lets it
-    // report as usual. A restored turn that ends stopped ended with the
-    // restart.
+    // A restored turn that ends stopped ended with the restart.
     let early = matches!(outcome, TurnOutcome::Stopped(stop)
         if restored || !stop.alone());
     let step = match agents.awaited(agent, true).first().filter(|_| !early) {
@@ -340,9 +330,8 @@ fn step_on_turn_end(
 }
 
 /// Reports a [`Lifecycle::Finished`] agent's answer on every request it
-/// owes. An idle subagent that waited on a stopped one, its lifecycle
-/// [`Lifecycle::WaitingOn`] it or lost to a restart, is stopped with it:
-/// it reports so as a note too, and no turn of it starts.
+/// owes. An idle subagent waiting on a stopped one ([`waits_on`]) is
+/// stopped with it.
 fn report_when_finished(
     inserted: On<Insert<Lifecycle>>,
     early: Query<(), With<StoppedEarly>>,
@@ -450,9 +439,8 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     }
 }
 
-/// Takes the requests a report answers off its addressee's [`Awaiting`]
-/// as it arrives: accepted into its inbox or its conversation, or taken
-/// over. Its log saves both with one append.
+/// Takes the requests a report answers off its addressee's [`Awaiting`] as
+/// it arrives in its inbox or conversation, or is taken over.
 fn settle_report<C: Component>(
     arrived: On<Add<C>>,
     messages: Query<(&Incoming, &ForAgent)>,
@@ -466,10 +454,9 @@ fn settle_report<C: Component>(
 }
 
 /// After a restore, takes off each agent's [`Awaiting`] the requests whose
-/// report is in its conversation, and those to agents the session no
-/// longer has. An idle subagent that still owes a report and waits on no
-/// one then reports again what it [`finished`] with. The reports the
-/// inbox kept settled as the restore put them back.
+/// report is in its conversation (those in its inbox settled as they came
+/// back) or whose agent is gone. An idle subagent that owes a report and
+/// waits on no one reports again.
 fn report_after_restore(
     mut agents: Query<(&AgentId, &Conversation, Option<&mut Awaiting>)>,
     idle: Query<(Entity, &AgentId, &Conversation), (With<Subtask>, Without<ActiveTurn>)>,
@@ -505,11 +492,9 @@ fn report_after_restore(
     }
 }
 
-/// What a subagent whose last turn ended as `conversation` records it
-/// reports: its answer, or why there is none and what it said last, and
-/// whether a stop ended the turn. A stopped turn reports as rig-core's
-/// [`not_finished`] says a stopped call that may have partly run does,
-/// such as `Stopped: <reason>. It may have partly run; …`.
+/// What a subagent whose last turn ended as `conversation` reports: its
+/// answer, or why there is none and what it said last, and whether a stop
+/// ended the turn, worded as rig-core's [`not_finished`].
 fn finished(conversation: &Conversation) -> (String, bool) {
     let said = last_words(conversation).map(|said| format!("\n\nIt had said: {said}\n\n"));
     let said = said.unwrap_or_else(|| " ".to_owned());
@@ -537,10 +522,8 @@ fn finished(conversation: &Conversation) -> (String, bool) {
         Some(cause) => cause.to_string(),
         None => "the subagent was stopped before it answered".to_owned(),
     };
-    (
-        failed(&not_finished(&why, true, &Touches::Independent)),
-        true,
-    )
+    let why = not_finished(&why, true, &Touches::Independent);
+    (failed(&why), true)
 }
 
 /// What the model said last in the conversation's last request: the text

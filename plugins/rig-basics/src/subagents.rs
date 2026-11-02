@@ -167,11 +167,8 @@ pub struct Report;
 pub struct Peers;
 
 /// On an agent: the requests it sent other agents, oldest first, until the
-/// report on each arrives. A report goes into this agent's conversation or
-/// inbox in the frame its requests leave this, so one append to its log
-/// saves both, and a restore that finds a report here takes its requests
-/// off. A fork waits for none. Saved through serde, as it holds rig-core's
-/// [`RequestId`].
+/// report on each arrives in its conversation or inbox. A restore that
+/// finds a report there takes its requests off. Saved; a fork waits for none.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(
     opaque,
@@ -198,9 +195,7 @@ impl Awaiting {
         let Some(last) = self.0.iter().rposition(|r| to(r) && r.id == *named) else {
             return;
         };
-        let mut at = 0..;
-        self.0
-            .retain(|request| at.next().is_some_and(|at| at > last) || !to(request));
+        self.0.extract_if(..=last, |r| to(r)).for_each(drop);
     }
 }
 

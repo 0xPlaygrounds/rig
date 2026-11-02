@@ -5,7 +5,7 @@
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::DeferredWorld;
-use rig_core::effect::{EffectId, EffectKind};
+use rig_core::effect::EffectKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -222,35 +222,6 @@ fn refuse_too_deep(
     }
 }
 
-impl SpawnSubagent {
-    /// What the agent asked for is given, under the effect `under`, by a
-    /// parent that keeps `access` to the `registered` tools: a task's
-    /// subagent also has `message` and `wait` when its parent keeps them.
-    fn spec(&self, under: EffectId, access: &ToolAccess, registered: &[&str]) -> AgentSpec {
-        let reaching = [MESSAGE, WAIT]
-            .into_iter()
-            .filter(|tool| self.role == Role::Task && access.keeps(tool))
-            .filter(|tool| registered.contains(tool));
-        let tools = self.tools.clone().map(|mut tools| {
-            for tool in reaching {
-                if !tools.iter().any(|name| name == tool) {
-                    tools.push(tool.to_owned());
-                }
-            }
-            tools
-        });
-        AgentSpec {
-            name: String::new(),
-            id: self.id.clone(),
-            model: self.model.clone(),
-            effort: self.effort.clone(),
-            tools,
-            system_prompt: self.system_prompt.clone(),
-            under: Some(under),
-        }
-    }
-}
-
 /// The parent of a request.
 #[derive(QueryData)]
 struct Parent {
@@ -300,9 +271,30 @@ fn spawn_requested(
     if from.model.is_none() && request.model.is_none() {
         return refuse("You have no model to give the subagent; name one in `model`".to_owned());
     }
+    // A task's subagent also has `message` and `wait` when its parent keeps them.
     let registered: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
-    let mut spec = request.spec(effect.id(), from.access, &registered);
-    let id = spec.id.get_or_insert_with(AgentId::default).clone();
+    let reaching = [MESSAGE, WAIT]
+        .into_iter()
+        .filter(|tool| request.role == Role::Task && from.access.keeps(tool))
+        .filter(|tool| registered.contains(tool));
+    let named = request.tools.clone().map(|mut named| {
+        for tool in reaching {
+            if !named.iter().any(|name| name == tool) {
+                named.push(tool.to_owned());
+            }
+        }
+        named
+    });
+    let id = request.id.clone().unwrap_or_default();
+    let spec = AgentSpec {
+        name: String::new(),
+        id: Some(id.clone()),
+        model: request.model.clone(),
+        effort: request.effort.clone(),
+        tools: named,
+        system_prompt: request.system_prompt.clone(),
+        under: Some(effect.id()),
+    };
     let mut child = match spawner.spawn(Origin::ChildOf(parent), spec) {
         Ok(child) => child,
         Err(why) => return refuse(why.to_string()),

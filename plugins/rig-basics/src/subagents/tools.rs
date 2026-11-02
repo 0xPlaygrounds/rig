@@ -332,11 +332,9 @@ impl Agents<'_, '_> {
                 id: request.clone(),
                 to: target.id.clone(),
             };
-            let mut awaiting = self.commands.entity(caller);
-            let mut awaiting = awaiting.entry::<Awaiting>();
-            awaiting
-                .or_default()
-                .and_modify(|mut awaiting| awaiting.0.push(asked));
+            let mut entity = self.commands.entity(caller);
+            let mut open = entity.entry::<Awaiting>();
+            open.or_default().and_modify(|mut open| open.0.push(asked));
             if !busy {
                 let effect = EffectParent(called.effect);
                 self.commands.entity(target.entity).insert(effect);
