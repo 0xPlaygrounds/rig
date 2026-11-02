@@ -272,8 +272,9 @@ pub trait AppToolsExt {
         A: DeserializeOwned + JsonSchema + Send + Sync + 'static;
 
     /// Marks the registered tool `name` as one whose calls start agents,
-    /// such as a `task` tool: an agent at the depth limit of the
-    /// [`SpawnPolicy`](crate::spawn::SpawnPolicy) is not given it.
+    /// such as a `task` tool: an agent spawned at the depth limit of the
+    /// [`SpawnPolicy`](crate::spawn::SpawnPolicy) is not given it. A root
+    /// keeps it, and the tool refuses a call there.
     fn starts_agents(&mut self, name: &str) -> &mut Self;
 }
 

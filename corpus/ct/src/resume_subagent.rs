@@ -157,7 +157,7 @@ fn on_follow_up(
             id.short()
         )),
         Some(&(agent, ..)) => {
-            let request = RequestId(called.tool_call.id.to_string());
+            let request = RequestId(called.effect.to_string());
             let author = Author::agent(called.agent_id.clone(), Some(request));
             let message = Incoming::new(called.args.message.trim(), DeliveryMode::Queue);
             commands.spawn((

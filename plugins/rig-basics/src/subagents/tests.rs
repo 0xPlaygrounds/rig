@@ -1516,3 +1516,20 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
     session.app.world_mut().entity_mut(child).insert(narrowed);
     assert_eq!(roles(&mut session), 0);
 }
+
+/// Two `task` calls that share a provider's call id are two requests: a
+/// provider may use an id again, and a report must settle only its own.
+#[test]
+fn two_calls_with_one_id_are_two_requests() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted."), reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let first = session.task("t1");
+    let second = session.task("t1");
+    let world = session.app.world();
+    let awaited = world.get::<Awaiting>(session.parent).map(|awaiting| {
+        let ids = awaiting.0.iter().map(|request| request.id.clone());
+        ids.collect::<std::collections::HashSet<_>>().len()
+    });
+    assert_ne!(first, second);
+    assert_eq!(awaited, Some(2));
+}

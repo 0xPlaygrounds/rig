@@ -155,6 +155,19 @@ fn a_helper_starts_one_deeper_than_its_caller() {
     assert_eq!(depths.trim(), "2");
 }
 
+/// A caller at the depth limit, as the root of a process a deep agent
+/// started, starts no helper: the call is refused before any child runs.
+#[test]
+fn a_helper_past_the_depth_limit_is_refused_and_starts_nothing() {
+    let (mut app, wakes, dir) = helped("too-deep", &[json!({ "task": "one" })]);
+    if let Some(mut policy) = app.world_mut().get_resource_mut::<SpawnPolicy>() {
+        policy.root_depth = policy.max_depth;
+    }
+    let said = output(&mut app, &wakes, 0);
+    assert!(said.contains("do the work yourself"), "{said}");
+    assert!(!dir.join("depths").exists());
+}
+
 #[test]
 fn side_by_side_helpers_run_four_at_a_time_and_failures_are_reported() {
     let mut tasks: Vec<Value> = (0..5)

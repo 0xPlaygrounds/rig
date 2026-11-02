@@ -175,7 +175,7 @@ fn on_task(
         request,
         ForAgent(called.agent),
         ChildOf(called.call),
-        TaskCall(RequestId(called.tool_call.id.to_string())),
+        TaskCall(RequestId(called.effect.to_string())),
     ));
     if let Some(me) = me {
         spawned.insert(ProvidedBy(me.entity()));
@@ -327,7 +327,7 @@ impl Agents<'_, '_> {
                 target.id.short()
             ));
         } else {
-            let request = RequestId(called.tool_call.id.to_string());
+            let request = RequestId(called.effect.to_string());
             let asked = Request {
                 id: request.clone(),
                 to: target.id.clone(),

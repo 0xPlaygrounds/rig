@@ -36,8 +36,9 @@ use super::tools::{StartsAgents, ToolDef};
 #[derive(Resource, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SpawnPolicy {
-    /// No agent is deeper, and one this deep gets no tool that starts agents
-    /// ([`starts_agents`](super::tools::AppToolsExt::starts_agents)). 2 when not set.
+    /// No agent is deeper, and one spawned this deep gets no tool that starts
+    /// agents ([`starts_agents`](super::tools::AppToolsExt::starts_agents)).
+    /// 2 when not set.
     pub max_depth: usize,
     /// The depth of a root: 0, or one more than the agent of another process
     /// this one works for. Not a setting.

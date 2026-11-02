@@ -4,7 +4,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::effect::{Decider, EffectKind};
 
-use super::RequestOf;
+use super::{RequestOf, Requests};
 use crate::AgentPlugin;
 use crate::agent::StopTurn;
 use crate::spawn::spawn_root;
@@ -103,4 +103,6 @@ fn a_request_to_a_missing_or_settled_owner_is_refused() {
     let refused = [gone, settled].map(|owner| app.world_mut().spawn(RequestOf(owner)).id());
     app.world_mut().flush();
     assert!(refused.iter().all(|&request| !alive(&app, request)));
+    // Nor does the settled owner list it.
+    assert!(app.world().get::<Requests>(settled).is_none());
 }

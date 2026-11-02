@@ -1350,10 +1350,12 @@ required otherwise, and `SpawnedBy` cannot be built: read its `parent()`.
   are granted from the origin's (`ToolAccess::grant`), and the model calls
   are recorded under the spec's effect, else the origin's.
 - **Depth.** `SpawnPolicy` is the `[subagents]` table (`max_depth = 2`): an
-  agent past it is refused with `SpawnRefused::TooDeep`, and one at it is
-  given no tool registered with `starts_agents`, such as `task` and
-  `helper` (naming one is refused). A `SpawnedBy` inserted any other way that puts an agent past it
-  is removed again, with a notice. A `rig` process an agent starts, as
+  agent past it is refused with `SpawnRefused::TooDeep`, and one spawned at
+  it is given no tool registered with `starts_agents`, such as `task` and
+  `helper` (naming one is refused). A root at it, as in a `rig -p` a deep
+  agent started, keeps them, and each refuses a call that would go past
+  the limit. A `SpawnedBy` inserted any other way that puts an agent past
+  it is removed again, with a notice. A `rig` process an agent starts, as
   `helper` does, gets `RIG_AGENT_DEPTH` (that agent's depth plus one), and
   its own agents start there.
 

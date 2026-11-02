@@ -10,8 +10,9 @@
 //! same build has those, and refuses a `--tools` name it has not. A child
 //! built from a plugin list changed since the parent started may lack one:
 //! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
-//! stdin, at its parent's depth plus one (`RIG_AGENT_DEPTH`), so agents
-//! nest no deeper through helpers than the [`SpawnPolicy`] allows. Past its timeout or dead, it fails its task; stopping the turn
+//! stdin, at its parent's depth plus one (`RIG_AGENT_DEPTH`), and a call
+//! that would start one past the [`SpawnPolicy`]'s limit is refused, so
+//! agents nest no deeper through helpers. Past its timeout or dead, it fails its task; stopping the turn
 //! kills every child, so none outlives the call.
 
 use std::ffi::OsString;
@@ -228,10 +229,16 @@ fn start(
             .collect(),
     };
     let policy = policy.as_deref().cloned().unwrap_or_default();
+    let depth = policy.depth(called.agent, &lineage) + 1;
+    // A helper's agent is one deeper than its caller, in another process.
+    let planned = match policy.refuses(depth) {
+        Some(refused) => Err(format!("{refused}; do the work yourself")),
+        None => planned,
+    };
     let runner = Runner {
         command: command.clone(),
         processes: processes.clone(),
-        depth: policy.depth(called.agent, &lineage) + 1,
+        depth,
         timeout: Duration::from_secs(args.timeout.unwrap_or(600).clamp(1, 3600)),
     };
     // Dropped with the call, as a stop drops it: every child dies.

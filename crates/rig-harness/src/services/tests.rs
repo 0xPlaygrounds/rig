@@ -102,12 +102,16 @@ fn no_secret_reaches_a_process_started_through_processes() {
 #[cfg(unix)]
 #[test]
 fn a_rig_started_at_a_depth_starts_its_agents_there() {
-    if std::env::var_os(env::AGENT_DEPTH).is_none() {
+    // The copy is told by its own marker, not by the depth, which a test
+    // run inside a deep agent's `rig` already has.
+    const COPY: &str = "RIG_DEPTH_PROBE";
+    if std::env::var_os(COPY).is_none() {
         let name = "services::tests::a_rig_started_at_a_depth_starts_its_agents_there";
         let output = std::env::current_exe().and_then(|test| {
             std::process::Command::new(test)
                 .args(["--exact", name, "--nocapture", "--test-threads", "1"])
                 .env(env::AGENT_DEPTH, "2")
+                .env(COPY, "1")
                 .output()
         });
         let passed = output.is_ok_and(|output| {

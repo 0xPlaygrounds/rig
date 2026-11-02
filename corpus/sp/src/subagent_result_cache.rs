@@ -267,8 +267,8 @@ fn reuse(
         let Ok((mut call, call_of)) = calls.get_mut(of.parent()) else {
             continue;
         };
-        let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
-        let max_depth = policy.as_deref().cloned().unwrap_or_default().max_depth;
+        let policy = policy.as_deref().cloned().unwrap_or_default();
+        let (depth, max_depth) = (policy.depth(parent, &lineage) + 1, policy.max_depth);
         let Some(key) = parents
             .get(parent)
             .ok()
