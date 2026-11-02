@@ -4450,7 +4450,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "regex",
  "rig-basics",
  "rig-cassette",
  "rig-core",

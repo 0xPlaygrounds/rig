@@ -410,7 +410,13 @@ struct ShellParts<'w, 's> {
 /// section says.
 fn prepare(
     mut calls: Query<
-        (Entity, &ToolRequest, Option<&ForAgent>, &mut CallHandler),
+        (
+            Entity,
+            &ToolRequest,
+            Option<&ForAgent>,
+            Option<&CallPlace>,
+            &mut CallHandler,
+        ),
         (Added<Admitted>, ToolCalls),
     >,
     agents: Query<(Option<&AgentTitle>, Option<&Name>)>,
@@ -422,7 +428,7 @@ fn prepare(
         return;
     }
     files.refresh(false);
-    for (call, request, agent, mut handler) in &mut calls {
+    for (call, request, agent, place, mut handler) in &mut calls {
         let Some(&ForAgent(agent)) = agent else {
             continue;
         };
@@ -450,6 +456,8 @@ fn prepare(
             workspace: parts.workspace.0.clone(),
             launcher,
             live: Some(live),
+            // A redaction plugin's, which the harness's own shell had.
+            filter: place.and_then(|place| place.filter.clone()),
             spill: parts.scratch.as_ref().and_then(|scratch| scratch.spill()),
             cut: parts
                 .output

@@ -227,3 +227,57 @@ fn commands_name_the_variables_they_read() {
     let names = referenced("echo $A ${B} ${C:-x} \"$D_1\" $1; printenv E F | grep x; ${#G}");
     assert_eq!(names, ["A", "B", "C", "D_1", "G", "E", "F"]);
 }
+
+/// The shell an agent's own section starts carries the call's line filter:
+/// with the redaction plugin, a key it prints reaches neither the result nor
+/// the file its cut output is kept in.
+#[test]
+fn a_policy_shell_keeps_the_calls_line_filter() {
+    let home = scratch_home("corpus-sp-shell-env-policy-filter");
+    let root = home.root().join("project");
+    assert!(std::fs::create_dir_all(root.join(".rig")).is_ok());
+    write_policy(&root, "[agent.builder]\nallow = [\"PATH\"]\n");
+    // Its own text holds no key: the model's call would be redacted.
+    let printed =
+        "printf 'GITHUB_TO''KEN=ghp_''abcdefghijklmnopqrstuvwxyz0123456789\\n'; seq 1 3000";
+    let main = MockCompletionModel::from_stream_turns([shell("k1", printed), reply("Done.")]);
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    app.set_error_handler(rig_harness::error::warn)
+        .insert_resource(scripted_models([("test/main", &main)]))
+        .insert_resource(ProjectRoot(root.clone()))
+        .insert_resource(UserPolicyFile(None))
+        .add_plugins((
+            AgentPlugin,
+            SessionLogPlugin,
+            ShellTool,
+            ShellEnvPolicyPlugin,
+        ))
+        .add_plugins(rig_basics::redact::RedactPlugin)
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    app.finish();
+    app.cleanup();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(Name::new("builder"));
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: "test/main".to_owned(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    send(&mut app, &wakes, (agent, "Print it."), &main, 2);
+    let shown = output(&app, "k1");
+    let spill = shown
+        .split_whitespace()
+        .map(|word| word.trim_matches(|ch: char| "`'\"(),.:[]".contains(ch)))
+        .find(|word| word.ends_with(".txt"))
+        .unwrap_or_default();
+    let spilled = std::fs::read_to_string(spill).unwrap_or_default();
+    assert!(spilled.contains("TOKEN="), "{spill}: {shown:.300}");
+    assert!(
+        !spilled.contains("ghp_") && !shown.contains("ghp_"),
+        "{spilled:.200}"
+    );
+}

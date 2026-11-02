@@ -1502,3 +1502,37 @@ fn affected_builds_only_the_changed_packages_and_their_dependents() {
     );
     assert_eq!(affected_selection(&["DEVELOPING.md"]), None);
 }
+
+/// The redaction guard finds the library named however an import is laid
+/// out, and nothing that only looks like it.
+#[test]
+fn the_redact_guard_finds_every_way_to_name_the_library() {
+    use super::execute::names_redact;
+
+    let named = [
+        "use rig_core::redact;",
+        "let shown = rig_core::redact::text(line);",
+        "use rig_core::{message, redact};",
+        "use rig_core::{\n    message,\n    redact,\n};",
+        "use rig_core::{\n    completion::{Message, Usage},\n    redact as secrets,\n};",
+        "use rig_harness::rig_core::{\n    effect::Answered,\n    redact\n};",
+        "let found = crate::redact::find(text);",
+    ];
+    for source in named {
+        assert!(names_redact(source).is_some(), "{source}");
+    }
+    let not = [
+        "fn redact(text: &str) {}",
+        "self.redact_model_feedback()",
+        "/// See [`rig_core::redact`].",
+        "use rig_core::{message, tool};\nlet redact = 1;",
+        ".after(rig_basics::redact::RedactSystems)",
+    ];
+    for source in not {
+        assert_eq!(names_redact(source), None, "{source}");
+    }
+    assert_eq!(
+        names_redact("use std::io;\nuse rig_core::{\n    redact,\n};"),
+        Some(3)
+    );
+}

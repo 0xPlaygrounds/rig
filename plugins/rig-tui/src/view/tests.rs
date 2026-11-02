@@ -145,9 +145,8 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session))
         .insert_resource(ExitReason::Reload);
-    // A key in it, as in a message that came back, never reaches the disk;
-    // and the draft, not the earlier prompt shown over it, is kept.
-    let typed = "/tools OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234";
+    // The draft, not the earlier prompt shown over it, is kept.
+    let typed = "/tools draft";
     crate::tests::edit(&mut app, |input| {
         input.set(typed);
         input.set_cursor(0);
@@ -158,8 +157,7 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
-    let kept = "/tools OPENAI_API_KEY=[REDACTED]";
-    assert_eq!(crate::tests::input(&app).text(), kept);
+    assert_eq!(crate::tests::input(&app).text(), typed);
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
     app.insert_resource(data(&session));

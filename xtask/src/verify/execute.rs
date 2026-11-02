@@ -145,6 +145,45 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             }
             Ok(())
         }
+        "@redact-boundary" => {
+            // Redaction is one plugin's: no kernel crate or front calls the
+            // detection library itself. Its other callers redact what they
+            // record or export of their own.
+            const CALLERS: [&str; 5] = [
+                "crates/rig-core/src/redact",
+                "crates/rig-core/src/observe/adapter/scrub.rs",
+                "crates/rig-cassette/src/http/",
+                "crates/rig-cassette/src/scrub.rs",
+                "plugins/rig-basics/src/redact",
+            ];
+            let tested = |p: &str| {
+                p.ends_with("tests.rs")
+                    || ["/tests/", "/test_utils/", "/benches/", "/examples/"]
+                        .iter()
+                        .any(|dir| p.contains(dir))
+            };
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(untracked_inputs(root)?)
+                .filter(|p| {
+                    (p.starts_with("crates/") || p.starts_with("plugins/") || p.starts_with("src/"))
+                        && p.ends_with(".rs")
+                        && !tested(p)
+                        && !CALLERS.iter().any(|caller| p.starts_with(caller))
+                })
+            {
+                let Ok(text) = fs::read_to_string(root.join(&path)) else {
+                    continue;
+                };
+                if let Some(number) = names_redact(&text) {
+                    return Err(invalid(format!(
+                        "{path}:{number}: names `rig_core::redact`; redaction is \
+                         `rig_basics::redact::RedactPlugin`'s"
+                    )));
+                }
+            }
+            Ok(())
+        }
         "@native-only" => {
             // A native-only crate on wasm must fail with exactly its one
             // `compile_error!` sentence; an item outside the `not(wasm)` gate
@@ -244,6 +283,40 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
         start.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+/// The first line, counted from 1, of `text`, Rust source, that names
+/// `rig_core::redact`: a path through it, or `redact` in a
+/// `use rig_core::{…}` list, however rustfmt spreads and nests the list.
+/// Comments are skipped.
+pub(super) fn names_redact(text: &str) -> Option<usize> {
+    // How deep in a `rig_core::{…}` list the line starts.
+    let mut depth = 0_usize;
+    for (number, line) in (1..).zip(text.lines()) {
+        let code = line.split("//").next().unwrap_or_default();
+        let opens = code.find("rig_core::{");
+        let listed = (depth > 0 || opens.is_some())
+            && paths(code, "redact")
+                .any(|after| after.is_empty() || after.starts_with([',', '}', ' ']));
+        // The plugin's own path, such as `rig_basics::redact::RedactSystems`, is not the library.
+        let pathed = paths(code, "redact::").count() > code.matches("rig_basics::redact::").count();
+        if listed || pathed || code.contains("rig_core::redact") {
+            return Some(number);
+        }
+        let from = if depth > 0 { Some(0) } else { opens };
+        for ch in from
+            .and_then(|from| code.get(from..))
+            .unwrap_or_default()
+            .chars()
+        {
+            match ch {
+                '{' => depth += 1,
+                '}' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// What follows each `prefix` (such as `rig::`) in `code` that starts a

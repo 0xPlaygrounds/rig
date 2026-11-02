@@ -29,7 +29,8 @@ const LEAVE_OUT: &str = "RIG_TEST_LEAVE_OUT";
 
 /// The default `plugins.toml`'s disabled entries, in its order, but
 /// rig-steel's, whose steel-core build its own tests pay for.
-const OPTIONAL: [(&str, fn(&mut App)); 11] = plugins![
+const OPTIONAL: [(&str, fn(&mut App)); 12] = plugins![
+    rig_basics::redact::RedactPlugin,
     rig_basics::approval::ApprovalPlugin,
     rig_basics::preview::PreviewPlugin,
     rig_basics::checkpoint::CheckpointPlugin,

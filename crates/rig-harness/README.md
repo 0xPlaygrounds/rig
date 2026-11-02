@@ -65,6 +65,7 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-basics` | `approval::ApprovalPlugin` | one question for every effect a plugin wants approved; nothing asks by default, and `SubagentsPlugin` adds it |
 | `rig-basics` | `preview::PreviewPlugin` | what a tool call would change on disk, before it runs, for gates that ask |
 | `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
+| `rig-basics` | `redact::RedactPlugin` | API keys, tokens and private keys become placeholders (`‹SECRET_1›`) where they come in (the model's reply as it streams, tool output and results, messages), so the model, the logs, every front, subagents and a resumed session never hold them; a tool call naming one runs with the real value, kept in memory for the run. Without it nothing is redacted |
 | `rig-basics` | `telemetry::effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
 | `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain |
 | `rig-basics` | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |

@@ -114,6 +114,7 @@ fn the_template_lists_every_shipped_plugin_the_optional_ones_disabled() {
     assert_eq!(
         disabled,
         [
+            "rig_basics::redact::RedactPlugin",
             "rig_basics::approval::ApprovalPlugin",
             "rig_basics::preview::PreviewPlugin",
             "rig_basics::checkpoint::CheckpointPlugin",

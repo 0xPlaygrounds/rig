@@ -164,7 +164,7 @@ this order, until nothing moves:
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
 | `Review` | kernel, then plugins | outcomes not settled yet (`ReadyToSettle`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
-| `Commit` | kernel | redacts keys in tool answers, then settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
+| `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
 | `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`ReadyToStart`): hold it or decide it (`Decision`) |
@@ -335,25 +335,24 @@ The sets of Gate systems that edit shared data:
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_core::redact;
 
-/// The redaction plugin's stage systems, for others to order against.
+/// The tidying plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RedactSystems;
+pub struct TidySystems;
 
 fn build(app: &mut App) {
     // After attachments and the default prompt, before compaction.
-    app.configure_sets(AgentPass, RedactSystems.in_set(PrepareSystems::Edit))
-        .add_systems(AgentPass, redact_messages.in_set(RedactSystems));
+    app.configure_sets(AgentPass, TidySystems.in_set(PrepareSystems::Edit))
+        .add_systems(AgentPass, tidy_messages.in_set(TidySystems));
 }
 
-/// Takes API keys out of each message as it comes in, attached files
-/// included.
-fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
+/// Takes the spaces off the end of each line of each message as it comes
+/// in, attached files included.
+fn tidy_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
     for mut incoming in &mut messages {
         for part in &mut incoming.parts {
             if let MessagePart::Text(text) | MessagePart::Attachment(Attachment { content: UserContent::Text(message::Text { text, .. }), .. }) = part {
-                *text = redact::text(text).into_owned();
+                *text = text.lines().map(str::trim_end).collect::<Vec<_>>().join("\n");
             }
         }
     }
@@ -1453,11 +1452,20 @@ its `EffectLog`: `read()`, or `read_matching(&filter)` by agent, kind name
 the end of the last frame.
 
 **Redacting.** A record holds what its effect really carried (tool output,
-file changes with the text before, the request as sent). A plugin changes
-records before they are written (`MessageMutator<EffectRecorded>`, below) and
+file changes with the text before, the request as sent); the log is written
+as it is given. `rig_basics::redact::RedactPlugin`, when it is enabled,
+redacts every record this way, but for a model request, which it redacts in
+its own text, its system prompt, documents and user messages' text. A plugin
+changes records before they are written
+(`MessageMutator<EffectRecorded>`, below) and
 [rewrites](#rewriting-saved-history-a-redaction) those written once the
-session stopped. rig-core's `redact` finds keys and tokens by their shapes
-(`json`, `text`).
+session stopped. A plugin that saves text of its own, such as a command's
+argument, saves it as it gives it. rig-core's `redact` finds keys and tokens
+by their shapes (`json`, `text`). Text that comes in elsewhere has its own
+hook: a shell's output lines (`rig_tools::LineFilter`, set on a call's
+`CallPlace`), the answer of a call a stop or the exit commits unsettled
+(`rig_ecs::tools::ResultFilter`, one per app) and the prompts kept for Up
+(`rig_tui::PromptHistory::rewrite`).
 
 **Replaying.** A replayer answers effects from a recorded log before
 they start: a model call by an adapter in
@@ -1651,10 +1659,11 @@ fn undo(In(args): In<NoArgs>, mut agents: Query<&mut Conversation, Without<Activ
 Records are only appended. A session no rig runs is rewritten in place with
 `rewrite_stopped(&stores, &paths, &dir, by, &with)`, under its lock: every
 saved record keeps its place and stamp, and the store's files, the scratch
-files and the name are mapped too. The running session is refused; keys are
-already redacted as its logs are written. `with` is a `Rewrite`: `Strings`
-maps every string (a redaction, a path remap), `rig_memory::Messages` only
-messages, or its own hooks per message, aside, saved value, text and file. A
+files and the name are mapped too. The running session is refused; with
+`rig_basics::redact::RedactPlugin`, keys never reach its logs. `with` is a
+`Rewrite`: `Strings` maps every string (a redaction, a path remap),
+`rig_memory::Messages` only messages, or its own hooks per message, aside,
+saved value, text and file. A
 program without an app calls `rig_memory::rewrite(&store, by, &with)` on a
 session not `runs_elsewhere()`.
 
@@ -2563,10 +2572,10 @@ any run and inert without the view:
   history, so a plugin that replaces it calls `clear` before `set`.
   `PromptHistory` is the prompts Up and Down browse, each text once, kept
   in `PluginData.project`: the view puts each prompt sent (`Sent`, which
-  a plugin writes too) and the text an editor dropped unsent (redacted),
-  in the order they happened, as the newest in `HistorySystems::Record`
-  and saves in `HistorySystems::Save`;
-  a system between the two filters what is kept. After another agent is
+  a plugin writes too) and the text an editor dropped unsent, in the
+  order they happened, as the newest in `HistorySystems::Record` and
+  saves in `HistorySystems::Save`; a system between the two filters what
+  is kept, or `rewrite`s it, as the redaction plugin does. After another agent is
   shown, `HistorySystems::Seed` puts its conversation's typed prompts as
   the newest, unsaved, in `TuiKeys` before the next key; a filter that
   should also keep them from Up runs there too, after it and before

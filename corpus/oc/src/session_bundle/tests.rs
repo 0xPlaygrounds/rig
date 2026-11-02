@@ -305,9 +305,8 @@ fn a_bundle_moves_a_session_to_another_checkout() {
     assert!(output.contains("edited"), "{output}");
     drop(app);
 
-    // A secret typed into the conversation never reaches the session's
-    // logs (they are redacted as written), so the bundle made from them
-    // holds none and is written without asking.
+    // A secret put straight into the conversation, past every plugin, is
+    // in the session's logs as it is, so no bundle is made of them.
     let (mut app, _wakes) = start(&home, &SessionId::generate(), &a, &model, false);
     let agent = main_agent(&mut app);
     commit_message(
@@ -321,8 +320,10 @@ fn a_bundle_moves_a_session_to_another_checkout() {
         .trigger(RunCommand::new(agent, "bundle secret.rigbundle"));
     app.update();
     app.update();
-    let bundle = std::fs::read(a.join("secret.rigbundle")).unwrap_or_default();
-    assert!(!bundle.is_empty(), "{:?}", refusals(&app));
-    let secret = b"wJalrXUtnFEMIK7MDENG";
-    assert!(!bundle.windows(secret.len()).any(|window| window == secret));
+    assert!(!a.join("secret.rigbundle").exists());
+    let refused = refusals(&app);
+    assert!(
+        refused.iter().any(|why| why.contains("secrets found")),
+        "{refused:?}"
+    );
 }

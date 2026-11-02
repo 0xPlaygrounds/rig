@@ -38,7 +38,6 @@ pub mod pinned_notes;
 pub mod prompt_templates;
 pub mod retry_with_model;
 pub mod review_agent;
-pub mod secret_redaction;
 pub mod session_goal;
 pub mod session_replay;
 pub mod share;

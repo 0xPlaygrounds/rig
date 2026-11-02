@@ -47,7 +47,6 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
 };
 use rig_core::now_ms;
-use rig_core::redact;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
@@ -73,7 +72,7 @@ use super::stage::{
     Started, SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, InReply, ToolDef, ToolRequest, offered, redacted};
+use super::tools::{Footprint, InReply, ResultFilter, ToolDef, ToolRequest, offered};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -598,6 +597,7 @@ pub(crate) struct Stopper<'w, 's> {
     commands: Commands<'w, 's>,
     notices: MessageWriter<'w, Notice>,
     exiting: Option<Res<'w, Exiting>>,
+    filter: Option<Res<'w, ResultFilter>>,
 }
 
 impl Stopper<'_, '_> {
@@ -688,9 +688,8 @@ impl Stopper<'_, '_> {
             .collect();
         // A decided call is answered with its decision, as Start would, a
         // running one with what it says if stopped, and a restored one that
-        // settled with its result, each redacted as Commit would, so what
-        // observes it settle reads what the conversation keeps; any other is
-        // cancelled with the same text.
+        // settled with its result, so what observes it settle reads what
+        // the conversation keeps; any other is cancelled with the same text.
         let answers: Vec<(Entity, Option<Outcome>)> = reply
             .iter()
             .filter(|call| call.outcome.is_none())
@@ -710,7 +709,8 @@ impl Stopper<'_, '_> {
                 Some((call.entity, answer))
             })
             .collect();
-        if let Some(results) = reply_results(reply, |call| Some(stopped_answer(&why, call))) {
+        let stopped = |call: &ReplyCallItem| Some(stopped_answer(&why, call));
+        if let Some(results) = reply_results(reply, stopped, self.filter.as_deref()) {
             commit_results(&mut conversation, results);
         }
         // The streamed calls are kept never run: an aborted reply owes no
@@ -773,13 +773,17 @@ impl Stopper<'_, '_> {
                     None => apply_decision(world, call),
                 }
             }
-            // An answer that came this pass, or that the stop gave, settles
-            // before Commit redacts it.
-            for &call in &calls {
-                if let Some(mut outcome) = world.get_mut::<Outcome>(call)
-                    && let Some(redacted) = redacted(&outcome)
-                {
-                    *outcome = redacted;
+            // An answer that came this pass, or one a reviewer changed in
+            // place, settles through the filter, as the conversation has it.
+            if let Some(filter) = world.get_resource::<ResultFilter>().cloned() {
+                for &call in &calls {
+                    let unsettled = world.get::<Settled>(call).is_none();
+                    let outcome = world.get_mut::<Outcome>(call).filter(|_| unsettled);
+                    if let Some(mut outcome) = outcome
+                        && let Some(filtered) = (filter.0)(&outcome)
+                    {
+                        *outcome = filtered;
+                    }
                 }
             }
             for call in calls {
@@ -860,12 +864,14 @@ pub(crate) fn not_finished(why: &str, started: bool, footprint: Option<&Footprin
 
 /// The results of a reply's tool calls, in call order: each answered
 /// call's result, else what it says its result is if stopped
-/// ([`IfStopped`]), else what `missing` gives it, else nothing for it;
-/// with what each call published ([`ReplyCallItem::facts`]).
+/// ([`IfStopped`]), else what `missing` gives it, else nothing for it, a
+/// call that never settled through `filter`; with what each call published
+/// ([`ReplyCallItem::facts`]).
 /// `None` when that leaves no result.
 fn reply_results(
     calls: Vec<ReplyCallItem>,
     missing: impl Fn(&ReplyCallItem) -> Option<ToolResult>,
+    filter: Option<&ResultFilter>,
 ) -> Option<Entry> {
     let facts: ResultFacts = calls
         .iter()
@@ -888,11 +894,10 @@ fn reply_results(
                     stopped.or_else(|| missing(&call))?
                 }
             };
-            // Only an answer that settled went through Commit's redaction.
-            let result = match call.settled && call.outcome.is_some() {
-                true => result,
-                false => redact::tool_result(&result).unwrap_or(result),
-            };
+            let filtered = filter
+                .filter(|_| !call.settled)
+                .and_then(|filter| (filter.0)(&Outcome::from(result.clone())));
+            let result = filtered.map_or(result, |outcome| outcome.tool_result());
             Some(call.request.call.answer(&result))
         })
         .collect();
@@ -979,12 +984,14 @@ fn log_answered_results(
     turns: Query<(&TurnOf, &Turn, &Calls)>,
     replies: Query<ReplyCall>,
     mut agents: Query<&mut Conversation>,
+    filter: Option<Res<ResultFilter>>,
 ) {
     for (&TurnOf(agent), state, calls) in &turns {
         let Some(reply) = state.reply else {
             continue;
         };
-        let results = reply_results(reply_calls(reply, calls, &replies), |_| None);
+        let calls = reply_calls(reply, calls, &replies);
+        let results = reply_results(calls, |_| None, filter.as_deref());
         if let Ok(mut conversation) = agents.get_mut(agent)
             && let Some(results) = results
         {
@@ -1836,7 +1843,7 @@ pub(crate) fn commit_replies(
         }
         state.reply = None;
         let unanswered = ToolResult::failed(ToolExecutionError::other("the call had no result"));
-        if let Some(results) = reply_results(calls, |_| Some(unanswered.clone())) {
+        if let Some(results) = reply_results(calls, |_| Some(unanswered.clone()), None) {
             commit_results(&mut conversation, results);
         }
         if ending.and_then(TurnOutcome::stops).is_none() {

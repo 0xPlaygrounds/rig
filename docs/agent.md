@@ -106,8 +106,10 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab (while a turn runs, Tab queues it). Text you drop
 without sending (Ctrl+C, sending an earlier prompt in its place) goes into
-the history, secrets redacted, so Up brings it back. Ctrl+P and Ctrl+N move
-the same way, even with a completion list open, but Ctrl+P goes to the
+the history, so Up brings it back. While redaction is on (below), every
+prompt Up brings back, sent or not, shows its secrets and placeholders as
+`[REDACTED]`, and sending it again sends `[REDACTED]`. Ctrl+P and Ctrl+N
+move the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
 empty input quits. A leading `/` completes command names and `@` completes
@@ -151,10 +153,12 @@ image file becomes one too.
 Answers are drawn as markdown, edits as diffs, and each built-in tool's call
 in its own way, always whole: every call's arguments and result, every diff
 and every note, nothing cut or folded. A diff is drawn from what the session
-keeps of it, so a secret in it shows as `[REDACTED]`, and an edit whose diff
-holds a private key block or passes 256 KiB shows its reply instead. A call's
-row is tinted by where it stands (waiting, running, done, failed). Code is
-highlighted in the terminal's own palette, so it follows the terminal's theme.
+keeps of it, so with redaction on (below) a secret in it shows as a
+placeholder and an edit whose diff holds a private key block shows its reply
+instead, as one whose diff passes 256 KiB always does. A call's row is
+tinted by where it stands (waiting, running, done, failed). Code is
+highlighted in the terminal's own palette, so it follows the terminal's
+theme.
 PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
 nothing is drawn in color. A plugin draws its tools' calls with ordinary systems in
 `rig_tui::TranscriptRender`, selecting inputs through
@@ -171,6 +175,29 @@ sessions (name or first message, what it spent, its main agent's context, the
 end of its directory and its age; → shows the whole directory) and resumes
 the one picked, in its own directory; `rig --resume <id or name>` (or
 `/resume <id or name>`) resumes a given one, such as after a crash.
+
+Rig redacts nothing unless you turn redaction on with `rig plugin enable
+rig_basics::redact::RedactPlugin` (then `rig build`, or `/reload`). With it,
+API keys, tokens, private keys and the values of secret-named variables
+(`GITHUB_TOKEN=…`) become placeholders, `‹SECRET_1›`, one per distinct
+secret, where they come in: in the model's reply as it streams, in each
+tool's output and result, and in your messages and the files they name. The
+model, the session's logs, the terminal view, `--json`, ACP, subagents and a
+resumed session see only the placeholders, so an image or audio link that
+holds a key, such as a presigned URL, reaches the model with its
+placeholder and no longer fetches. A tool call that names one runs
+with the real value, so the model can still put your key in a file or a
+command without seeing it. A shell command naming one whose value the shell
+would read as code, such as a quote, a space or `$`, is refused. The values
+are kept in memory for the run only: after a restart, `/reload` or
+`/resume` a call naming an old placeholder is refused, and you give the
+value again. A file that already holds text such as `‹SECRET_1›` is not
+told apart: a call that writes it gets this run's first secret, or is
+refused. What a session saved while redaction was off stays as it was, and
+one saved while it was on keeps its placeholders after you turn it off,
+where a tool call writes them as they are; resuming it then notes that no
+plugin saves `rig_basics::redact::Issued`, the count of placeholders handed
+out, which is kept for when you turn redaction on again.
 
 The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages (each tool result
