@@ -231,8 +231,11 @@ impl Spawner<'_, '_> {
                     .map_err(SpawnRefused::Tool)?
             }
         };
-        let access = match at_limit {
-            true => without_starters(access, self.tools.iter()),
+        // At the limit, without the tools that start agents; narrowed only
+        // when there are some, so tools registered later still reach it.
+        let others = self.tools.iter().filter(|&(_, starts)| !starts);
+        let access = match at_limit && self.tools.iter().any(|(_, starts)| starts) {
+            true => access.narrow(others.map(|(def, _)| def.0.name.as_str())),
             false => access,
         };
         let prompt = spec.system_prompt.map(SystemPrompt);
@@ -270,19 +273,6 @@ impl Spawner<'_, '_> {
         agent.insert((Agent::new(), Name::new(name), prompt, access, effort));
         Ok(agent)
     }
-}
-
-/// `access` without the registered `tools` that start agents.
-fn without_starters<'a>(
-    access: ToolAccess,
-    tools: impl IntoIterator<Item = (&'a ToolDef, bool)>,
-) -> ToolAccess {
-    let tools: Vec<(&ToolDef, bool)> = tools.into_iter().collect();
-    if !tools.iter().any(|&(_, starts)| starts) {
-        return access;
-    }
-    let others = tools.into_iter().filter(|&(_, starts)| !starts);
-    access.narrow(others.map(|(def, _)| def.0.name.as_str()))
 }
 
 /// Spawns an agent from `origin` with `spec`, as a [`Spawner`] does, and
