@@ -1517,19 +1517,19 @@ such table is a `ProjectSetting` entity, the project's file is the
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
-/// The `[budget]` table: `max_calls = 50`; no limit by default.
+/// The `[call-cap]` table: `max_calls = 50`; no limit by default.
 #[derive(Resource, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
-pub struct Budget {
+pub struct CallCap {
     pub max_calls: Option<usize>,
 }
 
 fn build(app: &mut App) {
-    app.add_setting::<Budget>("budget")
-        .add_flag(Flag::new("budget", "Stop a turn after N tool calls").value("N"));
+    app.add_setting::<CallCap>("call-cap")
+        .add_flag(Flag::new("call-cap", "Stop a turn after N tool calls").value("N"));
     let invoked = app.world().get_resource::<Invoked>();
-    if let Some(n) = invoked.and_then(|it| it.flag_value("budget")?.parse().ok()) {
-        app.insert_resource(Budget { max_calls: Some(n) });
+    if let Some(n) = invoked.and_then(|it| it.flag_value("call-cap")?.parse().ok()) {
+        app.insert_resource(CallCap { max_calls: Some(n) });
     }
 }
 ```
@@ -2074,12 +2074,12 @@ const CAP: f64 = 5.0;
 /// Refuses the turns' model calls once the session spent `CAP`, and says
 /// what is left in `/usage` and after a `--print` answer.
 fn build(app: &mut App) {
-    app.world_mut().spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
-    let show = show_budget.run_if(resource_exists_and_changed::<SessionUsage>);
-    app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate)).add_systems(Update, show);
+    app.world_mut().spawn((UsageRow::new("cost-cap", ""), PrintSection::new("cost-cap", "")));
+    let show = show_cap.run_if(resource_exists_and_changed::<SessionUsage>);
+    app.add_systems(AgentPass, refuse_over_cap.in_set(Stage::Gate)).add_systems(Update, show);
 }
 
-fn refuse_over_budget(
+fn refuse_over_cap(
     mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
     spent: Option<Res<SessionUsage>>,
 ) {
@@ -2087,14 +2087,14 @@ fn refuse_over_budget(
         return;
     }
     for mut decision in &mut calls {
-        let why = format!("The session spent its ${CAP:.2} budget.");
-        decision.decide(Decider::plugin("budget"), Outcome::refused(why));
+        let why = format!("The session spent its ${CAP:.2} cap.");
+        decision.decide(Decider::plugin("cost-cap"), Outcome::refused(why));
     }
 }
 
-fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
+fn show_cap(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
     let left = (CAP - spent.0.total.cost).max(0.0);
-    let text = format!("Budget: ${left:.2} of ${CAP:.2} left.");
+    let text = format!("Cap: ${left:.2} of ${CAP:.2} left.");
     for (mut row, mut section) in &mut shown {
         row.text.clone_from(&text);
         section.text.clone_from(&text);

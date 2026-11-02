@@ -18,8 +18,9 @@
 //! What a child spends is the calling agent's, as purpose `helper`: each
 //! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
 //! its own helpers' are among them. A child that is not on this protocol
-//! version, or that ended before its `exit` line, has its spend unknown,
-//! and its result says so. With a [`budget`](crate::budget), a child is
+//! version, that ended before its `exit` line, or whose `exit` line says
+//! its spend is not all known, counts in [`UnknownSpend`], and its result
+//! says so. With a [`budget`](crate::budget), a child is
 //! started with what is left of it.
 
 use std::ffi::OsString;
@@ -38,7 +39,7 @@ use serde_json::Value;
 
 use crate::budget::{Budget, HandedDown, hand_down};
 use crate::print::VERSION;
-use crate::telemetry::usage::{SessionUsage, Spent, UsagePlugin};
+use crate::telemetry::usage::{SessionUsage, Spent, UnknownSpend, UsagePlugin};
 
 /// The tool's name.
 pub const HELPER: &str = "helper";
@@ -94,7 +95,14 @@ impl Plugin for HelpersPlugin {
             .init_resource::<Reported>()
             .add_open_tool(HELPER, &description, ToolOptions::default(), start)
             .add_systems(AgentPass, record.in_set(Stage::Review))
-            .add_systems(Update, record.before(AgentLoop));
+            .add_systems(Update, record.before(AgentLoop))
+            .add_systems(
+                Last,
+                record
+                    .after(rig_ecs::StopTurnsOnExit)
+                    .before(rig_ecs::SaveSystems)
+                    .run_if(on_message::<AppExit>),
+            );
     }
 
     /// Notes the tools every plugin registered by now, which a child has
@@ -109,12 +117,18 @@ impl Plugin for HelpersPlugin {
     }
 }
 
-/// The spend children reported and not yet recorded, sent from their
+/// What children reported and is not yet recorded, sent from their
 /// threads.
 #[derive(Resource)]
 struct Reported {
-    sender: async_channel::Sender<Spent>,
-    receiver: async_channel::Receiver<Spent>,
+    sender: async_channel::Sender<Heard>,
+    receiver: async_channel::Receiver<Heard>,
+}
+
+/// A child's report: a call's spend, or that some of its spend is unknown.
+enum Heard {
+    Spent(Spent),
+    Unknown,
 }
 
 impl Default for Reported {
@@ -126,11 +140,15 @@ impl Default for Reported {
 
 /// Records what children reported: in the pass a call's result arrives,
 /// which comes after everything its children reported, so the spend is
-/// in before the next model call; and before the agent loop, for what
-/// came while no call ended, such as from a stopped call's children.
-fn record(reported: Res<Reported>, mut commands: Commands) {
-    while let Ok(spent) = reported.receiver.try_recv() {
-        commands.trigger(spent);
+/// in before the next model call; before the agent loop, for what came
+/// while no call ended, such as from a stopped call's children; and on the
+/// exit, before the session is saved and the `exit` line written.
+fn record(reported: Res<Reported>, mut unknown: ResMut<UnknownSpend>, mut commands: Commands) {
+    while let Ok(heard) = reported.receiver.try_recv() {
+        match heard {
+            Heard::Spent(spent) => commands.trigger(spent),
+            Heard::Unknown => unknown.0 += 1,
+        }
     }
 }
 
@@ -320,7 +338,7 @@ struct Runner {
 struct Reports {
     agent: Entity,
     turn: Option<Entity>,
-    sender: async_channel::Sender<Spent>,
+    sender: async_channel::Sender<Heard>,
     wake: Wake,
 }
 
@@ -334,7 +352,16 @@ impl Reports {
             purpose: Some(HELPER.to_owned()),
             usage,
         };
-        if self.sender.try_send(spent).is_ok() {
+        self.send_heard(Heard::Spent(spent));
+    }
+
+    /// Records that some of a child's spend is unknown.
+    fn unknown(&self) {
+        self.send_heard(Heard::Unknown);
+    }
+
+    fn send_heard(&self, heard: Heard) {
+        if self.sender.try_send(heard).is_ok() {
             self.wake.wake();
         }
     }
@@ -424,6 +451,9 @@ impl Runner {
             true
         });
         let note = read.note();
+        if !read.known() {
+            self.reports.unknown();
+        }
         let answer = match ended {
             Ok(Ended::Exited(status)) => read.answer(status.code()),
             Ok(Ended::TimedOut) => Err(format!("it timed out after {}s", self.timeout.as_secs())),
@@ -440,6 +470,8 @@ impl Runner {
 struct Read {
     version: Option<u64>,
     exit: Option<(u64, Option<String>)>,
+    /// Whether its `exit` line says its spend is all known.
+    complete: bool,
     error: Option<String>,
     stderr: Vec<String>,
     session: Option<String>,
@@ -452,6 +484,7 @@ impl Read {
         Self {
             version: None,
             exit: None,
+            complete: false,
             error: None,
             stderr: Vec::new(),
             session: None,
@@ -487,6 +520,7 @@ impl Read {
             Some("exit") => {
                 let code = event.get("code").and_then(Value::as_u64).unwrap_or(1);
                 self.exit = Some((code, field("answer")));
+                self.complete = event.get("usage_complete") == Some(&Value::Bool(true));
                 self.error = field("error").or(self.error.take());
             }
             Some("notice") if field("level").as_deref() == Some("error") => {
@@ -515,15 +549,19 @@ impl Read {
         }
     }
 
-    /// Its session and what it spent, for the end of its text: known once
-    /// it wrote its `exit` line on this protocol version.
+    /// Whether all it spent is known: once it wrote its `exit` line on
+    /// this protocol version, saying so.
+    fn known(&self) -> bool {
+        self.version == Some(VERSION) && self.exit.is_some() && self.complete
+    }
+
+    /// Its session and what it spent, for the end of its text.
     fn note(&self) -> String {
         let session = self
             .session
             .as_ref()
             .map(|session| format!("session {session}"));
-        let known = self.version == Some(VERSION) && self.exit.is_some();
-        let spent = match (known, self.spent.calls) {
+        let spent = match (self.known(), self.spent.calls) {
             (true, 0) => "no model call".to_owned(),
             (true, _) => self.spent.cost_or_tokens(),
             (false, 0) => "spend unknown".to_owned(),

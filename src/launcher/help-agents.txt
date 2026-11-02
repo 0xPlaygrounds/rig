@@ -105,12 +105,19 @@ Events, each with "agent" when it is an agent's:
         and each one its helpers (`rig -p --json` children) reported
         (purpose helper); usage has its tokens and, when known, its cost
   reply {id, ok, error, state}         one per request
-  exit {code, answer, error, session, usage}   the last line of
-        `rig -p --json`, and of a conversation that cannot start (an
-        unknown --tools name, no model reachable), after which nothing is
-        written; error says why for any code but 0; usage is the
-        session's total: its usage lines, and those of runs before
-        when it went on with a session
+  exit {code, answer, error, session, usage, usage_complete}
+        the last line of `rig -p --json`, and of a conversation that
+        cannot start (an unknown --tools name, no model reachable), after
+        which nothing is written; error says why for any code but 0;
+        usage is the session's total: its usage lines, and those of runs
+        before when it went on with a session; usage_complete is false
+        when a helper's spend was not all reported, so usage is a lower
+        bound
+
+With rig_basics::budget::BudgetPlugin enabled, RIG_BUDGET_USD and
+RIG_BUDGET_TOKENS cap what a run spends, whatever its own budget: a run
+at the cap refuses its model calls and stops its turns. A helper child
+gets what its parent has left in them.
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.

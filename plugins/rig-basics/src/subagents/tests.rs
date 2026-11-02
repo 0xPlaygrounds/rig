@@ -619,53 +619,57 @@ fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
     assert!(kept, "{access:?}");
 }
 
-#[test]
-fn a_task_naming_no_model_or_tools_gets_the_defaults_its_description_names() {
-    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let settings = "[subagents]\nmodel = \"deepseek/deepseek-flash\"\ntools = [\"look\"]";
-    let mut session = Session::with(&MemoryStore::default(), Some(&model), |app| {
-        // The catalog knows the default model, the parent's own, whose
-        // connection the subagent shares.
+/// A session whose `[subagents]` table is `settings`, with a tool `edit`
+/// besides `look`.
+fn with_defaults(model: &MockCompletionModel, settings: &str) -> Session {
+    let settings = Settings::from_toml(settings);
+    Session::with(&MemoryStore::default(), Some(model), |app| {
         app.add_open_tool("edit", "Edit.", ToolOptions::default(), look)
-            .insert_resource(Settings::from_toml(settings))
+            .insert_resource(settings)
             .insert_resource(Models(Connector::new(Catalog::builtin().clone())));
-    });
+    })
+}
+
+/// What `task`'s parameter `name` says.
+fn task_says(session: &mut Session, name: &str) -> String {
     let world = session.app.world_mut();
     let mut defs = world.query::<&ToolDef>();
     let task = defs.iter(world).find(|def| def.0.name.as_str() == TASK);
-    let said = |name: &str| {
-        let property = task.and_then(|def| def.0.parameters.get("properties")?.get(name));
-        let text = property.and_then(|property| property.get("description")?.as_str());
-        text.unwrap_or_default().to_owned()
-    };
-    let (model_said, tools_said) = (said("model"), said("tools"));
-    assert!(
-        model_said.contains("deepseek/deepseek-flash when absent ([subagents] model)"),
-        "{model_said}"
-    );
+    let property = task.and_then(|def| def.0.parameters.get("properties")?.get(name));
+    let text = property.and_then(|property| property.get("description")?.as_str());
+    text.unwrap_or_default().to_owned()
+}
+
+#[test]
+fn a_task_naming_no_model_or_tools_gets_the_defaults_its_description_names() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = with_defaults(&model, "[subagents]\ntools = [\"look\"]");
+    let tools_said = task_says(&mut session, "tools");
     assert!(
         tools_said.contains("When absent: look ([subagents] tools)"),
         "{tools_said}"
     );
-
+    assert!(task_says(&mut session, "model").ends_with("Yours when absent."));
     let args = json!({ "description": "Look", "prompt": "Look around." });
     let started = session.call(session.parent, TASK, "t1", args);
     assert!(started.starts_with("Started subagent"), "{started}");
     let child = session.children(session.parent).last().copied();
-    let world = session.app.world();
-    let access = child.and_then(|child| world.get::<ToolAccess>(child));
+    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
     let only_look = access.is_some_and(|access| access.allows("look") && !access.allows("edit"));
     assert!(only_look, "{access:?}");
-    let choice = child.and_then(|child| world.get::<ModelChoice>(child));
-    assert_eq!(
-        choice.map(|choice| choice.0.as_str()),
-        Some("deepseek/deepseek-flash")
-    );
 
-    // A default the parent cannot give is refused, naming where it came from.
-    let world = session.app.world_mut();
+    // Another model than the parent's, and a tool the parent lacks: the
+    // request has both, and its refusal names where they came from.
+    let other = "deepseek/deepseek-v3.2";
+    let settings = format!("[subagents]\nmodel = \"{other}\"\ntools = [\"look\"]");
+    let mut session = with_defaults(&model, &settings);
+    let model_said = task_says(&mut session, "model");
+    assert!(
+        model_said.contains(&format!("{other} when absent ([subagents] model)")),
+        "{model_said}"
+    );
     let parent = session.parent;
-    if let Some(mut access) = world.get_mut::<ToolAccess>(parent) {
+    if let Some(mut access) = session.app.world_mut().get_mut::<ToolAccess>(parent) {
         *access = access.narrow([TASK, "edit"]);
     }
     let args = json!({ "description": "Look", "prompt": "Look around." });
@@ -673,6 +677,16 @@ fn a_task_naming_no_model_or_tools_gets_the_defaults_its_description_names() {
     assert!(
         refused.contains("[subagents] in settings.toml"),
         "{refused}"
+    );
+    let world = session.app.world_mut();
+    let mut requests = world.query::<&SpawnSubagent>();
+    let asked: Vec<(Option<String>, Option<Vec<String>>)> = requests
+        .iter(world)
+        .map(|request| (request.model.clone(), request.tools.clone()))
+        .collect();
+    assert_eq!(
+        asked,
+        [(Some(other.to_owned()), Some(vec!["look".to_owned()]))]
     );
 }
 

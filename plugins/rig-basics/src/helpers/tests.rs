@@ -9,14 +9,15 @@ use serde_json::json;
 
 use super::*;
 use crate::budget::Limit;
-use crate::telemetry::usage::AgentUsage;
+use crate::telemetry::usage::{AgentUsage, UnknownSpend};
 
 /// A stand-in for `rig -p --json`: it notes its arguments, how many run
 /// at once and the budget it was left in the directory it is given, and
 /// answers its task (the last argument) by what the task says. A `spend`
 /// task reports a call of 15 tokens, waits for `go` in the directory, then
 /// reports another, and its `exit` line's usage, which nothing records,
-/// says something else.
+/// says something else; an `incomplete` one says its spend is not all
+/// known, as one whose own helper's was not does.
 const CHILD: &str = r#"d=$1; shift
 for a; do task=$a; done
 mkdir -p "$d/run"; echo "$@" >> "$d/args"
@@ -24,17 +25,18 @@ echo "${RIG_BUDGET_USD-none} ${RIG_BUDGET_TOKENS-none}" >> "$d/budget"
 touch "$d/run/$$"; ls "$d/run" | wc -l >> "$d/counts"
 usage='{"v":3,"type":"usage","model":"test/model","purpose":"turn","usage":{"input_tokens":10,"output_tokens":5}}'
 case "$task" in
-  fail*) echo '{"v":3,"type":"exit","code":1,"error":"it broke"}'; rm "$d/run/$$"; exit 1;;
+  fail*) echo '{"v":3,"type":"exit","code":1,"error":"it broke","usage_complete":true}'; rm "$d/run/$$"; exit 1;;
   crash*) echo boom >&2; rm "$d/run/$$"; exit 3;;
   slow*) sleep 30;;
   wait*) sleep 0.3;;
   old*) echo '{"v":2,"type":"exit","code":0,"answer":"old"}'; rm "$d/run/$$"; exit 0;;
   partial*) echo "$usage"; rm "$d/run/$$"; exit 3;;
   spend*) echo "$usage"; while [ ! -e "$d/go" ]; do sleep 0.05; done; echo "$usage";
-    echo '{"v":3,"type":"exit","code":0,"answer":"spent","usage":{"calls":99}}'; rm "$d/run/$$"; exit 0;;
+    echo '{"v":3,"type":"exit","code":0,"answer":"spent","usage":{"calls":99},"usage_complete":true}'; rm "$d/run/$$"; exit 0;;
+  incomplete*) echo "$usage"; echo '{"v":3,"type":"exit","code":0,"answer":"some","usage_complete":false}'; rm "$d/run/$$"; exit 0;;
 esac
 rm "$d/run/$$"
-printf '{"v":3,"type":"exit","code":0,"answer":"did: %s"}\n' "$task"
+printf '{"v":3,"type":"exit","code":0,"answer":"did: %s","usage_complete":true}\n' "$task"
 "#;
 
 /// An app whose agent's model calls `helper` with each of `args` in turn,
@@ -265,6 +267,7 @@ fn a_helper_off_this_version_or_cut_short_has_its_spend_unknown() {
             json!({ "task": "old" }),
             json!({ "task": "crash" }),
             json!({ "task": "partial" }),
+            json!({ "task": "incomplete" }),
         ],
     );
     let old = output(&mut app, &wakes, 0);
@@ -276,7 +279,14 @@ fn a_helper_off_this_version_or_cut_short_has_its_spend_unknown() {
         partial.ends_with("[helper at least 15 tokens, the rest unknown]"),
         "{partial}"
     );
-    assert_eq!(helpers_spent(app.world()), (1, 15), "what it did report");
+    let incomplete = output(&mut app, &wakes, 3);
+    assert!(
+        incomplete.ends_with("[helper at least 15 tokens, the rest unknown]"),
+        "{incomplete}"
+    );
+    assert_eq!(helpers_spent(app.world()), (2, 30), "what they did report");
+    let unknown = app.world().resource::<UnknownSpend>().0;
+    assert_eq!(unknown, 4, "each counts as not all known");
 }
 
 #[test]

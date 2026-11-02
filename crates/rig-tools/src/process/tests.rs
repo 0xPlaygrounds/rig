@@ -327,14 +327,16 @@ fn a_stopped_scope_stops_its_processes_and_starts_no_more() {
 
 /// A stopped scope gives a process started with a longer grace that long
 /// to end before it kills it, as a `rig` child needs to stop its own.
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn a_stop_gives_a_process_its_grace() {
     let scope = super::Scope::default();
     let done = std::env::temp_dir().join(format!("rig-grace-{}", std::process::id()));
     std::fs::remove_file(&done).ok();
-    // It takes a moment longer than the usual grace to end once asked.
-    let script = "trap 'sleep 3; touch \"$0\"; exit 0' TERM; while :; do sleep 0.1; done";
+    // It takes a moment longer than the usual grace to end once asked, and
+    // says when it listens.
+    let script = "trap 'sleep 3; touch \"$0\"; exit 0' TERM; touch \"$0.ready\"; \
+                  while :; do sleep 0.1; done";
     let how = Spawn {
         grace: Some(super::STOP_GRACE * 4),
         ..Spawn::default()
@@ -344,7 +346,8 @@ fn a_stop_gives_a_process_its_grace() {
     let Ok(mut process) = started else {
         return assert!(started.is_ok());
     };
-    std::thread::sleep(Duration::from_millis(200));
+    let ready = done.with_extension("ready");
+    assert!(within(Duration::from_secs(5), || ready.exists()));
     let waiting = std::thread::spawn(move || process.run(None, |_| true));
     scope.stop();
     assert!(
@@ -353,6 +356,7 @@ fn a_stop_gives_a_process_its_grace() {
     );
     assert!(waiting.join().is_ok_and(|ended| ended.is_ok()));
     std::fs::remove_file(&done).ok();
+    std::fs::remove_file(&ready).ok();
 }
 
 /// Once the sink stops taking output, it gets no more, also from output

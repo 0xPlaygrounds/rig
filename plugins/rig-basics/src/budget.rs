@@ -6,16 +6,23 @@
 //!
 //! What counts is [`SessionUsage`]: every model call of every agent, those
 //! of agents since despawned and those a `helper` child reported included,
-//! priced as rig-core prices them, so `usd` is a lower bound of the bill,
-//! and `tokens` counts the input and output tokens providers reported.
-//! The status line shows it, red past 80%. Once the budget is reached, every model call about to start is refused, and every
-//! running turn is stopped, which stops its `helper` children and theirs,
-//! each with the reason. A call already sent finishes, so a tree can pass
-//! the budget by the calls it had in flight.
+//! priced as rig-core prices them, so `usd` is a lower bound of the bill
+//! and leaves out calls with no price, such as a subscription model's,
+//! which `/budget` and the status line (`$0.04+`) point out; `tokens`
+//! counts the input and output tokens providers reported, priced or not.
+//! The status line shows it, red past 80%. Once the budget is reached,
+//! every model call about to start is refused, and every running turn is
+//! stopped, with an error notice of the reason, which fails a `-p` run; a
+//! stopped turn's `helper` call stops its children, and they theirs. A call
+//! already sent finishes, so a tree can pass the budget by the calls it had
+//! in flight.
 //!
-//! A `helper` child gets what is left in [`USD_VARIABLE`] and
-//! [`TOKENS_VARIABLE`], and a run that has them never spends more, whatever
-//! its own budget: so a child whose parent is gone stops too.
+//! A `helper` child gets what was left when its call started in
+//! [`USD_VARIABLE`] and [`TOKENS_VARIABLE`], and a run with this plugin
+//! that has them never spends more, whatever its own budget: so a child
+//! whose parent is gone stops too. What a child starts inherits the
+//! variables as the child got them. An amount that is not a number allows
+//! nothing.
 
 use bevy_log::warn;
 use rig_core::completion::{UsageTotals, tokens_label};
@@ -54,11 +61,12 @@ impl Plugin for BudgetPlugin {
         }
         app.add_setting::<Limit>("budget");
         let limit = app.world().get_resource::<Limit>().copied();
-        let handed = Limit {
-            usd: variable(USD_VARIABLE),
-            tokens: variable(TOKENS_VARIABLE),
-        };
-        app.insert_resource(Budget(limit.unwrap_or_default()))
+        let limit = limit.unwrap_or_default().checked("[budget] usd");
+        let handed = handed_down(
+            std::env::var(USD_VARIABLE).ok(),
+            std::env::var(TOKENS_VARIABLE).ok(),
+        );
+        app.insert_resource(Budget(limit))
             .insert_resource(HandedDown(handed))
             .add_command(
                 "budget",
@@ -124,6 +132,22 @@ impl Limit {
         usd || tokens
     }
 
+    /// It with a `usd` from `source` that is not a number, or is below
+    /// zero, made zero, which allows nothing, and logged: a comparison
+    /// with one that is not a number would never reach it.
+    fn checked(self, source: &str) -> Self {
+        match self.usd {
+            Some(usd) if !(usd.is_finite() && usd >= 0.0) => {
+                warn!("{source} = {usd} is not an amount: the session may spend nothing");
+                Self {
+                    usd: Some(0.0),
+                    ..self
+                }
+            }
+            _ => self,
+        }
+    }
+
     /// What is left of it after `spent`, never below zero.
     fn left(&self, spent: &UsageTotals) -> Self {
         Self {
@@ -155,7 +179,7 @@ pub struct Budget(pub Limit);
 /// budget ([`USD_VARIABLE`], [`TOKENS_VARIABLE`]): this run never spends
 /// more. Not saved.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
-pub struct HandedDown(pub Limit);
+pub(crate) struct HandedDown(pub(crate) Limit);
 
 /// The variables a `helper` child is started with: what is left of the
 /// session's budget and of the one handed down, after what the session
@@ -176,18 +200,24 @@ pub(crate) fn hand_down(
     usd.into_iter().chain(tokens).collect()
 }
 
-/// The amount in the variable `name`; none when it is unset. One that does
-/// not read as an amount is logged and allows nothing, so a garbled
+/// What the rig that started this one left it, from the values of
+/// [`USD_VARIABLE`] and [`TOKENS_VARIABLE`]: none of an unset one, and
+/// nothing of one that is not an amount, which is logged, so a garbled
 /// handed-down budget never lifts it.
-fn variable<T: std::str::FromStr + Default>(name: &str) -> Option<T> {
-    let value = std::env::var(name).ok()?;
-    match value.trim().parse() {
-        Ok(amount) => Some(amount),
-        Err(_) => {
+fn handed_down(usd: Option<String>, tokens: Option<String>) -> Limit {
+    fn amount<T: std::str::FromStr + Default>(name: &str, value: Option<String>) -> Option<T> {
+        let value = value?;
+        let parsed = value.trim().parse().ok();
+        if parsed.is_none() {
             warn!("{name}={value} is not an amount: this run may spend nothing");
-            Some(T::default())
         }
+        Some(parsed.unwrap_or_default())
     }
+    let handed = Limit {
+        usd: amount(USD_VARIABLE, usd),
+        tokens: amount(TOKENS_VARIABLE, tokens),
+    };
+    handed.checked(USD_VARIABLE)
 }
 
 /// Why the session may spend no more: its budget's or the handed-down
@@ -235,7 +265,7 @@ fn stop_when_reached(
     (busy, below): (Query<(), With<ActiveTurn>>, Query<&Spawned>),
     (budget, handed): (Res<Budget>, Res<HandedDown>),
     spending: Res<SessionUsage>,
-    mut commands: Commands,
+    (mut commands, mut notices): (Commands, MessageWriter<Notice>),
 ) {
     let Some(why) = reached(&budget, &handed, &spending.0.total) else {
         return;
@@ -244,6 +274,7 @@ fn stop_when_reached(
         let mut tree = std::iter::once(root).chain(below.iter_descendants(root));
         if tree.any(|agent| busy.contains(agent)) {
             commands.trigger(StopTurn::plugin(root, ORIGIN, &why));
+            notices.write(Notice::error(root, why.clone()));
         }
     }
 }
@@ -267,12 +298,10 @@ fn budget(
                 ..budget.0
             })
         }
-        [amount, "tokens"] => {
-            (amount.parse().ok().filter(|tokens| *tokens > 0)).map(|tokens| Limit {
-                tokens: Some(tokens),
-                ..budget.0
-            })
-        }
+        [amount, "tokens"] => (tokens(amount).filter(|tokens| *tokens > 0)).map(|tokens| Limit {
+            tokens: Some(tokens),
+            ..budget.0
+        }),
         _ => None,
     };
     let Some(limit) = set else {
@@ -293,7 +322,26 @@ fn budget(
             " The rig that started this one left it at most {used}."
         ));
     }
+    if limit.lower(handed.0).usd.is_some() && spent.unpriced > 0 {
+        text.push_str(&format!(
+            " {} of {} calls had no price, such as a subscription model's, and are not in \
+             the dollars: /budget 500000 tokens counts them.",
+            spent.unpriced, spent.calls
+        ));
+    }
     notices.write(Notice::info(args.agent, text));
+}
+
+/// A token count as `/budget` takes it: `500000`, `500k` or `2M`.
+fn tokens(amount: &str) -> Option<u64> {
+    let (digits, times) = match amount.strip_suffix(['k', 'K']) {
+        Some(digits) => (digits, 1_000),
+        None => match amount.strip_suffix('M') {
+            Some(digits) => (digits, 1_000_000),
+            None => (amount, 1),
+        },
+    };
+    digits.parse::<u64>().ok()?.checked_mul(times)
 }
 
 /// Where the budget is in the status line: after the meter's cost.
@@ -301,7 +349,8 @@ fn budget(
 const ITEM: rig_tui::StatusItem = rig_tui::StatusItem::new("budget", rig_tui::Side::Right, 35, 6);
 
 /// The session's spending against its budget in the status line,
-/// `$0.04/$0.05` or `120k/200k tokens`, red past 80%; nothing without one.
+/// `$0.04/$0.05` (`$0.04+/$0.05` when some calls had no price) or
+/// `120k/200k tokens`, red past 80%; nothing without one.
 #[cfg(feature = "tui")]
 fn show(
     (budget, handed): (Res<Budget>, Res<HandedDown>),
@@ -310,7 +359,8 @@ fn show(
 ) {
     let spent = &spending.0.total;
     let limit = budget.0.lower(handed.0);
-    let usd = limit.usd.map(|usd| format!("${:.2}/${usd:.2}", spent.cost));
+    let more = if spent.unpriced > 0 { "+" } else { "" };
+    let usd = (limit.usd).map(|usd| format!("${:.2}{more}/${usd:.2}", spent.cost));
     let tokens = limit.tokens.map(|tokens| {
         let used = tokens_label(spent.total_tokens());
         format!("{used}/{} tokens", tokens_label(tokens))

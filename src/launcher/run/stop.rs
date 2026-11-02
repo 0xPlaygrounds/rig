@@ -8,12 +8,9 @@
 
 use std::process::Child;
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use rig_harness_protocol::STOP_WAIT;
-
-/// How long the launcher's own closing output may take after a signal.
-const CLOSE_WAIT: Duration = Duration::from_secs(1);
+use rig_harness_protocol::{CLOSE_WAIT, STOP_WAIT};
 
 /// Runs `close`, the launcher's closing output after a signal, for at most
 /// [`CLOSE_WAIT`]: a terminal or pipe whose reader stopped would otherwise

@@ -29,13 +29,17 @@ pub const SIGNAL_EXIT_CODE: u8 = 130;
 /// answer and end.
 pub const STOP_WAIT: Duration = Duration::from_secs(15);
 
+/// How long the launcher's own closing output may take after a signal: a
+/// terminal or pipe whose reader stopped would otherwise hold it.
+pub const CLOSE_WAIT: Duration = Duration::from_secs(1);
+
 /// How long a launcher takes at most to end once told to (`SIGTERM`):
 /// [`STOP_WAIT`] for its agent, [`RunDir::STOP_GRACE`] for the process
-/// groups its agent left, and a second for its closing output. What starts
-/// a `rig` gives it this long before it kills it, so the `rig` stops its own
-/// children in turn.
+/// groups its agent left, and [`CLOSE_WAIT`] for its closing output. What
+/// starts a `rig` gives it this long before it kills it, so the `rig` stops
+/// its own children in turn.
 pub const STOP_WINDOW: Duration =
-    Duration::from_secs(STOP_WAIT.as_secs() + RunDir::STOP_GRACE.as_secs() + 1);
+    Duration::from_secs(STOP_WAIT.as_secs() + RunDir::STOP_GRACE.as_secs() + CLOSE_WAIT.as_secs());
 
 /// The version of rig: of the workspace, the launcher and the harness they
 /// build together. It stamps generated projects, so a new launcher

@@ -100,7 +100,10 @@ fn describe_defaults(world: &mut World) {
         return;
     };
     let model = model.map(|model| {
-        format!("A catalog model as vendor/model for the subagent. {model} when absent ([subagents] model).")
+        format!(
+            "A catalog model as vendor/model for the subagent. {model} when absent \
+             ([subagents] model)."
+        )
     });
     let tools = tools.map(|tools| {
         format!(

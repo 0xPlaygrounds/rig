@@ -672,9 +672,9 @@ impl Process {
     /// running that still holds its output gets a moment (100 ms) to
     /// finish, then the rest of its group is killed, as it is when `sink`
     /// stops taking output then (which ends the wait as [`Ended::Stopped`]); past the deadline or
-    /// stopped while it runs, the group is [stopped](Self::stop) with
-    /// its grace ([`Spawn::grace`]). Output that came before a kill is still read, and
-    /// the pipes for that moment after it: a process that left the group
+    /// stopped while it runs, the group is [stopped](Self::stop) with its
+    /// grace ([`Spawn::grace`]). Output that came before a kill is still
+    /// read, and the pipes for that moment after it: a process that left the group
     /// survives the kill and may hold them for good. Something a command left running with its output
     /// elsewhere, in its group, lives on until it ends or rig exits.
     pub fn run(
@@ -997,7 +997,7 @@ struct Ledger {
     /// Groups asked to stop and killed after their grace if they still
     /// run ([`stop_groups`]).
     stopping: BTreeSet<u32>,
-    /// The listed groups whose grace is not [`STOP_GRACE`] ([`Spawn::grace`]).
+    /// The grace of each listed group ([`Spawn::grace`]).
     graces: BTreeMap<u32, Duration>,
     sweeping: bool,
 }
@@ -1115,9 +1115,7 @@ fn ledger_path() -> Option<PathBuf> {
 /// gives it.
 fn list(id: u32, grace: Duration) {
     let mut ledger = ledger();
-    if grace != STOP_GRACE {
-        ledger.graces.insert(id, grace);
-    }
+    ledger.graces.insert(id, grace);
     if ledger.listed.insert(id) {
         ledger.write();
     }

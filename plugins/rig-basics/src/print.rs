@@ -58,7 +58,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::models::FirstPick;
-use crate::telemetry::usage::{SessionUsage, Spent, TurnUsage};
+use crate::telemetry::usage::{SessionUsage, Spent, TurnUsage, UnknownSpend};
 
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";
@@ -1428,7 +1428,11 @@ fn note_cut_off(
 fn json_exit(
     reason: Option<Res<ExitReason>>,
     primary: MainAgentQuery,
-    (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
+    (paths, usage, unknown): (
+        Option<Res<SessionPaths>>,
+        Option<Res<SessionUsage>>,
+        Option<Res<UnknownSpend>>,
+    ),
     mut out: Out,
 ) {
     let reason = reason.as_deref();
@@ -1464,6 +1468,7 @@ fn json_exit(
         "error": error,
         "session": session_id(paths),
         "usage": usage.map(|usage| usage.0.total),
+        "usage_complete": unknown.is_none_or(|unknown| unknown.0 == 0),
     });
     out.emit(agent, "exit", fields);
     // Nothing after it.

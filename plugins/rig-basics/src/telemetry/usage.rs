@@ -43,6 +43,7 @@ impl Plugin for UsagePlugin {
         app.register_required_components::<Agent, AgentUsage>()
             .register_required_components::<TurnOf, TurnUsage>()
             .init_resource::<SessionUsage>()
+            .init_resource::<UnknownSpend>()
             .add_command(
                 "usage",
                 "Show the tokens, cost and context this agent, its subagents and the session used",
@@ -130,6 +131,14 @@ pub struct Spent {
     /// What it used.
     pub usage: Usage,
 }
+
+/// How many reports of spend made elsewhere left some of it unknown, such
+/// as a `helper` child's that died before it reported all of it, or whose
+/// own helpers' was not all known: [`SessionUsage`] is then a lower bound.
+/// Saved with the session.
+#[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
+pub struct UnknownSpend(pub u64);
 
 /// What the running turn's model calls used so far, on the turn entity.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -333,7 +342,7 @@ fn usage(
     turns: Query<&TurnUsage>,
     everyone: Query<(&Name, &AgentUsage), With<Agent>>,
     families: Query<&Spawned>,
-    session: Res<SessionUsage>,
+    (session, unknown): (Res<SessionUsage>, Res<UnknownSpend>),
     rows: Query<&UsageRow>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -424,6 +433,15 @@ fn usage(
              estimates, not subscription charges or verified invoices."
                 .to_owned(),
         );
+    }
+    match unknown.0 {
+        0 => {}
+        1 => lines.push(
+            "One helper's spend is not all known: these are at least what was spent.".to_owned(),
+        ),
+        n => lines.push(format!(
+            "{n} helpers' spend is not all known: these are at least what was spent."
+        )),
     }
     if total.unpriced > 0 {
         lines.push(format!(

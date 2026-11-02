@@ -48,7 +48,8 @@ so each can be turned off alone.
 - `helpers`: the `helper` tool, which runs `rig -p --json` children
   (`HelpersPlugin`), whose spend is the caller's as they report it;
 - `budget`: `[budget]` and `/budget`, which bound what the session spends,
-  helpers included (`BudgetPlugin`);
+  helpers included, in dollars (priced calls only) or tokens
+  (`BudgetPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
 In TUI, print and JSON runs, `--tools=read,write` limits that run to those
