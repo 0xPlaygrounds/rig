@@ -90,6 +90,7 @@ fn test_model_serde() {
         owned_by: Some("openai".to_string()),
         context_length: Some(8192),
         max_output_tokens: Some(4096),
+        supported_endpoints: Some(vec!["/responses".to_string()]),
     };
 
     let json = serde_json::to_string(&model).unwrap();
@@ -99,6 +100,10 @@ fn test_model_serde() {
     let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.id, "gpt-4");
     assert_eq!(deserialized.name, Some("GPT-4".to_string()));
+    assert_eq!(
+        deserialized.supported_endpoints,
+        Some(vec!["/responses".to_string()])
+    );
 }
 
 #[test]

@@ -15,6 +15,7 @@
 //! ```
 
 use crate::completion::CompletionRequest;
+use crate::model::ModelInfo;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, Quirks, ResponsesQuirks, Route,
@@ -96,9 +97,42 @@ fn completion_envelope(
     builder
 }
 
-/// Return whether `model` contains `codex`, case-insensitively, selecting `/responses`.
+/// Choose the API route Copilot advertises for `model`.
+///
+/// Responses is preferred when listed. Return `None` when the catalogue
+/// advertises no OpenAI-compatible completion endpoint.
+pub fn route_for_model_info(model: &ModelInfo) -> Option<Route> {
+    match model.supported_endpoints.as_deref() {
+        Some(endpoints) => route_from_supported_endpoints(endpoints),
+        None => Some(if routes_through_responses(&model.id) {
+            Route::Responses
+        } else {
+            Route::Chat
+        }),
+    }
+}
+
+/// Resolve Copilot's advertised endpoint paths to a Rig completion route.
+pub fn route_from_supported_endpoints(endpoints: &[String]) -> Option<Route> {
+    if endpoints
+        .iter()
+        .any(|endpoint| endpoint.starts_with('/') && endpoint.ends_with("/responses"))
+    {
+        Some(Route::Responses)
+    } else if endpoints
+        .iter()
+        .any(|endpoint| endpoint.starts_with('/') && endpoint.ends_with("/chat/completions"))
+    {
+        Some(Route::Chat)
+    } else {
+        None
+    }
+}
+
+/// Return whether `model` implies the Responses API when endpoint metadata is absent.
 pub fn routes_through_responses(model: &str) -> bool {
-    model.to_ascii_lowercase().contains("codex")
+    let model = model.to_ascii_lowercase();
+    model.contains("codex") || model.starts_with("gpt-6.1-")
 }
 
 /// Stamp Copilot's request envelope onto a built request.

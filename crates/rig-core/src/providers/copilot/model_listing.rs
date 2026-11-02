@@ -46,8 +46,7 @@ impl Models {
     }
 }
 
-/// The catalogue's `data`, each entry naming its id, its name, its vendor
-/// and its modality under `capabilities.type`.
+/// The catalogue's `data`, including model identity, modality and supported endpoints.
 fn page(event: Value) -> Result<ModelPage, ProviderError> {
     let text =
         |entry: &Value, pointer: &str| entry.at(pointer).and_then(Value::as_str).map(str::to_owned);
@@ -59,6 +58,16 @@ fn page(event: Value) -> Result<ModelPage, ProviderError> {
             model.name = text(entry, "/name");
             model.owned_by = text(entry, "/vendor");
             model.r#type = text(entry, "/capabilities/type");
+            model.supported_endpoints = entry
+                .at("/supported_endpoints")
+                .and_then(Value::as_array)
+                .map(|endpoints| {
+                    endpoints
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect()
+                });
             Some(model)
         })
         .collect();
