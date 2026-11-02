@@ -48,7 +48,8 @@ pub struct Shell {
     /// command ends.
     pub live: Option<Live>,
     /// What each line of output goes through before it is reported,
-    /// spilled or kept.
+    /// spilled or kept. A plugin that builds its own shell for a call carries
+    /// over the call's (`CallPlace::filter`), such as a redaction plugin's.
     pub filter: Option<LineFilter>,
     /// Where output that is cut is kept whole, named in the cut output.
     pub spill: Option<Spill>,

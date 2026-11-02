@@ -104,6 +104,15 @@ fn json_redacts_every_string_and_a_cut_off_key_to_the_end() {
     });
     assert!(json(&mut value));
     assert!(!json(&mut json!({ "a": ["b"] })));
+    // A provider's raw arguments, JSON in a string: the escape before the
+    // key does not hide it.
+    let raw = r#"{"content":"\nghp_abcdefghijklmnopqrstuvwxyz0123456789"}"#;
+    let mut native = json!({ "arguments": raw });
+    assert!(json(&mut native));
+    assert_eq!(
+        native,
+        json!({ "arguments": r#"{"content":"\n[REDACTED]"}"# })
+    );
     assert_eq!(
         value,
         json!({

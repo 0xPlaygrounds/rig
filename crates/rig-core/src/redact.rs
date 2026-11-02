@@ -286,10 +286,22 @@ fn settled(input: &str) -> usize {
     through.map_or(cut, |whole| whole.end)
 }
 
-/// Every string in `value` redacted as [`text`] redacts it; whether any
+/// Every string in `value` redacted as [`text`] redacts it, and one that
+/// holds JSON, such as a provider's raw tool-call arguments, as that JSON:
+/// an escape such as `\n` would hide where a secret starts. Whether any
 /// was. Object keys are left as they are.
 pub fn json(value: &mut Value) -> bool {
     match value {
+        Value::String(string)
+            if string.starts_with(['{', '['])
+                && let Ok(mut inner) = serde_json::from_str::<Value>(string) =>
+        {
+            let changed = json(&mut inner);
+            if changed {
+                *string = inner.to_string();
+            }
+            changed
+        }
         Value::String(string) => match text(string) {
             Cow::Owned(redacted) => {
                 *string = redacted;

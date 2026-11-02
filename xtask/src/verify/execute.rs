@@ -175,10 +175,18 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
                 let Ok(text) = fs::read_to_string(root.join(&path)) else {
                     continue;
                 };
+                // Inside a `rig_core::{ … }` list, which rustfmt may spread
+                // over lines.
+                let mut in_core = false;
                 for (number, line) in text.lines().enumerate() {
                     let code = line.split("//").next().unwrap_or_default();
-                    let braced = code.contains("rig_core::{")
-                        && paths(code, "redact").any(|after| after.starts_with([',', '}', ' ']));
+                    in_core |= code.contains("rig_core::{");
+                    let braced = in_core
+                        && paths(code, "redact")
+                            .any(|after| after.starts_with([',', '}', ' ']) || after.is_empty());
+                    if code.contains('}') {
+                        in_core = false;
+                    }
                     if paths(code, "redact::").next().is_some()
                         || code.contains("rig_core::redact")
                         || braced

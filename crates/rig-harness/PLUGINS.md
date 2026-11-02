@@ -1404,7 +1404,8 @@ as it is given. `rig_basics::redact::RedactPlugin`, on by default, redacts
 every record this way. A plugin changes records before they are written
 (`MessageMutator<EffectRecorded>`, below) and
 [rewrites](#rewriting-saved-history-a-redaction) those written once the
-session stopped. rig-core's `redact` finds keys and tokens by their shapes
+session stopped. A plugin that saves text of its own, such as a command's
+argument, saves it as it gives it. rig-core's `redact` finds keys and tokens by their shapes
 (`json`, `text`).
 
 **Replaying.** A replayer answers effects from a recorded log before
@@ -1600,9 +1601,10 @@ Records are only appended. A session no rig runs is rewritten in place with
 `rewrite_stopped(&stores, &paths, &dir, by, &with)`, under its lock: every
 saved record keeps its place and stamp, and the store's files, the scratch
 files and the name are mapped too. The running session is refused; with
-`rig_basics::redact::RedactPlugin`, keys never reach its logs. `with` is a `Rewrite`: `Strings`
-maps every string (a redaction, a path remap), `rig_memory::Messages` only
-messages, or its own hooks per message, aside, saved value, text and file. A
+`rig_basics::redact::RedactPlugin`, keys never reach its logs. `with` is a
+`Rewrite`: `Strings` maps every string (a redaction, a path remap),
+`rig_memory::Messages` only messages, or its own hooks per message, aside,
+saved value, text and file. A
 program without an app calls `rig_memory::rewrite(&store, by, &with)` on a
 session not `runs_elsewhere()`.
 

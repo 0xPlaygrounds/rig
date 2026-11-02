@@ -238,7 +238,8 @@ fn a_reply_streams_redacted_however_its_parts_interleave() {
 
 /// An answer, the one a stop would give, the facts a call published and a
 /// line a view hands back are redacted as they come; a changed file's old
-/// text is not.
+/// text, and a plugin's own answer, such as a typed answer to its question,
+/// are not.
 #[test]
 fn whatever_comes_in_is_redacted_as_it_comes() {
     let mut world = World::new();
@@ -275,6 +276,14 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
     ]);
     let mut context = ToolContext::new();
     assert!(context.insert_result(changes).is_ok());
+    let asked = Outcome(Ok(Answered::Custom {
+        payload: json!({ "text": key }),
+    }));
+    let asked = world.spawn(asked).id();
+    let answer = world
+        .get::<Outcome>(asked)
+        .map(|outcome| format!("{:?}", outcome.0));
+    assert!(answer.is_some_and(|answer| answer.contains(key)));
     let entities = [
         world.spawn(failed).id(),
         world.spawn(IfStopped(Outcome::from(printed))).id(),
@@ -361,6 +370,15 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
     message.parts.push(MessagePart::Attachment(Attachment {
         label: "secret.txt".to_owned(),
         content: UserContent::text(format!("PASSWORD={key}")),
+    }));
+    let document = message::Document {
+        data: message::DocumentData::Text(format!("token {key}")),
+        media_type: None,
+        additional_params: None,
+    };
+    message.parts.push(MessagePart::Attachment(Attachment {
+        label: "notes.md".to_owned(),
+        content: UserContent::Document(document),
     }));
     let sent = world.spawn((message, Decision::default())).id();
     let mut taken = Decision::default();

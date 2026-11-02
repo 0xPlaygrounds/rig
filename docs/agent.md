@@ -106,7 +106,8 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab (while a turn runs, Tab queues it). Text you drop
 without sending (Ctrl+C, sending an earlier prompt in its place) goes into
-the history, so Up brings it back. Ctrl+P and Ctrl+N move
+the history, so Up brings it back; with redaction on (below), a prompt
+holding a secret is left out of the history. Ctrl+P and Ctrl+N move
 the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
@@ -153,9 +154,9 @@ in its own way, always whole: every call's arguments and result, every diff
 and every note, nothing cut or folded. A diff is drawn from what the session
 keeps of it, so a secret in it shows as `[REDACTED]` (see below), and an
 edit whose diff holds a private key block or passes 256 KiB shows its reply
-instead. A call's
-row is tinted by where it stands (waiting, running, done, failed). Code is
-highlighted in the terminal's own palette, so it follows the terminal's theme.
+instead. A call's row is tinted by where it stands (waiting, running, done,
+failed). Code is highlighted in the terminal's own palette, so it follows the
+terminal's theme.
 PageUp, PageDown and Shift+Up/Down scroll the transcript. With `NO_COLOR` set,
 nothing is drawn in color. A plugin draws its tools' calls with ordinary systems in
 `rig_tui::TranscriptRender`, selecting inputs through
@@ -177,10 +178,14 @@ API keys, tokens, private keys and the values of secret-named variables
 (`GITHUB_TOKEN=…`) become `[REDACTED]` where they come in: in the model's
 reply as it streams, in each tool's output and result, and in your messages
 and the files they name. So the session's logs, the terminal view, `--json`,
-ACP, subagents and a resumed session never hold them, and the model sees
-`[REDACTED]` too. The `rig_basics::redact::RedactPlugin` entry of
-`plugins.toml` does this, on by default; `rig plugin disable
-rig_basics::redact::RedactPlugin` turns it off, and then nothing is redacted.
+ACP, subagents and a resumed session never hold them. The model sees
+`[REDACTED]` too, and a tool call runs with the arguments the session keeps,
+so a key-shaped text the model writes into a file is written `[REDACTED]`.
+The `rig_basics::redact::RedactPlugin` entry of `plugins.toml` does this, on
+in a new `RIG_HOME`; an older home adds it with `rig plugin enable
+rig_basics::redact::RedactPlugin`. `rig plugin disable
+rig_basics::redact::RedactPlugin` turns it off, and then nothing is
+redacted; what a session saved while it was off stays as it was.
 
 The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages (each tool result
