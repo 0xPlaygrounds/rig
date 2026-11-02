@@ -36,8 +36,8 @@ pub const CLOSE_WAIT: Duration = Duration::from_secs(1);
 /// How long a launcher takes at most to end once told to (`SIGTERM`):
 /// [`STOP_WAIT`] for its agent, [`RunDir::STOP_GRACE`] for the process
 /// groups its agent left, and [`CLOSE_WAIT`] for its closing output. What
-/// starts a `rig` gives it this long before it kills it, so the `rig` stops
-/// its own children in turn.
+/// stops a `rig` it started while it goes on running gives it this long
+/// before it kills it, so the `rig` stops its own children in turn.
 pub const STOP_WINDOW: Duration =
     Duration::from_secs(STOP_WAIT.as_secs() + RunDir::STOP_GRACE.as_secs() + CLOSE_WAIT.as_secs());
 

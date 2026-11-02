@@ -11,9 +11,10 @@
 //! built from a plugin list changed since the parent started may lack one:
 //! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
 //! stdin. Past its timeout or dead, it fails its task; stopping the turn
-//! stops every child, so none outlives the call: on unix each gets the
-//! time a launcher takes to end ([`STOP_WINDOW`]) before it is killed, so
-//! its own helpers are stopped in turn.
+//! stops every child, so none outlives the call: on unix, while the run
+//! goes on, each gets the time a launcher takes to end ([`STOP_WINDOW`])
+//! before it is killed, so its own helpers are stopped in turn; as the run
+//! exits, the usual grace.
 //!
 //! What a child spends is the calling agent's, as purpose `helper`: each
 //! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
@@ -129,9 +130,11 @@ struct Reported {
     unsettled: Arc<AtomicU64>,
 }
 
-/// A child's report: a call's spend, or that some of its spend is unknown.
+/// A child's report: a call's spend, or that it ended with all of its
+/// spend known, or some of it unknown.
 enum Heard {
     Spent(Spent),
+    Known,
     Unknown,
 }
 
@@ -167,12 +170,14 @@ fn record_at_exit(
     unknown.0 += reported.unsettled.swap(0, Ordering::SeqCst);
 }
 
-/// Records each report that came: a spend, or a child's unknown spend,
-/// which settles it.
+/// Records each report that came: a spend, or how a child ended, which
+/// settles it; so at the exit a child whose end was not recorded yet,
+/// with the spend it reported before it, is counted as unknown.
 fn drain(reported: &Reported, unknown: &mut UnknownSpend, commands: &mut Commands) {
     while let Ok(heard) = reported.receiver.try_recv() {
         match heard {
             Heard::Spent(spent) => commands.trigger(spent),
+            Heard::Known => settle(&reported.unsettled),
             Heard::Unknown => {
                 unknown.0 += 1;
                 settle(&reported.unsettled);
@@ -394,9 +399,9 @@ impl Reports {
         self.send_heard(Heard::Spent(spent));
     }
 
-    /// Records that some of a child's spend is unknown.
-    fn unknown(&self) {
-        self.send_heard(Heard::Unknown);
+    /// Records that a child ended with all its spend `known`, or not.
+    fn ended(&self, known: bool) {
+        self.send_heard(if known { Heard::Known } else { Heard::Unknown });
     }
 
     fn send_heard(&self, heard: Heard) {
@@ -495,11 +500,9 @@ impl Runner {
             true
         });
         let note = read.note();
-        // An unknown spend stays unsettled until its report is recorded.
-        match read.known() {
-            true => settle(&self.reports.unsettled),
-            false => self.reports.unknown(),
-        }
+        // It stays unsettled until how it ended is recorded, after the
+        // spend it reported.
+        self.reports.ended(read.known());
         let answer = match ended {
             Ok(Ended::Exited(status)) => read.answer(status.code()),
             Ok(Ended::TimedOut) => Err(format!("it timed out after {}s", self.timeout.as_secs())),

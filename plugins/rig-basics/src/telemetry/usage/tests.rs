@@ -174,7 +174,10 @@ fn a_call_counts_below_every_agent_above_it_after_its_agent_is_gone() {
     world.flush();
     let shown = notices(world).join("\n");
     assert!(
-        shown.contains("One helper's spend is not all known: these are at least what was spent."),
+        shown.contains(
+            "One helper's spend in this session is not all known: the totals are at \
+             least what was spent."
+        ),
         "{shown}"
     );
 }

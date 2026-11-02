@@ -131,7 +131,8 @@ use against the model's window. `/usage` breaks them down. With the optional
 `rig_basics::budget::BudgetPlugin` (`rig plugin enable
 rig_basics::budget::BudgetPlugin`), `/budget 2.00` or `/budget 500000 tokens`
 bounds what the session spends, helpers included: at the limit the running
-turns stop and new model calls are refused, naming `/budget`. `[budget] usd`
+turns stop and new model calls are refused, naming `/budget`; a call already
+sent finishes, so it can pass the limit by those. `[budget] usd`
 and `tokens` in `settings.toml` set it for new sessions. Dollars count only
 priced calls: a subscription model's, such as a `chatgpt/*` one, has no
 price, so bound those by tokens.

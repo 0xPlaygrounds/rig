@@ -164,7 +164,7 @@ fn a_child_holds_to_what_its_parent_left_it() {
         usd: None,
         tokens: Some(20),
     };
-    let why = "left it (RIG_BUDGET_USD, RIG_BUDGET_TOKENS)";
+    let why = "all that RIG_BUDGET_USD and RIG_BUDGET_TOKENS allow";
     stops_the_helper_and_refuses_the_next_call("handed-stop", "", left, why);
 }
 
@@ -238,7 +238,7 @@ fn what_was_handed_down_holds_a_run_without_a_budget_of_its_own() {
     assert_eq!(
         command(&mut app, "budget"),
         [
-            "No budget: 0 tokens spent. The rig that started this one left it at most $0.00 of $0.00 and 0 of 0 tokens."
+            "No budget: 0 tokens spent. RIG_BUDGET_USD and RIG_BUDGET_TOKENS allow at most $0.00 of $0.00 and 0 of 0 tokens."
         ]
     );
     if let Some(agent) = first_agent(app.world_mut()) {
@@ -339,8 +339,8 @@ fn lowering_the_budget_below_what_was_spent_stops_the_running_helper() {
         command(&mut app, "budget 25 tokens"),
         [
             "Budget: 30 of 25 tokens spent.",
-            "Budget reached: 30 of 25 tokens spent. Raise it with /budget, or [budget] in \
-             settings.toml for new sessions."
+            "Budget reached: 30 of 25 tokens spent. Raise it with /budget and send again, \
+             or [budget] in settings.toml for new sessions."
         ]
     );
     run_until(&mut app, &wakes, |world| {

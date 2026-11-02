@@ -19,8 +19,9 @@
 //!
 //! A `helper` child gets what was left when its call started in
 //! [`USD_VARIABLE`] and [`TOKENS_VARIABLE`], and a run with this plugin
-//! that has them never spends more, whatever its own budget: so a child
-//! whose parent is gone stops too. What a child starts inherits the
+//! that has them holds its session to them as to a budget, whatever its
+//! own: so a child whose parent is gone stops too. They count the whole
+//! session's spend, its earlier runs' included. What a child starts inherits the
 //! variables as the child got them. An amount that is not a number allows
 //! nothing.
 
@@ -175,9 +176,9 @@ impl Limit {
 #[reflect(Resource, Saved, Default)]
 pub struct Budget(pub Limit);
 
-/// What the run that started this one as a `helper` child left of its
-/// budget ([`USD_VARIABLE`], [`TOKENS_VARIABLE`]): this run never spends
-/// more. Not saved.
+/// What [`USD_VARIABLE`] and [`TOKENS_VARIABLE`] allow, such as what the
+/// run that started this one as a `helper` child left of its budget: held
+/// as a budget is, against the session's spend. Not saved.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct HandedDown(pub(crate) Limit);
 
@@ -200,8 +201,8 @@ pub(crate) fn hand_down(
     usd.into_iter().chain(tokens).collect()
 }
 
-/// What the rig that started this one left it, from the values of
-/// [`USD_VARIABLE`] and [`TOKENS_VARIABLE`]: none of an unset one, and
+/// What [`USD_VARIABLE`] and [`TOKENS_VARIABLE`] allow, from their
+/// values: none of an unset one, and
 /// nothing of one that is not an amount, which is logged, so a garbled
 /// handed-down budget never lifts it.
 fn handed_down(usd: Option<String>, tokens: Option<String>) -> Limit {
@@ -225,14 +226,15 @@ fn handed_down(usd: Option<String>, tokens: Option<String>) -> Limit {
 fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<String> {
     if let Some((used, true)) = budget.0.against(spent) {
         return Some(format!(
-            "Budget reached: {used} spent. Raise it with /budget, or [budget] in settings.toml \
-             for new sessions."
+            "Budget reached: {used} spent. Raise it with /budget and send again, or \
+             [budget] in settings.toml for new sessions."
         ));
     }
     match handed.0.against(spent) {
         Some((used, true)) => Some(format!(
-            "Budget reached: {used} spent, all the rig that started this one left it \
-             ({USD_VARIABLE}, {TOKENS_VARIABLE}): raise that rig's budget and ask again."
+            "Budget reached: {used} spent, all that {USD_VARIABLE} and {TOKENS_VARIABLE} \
+             allow (a helper's parent rig sets them): raise them, or the parent's budget, \
+             and ask again."
         )),
         _ => None,
     }
@@ -319,7 +321,7 @@ fn budget(
     };
     if let Some((used, _)) = handed.0.against(spent) {
         text.push_str(&format!(
-            " The rig that started this one left it at most {used}."
+            " {USD_VARIABLE} and {TOKENS_VARIABLE} allow at most {used}."
         ));
     }
     if limit.lower(handed.0).usd.is_some() && spent.unpriced > 0 {
