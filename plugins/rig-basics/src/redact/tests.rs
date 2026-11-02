@@ -4,6 +4,7 @@ use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::serde_json::json;
 use rig_harness::rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_core::tool::{FileChange, Lines, ToolOutput, ToolResultContext};
+use rig_harness::rig_ecs::tools::ResultFilter;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_on, calls, collect, log_ended, run_until, scripted_models,
 };
@@ -324,12 +325,16 @@ fn whatever_comes_in_is_redacted_as_it_comes() {
     world.write_message(Recalled {
         agent: Entity::PLACEHOLDER,
         text: format!("/missing {key}"),
-        why: Some("no such command".to_owned()),
+        why: Some(format!("No command `/missing {key}`.")),
     });
     assert!(world.run_system_once(redact_recalled).is_ok());
     let mut recalled = world.resource_mut::<Messages<Recalled>>();
-    let texts: Vec<String> = recalled.drain().map(|recalled| recalled.text).collect();
-    assert_eq!(texts, ["/missing [REDACTED]"]);
+    let texts: Vec<_> = recalled
+        .drain()
+        .map(|recalled| (recalled.text, recalled.why))
+        .collect();
+    let refused = Some("No command `/missing [REDACTED]`.".to_owned());
+    assert_eq!(texts, [("/missing [REDACTED]".to_owned(), refused)]);
 }
 
 /// A command's output loses its secrets line by line, a private key block
@@ -406,4 +411,80 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
     );
     assert!(!sent.contains(key), "{sent}");
     assert_eq!(texts(answer), format!("here: {key}"));
+}
+
+/// A command's output is redacted line by line before the tool spills,
+/// shows or keeps it, and a call that never settles is committed through
+/// the plugin's result filter; without the plugin the spilled key shows.
+#[test]
+fn a_spilled_commands_output_holds_no_key() {
+    for redacting in [true, false] {
+        let exe = std::env::current_exe().unwrap_or_default();
+        let dir = exe.with_file_name(format!("redact-spill-{redacting}-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let (mut app, wakes) = app_on(&MemoryStore::default());
+        app.insert_resource(Scratch(Some(dir.clone())))
+            .add_plugins((AgentPlugin, ShellTool));
+        if redacting {
+            app.add_plugins(RedactPlugin);
+        }
+        app.finish();
+        app.update();
+        let world = app.world_mut();
+        let agent = world.spawn(Agent).id();
+        // Its own text holds no key: the model's call would be redacted.
+        let printed =
+            "printf 'GITHUB_TO''KEN=ghp_''abcdefghijklmnopqrstuvwxyz0123456789\\n'; seq 1 3000";
+        let args = json!({ "command": printed });
+        let call = rig_harness_test_support::start_call(world, agent, ("shell", "s1"), args);
+        let answered =
+            |world: &World| call.is_some_and(|call| world.get::<Outcome>(call).is_some());
+        run_until(&mut app, &wakes, answered);
+        let spilled = std::fs::read_to_string(dir.join("spill").join("shell-1.txt"));
+        std::fs::remove_dir_all(&dir).ok();
+        let spilled = spilled.unwrap_or_default();
+        assert!(spilled.contains("TOKEN="), "{spilled:.200}");
+        assert_eq!(spilled.contains("ghp_"), !redacting, "{spilled:.200}");
+        if redacting {
+            let filter = app.world().resource::<ResultFilter>();
+            let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
+            let filtered = (filter.0)(&printed).map(|result| result.output().render());
+            assert_eq!(filtered.as_deref(), Some("GITHUB_TOKEN=[REDACTED]"));
+        }
+    }
+}
+
+/// A key block across a diff's lines takes its hunks, whatever the lines
+/// end with, and an old last line with no ending runs into nothing.
+#[test]
+fn a_key_block_takes_the_hunks_whatever_its_lines_end_with() {
+    for end in ["\n", "\r\n", "\r"] {
+        let block = [
+            "-----BEGIN RSA PRIVATE KEY-----",
+            "MIIEowIBAAKCAQEAabc",
+            "-----END RSA PRIVATE KEY-----",
+        ];
+        let old = HunkLine::Removed("old".to_owned());
+        let added = block.map(|line| HunkLine::Added(format!("{line}{end}")));
+        let mut hunks = vec![Hunk {
+            old: Lines { start: 1, count: 1 },
+            new: Lines { start: 1, count: 3 },
+            lines: [old].into_iter().chain(added).collect(),
+        }];
+        assert!(redact_hunks(&mut hunks));
+        assert!(hunks.is_empty(), "{end:?}");
+    }
+}
+
+/// A prompt the terminal view keeps is kept redacted, for Up and the file.
+#[cfg(feature = "tui")]
+#[test]
+fn a_prompt_kept_for_up_is_kept_redacted() {
+    let mut world = World::new();
+    let mut history = rig_tui::PromptHistory::default();
+    history.entries = vec!["deploy with GITHUB_TOKEN=abcdefgh12345678".to_owned()];
+    world.insert_resource(history);
+    assert!(world.run_system_once(redact_history).is_ok());
+    let entries = &world.resource::<rig_tui::PromptHistory>().entries;
+    assert_eq!(entries, &["deploy with GITHUB_TOKEN=[REDACTED]"]);
 }

@@ -21,6 +21,7 @@ use rig_harness::rig_core::redact::{self, Streamed};
 use rig_harness::rig_core::streaming::{Item, Relayed};
 use rig_harness::rig_core::tool::{ContextValue, FilesChanged, Hunk, HunkLine};
 use rig_harness::rig_ecs::effects::Handler;
+use rig_harness::rig_ecs::tools::ResultFilter;
 use rig_harness::rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_tools::LineFilter;
 use serde::Serialize;
@@ -48,6 +49,7 @@ impl Plugin for RedactPlugin {
                 .in_set(Stage::Review)
                 .after(ReviewSystems::Act),
         )
+        .insert_resource(ResultFilter(Arc::new(redacted)))
         .add_observer(redact_outcome)
         .add_observer(redact_if_stopped)
         .add_observer(redact_facts)
@@ -241,11 +243,14 @@ fn redact_messages(
     }
 }
 
-/// A refused command's line, which the view that hands it back shows.
+/// A refused command's line, and why it was refused, which may quote it.
 fn redact_recalled(mut recalled: MessageMutator<Recalled>) {
     for recalled in recalled.read() {
-        if let Cow::Owned(redacted) = redact::text(&recalled.text) {
-            recalled.text = redacted;
+        let texts = std::iter::once(&mut recalled.text).chain(&mut recalled.why);
+        for text in texts {
+            if let Cow::Owned(redacted) = redact::text(text) {
+                *text = redacted;
+            }
         }
     }
 }
@@ -422,15 +427,12 @@ fn redact_records(mut records: MessageMutator<EffectRecorded>) {
     }
 }
 
-/// A prompt holding a secret is left out of the terminal view's history,
-/// so Up never shows it and it is never saved.
+/// Every prompt the terminal view keeps for Up and saves.
 #[cfg(feature = "tui")]
 fn redact_history(mut history: ResMut<rig_tui::PromptHistory>) {
-    if history
-        .entries
-        .iter()
-        .any(|prompt| redact::has_secret(prompt))
-    {
-        history.entries.retain(|prompt| !redact::has_secret(prompt));
-    }
+    let rewrite = |prompt: &str| match redact::text(prompt) {
+        Cow::Owned(redacted) => Some(redacted),
+        Cow::Borrowed(_) => None,
+    };
+    history.bypass_change_detection().rewrite(rewrite);
 }

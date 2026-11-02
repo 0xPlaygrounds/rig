@@ -72,7 +72,7 @@ use super::stage::{
     Started, SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, InReply, ToolDef, ToolRequest, offered};
+use super::tools::{Footprint, InReply, ResultFilter, ToolDef, ToolRequest, offered};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -597,6 +597,7 @@ pub(crate) struct Stopper<'w, 's> {
     commands: Commands<'w, 's>,
     notices: MessageWriter<'w, Notice>,
     exiting: Option<Res<'w, Exiting>>,
+    filter: Option<Res<'w, ResultFilter>>,
 }
 
 impl Stopper<'_, '_> {
@@ -708,7 +709,8 @@ impl Stopper<'_, '_> {
                 Some((call.entity, answer))
             })
             .collect();
-        if let Some(results) = reply_results(reply, |call| Some(stopped_answer(&why, call))) {
+        let stopped = |call: &ReplyCallItem| Some(stopped_answer(&why, call));
+        if let Some(results) = reply_results(reply, stopped, self.filter.as_deref()) {
             commit_results(&mut conversation, results);
         }
         // The streamed calls are kept never run: an aborted reply owes no
@@ -849,12 +851,13 @@ pub(crate) fn not_finished(why: &str, started: bool, footprint: Option<&Footprin
 
 /// The results of a reply's tool calls, in call order: each answered
 /// call's result, else what it says its result is if stopped
-/// ([`IfStopped`]), else what `missing` gives it, else nothing for it;
-/// with what each call published ([`ReplyCallItem::facts`]).
+/// ([`IfStopped`]), else what `missing` gives it, through `filter`, else
+/// nothing for it; with what each call published ([`ReplyCallItem::facts`]).
 /// `None` when that leaves no result.
 fn reply_results(
     calls: Vec<ReplyCallItem>,
     missing: impl Fn(&ReplyCallItem) -> Option<ToolResult>,
+    filter: Option<&ResultFilter>,
 ) -> Option<Entry> {
     let facts: ResultFacts = calls
         .iter()
@@ -874,7 +877,9 @@ fn reply_results(
                 Some(outcome) => outcome.tool_result(),
                 None => {
                     let stopped = call.if_stopped.map(|stopped| stopped.0.tool_result());
-                    stopped.or_else(|| missing(&call))?
+                    let result = stopped.or_else(|| missing(&call))?;
+                    let filtered = filter.and_then(|filter| (filter.0)(&result));
+                    filtered.unwrap_or(result)
                 }
             };
             Some(call.request.call.answer(&result))
@@ -963,12 +968,14 @@ fn log_answered_results(
     turns: Query<(&TurnOf, &Turn, &Calls)>,
     replies: Query<ReplyCall>,
     mut agents: Query<&mut Conversation>,
+    filter: Option<Res<ResultFilter>>,
 ) {
     for (&TurnOf(agent), state, calls) in &turns {
         let Some(reply) = state.reply else {
             continue;
         };
-        let results = reply_results(reply_calls(reply, calls, &replies), |_| None);
+        let calls = reply_calls(reply, calls, &replies);
+        let results = reply_results(calls, |_| None, filter.as_deref());
         if let Ok(mut conversation) = agents.get_mut(agent)
             && let Some(results) = results
         {
@@ -1820,7 +1827,7 @@ pub(crate) fn commit_replies(
         }
         state.reply = None;
         let unanswered = ToolResult::failed(ToolExecutionError::other("the call had no result"));
-        if let Some(results) = reply_results(calls, |_| Some(unanswered.clone())) {
+        if let Some(results) = reply_results(calls, |_| Some(unanswered.clone()), None) {
             commit_results(&mut conversation, results);
         }
         if ending.and_then(TurnOutcome::stops).is_none() {

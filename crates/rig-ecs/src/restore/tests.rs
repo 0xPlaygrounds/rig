@@ -1047,6 +1047,34 @@ fn a_plugin_answers_a_call_a_crash_interrupted_first() {
     assert!(decided.contains(&("wait".to_owned(), by)), "{decided:?}");
 }
 
+/// Answers each restored `wait` by a decision that holds a key.
+fn answer_with_key(mut calls: Query<(&ToolRequest, &mut Decision), With<Interrupted>>) {
+    for (request, mut decision) in &mut calls {
+        if request.call.function.name.as_str() == "wait" {
+            let answer = rig_core::tool::ToolResult::success("token ghp_secret".into());
+            decision.decide(Decider::plugin("crash-resume"), answer);
+        }
+    }
+}
+
+/// A stop puts a gate's decision it answers a call with, which never became
+/// the call's `Outcome`, in the conversation through the `ResultFilter`.
+#[test]
+fn a_stop_puts_a_decided_answer_through_the_result_filter() {
+    let (_, said, _) = restart_after_crash(|app| {
+        let filter = |result: &rig_core::tool::ToolResult| {
+            let text = result.output().render().replace("ghp_secret", "[hidden]");
+            Some(rig_core::tool::ToolResult::success(text.into()))
+        };
+        app.insert_resource(crate::tools::ResultFilter(Arc::new(filter)))
+            .add_systems(AgentPass, answer_with_key.in_set(Stage::Gate));
+    });
+    assert!(
+        said.contains("token [hidden]") && !said.contains("ghp_secret"),
+        "{said}"
+    );
+}
+
 /// Lets a restored `touch` run again, its turn carried on.
 fn rerun_touches(
     calls: Query<(Entity, &ToolRequest, &CallOf), With<Interrupted>>,

@@ -106,8 +106,8 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab (while a turn runs, Tab queues it). Text you drop
 without sending (Ctrl+C, sending an earlier prompt in its place) goes into
-the history, so Up brings it back; with redaction on (below), a prompt
-holding a secret is left out of the history. Ctrl+P and Ctrl+N move
+the history, so Up brings it back, its secrets redacted while redaction is
+on (below). Ctrl+P and Ctrl+N move
 the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
 (Ctrl+A/E/K/U/W, Alt+B/F/D); Ctrl+C clears the input, and Ctrl+D on an
