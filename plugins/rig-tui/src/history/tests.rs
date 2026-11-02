@@ -103,7 +103,7 @@ fn up_and_down_walk_past_a_recalled_command_and_typing_still_completes() {
 }
 
 /// What the person typed and did not send goes to the history whenever
-/// the input drops it, once, with secrets redacted, and blank text never.
+/// the input drops it, once, as typed, and blank text never.
 #[test]
 fn text_the_input_drops_unsent_goes_to_the_history() {
     let (mut app, _) = view_app();
@@ -114,12 +114,9 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
     edit(&mut app, |input| drop(input.take()));
     assert_eq!(entries(&app), ["draft one", "old"]);
     // Cleared.
-    type_text(&mut app, "key sk-proj-abcdefghijklmnop1234");
+    type_text(&mut app, "cleared");
     press(&mut app, "ctrl+c");
-    assert_eq!(
-        entries(&app).last().map(String::as_str),
-        Some("key [REDACTED]")
-    );
+    assert_eq!(entries(&app).last().map(String::as_str), Some("cleared"));
     // Cleared while a prompt is recalled: the draft behind it.
     type_text(&mut app, "draft cleared");
     press(&mut app, "ctrl+a up ctrl+c");
@@ -157,7 +154,7 @@ fn text_the_input_drops_unsent_goes_to_the_history() {
     let kept = [
         "draft one",
         "old",
-        "key [REDACTED]",
+        "cleared",
         "draft cleared",
         "draft two",
         "draft three",

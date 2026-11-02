@@ -20,9 +20,6 @@ use std::ops::Range;
 
 use serde_json::Value;
 
-use crate::message::ToolResultContent;
-use crate::tool::{ToolOutput, ToolResult};
-
 #[cfg(test)]
 mod tests;
 
@@ -69,7 +66,8 @@ pub enum Kind {
     /// `;` or `&` (the next assignment of a query string); one of at most
     /// 7 characters, all digits, starting with `$` (a reference such as
     /// `$GITHUB_TOKEN`), with characters other than printable ASCII (a
-    /// placeholder such as `‹SECRET_1›`), or [`REDACTED`] is not a secret.
+    /// placeholder such as `‹SECRET_1›`), or one holding [`REDACTED`] is
+    /// not a secret, so redacting text again changes nothing.
     /// Only the value is the secret.
     Assigned,
 }
@@ -125,6 +123,9 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
     // on a char boundary, and the bytes of any other character are skipped.
     let bytes = input.as_bytes();
     let mut at = 0;
+    // Where the last secret ended: what follows it starts a token, as it
+    // does after the secret is redacted, so redacting twice finds nothing new.
+    let mut ended = 0;
     std::iter::from_fn(move || {
         while let Some(&byte) = bytes.get(at) {
             if !is_token_byte(byte) {
@@ -138,14 +139,14 @@ pub fn find(input: &str) -> impl Iterator<Item = SecretMatch> + '_ {
                 .unwrap_or(rest.len());
             let token = rest.get(..len).unwrap_or_default();
             if may_be_secret(token)
-                && starts_token(input, at)
+                && (starts_token(input, at) || at == ended)
                 && let Some(rest) = input.get(at..)
             {
                 let found = secret_at(rest).map(|(kind, len)| (kind, 0..len));
                 let found = found.or_else(|| Some((Kind::Assigned, assigned(rest)?)));
                 if let Some((kind, range)) = found {
                     let range = at + range.start..at + range.end;
-                    at = range.end;
+                    (at, ended) = (range.end, range.end);
                     return Some(SecretMatch { kind, range });
                 }
             }
@@ -179,193 +180,139 @@ pub fn text(input: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-/// `json`, serialized JSON such as a JSON line, with every string in it
-/// redacted as [`json`] redacts a value: object keys are left as they are.
-/// Borrowed when it has none, and only a string with an escape in it is
-/// decoded to be searched. A string never closed is left as it is.
+/// The most a [`Streamed`] holds back, in bytes: a private key block, the
+/// longest secret, is a few kilobytes.
+const HELD_MOST: usize = 16 * 1024;
+
+/// A text that arrives in pieces, such as a streamed reply: what
+/// [`Self::push`] and [`Self::finish`] return, joined, is [`text`] of the
+/// pieces joined. It holds back only what a later piece may still make part
+/// of a secret, and at most 16 KiB.
 ///
 /// ```
-/// use rig_core::redact;
+/// use rig_core::redact::Streamed;
 ///
-/// let line = r#"{"text":"env\nOPENAI_API_KEY=sk-proj-abcdefghijklmnop1234"}"#;
-/// assert_eq!(redact::json_text(line), r#"{"text":"env\nOPENAI_API_KEY=[REDACTED]"}"#);
-/// assert!(matches!(redact::json_text(r#"{"a":"b"}"#), std::borrow::Cow::Borrowed(_)));
+/// let mut streamed = Streamed::default();
+/// let mut shown = streamed.push("export GITHUB_TOKEN=gh");
+/// assert_eq!(shown, "");
+/// shown += &streamed.push("p_abcdefghijklmnopqrstuvwxyz0123456789\nnext ");
+/// shown += &streamed.finish();
+/// assert_eq!(shown, "export GITHUB_TOKEN=[REDACTED]\nnext ");
 /// ```
-pub fn json_text(json: &str) -> Cow<'_, str> {
-    let mut out: Option<String> = None;
-    // How much of `json` is in `out`.
-    let mut copied = 0;
-    let mut at = 0;
-    while let Some(open) = json.get(at..).and_then(|rest| rest.find('"')) {
-        let open = at + open;
-        let Some((close, escaped)) = closing_quote(json, open + 1) else {
-            break;
-        };
-        at = close + 1;
-        let is_key = json
-            .get(at..)
-            .is_some_and(|rest| rest.trim_start().starts_with(':'));
-        let Some(inner) = json.get(open + 1..close).filter(|_| !is_key) else {
-            continue;
-        };
-        // The literal, quotes included, redacted; `None` when it holds no secret.
-        let redacted = if escaped {
-            if !escaped_may_hold_secret(inner.as_bytes()) {
-                continue;
-            }
-            serde_json::from_str::<String>(json.get(open..=close).unwrap_or_default())
-                .ok()
-                .and_then(|decoded| match text(&decoded) {
-                    Cow::Owned(redacted) => serde_json::to_string(&redacted).ok(),
-                    Cow::Borrowed(_) => None,
-                })
-        } else {
-            // No escape: the literal is its text, and REDACTED needs none.
-            match text(inner) {
-                Cow::Owned(redacted) => Some(format!("\"{redacted}\"")),
-                Cow::Borrowed(_) => None,
-            }
-        };
-        if let Some(redacted) = redacted {
-            let out = out.get_or_insert_with(|| String::with_capacity(json.len()));
-            out.push_str(json.get(copied..open).unwrap_or_default());
-            out.push_str(&redacted);
-            copied = close + 1;
-        }
+#[derive(Clone, Debug, Default)]
+pub struct Streamed {
+    /// What came and was not returned yet.
+    held: String,
+}
+
+impl Streamed {
+    /// Takes `piece` and returns, redacted, what no later piece can change.
+    pub fn push(&mut self, piece: &str) -> String {
+        self.held.push_str(piece);
+        let rest = self.held.split_off(settled(&self.held));
+        let shown = text(&self.held).into_owned();
+        self.held = rest;
+        shown
     }
-    match out {
-        Some(mut out) => {
-            out.push_str(json.get(copied..).unwrap_or_default());
-            Cow::Owned(out)
-        }
-        None => Cow::Borrowed(json),
+
+    /// Returns, redacted, what it still holds: the text ended.
+    pub fn finish(&mut self) -> String {
+        let shown = text(&self.held).into_owned();
+        self.held.clear();
+        shown
     }
 }
 
-/// Where the JSON string whose text starts at `from` in `json` closes, and
-/// whether it has an escape; `None` when it never closes.
-fn closing_quote(json: &str, from: usize) -> Option<(usize, bool)> {
-    let bytes = json.as_bytes().get(from..)?;
-    let mut escaped = false;
-    let mut at = 0;
-    loop {
-        let next = bytes
-            .get(at..)?
-            .iter()
-            .position(|&b| b == b'"' || b == b'\\')?;
-        at += next;
-        if bytes.get(at) == Some(&b'"') {
-            return Some((from + at, escaped));
-        }
-        escaped = true;
-        at += 2;
-    }
-}
-
-/// Whether the text of a JSON string, `raw` as written with its escapes,
-/// may hold a secret, without decoding it: an escape decodes to a
-/// character no token holds (a control character, a quote, `\\`, `/`), so
-/// the decoded text's tokens are the runs between escapes, and none that
-/// fails [`may_be_secret`] starts one. A `\u` escape of any other
-/// character may, as may a string cut off mid-escape.
-fn escaped_may_hold_secret(raw: &[u8]) -> bool {
-    let mut at = 0;
-    while let Some(&byte) = raw.get(at) {
-        if byte == b'\\' {
-            if raw.get(at + 1) != Some(&b'u') {
-                at += 2;
-                continue;
-            }
-            let code = raw
-                .get(at + 2..at + 6)
-                .and_then(|hex| std::str::from_utf8(hex).ok())
-                .and_then(|hex| u32::from_str_radix(hex, 16).ok());
-            if code.is_none_or(|code| code >= 0x20) {
-                return true;
-            }
-            at += 6;
-            continue;
-        }
-        if !is_token_byte(byte) {
-            at += 1;
-            continue;
-        }
-        let rest = raw.get(at..).unwrap_or_default();
-        let len = rest
-            .iter()
-            .position(|&byte| !is_token_byte(byte))
-            .unwrap_or(rest.len());
-        if may_be_secret(rest.get(..len).unwrap_or_default()) {
-            return true;
-        }
-        at += len;
-    }
-    false
-}
-
-/// Every string in `value` redacted as [`text`] redacts it. Object keys
-/// are left as they are.
-pub fn json(value: &mut Value) {
-    match value {
-        Value::String(string) => {
-            if let Cow::Owned(redacted) = text(string) {
-                *string = redacted;
-            }
-        }
-        Value::Array(items) => items.iter_mut().for_each(json),
-        Value::Object(fields) => fields.values_mut().for_each(json),
-        Value::Null | Value::Bool(_) | Value::Number(_) => {}
-    }
-}
-
-/// `result` with every secret in what its model sees (its text and JSON
-/// blocks) redacted as [`text`] and [`json`] redact them; `None` when it
-/// has none, so a clean result is never copied. A redacted text block is
-/// plain text.
-///
-/// ```
-/// use rig_core::redact;
-/// use rig_core::tool::{ToolOutput, ToolResult};
-///
-/// let printed = ToolResult::success(ToolOutput::text("GITHUB_TOKEN=abcdefgh12345678"));
-/// let redacted = redact::tool_result(&printed);
-/// let text = redacted.as_ref().and_then(|result| result.output().as_text());
-/// assert_eq!(text, Some("GITHUB_TOKEN=[REDACTED]"));
-/// assert!(redact::tool_result(&ToolResult::success(ToolOutput::text("ok"))).is_none());
-/// ```
-pub fn tool_result(result: &ToolResult) -> Option<ToolResult> {
-    let content = result.output().as_content();
-    let has = |block: &ToolResultContent| match block {
-        ToolResultContent::Text(text) => has_secret(&text.text),
-        ToolResultContent::Json { value } => json_has_secret(value),
-        ToolResultContent::Image(_) => false,
+/// How much of `input`, a text that may still grow, no secret found in the
+/// grown text can cross: up to the last run of key characters, the line
+/// that names a secret, or the line of a secret that runs to the end, such
+/// as a private key block. At most [`HELD_MOST`] bytes stay held.
+fn settled(input: &str) -> usize {
+    let word = input
+        .char_indices()
+        .rfind(|&(_, ch)| !is_token_char(ch) && !matches!(ch, '.' | '+' | '/'))
+        .map_or(0, |(at, ch)| at + ch.len_utf8());
+    let line_of = |at: usize| {
+        input
+            .get(..at)
+            .and_then(|before| before.rfind('\n'))
+            .map_or(0, |at| at + 1)
     };
-    if !content.iter().any(has) {
-        return None;
-    }
-    let redacted = content.iter().map(|block| match block {
-        ToolResultContent::Text(said) => match text(&said.text) {
-            Cow::Owned(redacted) => ToolResultContent::text(redacted),
-            Cow::Borrowed(_) => block.clone(),
-        },
-        ToolResultContent::Json { value } => {
-            let mut value = value.clone();
-            json(&mut value);
-            ToolResultContent::json(value)
-        }
-        ToolResultContent::Image(_) => block.clone(),
+    let line = line_of(input.len());
+    let last = input.get(line..).unwrap_or_default();
+    // A run of key characters that ends as a secret name does, wherever in
+    // the run [`find`] may start a token.
+    let named = SECRET_NAMES.iter().any(|name| {
+        last.match_indices(name).any(|(at, _)| {
+            let after = last.get(at + name.len()..).unwrap_or_default();
+            !after.starts_with(is_token_char)
+        })
     });
-    let output = ToolOutput::content(redacted.collect()).ok()?;
-    Some(result.clone().with_output(output))
+    let mut cut = word;
+    if named || last.contains("-----BEGIN ") {
+        cut = cut.min(line);
+    }
+    let found: Vec<_> = find(input).collect();
+    // A secret that reaches the end may still grow, as a block not yet ended.
+    for found in found.iter().rev() {
+        let past = cut < found.range.end || found.range.end == input.len();
+        if found.range.start < cut && past {
+            cut = line_of(found.range.start);
+        }
+    }
+    let least = input.len().saturating_sub(HELD_MOST);
+    let cut = (cut.max(least)..=input.len())
+        .find(|&at| input.is_char_boundary(at))
+        .unwrap_or(input.len());
+    // A whole secret the bound cuts through goes out whole, so it is
+    // redacted as in the whole text: an assigned value with its name before
+    // it and its closing quote after it.
+    let whole = |found: &SecretMatch| {
+        let (start, end) = (found.range.start, found.range.end);
+        if found.kind != Kind::Assigned {
+            return start..end;
+        }
+        let before = input.get(..start).unwrap_or_default();
+        let named = before.trim_end_matches(['=', ':', '"', '\'', ' ', '\t']);
+        let quoted = input
+            .get(end..)
+            .is_some_and(|after| after.starts_with(['"', '\'']));
+        named.trim_end_matches(is_token_char).len()..end + usize::from(quoted)
+    };
+    let through = found
+        .iter()
+        .map(whole)
+        .find(|whole| whole.start < cut && cut < whole.end && whole.end < input.len());
+    through.map_or(cut, |whole| whole.end)
 }
 
-/// Whether a string in `value` holds a secret; object keys are not
-/// searched.
-fn json_has_secret(value: &Value) -> bool {
+/// Every string in `value` redacted as [`text`] redacts it, and one that
+/// holds JSON, such as a provider's raw tool-call arguments, as that JSON:
+/// an escape such as `\n` would hide where a secret starts. Whether any
+/// was. Object keys are left as they are.
+pub fn json(value: &mut Value) -> bool {
     match value {
-        Value::String(string) => has_secret(string),
-        Value::Array(items) => items.iter().any(json_has_secret),
-        Value::Object(fields) => fields.values().any(json_has_secret),
+        Value::String(string)
+            if string.starts_with(['{', '['])
+                && let Ok(mut inner) = serde_json::from_str::<Value>(string) =>
+        {
+            let changed = json(&mut inner);
+            if changed {
+                *string = inner.to_string();
+            }
+            changed
+        }
+        Value::String(string) => match text(string) {
+            Cow::Owned(redacted) => {
+                *string = redacted;
+                true
+            }
+            Cow::Borrowed(_) => false,
+        },
+        Value::Array(items) => items.iter_mut().fold(false, |any, item| json(item) | any),
+        Value::Object(fields) => fields
+            .values_mut()
+            .fold(false, |any, field| json(field) | any),
         Value::Null | Value::Bool(_) | Value::Number(_) => false,
     }
 }
@@ -466,7 +413,7 @@ fn assigned(rest: &str) -> Option<Range<usize>> {
         && value.chars().all(|ch| ch.is_ascii_graphic() || ch == ' ')
         && !value.starts_with('$')
         && !value.chars().all(|ch| ch.is_ascii_digit())
-        && value != REDACTED
+        && !value.contains(REDACTED)
         && secret_at(value).is_none();
     plausible.then(|| from..from + value.len())
 }

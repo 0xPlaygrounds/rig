@@ -47,7 +47,6 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, StopReason, ToolCall, UserContent,
 };
 use rig_core::now_ms;
-use rig_core::redact;
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult, feedback};
@@ -72,7 +71,7 @@ use super::stage::{
     Started, SupersededBy, Waiting, apply_decision, cancel, release,
 };
 use super::tasks::{Running, Wake};
-use super::tools::{Footprint, InReply, ToolDef, ToolRequest, offered, redacted};
+use super::tools::{Footprint, InReply, ToolDef, ToolRequest, offered};
 
 /// The purpose of the effect of an agent's own model call in a turn.
 pub const PURPOSE: &str = "turn";
@@ -679,9 +678,8 @@ impl Stopper<'_, '_> {
             .collect();
         // A decided call is answered with its decision, as Start would, a
         // running one with what it says if stopped, and a restored one that
-        // settled with its result, each redacted as Commit would, so what
-        // observes it settle reads what the conversation keeps; any other is
-        // cancelled with the same text.
+        // settled with its result, so what observes it settle reads what
+        // the conversation keeps; any other is cancelled with the same text.
         let answers: Vec<(Entity, Option<Outcome>)> = reply
             .iter()
             .filter(|call| call.outcome.is_none())
@@ -762,15 +760,6 @@ impl Stopper<'_, '_> {
                         }
                     }
                     None => apply_decision(world, call),
-                }
-            }
-            // An answer that came this pass, or that the stop gave, settles
-            // before Commit redacts it.
-            for &call in &calls {
-                if let Some(mut outcome) = world.get_mut::<Outcome>(call)
-                    && let Some(redacted) = redacted(&outcome)
-                {
-                    *outcome = redacted;
                 }
             }
             for call in calls {
@@ -878,11 +867,6 @@ fn reply_results(
                     let stopped = call.if_stopped.map(|stopped| stopped.0.tool_result());
                     stopped.or_else(|| missing(&call))?
                 }
-            };
-            // Only an answer that settled went through Commit's redaction.
-            let result = match call.settled && call.outcome.is_some() {
-                true => result,
-                false => redact::tool_result(&result).unwrap_or(result),
             };
             Some(call.request.call.answer(&result))
         })

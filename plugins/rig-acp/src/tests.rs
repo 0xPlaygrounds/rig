@@ -188,6 +188,7 @@ fn agent() {
         rig_basics::BasicCommandsPlugin,
         rig_basics::compaction::CompactionPlugin,
         rig_basics::subagents::SubagentsPlugin,
+        rig_basics::redact::RedactPlugin,
     ))
     .add_command("ask", "Ask a question", ask)
     .add_command("early", "Start a call early", early)
@@ -411,7 +412,7 @@ fn mcp_stub() {
                 "inputSchema": { "type": "object" },
             }]}),
             Some("tools/call") if request.pointer("/params/name") == Some(&json!("pair")) => {
-                // A key too, so both paths are seen redacted alike.
+                // A key too, which reaches neither path.
                 json!({ "content": [
                     { "type": "text", "text": "first" },
                     { "type": "text", "text": "OPENAI_API_KEY=sk-proj-abcdefghijklmnop1234" },

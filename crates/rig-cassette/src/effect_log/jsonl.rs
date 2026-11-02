@@ -67,7 +67,6 @@ use std::sync::{Arc, OnceLock};
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
 use rig_core::json_utils::remove_preserving_order;
-use rig_core::redact;
 use rig_memory::Files;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -112,9 +111,8 @@ impl Writer {
     }
 
     /// Appends `records`, after a header line with what `header` adds to
-    /// the file's when it differs from the last one appended, with every
-    /// secret in their strings redacted ([`redact::json_text`]).
-    /// Writes nothing when it has no records: a header alone waits for the
+    /// the file's when it differs from the last one appended. Writes
+    /// nothing when it has no records: a header alone waits for the
     /// first record it describes, so a session that never made one leaves
     /// no file.
     ///
@@ -147,13 +145,6 @@ impl Writer {
             known.highest = known.highest.max(Some(record.id));
             lines.push(b'\n');
         }
-        // No key reaches the disk: every string written is redacted, and
-        // lines without a secret are not copied.
-        let redacted = std::str::from_utf8(&lines).map(redact::json_text);
-        let lines = match redacted {
-            Ok(Cow::Owned(redacted)) => redacted.into_bytes(),
-            _ => lines,
-        };
         self.store.append_file(&self.name, &lines)?;
         known.has_lines = true;
         self.known = Some(known);

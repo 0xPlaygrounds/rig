@@ -145,6 +145,62 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             }
             Ok(())
         }
+        "@redact-boundary" => {
+            // Redaction is one plugin's: no kernel crate or front calls the
+            // detection library itself. Its other callers redact what they
+            // record or export of their own.
+            const CALLERS: [&str; 5] = [
+                "crates/rig-core/src/redact",
+                "crates/rig-core/src/observe/adapter/scrub.rs",
+                "crates/rig-cassette/src/http/",
+                "crates/rig-cassette/src/scrub.rs",
+                "plugins/rig-basics/src/redact",
+            ];
+            let tested = |p: &str| {
+                p.ends_with("tests.rs")
+                    || ["/tests/", "/test_utils/", "/benches/", "/examples/"]
+                        .iter()
+                        .any(|dir| p.contains(dir))
+            };
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(untracked_inputs(root)?)
+                .filter(|p| {
+                    (p.starts_with("crates/") || p.starts_with("plugins/") || p.starts_with("src/"))
+                        && p.ends_with(".rs")
+                        && !tested(p)
+                        && !CALLERS.iter().any(|caller| p.starts_with(caller))
+                })
+            {
+                let Ok(text) = fs::read_to_string(root.join(&path)) else {
+                    continue;
+                };
+                // Inside a `rig_core::{ … }` list, which rustfmt may spread
+                // over lines.
+                let mut in_core = false;
+                for (number, line) in text.lines().enumerate() {
+                    let code = line.split("//").next().unwrap_or_default();
+                    in_core |= code.contains("rig_core::{");
+                    let braced = in_core
+                        && paths(code, "redact")
+                            .any(|after| after.starts_with([',', '}', ' ']) || after.is_empty());
+                    if code.contains('}') {
+                        in_core = false;
+                    }
+                    if paths(code, "redact::").next().is_some()
+                        || code.contains("rig_core::redact")
+                        || braced
+                    {
+                        return Err(invalid(format!(
+                            "{path}:{}: names `rig_core::redact`; redaction is \
+                             `rig_basics::redact::RedactPlugin`'s",
+                            number + 1
+                        )));
+                    }
+                }
+            }
+            Ok(())
+        }
         "@native-only" => {
             // A native-only crate on wasm must fail with exactly its one
             // `compile_error!` sentence; an item outside the `not(wasm)` gate

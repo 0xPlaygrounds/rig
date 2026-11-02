@@ -13,10 +13,9 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::ToolDefinition;
 use rig_core::conversation::CallRef;
-use rig_core::effect::{Answered, EffectId, EffectKind};
+use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
-use rig_core::redact;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::tool::feedback::{arguments_refusal, unknown_tool_feedback};
@@ -26,15 +25,12 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::agent::{AgentId, CallOf, RunTools, SpawnedBy, ToolAccess};
 use super::effects::Handler;
-use super::stage::{
-    Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy, ToolCalls,
-};
+use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
 use super::turn::fail;
 
 /// What the model is told about a tool. A call naming an argument its
@@ -636,39 +632,4 @@ pub(crate) fn refuse_calls(
                 .try_insert_if_new(Outcome(Err(report)));
         }
     }
-}
-
-/// Redacts every secret in each tool call's answer, such as a key `env`
-/// printed ([`redact::tool_result`]), as Commit opens, after every
-/// reviewer and before the answer is committed: no key a tool returns
-/// reaches the model, the conversation, the transcript or a log. Only an answer changed since the
-/// last pass is searched, and only one holding a secret is copied.
-pub(crate) fn redact_results(
-    mut calls: Query<&mut Outcome, (ToolCalls, Changed<Outcome>, Without<Settled>)>,
-) {
-    for mut outcome in &mut calls {
-        if let Some(redacted) = redacted(&outcome) {
-            *outcome = redacted;
-        }
-    }
-}
-
-/// A tool call's answer `outcome` with every secret redacted, as
-/// [`redact_results`] does, for an answer that settles before Commit, such
-/// as a stop's; `None` when it holds none.
-pub(crate) fn redacted(outcome: &Outcome) -> Option<Outcome> {
-    let redacted = match &outcome.0 {
-        Ok(Answered::ToolResult { result }) => {
-            redact::tool_result(result).map(|result| Ok(Answered::ToolResult { result }))
-        }
-        Err(report) => match redact::text(&report.message) {
-            Cow::Owned(message) => Some(Err(ErrorReport {
-                message,
-                ..report.clone()
-            })),
-            Cow::Borrowed(_) => None,
-        },
-        Ok(_) => None,
-    };
-    redacted.map(Outcome)
 }

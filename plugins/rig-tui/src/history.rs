@@ -21,9 +21,8 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// included.
 ///
 /// The view loads it in `PreStartup`, puts each prompt [`Sent`] and the
-/// text an [`Editor`] dropped unsent (its secrets redacted), in the order
-/// they happened, as the newest in [`HistorySystems::Record`], and in
-/// [`HistorySystems::Save`]
+/// text an [`Editor`] dropped unsent, in the order they happened, as the
+/// newest in [`HistorySystems::Record`], and in [`HistorySystems::Save`]
 /// adds to the file those recorded since that are still in `entries`,
 /// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
 /// the two, such as to keep secrets out. After another agent is shown,
