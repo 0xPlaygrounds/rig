@@ -180,8 +180,8 @@ fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {
     .add_observer(log_ended);
     let mut agent = |name: &str| {
         let choice = ModelChoice(format!("lease/{}", name.to_lowercase()));
-        app.world_mut()
-            .spawn((Agent, Name::new(name.to_owned()), choice))
+        spawn_root(app.world_mut())
+            .insert((Name::new(name.to_owned()), choice))
             .id()
     };
     let [agent_a, agent_b, agent_c, agent_d] = ["A", "B", "C", "D"].map(&mut agent);

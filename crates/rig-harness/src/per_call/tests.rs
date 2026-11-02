@@ -67,7 +67,7 @@ fn a_disabled_per_call_tool_gives_way_to_its_replacement() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let Ok(name) = ToolName::new(Say::NAME) else {
         return;
     };
@@ -143,7 +143,7 @@ fn answer_of<M>(
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let call = ToolCall::from_wire(
         "w1",
         ToolFunction::new(ToolName::new(name).ok()?, serde_json::json!({})),

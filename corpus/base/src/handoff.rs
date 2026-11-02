@@ -190,25 +190,16 @@ fn handoff(
     ));
 }
 
-/// The settings a new agent takes over from the one handed off from.
-type Inherited<'a> = (
-    &'a AgentId,
-    Option<&'a ModelChoice>,
-    &'a ReasoningSetting,
-    &'a SystemPrompt,
-    &'a ToolAccess,
-    Option<&'a Connection>,
-);
-
 /// Takes a settled brief: ends the handoff's turn and starts the new
 /// agent with the old one's settings, with the brief in the input line,
 /// or sent the brief at once by the old agent.
 fn take_brief(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
-    agents: Query<Inherited>,
+    agents: Query<&AgentId>,
     editable: Res<EditableBrief>,
     input: Option<MainInput>,
+    mut spawner: Spawner,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -230,23 +221,20 @@ fn take_brief(
             return;
         }
     };
-    let Ok((id, model, effort, prompt, access, connection)) = agents.get(agent) else {
+    let Ok(id) = agents.get(agent) else {
         return;
     };
     let from = HandedOffFrom {
         agent: id.clone(),
         goal: briefing.goal.clone(),
     };
-    let mut successor = commands.spawn_empty();
-    // Before the model choice, so the shared connection is kept.
-    if let Some(connection) = connection {
-        successor.insert(connection.clone());
-    }
-    successor.insert((Agent, *effort, prompt.clone(), access.clone(), from));
-    if let Some(model) = model {
-        successor.insert(model.clone());
-    }
-    let successor = successor.id();
+    let successor = match spawner.spawn(Origin::Like(agent), AgentSpec::default()) {
+        Ok(mut successor) => successor.insert(from).id(),
+        Err(why) => {
+            notices.write(Notice::error(agent, format!("Handoff failed: {why}.")));
+            return;
+        }
+    };
     match input.filter(|_| editable.0 && !briefing.now) {
         Some(mut input) => {
             input.clear();

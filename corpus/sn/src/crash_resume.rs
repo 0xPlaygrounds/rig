@@ -298,7 +298,7 @@ fn recover(
         let Ok((_, _, parent, _)) = agents.get(agent) else {
             continue;
         };
-        if parent.is_some_and(|parent| found.contains_key(&parent.0)) {
+        if parent.is_some_and(|parent| found.contains_key(&parent.parent())) {
             continue;
         }
         let mut text = recovering.body.clone();
@@ -306,7 +306,7 @@ fn recover(
             let Ok((_, _, Some(of), name)) = agents.get(child) else {
                 continue;
             };
-            if of.0 == agent {
+            if of.parent() == agent {
                 let name = name.map_or("subagent", Name::as_str);
                 let lines = nested.body.replace('\n', "\n    ");
                 text.push_str(&format!(
@@ -386,7 +386,7 @@ fn ask(
     mut commands: Commands,
 ) {
     for (agent, mut recovering, parent) in &mut agents {
-        let nested = parent.is_some_and(|parent| parents.contains(parent.0));
+        let nested = parent.is_some_and(|parent| parents.contains(parent.parent()));
         if nested || recovering.left || recovering.ask.is_some() || recovering.choice.is_some() {
             continue;
         }
@@ -450,7 +450,7 @@ fn resolve(
         .collect();
     for (_, _, mut recovering, _, parent, _) in &mut agents {
         if recovering.choice.is_none()
-            && let Some(&choice) = parent.and_then(|parent| chosen.get(&parent.0))
+            && let Some(&choice) = parent.and_then(|parent| chosen.get(&parent.parent()))
         {
             recovering.choice = Some(choice);
         }

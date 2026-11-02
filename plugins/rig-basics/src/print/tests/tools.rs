@@ -459,7 +459,7 @@ fn cli_allowlist_reaches_anthropic_http_output() {
 
 #[test]
 fn delegated_subagents_obey_inherited_and_cli_limits() {
-    use crate::subagents::{SubagentPolicy, SubagentsPlugin};
+    use crate::subagents::SubagentsPlugin;
 
     for called in ["denied", "message", "wait", "allowed"] {
         let executes = called == "allowed";
@@ -483,7 +483,6 @@ fn delegated_subagents_obey_inherited_and_cli_limits() {
                     ("test/child", &child_model),
                 ]));
                 rig_harness::load::<SubagentsPlugin>(app, "rig-basics", "path plugins/rig-basics");
-                app.insert_resource(SubagentPolicy { max_depth: 2 });
             },
         );
         let world = app.world_mut();

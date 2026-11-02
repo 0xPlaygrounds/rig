@@ -1,17 +1,19 @@
-//! Forking an agent: [`ForkAgent`] makes a new agent in the same session
-//! whose log is a copy of another's up to a turn boundary, so it goes on
-//! from there by itself, a compaction made before the cut can be undone in
-//! it, and its requests share the source's prompt cache.
+//! Forking an agent: a [`ForkAgent`] request makes a new agent in the same
+//! session that goes on by itself from a copy of another's log, where an
+//! earlier compaction can be undone. The request gets its [`ForkResult`], then goes.
 //!
 //! ```
 //! use rig_ecs::prelude::*;
 //!
-//! // Shows each fork as it is made.
-//! fn show(forked: On<AgentForked>, mut shown: Local<Option<Entity>>) {
-//!     *shown = Some(forked.fork);
+//! // Forks the agent at its end, and keeps the fork it made.
+//! fn fork(agent: Entity, mut commands: Commands) {
+//!     let keep = |made: On<Add<ForkResult>>, results: Query<&ForkResult>, mut commands: Commands| {
+//!         if let Ok(ForkResult(Ok(fork))) = results.get(made.entity) {
+//!             commands.entity(*fork).insert(Name::new("fork"));
+//!         }
+//!     };
+//!     commands.spawn(ForkAgent::new(agent, None)).observe(keep);
 //! }
-//!
-//! App::new().add_observer(show);
 //! ```
 
 use bevy_ecs::prelude::*;
@@ -19,34 +21,88 @@ use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::PartialReflect;
 use bevy_reflect::prelude::*;
 use rig_core::conversation::MessageId;
+use rig_memory::SessionError;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation, Notice};
+use super::agent::{Agent, AgentId, CacheKey, ContextStale, Conversation};
 use super::model::Connection;
+use super::requests::RequestOf;
 use super::restore::SavedKeys;
 use super::session_log::{Fork, ReflectSaved, SessionLog, save_conversation};
 
-/// Fork the agent `agent`: a new agent in the same session whose log is a
-/// copy of `agent`'s up to a turn boundary at or before `through` (its
-/// end with `None`; rig-memory's `Writer::fork_log`), its conversation that
-/// copy. A user message that asked for a turn is at no boundary, so a fork
-/// through it ends just before it. The new agent has the saved components
-/// `agent` has now (its model, reasoning setting, tools, system prompt and
-/// working directory among them) as their fork rules say
-/// ([`ReflectSaved`]), its connection, and a [`ForkedFrom`] naming it and
-/// the agents it came from, and
-/// shares its prompt cache ([`CacheKey`]). Its context is [`ContextStale`]
-/// until its first reply. It has no parent. [`AgentForked`]
-/// names it; a fork that cannot be made, such as without a session log or
-/// through a message the agent never had, is a notice. It is made once the
-/// commands run, after the source's unsaved changes are saved.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct ForkAgent {
-    /// The agent forked.
-    #[event_target]
-    pub agent: Entity,
-    /// The last message the fork may keep; `None` for the end.
-    pub through: Option<MessageId>,
+/// A request to fork the agent `agent`: a new agent in the same session
+/// whose log is a copy of `agent`'s up to a turn boundary at or before
+/// `through` (its end with `None`; rig-memory's `Writer::fork_log`). A user
+/// message that asked for a turn is at no boundary, so a fork through it
+/// ends just before it. The fork has `agent`'s saved components as their
+/// fork rules say ([`ReflectSaved`]), its connection and prompt cache
+/// ([`CacheKey`]), a [`ForkedFrom`], and no parent. Its context is
+/// [`ContextStale`] until its first reply. The kernel makes it as the pass
+/// enters [`Stage::Arrive`](super::stage::Stage::Arrive), after `agent`'s
+/// unsaved changes are saved, announces it ([`AgentForked`]), inserts the
+/// [`ForkResult`] and despawns the request, which is [`RequestOf`] `agent`.
+///
+/// It is no event:
+///
+/// ```compile_fail,E0277
+/// use rig_ecs::prelude::*;
+///
+/// fn fork(agent: Entity, mut commands: Commands) {
+///     commands.trigger(ForkAgent::new(agent, None));
+/// }
+/// ```
+#[derive(Bundle)]
+pub struct ForkAgent(RequestOf, Forking);
+
+impl ForkAgent {
+    /// Forks `agent` through `through`, its last message the fork may keep
+    /// (`None` for its end).
+    pub fn new(agent: Entity, through: Option<MessageId>) -> Self {
+        Self(RequestOf(agent), Forking(through))
+    }
+}
+
+/// On a [`ForkAgent`] request not made yet: the message it is through.
+#[derive(Component)]
+pub(crate) struct Forking(Option<MessageId>);
+
+/// On a [`ForkAgent`] request, once the kernel tried it: the new agent, or
+/// why there is none.
+#[derive(Component, Debug)]
+pub struct ForkResult(pub Result<Entity, ForkError>);
+
+/// Why a [`ForkAgent`] made no fork.
+#[derive(Debug)]
+pub enum ForkError {
+    /// The entity forked is no agent.
+    NoAgent,
+    /// The session is not logged.
+    NoLog,
+    /// The app has no type registry.
+    NoRegistry,
+    /// The log could not be copied, such as through a message the agent
+    /// never had.
+    Session(SessionError),
+}
+
+impl std::fmt::Display for ForkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoAgent => f.write_str("it is no agent"),
+            Self::NoLog => f.write_str("the session is not logged"),
+            Self::NoRegistry => f.write_str("the app has no type registry"),
+            Self::Session(failure) => failure.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ForkError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Session(failure) => Some(failure),
+            _ => None,
+        }
+    }
 }
 
 /// On an agent made by a [`ForkAgent`]: the agents its conversation came
@@ -106,7 +162,8 @@ impl ForkedFrom {
     }
 }
 
-/// An agent made by a [`ForkAgent`].
+/// An agent made by a [`ForkAgent`], announced before its request's
+/// [`ForkResult`].
 #[derive(Event, Clone, Debug)]
 pub struct AgentForked {
     /// The agent forked.
@@ -117,39 +174,55 @@ pub struct AgentForked {
     pub through: Option<MessageId>,
 }
 
-/// Forks an agent, as [`ForkAgent`] says.
-pub(crate) fn fork_agent(fork: On<ForkAgent>, mut commands: Commands) {
-    let (from, through) = (fork.agent, fork.through);
-    commands.queue(
-        move |world: &mut World| match fork_now(world, from, through) {
-            Ok(fork) => world.trigger(AgentForked {
+/// Makes each fork asked for ([`ForkAgent`]), gives its request its
+/// [`ForkResult`] and despawns it.
+pub(crate) fn make_forks(
+    world: &mut World,
+    asked: &mut QueryState<(Entity, &RequestOf, &Forking)>,
+) {
+    let asked: Vec<(Entity, Entity, Option<MessageId>)> = asked
+        .iter(world)
+        .map(|(request, &RequestOf(from), fork)| (request, from, fork.0))
+        .collect();
+    for (request, from, through) in asked {
+        // The observer of an earlier result may have ended it.
+        if world.get::<Forking>(request).is_none() {
+            continue;
+        }
+        let made = fork_now(world, from, through);
+        if let Ok(fork) = made {
+            world.trigger(AgentForked {
                 from,
                 fork,
                 through,
-            }),
-            Err(why) => {
-                let why = format!("Could not fork the agent: {why}.");
-                world.write_message(Notice::error(from, why));
-            }
-        },
-    );
+            });
+        }
+        if let Ok(mut request) = world.get_entity_mut(request) {
+            request.insert(ForkResult(made));
+        }
+        world.try_despawn(request).ok();
+    }
 }
 
 /// Forks `from` through `through`; the new agent.
-fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Result<Entity, String> {
+fn fork_now(
+    world: &mut World,
+    from: Entity,
+    through: Option<MessageId>,
+) -> Result<Entity, ForkError> {
     let id = world
         .get::<AgentId>(from)
         .cloned()
-        .ok_or("it is no agent")?;
+        .ok_or(ForkError::NoAgent)?;
     let log = world
         .get_resource::<SessionLog>()
         .filter(|log| log.0.is_live())
         .cloned()
-        .ok_or("the session is not logged")?;
+        .ok_or(ForkError::NoLog)?;
     let registry = world
         .get_resource::<AppTypeRegistry>()
         .cloned()
-        .ok_or("the app has no type registry")?;
+        .ok_or(ForkError::NoRegistry)?;
     if let Some(mut conversation) = world.get_mut::<Conversation>(from) {
         let saved = save_conversation(&log, from, &id, conversation.bypass_change_detection());
         world.write_message_batch(saved);
@@ -158,7 +231,7 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     let copy = log
         .0
         .fork_log(&id.0, &to.0, through)
-        .map_err(|failure| failure.to_string())?;
+        .map_err(ForkError::Session)?;
     let registry = registry.read();
     let (mut resets, mut removals) = (Vec::new(), Vec::new());
     let saved: Vec<(&ReflectComponent, Box<dyn PartialReflect>)> = registry
@@ -200,7 +273,7 @@ fn fork_now(world: &mut World, from: Entity, through: Option<MessageId>) -> Resu
     let connection = world.get::<Connection>(from).cloned();
     let conversation = Conversation(copy.conversation);
     let empty = conversation.messages().is_empty();
-    let mut spawned = world.spawn((Name::new("agent"), Agent, to.clone(), conversation));
+    let mut spawned = world.spawn((Name::new("agent"), Agent::new(), to.clone(), conversation));
     for (component, value) in &saved {
         component.insert(&mut spawned, value.as_ref(), &registry);
     }

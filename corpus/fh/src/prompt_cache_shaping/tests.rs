@@ -106,7 +106,7 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
     app.insert_resource(Clock(clock, 0));
     app.finish();
     app.update();
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut()).insert(connection).id();
     for (turn, text) in ["one", "two", "three"].into_iter().enumerate() {
         if turn == 2 {
             app.add_open_tool("lsp_hover", "Hover.", ToolOptions::default(), noop);

@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::collections::HashSet;
+use std::io;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionResponse, Message, Usage};
@@ -12,6 +14,8 @@ use serde_json::json;
 
 use super::*;
 use rig_ecs::fork::{ForkAgent, ForkedFrom};
+use rig_ecs::session_log::{SessionLog, SessionStore};
+use rig_harness::rig_memory::{Files, LogWriteError, Store};
 use rig_harness_test_support::{
     MemoryStore, app_on, calls, commit_message, connect, reply, run_until, start_call,
 };
@@ -76,7 +80,7 @@ impl Session {
         rig_harness::load::<SubagentsPlugin>(&mut app, "rig-basics", "path plugins/rig-basics");
         if let Some(connection) = model.and_then(connect) {
             let choice = ModelChoice(connection.spec.reference());
-            app.world_mut().spawn((Agent, connection, choice));
+            spawn_root(app.world_mut()).insert((connection, choice));
         }
         configure(&mut app);
         app.finish();
@@ -295,11 +299,19 @@ fn a_subagents_question_is_a_message_and_only_its_final_answer_reports() {
     });
 
     // The question woke the parent as a message on no request; the final
-    // answer is the one report, on the parent's last request.
+    // answer is the one report, on the parent's last request, which is
+    // known by its asker and where its reply asked for it (`<asker>:m1/0`),
+    // not by the provider's call id (`p1`), which a later reply may use again.
     let to_parent = session.to(session.parent);
+    let parent_id = session.app.world().get::<AgentId>(session.parent).cloned();
+    let parent_place = format!("{}:m1/0", parent_id.unwrap_or_default().0);
     let expected = [
         ("", DeliveryMode::Steer, "Which file?"),
-        ("p1", DeliveryMode::Steer, "Fixed src/lib.rs."),
+        (
+            parent_place.as_str(),
+            DeliveryMode::Steer,
+            "Fixed src/lib.rs.",
+        ),
     ];
     assert_eq!(to_parent, expected);
     let read = format!("{:?}", child_model.requests().last());
@@ -512,6 +524,32 @@ fn a_plugins_stop_that_reaches_a_subagent_ends_it_early_and_its_report_starts_no
     assert_eq!(model.request_count(), 0);
 }
 
+/// Agents nest as deep as their models ask: a subagent's subagent's
+/// subagent starts, and can start its own.
+#[test]
+fn a_task_subagents_subagents_subagent_starts() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let mut agent = session.parent;
+    for depth in 1..=3 {
+        let args = json!({ "description": format!("d{depth}"), "prompt": "Go one deeper." });
+        let said = session.call(agent, TASK, &format!("t{depth}"), args);
+        assert!(said.starts_with("Started subagent"), "{depth}: {said}");
+        let child = session.children(agent).last().copied();
+        agent = child.unwrap_or(Entity::PLACEHOLDER);
+    }
+    let world = session.app.world();
+    let lineage = std::iter::successors(Some(agent), |&agent| {
+        world.get::<SpawnedBy>(agent).map(SpawnedBy::parent)
+    });
+    assert_eq!(lineage.count(), 4, "three below the root");
+    let access = world.get::<ToolAccess>(agent);
+    assert!(access.is_some_and(|access| access.allows(TASK)));
+}
+
 #[test]
 fn what_a_parent_knows_of_the_environment_goes_to_every_subagent_below_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
@@ -564,26 +602,21 @@ fn add_task_argument(world: &mut World, name: &str) {
 
 #[test]
 fn a_subagent_made_in_a_limited_run_keeps_its_parents_own_access() {
-    // At depth 1 of 2 it may start its own; at the deepest it may not.
-    for max_depth in [2, 1] {
-        let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-        let mut session = Session::new(&MemoryStore::default(), Some(&model));
-        session
-            .app
-            .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]))
-            .insert_resource(SubagentPolicy { max_depth });
-        let args = json!({ "description": "Look", "prompt": "Look around." });
-        let said = session.call(session.parent, TASK, "t1", args);
-        assert!(said.starts_with("Started subagent"), "{said}");
-        let child = session.children(session.parent).last().copied();
-        let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
-        // A later run without the limit gives it every tool its parent
-        // keeps, but `task` at the deepest.
-        let kept = access.is_some_and(|access| {
-            access.keeps("look") && !access.allows("look") && access.keeps(TASK) == (max_depth > 1)
-        });
-        assert!(kept, "{max_depth}: {access:?}");
-    }
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .insert_resource(RunTools::new([TASK, MESSAGE, WAIT]));
+    let args = json!({ "description": "Look", "prompt": "Look around." });
+    let said = session.call(session.parent, TASK, "t1", args);
+    assert!(said.starts_with("Started subagent"), "{said}");
+    let child = session.children(session.parent).last().copied();
+    let access = child.and_then(|child| session.app.world().get::<ToolAccess>(child));
+    // A later run without the run's tool limit gives it every tool its
+    // parent keeps.
+    let kept = access
+        .is_some_and(|access| access.keeps("look") && !access.allows("look") && access.keeps(TASK));
+    assert!(kept, "{access:?}");
 }
 
 #[test]
@@ -669,14 +702,14 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
 }
 
 #[test]
-fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
+fn a_gate_holds_spawns_until_a_slot_frees() {
     /// On a hold of a request until its parent has a slot free.
     #[derive(Component)]
     struct Slot;
     const SLOTS: usize = 2;
     let working = |children: &Query<(&SpawnedBy, &Lifecycle)>, parent: Entity| {
         let working = |(by, step): &(&SpawnedBy, &Lifecycle)| {
-            by.0 == parent && matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_))
+            by.parent() == parent && matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_))
         };
         children.iter().filter(working).count()
     };
@@ -712,13 +745,10 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     };
     let model = MockCompletionModel::from_stream_turns((0..5).map(|_| reply("Done.")));
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
-    session
-        .app
-        .insert_resource(SubagentPolicy { max_depth: 1 })
-        .add_systems(
-            AgentPass,
-            (queue.in_set(Stage::Gate), release.in_set(Stage::Review)),
-        );
+    session.app.add_systems(
+        AgentPass,
+        (queue.in_set(Stage::Gate), release.in_set(Stage::Review)),
+    );
     let mut tasks = Vec::new();
     for at in 0..4 {
         let args = json!({ "description": format!("t{at}"), "prompt": "Count the files." });
@@ -771,29 +801,6 @@ fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
     let mut requests: Vec<&str> = reports.iter().map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["t0", "t1", "t2"]);
-
-    // At the policy's depth, a subagent has no `task`, and a request for an
-    // agent of its is refused.
-    let child = session.children(session.parent).first().copied();
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
-    let access = session.app.world().get::<ToolAccess>(child);
-    assert!(
-        access.is_some_and(|access| !access.allows(TASK)),
-        "no `task`"
-    );
-    let deeper = SpawnSubagent::helper("deeper");
-    let request = session
-        .app
-        .world_mut()
-        .spawn((deeper, ForAgent(child)))
-        .id();
-    session.passes(|world| world.get::<Outcome>(request).is_some());
-    let outcome = session.app.world().get::<Outcome>(request);
-    let refused = outcome.and_then(|outcome| outcome.0.as_ref().err());
-    let why = refused
-        .map(|report| report.message.as_str())
-        .unwrap_or_default();
-    assert!(why.contains("at most 1 deep"), "{why}");
 }
 
 #[test]
@@ -939,12 +946,9 @@ fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
 
 /// Forks `agent` at its end; the fork.
 fn fork(session: &mut Session, agent: Entity) -> Entity {
+    session.app.world_mut().spawn(ForkAgent::new(agent, None));
+    session.app.update();
     let world = session.app.world_mut();
-    world.trigger(ForkAgent {
-        agent,
-        through: None,
-    });
-    world.flush();
     let mut forks = world.query_filtered::<Entity, With<ForkedFrom>>();
     let fork = forks.iter(world).next();
     fork.unwrap_or(Entity::PLACEHOLDER)
@@ -960,19 +964,25 @@ fn a_fork_of_a_working_subagent_never_reports_on_its_task() {
     session.call(session.parent, TASK, "t1", args);
     let child = session.children(session.parent).last().copied();
     let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let child_model = MockCompletionModel::from_stream_turns([reply("ORIGINAL")]);
+    session.answer_by(child, &child_model);
     let fork = fork(&mut session, child);
     let world = session.app.world();
     assert!(
         world.get::<Subtask>(fork).is_none(),
         "the fork is no subagent"
     );
-    let owed = world.get::<OpenRequests>(fork).map(|open| open.0.len());
-    assert_eq!(owed, Some(0), "the fork owes no report");
+    let awaited = world.get::<Awaiting>(session.parent).map(|awaiting| {
+        let owing = awaiting.0.iter().map(|request| request.to.clone());
+        owing.collect::<Vec<AgentId>>()
+    });
+    // The child may have reported already; the fork is never waited on.
+    let fork_id = world.get::<AgentId>(fork).cloned();
+    let owes = awaited.is_some_and(|awaited| fork_id.is_some_and(|id| awaited.contains(&id)));
+    assert!(!owes, "the fork owes no report");
 
     let fork_model = MockCompletionModel::from_stream_turns([reply("FORK")]);
-    let child_model = MockCompletionModel::from_stream_turns([reply("ORIGINAL")]);
     session.answer_by(fork, &fork_model);
-    session.answer_by(child, &child_model);
     let deliver = Deliver::new(fork, "Reply FORK now.", DeliveryMode::Queue);
     session.app.world_mut().trigger(deliver);
     let parent = session.parent;
@@ -1013,7 +1023,7 @@ fn a_fork_of_a_helper_for_one_job_is_not_retired() {
 }
 
 #[test]
-fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume() {
+fn a_quit_stops_every_subagent_and_each_report_reaches_the_parent_once_across_resumes() {
     let store = MemoryStore::default();
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&store, Some(&model));
@@ -1027,6 +1037,8 @@ fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume()
     );
     assert!(asked.is_ok(), "{asked:?}");
     let (a, b) = (session.task("ta"), session.task("tb"));
+    let world = session.app.world();
+    let ids = [a, b].map(|agent| world.get::<AgentId>(agent).cloned().unwrap_or_default());
     // `a` asks `b` and waits on it, so `b` owes `a` a report as the app
     // quits.
     let ask = json!({ "agent": session.short(b), "text": "Hi." });
@@ -1041,7 +1053,7 @@ fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume()
 
     // Each stopped as the user's stop would: a note to the parent, kept
     // for the restart, whatever order the exit stopped them in.
-    let session = Session::new(&store, None);
+    let mut session = Session::new(&store, None);
     let reports = session.to(session.parent);
     let stopped = reports.iter().filter(|(_, mode, text)| {
         *mode == DeliveryMode::Inform && text.starts_with("Stopped: the run ended")
@@ -1049,6 +1061,187 @@ fn a_quit_stops_every_subagent_and_their_reports_reach_the_parent_after_resume()
     let mut requests: Vec<&str> = stopped.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["ta", "tb"], "{reports:?}");
+
+    // Each reached the parent once, and no later resume sends it again.
+    for resume in 0..2 {
+        session.app.update();
+        let world = session.app.world_mut();
+        let parent = session.parent;
+        let held = [(&ids[0], "ta"), (&ids[1], "tb")]
+            .map(|(from, request)| reports_held(world, parent, from, request));
+        assert_eq!(held, [1, 1], "resume {resume}");
+        session.app.world_mut().write_message(AppExit::Success);
+        session.app.update();
+        drop(session);
+        session = Session::new(&store, None);
+    }
+}
+
+/// A session store that fails the appends to one log that hold a text,
+/// once told the log: refused whole, or torn, its last line cut short.
+#[derive(Clone)]
+struct Failing {
+    store: MemoryStore,
+    log: Arc<Mutex<String>>,
+    text: &'static str,
+    torn: bool,
+}
+
+impl Failing {
+    /// Whether an append of `bytes` to the log `name` fails.
+    fn fails(&self, name: &str, bytes: &[u8]) -> bool {
+        let text = self.text.as_bytes();
+        let held = bytes.windows(text.len()).any(|part| part == text);
+        held && self.log.lock().is_ok_and(|log| *log == name)
+    }
+}
+
+impl Files for Failing {
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.store.write_file(name, bytes)
+    }
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.store.append_file(name, bytes)
+    }
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.store.read_file(name)
+    }
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        self.store.remove_file(name)
+    }
+    fn files(&self) -> io::Result<Vec<String>> {
+        self.store.files()
+    }
+}
+
+impl Store for Failing {
+    fn logs(&self) -> io::Result<Vec<String>> {
+        self.store.logs()
+    }
+    fn read_log(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.store.read_log(name)
+    }
+    fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        if !self.fails(name, bytes) {
+            return self.store.append_log(name, len, bytes);
+        }
+        if self.torn {
+            let body = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+            let last = body
+                .iter()
+                .rposition(|&byte| byte == b'\n')
+                .map_or(0, |at| at + 1);
+            let cut = last + (bytes.len() - last) / 2;
+            self.store
+                .append_log(name, len, bytes.get(..cut).unwrap_or_default())?;
+        }
+        Err(io::Error::other("disk full").into())
+    }
+    fn replace_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        self.store.replace_log(name, len, bytes)
+    }
+    fn destroy(&self) -> io::Result<()> {
+        self.store.destroy()
+    }
+}
+
+/// The agent whose model calls [`hold_unreleased`] lets through.
+#[derive(Resource, Default)]
+struct Released(Option<Entity>);
+
+/// Holds every model call of a turn but those of the agent [`Released`]
+/// names.
+fn hold_unreleased(
+    calls: Query<(Entity, &ForAgent), (ReadyToStart, With<TurnCall>)>,
+    released: Res<Released>,
+    mut commands: Commands,
+) {
+    for (call, &ForAgent(agent)) in &calls {
+        if released.0 != Some(agent) {
+            commands.spawn(HoldOf(call));
+        }
+    }
+}
+
+/// How many times `agent` holds the report of `from` on `request`: in its
+/// conversation, or as a message it has not been given yet.
+fn reports_held(world: &mut World, agent: Entity, from: &AgentId, request: &str) -> usize {
+    let reports = |author: &Author| {
+        author.from.as_deref() == Some(from.0.as_str())
+            && author
+                .request
+                .as_ref()
+                .is_some_and(|asked| asked.0 == request)
+    };
+    let conversation = world.get::<Conversation>(agent);
+    let entries = conversation.map_or(0, |conversation| {
+        let authors = conversation.entries().filter_map(|entry| entry.author);
+        authors.filter(|author| reports(author)).count()
+    });
+    let mut messages = world.query_filtered::<(&Incoming, &ForAgent), Without<Outcome>>();
+    let waiting = messages
+        .iter(world)
+        .filter(|(message, at)| at.0 == agent && reports(&message.author))
+        .count();
+    entries + waiting
+}
+
+#[test]
+fn a_report_the_parents_log_failed_to_keep_reaches_it_once_after_the_restore() {
+    for torn in [false, true] {
+        let store = MemoryStore::default();
+        let failing = Failing {
+            store: store.clone(),
+            log: Arc::default(),
+            text: "Fixed src/lib.rs.",
+            torn,
+        };
+        let model = MockCompletionModel::from_stream_turns([reply("Fixed src/lib.rs.")]);
+        let mut session = Session::with(&store, Some(&model), |app| {
+            app.insert_resource(SessionStore::new(failing.clone()))
+                .init_resource::<Released>()
+                .add_systems(AgentPass, hold_unreleased.in_set(Stage::Gate));
+        });
+        let parent_id = session.app.world().get::<AgentId>(session.parent).cloned();
+        if let (Ok(mut log), Some(id)) = (failing.log.lock(), parent_id) {
+            *log = id.0;
+        }
+        let args = json!({ "description": "Fix", "prompt": "Fix the bug." });
+        session.call(session.parent, TASK, "t1", args);
+        let child = session.children(session.parent).last().copied();
+        let child = child.unwrap_or(Entity::PLACEHOLDER);
+        let child_id = session.app.world().get::<AgentId>(child).cloned();
+        session.app.update();
+        // The subagent answers; its log keeps the answer, and the parent's
+        // append with the report fails.
+        let world = session.app.world_mut();
+        world.resource_mut::<Released>().0 = Some(child);
+        let holds: Vec<Entity> = world
+            .query::<(Entity, &HoldOf)>()
+            .iter(world)
+            .filter(|(_, hold)| {
+                world
+                    .get::<ForAgent>(hold.0)
+                    .is_some_and(|of| of.0 == child)
+            })
+            .map(|(hold, _)| hold)
+            .collect();
+        for hold in holds {
+            world.despawn(hold);
+        }
+        run_until(&mut session.app, &session.wakes, |world| {
+            world.resource::<SessionLog>().failure().is_some()
+        });
+        drop(session);
+
+        let mut session = Session::new(&store, None);
+        for _ in 0..3 {
+            session.app.update();
+        }
+        let from = child_id.unwrap_or_default();
+        let held = reports_held(session.app.world_mut(), session.parent, &from, "t1");
+        assert_eq!(held, 1, "torn: {torn}");
+    }
 }
 
 #[test]
@@ -1319,4 +1512,42 @@ fn peers_and_an_access_set_together_give_one_role_that_narrowing_removes() {
     let narrowed = ToolAccess::all().narrow(["look"]);
     session.app.world_mut().entity_mut(child).insert(narrowed);
     assert_eq!(roles(&mut session), 0);
+}
+
+/// A peer's question is a request named by its asker and the place its
+/// reply asked from: the same place in another agent's conversation is
+/// another request, so one agent's question can't settle what another
+/// waits for after a restore.
+#[test]
+fn a_peers_request_is_named_by_its_asker() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted."), reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    let (a, b) = (session.task("Ask"), session.task("Answer"));
+    let ask = json!({ "agent": session.short(b), "text": "Which name?" });
+    let asker = MockCompletionModel::from_stream_turns([
+        calls("q1", MESSAGE, ask),
+        reply("Asked."),
+        reply("Answered."),
+    ]);
+    let answerer = MockCompletionModel::from_stream_turns([reply("Lumen."), reply("Done.")]);
+    session.answer_by(a, &asker);
+    session.answer_by(b, &answerer);
+    run_until(&mut session.app, &session.wakes, |world| {
+        let delivered = &world.resource::<Delivered>().0;
+        delivered
+            .iter()
+            .any(|(to, .., text, _)| *to == b && text == "Which name?")
+    });
+    let asked = session
+        .to(b)
+        .into_iter()
+        .find(|(.., text)| *text == "Which name?");
+    let request = asked
+        .map(|(request, ..)| request.to_owned())
+        .unwrap_or_default();
+    let id = session.app.world().get::<AgentId>(a).map(|id| id.0.clone());
+    assert!(
+        id.is_some_and(|id| request.starts_with(&format!("{id}:m"))),
+        "{request}"
+    );
 }

@@ -194,7 +194,7 @@ these rules. Answer only with JSON: {\"verdict\": \"allow\" | \"deny\" | \"ask\"
 fn top_agent(agent: Entity, spawners: &Query<&SpawnedBy>) -> Entity {
     let mut top = agent;
     let mut seen = 0;
-    while let Ok(&SpawnedBy(parent)) = spawners.get(top)
+    while let Ok(parent) = spawners.get(top).map(SpawnedBy::parent)
         && seen < 64
     {
         top = parent;

@@ -249,7 +249,7 @@ fn answer(
                         "name": name.as_str(),
                         "status": status,
                         "busy": busy,
-                        "spawned_by": parent.and_then(|parent| ids.get(parent.0).ok()).map(|id| &id.0),
+                        "spawned_by": parent.and_then(|parent| ids.get(parent.parent()).ok()).map(|id| &id.0),
                     })
                 })
                 .collect();

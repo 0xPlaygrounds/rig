@@ -146,17 +146,15 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
 
 /// Starts an agent handed off from `from`, once, as `take_brief` does in
 /// the agent loop.
-fn hand_off_once(
-    mut done: Local<bool>,
-    from: Query<&AgentId, With<Agent>>,
-    mut commands: Commands,
-) {
+fn hand_off_once(mut done: Local<bool>, from: Query<&AgentId, With<Agent>>, mut spawner: Spawner) {
     let Some(agent) = from.iter().next().filter(|_| !*done).cloned() else {
         return;
     };
     *done = true;
     let goal = "next".to_owned();
-    commands.spawn((Agent, HandedOffFrom { agent, goal }));
+    if let Ok(mut successor) = spawner.spawn(Origin::Root, AgentSpec::default()) {
+        successor.insert(HandedOffFrom { agent, goal });
+    }
 }
 
 #[test]

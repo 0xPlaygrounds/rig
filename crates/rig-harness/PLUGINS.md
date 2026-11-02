@@ -50,7 +50,9 @@ each plugin added): ask it before reading rig's source.
   for libraries, kernel and harness; `plugins/rig-basics/src/<module>` for
   the default plugins, `plugins/<name>` for rig-tui and the optional ones.
 - **Agents.** An **agent** is an entity with `Agent`, a conversation and a
-  model; a **subagent** is one another agent spawned (`SpawnedBy`). The **main
+  model, made only through the kernel's `Spawner` ([Spawning an
+  agent](#spawning-an-agent)); a **subagent** is one another agent spawned
+  (`SpawnedBy`). The **main
   agent** is the session's **current agent** (`CurrentAgent`, saved), always an
   unspawned one; the **shown agent** is the one a front shows and sends typed
   text to (`ShownAgent`), and showing it makes its top-level agent current;
@@ -330,7 +332,6 @@ The sets of Gate systems that edit shared data:
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
 | `PrintSystems` | `rig_basics::print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
-| `SubagentSystems::Gate` | `rig_basics::subagents` | refuses a `SpawnSubagent` deeper than the policy allows | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1284,6 +1285,15 @@ moves the marker and the effect's hold to each successor. Make a plugin's
 model call an effect (a `ModelRequest`) so the effect log and spending see
 it; a call made directly, they never see.
 
+**Work owned by what made it.** A request, any entity of work a plugin
+starts for an owner, such as a sign-in, a read or a fork, carries
+`RequestOf(owner)` and keeps its task, payload and result as components on
+itself, not in a map of the plugin's. It goes when its owner goes, when its
+owner effect settles, and when a stop that reaches below reaches its owner
+agent, idle or not; one inserted for an owner already gone or settled is
+despawned. `follow_successor` moves a request's link to the effect's
+successor with the marker.
+
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
@@ -1321,16 +1331,60 @@ fn track(
 }
 ```
 
+# Spawning an agent
+
+Every agent is made by the kernel, by one rule, so a new agent never has a
+setting its origin would not give it.
+In a system, a `Spawner` makes one from an `Origin` and an `AgentSpec`;
+with the world, `rig_ecs::spawn::spawn` does the same, and `spawn_root`
+makes a root with the defaults (as tests do). `Agent` cannot be built or
+required otherwise, and `SpawnedBy` has no public constructor (Bevy's
+`Relationship::from` still makes one, unchecked): read its `parent()`.
+
+- **Origin.** `Root` has the defaults; `ChildOf(agent)` goes below the
+  agent; `Like(agent)` goes beside it, under its parent, such as a
+  successor.
+- **What it takes.** Each setting the spec leaves `None` is the origin's:
+  the model (`ModelChoice::inherit`) with its connection, the reasoning
+  setting with that model, the system prompt, and the tools. Named tools
+  are granted from the origin's (`ToolAccess::grant`), and the model calls
+  are recorded under the spec's effect, else the origin's.
+- **Depth.** The kernel sets no limit on how deep agents nest. Each agent's
+  `SpawnedBy` lineage is there for a plugin that wants to count its depth.
+
+```rust
+use rig_harness::prelude::*;
+
+/// A successor of each agent whose turn ended, with its settings.
+fn hand_off(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<TurnOutcome>>,
+    mut spawner: Spawner,
+    mut notices: MessageWriter<Notice>,
+) {
+    if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
+        let spec = AgentSpec { name: "successor".into(), ..AgentSpec::default() };
+        if let Err(why) = spawner.spawn(Origin::Like(agent), spec) {
+            notices.write(Notice::error(agent, format!("No successor: {why}.")));
+        }
+    }
+}
+# let _ = hand_off;
+```
+
 # Subagents
 
 The `rig_basics::subagents` plugin spawns an agent for a `SpawnSubagent`
 effect `ForAgent` its parent, made by the model's `task` tool or a plugin.
 Prepare systems edit it (model, tools, system prompt), Gate systems refuse or
-hold it, and at Start the plugin spawns the agent, with what the request
-leaves out from the parent, as `SpawnedAgent(agent)` on it.
+hold it, and at Start the plugin spawns the agent through the `Spawner`,
+as `SpawnedAgent(agent)` on it.
 
 - `SpawnSubagent::task(title, brief)` works on a task and reports to its
-  parent, as `task` starts it.
+  parent, as `task` starts it. Each request, by `task` or `message`, stays
+  in the asker's `Awaiting` until the report on it arrives there. The
+  report and the clearing go into the asker's log with one append, so a
+  restore sends again a report that log lost, and never one it kept.
 - `SpawnSubagent::helper(title)` works for the plugin, which talks to it:
   it has a `Helper` and an `AgentTitle`, reports to no one, and `message`
   cannot reach it; `.brief(text)` sends it a first message, and with
@@ -1814,15 +1868,17 @@ effect, which a holder may take as "stop waiting".
 - **Start:** `AppStart` says why this app started (`StartReason`): `New`,
   `Resumed`, `Reloaded` after `/reload`, or `Restarted` on the
   previous build after a rollback; a switch is `New` or `Resumed`.
-- **Fork an agent:** `ForkAgent { agent, through }` makes a new agent in this
-  session, no restart: its log is a copy of `agent`'s up to a turn boundary at
-  or before `through` (`None` for the end), so a compaction made before the
-  cut is undone in it too; it has the saved components `agent` has now
-  (model, reasoning, tools, prompt, working directory), its connection, its
-  prompt-cache key (`CacheKey`) and a `ForkedFrom` listing `agent` and the
-  agents it came from, nearest first; `ForkedFrom::made_by` says which of
-  them made a message the fork copied.
-  `AgentForked { from, fork, through }` names it. `rig_basics::sessions`'
+- **Fork an agent:** spawn the request `ForkAgent::new(agent, through)` to
+  make a new agent in this session, no restart: its log is a copy of
+  `agent`'s up to a turn boundary at or before `through` (`None` for the
+  end), so a compaction made before the cut is undone in it too; it has the
+  saved components `agent` has now (model, reasoning, tools, prompt, working
+  directory), its connection, its prompt-cache key (`CacheKey`) and a
+  `ForkedFrom` listing `agent` and the agents it came from, nearest first;
+  `ForkedFrom::made_by` says which of them made a message the fork copied.
+  The request gets a `ForkResult`, the fork or a `ForkError`, for an
+  observer of `Add<ForkResult>` on it, then goes; `AgentForked { from, fork,
+  through }` announces each fork made to everyone. `rig_basics::sessions`'
   `/fork`, `/agents` and rewind are built on it, and show the fork, which
   makes it the session's `CurrentAgent`.
 - **Edit a stopped one:** `edit_stopped(&stores, &paths.0, &dir, |session|
@@ -1913,10 +1969,17 @@ fn fork_at(In(args): In<NoArgs>, mut commands: Commands) {
     let agent = args.agent;
     let fork = move |picked: On<Picked>, chosen: Query<&SessionPicked>, mut commands: Commands| {
         if let Ok(SessionPicked { entry: Some(through), .. }) = chosen.get(picked.entity) {
-            commands.trigger(ForkAgent { agent, through: Some(*through) });
+            commands.spawn(ForkAgent::new(agent, Some(*through))).observe(made);
         }
     };
     commands.spawn((picker, SessionPicker { source, ..Default::default() })).observe(fork);
+}
+
+/// Says why a fork was not made.
+fn made(made: On<Add<ForkResult>>, results: Query<(&ForkResult, &RequestOf)>, mut notices: MessageWriter<Notice>) {
+    if let Ok((ForkResult(Err(why)), &RequestOf(agent))) = results.get(made.entity) {
+        notices.write(Notice::error(agent, format!("Could not fork: {why}.")));
+    }
 }
 ```
 

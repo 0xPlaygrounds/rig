@@ -4,6 +4,7 @@ use rig_basics::coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::tool::content_hash;
 use rig_harness::harness_protocol::{Invocation, SessionId};
+use rig_harness::rig_ecs::spawn::spawn;
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_in, connect, first_agent, log_ended, log_tool_outputs, reply,
     run_until, scratch_home, start_call,
@@ -148,9 +149,9 @@ fn calls_are_logged_chained_and_checked() {
         .get::<AgentId>(agent)
         .map(|id| id.0.clone())
         .unwrap_or_default();
-    let sub = world
-        .spawn((Agent, SpawnedBy(agent), WorkDir(work.clone())))
-        .id();
+    let sub = spawn(world, Origin::ChildOf(agent), AgentSpec::default());
+    let sub = sub.unwrap_or(Entity::PLACEHOLDER);
+    world.entity_mut(sub).insert(WorkDir(work.clone()));
     start_call(
         world,
         sub,

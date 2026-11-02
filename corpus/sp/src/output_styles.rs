@@ -379,7 +379,7 @@ fn inherit(
     styles: Res<Styles>,
     mut commands: Commands,
 ) {
-    let Ok(&SpawnedBy(parent)) = children.get(spawned.entity) else {
+    let Ok(parent) = children.get(spawned.entity).map(SpawnedBy::parent) else {
         return;
     };
     let Ok(OutputStyle(name)) = agents.get(parent) else {

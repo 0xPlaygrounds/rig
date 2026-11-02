@@ -169,7 +169,7 @@ fn inherit_work_dir(
     dirs: Query<&WorkDir>,
     mut commands: Commands,
 ) {
-    let parent = parents.get(spawned.entity).map(|&SpawnedBy(parent)| parent);
+    let parent = parents.get(spawned.entity).map(SpawnedBy::parent);
     if let Some(dir) = parent.ok().and_then(|parent| dirs.get(parent).ok()) {
         commands
             .entity(spawned.entity)

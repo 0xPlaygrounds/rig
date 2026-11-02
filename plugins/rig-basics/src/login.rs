@@ -42,8 +42,9 @@ use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 use rig_harness::services::RigHome;
 
-use rig_ecs::agent::{ActiveTurn, Agent, Notice, StopReached};
+use rig_ecs::agent::{ActiveTurn, Agent, Notice};
 use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
+use rig_ecs::requests::RequestOf;
 use rig_ecs::tasks::{Done, PollTasks, Running, Wake};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
@@ -105,7 +106,7 @@ impl Plugin for LoginPlugin {
         .add_systems(Update, offered::refuse_unoffered)
         .add_observer(on_signed_in)
         .add_observer(on_signed_out)
-        .add_observer(cancel_on_interrupt);
+        .add_observer(say_cancelled);
     }
 }
 
@@ -167,13 +168,12 @@ impl SignIn for ChatGptSignIn {
     }
 }
 
-/// A sign-in waiting for the user, on an entity of its own whose
-/// [`Running`] task is the flow until it ends; `--print` waits for it as
-/// for any `Running` task. Despawning it cancels the flow.
+/// A sign-in waiting for the user, on an entity of its own, a
+/// [`RequestOf`] the agent that asked, whose [`Running`] task is the flow
+/// until it ends; `--print` waits for it as for any `Running` task.
+/// Despawning it cancels the flow, as a stop that reaches the agent does.
 #[derive(Component)]
 pub struct PendingLogin {
-    /// The agent that asked.
-    pub agent: Entity,
     /// What the flow asks the user to do, worded for a notice.
     prompts: Receiver<String>,
 }
@@ -213,7 +213,6 @@ fn on_login(
         && (named.is_empty() || named == PROVIDER)
     {
         commands.entity(login).despawn();
-        notices.write(Notice::info(agent, format!("{TITLE} sign-in cancelled.")));
         return;
     }
     if named.is_empty() {
@@ -238,7 +237,8 @@ fn on_login(
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands.spawn((
         Name::new(format!("login:{PROVIDER}")),
-        PendingLogin { agent, prompts },
+        PendingLogin { prompts },
+        RequestOf(agent),
         Running::spawn(
             pool,
             &wake,
@@ -298,10 +298,13 @@ async fn sign_in_flow(
 const WAITING: &str = "Waiting for it; Esc or /login cancels.";
 
 /// Shows what a sign-in asks the user to do.
-fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
-    for login in &logins {
+fn show_login_prompts(
+    logins: Query<(&PendingLogin, &RequestOf)>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (login, &RequestOf(agent)) in &logins {
         for text in login.prompts.try_iter() {
-            notices.write(Notice::info(login.agent, text));
+            notices.write(Notice::info(agent, text));
         }
     }
 }
@@ -310,13 +313,13 @@ fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<N
 /// it serves and could not connect before.
 fn on_signed_in(
     done: On<Add<Done<SignInEnded>>>,
-    logins: Query<(&PendingLogin, &Done<SignInEnded>)>,
+    logins: Query<(&RequestOf, &Done<SignInEnded>), With<PendingLogin>>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
     (models, session): (Res<Models>, Res<Session>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((login, Done(SignInEnded(result)))) = logins.get(done.entity) else {
+    let Ok((&RequestOf(asked), Done(SignInEnded(result)))) = logins.get(done.entity) else {
         return;
     };
     match result {
@@ -324,7 +327,7 @@ fn on_signed_in(
             session.offered.forget();
             let model = format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL);
             notices.write(Notice::info(
-                login.agent,
+                asked,
                 format!(
                     "Signed in to {TITLE}; switching to {model}. /model lists its \
                      other models; the credential is in {}.",
@@ -336,19 +339,19 @@ fn on_signed_in(
                 let of_plan = catalog
                     .resolve(&choice.0)
                     .is_ok_and(|found| found.spec.provider.vendor() == PROVIDER);
-                if agent != login.agent && of_plan {
+                if agent != asked && of_plan {
                     commands.entity(agent).insert(choice.clone());
                 }
             }
             commands.trigger(SetModel {
-                entity: login.agent,
+                entity: asked,
                 model,
                 kind: ChoiceKind::ForThisRun,
             });
         }
         Err(why) => {
             notices.write(Notice::error(
-                login.agent,
+                asked,
                 format!("{TITLE} sign-in failed: {why}"),
             ));
         }
@@ -356,22 +359,15 @@ fn on_signed_in(
     commands.entity(done.entity).despawn();
 }
 
-/// A stop that reaches an agent, such as Esc, cancels its waiting
-/// sign-ins.
-fn cancel_on_interrupt(
-    interrupt: On<StopReached>,
-    pending: Query<(Entity, &PendingLogin)>,
-    mut commands: Commands,
+/// Says a sign-in was cancelled as it goes before it ended: by `/login`, or
+/// by a stop that reaches its agent, such as Esc.
+fn say_cancelled(
+    gone: On<Remove<PendingLogin>>,
+    logins: Query<&RequestOf, Without<Done<SignInEnded>>>,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (login, pending) in &pending {
-        if pending.agent == interrupt.event_target() {
-            commands.entity(login).despawn();
-            notices.write(Notice::info(
-                pending.agent,
-                format!("{TITLE} sign-in cancelled."),
-            ));
-        }
+    if let Ok(&RequestOf(agent)) = logins.get(gone.entity) {
+        notices.write(Notice::info(agent, format!("{TITLE} sign-in cancelled.")));
     }
 }
 

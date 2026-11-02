@@ -58,7 +58,7 @@ fn a_typed_key_is_saved_privately_and_connects_until_logout() {
         return;
     };
     assert!(matches!(status(&app, vendor), Some(ModelStatus::NoKey(_))));
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     run(&mut app, agent, format!("login {vendor}"));
     let world = app.world_mut();
     let mut pickers = world.query::<(Entity, &Picker)>();

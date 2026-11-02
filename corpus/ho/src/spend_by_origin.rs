@@ -146,7 +146,7 @@ fn lineage(agent: Entity, agents: &Query<(&Name, Option<&SpawnedBy>), With<Agent
             break;
         };
         names.push(name.as_str().to_owned());
-        next = by.map(|by| by.0);
+        next = by.map(SpawnedBy::parent);
     }
     if names.is_empty() {
         return UNKNOWN.to_owned();

@@ -35,13 +35,15 @@ fn the_prompt_is_the_constant_on_every_request_across_an_agents_md_edit() {
             world.resource::<Ended>().0.len() == ended
         });
     };
-    let rig = app.world_mut().spawn((Agent, connection.clone())).id();
+    let rig = spawn_root(app.world_mut()).insert(connection.clone()).id();
     ask(&mut app, rig);
     let edited = std::fs::write(&agents_md, "Use spaces, never tabs.").is_ok();
     assert!(edited);
     ask(&mut app, rig);
     let reviewer = SystemPrompt("You review code.".to_owned());
-    let reviewer = app.world_mut().spawn((Agent, reviewer, connection)).id();
+    let reviewer = spawn_root(app.world_mut())
+        .insert((reviewer, connection))
+        .id();
     ask(&mut app, reviewer);
     std::fs::remove_dir_all(&root).ok();
     let prompts: Vec<Option<String>> = model

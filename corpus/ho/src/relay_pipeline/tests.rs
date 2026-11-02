@@ -87,7 +87,7 @@ fn session(
         .query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>()
         .iter(world)
         .next();
-    let host = restored.unwrap_or_else(|| world.spawn(Agent).id());
+    let host = restored.unwrap_or_else(|| spawn_root(world).id());
     // The model is chosen afresh: choosing one is `rig_basics::models`' job.
     world
         .entity_mut(host)

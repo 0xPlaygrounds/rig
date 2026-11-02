@@ -34,7 +34,7 @@ fn inspect_reads_the_world_and_nothing_else() {
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, InspectPlugin))
         .insert_resource(Scratch(Some(spill.clone())));
     load::<BasicCommandsPlugin>(&mut app, "rig-basics", "test");
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.finish();
     app.update();
     let ask = |app: &mut App, method, params| {

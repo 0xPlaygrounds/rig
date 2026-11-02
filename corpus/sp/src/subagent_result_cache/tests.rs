@@ -57,7 +57,7 @@ impl Session {
             .add_observer(log_tool_outputs);
         collect::<Notice>(&mut app);
         if fresh {
-            app.world_mut().spawn((Agent, ModelChoice(MAIN.to_owned())));
+            spawn_root(app.world_mut()).insert(ModelChoice(MAIN.to_owned()));
         }
         app.finish();
         app.update();
@@ -340,34 +340,6 @@ fn a_list_task_refuses_is_never_answered_from_a_record() {
     let refused = answer_to(&mut session, "And with the shell?", "t2");
     assert!(
         refused.contains("`shell` is not one of your tools"),
-        "{refused}"
-    );
-    std::fs::remove_dir_all(&dir).ok();
-}
-
-#[test]
-fn a_task_refused_at_the_deepest_level_is_never_answered_from_a_record() {
-    let dir = project("deepest");
-    let main = MockCompletionModel::from_stream_turns(
-        [
-            asks_with("t1", &Value::Null),
-            asks_with("t2", &json!([TASK, "read"])),
-        ]
-        .concat(),
-    );
-    let sub = MockCompletionModel::from_stream_turns([reply("src/config.rs:12")]);
-    let mut session = Session::new(&MemoryStore::default(), &dir, main, &sub);
-    session.app.insert_resource(SubagentPolicy { max_depth: 1 });
-    let keeps = ToolAccess::all().narrow([TASK, "read", MESSAGE, WAIT]);
-    session
-        .app
-        .world_mut()
-        .entity_mut(session.main)
-        .insert(keeps);
-    session.ask("Where is the config loaded?", 3);
-    let refused = answer_to(&mut session, "And again, with task?", "t2");
-    assert!(
-        refused.contains("cannot start subagents of its own"),
         "{refused}"
     );
     std::fs::remove_dir_all(&dir).ok();

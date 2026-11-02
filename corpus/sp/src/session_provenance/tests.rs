@@ -80,8 +80,8 @@ fn start(
     tui_view(&mut app);
     if new {
         let model = ModelChoice("test/scripted-a".to_owned());
-        let agent = (Name::new("main"), Agent, AgentId("main".to_owned()), model);
-        app.world_mut().spawn(agent);
+        let agent = (Name::new("main"), AgentId("main".to_owned()), model);
+        spawn_root(app.world_mut()).insert(agent);
     }
     app.finish();
     app.cleanup();

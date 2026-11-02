@@ -220,7 +220,7 @@ fn prompt(
         if let Some(text) = asked.and_then(|at| typed(conversation, at)) {
             return text;
         }
-        let parents = parent.and_then(|&SpawnedBy(parent)| {
+        let parents = parent.map(SpawnedBy::parent).and_then(|parent| {
             let (.., active) = agents.get(parent).ok()?;
             let turn = turns.get(active?.turn()).ok()?;
             Some((parent, turn.start))

@@ -59,7 +59,7 @@ impl Session {
         run_until(&mut app, &wakes, |world| {
             let mut supervisors = world.try_query_filtered::<&SpawnedBy, With<Supervisor>>();
             let mut supervisors = supervisors.iter_mut().flat_map(|query| query.iter(world));
-            supervisors.any(|&SpawnedBy(of)| of == worker)
+            supervisors.any(|of| of.parent() == worker)
         });
         let asked = "The parser drops trailing commas; fix it.";
         app.world_mut()

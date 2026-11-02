@@ -21,7 +21,31 @@ use super::turn::{NO_MODEL, Recovery, start_turn};
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`]. An agent has no
 /// [`ModelChoice`](super::model::ModelChoice) until one is picked.
-#[derive(Component, Reflect, Default)]
+///
+/// Only the kernel makes one, with the settings [`spawn`](super::spawn)
+/// gives it, so a plugin spawns an agent through a
+/// [`Spawner`](super::spawn::Spawner):
+///
+/// ```compile_fail,E0423
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::Agent;
+///
+/// let mut world = World::new();
+/// world.spawn((Name::new("a"), Agent));
+/// ```
+///
+/// Nor can a component require it, as it has no default:
+///
+/// ```compile_fail,E0277
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::Agent;
+///
+/// #[derive(Component)]
+/// #[require(Agent)]
+/// struct Reviewer;
+/// ```
+#[derive(Component, Reflect)]
+#[component(clone_behavior = Ignore)]
 #[reflect(Component)]
 #[require(
     AgentId,
@@ -31,7 +55,15 @@ use super::turn::{NO_MODEL, Recovery, start_turn};
     SystemPrompt,
     ToolAccess
 )]
-pub struct Agent;
+pub struct Agent {
+    _kernel: (),
+}
+
+impl Agent {
+    pub(crate) fn new() -> Self {
+        Self { _kernel: () }
+    }
+}
 
 /// The agent's stable id, used in its log's name, effect scopes and logs.
 /// `Entity` ids are not stable across a restart; this one is. It never
@@ -97,10 +129,34 @@ impl CacheKey {
 /// parent is spawned without it. The kernel gives it no other meaning: a
 /// restore links the agents again by their logs' headers, and views list
 /// agents by it.
+///
+/// A [`Spawner`](super::spawn::Spawner) links a child, and a restore links
+/// them again. Its constructor is private; a link made through Bevy's
+/// `Relationship::from` is not checked. Its field is private:
+///
+/// ```compile_fail,E0423
+/// use bevy_ecs::prelude::*;
+/// use rig_ecs::agent::SpawnedBy;
+///
+/// let mut world = World::new();
+/// let parent = world.spawn_empty().id();
+/// world.spawn(SpawnedBy(parent));
+/// ```
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
-pub struct SpawnedBy(pub Entity);
+pub struct SpawnedBy(Entity);
+
+impl SpawnedBy {
+    pub(crate) fn new(parent: Entity) -> Self {
+        Self(parent)
+    }
+
+    /// The agent that spawned this one.
+    pub fn parent(&self) -> Entity {
+        self.0
+    }
+}
 
 /// The agents this one spawned, in the order it spawned them.
 #[derive(Component, Reflect, Debug)]

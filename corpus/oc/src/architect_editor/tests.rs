@@ -107,7 +107,7 @@ fn the_architect_plans_and_the_editor_edits() {
         .add_plugins((UsagePlugin, ArchitectEditorPlugin));
     collect::<Notice>(&mut app);
     collect::<EffectRecorded>(&mut app);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.finish();
     app.update();
     let world = app.world_mut();

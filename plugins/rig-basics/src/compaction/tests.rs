@@ -18,6 +18,7 @@ use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
 
 use super::*;
 use crate::telemetry::usage::{AgentUsage, UsagePlugin};
+use rig_ecs::spawn::spawn;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, advance, app_on, collect, commit_message, connect, log_ended,
     reply, run_until,
@@ -1325,6 +1326,9 @@ fn a_stop_while_reading_again_clears_nothing() {
     app.world_mut().trigger(StopTurn::new(agent));
     app.world_mut().flush();
     app.update();
+    // The stop ends the reads themselves, still blocked, not only the re-read.
+    let world = app.world_mut();
+    assert_eq!(world.query::<&ReadAgain>().iter(world).count(), 0);
     drop(release);
     for _ in 0..20 {
         app.update();
@@ -3400,7 +3404,8 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
 
     // A subagent compacted too.
     let world = app.world_mut();
-    let child = world.spawn((Agent, SpawnedBy(agent))).id();
+    let child = spawn(world, Origin::ChildOf(agent), AgentSpec::default());
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
     for text in ["one", "two", "three"] {
         assert!(commit_message(world, child, Message::user(text)).is_ok());
     }
@@ -3436,10 +3441,7 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     let child_taken = child_sets.first().map(|(_, taken)| taken.len());
     assert_eq!(child_taken, Some(2), "{child_sets:?}");
 
-    restarted.world_mut().trigger(ForkAgent {
-        agent,
-        through: None,
-    });
+    restarted.world_mut().spawn(ForkAgent::new(agent, None));
     restarted.update();
     let world = restarted.world_mut();
     let mut agents = world.query_filtered::<Entity, With<Agent>>();
@@ -3451,10 +3453,7 @@ fn what_compactions_replaced_stays_drawn_live_after_a_restart_and_in_a_fork() {
     // A fork through the first summary ends before the compaction that
     // made it, so its next entries, which may reuse the summary's id, draw
     // nothing above them.
-    restarted.world_mut().trigger(ForkAgent {
-        agent,
-        through: first,
-    });
+    restarted.world_mut().spawn(ForkAgent::new(agent, first));
     restarted.update();
     let world = restarted.world_mut();
     let mut agents = world.query_filtered::<Entity, With<Agent>>();

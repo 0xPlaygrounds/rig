@@ -25,8 +25,7 @@ fn start(
     let new = !home.session(&id).is_saved();
     let (mut app, wakes) = app_in(home, &id);
     if new {
-        app.world_mut()
-            .spawn((Name::new("main"), Agent, AgentId("main".to_owned())));
+        spawn_root(app.world_mut()).insert((Name::new("main"), AgentId("main".to_owned())));
     }
     app.init_resource::<Ended>()
         .insert_resource(scripted_models(models.iter().copied()))
@@ -181,9 +180,8 @@ fn alt_down_rates_the_last_reply_from_the_input() {
     let (mut app, _wakes) = app_on(&store);
     app.add_plugins((AgentPlugin, SessionLogPlugin, MessageRatingsPlugin));
     tui_view(&mut app);
-    let agent = app
-        .world_mut()
-        .spawn((Name::new("main"), Agent, AgentId("main".to_owned())))
+    let agent = spawn_root(app.world_mut())
+        .insert((Name::new("main"), AgentId("main".to_owned())))
         .id();
     // The agent the view shows, whose input the keys are pressed in.
     app.insert_resource(ShownAgent(Some(agent)));

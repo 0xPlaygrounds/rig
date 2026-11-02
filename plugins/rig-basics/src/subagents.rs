@@ -10,10 +10,11 @@
 //!   `message` sends a child or a peer a request, or any agent it can reach
 //!   a message; `wait` keeps the caller's turn open until an agent messages
 //!   it or ends its turn.
-//! - Each request stays in the owing agent's [`OpenRequests`] (saved) until
-//!   its turn ends: its final answer is its report on every request it
-//!   owes, a message marked [`Report`] to each asker. Until then it can
-//!   reach its askers. A restart reports open requests as stopped.
+//! - Each request stays in the asker's [`Awaiting`] (saved) until the
+//!   report on it arrives: the asked agent's final answer is its report on
+//!   every request it owes, a message marked [`Report`] to each asker.
+//!   Until then it can reach its askers. A restart reports open requests
+//!   as stopped, and those a finished agent owes as it finished.
 //! - Every message between agents, and every report, goes with its
 //!   addressee's next model call, or starts a turn of an idle one.
 //! - Stopping an agent's turn stops its subagents' turns too
@@ -32,13 +33,13 @@
 //!
 //! Every agent is spawned through a [`SpawnSubagent`] effect, so other
 //! plugins shape spawning with ordinary stage systems, as below.
-//! [`SubagentPolicy`] caps nesting; a plugin spawns its own
-//! [`Role::Helper`] the same way. Reports are messages like any other, so a
-//! plugin edits or takes them over as it would any message.
+//! A plugin spawns its own [`Role::Helper`] the same way. Reports are
+//! messages like any other, so a plugin edits or takes them over as it
+//! would any message.
 //!
 //! ```
 //! use rig_harness::prelude::*;
-//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent, SubagentSystems};
+//! use rig_basics::subagents::{Role, SpawnSubagent, SpawnedAgent};
 //!
 //! /// Subagents (not helpers) get only the read-only tools.
 //! fn read_only(
@@ -78,12 +79,12 @@
 //! let mut app = App::new();
 //! app.add_systems(AgentPass, (
 //!     read_only.in_set(Stage::Prepare),
-//!     one_at_a_time.in_set(Stage::Gate).after(SubagentSystems::Gate),
+//!     one_at_a_time.in_set(Stage::Gate),
 //!     with_notes.in_set(Stage::Review),
 //! ));
 //! ```
 
-use rig_ecs::session_log::{Never, Reset};
+use rig_ecs::session_log::Never;
 use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -99,20 +100,13 @@ mod tools;
 
 #[cfg(feature = "tui")]
 pub use looks::SubagentLooks;
-pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
+pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent};
 pub use tools::{MESSAGE, TASK, WAIT};
 
 /// The name the subagent tools decide effects and write notes as
 /// ([`Decider::plugin`], [`Author::plugin`]), in effect logs and
 /// conversations: the module's.
 pub const ORIGIN: &str = "subagents";
-
-/// The plugin's stage system sets.
-#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SubagentSystems {
-    /// In Gate: refuses a request deeper than [`SubagentPolicy`] allows.
-    Gate,
-}
 
 /// Adds the `task`, `message` and `wait` tools, spawning the agents
 /// [`SpawnSubagent`] asks for, the subagents' lifecycle and the reports
@@ -126,12 +120,11 @@ impl Plugin for SubagentsPlugin {
         if !app.is_plugin_added::<ApprovalPlugin>() {
             app.add_plugins(ApprovalPlugin);
         }
-        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate))
-            .keeps_saved::<Subtask>()
+        app.keeps_saved::<Subtask>()
             .keeps_saved::<Helper>()
             .keeps_saved::<Peers>()
             .keeps_saved::<Environment>()
-            .keeps_saved::<OpenRequests>();
+            .keeps_saved::<Awaiting>();
         spawn::add(app);
         tools::add(app);
         lifecycle::add(app);
@@ -165,14 +158,14 @@ pub struct Report;
 #[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Peers;
 
-/// On an agent: the requests other agents sent it, oldest first, until it
-/// reports on them. Each gets exactly one report, to its asker, so a fork
-/// owes none. Saved through serde, as it holds rig-core's [`RequestId`].
+/// On an agent: the requests it sent other agents, oldest first, until the
+/// report on each arrives in its conversation or inbox. A restore that
+/// finds a report there takes its requests off. Saved; a fork waits for none.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(
     opaque,
     Component,
-    Saved(Reset),
+    Saved(Never),
     Default,
     Clone,
     Debug,
@@ -180,15 +173,32 @@ pub struct Peers;
     Deserialize
 )]
 #[serde(transparent)]
-pub struct OpenRequests(pub Vec<Request>);
+pub struct Awaiting(pub Vec<Request>);
 
-/// A request an agent owes a report on.
+impl Awaiting {
+    /// Takes off the requests a message by `author` reports on: when it
+    /// names one of the requests to its agent, that one and those to the
+    /// same agent before it.
+    pub(super) fn settle(&mut self, author: &Author) {
+        let (Some(from), Some(named)) = (&author.from, &author.request) else {
+            return;
+        };
+        let to = |request: &Request| request.to.0 == *from;
+        let Some(last) = self.0.iter().rposition(|r| to(r) && r.id == *named) else {
+            return;
+        };
+        self.0.extract_if(..=last, |r| to(r)).for_each(drop);
+    }
+}
+
+/// A request an agent waits for a report on.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Request {
-    /// The call that asked, which the report names.
+    /// The call that asked, by its asker and its place, which the report
+    /// names.
     pub id: RequestId,
-    /// The agent that asked, which the report goes to.
-    pub asker: AgentId,
+    /// The agent asked, which owes the report.
+    pub to: AgentId,
 }
 
 /// On a subagent: what it must know of its environment that it cannot see,

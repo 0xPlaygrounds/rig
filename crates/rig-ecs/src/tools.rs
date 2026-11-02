@@ -485,11 +485,11 @@ pub(crate) fn keep_within_parents(
         return;
     }
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
-        .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|parent| parent.0))))
+        .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|it| it.parent()))))
         .collect();
     for (agent, access, parent) in &agents {
         let mut within = access.for_run(run.as_deref());
-        let mut next = parent.map(|parent| parent.0);
+        let mut next = parent.map(|it| it.parent());
         // A cycle of parents ends once every agent was passed.
         for _ in 0..above.len() {
             let Some((upper, parent)) = next.and_then(|up| above.get(&up)) else {

@@ -74,7 +74,7 @@ fn a_calls_reported_output_is_its_progress_and_what_it_answers_when_stopped() {
         return;
     };
     let world = app.world_mut();
-    let agent = world.spawn((Agent, connection)).id();
+    let agent = spawn_root(world).insert(connection).id();
     world.trigger(Deliver::new(agent, "build it", DeliveryMode::Steer));
     let mut progress = world.query::<&ToolProgress>();
     run_until(&mut app, &wakes, |world| {

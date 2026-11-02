@@ -214,7 +214,7 @@ fn a_notice_about_an_agent_gone_before_it_is_read_is_drawn_in_no_other_transcrip
     app.world_mut().resource_mut::<ShownAgent>().0 = Some(agent);
     say(&mut app, agent, Message::user("question"));
     // A helper whose model call fails retires in the same pass.
-    let helper = app.world_mut().spawn(Agent).id();
+    let helper = spawn_root(app.world_mut()).id();
     app.update();
     app.world_mut().write_message(Notice::error(
         helper,
@@ -366,7 +366,7 @@ fn a_line_says_where_each_of_its_rows_starts_in_it() {
 #[test]
 fn what_comes_back_to_an_agent_not_shown_waits_until_it_is() {
     let (mut app, _) = view_app();
-    let other = app.world_mut().spawn(Agent).id();
+    let other = spawn_root(app.world_mut()).id();
     for text in ["deploy it", "then tag it"] {
         let text = text.to_owned();
         app.world_mut().write_message(Recalled {

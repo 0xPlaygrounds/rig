@@ -58,7 +58,7 @@ fn the_context_label_is_the_main_agents() {
         }))
     };
     let world = app.world_mut();
-    world.spawn((Agent, AgentId("b".to_owned()), context(4_700)));
+    spawn_root(world).insert((AgentId("b".to_owned()), context(4_700)));
     app.update();
     let label = |app: &mut App| {
         let world = app.world_mut();
@@ -68,15 +68,15 @@ fn the_context_label_is_the_main_agents() {
     };
     assert_eq!(label(&mut app), "ctx 4.7k");
     let world = app.world_mut();
-    let main = world
-        .spawn((Agent, AgentId("a".to_owned()), context(12_000)))
+    let main = spawn_root(world)
+        .insert((AgentId("a".to_owned()), context(12_000)))
         .id();
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");
     // Showing another agent leaves it.
     let world = app.world_mut();
-    let other = world
-        .spawn((Agent, AgentId("c".to_owned()), context(900)))
+    let other = spawn_root(world)
+        .insert((AgentId("c".to_owned()), context(900)))
         .id();
     app.update();
     assert_eq!(label(&mut app), "ctx 12k");

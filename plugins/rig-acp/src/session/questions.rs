@@ -42,6 +42,19 @@ pub(crate) struct Asking<'w, 's> {
     agents: Query<'w, 's, &'static AgentId>,
     dirs: Query<'w, 's, &'static WorkDir>,
     root: Res<'w, ProjectRoot>,
+    commands: Commands<'w, 's>,
+}
+
+/// Asking the client a question: a request of the question
+/// ([`RequestOf`]), so the client is no longer asked once the question
+/// settles or goes.
+#[derive(Component)]
+pub(super) struct ClientAsk(pub(super) tokio::task::AbortHandle);
+
+impl Drop for ClientAsk {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 impl Asking<'_, '_> {
@@ -122,7 +135,8 @@ impl Asking<'_, '_> {
             decision.decide(Decider::plugin("rig-acp"), Outcome::refused(UNSHOWN));
             return;
         };
-        session.asking.insert(entity, task.abort_handle());
+        self.commands
+            .spawn((ClientAsk(task.abort_handle()), RequestOf(entity)));
     }
 }
 
@@ -205,12 +219,4 @@ pub(super) fn answer_with(commands: &mut Commands, ask: Entity, answer: Option<A
             }
         }
     });
-}
-
-/// Stops asking the client about a question that ended before it answered,
-/// as one a stopped turn takes away.
-pub(super) fn forgotten(gone: On<Remove<Ask>>, mut session: ResMut<Session>) {
-    if let Some(task) = session.asking.remove(&gone.entity) {
-        task.abort();
-    }
 }

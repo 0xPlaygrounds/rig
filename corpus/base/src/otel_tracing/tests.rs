@@ -101,7 +101,7 @@ fn one_turn(denied: bool) -> Vec<SpanData> {
     let Some(connection) = connect(&model) else {
         return Vec::new();
     };
-    let agent = app.world_mut().spawn((Agent, connection)).id();
+    let agent = spawn_root(app.world_mut()).insert(connection).id();
     app.finish();
     app.update();
     app.world_mut()
@@ -200,7 +200,9 @@ fn a_subagent_turn_is_a_child_of_the_task_call_that_started_it() {
         return;
     };
     let choice = ModelChoice(connection.spec.reference());
-    let parent = app.world_mut().spawn((Agent, connection, choice)).id();
+    let parent = spawn_root(app.world_mut())
+        .insert((connection, choice))
+        .id();
     app.finish();
     app.update();
     app.world_mut()

@@ -62,6 +62,7 @@ use super::agent::{
 use super::inbox::{DeliveryMode, Inboxes, Unanswered, carry_on, deliver, keep_on_the_way};
 use super::model::{Connection, ReasoningSetting};
 use super::prompt::{PromptSection, SectionOf};
+use super::requests::Requests;
 use super::restore::{CarryOn, Interrupted, KeptFacts, Restored, commit_results, mark_settled};
 use super::retry::{RetryPolicy, Verdict};
 use super::session_log::{ConversationChanged, SessionLog, save_conversation};
@@ -494,14 +495,15 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
 /// spawned without [`SpawnedBy`](super::agent::SpawnedBy). Each agent's
 /// turn stops as [`Stopper::stop`] says, and each agent reached gets one
 /// [`StopReached`] once its turn is gone ([`Reaching`]), idle agents after
-/// every running one, unless the stop is a plugin's of its turn alone.
+/// every running one, unless the stop is a plugin's of its turn alone,
+/// which also leaves the agents' [`Requests`]; any other ends them.
 /// The conversations are written to the log at once, in one flush, so a
 /// log that ends mid-turn means a crash, a turn a plugin carries on
 /// ([`CarryOn`]) or a log that stopped (shown once, as every log failure
 /// is); a stop never waits on the log.
 pub(crate) fn on_stop_turn(
     interrupt: On<StopTurn>,
-    spawned: Query<&Spawned>,
+    (spawned, requests): (Query<&Spawned>, Query<&Requests>),
     mut stopper: Stopper,
 ) {
     let root = interrupt.event_target();
@@ -535,6 +537,13 @@ pub(crate) fn on_stop_turn(
             cause: cause.clone(),
             idle: true,
         });
+    }
+    let agents = reached.iter().map(|&(agent, _)| agent);
+    for requests in requests
+        .iter_many(agents.filter(|_| interrupt.below))
+        .flatten()
+    {
+        requests.end(&mut stopper.commands);
     }
     // A failed write stops the logging, which the frame's log write shows;
     // the turns stop all the same, and nothing more starts unsaved.

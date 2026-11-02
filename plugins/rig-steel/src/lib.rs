@@ -60,7 +60,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
 
-pub use harness::{AgentSpec, Harness};
+pub use harness::Harness;
 use program::{Ended, Host};
 
 /// The tool that runs a program.

@@ -144,7 +144,7 @@ fn connection(model: &MockCompletionModel) -> Option<Connection> {
 /// An agent of `app` on `model`.
 fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
     let connection = connection(model)?;
-    Some(app.world_mut().spawn((Agent, connection)).id())
+    Some(spawn_root(app.world_mut()).insert(connection).id())
 }
 
 fn ask(app: &mut App, agent: Entity) {
@@ -549,7 +549,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
         AgentPass,
         (edit.in_set(Stage::Prepare), take_over.in_set(Stage::Gate)),
     );
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     app.update();
     let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Inform);
     // The kernel has no slash commands: a `/` line is text to it.

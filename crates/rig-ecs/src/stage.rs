@@ -65,7 +65,9 @@ use web_time::SystemTime;
 
 use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
 use super::effects::{Effects, Handler, Ran};
+use super::fork::{Forking, make_forks};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind, settle_unsent};
+use super::requests::RequestOf;
 use super::restore::{Interrupted, answer_interrupted, mark_started, stop_restored};
 use super::session_log::{Drain, SessionLog, save_now};
 use super::tasks::{Running, Wake, arrive};
@@ -489,22 +491,25 @@ pub struct Supersedes(Vec<Entity>);
 #[reflect(Component, Default)]
 pub struct Settled;
 
-/// When an effect carrying `M` is superseded, moves `M`, and the hold the
-/// effect keeps ([`HoldOf`]), to the successor, so the plugin that owns the
-/// effect by `M` takes the successor's outcome. The successor's hold is
-/// inserted before the old one is removed, so the held effect is never
-/// unheld in between: `app.add_observer(follow_successor::<Summarizing>)`.
+/// When an effect carrying `M` is superseded, moves `M`, the hold the
+/// effect keeps ([`HoldOf`]) and the owner it is a request of
+/// ([`RequestOf`]) to the successor, so the plugin that owns the effect by
+/// `M` takes the successor's outcome. The successor's hold and link are
+/// inserted before the old ones are removed, so the held effect is never
+/// unheld in between, and the owner never lets go of the request:
+/// `app.add_observer(follow_successor::<Summarizing>)`.
 pub fn follow_successor<M: Component>(
     superseded: On<Add<SupersededBy>>,
-    owned: Query<(&SupersededBy, Option<&HoldOf>), With<M>>,
+    owned: Query<(&SupersededBy, Option<&HoldOf>, Option<&RequestOf>), With<M>>,
     mut commands: Commands,
 ) {
     let old = superseded.entity;
-    let Ok((by, hold)) = owned.get(old) else {
+    let Ok((by, hold, request)) = owned.get(old) else {
         return;
     };
     let new = by.successor();
     let held = hold.map(|&HoldOf(held)| held);
+    let owner = request.map(|&RequestOf(owner)| owner);
     commands.queue(move |world: &mut World| {
         let Ok(mut to) = world.get_entity_mut(new) else {
             return;
@@ -512,12 +517,18 @@ pub fn follow_successor<M: Component>(
         if let Some(held) = held {
             to.insert(HoldOf(held));
         }
+        if let Some(owner) = owner {
+            to.insert(RequestOf(owner));
+        }
         let Ok(mut from) = world.get_entity_mut(old) else {
             return;
         };
         let marker = from.take::<M>();
         if held.is_some() {
             from.remove::<HoldOf>();
+        }
+        if owner.is_some() {
+            from.remove::<RequestOf>();
         }
         if let (Some(marker), Ok(mut to)) = (marker, world.get_entity_mut(new)) {
             to.insert(marker);
@@ -706,6 +717,14 @@ pub(crate) fn build(app: &mut App) {
                 super::tools::keep_within_parents.in_set(Enter(Stage::Admit)),
             ),
         )
+        .add_systems(
+            AgentPass,
+            // Its own stage's systems see the forks it made.
+            make_forks
+                .run_if(any_with_component::<Forking>)
+                .after(Enter(Stage::Arrive))
+                .before(Stage::Arrive),
+        )
         .configure_sets(
             AgentPass,
             (
@@ -769,7 +788,7 @@ pub(crate) fn build(app: &mut App) {
             Update,
             run_passes
                 .in_set(AgentLoop)
-                .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>)>>),
+                .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>, With<Forking>)>>),
         );
     for stage in Stage::ALL {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));

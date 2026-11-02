@@ -116,15 +116,12 @@ pub(super) fn started(
 }
 
 /// A call of the main agent settles: completed or failed, with what it
-/// answered. A question settles: no longer asked.
+/// answered.
 pub(super) fn settled(
     settled: On<Add<Settled>>,
     calls: Query<&Outcome, With<ToolRequest>>,
     mut out: Out,
 ) {
-    if let Some(task) = out.session.asking.remove(&settled.entity) {
-        task.abort();
-    }
     if let Ok(outcome) = calls.get(settled.entity)
         && let Some(id) = out.session.calls.remove(&settled.entity)
     {

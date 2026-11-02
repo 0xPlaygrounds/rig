@@ -403,6 +403,8 @@ pub(crate) struct Context<'a, 'w, 's> {
 pub(crate) struct Target<'a> {
     view: &'a mut TuiView,
     input: &'a mut Editor,
+    /// The input's entity, if it is one.
+    editor: Option<Entity>,
     pane: Option<(Mut<'a, TranscriptView>, Mut<'a, PaneState>)>,
 }
 
@@ -497,6 +499,7 @@ pub(crate) fn read_input(
                 let mut target = Target {
                     view: &mut view,
                     input,
+                    editor,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 act(action, &mut target, (&context, &showing), &mut commands);
@@ -526,6 +529,7 @@ pub(crate) fn read_input(
                 let mut target = Target {
                     view: &mut view,
                     input,
+                    editor,
                     pane: pane.map(|(_, view, state, _)| (view, state)),
                 };
                 pressed(
@@ -660,7 +664,12 @@ fn act(
     commands: &mut Commands,
 ) {
     use InputAction as Do;
-    let Target { view, input, pane } = target;
+    let Target {
+        view,
+        input,
+        editor,
+        pane,
+    } = target;
     // A question answered in the input: Enter answers it, Esc refuses it.
     let editing = showing
         .iter()
@@ -755,7 +764,9 @@ fn act(
                 .processes
                 .map(Processes::launcher)
                 .unwrap_or_default();
-            clipboard::paste_image(images, launcher, context.wake, commands);
+            if let Some(editor) = *editor {
+                clipboard::paste_image(images, launcher, (editor, context.wake), commands);
+            }
         }
         Do::SelectUp | Do::SelectDown => {
             if let Some((transcript, state)) = pane {

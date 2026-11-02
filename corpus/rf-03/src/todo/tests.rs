@@ -3,6 +3,7 @@ use std::sync::mpsc::Receiver;
 use rig_basics::sessions::SessionsPlugin;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Home, SessionId};
+use rig_harness::rig_ecs::spawn::spawn;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, app_in, app_on, calls, collect, connect, first_agent, log_ended,
     reply, run_until, scratch_home, start_call,
@@ -236,10 +237,7 @@ fn a_fork_copies_the_list_and_diverges_and_a_subagent_starts_empty() {
         "2",
         json!({ "action": "add", "text": "two" }),
     );
-    app.world_mut().trigger(ForkAgent {
-        agent: parent,
-        through: None,
-    });
+    app.world_mut().spawn(ForkAgent::new(parent, None));
     app.update();
     let found = app.world().resource::<Forks>().0.first();
     assert!(found.is_some(), "a fork");
@@ -260,7 +258,12 @@ fn a_fork_copies_the_list_and_diverges_and_a_subagent_starts_empty() {
         "4",
         json!({ "action": "add", "text": "four" }),
     );
-    let subagent = app.world_mut().spawn((Agent, SpawnedBy(parent))).id();
+    let subagent = spawn(
+        app.world_mut(),
+        Origin::ChildOf(parent),
+        AgentSpec::default(),
+    );
+    let subagent = subagent.unwrap_or(Entity::PLACEHOLDER);
     app.update();
     let texts = |world: &World, agent| -> Vec<String> {
         items(world, agent)
@@ -311,7 +314,7 @@ fn an_earlier_saved_form_is_read_or_skipped_with_a_notice() {
     // second's of one whose items were plain strings.
     let before_call = json!({ "items": [{ "id": 1, "text": "parse", "done": true }] });
     let world = app.world_mut();
-    let second = world.spawn(Agent).id();
+    let second = spawn_root(world).id();
     app.update();
     // Values set after the agents were spawned, so their logs are kept.
     let world = app.world_mut();

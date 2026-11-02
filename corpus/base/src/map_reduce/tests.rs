@@ -94,7 +94,7 @@ fn five_files_two_at_a_time_one_fails_and_writes_elsewhere_are_refused() {
         .add_observer(on_spawn)
         .add_observer(on_despawn);
     let parent_model = MockCompletionModel::from_stream_turns([reply("unused")]);
-    let mut parent = app.world_mut().spawn(Agent);
+    let mut parent = spawn_root(app.world_mut());
     if let Some(connection) = connect(&parent_model) {
         let choice = ModelChoice(connection.spec.reference());
         parent.insert((connection, choice));

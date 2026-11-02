@@ -43,7 +43,7 @@ fn a_previewed_write_lists_the_file_it_would_create_and_leaves_the_disk_alone() 
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let args = serde_json::json!({ "path": "new.txt", "content": "one\ntwo\n" });
     let Ok(name) = ToolName::new("write") else {
         return;

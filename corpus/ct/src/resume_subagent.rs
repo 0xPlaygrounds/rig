@@ -22,7 +22,7 @@
 //!   that finished longest ago are retired.
 
 use bevy_reflect::Reflect;
-use rig_basics::subagents::{Lifecycle, OpenRequests, Subtask};
+use rig_basics::subagents::{Awaiting, Lifecycle, Subtask};
 use rig_basics::telemetry::usage::AgentUsage;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
@@ -119,14 +119,16 @@ fn names(id: &AgentId, wanted: &str) -> bool {
 /// Sends the follow-up to the caller's own subagent, or refuses the call.
 fn on_follow_up(
     called: On<ToolCalled<FollowUpArgs>>,
-    subagents: Query<(Entity, &AgentId, &SpawnedBy, Option<&OpenRequests>), With<Subtask>>,
+    subagents: Query<(Entity, &AgentId, &SpawnedBy), With<Subtask>>,
+    awaiting: Query<&Awaiting>,
     mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     let own: Vec<_> = subagents
         .iter()
-        .filter(|(_, _, by, _)| by.0 == called.agent)
+        .filter(|(_, _, by)| by.parent() == called.agent)
         .collect();
+    let owes = |id: &AgentId| awaiting.iter().flat_map(|a| &a.0).any(|r| r.to == *id);
     let target = own
         .iter()
         .find(|(_, id, ..)| names(id, &called.args.agent_id));
@@ -149,7 +151,7 @@ fn on_follow_up(
         Some(_) if called.args.message.trim().is_empty() => {
             Some("`message` must not be empty. Nothing was sent.".to_owned())
         }
-        Some((_, id, _, Some(open))) if !open.0.is_empty() => Some(format!(
+        Some((_, id, _)) if owes(id) => Some(format!(
             "`{}` is still working on its task; its report will come as a message. Nothing \
              was sent.",
             id.short()
@@ -329,17 +331,19 @@ fn stamp_finished(
 /// that finished longest ago first; never one the user looks at.
 fn drop_oldest(
     changed: Query<(), Changed<FinishedAt>>,
-    kept: Query<(Entity, &FinishedAt, Has<ActiveTurn>, Option<&OpenRequests>), With<Subtask>>,
+    kept: Query<(Entity, &AgentId, &FinishedAt, Has<ActiveTurn>), With<Subtask>>,
+    awaiting: Query<&Awaiting>,
     (settings, shown): (Res<KeptSubagents>, Option<Res<ShownAgent>>),
     mut commands: Commands,
 ) {
     if changed.is_empty() {
         return;
     }
+    let owes = |id: &AgentId| awaiting.iter().flat_map(|a| &a.0).any(|r| r.to == *id);
     let mut finished: Vec<(u64, Entity)> = kept
         .iter()
-        .filter(|(_, _, busy, open)| !busy && open.is_none_or(|open| open.0.is_empty()))
-        .map(|(agent, at, ..)| (at.0, agent))
+        .filter(|(_, id, _, busy)| !busy && !owes(id))
+        .map(|(agent, _, at, _)| (at.0, agent))
         .collect();
     let excess = finished.len().saturating_sub(settings.keep);
     finished.sort_unstable();

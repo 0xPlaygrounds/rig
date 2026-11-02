@@ -87,7 +87,8 @@ fn scripts_are_tools_that_come_and_go_with_their_files() {
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
     collect::<Notice>(&mut app);
-    let agent = connect(&model).map(|connection| app.world_mut().spawn((Agent, connection)).id());
+    let agent =
+        connect(&model).map(|connection| spawn_root(app.world_mut()).insert(connection).id());
     app.finish();
     app.update();
     assert!(agent.is_some(), "the catalog lists the model");

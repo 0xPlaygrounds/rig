@@ -16,7 +16,7 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ActivityPlugin));
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let review = EffectRequest {
         kind: EffectKind::Custom {
             kind: "review".into(),
@@ -49,7 +49,7 @@ fn a_tool_calls_activity_names_its_holds_and_its_progress() {
     let mut app = App::new();
     app.add_plugins(ActivityPlugin);
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let Ok(name) = ToolName::new("edit") else {
         return;
@@ -81,7 +81,7 @@ fn an_inline_question_leaves_a_running_turn_its_status() {
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ActivityPlugin));
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let ask = Ask::yes_no("Try the next step?").inline();
     world.spawn((ask, ForAgent(agent)));
     let asking = Some(ActivityStatus::Asking("Try the next step?".to_owned()));
@@ -96,7 +96,7 @@ fn a_turn_is_writing_once_its_answer_streams() {
     let mut app = App::new();
     app.add_plugins(ActivityPlugin);
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let turn = world.spawn(TurnOf(agent)).id();
     let call = world.spawn((Partial::default(), CallOf(turn))).id();
     assert_eq!(status(&mut app, agent), Some(ActivityStatus::Thinking));

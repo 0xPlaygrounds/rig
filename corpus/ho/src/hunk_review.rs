@@ -105,7 +105,7 @@ struct Noted;
 
 /// The top-level agent `agent` works for.
 fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
-    while let Ok(&SpawnedBy(parent)) = parents.get(agent) {
+    while let Ok(parent) = parents.get(agent).map(SpawnedBy::parent) {
         agent = parent;
     }
     agent

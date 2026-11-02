@@ -18,8 +18,7 @@ const ROOT_CAUSE: &str = "The root cause is a stale cache entry.";
 fn start(home: &Home, id: &SessionId, new: Option<&str>) -> Option<(App, Receiver<()>, Entity)> {
     let (mut app, wakes) = app_in(home, id);
     if let Some(new) = new {
-        app.world_mut()
-            .spawn((Name::new("agent"), Agent, AgentId(new.to_owned())));
+        spawn_root(app.world_mut()).insert((Name::new("agent"), AgentId(new.to_owned())));
     }
     // The terminal view's main pane, its view alone.
     app.world_mut().spawn((TranscriptView::default(), MainPane));

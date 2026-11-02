@@ -91,7 +91,7 @@ impl Session {
         collect::<Notice>(&mut app);
         tui_view(&mut app);
         if fresh {
-            app.world_mut().spawn((Agent, ModelChoice(MAIN.to_owned())));
+            spawn_root(app.world_mut()).insert(ModelChoice(MAIN.to_owned()));
         }
         app.finish();
         app.update();

@@ -11,6 +11,7 @@ use futures::channel::oneshot;
 use futures::future::Shared;
 use rig_ecs::agent::{AgentId, TurnOutcome};
 use rig_ecs::prelude::{Author, RequestId, StopCause};
+use rig_ecs::spawn::AgentSpec;
 use serde_json::{Map, Value};
 use steel::SteelVal;
 use steel::parser::lexer::TokenStream;
@@ -19,7 +20,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::steel_vm::builtin::BuiltInModule;
 use steel::steel_vm::engine::Engine;
 
-use crate::{AgentSpec, Control, Harness, MAX_OUTPUT_BYTES, RUN_STEEL, capped, wait};
+use crate::{Control, Harness, MAX_OUTPUT_BYTES, RUN_STEEL, capped, wait};
 
 /// How many host function calls a program may make.
 const MAX_HOST_CALLS: u32 = 1000;

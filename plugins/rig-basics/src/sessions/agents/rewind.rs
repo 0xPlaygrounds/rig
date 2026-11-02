@@ -11,7 +11,7 @@ use rig_tui::{
     AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, KeyScope, MainTranscript, TranscriptItem,
 };
 
-use super::Forking;
+use super::ask_fork;
 
 pub(super) fn add(app: &mut App) {
     let enter = KeyBinding::new(KeyPress::key(KeyCode::Enter), "Rewind to this message")
@@ -26,7 +26,6 @@ fn rewind(
     pressed: On<KeyPressed>,
     mut view: MainTranscript,
     conversations: Query<&Conversation>,
-    mut forking: ResMut<Forking>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -47,5 +46,5 @@ fn rewind(
         return;
     };
     view.selected = None;
-    forking.ask(&mut commands, (agent, Some(id)), Some(text));
+    ask_fork(&mut commands, (agent, Some(id)), Some(text));
 }

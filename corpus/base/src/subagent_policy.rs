@@ -1,24 +1,21 @@
 //! Plugin corpus: 39. Subagent policy (spec `39-subagent-policy.md`).
 //!
 //! One policy for every subagent, read from `RIG_HOME/subagents.toml` into
-//! [`SubagentsConfig`]: how deep subagents nest, how many work at once (per
-//! parent and in total), the model and tools a new one gets, and how many
-//! model calls a turn of one makes and how much one spends before it is
-//! stopped. It shapes `rig_basics::subagents`' [`SpawnSubagent`] requests in the
-//! stages: Prepare gives them the defaults, Gate holds those without a free
-//! slot and releases them as slots free, and a `task` call deeper than the
-//! policy allows is refused for the model to read. A subagent over a cap
-//! has its turn stopped with the reason, which `rig_basics::subagents` reports with
-//! what it had said. `/agents` shows each subagent's depth and spend, and
-//! the parent's status line how many of its tasks are queued.
+//! [`SubagentsConfig`]: how many subagents work at once (per parent and in
+//! total), the model and tools a new one gets, and how many model calls a
+//! turn of one makes and how much one spends before it is stopped. It shapes
+//! `rig_basics::subagents`' [`SpawnSubagent`] requests in the stages: Prepare
+//! gives them the defaults, and Gate holds those without a free slot and
+//! releases them as slots free. A subagent over a cap has its turn stopped
+//! with the reason, which `rig_basics::subagents` reports with what it had
+//! said. `/agents` shows each subagent's depth and spend, and the parent's
+//! status line how many of its tasks are queued.
 
 use std::path::Path;
 
 use bevy_log::warn;
 use rig_basics::sessions::agents::{AgentColumn, ColumnOf};
-use rig_basics::subagents::{
-    Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
-};
+use rig_basics::subagents::{Lifecycle, Role, SpawnSubagent, SubagentsPlugin};
 use rig_basics::telemetry::usage::{AgentUsage, UsagePlugin};
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -28,8 +25,6 @@ use serde::Deserialize;
 #[derive(Resource, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct SubagentsConfig {
-    /// How deep subagents nest; an agent nothing spawned is at depth 0.
-    pub max_depth: usize,
     /// How many subagents of one parent work at once; more wait.
     pub max_concurrent: Option<usize>,
     /// How many subagents work at once in the whole session.
@@ -50,7 +45,6 @@ pub struct SubagentsConfig {
 impl Default for SubagentsConfig {
     fn default() -> Self {
         Self {
-            max_depth: 2,
             max_concurrent: None,
             max_concurrent_total: None,
             default_model: None,
@@ -101,9 +95,8 @@ pub enum SubagentPolicySystems {
     /// In [`Stage::Prepare`]: gives `task` requests the default model and
     /// tools.
     Prepare,
-    /// In [`Stage::Gate`], after [`SubagentSystems::Gate`]: refuses a
-    /// `task` call too deep, holds requests without a free slot, and stops
-    /// a subagent's turn over a cap.
+    /// In [`Stage::Gate`]: holds requests without a free slot, and stops a
+    /// subagent's turn over a cap.
     Gate,
 }
 
@@ -130,28 +123,18 @@ impl Plugin for SubagentPolicyPlugin {
                 AgentPass,
                 (
                     SubagentPolicySystems::Prepare.in_set(Stage::Prepare),
-                    SubagentPolicySystems::Gate
-                        .in_set(Stage::Gate)
-                        .after(SubagentSystems::Gate),
+                    SubagentPolicySystems::Gate.in_set(Stage::Gate),
                 ),
             )
             .add_systems(
                 AgentPass,
                 (
                     with_defaults.in_set(SubagentPolicySystems::Prepare),
-                    (refuse_too_deep, queue, cap).in_set(SubagentPolicySystems::Gate),
+                    (queue, cap).in_set(SubagentPolicySystems::Gate),
                 ),
             )
             .add_systems(Update, show_column)
             .add_systems(PostUpdate, show_queued.in_set(StatusSystems::Show));
-    }
-
-    /// Once `rig_basics::subagents` read its own settings: its depth is this policy's.
-    fn finish(&self, app: &mut App) {
-        if let Some(config) = app.world().get_resource::<SubagentsConfig>() {
-            let max_depth = config.max_depth;
-            app.insert_resource(SubagentPolicy { max_depth });
-        }
     }
 }
 
@@ -183,26 +166,6 @@ fn with_defaults(
     }
 }
 
-/// Refuses a `task` call whose subagent would be deeper than the policy
-/// allows, for its model to read. An agent at the limit is not offered
-/// `task`, but its model may call it anyway.
-fn refuse_too_deep(
-    mut calls: Query<(&ToolRequest, &ForAgent, &mut Decision), (ReadyToStart, ToolCalls)>,
-    lineage: Query<&SpawnedBy>,
-    config: Res<SubagentsConfig>,
-) {
-    for (request, &ForAgent(agent), mut decision) in &mut calls {
-        let depth = lineage.iter_ancestors(agent).count() + 1;
-        if request.call.function.name.as_str() == TASK && depth > config.max_depth {
-            let why = format!(
-                "subagent depth limit {} reached; do it yourself",
-                config.max_depth
-            );
-            decision.decide(Decider::plugin("subagent-policy"), Outcome::refused(why));
-        }
-    }
-}
-
 /// Holds each `task`'s request while its parent, or the session, has no
 /// slot free, and releases the held ones, first held first, as slots free.
 /// A subagent holds a slot while it works or waits on its own subagents.
@@ -223,7 +186,8 @@ fn queue(
     let at_work = subagents
         .iter()
         .filter(|(.., step)| matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_)));
-    let mut at_work: Vec<(Entity, Entity)> = at_work.map(|(agent, by, _)| (agent, by.0)).collect();
+    let mut at_work: Vec<(Entity, Entity)> =
+        at_work.map(|(agent, by, _)| (agent, by.parent())).collect();
     let free = |at_work: &[(Entity, Entity)], parent: Entity| {
         let mine = at_work.iter().filter(|(_, by)| *by == parent).count();
         let above: Vec<Entity> = lineage.iter_ancestors(parent).collect();

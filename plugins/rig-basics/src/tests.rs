@@ -8,7 +8,7 @@ fn retry_is_an_unknown_command() {
     let mut app = App::new();
     app.add_plugins((AgentPlugin, BasicCommandsPlugin));
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     world.trigger(RunCommand::new(agent, "retry".to_owned()));
     world.flush();
     let why: Vec<Option<&str>> = app
@@ -28,7 +28,7 @@ fn every_help_starts_at_one_column_after_the_widest_name() {
         .add_command("skill:diagnose-crash", "Diagnose", |_: In<CommandArgs>| {})
         .add_command("日本語", "Wide", |_: In<CommandArgs>| {});
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     world.trigger(RunCommand::new(agent, "help".to_owned()));
     world.flush();
     let mut notices = app.world_mut().resource_mut::<Messages<Notice>>();

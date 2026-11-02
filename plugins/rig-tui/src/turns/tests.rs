@@ -1,5 +1,7 @@
 use rig_core::completion::Message;
-use rig_ecs::agent::{SpawnedBy, StopTurn, TurnOf, TurnOutcome};
+use rig_ecs::agent::{StopTurn, TurnOf, TurnOutcome};
+use rig_ecs::prelude::Entity;
+use rig_ecs::spawn::{AgentSpec, Origin, spawn};
 
 use super::{POP_TITLE, PUSH_TITLE};
 use crate::TuiTestScreen;
@@ -60,7 +62,12 @@ fn the_terminal_is_told_of_each_turn_of_the_main_agent_only() {
     );
 
     // A subagent's turn tells nothing.
-    let helper = app.world_mut().spawn(SpawnedBy(agent)).id();
+    let helper = spawn(
+        app.world_mut(),
+        Origin::ChildOf(agent),
+        AgentSpec::default(),
+    );
+    let helper = helper.unwrap_or(Entity::PLACEHOLDER);
     app.world_mut().spawn(TurnOf(helper));
     app.update();
     assert_eq!(told(&mut app, &mut seen), Vec::<String>::new());

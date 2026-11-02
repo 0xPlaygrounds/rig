@@ -791,7 +791,8 @@ fn a_plugin_ending_a_turn_alone_keeps_a_waiting_sign_in_and_the_users_stop_cance
         collect::<Notice>(app);
     });
     let (_, prompts) = crossbeam_channel::unbounded();
-    let login = app.world_mut().spawn(PendingLogin { agent, prompts }).id();
+    let login = (PendingLogin { prompts }, RequestOf(agent));
+    let login = app.world_mut().spawn(login).id();
     let cancelled = |app: &App| {
         let mut notices = app.world().resource::<Collected<Notice>>().0.iter();
         notices.any(|notice| notice.text.ends_with("sign-in cancelled."))
@@ -821,7 +822,7 @@ fn a_sign_in_switches_the_agent_for_that_run_only() {
     let (_, prompts) = crossbeam_channel::unbounded();
     let ended = Done(SignInEnded(Ok(())));
     app.world_mut()
-        .spawn((PendingLogin { agent, prompts }, ended));
+        .spawn((PendingLogin { prompts }, RequestOf(agent), ended));
     app.update();
     let model = ModelChoice(format!("{PROVIDER}/{}", chatgpt::DEFAULT_MODEL));
     let taken = &app.world().resource::<Taken>().0;

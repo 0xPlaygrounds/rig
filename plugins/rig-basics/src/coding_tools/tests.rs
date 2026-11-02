@@ -41,7 +41,7 @@ fn an_agent_with_a_work_dir_reads_and_runs_commands_there() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
+    let agent = spawn_root(world).insert(WorkDir(dir.clone())).id();
     let calls = [
         ("read", json!({ "path": "note.txt" })),
         ("read", json!({ "path": "../note.txt" })),
@@ -145,7 +145,7 @@ fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace()
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     start_call(world, agent, ("read", "r1"), json!({ "path": "note.txt" }));
     let read = |world: &World| world.resource::<ToolOutputs>().0.get("r1").cloned();
     run_until(&mut app, &wakes, |world| read(world).is_some());
@@ -173,7 +173,7 @@ fn attaching(
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([reply("read"), reply("read")]);
-    let agent = app.world_mut().spawn(Agent).id();
+    let agent = spawn_root(app.world_mut()).id();
     if let Some(connection) = connect(&model) {
         app.world_mut().entity_mut(agent).insert(connection);
     }
@@ -217,7 +217,7 @@ fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
+    let agent = spawn_root(world).insert(WorkDir(dir.clone())).id();
     let text = "compare @a.txt with @gone/x.rs, @alice";
     world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
     app.update();
@@ -476,7 +476,7 @@ fn a_host_path_reaches_the_host_the_settings_name() {
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
+    let agent = spawn_root(world).id();
     let calls = [
         ("read", json!({ "path": "bench:~/note.txt" })),
         ("read", json!({ "path": "note.txt" })),
@@ -595,12 +595,8 @@ fn a_resumed_session_draws_its_tool_rows_as_the_live_one_did() {
     };
     let (mut live, wakes) = open(&model);
     let world = live.world_mut();
-    let agent = (
-        Agent,
-        ModelChoice("test/model".to_owned()),
-        WorkDir(dir.clone()),
-    );
-    let agent = world.spawn(agent).id();
+    let agent = (ModelChoice("test/model".to_owned()), WorkDir(dir.clone()));
+    let agent = spawn_root(world).insert(agent).id();
     world.trigger(Deliver::new(agent, "go", DeliveryMode::Queue));
     run_until(&mut live, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()

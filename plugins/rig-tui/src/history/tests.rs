@@ -4,6 +4,7 @@ use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::pick::{Picked, Picker};
+use rig_harness::rig_ecs::spawn::spawn_root;
 use rig_harness::rig_memory::MemoryStore;
 
 use super::*;
@@ -286,9 +287,8 @@ fn a_resumed_conversations_prompts_come_first_filtered_and_are_not_saved_again()
 fn showing_another_agent_seeds_its_prompts_and_keeps_the_draft() {
     let (mut app, _) = view_app();
     app.world_mut().resource_mut::<PromptHistory>().entries = vec!["older".into()];
-    let other = app
-        .world_mut()
-        .spawn((Agent, conversation(&["review the diff"])))
+    let other = spawn_root(app.world_mut())
+        .insert(conversation(&["review the diff"]))
         .id();
     // Picking the agent shows it, and the Up after it in the same frame
     // browses its prompts.

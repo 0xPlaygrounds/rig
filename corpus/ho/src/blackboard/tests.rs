@@ -71,11 +71,11 @@ fn claims_are_refused_posts_reach_the_other_subscribers_and_the_board_is_restore
     let store = MemoryStore::default();
     let (mut app, wakes) = app(&store, models());
     let world = app.world_mut();
-    let agent_a = world
-        .spawn((Agent, Name::new("A"), ModelChoice("board-a/m".to_owned())))
+    let agent_a = spawn_root(world)
+        .insert((Name::new("A"), ModelChoice("board-a/m".to_owned())))
         .id();
-    let agent_b = world
-        .spawn((Agent, Name::new("B"), ModelChoice("board-b/m".to_owned())))
+    let agent_b = spawn_root(world)
+        .insert((Name::new("B"), ModelChoice("board-b/m".to_owned())))
         .id();
     app.finish();
     app.update();

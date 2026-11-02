@@ -7,9 +7,8 @@ use rig_harness_test_support::MemoryStore;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{
-    ToolOutputs, app_on, calls, log_tool_outputs, reply, run_until, scripted_models,
-};
+use rig_basics::subagents::TASK;
+use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
 
 /// The parent's model.
 const PARENT: &str = "corpus-policy/parent";
@@ -48,10 +47,8 @@ impl Session {
         app.insert_resource(models)
             .insert_resource(policy)
             .init_resource::<Steps>()
-            .init_resource::<ToolOutputs>()
             .add_plugins((AgentPlugin, SessionLogPlugin, SubagentPolicyPlugin))
             .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
-            .add_observer(log_tool_outputs)
             .add_observer(
                 |started: On<Add<ActiveTurn>>,
                  sub: Query<(), With<SpawnedBy>>,
@@ -71,7 +68,7 @@ impl Session {
                 },
             );
         let choice = ModelChoice(PARENT.to_owned());
-        let parent = app.world_mut().spawn((Agent, choice)).id();
+        let parent = spawn_root(app.world_mut()).insert(choice).id();
         app.finish();
         Self { app, wakes, parent }
     }
@@ -81,19 +78,6 @@ impl Session {
         let go = Deliver::new(self.parent, "Go.", DeliveryMode::Queue);
         self.app.world_mut().trigger(go);
         run_until(&mut self.app, &self.wakes, done);
-    }
-
-    /// The subagents.
-    fn subagents(&mut self) -> Vec<Entity> {
-        let world = self.app.world_mut();
-        let mut subagents = world.query_filtered::<Entity, With<SpawnedBy>>();
-        subagents.iter(world).collect()
-    }
-
-    /// The output of the tool call `id`, as its model read it.
-    fn output(&self, id: &str) -> String {
-        let outputs = &self.app.world().resource::<ToolOutputs>().0;
-        outputs.get(id).cloned().unwrap_or_default()
     }
 }
 
@@ -106,34 +90,6 @@ fn task(id: &str, prompt: &str) -> Vec<MockStreamEvent> {
 fn read_by(model: &MockCompletionModel, n: usize) -> String {
     let request = model.requests().into_iter().nth(n);
     request.map_or_else(String::new, |r| json!(r.chat_history).to_string())
-}
-
-#[test]
-fn a_spawn_beyond_max_depth_is_refused_for_the_model_to_read() {
-    let policy = SubagentsConfig {
-        max_depth: 1,
-        ..SubagentsConfig::default()
-    };
-    let parent = MockCompletionModel::from_stream_turns([
-        task("t1", "x"),
-        reply("Waiting."),
-        reply("Done."),
-    ]);
-    let subagent =
-        MockCompletionModel::from_stream_turns([task("t2", "y"), reply("Did it myself.")]);
-    let mut session = Session::new(policy, &parent, &subagent);
-    session.run(|_| parent.request_count() >= 3);
-
-    assert_eq!(session.subagents().len(), 1);
-    let nested = session.output("t2");
-    // At the depth limit the subagent is not given `task`, so the kernel
-    // refuses the call before any gate; either way the model reads why.
-    assert!(
-        nested.contains("subagent depth limit 1 reached")
-            || nested.contains("no tool named `task`"),
-        "{nested}"
-    );
-    assert!(read_by(&parent, 2).contains("Did it myself."));
 }
 
 #[test]

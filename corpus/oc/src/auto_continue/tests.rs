@@ -65,9 +65,8 @@ fn start_turn(
     tui_view(&mut app);
     collect::<Notice>(&mut app);
     with(&mut app);
-    let agent = app
-        .world_mut()
-        .spawn((Agent, ModelChoice("test/model".to_owned())))
+    let agent = spawn_root(app.world_mut())
+        .insert(ModelChoice("test/model".to_owned()))
         .id();
     app.finish();
     app.cleanup();
