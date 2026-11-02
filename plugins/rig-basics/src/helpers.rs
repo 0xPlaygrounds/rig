@@ -496,11 +496,14 @@ impl Runner {
         let mut process = match launcher.spawn(&self.command.program, args, how) {
             Ok(process) => process,
             Err(error) => {
-                // A program that was not found or may not run never ran; one
-                // whose process was made before another error may have spent.
+                // A program that was not found or may not run, or a start
+                // the stopped call refused, never ran; one whose process was
+                // made before another error may have spent.
                 let ran = !matches!(
                     error.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+                    std::io::ErrorKind::NotFound
+                        | std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::Interrupted
                 );
                 self.reports.ended(!ran);
                 let why = format!("it could not start: {error}");

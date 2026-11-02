@@ -305,7 +305,8 @@ fn add_column(added: On<Add<Agent>>, mut commands: Commands) {
 }
 
 /// Keeps each agent's column current: `spent $0.12`, and `$0.40 below`
-/// once an agent below it made a call.
+/// once an agent below it made a call; only that for an agent with no
+/// call of its own.
 fn show_column(
     agents: Query<(&SpentColumn, &AgentUsage), Or<(Added<SpentColumn>, Changed<AgentUsage>)>>,
     mut columns: Query<&mut AgentColumn>,
@@ -314,6 +315,7 @@ fn show_column(
         let text = match (spent.total.calls, spent.below.calls) {
             (0, 0) => String::new(),
             (_, 0) => format!("spent {}", spent.total.cost_or_tokens()),
+            (0, _) => format!("{} below", spent.below.cost_or_tokens()),
             (_, _) => format!(
                 "spent {}, {} below",
                 spent.total.cost_or_tokens(),

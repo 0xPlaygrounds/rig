@@ -329,6 +329,59 @@ fn a_helper_whose_program_is_not_found_spent_nothing() {
     assert_eq!(app.world().resource::<UnknownSpend>().0, 0);
 }
 
+/// What the exit-order test queues, as a child's reports that come on the
+/// exit frame, after the frame's other drains.
+#[derive(Resource)]
+struct Late(Vec<Heard>);
+
+/// Queues the [`Late`] reports.
+fn queue_late(mut late: ResMut<Late>, reported: Res<Reported>) {
+    for heard in late.0.drain(..) {
+        reported.sender.try_send(heard).ok();
+    }
+}
+
+/// At the exit, a child's end is known only once its report of it is
+/// drained, after the spend it reported before: a child whose call and
+/// end come on the exit frame counts fully, and one whose end is not in
+/// counts as unknown, its call recorded all the same.
+#[test]
+fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
+    for (ended, unknown) in [(true, 0), (false, 1)] {
+        let (mut app, _wakes, _) = helped("exit-order", &[]);
+        let spent = Spent {
+            agent: None,
+            turn: None,
+            model: None,
+            purpose: Some(HELPER.to_owned()),
+            usage: Usage::new().input_tokens(10).output_tokens(5),
+        };
+        let mut late = vec![Heard::Spent(spent)];
+        if ended {
+            late.push(Heard::Known);
+        }
+        let unsettled = app.world().resource::<Reported>().unsettled.clone();
+        unsettled.fetch_add(1, Ordering::SeqCst);
+        app.insert_resource(Late(late)).add_systems(
+            Last,
+            queue_late
+                .after(rig_ecs::StopTurnsOnExit)
+                .before(record_at_exit)
+                .run_if(on_message::<AppExit>),
+        );
+        app.world_mut().write_message(AppExit::Success);
+        app.update();
+        let world = app.world();
+        assert_eq!(
+            world.resource::<UnknownSpend>().0,
+            unknown,
+            "ended: {ended}"
+        );
+        let session = world.resource::<SessionUsage>().0.total;
+        assert_eq!(session.total_tokens(), 15, "the call it reported is in");
+    }
+}
+
 #[test]
 fn a_helper_is_left_what_is_left_of_the_budget() {
     let (mut app, wakes, dir) = helped("budget", &[json!({ "task": "one" })]);

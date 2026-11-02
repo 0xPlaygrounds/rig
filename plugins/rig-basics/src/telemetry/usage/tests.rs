@@ -167,6 +167,13 @@ fn a_call_counts_below_every_agent_above_it_after_its_agent_is_gone() {
     let column = (columns.iter(world)).find(|(column, of)| of.0 == child && column.tag == "spent");
     let text = column.map(|(column, _)| column.text.clone());
     assert_eq!(text.as_deref(), Some("spent 10 tokens, 100 tokens below"));
+    let column = (columns.iter(world)).find(|(column, of)| of.0 == root && column.tag == "spent");
+    let text = column.map(|(column, _)| column.text.clone());
+    assert_eq!(
+        text.as_deref(),
+        Some("110 tokens below"),
+        "no call of its own"
+    );
 
     // A helper whose spend is not all known makes these a lower bound.
     world.insert_resource(UnknownSpend(1));
