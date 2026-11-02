@@ -19,10 +19,12 @@
 //! What a child spends is the calling agent's, as purpose `helper`: each
 //! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
 //! its own helpers' are among them. A child that is not on this protocol
-//! version, that ended before its `exit` line, or whose `exit` line says
-//! its spend is not all known, counts in [`UnknownSpend`], and its result
-//! says so. With a [`budget`](crate::budget), a child is
-//! started with what is left of it.
+//! version, that ended before its `exit` line, one of whose `usage` lines
+//! did not read, whose `exit` line says its spend is not all known, or
+//! that failed to start after its process was made, counts in
+//! [`UnknownSpend`], and its result says so; one that never started, such
+//! as after its call was stopped, spent nothing. With a
+//! [`budget`](crate::budget), a child is started with what is left of it.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};

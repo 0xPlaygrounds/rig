@@ -164,8 +164,8 @@ fn a_child_holds_to_what_its_parent_left_it() {
         usd: None,
         tokens: Some(20),
     };
-    let why = "the limit in RIG_BUDGET_TOKENS, which a helper's parent rig sets: start this \
-               rig again with more.";
+    let why = "the limit in RIG_BUDGET_TOKENS, set by a helper's parent rig or by hand: \
+               start this rig again with more.";
     stops_the_helper_and_refuses_the_next_call("handed-stop", "", left, why);
 }
 

@@ -382,6 +382,47 @@ fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
     }
 }
 
+/// A stopped call starts no more children: the four running are stopped,
+/// their spend unknown, and the fifth, refused its start, spent nothing.
+#[test]
+fn a_helper_a_stopped_call_never_started_spent_nothing() {
+    let tasks: Vec<Value> = (0..5)
+        .map(|n| json!({ "task": format!("slow {n}") }))
+        .collect();
+    let (mut app, wakes, dir) = helped("stopped-start", &[json!({ "tasks": tasks })]);
+    let running = dir.join("run");
+    run_until(&mut app, &wakes, |_| {
+        std::fs::read_dir(&running).is_ok_and(|entries| entries.count() == AT_ONCE)
+    });
+    if let Some(agent) = first_agent(app.world_mut()) {
+        app.world_mut().trigger(StopTurn::new(agent));
+    }
+    let output = output(&mut app, &wakes, 0);
+    assert!(
+        output.contains("stopped") || output.contains("Stopped"),
+        "{output}"
+    );
+    // The call's thread settles each child as it ends.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let settled = |app: &App| {
+        app.world()
+            .resource::<Reported>()
+            .unsettled
+            .load(Ordering::SeqCst)
+            == 0
+    };
+    while !settled(&app) && Instant::now() < deadline {
+        app.update();
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    app.update();
+    assert_eq!(
+        app.world().resource::<UnknownSpend>().0,
+        AT_ONCE as u64,
+        "the fifth spent nothing"
+    );
+}
+
 #[test]
 fn a_helper_is_left_what_is_left_of_the_budget() {
     let (mut app, wakes, dir) = helped("budget", &[json!({ "task": "one" })]);

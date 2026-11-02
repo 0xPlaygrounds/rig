@@ -253,8 +253,8 @@ fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<
     }
     match handed.0.against(spent) {
         Some((used, true)) => Some(format!(
-            "Budget reached: {used} spent, {}, which a helper's parent rig sets: start \
-             this rig again with more.",
+            "Budget reached: {used} spent, {}, set by a helper's parent rig or by hand: \
+             start this rig again with more.",
             handed.0.variables()
         )),
         _ => None,
