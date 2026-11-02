@@ -193,7 +193,9 @@ value again. A file that already holds text such as `‹SECRET_1›` is not
 told apart: a call that writes it gets this run's first secret, or is
 refused. What a session saved while redaction was off stays as it was, and
 one saved while it was on keeps its placeholders after you turn it off,
-where a tool call writes them as they are.
+where a tool call writes them as they are; resuming it then notes that no
+plugin saves `rig_basics::redact::Issued`, the count of placeholders handed
+out, which is kept for when you turn redaction on again.
 
 The session is written as it happens. Each agent, subagents included, has a
 log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages (each tool result

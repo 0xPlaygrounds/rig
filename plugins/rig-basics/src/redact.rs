@@ -73,11 +73,47 @@ pub struct RedactPlugin;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RedactSystems;
 
-/// The run's secrets, `‹SECRET_n›` being the n-th, shared with the calls
-/// that stream and run off the main thread; `None` for a number an earlier
-/// run handed out. Never saved.
+/// The run's secrets, shared with the calls that stream and run off the
+/// main thread. Never saved.
 #[derive(Resource, Clone, Default)]
-struct Secrets(Arc<Mutex<Vec<Option<String>>>>);
+struct Secrets(Arc<Mutex<Vault>>);
+
+/// The secrets, `‹SECRET_n›` being the n-th, `None` for a number an earlier
+/// run handed out; and the names a model request gives, its model's and its
+/// tools', which a secret the run knows is never found as, a name being the
+/// program's text.
+#[derive(Default)]
+struct Vault {
+    secrets: Vec<Option<String>>,
+    names: Vec<String>,
+}
+
+impl std::ops::Deref for Vault {
+    type Target = Vec<Option<String>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.secrets
+    }
+}
+
+impl std::ops::DerefMut for Vault {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.secrets
+    }
+}
+
+impl Vault {
+    /// Each secret found again wherever it shows, with its number: one of
+    /// at least [`SHORTEST`] characters that is no name.
+    fn findable(&self) -> impl Iterator<Item = (usize, &str)> {
+        (1..)
+            .zip(&self.secrets)
+            .filter_map(|(number, secret)| Some((number, secret.as_deref()?)))
+            .filter(|(_, secret)| {
+                secret.len() >= SHORTEST && !self.names.iter().any(|name| name == secret)
+            })
+    }
+}
 
 /// How many placeholders the session handed out, saved with it, so a later
 /// run never gives an old number to a new secret.
@@ -180,7 +216,7 @@ fn placeholders(text: &str) -> impl Iterator<Item = (Range<usize>, usize)> + '_ 
 }
 
 impl Secrets {
-    fn vault(&self) -> MutexGuard<'_, Vec<Option<String>>> {
+    fn vault(&self) -> MutexGuard<'_, Vault> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -267,24 +303,19 @@ fn name(vault: &mut Vec<Option<String>>, secret: &str) -> String {
     placeholder(at + 1)
 }
 
-/// `text` with each secret `vault` knows replaced by its placeholder,
-/// longest first, so one inside another goes with it, such as a password a
-/// tool printed without the name that made it a secret, but never inside a
-/// placeholder; `None` when none shows.
-fn known(vault: &[Option<String>], text: &str) -> Option<String> {
+/// `text` with each secret `vault` finds again ([`Vault::findable`])
+/// replaced by its placeholder, longest first, so one inside another goes
+/// with it, such as a password a tool printed without the name that made it
+/// a secret, but never inside a placeholder; `None` when none shows.
+fn known(vault: &Vault, text: &str) -> Option<String> {
     known_as(vault, text, placeholder)
 }
 
 /// [`known`], each secret replaced by what `with` gives for its number.
-fn known_as(
-    vault: &[Option<String>],
-    text: &str,
-    with: impl Fn(usize) -> String,
-) -> Option<String> {
-    let mut shown: Vec<(usize, &str)> = (1..)
-        .zip(vault)
-        .filter_map(|(number, secret)| Some((number, secret.as_deref()?)))
-        .filter(|(_, secret)| secret.len() >= SHORTEST && text.contains(secret))
+fn known_as(vault: &Vault, text: &str, with: impl Fn(usize) -> String) -> Option<String> {
+    let mut shown: Vec<(usize, &str)> = vault
+        .findable()
+        .filter(|(_, secret)| text.contains(secret))
         .collect();
     shown.sort_by_key(|(_, secret)| Reverse(secret.len()));
     let mut out = Cow::Borrowed(text);
@@ -335,7 +366,7 @@ fn changed(before: &Value, after: &Value, at: String, out: &mut Vec<String>) {
 /// Every string in `value` with each secret `vault` knows replaced, and
 /// in each string that holds JSON, such as a call's arguments, each one in
 /// that JSON, where an escape would hide it; whether any was.
-fn known_json(vault: &[Option<String>], value: &mut Value) -> bool {
+fn known_json(vault: &Vault, value: &mut Value) -> bool {
     each_string(value, &mut |text| {
         let mut changed = known(vault, text);
         let current = changed.as_deref().unwrap_or(text);
@@ -351,12 +382,10 @@ fn known_json(vault: &[Option<String>], value: &mut Value) -> bool {
 
 /// The longest end of `text` that starts a secret `vault` knows, which a
 /// later piece may finish: held back from a stream until it does.
-fn starts_known(vault: &[Option<String>], text: &str) -> usize {
-    let secrets = vault
-        .iter()
-        .flatten()
-        .filter(|secret| secret.len() >= SHORTEST);
-    secrets
+fn starts_known(vault: &Vault, text: &str) -> usize {
+    vault
+        .findable()
+        .map(|(_, secret)| secret)
         .flat_map(|secret| {
             (1..secret.len().min(text.len() + 1))
                 .rev()
@@ -525,20 +554,27 @@ fn redact_messages(
         for part in &mut message.bypass_change_detection().parts {
             let text = match part {
                 MessagePart::Text(text) => text,
-                MessagePart::Attachment(Attachment { content, .. }) => match content {
-                    UserContent::Text(text) => &mut text.text,
-                    UserContent::Image(_) | UserContent::Audio(_) | UserContent::Video(_) => {
-                        continue;
+                MessagePart::Attachment(Attachment { label, content }) => {
+                    // A label is a path or a URI, which may hold a key too.
+                    if let Cow::Owned(redacted) = secrets.text(label) {
+                        *label = redacted;
+                        changed = true;
                     }
-                    // A document's or a result's text, as JSON.
-                    content => {
-                        if let Some(redacted) = secrets.redacted(&*content) {
-                            *content = redacted;
-                            changed = true;
+                    match content {
+                        UserContent::Text(text) => &mut text.text,
+                        UserContent::Image(_) | UserContent::Audio(_) | UserContent::Video(_) => {
+                            continue;
                         }
-                        continue;
+                        // A document's or a result's text, as JSON.
+                        content => {
+                            if let Some(redacted) = secrets.redacted(&*content) {
+                                *content = redacted;
+                                changed = true;
+                            }
+                            continue;
+                        }
                     }
-                },
+                }
             };
             if let Cow::Owned(redacted) = secrets.text(text) {
                 *text = redacted;
@@ -601,6 +637,14 @@ impl Intercept for AsSent {
                     })
                 }),
             EffectKind::Completion { request, stream } => {
+                let mut vault = self.0.vault();
+                let tools = request.tools.iter().map(|tool| tool.name.as_str());
+                for name in request.model.as_deref().into_iter().chain(tools) {
+                    if !vault.names.iter().any(|known| known == name) {
+                        vault.names.push(name.to_owned());
+                    }
+                }
+                drop(vault);
                 self.0.redacted(request.as_ref()).map(|mut redacted| {
                     // Not serialized, so the round trip drops it.
                     redacted.record_telemetry_content = request.record_telemetry_content;

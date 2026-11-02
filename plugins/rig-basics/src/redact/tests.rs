@@ -1,6 +1,8 @@
 use bevy_ecs::system::RunSystemOnce;
+use rig_harness::rig_core::completion::{CompletionRequest, ToolDefinition};
 use rig_harness::rig_core::effect::Answered;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::message::ToolName;
 use rig_harness::rig_core::serde_json::json;
 use rig_harness::rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_core::tool::{FileChange, Lines, ToolOutput, ToolResultContext};
@@ -379,8 +381,9 @@ fn a_private_key_block_is_one_placeholder_for_the_whole_block() {
     assert!(secrets.reveal("‹SECRET_3›").len() <= BLOCK_MOST + body.len());
 }
 
-/// A message going to its agent is redacted, text and attached file; one a
-/// gate took, such as a line answering a question, reaches the gate as typed.
+/// A message going to its agent is redacted, text, attached file and its
+/// label; one a gate took, such as a line answering a question, reaches the
+/// gate as typed.
 #[test]
 fn a_message_is_redacted_unless_a_gate_took_it() {
     let mut world = World::new();
@@ -397,7 +400,7 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
         additional_params: None,
     };
     message.parts.push(MessagePart::Attachment(Attachment {
-        label: "notes.md".to_owned(),
+        label: format!("notes-{key}.md"),
         content: UserContent::Document(document),
     }));
     let sent = world.spawn((message, Decision::default())).id();
@@ -415,7 +418,9 @@ fn a_message_is_redacted_unless_a_gate_took_it() {
             .into_iter()
             .map(|part| match part {
                 MessagePart::Text(text) => text,
-                MessagePart::Attachment(attachment) => format!("{:?}", attachment.content),
+                MessagePart::Attachment(attachment) => {
+                    format!("{} {:?}", attachment.label, attachment.content)
+                }
             });
         texts.collect::<Vec<_>>().join(" ")
     };
@@ -769,4 +774,39 @@ fn a_secret_like_a_placeholder_leaves_placeholders_alone() {
     assert_eq!(once, "DB_PASSWORD=‹SECRET_1› and more");
     assert_eq!(secrets.text(&once), once);
     assert_eq!(secrets.reveal("‹SECRET_1›"), "SECRET_1");
+}
+
+/// A secret that is also a name a model request gives, its model's or a
+/// tool's, is never found as that name: the request keeps it, and so does
+/// a call to that tool the reply streams.
+#[test]
+fn a_secret_like_a_name_leaves_the_name_alone() {
+    let secrets = Secrets::default();
+    let _ = secrets.text("DB_PASSWORD=get_weather and API_KEY=big-model-9");
+    let parameters = json!({ "type": "object" });
+    let Ok(name) = ToolName::new("get_weather") else {
+        return;
+    };
+    let tool = ToolDefinition::new(name, "", parameters);
+    let request = CompletionRequest::new("call it")
+        .model("big-model-9")
+        .tool(tool);
+    let kind = EffectKind::Completion {
+        request: Arc::new(request),
+        stream: true,
+    };
+    let layer = AsSent(secrets.clone());
+    let before = std::pin::pin!(layer.before(EffectId::from_raw(1), &kind));
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    let ready = before.poll(&mut context);
+    assert!(matches!(
+        ready,
+        std::task::Poll::Ready(BeforeServe::Proceed)
+    ));
+    assert_eq!(
+        secrets.text("I will call get_weather"),
+        "I will call get_weather"
+    );
+    let call = json!({ "name": "get_weather", "model": "big-model-9" });
+    assert_eq!(secrets.redacted(&call), None);
 }
