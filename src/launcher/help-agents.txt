@@ -116,13 +116,15 @@ Events, each with "agent" when it is an agent's:
         usage is the session's total: its usage lines, and those of runs
         before when it went on with a session; usage_complete is false
         when a helper's spend was not all reported, so usage is a lower
-        bound
+        bound, or when no usage is kept; it does not count a model call a
+        stop cancelled, whose bill the provider alone knows
 
 With rig_basics::budget::BudgetPlugin enabled, RIG_BUDGET_USD and
 RIG_BUDGET_TOKENS hold a run's session to them as a budget does, besides
-its own budget, its earlier runs' spend included: once they are spent it refuses
-its model calls and stops its turns (a call already sent finishes). A
-helper child gets what its parent has left in them.
+its own budget, its earlier runs' spend included: once they are spent it
+refuses its model calls and stops its turns; a model call in flight then is
+cancelled, and what its provider bills for it is not counted. They are read
+as rig starts. A helper child gets what its parent has left in them.
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.

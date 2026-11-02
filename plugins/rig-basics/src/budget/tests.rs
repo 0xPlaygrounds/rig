@@ -164,7 +164,8 @@ fn a_child_holds_to_what_its_parent_left_it() {
         usd: None,
         tokens: Some(20),
     };
-    let why = "all that RIG_BUDGET_USD and RIG_BUDGET_TOKENS allow";
+    let why = "all that RIG_BUDGET_TOKENS allow (a helper's parent rig sets them): start \
+               this rig again with them raised.";
     stops_the_helper_and_refuses_the_next_call("handed-stop", "", left, why);
 }
 
@@ -245,7 +246,8 @@ fn what_was_handed_down_holds_a_run_without_a_budget_of_its_own() {
     assert_eq!(
         command(&mut app, "budget"),
         [
-            "No budget: 0 tokens spent. RIG_BUDGET_USD and RIG_BUDGET_TOKENS allow at most $0.00 of $0.00 and 0 of 0 tokens."
+            "No budget: 0 tokens spent. Against what RIG_BUDGET_USD and RIG_BUDGET_TOKENS \
+             allow: $0.00 of $0.00 and 0 of 0 tokens spent."
         ]
     );
     if let Some(agent) = first_agent(app.world_mut()) {
@@ -258,6 +260,25 @@ fn what_was_handed_down_holds_a_run_without_a_budget_of_its_own() {
     let ended = format!("{:?}", app.world().resource::<Ended>().0);
     assert!(ended.contains(USD_VARIABLE), "{ended}");
     assert_eq!(model.request_count(), 0);
+
+    // `/budget` says what was spent against the variables that are set.
+    app.insert_resource(HandedDown(Limit {
+        usd: None,
+        tokens: Some(8000),
+    }));
+    app.world_mut().trigger(Spent {
+        agent: None,
+        turn: None,
+        model: None,
+        purpose: None,
+        usage: Usage::new().input_tokens(2500).output_tokens(500),
+    });
+    assert_eq!(
+        command(&mut app, "budget"),
+        [
+            "No budget: 3.0k tokens spent. Against what RIG_BUDGET_TOKENS allow: 3.0k of 8.0k tokens spent."
+        ]
+    );
 }
 
 #[test]

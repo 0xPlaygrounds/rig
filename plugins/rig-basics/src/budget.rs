@@ -14,8 +14,8 @@
 //! every model call about to start is refused, and every running turn is
 //! stopped, with an error notice of the reason, which fails a `-p` run;
 //! on unix a stopped turn's `helper` call stops its children, and they
-//! theirs. A call already sent finishes, so a tree can pass the budget by
-//! the calls it had in flight.
+//! theirs. A model call in flight then is cancelled, and what its
+//! provider bills for it is not counted, so the bill can pass the budget.
 //!
 //! A `helper` child gets what was left when its call started in
 //! [`USD_VARIABLE`] and [`TOKENS_VARIABLE`], and a run with this plugin
@@ -122,6 +122,15 @@ impl Limit {
         let reached = parts.iter().any(|(_, reached)| *reached);
         let labels: Vec<String> = parts.into_iter().map(|(label, _)| label).collect();
         Some((labels.join(" and "), reached))
+    }
+
+    /// The variables that hand it down, of those it sets: `RIG_BUDGET_USD`
+    /// and `RIG_BUDGET_TOKENS`.
+    fn variables(&self) -> String {
+        let usd = self.usd.map(|_| USD_VARIABLE);
+        let tokens = self.tokens.map(|_| TOKENS_VARIABLE);
+        let names: Vec<&str> = usd.into_iter().chain(tokens).collect();
+        names.join(" and ")
     }
 
     /// Whether 80% of it is spent.
@@ -242,9 +251,9 @@ fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<
     }
     match handed.0.against(spent) {
         Some((used, true)) => Some(format!(
-            "Budget reached: {used} spent, all that {USD_VARIABLE} and {TOKENS_VARIABLE} \
-             allow (a helper's parent rig sets them): raise them, or the parent's budget, \
-             and send again."
+            "Budget reached: {used} spent, all that {} allow (a helper's parent rig sets \
+             them): start this rig again with them raised.",
+            handed.0.variables()
         )),
         _ => None,
     }
@@ -330,9 +339,8 @@ fn budget(
         None => format!("No budget: {} spent.", spent.cost_or_tokens()),
     };
     if let Some((used, _)) = handed.0.against(spent) {
-        text.push_str(&format!(
-            " {USD_VARIABLE} and {TOKENS_VARIABLE} allow at most {used}."
-        ));
+        let variables = handed.0.variables();
+        text.push_str(&format!(" Against what {variables} allow: {used} spent."));
     }
     if limit.lower(handed.0).usd.is_some() && spent.unpriced > 0 {
         text.push_str(&format!(
