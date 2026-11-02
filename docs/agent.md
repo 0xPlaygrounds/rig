@@ -106,7 +106,7 @@ While an earlier prompt is shown unchanged, Up and Down keep walking the
 prompts, slash commands included, and no completion list opens until you
 type or press Tab (while a turn runs, Tab queues it). Text you drop
 without sending (Ctrl+C, sending an earlier prompt in its place) goes into
-the history, so Up brings it back, its secrets as placeholders while
+the history, so Up brings it back, its secrets as `[REDACTED]` while
 redaction is on (below). Ctrl+P and Ctrl+N move
 the same way, even with a completion list open, but Ctrl+P goes to the
 history from anywhere on the first line. The usual emacs keys edit
@@ -183,7 +183,8 @@ tool's output and result, and in your messages and the files they name. The
 model, the session's logs, the terminal view, `--json`, ACP, subagents and a
 resumed session see only the placeholders. A tool call that names one runs
 with the real value, so the model can still put your key in a file or a
-command without seeing it. The values are kept in memory for the run only:
+command without seeing it; a shell command is refused one whose value holds
+what the shell would read as code, such as a quote, a space or `$`. The values are kept in memory for the run only:
 after a restart, `/reload` or `/resume` a call naming an old placeholder is
 refused, and you give the value again. A file that already holds text such
 as `‹SECRET_1›` is not told apart: a call that writes it gets this run's
