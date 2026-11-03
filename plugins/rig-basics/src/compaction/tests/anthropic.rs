@@ -461,7 +461,7 @@ fn a_transport_timeout_during_the_summary_preserves_history() {
     let (mut app, wakes) = start(&store);
     // One retry, so the timeout that follows ends the compaction.
     app.insert_resource(rig_ecs::retry::RetryPolicy {
-        max_retries: Some(1),
+        max_retries: 1,
         ..rig_ecs::retry::RetryPolicy::DEFAULT
     });
     let partial = response_events("Partial text before timeout", "end_turn")

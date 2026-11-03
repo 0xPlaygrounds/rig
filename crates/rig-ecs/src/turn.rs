@@ -1419,9 +1419,10 @@ pub(crate) fn back_off(
         notices.write(Notice::info(
             agent,
             format!(
-                "The model call failed: {report}. Retrying in {}s (retry {}).",
+                "The model call failed: {report}. Retrying in {}s (retry {}/{}).",
                 backoff.seconds_left(),
-                policy.tries(backoff.attempt)
+                backoff.attempt,
+                policy.max_retries
             ),
         ));
         let hold = commands

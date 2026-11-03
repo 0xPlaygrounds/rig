@@ -10,11 +10,7 @@ fn report(message: &str) -> ErrorReport {
 
 #[test]
 fn retries_back_off_and_give_up() {
-    let policy = RetryPolicy {
-        max_retries: Some(4),
-        max_asked_wait: Some(Duration::from_secs(60)),
-        ..RetryPolicy::DEFAULT
-    };
+    let policy = RetryPolicy::DEFAULT;
     let busy = report("overloaded").with_retryable(true);
     let now = SystemTime::now();
     let verdict = policy.verdict(&busy, 1, now);
@@ -38,17 +34,27 @@ fn retries_back_off_and_give_up() {
     assert!(policy.backoff(10) <= policy.max_backoff);
 }
 
-/// With no limit set, as by default, a transient failure is retried however
-/// often it failed and however long the provider asks to wait.
+/// The default gives up after four retries and past a minute's asked
+/// wait; a policy set higher retries on.
 #[test]
-fn by_default_a_transient_failure_is_always_retried() {
-    let policy = RetryPolicy::default();
+fn the_default_is_four_retries_and_a_minute_and_a_set_policy_goes_further() {
     let now = SystemTime::now();
     let busy = report("overloaded").with_retryable(true);
-    assert!(matches!(policy.verdict(&busy, 50, now), Verdict::Retry(_)));
     let asked = report("try again in 7200s").with_retryable(true);
+    let default = RetryPolicy::default();
+    assert!(matches!(default.verdict(&busy, 4, now), Verdict::GaveUp(_)));
+    assert!(matches!(
+        default.verdict(&asked, 0, now),
+        Verdict::GaveUp(_)
+    ));
+    let more = RetryPolicy {
+        max_retries: 50,
+        max_asked_wait: Duration::from_secs(7200),
+        ..RetryPolicy::DEFAULT
+    };
+    assert!(matches!(more.verdict(&busy, 49, now), Verdict::Retry(_)));
     assert_eq!(
-        policy.verdict(&asked, 0, now),
+        more.verdict(&asked, 0, now),
         Verdict::Retry(Duration::from_secs(7200))
     );
 }

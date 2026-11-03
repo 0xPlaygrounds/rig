@@ -382,14 +382,14 @@ fn ran_with(limits: crate::Limits, code: &str) -> String {
         .unwrap_or_default()
 }
 
-/// A program runs with no limit on its calls unless `[steel] max_calls`
-/// sets one, and the refusal at it names the key.
+/// A program's calls are limited by `[steel] max_calls`, and the refusal
+/// at it names the key.
 #[test]
-fn a_programs_calls_are_limited_only_by_its_setting() {
+fn a_programs_calls_are_limited_by_its_setting() {
     let code = r#"(call-tool "look") (call-tool "look") (call-tool "look") "done""#;
     assert_eq!(ran_with(crate::Limits::default(), code), "done");
     let two = crate::Limits {
-        max_calls: Some(2),
+        max_calls: 2,
         ..crate::Limits::default()
     };
     let said = ran_with(two, code);
@@ -418,14 +418,24 @@ fn a_programs_failure_is_kept_past_what_it_printed() {
     );
 }
 
-/// With no `[steel] max_calls`, a program may make any number of host
-/// calls; with one, the call past it is refused naming the key.
+/// A program may make 1000 host calls by default, and as many as
+/// `[steel] max_calls` says; the call past them is refused naming the key.
 #[test]
-fn a_programs_calls_have_no_ceiling_unless_set() {
-    let unset = crate::Limits::default();
-    assert_eq!(unset.call(1_000_000), Ok(()));
+fn a_programs_calls_are_a_thousand_unless_set() {
+    let default = crate::Limits::default();
+    assert_eq!(default.call(999), Ok(()));
+    assert!(
+        default
+            .call(1000)
+            .is_err_and(|why| why.contains("1000 at most"))
+    );
+    let more = crate::Limits {
+        max_calls: 1_000_000,
+        ..crate::Limits::default()
+    };
+    assert_eq!(more.call(999_999), Ok(()));
     let two = crate::Limits {
-        max_calls: Some(2),
+        max_calls: 2,
         ..crate::Limits::default()
     };
     assert_eq!(two.call(1), Ok(()));
@@ -440,7 +450,7 @@ fn a_programs_calls_have_no_ceiling_unless_set() {
 #[test]
 fn a_program_stops_at_its_time_setting() {
     let one = crate::Limits {
-        max_seconds: Some(1),
+        max_seconds: std::num::NonZeroU64::MIN,
         ..crate::Limits::default()
     };
     let said = ran_with(one, "(define (spin n) (spin (+ n 1))) (spin 0)");
@@ -459,7 +469,9 @@ fn the_steel_table_sets_the_limits() {
     ))
     .add_plugins((AgentPlugin, SessionLogPlugin, SteelPlugin));
     let limits = *app.world().resource::<crate::Limits>();
-    assert_eq!((limits.max_seconds, limits.max_calls), (Some(5), Some(2)));
+    assert_eq!((limits.max_seconds.get(), limits.max_calls), (5, 2));
+    let default = crate::Limits::default();
+    assert_eq!((default.max_seconds.get(), default.max_calls), (60, 1000));
     assert_eq!(
         limits.max_output_bytes,
         crate::Limits::default().max_output_bytes

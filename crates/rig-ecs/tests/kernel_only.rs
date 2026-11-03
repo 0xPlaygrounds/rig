@@ -692,12 +692,8 @@ fn a_saved_component_a_plugin_changes_in_last_on_the_exit_frame_is_saved() {
     assert_eq!(modes, [2]);
 }
 
-/// A call to a tool that is not the agent's, missing, denied, or offered
-/// with nothing serving it, is refused with feedback naming its tools,
-/// however often the model makes it: the turn goes on until the model
-/// answers or the user stops it.
 #[test]
-fn unknown_tools_get_feedback_each_time_and_never_fail_the_turn() {
+fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
     let ran = Arc::new(AtomicU32::new(0));
     app.add_tool(Add(ran.clone()));
@@ -707,16 +703,31 @@ fn unknown_tools_get_feedback_each_time_and_never_fail_the_turn() {
         ToolOptions::default(),
         |_: On<ToolCalled<serde_json::Value>>| {},
     );
-    let call = |name: &str| {
-        let call = MockStreamEvent::tool_call("call", name, serde_json::json!({"a": 2, "b": 3}));
-        vec![call, MockStreamEvent::final_response_with_default_usage()]
+    let call = |id: &str, name: &str| {
+        MockStreamEvent::tool_call(id, name, serde_json::json!({"a": 2, "b": 3}))
     };
-    let names = ["bash", "add", "plan", "secret", "bash", "bash", "bash"];
-    let mut turns: Vec<_> = names.iter().map(|name| call(name)).collect();
-    turns.push(vec![
-        MockStreamEvent::text("done"),
-        MockStreamEvent::final_response_with_default_usage(),
+    let reply = |calls: Vec<MockStreamEvent>| {
+        let mut events = calls;
+        events.push(MockStreamEvent::final_response_with_default_usage());
+        events
+    };
+    // 1. `bash`, missing, three times with good calls between: `secret`,
+    // registered but denied, reads and counts as missing; `plan`, offered
+    // with nothing serving it, does not count.
+    // 2. `bash` twice, then an answer: the count started over.
+    // 3. `bash` three times in one reply.
+    // 4. `secret` three times: a denied name fails a turn as a missing one.
+    let single = |names: &[&str]| {
+        let calls = names.iter().map(|name| reply(vec![call("call", name)]));
+        calls.collect::<Vec<_>>()
+    };
+    let mut turns = single(&[
+        "bash", "add", "plan", "plan", "plan", "secret", "add", "bash", "add", "bash",
     ]);
+    turns.extend(single(&["bash", "bash"]));
+    turns.push(reply(vec![MockStreamEvent::text("done")]));
+    turns.push(reply(["1", "2", "3"].map(|id| call(id, "bash")).to_vec()));
+    turns.extend(single(&["secret", "secret", "secret"]));
     let model = MockCompletionModel::from_stream_turns(turns);
     let agent = connected(&mut app, &model);
     assert!(agent.is_some());
@@ -730,28 +741,101 @@ fn unknown_tools_get_feedback_each_time_and_never_fail_the_turn() {
     app.world_mut()
         .entity_mut(agent)
         .insert(ToolAccess::all().narrow(["add", "plan"]));
-    ask(&mut app, agent);
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
-    assert_eq!(model.request_count(), 8);
-    assert_eq!(ran.load(Ordering::Relaxed), 1);
-    let ended = app.world().resource::<Ended>().0.last().cloned();
-    assert!(matches!(ended, Some(TurnOutcome::Answered(_))), "{ended:?}");
-    let feedback = |name: &&str| {
+    let reason = |name: &str| {
+        format!(
+            "the model kept calling `{name}`, which is not one of its tools \
+                 (`[tools] max_unavailable_calls` is 3)"
+        )
+    };
+    let feedback = |name: &str| {
         format!(
             "There is no tool named `{name}`. Your tools are: `add`, `plan`. Call one by its \
              exact name."
         )
     };
-    let refused = ["bash", "plan", "secret", "bash", "bash", "bash"];
-    let errors: Vec<String> = app
-        .world()
-        .resource::<Settles>()
-        .0
+    // Each turn: the requests made so far, `add`'s runs, the names refused,
+    // and the name that failed it, if one did.
+    let turns = [
+        (
+            10,
+            3,
+            vec!["bash", "plan", "plan", "plan", "secret", "bash", "bash"],
+            Some("bash"),
+        ),
+        (13, 3, vec!["bash", "bash"], None),
+        (14, 3, vec!["bash", "bash", "bash"], Some("bash")),
+        (17, 3, vec!["secret", "secret", "secret"], Some("secret")),
+    ];
+    let mut expected = Vec::new();
+    for (turn, (requests, added, refused, failed)) in turns.into_iter().enumerate() {
+        ask(&mut app, agent);
+        run_until(&mut app, &wakes, |world| {
+            world.resource::<Ended>().0.len() == turn + 1
+        });
+        assert_eq!(model.request_count(), requests, "turn {turn}");
+        assert_eq!(ran.load(Ordering::Relaxed) as usize, added);
+        let ended = app.world().resource::<Ended>().0.last().cloned();
+        match failed.map(reason) {
+            Some(reason) => {
+                assert!(
+                    matches!(&ended, Some(TurnOutcome::Failed(why)) if *why == reason),
+                    "{ended:?}"
+                );
+                let notices = app
+                    .world_mut()
+                    .resource_mut::<bevy_ecs::message::Messages<Notice>>()
+                    .drain()
+                    .any(|notice| {
+                        notice.level == NoticeLevel::Error
+                            && notice.text.to_lowercase().contains(&reason)
+                    });
+                assert!(notices, "turn {turn}");
+            }
+            None => assert!(matches!(ended, Some(TurnOutcome::Answered(_))), "{ended:?}"),
+        }
+        expected.extend(refused.into_iter().map(feedback));
+        let errors: Vec<String> = app
+            .world()
+            .resource::<Settles>()
+            .0
+            .iter()
+            .filter_map(|record| record.outcome.as_ref().err())
+            .map(|error| error.message.clone())
+            .collect();
+        assert_eq!(errors, expected, "turn {turn}");
+    }
+}
+
+/// `[tools] max_unavailable_calls` set higher lets a model call a tool it
+/// does not have more often in a turn, each call refused with its tools.
+#[test]
+fn a_higher_unavailable_call_limit_lets_the_turn_go_on() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let ran = Arc::new(AtomicU32::new(0));
+    app.add_tool(Add(ran.clone()));
+    let most = std::num::NonZeroU32::new(10).unwrap_or(std::num::NonZeroU32::MIN);
+    app.insert_resource(rig_ecs::tools::UnavailableCalls(most));
+    let call = |name: &str| {
+        let call = MockStreamEvent::tool_call("call", name, serde_json::json!({"a": 2, "b": 3}));
+        vec![call, MockStreamEvent::final_response_with_default_usage()]
+    };
+    let mut turns: Vec<_> = ["bash", "bash", "bash", "bash"]
         .iter()
-        .filter_map(|record| record.outcome.as_ref().err())
-        .map(|error| error.message.clone())
+        .map(|name| call(name))
         .collect();
-    assert_eq!(errors, refused.iter().map(feedback).collect::<Vec<_>>());
+    turns.push(vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let model = MockCompletionModel::from_stream_turns(turns);
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let ended = app.world().resource::<Ended>().0.last().cloned();
+    assert!(matches!(ended, Some(TurnOutcome::Answered(_))), "{ended:?}");
+    assert_eq!(model.request_count(), 5);
 }

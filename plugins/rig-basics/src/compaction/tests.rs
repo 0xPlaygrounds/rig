@@ -701,7 +701,7 @@ fn stalled() -> Vec<MockStreamEvent> {
     vec![MockStreamEvent::Error(MockError::Stalled(idle))]
 }
 
-/// With no `[retry]` limit, a summary call that times out twice is sent a
+/// Within `[retry]`'s four retries, a summary call that times out twice is sent a
 /// third time and the turn goes on.
 #[test]
 fn a_summary_call_that_times_out_twice_is_retried_again() {
@@ -745,7 +745,7 @@ fn a_summary_call_that_times_out_is_retried_as_a_turns_call_is() {
     let (mut app, wakes) = start(&MemoryStore::default());
     collect::<Notice>(&mut app);
     app.insert_resource(RetryPolicy {
-        max_retries: Some(1),
+        max_retries: 1,
         ..RetryPolicy::DEFAULT
     });
     let model = MockCompletionModel::from_stream_turns(vec![

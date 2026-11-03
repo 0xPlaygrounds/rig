@@ -279,13 +279,15 @@ keep. The summarized messages stay in the transcript, under a line that shows
 the summary; a resumed session starts from the messages the summary kept.
 
 A model call that fails on a rate limit, an overloaded provider or a dropped
-connection is retried until it succeeds or you stop the turn (Esc). It waits
-as long as the provider's `Retry-After` asks; without a retry delay, it waits
-2, 4, 8, 16, then 30 seconds, each shortened at random by up to a quarter.
-`[retry]` in `RIG_HOME/settings.toml` sets limits: `max_retries`, the retries
-in a row before the turn fails, and `max_wait_secs`, the longest wait a
-provider may ask for. When the turn fails, your message goes back into the
-input: press Enter to send it again, or switch models first.
+connection is retried up to four times. It waits as long as the provider's
+`Retry-After` asks, up to 60 seconds; a longer requested wait ends retries.
+Without a retry delay, it waits 2, 4, 8, then 16 seconds, each shortened at
+random by up to a quarter. `[retry]` in `RIG_HOME/settings.toml` changes both,
+with no upper bound: `max_retries` and `max_wait_secs`. A model that calls a
+tool it does not have three times in a turn fails the turn;
+`[tools] max_unavailable_calls` changes that. When the turn fails, your
+message goes back into the input: press Enter to send it again, or switch
+models first.
 
 ## Tools
 
@@ -391,8 +393,10 @@ hands tasks to such one-shot rig children and returns their final answers.
 What a child spends, its own helpers included, is the caller's as it reports
 it: `/usage` shows it live as purpose `helper`, beside what each agent and
 the agents below it spent.
-A call's tasks all run at once, or in order as a chain, with no timeout
-unless the call gives one; rig sets no bound of its own on either.
+A call's tasks run four at a time while the rest wait their turn, or in
+order as a chain, each for at most 600 s unless the call gives its own
+`timeout`. `[helpers] at_once` and `timeout_secs` change both, with no upper
+bound.
 
 ## Reload and builds
 
@@ -515,11 +519,11 @@ A fan-out that asks three agents at once and keeps the shortest answer:
        (car answers) (cdr answers))
 ```
 
-A program runs until it ends or Esc stops it. `[steel]` in
-`RIG_HOME/settings.toml` sets limits: `max_seconds` of execution (waits on
-agents and tools not counted), `max_calls` to agents and tools, and
-`max_output_bytes` kept of what it prints and returns (64 KiB by default, as
-what it prints is held in memory until it ends).
+A program runs for at most 60 seconds of execution (waits on agents and
+tools not counted) and 1000 calls to agents and tools, and keeps 64 KiB of
+what it prints and returns; Esc stops it sooner. `[steel]` in
+`RIG_HOME/settings.toml` changes them, with no upper bound: `max_seconds`,
+`max_calls` and `max_output_bytes`.
 
 ## Files
 

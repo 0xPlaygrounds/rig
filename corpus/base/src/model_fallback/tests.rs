@@ -57,17 +57,8 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> Option
     }
 }
 
-/// An app whose agent is on A, with the chain A then B, A overloaded every
-/// time and B answering: retries of a failed call as `retry` says.
-fn chained(
-    retry: RetryPolicy,
-) -> (
-    App,
-    Receiver<()>,
-    Entity,
-    MockCompletionModel,
-    MockCompletionModel,
-) {
+#[test]
+fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
     let a = MockCompletionModel::from_stream_turns((0..10).map(|_| overloaded()));
     let b = MockCompletionModel::from_stream_turns((0..3).map(|_| reply("ok")));
     let mut models = Models::default();
@@ -78,7 +69,6 @@ fn chained(
     let (mut app, wakes) = app_on(&store);
     app.set_error_handler(bevy_ecs::error::warn)
         .insert_resource(models)
-        .insert_resource(retry)
         .insert_resource(Settings::from_toml(
             "[model-fallback]\n\
              chain = [\"anthropic/claude-opus-4-5\", \"openai/gpt-5\"]\n\
@@ -112,23 +102,13 @@ fn chained(
     app.update();
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
-    let choice = ModelChoice("anthropic/claude-opus-4-5".to_owned());
-    if let Ok(mut agent) = world.get_entity_mut(agent) {
-        agent.insert(choice);
-    }
-    (app, wakes, agent, a, b)
-}
-
-#[test]
-fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
-    // Four retries, then the kernel gives up and the chain takes over.
-    let four = RetryPolicy {
-        max_retries: Some(4),
-        ..RetryPolicy::DEFAULT
+    assert!(agent.is_ok(), "the app has an agent");
+    let Ok(agent) = agent else {
+        return;
     };
-    let (mut app, wakes, agent, a, b) = chained(four);
-    let cooldown = app.world().resource::<FallbackChain>().cooldown;
+    let choice = ModelChoice("anthropic/claude-opus-4-5".to_owned());
+    world.entity_mut(agent).insert(choice);
+
     // A fails each of its retries; the turn goes on on B.
     assert_eq!(ask(&mut app, &wakes, agent, "hello").as_deref(), Some("ok"));
     assert_eq!(a.request_count(), 5, "A is retried as usual first");
@@ -153,15 +133,6 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
     assert_eq!(ask(&mut app, &wakes, agent, "later").as_deref(), Some("ok"));
     assert_eq!(a.request_count(), 10, "A is back once it cooled down");
     assert_eq!(b.request_count(), 3);
-}
-
-/// With no `[retry] max_retries`, whose retries never run out, an
-/// overloaded model is left for the next of the chain at once.
-#[test]
-fn with_no_retry_limit_an_overloaded_model_falls_back_at_once() {
-    let (mut app, wakes, agent, a, b) = chained(RetryPolicy::default());
-    assert_eq!(ask(&mut app, &wakes, agent, "hello").as_deref(), Some("ok"));
-    assert_eq!((a.request_count(), b.request_count()), (1, 1));
 }
 
 #[test]

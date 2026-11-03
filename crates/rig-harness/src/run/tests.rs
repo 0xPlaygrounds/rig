@@ -156,7 +156,8 @@ fn the_start_makes_the_names_the_runs_tools_and_leaves_every_access() {
     assert_eq!(world.get::<ToolAccess>(agent), Some(&ToolAccess::all()));
 }
 
-/// `[retry]` sets the kernel's retry policy; without it nothing is limited.
+/// `[retry]` sets the kernel's retry policy; without it, four retries and a
+/// minute's asked wait.
 #[test]
 fn the_retry_table_sets_the_retry_policy() {
     let policy = |toml: &str| {
@@ -169,8 +170,33 @@ fn the_retry_table_sets_the_retry_policy() {
         *app.world().resource::<RetryPolicy>()
     };
     let set = policy("[retry]\nmax_retries = 2\nmax_wait_secs = 90\n");
-    assert_eq!(set.max_retries, Some(2));
-    assert_eq!(set.max_asked_wait, Some(std::time::Duration::from_secs(90)));
+    assert_eq!(set.max_retries, 2);
+    assert_eq!(set.max_asked_wait, std::time::Duration::from_secs(90));
     assert_eq!(policy(""), RetryPolicy::DEFAULT);
-    assert_eq!(RetryPolicy::DEFAULT.max_retries, None);
+    assert_eq!(RetryPolicy::DEFAULT.max_retries, 4);
+}
+
+/// `[tools]` sets how often a model may call a tool it does not have in a
+/// turn; without it, three times; 0 does not read.
+#[test]
+fn the_tools_table_sets_the_unavailable_call_limit() {
+    let limit = |toml: &str| {
+        let mut app = App::new();
+        app.insert_resource(Settings::from_toml(toml)).add_plugins((
+            TaskPoolPlugin::default(),
+            AgentPlugin,
+            RunPlugin,
+        ));
+        let problems = app.world().resource::<Settings>().problems().len();
+        (
+            app.world()
+                .resource::<rig_ecs::tools::UnavailableCalls>()
+                .0
+                .get(),
+            problems,
+        )
+    };
+    assert_eq!(limit(""), (3, 0));
+    assert_eq!(limit("[tools]\nmax_unavailable_calls = 8\n"), (8, 0));
+    assert_eq!(limit("[tools]\nmax_unavailable_calls = 0\n").1, 1);
 }

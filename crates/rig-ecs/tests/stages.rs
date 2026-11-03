@@ -1997,7 +1997,7 @@ fn a_failed_turn_gives_the_message_back_and_sent_again_it_goes_once() {
 /// A policy that gives up on the first failure.
 fn no_retries() -> RetryPolicy {
     RetryPolicy {
-        max_retries: Some(0),
+        max_retries: 0,
         ..RetryPolicy::DEFAULT
     }
 }

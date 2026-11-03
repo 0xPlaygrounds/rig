@@ -22,8 +22,8 @@
 //! run on stderr, and the launcher says it again once the screen is back.
 //! A run that keeps no session runs no agent and checks nothing: `rig
 //! acp`'s router hands `--tools` to its sessions. A failed model call is
-//! retried as the user's `[retry]` table says ([`RetryPolicy`]): without
-//! it, until it succeeds or the turn is stopped.
+//! retried as the user's `[retry]` table says ([`RetryPolicy`]): by
+//! default four times, waiting up to a minute where the provider asks.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -47,7 +47,7 @@ use rig_ecs::restore::{CarryOn, Restored};
 use rig_ecs::retry::RetryPolicy;
 use rig_ecs::stage::{AgentLoop, Effect, Outcome, Settled, Started};
 use rig_ecs::tasks::{PollTasks, Running, Wake};
-use rig_ecs::tools::ToolDef;
+use rig_ecs::tools::{ToolDef, UnavailableCalls};
 
 use crate::host::cli::{self, AppCliExt, Cli, Flag};
 use crate::host::exit::{ExitReason, ExitRequest};
@@ -143,22 +143,49 @@ impl Work<'_, '_> {
     }
 }
 
-/// Declares `--tools`, reads `[retry]` and keeps the run contract: see
+/// Declares `--tools`, reads `[retry]` and `[tools]` and keeps the run
+/// contract: see
 /// [`run`](self). Part of [`RigHarnessPlugins`](crate::RigHarnessPlugins);
 /// a plugin that reads [`RunStart`] adds it when it is missing, as a test
 /// app may leave it out.
 pub struct RunPlugin;
 
-/// `[retry]` in `settings.toml`, the kernel's [`RetryPolicy`]: a key left
-/// out sets no limit.
-#[derive(Resource, serde::Deserialize, Default, Clone, Copy)]
+/// `[retry]` in `settings.toml`, the kernel's [`RetryPolicy`]: four
+/// retries and a minute's asked wait unless set.
+#[derive(Resource, serde::Deserialize, Clone, Copy)]
 #[serde(default, deny_unknown_fields)]
 struct RetrySettings {
     /// Retries of a failed model call in a row before its turn fails.
-    max_retries: Option<u32>,
+    max_retries: u32,
     /// The longest wait, in seconds, a provider may ask for before a retry;
     /// past it the turn fails.
-    max_wait_secs: Option<u64>,
+    max_wait_secs: u64,
+}
+
+/// `[tools]` in `settings.toml`: the kernel's [`UnavailableCalls`], three
+/// unless set; 0 does not read.
+#[derive(Resource, serde::Deserialize, Clone, Copy)]
+#[serde(default, deny_unknown_fields)]
+struct ToolsSettings {
+    /// Calls of one unavailable tool name in a turn that fail the turn.
+    max_unavailable_calls: std::num::NonZeroU32,
+}
+
+impl Default for ToolsSettings {
+    fn default() -> Self {
+        Self {
+            max_unavailable_calls: UnavailableCalls::default().0,
+        }
+    }
+}
+
+impl Default for RetrySettings {
+    fn default() -> Self {
+        Self {
+            max_retries: RetryPolicy::DEFAULT.max_retries,
+            max_wait_secs: RetryPolicy::DEFAULT.max_asked_wait.as_secs(),
+        }
+    }
 }
 
 impl Plugin for RunPlugin {
@@ -176,9 +203,14 @@ impl Plugin for RunPlugin {
             .resource::<RetrySettings>();
         app.insert_resource(RetryPolicy {
             max_retries: retry.max_retries,
-            max_asked_wait: retry.max_wait_secs.map(std::time::Duration::from_secs),
+            max_asked_wait: std::time::Duration::from_secs(retry.max_wait_secs),
             ..RetryPolicy::DEFAULT
         });
+        let tools = *app
+            .add_setting::<ToolsSettings>("tools")
+            .world()
+            .resource::<ToolsSettings>();
+        app.insert_resource(UnavailableCalls(tools.max_unavailable_calls));
         start(app);
     }
 

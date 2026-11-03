@@ -1474,7 +1474,7 @@ fn retry_compaction_calls(
             };
             on.insert(Recovery { retries });
             let backoff = Backoff::after(retries, delay);
-            let tries = policy.tries(backoff.attempt);
+            let tries = format!("{}/{}", backoff.attempt, policy.max_retries);
             world.write_message(Notice::warn(
                 agent,
                 format!(

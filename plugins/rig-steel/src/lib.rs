@@ -22,9 +22,9 @@
 //! threads, blocking sleeps or the engine's private `#%` and `%` functions
 //! are refused before they run. Printed output is captured and cut at
 //! `[steel] max_output_bytes`; the program's own execution time (its waits
-//! on host functions not counted) and its host calls are limited only when
-//! `[steel] max_seconds` and `max_calls` say so, and Esc cancels it like
-//! any tool call. Steel has no memory limit.
+//! on host functions not counted) and its host calls are limited by
+//! `[steel] max_seconds` and `max_calls`, 60 s and 1000 by default, and Esc
+//! cancels it like any tool call. Steel has no memory limit.
 //!
 //! The plugin reads `[steel]` through rig-harness's settings, and is
 //! otherwise written against rig-ecs's public primitives: an
@@ -44,6 +44,7 @@
 mod harness;
 mod program;
 
+use std::num::NonZeroU64;
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -79,15 +80,16 @@ const WATCH_EVERY: Duration = Duration::from_millis(250);
 
 /// `[steel]` in `settings.toml`: the bounds a program runs within. Only rig
 /// can time or count a program inside its own process, so these are
-/// settings; a program runs without a time or call limit unless one is set,
-/// and Esc stops it.
+/// settings, with defaults that stop a program nobody watches; Esc stops one
+/// sooner.
 #[derive(Resource, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct Limits {
-    /// Seconds of execution, not counting waits on agents and tools.
-    pub(crate) max_seconds: Option<u64>,
+    /// Seconds of execution, not counting waits on agents and tools; 0 does
+    /// not read.
+    pub(crate) max_seconds: NonZeroU64,
     /// Host function calls.
-    pub(crate) max_calls: Option<u32>,
+    pub(crate) max_calls: u32,
     /// Bytes kept of what it printed, and of its result: what it prints is
     /// held in memory until it ends, so this has a default, 64 KiB.
     pub(crate) max_output_bytes: usize,
@@ -96,11 +98,12 @@ pub(crate) struct Limits {
 impl Limits {
     /// Whether a program that made `made` host calls may make another.
     pub(crate) fn call(&self, made: u32) -> Result<(), String> {
-        match self.max_calls.filter(|most| made >= *most) {
-            Some(most) => Err(format!(
-                "too many host function calls: {most} at most (`[steel] max_calls`)"
+        match made >= self.max_calls {
+            true => Err(format!(
+                "too many host function calls: {} at most (`[steel] max_calls`)",
+                self.max_calls
             )),
-            None => Ok(()),
+            false => Ok(()),
         }
     }
 }
@@ -108,8 +111,8 @@ impl Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            max_seconds: None,
-            max_calls: None,
+            max_seconds: NonZeroU64::MIN.saturating_add(59),
+            max_calls: 1000,
             max_output_bytes: 64 * 1024,
         }
     }
@@ -242,8 +245,7 @@ async fn run_program(
                 return failure("The interpreter stopped without a result.".to_owned());
             }
             Either::Right(_) => {
-                let most = limits.max_seconds.map(Duration::from_secs);
-                if most.is_some_and(|most| control.spent() > most) {
+                if control.spent() > Duration::from_secs(limits.max_seconds.get()) {
                     control.stop(Stop::TimeLimit);
                 }
             }
@@ -359,7 +361,7 @@ fn result(ended: Ended, stopped: Option<Stop>, limits: &Limits) -> ToolResult {
             text.push_str(&format!(
                 "The program was stopped: it ran for more than {} s, not counting its waits on \
                  agents and tools (`[steel] max_seconds`).",
-                limits.max_seconds.unwrap_or_default()
+                limits.max_seconds
             ));
             return failure(text);
         }

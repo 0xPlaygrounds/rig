@@ -2,7 +2,7 @@
 //! transient failure, honouring the wait the provider asked for; recover
 //! from a request that outgrew the model's context window; or give up.
 //! The kernel reads its policy from the [`RetryPolicy`] resource, which
-//! sets no limit unless the app does, as rig's `[retry]` table does.
+//! rig's `[retry]` table sets.
 
 use std::time::{Duration, SystemTime};
 
@@ -13,16 +13,15 @@ use rig_core::error::{ErrorKind, ErrorReport};
 /// reads each time a call fails.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RetryPolicy {
-    /// Retries of failed calls in a row before giving up; `None` retries
-    /// until a call succeeds or the turn is stopped.
-    pub max_retries: Option<u32>,
+    /// Retries of failed calls in a row before giving up.
+    pub max_retries: u32,
     /// The first wait; each retry doubles it, up to `max_backoff`.
     pub first_backoff: Duration,
     /// The longest wait the policy picks itself.
     pub max_backoff: Duration,
-    /// The longest wait a provider may ask for, past which the policy gives
-    /// up; `None` waits as long as it asks.
-    pub max_asked_wait: Option<Duration>,
+    /// The longest wait a provider may ask for; past it the policy gives
+    /// up, as waiting longer in front of a user is worse than saying so.
+    pub max_asked_wait: Duration,
 }
 
 impl Default for RetryPolicy {
@@ -32,13 +31,13 @@ impl Default for RetryPolicy {
 }
 
 impl RetryPolicy {
-    /// Retries until a call succeeds, waiting 2 s doubling to 30 s, or what
-    /// the provider asks for.
+    /// Four retries, waiting 2 s doubling to 30 s, or what the provider asks
+    /// for up to a minute.
     pub const DEFAULT: Self = Self {
-        max_retries: None,
+        max_retries: 4,
         first_backoff: Duration::from_secs(2),
         max_backoff: Duration::from_secs(30),
-        max_asked_wait: None,
+        max_asked_wait: Duration::from_secs(60),
     };
 
     /// What to do about `report`, the failure of a call already retried
@@ -50,7 +49,8 @@ impl RetryPolicy {
         if !report.is_retryable() || report.kind == ErrorKind::Cancelled {
             return Verdict::Final;
         }
-        if let Some(most) = self.max_retries.filter(|most| retries >= *most) {
+        if retries >= self.max_retries {
+            let most = self.max_retries;
             let times = match retries + 1 {
                 1 => "once".to_owned(),
                 times => format!("{times} times in a row"),
@@ -59,31 +59,22 @@ impl RetryPolicy {
                 "it failed {times} (`[retry] max_retries` is {most})"
             ));
         }
-        match (report.retry_after(now), self.max_asked_wait) {
-            (Some(asked), Some(most)) if asked > most => Verdict::GaveUp(format!(
+        match report.retry_after(now) {
+            Some(asked) if asked > self.max_asked_wait => Verdict::GaveUp(format!(
                 "the provider asks to wait {}s before the next call (`[retry] max_wait_secs` \
                  is {})",
                 asked.as_secs(),
-                most.as_secs()
+                self.max_asked_wait.as_secs()
             )),
-            (Some(asked), _) if web_time::Instant::now().checked_add(asked).is_none() => {
+            Some(asked) if web_time::Instant::now().checked_add(asked).is_none() => {
                 Verdict::GaveUp(format!(
                     "the provider asks to wait {}s before the next call, longer than this \
                      machine's clock counts",
                     asked.as_secs()
                 ))
             }
-            (Some(asked), _) => Verdict::Retry(asked),
-            (None, _) => Verdict::Retry(self.backoff(retries)),
-        }
-    }
-
-    /// How retry `attempt` is counted for people: `2/4` with a limit, `2`
-    /// without.
-    pub fn tries(&self, attempt: u32) -> String {
-        match self.max_retries {
-            Some(most) => format!("{attempt}/{most}"),
-            None => attempt.to_string(),
+            Some(asked) => Verdict::Retry(asked),
+            None => Verdict::Retry(self.backoff(retries)),
         }
     }
 

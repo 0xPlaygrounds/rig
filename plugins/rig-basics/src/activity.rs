@@ -310,7 +310,7 @@ fn show_status(
             ActivityStatus::Idle => STATUS.says("idle", Tone::Green),
             ActivityStatus::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
             ActivityStatus::Retrying { attempt, seconds } => STATUS.says(
-                format!("retry {} in {seconds}s…", policy.tries(*attempt)),
+                format!("retry {attempt}/{} in {seconds}s…", policy.max_retries),
                 Tone::Red,
             ),
             status => STATUS.says(format!("{status}…"), Tone::Yellow),

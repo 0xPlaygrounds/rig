@@ -1,6 +1,7 @@
 //! The `helper` tool: the model hands tasks to other rig agents, each a
 //! one-shot `rig -p --json` child process, and gets back each one's final
-//! answer, or why it failed. `tasks` run side by side, all at once, a
+//! answer, or why it failed. `tasks` run side by side, `[helpers] at_once`
+//! of them at a time (4 by default) while the rest wait their turn, a
 //! `chain` runs in order with `{previous}` standing for the answer before,
 //! and `task` is one.
 //!
@@ -10,9 +11,9 @@
 //! same build has those, and refuses a `--tools` name it has not. A child
 //! built from a plugin list changed since the parent started may lack one:
 //! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
-//! stdin. Past the call's `timeout`, if it gives one, or dead, it fails its
-//! task, and rig sets no bound of its own on how many run or how long;
-//! stopping the turn stops every child, so none outlives the call: on unix, while the run
+//! stdin. Past the call's `timeout`, else `[helpers] timeout_secs` (600 s by
+//! default), or dead, it fails its task; stopping the turn stops every
+//! child, so none outlives the call: on unix, while the run
 //! goes on, each gets the time a launcher takes to end ([`STOP_WINDOW`])
 //! before it is killed, so its own helpers are stopped in turn; as the run
 //! exits, the usual grace.
@@ -29,9 +30,10 @@
 //! [`budget`](crate::budget), a child is started with what is left of it.
 
 use std::ffi::OsString;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rig_harness::harness_protocol::{self, STOP_WINDOW};
@@ -74,19 +76,48 @@ impl Default for HelperCommand {
 #[derive(Default)]
 pub struct HelpersPlugin;
 
+/// `[helpers]` in `settings.toml`: how long a helper may take when its call
+/// gives no `timeout`, and how many of a call's `tasks` run at once, the
+/// rest waiting their turn. 0 does not read for either.
+#[derive(Resource, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+struct HelperSettings {
+    /// Seconds, 600 by default.
+    timeout_secs: NonZeroU64,
+    /// Tasks at once, 4 by default.
+    at_once: NonZeroUsize,
+}
+
+impl Default for HelperSettings {
+    fn default() -> Self {
+        Self {
+            timeout_secs: NonZeroU64::MIN.saturating_add(599),
+            at_once: NonZeroUsize::MIN.saturating_add(3),
+        }
+    }
+}
+
 impl Plugin for HelpersPlugin {
     fn build(&self, app: &mut App) {
-        let description = "Hand tasks to helpers: other rig agents that start fresh, without \
-             this conversation, so a task says all it needs. `tasks` run side by side, all at \
-             once, `chain` in order (`{previous}` in a task is the answer before it), `task` \
-             alone. The call returns once every helper finished, and you \
+        let set = *app
+            .add_setting::<HelperSettings>("helpers")
+            .world()
+            .resource::<HelperSettings>();
+        let description = format!(
+            "Hand tasks to helpers: other rig agents that start fresh, without this \
+             conversation, so a task says all it needs. `tasks` run side by side, {} at a \
+             time while the rest wait their turn, `chain` in order (`{{previous}}` in a task is \
+             the answer before it), `task` alone. Each may take {} s unless `timeout` says \
+             otherwise. The call returns once every helper finished, and you \
              wait until then: give work that should run alongside, such as a slow test, to a \
              helper of the same call. Each works in `dir` (default: yours) with your tools \
              or the `tools` named; helpers in one directory see each other's edits, so give \
              them separate files or directories (such as git worktrees). Helpers pay for \
              independent parts and for slow work beside yours, not for edits you already \
              know. You get back each one's final answer, or why it failed, its session and \
-             what it cost, or that some of that is unknown.";
+             what it cost, or that some of that is unknown.",
+            set.at_once, set.timeout_secs
+        );
         if !app.is_plugin_added::<UsagePlugin>() {
             app.add_plugins(UsagePlugin);
         }
@@ -94,7 +125,7 @@ impl Plugin for HelpersPlugin {
             .init_resource::<Processes>()
             .init_resource::<ProjectRoot>()
             .init_resource::<Reported>()
-            .add_open_tool(HELPER, description, ToolOptions::default(), start)
+            .add_open_tool(HELPER, &description, ToolOptions::default(), start)
             .add_systems(AgentPass, record.in_set(Stage::Review))
             .add_systems(Update, record.before(AgentLoop))
             .add_systems(
@@ -235,7 +266,8 @@ struct Args {
     /// Tasks in order, stopping at the first that fails.
     #[serde(default)]
     chain: Option<Vec<Job>>,
-    /// Seconds each helper may take, at least 1; no limit when absent.
+    /// Seconds each helper may take, at least 1; `[helpers] timeout_secs`
+    /// when absent.
     #[serde(default)]
     timeout: Option<u64>,
 }
@@ -309,7 +341,7 @@ fn start(
         Option<Res<HandedDown>>,
         Res<SessionUsage>,
     ),
-    (wake, reported): (Res<Wake>, Res<Reported>),
+    (wake, reported, set): (Res<Wake>, Res<Reported>, Res<HelperSettings>),
     mut commands: Commands,
 ) {
     let Ok((model, access, dir)) = agents.get(called.agent) else {
@@ -337,7 +369,7 @@ fn start(
         (None, None, Some(jobs)) => (true, jobs),
         _ => (false, Vec::new()),
     };
-    let timeout = timeout(args.timeout);
+    let timeout = timeout(args.timeout, set.timeout_secs);
     let planned: Result<Vec<Planned>, String> = match (jobs.len(), &timeout) {
         (0, _) => Err("give one of `task`, `tasks` or `chain`".to_owned()),
         (_, Err(why)) => Err(why.clone()),
@@ -353,7 +385,8 @@ fn start(
     let runner = Runner {
         command: command.clone(),
         launcher,
-        timeout: timeout.ok().flatten(),
+        timeout: timeout.unwrap_or_default(),
+        at_once: set.at_once,
         reports: Reports {
             agent: called.agent,
             turn: turns.get(called.call).ok().map(|&CallOf(turn)| turn),
@@ -377,11 +410,14 @@ fn start(
 }
 
 /// How long each helper of a call may take: the call's `timeout`, at least
-/// 1 second, or no limit without one.
-fn timeout(asked: Option<u64>) -> Result<Option<Duration>, String> {
+/// 1 second and as long as it says, else `default`.
+fn timeout(asked: Option<u64>, default: NonZeroU64) -> Result<Duration, String> {
     match asked {
-        Some(0) => Err("`timeout` must be at least 1 second; leave it out for none".to_owned()),
-        asked => Ok(asked.map(Duration::from_secs)),
+        Some(0) => Err(format!(
+            "`timeout` must be at least 1 second; leave it out for {default} s (`[helpers] \
+             timeout_secs`)"
+        )),
+        asked => Ok(Duration::from_secs(asked.unwrap_or(default.get()))),
     }
 }
 
@@ -391,7 +427,9 @@ struct Runner {
     /// The call's launcher: what [`Processes`] gives, with what is left of
     /// the budget.
     launcher: Launcher,
-    timeout: Option<Duration>,
+    timeout: Duration,
+    /// How many children run at once.
+    at_once: NonZeroUsize,
     reports: Reports,
 }
 
@@ -450,28 +488,39 @@ impl Runner {
             }
             return Ok(previous + &notes);
         }
-        let mut reports: Vec<Report> = Vec::new();
         // The call's, so a stop reaches the children of every thread.
         let call = Scope::current().unwrap_or_default();
+        // `at_once` threads each take the next task until none is left.
+        let next = AtomicUsize::new(0);
+        let done: Vec<Mutex<Option<Report>>> = jobs.iter().map(|_| Mutex::new(None)).collect();
         std::thread::scope(|scope| {
-            let started: Vec<_> = jobs
-                .iter()
-                .map(|(_, (args, dir))| {
-                    let call = &call;
-                    std::thread::Builder::new()
-                        .spawn_scoped(scope, move || call.enter(|| self.child(args, dir)))
-                })
-                .collect();
-            for thread in started {
-                let report = match thread {
-                    Ok(thread) => thread
-                        .join()
-                        .unwrap_or_else(|_| (Err("its thread crashed".to_owned()), String::new())),
-                    Err(error) => (Err(format!("it could not start: {error}")), String::new()),
+            let mut workers = Vec::new();
+            for _ in 0..self.at_once.get().min(jobs.len()) {
+                let (call, next, done, jobs) = (&call, &next, &done, &jobs);
+                let worker = move || loop {
+                    let at = next.fetch_add(1, Ordering::SeqCst);
+                    let (Some((_, (args, dir))), Some(slot)) = (jobs.get(at), done.get(at)) else {
+                        break;
+                    };
+                    let report = call.enter(|| self.child(args, dir));
+                    if let Ok(mut slot) = slot.lock() {
+                        *slot = Some(report);
+                    }
                 };
-                reports.push(report);
+                workers.extend(std::thread::Builder::new().spawn_scoped(scope, worker).ok());
+            }
+            // Joined, so a task's crash fails only that task.
+            for worker in workers {
+                worker.join().ok();
             }
         });
+        let reports: Vec<Report> = (done.into_iter())
+            .map(|slot| slot.into_inner().ok().flatten())
+            .map(|report| {
+                let crashed = "its thread crashed or could not start".to_owned();
+                report.unwrap_or_else(|| (Err(crashed), String::new()))
+            })
+            .collect();
         if let [(answer, note)] = reports.as_slice() {
             return answer
                 .clone()
@@ -531,9 +580,7 @@ impl Runner {
             }
         };
         let mut read = Read::new(self.reports.clone());
-        let deadline = self
-            .timeout
-            .and_then(|timeout| Instant::now().checked_add(timeout));
+        let deadline = Instant::now().checked_add(self.timeout);
         let ended = process.run(deadline, |piece| {
             read.piece(piece);
             true
@@ -545,10 +592,10 @@ impl Runner {
         self.reports.ended(read.known());
         let answer = match ended {
             Ok(Ended::Exited(status)) => read.answer(status.code()),
-            Ok(Ended::TimedOut) => {
-                let secs = self.timeout.unwrap_or_default().as_secs();
-                Err(format!("it timed out after {secs}s"))
-            }
+            Ok(Ended::TimedOut) => Err(format!(
+                "it timed out after {}s (the call's `timeout`, else `[helpers] timeout_secs`)",
+                self.timeout.as_secs()
+            )),
             Ok(_) => Err("stopped".to_owned()),
             Err(error) => Err(error.to_string()),
         };
