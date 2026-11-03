@@ -315,17 +315,14 @@ impl Plugin for ProjectSettingsPlugin {
 }
 
 /// Reads the project's `.rig/settings.toml` into [`ProjectSettings`],
-/// saying what was wrong with it.
-fn read_project_settings(
-    project: Res<Project>,
-    workspace: Option<Res<ProjectWorkspace>>,
-    settings: Option<ResMut<Settings>>,
-    mut commands: Commands,
-) {
-    let Some(config) = &project.config else {
+/// saying what was wrong with it. The [`Project`] is found here, when the
+/// app starts, unless the app has one.
+fn read_project_settings(world: &mut World) {
+    let Some(config) = world.get_resource_or_init::<Project>().config.clone() else {
         return;
     };
-    let workspace = workspace.map(|it| it.clone()).unwrap_or_default();
+    let workspace = world.get_resource::<ProjectWorkspace>();
+    let workspace = workspace.cloned().unwrap_or_default();
     let path: PathBuf = config.join("settings.toml");
     let file = path.display().to_string();
     let project = match workspace.0.read(&path, rig_tools::MAX_FILE_BYTES) {
@@ -339,10 +336,10 @@ fn read_project_settings(
     for problem in &project.problems {
         warn!("{problem}");
     }
-    if let Some(mut settings) = settings {
+    if let Some(mut settings) = world.get_resource_mut::<Settings>() {
         settings.problems.extend(project.problems.iter().cloned());
     }
-    commands.insert_resource(ProjectSettings(project));
+    world.insert_resource(ProjectSettings(project));
 }
 
 /// Inserts `T` from each table declared as read into it that the project

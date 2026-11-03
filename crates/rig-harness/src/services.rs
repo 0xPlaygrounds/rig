@@ -76,7 +76,8 @@ impl Default for ProjectRoot {
 /// for every reader. A `.rig` that is `RIG_HOME` marks nothing, and the
 /// search stops below the user's home directory, which is never a project's
 /// root unless rig starts there. Built from the app's [`ProjectRoot`] and
-/// [`RigHome`] when first needed, unless the app inserted one.
+/// [`RigHome`] when first needed, once the app is built, unless the app
+/// inserted one.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
 pub struct Project {
     /// The project's top directory, canonical when it exists: where the
@@ -214,12 +215,17 @@ impl Default for Processes {
 #[derive(Resource, Clone, Debug)]
 pub struct TokioRuntime(pub tokio::runtime::Handle);
 
-/// Inserts [`RigHome`], [`ProjectRoot`], [`Project`], [`Processes`] and
-/// [`TokioRuntime`], each unless the app has it, and gives an agent
+/// Inserts [`RigHome`], [`ProjectRoot`], [`Processes`] and
+/// [`TokioRuntime`], and [`Project`] once the app is built, each unless the
+/// app has it, and gives an agent
 /// spawned by one with a [`WorkDir`] that directory.
 pub struct ServicesPlugin;
 
 impl Plugin for ServicesPlugin {
+    fn finish(&self, app: &mut App) {
+        app.init_resource::<Project>();
+    }
+
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<TokioRuntime>() {
             match rig_http::runtime::handle() {
@@ -231,7 +237,6 @@ impl Plugin for ServicesPlugin {
         }
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<Project>()
             .init_resource::<Processes>()
             .add_observer(inherit_work_dir);
     }

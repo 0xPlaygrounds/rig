@@ -742,21 +742,22 @@ impl<'a> Spans<'a> {
     }
 }
 
-/// The user's file in `home` and the project's in its `.rig`, `config`
-/// ([`Project::config`](rig_harness::services::Project::config)), each
-/// change locked by `home/mcp.lock`.
-pub fn files(home: &Path, config: &Path) -> [McpFile; 2] {
-    let lock = lock_path(home);
-    [
-        McpFile {
-            dir: home.to_path_buf(),
-            scope: Scope::User,
-            lock: lock.clone(),
-        },
-        McpFile {
-            dir: config.to_path_buf(),
-            scope: Scope::Project,
-            lock,
-        },
-    ]
+/// The user's file in `home`, its changes locked by `home/mcp.lock`.
+pub fn user_file(home: &Path) -> McpFile {
+    McpFile {
+        dir: home.to_path_buf(),
+        scope: Scope::User,
+        lock: lock_path(home),
+    }
+}
+
+/// The project's file in its `.rig`, `config`
+/// ([`Project::config`](rig_harness::services::Project::config)), its
+/// changes locked by `home/mcp.lock`.
+pub fn project_file(home: &Path, config: &Path) -> McpFile {
+    McpFile {
+        dir: config.to_path_buf(),
+        scope: Scope::Project,
+        lock: lock_path(home),
+    }
 }

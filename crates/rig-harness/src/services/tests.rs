@@ -131,6 +131,9 @@ fn the_project_is_the_nearest_marked_directory_below_the_users_home() {
         config: None,
     };
     assert_eq!(find(""), home);
+    // Outside the user's home the search goes on up: here to `.git` above it.
+    let outside = Project::find(&user.join("x/y"), &rig_home, Some(&user.join("r")));
+    assert_eq!(outside.root, user);
     // A RIG_HOME in a project's `.rig` leaves it no config, and marks nothing.
     make(&user, &["r/.rig", "x/.rig"]);
     let custom = Project::find(&user.join("r/a"), &user.join("r/.rig"), Some(&user));
@@ -162,6 +165,17 @@ fn a_linked_working_directory_is_in_its_targets_project() {
         project.levels(&user.join("q/into-repo")),
         [user.join("r/a"), user.join("r")]
     );
+    // A `.git` that links nowhere marks nothing.
+    make(&user, &["r/d/e"]);
+    assert!(link("nowhere", "r/d/.git").is_ok());
+    assert_eq!(find("r/d/e"), user.join("r"));
+    // A `.rig` that links to RIG_HOME marks nothing and is no config.
+    make(&user, &["s/sub"]);
+    assert!(link(".rig", "s/.rig").is_ok());
+    assert_eq!(find("s/sub"), user.join("s/sub"));
+    make(&user, &["s/.git!"]);
+    let project = Project::find(&user.join("s/sub"), &user.join(".rig"), Some(&user));
+    assert_eq!((project.root, project.config), (user.join("s"), None));
     std::fs::remove_dir_all(user).ok();
 }
 

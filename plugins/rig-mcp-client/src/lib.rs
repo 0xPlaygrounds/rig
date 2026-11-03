@@ -95,10 +95,13 @@ impl Plugin for McpPlugin {
 pub struct McpCorePlugin;
 
 impl Plugin for McpCorePlugin {
+    fn finish(&self, app: &mut App) {
+        app.init_resource::<Project>();
+    }
+
     fn build(&self, app: &mut App) {
         app.add_setting::<McpSettings>("mcp")
             .init_resource::<RigHome>()
-            .init_resource::<Project>()
             .init_resource::<Processes>()
             .init_resource::<Approvals>()
             .init_resource::<Groups>()
@@ -394,11 +397,13 @@ impl Connect<'_> {
     /// of its own ([`Project::config`]).
     fn files(&self) -> Vec<McpFile> {
         let home = self.home.0.root();
-        let [user, project] = config::files(home, self.project.config.as_deref().unwrap_or(home));
-        match self.no_project_file() {
-            Some(_) => vec![user],
-            None => vec![user, project],
-        }
+        let config = self.project.config.as_deref();
+        let project = config.filter(|_| self.no_project_file().is_none());
+        let project = project.map(|config| config::project_file(home, config));
+        [config::user_file(home)]
+            .into_iter()
+            .chain(project)
+            .collect()
     }
 
     /// Why the project has no file of its own, if it has none.

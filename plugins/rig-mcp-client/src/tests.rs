@@ -868,7 +868,7 @@ fn a_project_whose_rig_is_rig_home_has_no_project_file() {
         json!({ "mine": { "command": "x", "disabled": true } }),
     );
     let (mut app, _) = app_in(&project, "", None);
-    // As rig finds it run in the home directory.
+    // As rig finds it run in the home directory, which is the project.
     let found = Project::find(&project, &home, Some(&project));
     app.insert_resource(RigHome(Home::at(home)))
         .insert_resource(found);
@@ -903,9 +903,7 @@ fn a_project_whose_path_is_not_utf8_has_no_project_file() {
         json!({ "theirs": stub_server(json!({})) }),
     );
     let (mut app, _) = app_in(&parent, "", None);
-    let found = Project::find(&project, &parent.join("home"), None);
-    app.insert_resource(ProjectRoot(project))
-        .insert_resource(found);
+    app.insert_resource(ProjectRoot(project));
     app.finish();
     app.update();
     assert!(status(app.world_mut(), "theirs").is_none());

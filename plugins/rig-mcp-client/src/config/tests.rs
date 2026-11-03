@@ -91,7 +91,7 @@ fn scratch(name: &str) -> PathBuf {
 #[test]
 fn a_change_touches_only_the_bytes_of_its_server() {
     let dir = scratch("splice");
-    let [user, _] = files(&dir, &dir.join(".rig"));
+    let user = user_file(&dir);
     let before = "{\r\n\t\"other\": {\"a\": [1,2]},\r\n\t\"mcpServers\": {\r\n\t\t\"x\": {\"command\": \"x\"}\r\n\t}\r\n}\r\n";
     fs::write(user.path(), before).ok();
     assert_eq!(
@@ -133,7 +133,7 @@ fn a_project_file_that_is_a_link_is_never_read_or_written() {
     let users = dir.join("users-mcp.json");
     let secret = "{\"mcpServers\":{\"gh\":{\"url\":\"https://h\",\"headers\":{\"Authorization\":\"Bearer SECRET\"}}}}\n";
     fs::write(&users, secret).ok();
-    let [_, project] = files(&dir.join("home"), &dir.join(".rig"));
+    let project = project_file(&dir.join("home"), &dir.join(".rig"));
     fs::create_dir_all(dir.join(".rig")).ok();
     // A checkout's link to the user's file.
     std::os::unix::fs::symlink(&users, project.path()).ok();
@@ -160,7 +160,7 @@ fn the_users_file_keeps_its_permissions_and_its_link() {
     fs::create_dir_all(dir.join("dotfiles")).ok();
     fs::create_dir_all(dir.join("home")).ok();
     std::os::unix::fs::symlink(&dotfiles, dir.join("home/mcp.json")).ok();
-    let [user, _] = files(&dir.join("home"), &dir.join(".rig"));
+    let user = user_file(&dir.join("home"));
     // A link to a file not made yet is followed too.
     assert_eq!(user.add("first", json!({ "command": "first" })), Ok(()));
     assert!(
@@ -192,7 +192,7 @@ fn a_project_write_never_leaves_the_project() {
     let repo = dir.join("repo");
     fs::create_dir_all(&repo).ok();
     std::os::unix::fs::symlink(&home, repo.join(".rig")).ok();
-    let [_, project] = files(&home, &repo.join(".rig"));
+    let project = project_file(&home, &repo.join(".rig"));
     assert!(project.servers().is_err());
     let refused = project.add("x", json!({ "command": "x" }));
     assert!(refused.is_err_and(|why| {
@@ -227,7 +227,7 @@ fn a_write_keeps_the_files_group() {
         fs::remove_dir_all(dir).ok();
         return;
     };
-    let [user, _] = files(&dir, &dir.join(".rig"));
+    let user = user_file(&dir);
     fs::write(user.path(), "{}\n").ok();
     let given = std::os::unix::fs::chown(user.path(), None, Some(other));
     assert!(given.is_ok(), "{given:?}");
