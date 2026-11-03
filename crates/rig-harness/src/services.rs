@@ -93,10 +93,10 @@ pub struct Project {
 
 impl Project {
     /// The project of the working directory `dir`, for `rig_home` and the
-    /// user's home directory `user`. Symlinks in `dir` are resolved first,
-    /// in the part of it that exists.
+    /// user's home directory `user`. Symlinks in `dir` are resolved first;
+    /// a `dir` that does not resolve is taken as given.
     pub fn find(dir: &Path, rig_home: &Path, user: Option<&Path>) -> Self {
-        let dir = resolved(dir);
+        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
         let rig_home = rig_home.canonicalize().ok();
         let user = user.and_then(|user| user.canonicalize().ok());
         let is_rig_home = |rig: &Path| rig_home.is_some() && rig.canonicalize().ok() == rig_home;
@@ -119,7 +119,7 @@ impl Project {
     /// project's `AGENTS.md` files and skills are. Only `dir` when it is
     /// not inside the project.
     pub fn levels(&self, dir: &Path) -> Vec<PathBuf> {
-        let dir = resolved(dir);
+        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
         if !dir.starts_with(&self.root) {
             return vec![dir];
         }
@@ -128,17 +128,6 @@ impl Project {
             .chain([self.root.as_path()])
             .map(Path::to_path_buf)
             .collect()
-    }
-}
-
-/// `path` with the symlinks of its longest existing part resolved.
-fn resolved(path: &Path) -> PathBuf {
-    let real = path
-        .ancestors()
-        .find_map(|part| Some((part, part.canonicalize().ok()?)));
-    match real.and_then(|(part, real)| Some(real.join(path.strip_prefix(part).ok()?))) {
-        Some(real) => real,
-        None => path.to_owned(),
     }
 }
 

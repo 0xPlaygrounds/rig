@@ -160,8 +160,6 @@ fn a_linked_working_directory_is_in_its_targets_project() {
     let find = |dir: &str| Project::find(&user.join(dir), &user.join(".rig"), Some(&user)).root;
     assert_eq!(find("q/into-repo"), user.join("r"));
     assert_eq!(find("q/out"), user.join("x"));
-    // Missing below a link, it is still in the target's project.
-    assert_eq!(find("q/into-repo/gone"), user.join("r"));
     let project = Project::find(&user.join("q/into-repo"), &user.join(".rig"), Some(&user));
     assert_eq!(
         project.levels(&user.join("q/into-repo")),
