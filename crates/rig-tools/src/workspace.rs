@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -15,7 +15,7 @@ use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
-use crate::fs::{Previous, io_error, write_atomic};
+use crate::fs::{Previous, io_error, real_path, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
 pub use crate::watch::Watch;
 use crate::{MAX_BYTES, MAX_FILE_BYTES, shell_path};
@@ -136,8 +136,8 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// replacing a file there.
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
 
-    /// `path` made absolute, with the links of its longest existing part
-    /// followed (the file's own too, when it exists) and `..` folded, so two
+    /// `path` made absolute, with every link on it followed (a dangling one
+    /// to where a write would create its file) and `..` folded, so two
     /// spellings of one file come out alike. A footprint is made with it,
     /// which may be on a thread that must not wait: a remote workspace may
     /// answer from a cache, or fold `..` only.
@@ -390,7 +390,9 @@ impl dyn Workspace {
 
     /// `path` `resolve`d against `base`, as a file tool
     /// opens it; with `confine`, refused before any other I/O when it lies
-    /// outside `base` (`None`: the working directory).
+    /// outside `base` (`None`: the working directory). The check is of the
+    /// path when it is made: a link another process puts in `base` before
+    /// the tool's I/O can still lead that I/O out.
     ///
     /// ```
     /// use rig_tools::workspace::{Local, Workspace};
@@ -589,22 +591,7 @@ impl Workspace for Local {
     }
 
     fn canonical(&self, path: &Path) -> PathBuf {
-        let joined = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-        let real = joined.ancestors().find_map(|ancestor| {
-            let real = fs::canonicalize(ancestor).ok()?;
-            Some((real, joined.strip_prefix(ancestor).ok()?))
-        });
-        let (mut out, rest) = real.unwrap_or((PathBuf::new(), &joined));
-        for component in rest.components() {
-            match component {
-                Component::ParentDir => {
-                    out.pop();
-                }
-                Component::CurDir => {}
-                other => out.push(other),
-            }
-        }
-        out
+        real_path(path)
     }
 
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {

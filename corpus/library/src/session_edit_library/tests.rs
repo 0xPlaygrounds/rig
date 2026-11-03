@@ -74,10 +74,8 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
     };
     let (id, dir) = home.new_session()?;
     let store = DirStore::open(dir.path())?;
-    let mut session = Session {
-        agents: vec![main, sub],
-        ..Session::default()
-    };
+    let mut session = Session::default();
+    session.agents = vec![main, sub];
     session.save(&store)?;
     dir.set_name(Some("fix-auth"))?;
     dir.mark_saved()?;

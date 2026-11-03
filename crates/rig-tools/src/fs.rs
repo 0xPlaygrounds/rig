@@ -5,7 +5,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -80,7 +80,8 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let (target, permissions) = match fs::metadata(path) {
+    let target = real_path(path);
+    let permissions = match fs::symlink_metadata(&target) {
         Ok(meta) if !meta.is_file() => {
             return Err(io::Error::new(
                 ErrorKind::InvalidInput,
@@ -93,8 +94,8 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
                 "the file is read-only; leave it unchanged or ask the user",
             ));
         }
-        Ok(meta) => (fs::canonicalize(path)?, Some(meta.permissions())),
-        Err(error) if error.kind() == ErrorKind::NotFound => (link_target(path), None),
+        Ok(meta) => Some(meta.permissions()),
+        Err(error) if error.kind() == ErrorKind::NotFound => None,
         Err(error) => return Err(error),
     };
     if let Some(parent) = target
@@ -162,19 +163,53 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> io::Result<()> {
     write_atomic(path, &serde_json::to_vec_pretty(value)?)
 }
 
-/// Where a missing `path` is created: the end of its chain of dangling
-/// symlinks, or `path` itself when it is no link.
-fn link_target(path: &Path) -> PathBuf {
-    /// Linux's own limit on links followed in one lookup.
+/// Where `path` really is: absolute, with every symlink on it followed,
+/// dangling ones included, and `.` and `..` folded. Parts that do not exist
+/// yet are taken as written. A file tool's path is resolved here and
+/// [`write_atomic`] writes here, so the path a tool checks is the one it
+/// changes. Past Linux's limit of 40 links, `path` comes back only made
+/// absolute, still a link, which the I/O on it refuses.
+pub(crate) fn real_path(path: &Path) -> PathBuf {
     const MAX_HOPS: usize = 40;
-    let mut target = path.to_path_buf();
-    for _ in 0..MAX_HOPS {
-        let Ok(link) = fs::read_link(&target) else {
-            break;
-        };
-        target = target.parent().unwrap_or(Path::new("")).join(link);
+    let path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut next = path.clone();
+    for _ in 0..=MAX_HOPS {
+        match follow(&next) {
+            Ok(real) => return real,
+            Err(link) => next = link,
+        }
     }
-    target
+    path
+}
+
+/// `path` with its longest existing start made canonical and the rest
+/// folded onto it, or `Err` with the path the first link in the rest
+/// leads to.
+fn follow(path: &Path) -> Result<PathBuf, PathBuf> {
+    let start = path.ancestors().find_map(|ancestor| {
+        Some((
+            fs::canonicalize(ancestor).ok()?,
+            path.strip_prefix(ancestor).ok()?,
+        ))
+    });
+    let (mut out, rest) = start.unwrap_or((PathBuf::new(), path));
+    let mut rest = rest.components();
+    while let Some(component) = rest.next() {
+        match component {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => {
+                out.push(other);
+                if let Ok(link) = fs::read_link(&out) {
+                    out.pop();
+                    return Err(out.join(link).join(rest.as_path()));
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// A model-visible error for an I/O failure on `path`.
