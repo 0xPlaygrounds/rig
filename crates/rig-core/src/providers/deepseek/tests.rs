@@ -484,3 +484,112 @@ fn a_one_of_beside_an_any_of_goes_without_strict() {
         assert_eq!(function.get("parameters"), Some(&schema));
     }
 }
+
+/// DeepSeek's Chat wire used to drop every image (`image_rule` returned
+/// `None`, and `encodes` refused parts for the dialect). The catalog lists
+/// Flash as image-capable and the live API accepts `image_url` parts, so a
+/// Flash request keeps the image and a text-only Pro / unlisted id still
+/// omits it.
+#[test]
+fn deepseek_chat_sends_images_when_the_catalog_says_so() {
+    use crate::completion::{Media, Place, ReplayTarget};
+    use crate::message::{DocumentSourceKind, Image, ImageMediaType, Message, UserContent};
+    use crate::operation::Completion;
+    use crate::wire::Operation;
+
+    let image = Image {
+        data: DocumentSourceKind::Base64(
+            "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC"
+                .to_owned(),
+        ),
+        media_type: Some(ImageMediaType::PNG),
+        detail: None,
+        native: None,
+    };
+    let flash = OpenAIConfig::with_key(&DEEPSEEK, "sk-test").chat(super::DEEPSEEK_FLASH);
+    let pro = OpenAIConfig::with_key(&DEEPSEEK, "sk-test").chat(super::DEEPSEEK_V4_PRO);
+    let unlisted = OpenAIConfig::with_key(&DEEPSEEK, "sk-test").chat("deepseek-chat");
+
+    assert!(flash.accepts(super::DEEPSEEK_FLASH).user_images);
+    assert!(!flash.accepts(super::DEEPSEEK_FLASH).tool_result_images);
+    assert!(!pro.accepts(super::DEEPSEEK_V4_PRO).user_images);
+    assert!(!unlisted.accepts("deepseek-chat").user_images);
+
+    assert!(flash.encodes(super::DEEPSEEK_FLASH, Media::Image(&image, Place::User)));
+    assert!(!pro.encodes(super::DEEPSEEK_V4_PRO, Media::Image(&image, Place::User)));
+    assert!(!unlisted.encodes("deepseek-chat", Media::Image(&image, Place::User)));
+
+    let with_image = {
+        let mut request = CompletionRequest::new("What color?");
+        request.chat_history = vec![
+            Message::User {
+                content: vec![
+                    UserContent::text("What color?"),
+                    UserContent::Image(image.clone()),
+                ],
+            }
+            .into(),
+        ];
+        let request =
+            Completion::prepare(request, &flash.describe()).expect("flash request prepares");
+        let body = crate::test_utils::json_body(
+            &flash
+                .encode(request, Mode::Unary)
+                .expect("flash encodes")
+                .request,
+        );
+        body["messages"][0]["content"].clone()
+    };
+    assert_eq!(
+        with_image,
+        json!([
+            {"type": "text", "text": "What color?"},
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC",
+                    "detail": "auto"
+                }
+            }
+        ]),
+        "{with_image}"
+    );
+
+    let text_only = {
+        let request = Completion::prepare(CompletionRequest::new("hi"), &flash.describe())
+            .expect("text request prepares");
+        let body = crate::test_utils::json_body(
+            &flash
+                .encode(request, Mode::Unary)
+                .expect("text encodes")
+                .request,
+        );
+        body["messages"][0]["content"].clone()
+    };
+    assert_eq!(text_only, json!("hi"), "{text_only}");
+
+    let omitted = {
+        let mut request = CompletionRequest::new("What color?");
+        request.chat_history = vec![
+            Message::User {
+                content: vec![UserContent::text("What color?"), UserContent::Image(image)],
+            }
+            .into(),
+        ];
+        let request = Completion::prepare(request, &pro.describe()).expect("pro request prepares");
+        let body = crate::test_utils::json_body(
+            &pro.encode(request, Mode::Unary)
+                .expect("pro encodes")
+                .request,
+        );
+        body["messages"][0]["content"].clone()
+    };
+    assert_eq!(
+        omitted,
+        json!([
+            {"type": "text", "text": "What color?"},
+            {"type": "text", "text": "(image omitted: model does not support images)"}
+        ]),
+        "{omitted}"
+    );
+}

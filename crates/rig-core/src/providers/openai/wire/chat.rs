@@ -870,16 +870,25 @@ impl crate::completion::ReplayTarget for Chat {
     /// typed data; audio as data; video as a URL or typed data, except to
     /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
     /// Mistral fetches; a file id where the dialect takes one; and a text
-    /// document as text. DeepSeek and Mira take text only; Perplexity and
-    /// Cohere take no media but images, and Ollama only images as data.
-    fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
+    /// document as text. Mira takes text only. DeepSeek takes images on
+    /// models that read them, and nothing else; Perplexity and Cohere take
+    /// no media but images, and Ollama only images as data.
+    fn encodes(&self, model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::Media;
         let dialect = &self.provider.dialect;
         let rewrite = dialect.quirks.rewrite;
-        let parts = !matches!(rewrite, BodyRewrite::DeepSeek | BodyRewrite::Mira);
+        // DeepSeek's Chat API takes image parts on vision models; Mira's
+        // gateway still takes text only.
+        let parts = match rewrite {
+            BodyRewrite::Mira => false,
+            BodyRewrite::DeepSeek => reads_images(&self.facts, dialect, model),
+            _ => true,
+        };
         // Cohere and Ollama read images and text, and no other media.
+        // DeepSeek's image path is the same: no audio, video, or files.
         let files = parts
             && rewrite != BodyRewrite::Perplexity
+            && rewrite != BodyRewrite::DeepSeek
             && ![super::dialects::COHERE.name, super::dialects::OLLAMA.name]
                 .contains(&dialect.name);
         let linked = |source: &Source, typed: bool| match source {
@@ -1014,14 +1023,16 @@ impl crate::completion::ReplayTarget for Chat {
 /// `vendor` is a dialect's name or the vendor an OpenRouter model id starts
 /// with. Groq reads images on its Llama 4 models; Mistral's Codestral and
 /// Devstral are text models; OpenAI (on Azure too), xAI, Cohere, Z.AI,
-/// Moonshot, MiniMax and MiMo apply the rules their other wires share; any
-/// other vendor's unlisted model reads them. `None` for DeepSeek's API,
-/// which takes text content only (it answers an image part with a 400), and
-/// Mira's gateway, which takes text, whatever the model.
+/// Moonshot, MiniMax and MiMo apply the rules their other wires share;
+/// DeepSeek's catalog entries decide, and an unlisted DeepSeek id is
+/// treated as text-only; any other vendor's unlisted model reads them.
+/// `None` for Mira's gateway, which takes text, whatever the model.
 fn image_rule(vendor: &str) -> Option<(&str, fn(&str) -> bool)> {
     use crate::providers::{minimax, moonshot, xiaomimimo, zai};
     Some(match vendor {
-        "deepseek" | "mira" => return None,
+        "mira" => return None,
+        // Unlisted DeepSeek ids stay text-only; catalog entries decide.
+        "deepseek" => ("deepseek", |_| false),
         "groq" => ("groq", |model| model.contains("llama-4")),
         "mistral" | "mistralai" => ("mistral", |model| {
             !(model.starts_with("codestral") || model.starts_with("devstral"))
