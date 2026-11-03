@@ -33,13 +33,14 @@ fn cargo(args: &[&str]) -> Step {
     Step::new("cargo", args)
 }
 /// The rig agent's packages, none of them a default member: the kernel,
-/// the core and its libraries, every plugin crate of `plugins/`, and their
-/// test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 14] = [
+/// the core and its libraries, the launcher, every plugin crate of
+/// `plugins/`, and their test support.
+pub(crate) const HARNESS_PACKAGES: [&str; 15] = [
     "rig-ecs",
     "rig-tools",
     "rig-harness",
     "rig-harness-protocol",
+    "rig-cli",
     "rig-basics",
     "rig-inspect",
     "rig-steel",
@@ -242,7 +243,7 @@ pub(super) fn all() -> Vec<Check> {
                 "-p",
                 "rig-harness",
                 "-p",
-                "rig",
+                "rig-cli",
                 "-p",
                 "rig-harness-protocol",
                 "--lib",
@@ -252,7 +253,7 @@ pub(super) fn all() -> Vec<Check> {
                 "fail",
                 "-E",
                 "test(/^process::tests::/) | test(/^host::(signals|launcher)::tests::/) \
-                 | test(/^launcher::(run|locks|run::stop)::tests::/) \
+                 | (binary(rig) & test(/^(run|locks|run::stop)::tests::/)) \
                  | test(/^tests::a_group_whose_leader_left/)",
             ])],
         ),

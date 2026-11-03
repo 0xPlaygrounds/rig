@@ -73,7 +73,7 @@ python3 plugins/rig-claude-cloak/tests/acceptance/run.py \
   --live --confirm-stored-credentials --matrix --fork-resume \
   --binary /absolute/path/to/verified/rig \
   --source /absolute/path/to/verified/source \
-  --plugin-config /absolute/path/to/build/plugins.toml \
+  --plugin-config /absolute/path/to/build/settings.toml \
   --credentials /absolute/path/to/original/anthropic-oauth \
   --build-record /private/build-record.json \
   --ledger /private/live-ledger.json \
@@ -303,7 +303,7 @@ Record the successful build after source changes finish:
 python3 plugins/rig-claude-cloak/tests/acceptance/run.py \
   --record-build /private/build-record.json \
   --binary /absolute/path/to/rig-agent --source /absolute/path/to/rig \
-  --plugin-config /private/build-home/plugins.toml \
+  --plugin-config /private/build-home/settings.toml \
   --generated-main /private/build-home/project/src/main.rs \
   --build-command 'THE EXACT SUCCESSFUL BUILD COMMAND'
 ```

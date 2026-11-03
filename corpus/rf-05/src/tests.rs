@@ -318,9 +318,10 @@ fn the_terminal_view_draws_the_file_and_its_count() {
     std::fs::remove_dir_all(root).ok();
 }
 
-/// The default `plugins.toml`'s plugins, in its order, as rig's launcher
-/// writes it (`src/launcher/plugins.toml` in rig's repository): no
-/// published crate lists them, so this copy must follow rig's.
+/// rig's plugins on by default, in their order, as
+/// `rig_harness::harness_protocol::built_in_plugins!` lists them, but
+/// rig-traffic's and the remote hosts': the list names them as data, so this
+/// copy, which adds them, must follow it.
 fn add_defaults(app: &mut App) {
     use rig_basics::*;
     use rig_harness::load;

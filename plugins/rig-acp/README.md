@@ -8,20 +8,16 @@ and its slash commands.
 
 ## Turning it on
 
-The plugin list a new `RIG_HOME` gets has it, turned off. Turn it on, and
-build:
+It is off by default and in every build. Turn it on:
 
 ```sh
 rig plugin enable rig_acp::AcpPlugin
-rig build
 ```
 
-A `RIG_HOME` made before this plugin shipped has no entry for it:
-`rig plugin add rig_acp::AcpPlugin` adds one, on. Sign in with `rig` first
-(`/login` in the terminal view): the editor gets the models you can reach.
-`rig acp` builds the agent first when it is out of date, as `rig` does, which
-can take minutes the first time; build it beforehand so the editor does not
-wait.
+Sign in with `rig` first (`/login` in the terminal view): the editor gets the
+models you can reach. `rig acp` builds the agent first when it is out of date,
+as `rig` does, which can take minutes the first time; build it beforehand so
+the editor does not wait.
 
 ## Zed
 

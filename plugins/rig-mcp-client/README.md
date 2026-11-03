@@ -8,15 +8,13 @@ connected again, waiting 1 s, then twice as long each time, up to a minute.
 
 ## Turning it on
 
-The plugin list a new `RIG_HOME` gets has it, turned off. Turn it on with:
+It is off by default. Turn it on with:
 
 ```sh
 rig plugin enable rig_mcp_client::McpPlugin
 ```
 
-or in `/plugins`. A `RIG_HOME` made before this plugin shipped has no entry
-for it: `rig plugin add rig_mcp_client::McpPlugin` adds one, on. The next
-start, or `/reload`, builds it in. With it on and
+or in `/plugins`; nothing rebuilds. With it on and
 no `mcp.json`, it reads the two missing `mcp.json` files and its approvals at
 start, and does nothing else.
 

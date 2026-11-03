@@ -1,16 +1,17 @@
-//! `/plugins`: every plugin in `plugins.toml`, enabled and disabled, as
-//! `$RIG_LAUNCHER plugin list` lists them, each with its crate, the comment
-//! above its entry, and how it differs from what this build runs (its
-//! `PluginSource` entities). In the terminal view it is a picker with the
-//! enabled plugins ticked: applying it runs `$RIG_LAUNCHER plugin enable`
-//! and `disable` for each plugin ticked or unticked, then reloads at once
-//! ([`ReloadStatus::ask`]). Without a terminal it shows the list. The
-//! launcher owns the file, so the model changes it the same way from
-//! `shell`.
+//! `/plugins`: every plugin, on and off here, as `$RIG_LAUNCHER plugin
+//! list` lists them, each with its crate, what it adds, and how it differs
+//! from what this agent runs (its `PluginSource` entities). In the terminal
+//! view it is a picker with the plugins on ticked: applying it runs
+//! `$RIG_LAUNCHER plugin enable` and `disable` for each plugin ticked or
+//! unticked, which edit `RIG_HOME/settings.toml`, then reloads at once
+//! ([`ReloadStatus::ask`]); nothing rebuilds. Without a terminal it shows
+//! the list. The launcher owns the file, so the model changes it the same
+//! way from `shell`.
 
 use std::process::Command;
 
-use rig_harness::harness_protocol::{self, essential, secret_variables};
+use rig_harness::harness_protocol::config::essential;
+use rig_harness::harness_protocol::{self, secret_variables};
 use rig_harness::pick::{Picked, Picker};
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, Spawn};
@@ -25,22 +26,22 @@ impl Plugin for PluginsPlugin {
     fn build(&self, app: &mut App) {
         app.add_command(
             "plugins",
-            "List the plugins in plugins.toml, enabled and disabled, and turn them on and off",
+            "List every plugin, on and off, and turn them on and off in settings.toml",
             plugins,
         );
     }
 }
 
-/// One entry of `plugins.toml`, from a line of `rig plugin list`.
+/// One plugin, from a line of `rig plugin list`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Listed {
-    /// Whether its entry is active, not commented out.
+    /// Whether it is on here.
     enabled: bool,
     /// The plugin type, such as `rig_tui::TuiPlugin`.
     type_path: String,
     /// Its crate.
     krate: String,
-    /// The comment above its entry, with the launcher's own warning.
+    /// What it adds, with the launcher's own notes.
     description: String,
 }
 
@@ -86,8 +87,8 @@ fn plugins(
     let mut picker = Picker::new("Plugins")
         .for_agent(args.agent)
         .body(
-            "Tick the plugins to run and press Enter: plugins.toml is changed and the agent \
-             rebuilds at once. A failed build keeps this one running.",
+            "Tick the plugins to run and press Enter: RIG_HOME/settings.toml is changed and \
+             the agent restarts with them at once.",
         )
         .multiple();
     for (listed, detail) in listed.iter().zip(details) {
@@ -117,7 +118,7 @@ fn apply(
     let (Some(chosen), Ok(picker)) = (&picked.chosen, pickers.get(picked.entity)) else {
         return;
     };
-    let mut changed = Vec::new();
+    let mut asked = Vec::new();
     for (index, listed) in picker.listed.iter().enumerate() {
         let enable = chosen.items.contains(&index);
         if enable == listed.enabled {
@@ -125,12 +126,33 @@ fn apply(
         }
         let verb = if enable { "enable" } else { "disable" };
         match launcher(&[verb, &listed.type_path]) {
-            Ok(_) => changed.push(format!("{verb}d {}", listed.type_path)),
+            Ok(_) => asked.push((enable, listed.type_path.as_str())),
             Err(why) => {
                 notices.write(Notice::error(picker.agent, why));
             }
         }
     }
+    // A project's settings may keep a plugin as it was; what is on now says.
+    let now = launcher(&["list"])
+        .map(|output| parse(&output))
+        .unwrap_or_default();
+    let is_on = |plugin: &str| {
+        now.iter()
+            .any(|listed| listed.enabled && listed.type_path == plugin)
+    };
+    let (changed, kept): (Vec<_>, Vec<_>) = asked
+        .into_iter()
+        .partition(|(enable, plugin)| is_on(plugin) == *enable);
+    for (enable, plugin) in kept {
+        let state = if enable { "off" } else { "on" };
+        notices.write(Notice::warn(
+            picker.agent,
+            format!("`{plugin}` stays {state} here: this project's .rig/settings.toml sets it."),
+        ));
+    }
+    let changed: Vec<String> = (changed.into_iter())
+        .map(|(enable, plugin)| format!("{} {plugin}", if enable { "enabled" } else { "disabled" }))
+        .collect();
     if changed.is_empty() {
         notices.write(Notice::info(picker.agent, "No plugin changed."));
         return;
@@ -139,7 +161,7 @@ fn apply(
         Some(mut status) => status.ask(picker.agent).err(),
         None => Some("Without rig_basics::reload::ReloadPlugin, it applies when rig starts again."),
     };
-    let mut text = format!("plugins.toml: {}.", changed.join(", "));
+    let mut text = format!("settings.toml: {}.", changed.join(", "));
     if let Some(why) = reload {
         text.push(' ');
         text.push_str(why);

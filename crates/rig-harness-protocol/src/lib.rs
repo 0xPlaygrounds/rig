@@ -1,9 +1,12 @@
-//! The protocol between the `rig` launcher (the `rig` crate's binary) and the
+//! The protocol between the `rig` launcher (the `rig-cli` crate) and the
 //! rig-harness agent it builds and runs: the `RIG_HOME` layout, session ids,
-//! the environment the launcher passes to the agent, and the exit codes that
-//! say how the agent ended. The launcher and `rig-harness` both use
-//! this crate, so the two sides cannot drift apart. It uses only std, and
-//! it changes with rig-harness.
+//! the environment the launcher passes to the agent, the exit codes that
+//! say how the agent ended, and the settings both read ([`config`]). The
+//! launcher and `rig-harness` both use this crate, so the two sides cannot
+//! drift apart. It uses std and `toml_edit`, and it changes with
+//! rig-harness.
+
+pub mod config;
 
 use std::ffi::OsString;
 use std::fmt;
@@ -102,6 +105,11 @@ pub mod env {
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
     /// A rig checkout the agent is built from instead of crates.io.
     pub const SOURCE: &str = "RIG_SOURCE";
+    /// The plugins the agent adds, by type path, separated by commas: the
+    /// launcher sets it from the settings ([`config::plugins_in`](super::config::plugins_in)),
+    /// and every process the agent starts inherits it, so a `rig -p` child
+    /// runs with its session's plugins.
+    pub const PLUGINS: &str = "RIG_PLUGINS";
 }
 
 /// The launcher that started this agent, if one did: it sets both
@@ -282,28 +290,18 @@ impl Home {
         &self.root
     }
 
-    /// `plugins.toml`, the plugin list.
-    pub fn plugins_toml(&self) -> PathBuf {
-        self.root.join("plugins.toml")
-    }
-
     /// `plugins/`, where `rig plugin new` makes plugin crates, outside any
-    /// workspace: `plugins/<name>` is listed in `plugins.toml` as
+    /// workspace: `plugins/<name>` is listed in `settings.toml` as
     /// `path = "plugins/<name>"`.
     pub fn plugins(&self) -> PathBuf {
         self.root.join("plugins")
     }
 
-    /// `settings.toml`, the user's settings for plugins: one table per
-    /// plugin, which the agent hands to the plugin that reads it.
+    /// `settings.toml`, the one file the user edits: which plugins run
+    /// (`[plugins]`, [`config`]) and one table per plugin, which the agent
+    /// hands to the plugin that reads it.
     pub fn settings(&self) -> PathBuf {
         self.root.join("settings.toml")
-    }
-
-    /// `defaults.json`, the model and reasoning setting a new session
-    /// starts with: the last ones chosen.
-    pub fn defaults(&self) -> PathBuf {
-        self.root.join("defaults.json")
     }
 
     /// `auth/`, where `/login` keeps each subscription credential, as
@@ -344,9 +342,10 @@ impl Home {
         self.bin().join("staged")
     }
 
-    /// The [`AgentDescription`] report of the build whose stamp is `stamp` (its
-    /// modification time in nanoseconds and its length, as `"{mtime} {len}"`),
-    /// one per build, which every copy of the build shares.
+    /// The [`AgentDescription`] report kept under `stamp`: the build's
+    /// modification time in nanoseconds and its length (`"{mtime} {len}"`),
+    /// and the launcher's key of the plugins on, one per build and list,
+    /// which every copy of the build shares.
     pub fn described(&self, stamp: &str) -> PathBuf {
         self.bin()
             .join("described")
@@ -1124,34 +1123,6 @@ pub fn is_name(name: &str) -> bool {
 /// The launcher's own first words, which no plugin's command may take.
 pub const RESERVED_COMMANDS: &[&str] = &["build", "plugin", "help", "help-agents"];
 
-/// The plugins whose absence takes away the way back from inside the
-/// agent, by type path, with what goes: `rig plugin disable`, `rig plugin
-/// list` and `/plugins` warn on them. `rig plugin enable` from a shell
-/// always brings one back.
-pub const ESSENTIAL_PLUGINS: &[(&str, &str)] = &[
-    (
-        "rig_tui::TuiPlugin",
-        "the terminal view, leaving only -p and piped prompts",
-    ),
-    (
-        "rig_basics::reload::plugins::PluginsPlugin",
-        "/plugins itself",
-    ),
-    (
-        "rig_basics::reload::ReloadPlugin",
-        "/reload, so a change applies only when rig starts again",
-    ),
-];
-
-/// What goes when the plugin `type_path` is left out, if it is one of the
-/// [`ESSENTIAL_PLUGINS`].
-pub fn essential(type_path: &str) -> Option<&'static str> {
-    ESSENTIAL_PLUGINS
-        .iter()
-        .find(|(essential, _)| *essential == type_path)
-        .map(|(_, what)| *what)
-}
-
 /// The first line of a [`AgentDescription`] report.
 const DESCRIBED_HEADER: &str = "rig-describe 1";
 
@@ -1159,8 +1130,8 @@ const DESCRIBED_HEADER: &str = "rig-describe 1";
 /// writes it when the launcher sets [`env::DESCRIBE`]: their commands,
 /// their options and the secrets they ask for, and the plugins whose
 /// agent-loop systems clash, for `rig plugin check --build`. The launcher
-/// keeps one per build ([`Home::described`]) and reads the command line
-/// against it.
+/// keeps one per build and plugin list ([`Home::described`]) and reads the
+/// command line against it.
 ///
 /// The text form is a header line, then one line each, its fields separated by
 /// tabs (shown here as `⇥`):

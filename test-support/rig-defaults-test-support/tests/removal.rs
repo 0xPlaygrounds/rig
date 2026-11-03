@@ -1,7 +1,7 @@
 //! Every default plugin can be left out: the app the generated `main.rs`
-//! builds from the default `plugins.toml`, less any one of its plugins,
+//! builds with rig's default plugins on, less any one of them,
 //! answers a `--print` prompt with a tool call on a scripted model, and so
-//! does the app with every disabled entry of the default list on top
+//! does the app with every built-in plugin that is off by default on top
 //! ([`OPTIONAL`]). `/reload` is there exactly when
 //! `rig_basics::reload::ReloadPlugin` is. The plugin `rig plugin new`
 //! writes comes last, listed twice and added once. No case leaves systems
@@ -9,7 +9,7 @@
 //! build's ambiguity warning). Each case is a child process of this test
 //! with its own `RIG_HOME`, as a run is.
 
-#[path = "../../../src/launcher/plugin/scaffold.rs"]
+#[path = "../../../crates/rig-cli/src/plugin/scaffold.rs"]
 mod scaffold;
 
 use std::path::Path;
@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 
 use bevy_ecs::schedule::{ScheduleBuildWarning, ScheduleBuilt, ScheduleLabel};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_defaults_test_support::{DEFAULTS, plugins};
+use rig_defaults_test_support::DEFAULTS;
 use rig_ecs::session_log::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::load;
@@ -27,23 +27,33 @@ use rig_harness_test_support::connect;
 /// The plugin a child process leaves out.
 const LEAVE_OUT: &str = "RIG_TEST_LEAVE_OUT";
 
-/// The default `plugins.toml`'s disabled entries, in its order, but
-/// rig-steel's, whose steel-core build its own tests pay for.
-const OPTIONAL: [(&str, fn(&mut App)); 13] = plugins![
-    rig_basics::redact::RedactPlugin,
-    rig_basics::approval::ApprovalPlugin,
-    rig_basics::preview::PreviewPlugin,
-    rig_basics::checkpoint::CheckpointPlugin,
-    rig_inspect::InspectPlugin,
-    rig_basics::helpers::HelpersPlugin,
-    rig_basics::budget::BudgetPlugin,
-    rig_basics::subagents::SubagentsPlugin,
-    rig_basics::telemetry::effect_log::EffectLogPlugin,
-    rig_basics::telemetry::diagnostics::DiagnosticsPlugin,
-    rig_mcp_client::McpPlugin,
-    rig_acp::AcpPlugin,
-    rig_claude_cloak::ClaudeCloakPlugin,
-];
+/// The `(path, how the agent adds it)` pairs of the plugins
+/// [`built_in_plugins!`](rig_harness::harness_protocol::built_in_plugins)
+/// lists as `off` but rig-steel's, whose steel-core build its own tests pay
+/// for.
+macro_rules! off_by_default {
+    (@keep [$($kept:tt)*]) => { &[$($kept)*] };
+    (@keep [$($kept:tt)*] off rig_steel::SteelPlugin, $krate:literal, [$($os:literal),*],
+        $essential:expr, $about:literal; $($more:tt)*) => {
+        off_by_default!(@keep [$($kept)*] $($more)*)
+    };
+    (@keep [$($kept:tt)*] off $first:ident $(:: $rest:ident)*, $krate:literal,
+        [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
+        off_by_default!(@keep [$($kept)* (
+            concat!(stringify!($first) $(, "::", stringify!($rest))*),
+            |app: &mut App| load::<$first $(:: $rest)*>(app, $krate, ""),
+        ),] $($more)*)
+    };
+    (@keep [$($kept:tt)*] on $first:ident $(:: $rest:ident)*, $krate:literal, [$($os:literal),*],
+        $essential:expr, $about:literal; $($more:tt)*) => {
+        off_by_default!(@keep [$($kept)*] $($more)*)
+    };
+    ($($entries:tt)*) => { off_by_default!(@keep [] $($entries)*) };
+}
+
+/// The built-in plugins off by default, in their order, but rig-steel's.
+const OPTIONAL: &[(&str, fn(&mut App))] =
+    rig_harness::harness_protocol::built_in_plugins!(off_by_default);
 
 /// The case that adds every [`OPTIONAL`] plugin to the defaults.
 const WITH_EVERY: &str = "with every optional plugin";
@@ -146,7 +156,7 @@ fn each_listed_plugin_is_named_by_its_entry() {
             terminal: false,
         })
         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
-    for (_, add) in DEFAULTS.iter().chain(&OPTIONAL) {
+    for (_, add) in DEFAULTS.iter().chain(OPTIONAL) {
         add(&mut app);
     }
     // The session plugin sends panics to the session's log.
@@ -157,7 +167,7 @@ fn each_listed_plugin_is_named_by_its_entry() {
         .iter(app.world())
         .map(ToString::to_string)
         .collect();
-    let unnamed: Vec<&str> = (DEFAULTS.iter().chain(&OPTIONAL))
+    let unnamed: Vec<&str> = (DEFAULTS.iter().chain(OPTIONAL))
         .map(|(path, _)| *path)
         .filter(|path| !names.iter().any(|name| name == path))
         .collect();
@@ -201,26 +211,18 @@ fn every_default_plugin_can_be_left_out() {
         assert_eq!(app.run(), AppExit::Success, "without {left_out}");
         return;
     }
-    let template = include_str!("../../../src/launcher/plugins.toml");
-    let listed = |prefix: &str| -> Vec<&str> {
-        template
-            .lines()
-            .filter_map(|line| line.strip_prefix(prefix)?.strip_suffix('"'))
-            .filter(|plugin| *plugin != "rig_steel::SteelPlugin")
-            .collect()
-    };
+    // The two lists and rig-steel are every built-in plugin, in its order.
     let names: Vec<&str> = DEFAULTS.iter().map(|(name, _)| *name).collect();
-    assert_eq!(
-        names,
-        listed("plugin = \""),
-        "the default plugins.toml, in its order"
-    );
-    let optional: Vec<&str> = OPTIONAL.iter().map(|(name, _)| *name).collect();
-    assert_eq!(
-        optional,
-        listed("# plugin = \""),
-        "its disabled entries, in its order"
-    );
+    let mut every: Vec<&str> = names
+        .iter()
+        .chain(OPTIONAL.iter().map(|(name, _)| name))
+        .copied()
+        .collect();
+    every.push("rig_steel::SteelPlugin");
+    let built_in = rig_harness::harness_protocol::config::BUILT_IN;
+    every.sort_by_key(|name| built_in.iter().position(|plugin| plugin.plugin == *name));
+    let listed: Vec<&str> = built_in.iter().map(|plugin| plugin.plugin).collect();
+    assert_eq!(every, listed, "the built-in plugins, each once");
     let homes = Path::new(env!("CARGO_TARGET_TMPDIR")).join("removal");
     std::fs::remove_dir_all(&homes).ok();
     let test = std::env::current_exe().unwrap_or_default();

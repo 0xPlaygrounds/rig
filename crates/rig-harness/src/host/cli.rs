@@ -15,8 +15,8 @@
 //!
 //! A front shows the agents to someone and takes what they type, such as the
 //! terminal view or `--print`. One front takes each run: the one whose
-//! command or flag was given, else the first offered (in `plugins.toml`
-//! order) for the kind of run. Each sets itself up in `finish` only if
+//! command or flag was given, else the first offered (in the order the
+//! plugins are added) for the kind of run. Each sets itself up in `finish` only if
 //! `app.runs_front(name)`. The plugin guide's
 //! [fronts section](crate::plugin_guide#fronts-options-and-commands) covers
 //! sessionless fronts and fronts with a store of their own.

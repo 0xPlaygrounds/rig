@@ -160,6 +160,9 @@ impl Router {
             .env_remove(env::NOTICE)
             .env_remove(env::BUILD_FAILURE)
             .env_remove(env::LAUNCHER)
+            // Each session is a session of its own directory, so it reads that
+            // project's plugin settings, not those `rig acp` started with.
+            .env_remove(env::PLUGINS)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());

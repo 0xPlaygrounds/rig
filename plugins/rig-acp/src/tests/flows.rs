@@ -227,8 +227,8 @@ fn a_prompt_streams_its_tool_call_and_text_before_its_answer_and_commands_answer
 #[test]
 fn a_model_the_editor_or_a_typed_command_picks_is_never_the_default() {
     let place = Place::new("defaults");
-    let saved = r#"{"model":"test/reply","effort":null}"#;
-    std::fs::write(place.home.join("defaults.json"), saved).ok();
+    let saved = "[model]\ndefault = \"test/reply\"\n";
+    std::fs::write(place.home.join("settings.toml"), saved).ok();
     let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
         let new = driven.new_session(Vec::new()).await;
         assert!(new.is_some(), "no session");
@@ -249,7 +249,7 @@ fn a_model_the_editor_or_a_typed_command_picks_is_never_the_default() {
         );
     });
     assert!(router.is_some());
-    let kept = std::fs::read_to_string(place.home.join("defaults.json"));
+    let kept = std::fs::read_to_string(place.home.join("settings.toml"));
     assert_eq!(kept.ok().as_deref(), Some(saved));
 }
 
@@ -264,7 +264,7 @@ fn a_new_sessions_automatic_pick_is_never_the_default() {
         assert_eq!(answer.ok(), Some(acp::StopReason::EndTurn));
     });
     assert!(router.is_some());
-    assert!(!place.home.join("defaults.json").exists());
+    assert!(!place.home.join("settings.toml").exists());
 }
 
 #[test]

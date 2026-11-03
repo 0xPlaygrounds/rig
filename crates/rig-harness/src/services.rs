@@ -29,7 +29,7 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_ecs::agent::SpawnedBy;
 use rig_ecs::session_log::ReflectSaved;
-use rig_harness_protocol::{Home, env, secret_variables};
+use rig_harness_protocol::{Home, config, env, secret_variables};
 use rig_tools::process::Launcher;
 
 /// The `RIG_HOME` this agent runs under: where its sessions, settings,
@@ -72,11 +72,9 @@ impl Default for ProjectRoot {
     }
 }
 
-/// The project the session works on: the [`ProjectRoot`] or the nearest
-/// directory above it that holds `.git` or a `.rig` directory, found once
-/// for every reader. A `.rig` that is `RIG_HOME` marks nothing, and the
-/// search stops below the user's home directory, which is never a project's
-/// root unless rig starts there. Built from the app's [`ProjectRoot`] and
+/// The project the session works on, found once for every reader as the
+/// launcher finds it ([`config::Project`]): the [`ProjectRoot`] or the
+/// nearest directory above it that holds `.git` or a `.rig` directory. Built from the app's [`ProjectRoot`] and
 /// [`RigHome`] when first needed, once the app is built, unless the app
 /// inserted one.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
@@ -96,22 +94,7 @@ impl Project {
     /// user's home directory `user`. Symlinks in `dir` are resolved first;
     /// a `dir` that does not resolve is taken as given.
     pub fn find(dir: &Path, rig_home: &Path, user: Option<&Path>) -> Self {
-        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
-        let rig_home = rig_home.canonicalize().ok();
-        let user = user.and_then(|user| user.canonicalize().ok());
-        let is_rig_home = |rig: &Path| rig_home.is_some() && rig.canonicalize().ok() == rig_home;
-        let marked = |place: &Path| {
-            let rig = place.join(".rig");
-            place.join(".git").exists() || (rig.is_dir() && !is_rig_home(&rig))
-        };
-        let root = dir
-            .ancestors()
-            .take_while(|place| Some(*place) != user.as_deref())
-            .find(|place| marked(place))
-            .unwrap_or(&dir)
-            .to_owned();
-        let rig = root.join(".rig");
-        let config = (Some(&root) != user.as_ref() && !is_rig_home(&rig)).then_some(rig);
+        let config::Project { root, config } = config::Project::find(dir, rig_home, user);
         Self { root, config }
     }
 
@@ -191,7 +174,9 @@ impl Processes {
     }
 
     /// Starts every process from now on as `launcher` says, without the
-    /// secrets.
+    /// secrets. Build it from [`launcher`](Self::launcher) to keep what is
+    /// set already, such as the session's plugin list
+    /// ([`load_chosen`](crate::load_chosen)).
     pub fn set(&self, launcher: Launcher) {
         *self
             .launcher

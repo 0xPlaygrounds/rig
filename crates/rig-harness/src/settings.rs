@@ -1,5 +1,6 @@
 //! The user's settings for plugins: `RIG_HOME/settings.toml`, one table
-//! per plugin. A plugin names its table and a type that reads it, and gets
+//! per plugin, beside the `[plugins]` table that says which run
+//! ([`config`](crate::harness_protocol::config)). A plugin names its table and a type that reads it, and gets
 //! that type as a resource, its `Default` where the user set nothing. A
 //! table that does not read as the type refuses the run, naming the file,
 //! the table and the key, as does a file that is not TOML or cannot be
@@ -43,6 +44,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::query::Allow;
 use bevy_log::warn;
 use rig_ecs::agent::Notice;
+use rig_harness_protocol::config::SettingsFile;
 use serde::de::DeserializeOwned;
 
 use crate::host::cli::Declared;
@@ -102,34 +104,42 @@ impl Settings {
         }
     }
 
-    /// The settings `text` of `file` holds.
+    /// The settings `text` of `file` holds; a text that is not TOML holds
+    /// none and says why, at its line and column.
     fn parse(file: String, text: &str) -> Self {
-        match text.parse::<toml::Table>() {
+        let read = SettingsFile::parse(PathBuf::from(&file), text)
+            .map_err(|failure| failure.to_string())
+            .and_then(|_| {
+                (text.parse::<toml::Table>())
+                    .map_err(|failure| format!("{file}: not TOML: {}", failure.message()))
+            });
+        match read {
             Ok(tables) => Self {
                 tables,
                 ..Self::empty(file)
             },
-            Err(failure) => {
-                // toml's own text draws the line in several; a refusal is one.
-                let at = (failure.span())
-                    .and_then(|span| text.get(..span.start))
-                    .map(|before| {
-                        let line = before.matches('\n').count() + 1;
-                        let column = before
-                            .rsplit('\n')
-                            .next()
-                            .map_or(0, |it| it.chars().count())
-                            + 1;
-                        format!(" at line {line}, column {column}")
-                    })
-                    .unwrap_or_default();
-                let problem = format!("{file}: not TOML{at}: {}", failure.message().trim_end());
-                Self {
-                    problems: vec![problem],
-                    ..Self::empty(file)
-                }
-            }
+            Err(problem) => Self {
+                problems: vec![problem],
+                ..Self::empty(file)
+            },
         }
+    }
+
+    /// Refuses the run for `problem`, in the app's [`Settings`] (read
+    /// first when the app has none).
+    pub(crate) fn refuse(world: &mut World, problem: String) {
+        warn!("{problem}");
+        Self::of(world).problems.push(problem);
+    }
+
+    /// The app's settings, read from `RIG_HOME/settings.toml` the first
+    /// time unless the app inserted some.
+    fn of(world: &mut World) -> Mut<'_, Self> {
+        if !world.contains_resource::<Self>() {
+            let settings = Self::read(&RigHome::of(world).settings());
+            world.insert_resource(settings);
+        }
+        world.resource_mut::<Self>()
     }
 
     /// The `[section]` table as a `T`: `T::default()` without one, and the
@@ -156,10 +166,9 @@ impl Settings {
     /// (at least one edit), else an info notice.
     pub fn unread(&self) -> Vec<Notice> {
         let read: Vec<&str> = self.read.iter().map(String::as_str).collect();
-        let unread = self
-            .tables
-            .keys()
-            .filter(|table| !self.read.contains(*table));
+        // `[plugins]` is the launcher's and the agent's own.
+        let unread =
+            (self.tables.keys()).filter(|table| *table != "plugins" && !self.read.contains(*table));
         unread
             .map(|table| match closest(table, &read) {
                 Some(meant) => Notice::error(
@@ -223,12 +232,7 @@ impl AppSettingsExt for App {
         &mut self,
         section: &str,
     ) -> &mut Self {
-        let world = self.world_mut();
-        if !world.contains_resource::<Settings>() {
-            let settings = Settings::read(&RigHome::of(world).settings());
-            world.insert_resource(settings);
-        }
-        let mut settings = world.resource_mut::<Settings>();
+        let mut settings = Settings::of(self.world_mut());
         settings.read.insert(section.to_owned());
         let value = settings.get::<T>(section).unwrap_or_else(|problem| {
             warn!("{problem}");

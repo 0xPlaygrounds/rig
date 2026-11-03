@@ -46,7 +46,7 @@ coding agent built on it that you extend with Bevy plugins.
 ## The coding agent
 
 ```bash
-cargo install rig
+cargo install rig-cli
 rig
 ```
 
@@ -58,10 +58,11 @@ one of the models those reach, and of a local Ollama or llama.cpp server once
 answers one prompt without the terminal view.
 
 - **Everything is a plugin.** The agent is a [Bevy](https://bevy.org) app; its
-  tools, commands, sessions, sign-in and terminal view are each a plugin listed
-  in `plugins.toml`, so any of them can be removed, replaced or added to.
+  tools, commands, sessions, sign-in and terminal view are each a plugin, turned
+  on or off in `settings.toml`, so any of them can be removed, replaced or
+  added to.
 - **It rebuilds itself.** `/reload` rebuilds the agent with your plugin
-  changes and restarts it in the same session, and keeps the old build running
+  crates and restarts it in the same session, and keeps the old build running
   if the new one does not compile.
 - **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
   `rig help-agents` is the protocol.

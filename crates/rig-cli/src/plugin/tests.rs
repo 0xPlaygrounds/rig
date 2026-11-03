@@ -1,43 +1,75 @@
 use super::*;
 
 const MCP: &str = "rig_mcp_client::McpPlugin";
+const SKILLS: &str = "rig_basics::skills::SkillsPlugin";
 
 fn old_home(test: &str) -> Home {
     Home::at(std::env::temp_dir().join(format!("rig-plugin-{test}-{}", std::process::id())))
 }
 
+/// A user's own `settings.toml`, with comments.
+const COMMENTED: &str = "# My rig.\n[tui] # the view\n# keep this\n\n# Plugins I tried:\n";
+
 #[test]
-fn enabling_a_shipped_plugin_missing_from_an_old_home_adds_its_description() {
-    let home = old_home("enable");
+fn enable_and_disable_keep_the_users_comments_and_undo_each_other() {
+    let home = old_home("comments");
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
-        fs::write(home.plugins_toml(), "# An older home.\n")?;
+        fs::write(home.settings(), COMMENTED)?;
         run(&home, &["enable", MCP])?;
-        let parsed = PluginList::load(&home.plugins_toml())?;
-        let text = fs::read_to_string(home.plugins_toml())?;
-        run(&home, &["enable", MCP])?;
-        Ok((
-            parsed.plugins.iter().any(|plugin| plugin.type_path == MCP),
-            text.contains("# MCP servers:"),
-            text == fs::read_to_string(home.plugins_toml())?,
-        ))
+        let enabled = fs::read_to_string(home.settings())?;
+        run(&home, &["disable", SKILLS])?;
+        run(&home, &["enable", SKILLS])?;
+        run(&home, &["disable", MCP])?;
+        Ok((enabled, fs::read_to_string(home.settings())?))
     })();
     fs::remove_dir_all(home.root()).ok();
-    assert!(matches!(result, Ok((true, true, true))), "{result:?}");
+    assert!(result.is_ok(), "{result:?}");
+    let (enabled, undone) = result.unwrap_or_default();
+    assert!(enabled.starts_with(COMMENTED), "{enabled}");
+    assert!(
+        enabled.ends_with(&format!("[plugins]\nenable = [\"{MCP}\"]\n")),
+        "{enabled}"
+    );
+    assert!(undone.starts_with(COMMENTED) && !undone.contains(MCP) && !undone.contains(SKILLS));
 }
 
 #[test]
-fn adding_a_shipped_plugin_without_a_source_keeps_its_template_description() {
-    let home = old_home("add");
+fn a_plugin_that_does_not_build_here_is_refused() {
+    let home = old_home("target");
+    let elsewhere = BUILT_IN.iter().find(|built_in| !built_in.available());
+    if let Some(elsewhere) = elsewhere {
+        let refused = run(&home, &["enable", elsewhere.plugin]).err();
+        assert!(refused.is_some_and(|why| why.to_string().contains(std::env::consts::OS)));
+    }
+    fs::remove_dir_all(home.root()).ok();
+}
+
+#[test]
+fn a_new_plugin_crate_is_an_extra_of_the_home() {
+    let home = old_home("new");
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
-        fs::write(home.plugins_toml(), "# An older home.\n")?;
-        run(&home, &["add", MCP])?;
-        let text = fs::read_to_string(home.plugins_toml())?;
-        Ok(text.contains("# MCP servers:") && !text.contains("# Added by"))
+        fs::write(home.settings(), COMMENTED)?;
+        run(&home, &["new", "word-count"])?;
+        let text = fs::read_to_string(home.settings())?;
+        let extras = plugin_list::of_home(&home)?.extra;
+        Ok((text, extras))
     })();
     fs::remove_dir_all(home.root()).ok();
-    assert!(matches!(result, Ok(true)), "{result:?}");
+    assert!(result.is_ok(), "{result:?}");
+    let (text, extras) = result.unwrap_or_default();
+    assert!(
+        text.starts_with(COMMENTED) && text.contains("# Made by `rig plugin new word-count`."),
+        "{text}"
+    );
+    assert_eq!(
+        extras
+            .iter()
+            .map(|extra| extra.plugin.as_str())
+            .collect::<Vec<_>>(),
+        ["word_count::WordCountPlugin"]
+    );
 }
 
 #[test]
@@ -79,38 +111,20 @@ fn missing_or_unknown_plugin_commands_are_refused_without_creating_a_home() {
 }
 
 #[test]
-fn an_explicit_source_overrides_the_shipped_entry() {
-    let entry = added_entry(
-        &old_home("source"),
-        MCP,
-        &["--crate", "rig-mcp-client", "--version", "1"],
-    );
-    let parsed = entry
-        .and_then(|entry| plugin_list::parse(&entry, Path::new("/home")))
-        .ok();
-    assert!(parsed.is_some_and(|list| list.plugins.iter().any(|entry| {
-        entry.type_path == MCP && entry.package.source == Source::Version("1".to_owned())
-    })));
-}
-
-#[test]
 fn enabling_an_unknown_type_does_not_change_the_file() {
     let home = old_home("unknown");
     let original = "# An older home.\n";
     let result = (|| -> Result<_> {
         fs::create_dir_all(home.root())?;
-        fs::write(home.plugins_toml(), original)?;
+        fs::write(home.settings(), original)?;
         let failure = run(&home, &["enable", "rig_mcp_client::UnknownPlugin"])
             .err()
             .ok_or("unknown type was accepted")?;
-        Ok((
-            failure.to_string(),
-            fs::read_to_string(home.plugins_toml())?,
-        ))
+        Ok((failure.to_string(), fs::read_to_string(home.settings())?))
     })();
     fs::remove_dir_all(home.root()).ok();
     assert!(
-        matches!(&result, Ok((failure, text)) if failure.contains("rig plugin add") && text == original),
+        matches!(&result, Ok((failure, text)) if failure.contains("rig plugin list") && text == original),
         "{result:?}"
     );
 }
@@ -138,29 +152,16 @@ fn names_are_lowercase_crate_names_not_the_agents_own() {
     assert!(validate_name(PACKAGE, registry).is_err());
     assert!(validate_name("bevy_ui", registry).is_err());
     // A plugin crate of the checkout this launcher is built in.
-    let checkout = RigSource::Local(Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf());
+    let checkout =
+        RigSource::Local(std::path::absolute(super::super::project::CHECKOUT).unwrap_or_default());
     assert!(validate_name("rig-tui", &checkout).is_err());
     assert!(validate_name("rig-tui", registry).is_ok());
 }
 
 #[test]
-fn manifest_strings_are_read_from_their_table() {
-    let manifest = "[package]\nname = \"viz\" # the name\n\n[lib]\nname = \"viz_lib\"\n";
-    assert_eq!(
-        manifest_string(manifest, "package", "name").as_deref(),
-        Some("viz")
-    );
-    assert_eq!(
-        manifest_string(manifest, "lib", "name").as_deref(),
-        Some("viz_lib")
-    );
-    assert_eq!(manifest_string(manifest, "lib", "path"), None);
-}
-
-#[test]
 fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
-    let checkout = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let local = manifest("viz", "0.44.0", &RigSource::Local(checkout.to_path_buf()));
+    let checkout = std::path::absolute(super::super::project::CHECKOUT).unwrap_or_default();
+    let local = manifest("viz", "0.44.0", &RigSource::Local(checkout));
     assert!(local.contains("rig-harness = \"0.44.0\"\n"));
     // The scaffold's saved component derives from both Bevy crates, which
     // its derives name as the manifest lists them.
@@ -184,27 +185,9 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
     assert_eq!(patched, CORE_CRATES);
     let registry = manifest("viz", "0.44.0", &RigSource::Registry);
     assert!(!registry.contains("[patch"));
-    assert_eq!(
-        manifest_string(&registry, "package", "name").as_deref(),
-        Some("viz")
-    );
-}
-
-#[test]
-fn a_type_of_a_shipped_plugin_crate_names_its_crate() {
-    assert_eq!(
-        rig_plugin_crate("rig_traffic::TrafficPlugin").as_deref(),
-        Some("rig-traffic")
-    );
-    assert_eq!(
-        rig_plugin_crate("rig_claude_cloak::ClaudeCloakPlugin").as_deref(),
-        Some("rig-claude-cloak")
-    );
-    assert_eq!(
-        rig_plugin_crate("rig_basics::reload::ReloadPlugin").as_deref(),
-        Some("rig-basics")
-    );
-    // Another crate needs its source.
-    assert_eq!(rig_plugin_crate("viz::VizPlugin"), None);
-    assert_eq!(rig_plugin_crate("VizPlugin"), None);
+    let parsed = registry.parse::<config::toml_edit::DocumentMut>().ok();
+    let name = parsed
+        .as_ref()
+        .and_then(|manifest| manifest.get("package")?.get("name")?.as_str());
+    assert_eq!(name, Some("viz"));
 }

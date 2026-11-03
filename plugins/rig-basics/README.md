@@ -2,8 +2,8 @@
 
 The default plugins of the [rig coding agent](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-harness), and
 the services only some plugins add. One crate, one module per group, all on
-rig-harness's public API. Each plugin is its own entry in `plugins.toml`,
-so each can be turned off alone.
+rig-harness's public API. Each plugin is its own name in `[plugins]` of
+`settings.toml`, so each can be turned off alone.
 
 - the root: `BasicCommandsPlugin` (`/help`, `/quit`);
 - `prompt`: rig's fixed system prompt for an agent without one
@@ -85,21 +85,20 @@ estimates. These are not subscription charges or verified invoices. Missing
 usage details or prices leave a partial estimate; previously saved estimates
 are not retroactively recalculated.
 
-An entry names the crate and the plugin's type by the module that defines
-it, the one path the type has, which `/plugins` and inspect show too:
+`settings.toml` names a plugin by its type's path through the module that
+defines it, the one path the type has, which `/plugins` and inspect show too:
 
 ```toml
-[[plugin]]
-crate = "rig-basics"
-plugin = "rig_basics::compaction::CompactionPlugin"
+[plugins]
+disable = ["rig_basics::compaction::CompactionPlugin"]
 ```
 
-`rig plugin disable rig_basics::compaction::CompactionPlugin` comments an
-entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
-same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
+`rig plugin disable rig_basics::compaction::CompactionPlugin` writes that,
+and `rig plugin enable <type>` takes it back out; `/plugins` does the same
+from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
 `CheckpointPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
-`EffectLogPlugin`, `DiagnosticsPlugin` and `RedactPlugin` are listed disabled
-by default. A plugin that needs another adds it when it is missing, as
+`EffectLogPlugin`, `DiagnosticsPlugin` and `RedactPlugin` are off by
+default. A plugin that needs another adds it when it is missing, as
 `SessionsPlugin` adds `SessionPickerPlugin`, `SubagentsPlugin` adds
 `ApprovalPlugin`, and `HelpersPlugin` and `BudgetPlugin` add `UsagePlugin`.
 

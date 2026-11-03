@@ -105,14 +105,6 @@ features = [
 ]
 rustdoc-args = ["--cfg", "docsrs"]
 
-# The launcher of the rig-harness agent (`cargo install rig`). It uses std, and
-# libc on unix to stop its build and to wait for its agent when it is told to
-# end (ctrlc elsewhere). `doc = false`: it shares the library's name.
-[[bin]]
-name = "rig"
-path = "src/main.rs"
-doc = false
-
 [workspace]
 resolver = "3"
 members = [
@@ -376,6 +368,8 @@ tokio = "1"
 tokio-rusqlite = { version = "0.6", default-features = false }
 tokio-test = "0.4"
 tokio-tungstenite = { version = "0.29", default-features = false }
+toml = "1"
+toml_edit = "0.25"
 tokenizers = { version = "0.22", default-features = false }
 tonic = "0.14"
 tonic-build = "0.14"
@@ -407,8 +401,6 @@ workspace = true
 [dependencies]
 rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.46.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.46.0", default-features = false }
-# The launcher's protocol with the agent (std only).
-rig-harness-protocol = { path = "crates/rig-harness-protocol", version = "0.46.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.46.0", optional = true, default-features = false }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.46.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.46.0", optional = true, default-features = false }
@@ -450,14 +442,6 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.46.0", optional = tr
 # TLS-less backend that fails every handshake at runtime.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.46.0", optional = true }
-
-# The launcher kills its cargo's process group when it is told to end, and
-# passes an ending signal on to its agent and waits for it.
-[target.'cfg(unix)'.dependencies]
-libc = { workspace = true }
-
-[target.'cfg(not(any(unix, target_family = "wasm")))'.dependencies]
-ctrlc = { workspace = true }
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }

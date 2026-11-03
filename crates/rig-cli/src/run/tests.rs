@@ -360,12 +360,12 @@ echo described >> \"$RIG_HOME/../../../../described\"
 printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > \"$RIG_DESCRIBE\"";
     let home = builds("report", describe, "exit 0");
     let session = SessionId::generate();
-    let first = report(&home, &session);
-    let again = report(&home, &session);
+    let first = report(&home, &session, &[]);
+    let again = report(&home, &session, &[]);
     let described = fs::read_to_string(home.root().join("described")).unwrap_or_default();
     // A build from before reports ignores the request: it has none.
     fs::remove_file(home.staged()).ok();
-    let old = report(&home, &session);
+    let old = report(&home, &session, &[]);
     fs::remove_dir_all(home.root()).ok();
     assert!(first.command("stats").is_some(), "{first:?}");
     assert_eq!((first.clone(), described.as_str()), (again, "described\n"));
@@ -648,7 +648,10 @@ printf 'rig-describe 1\\ncommand\\t{name}\\t-\\theadless\\tsession\\tCount\\n' >
 #[test]
 fn help_reads_the_build_that_starts_next() {
     let home = builds("help", &describing("new"), &describing("old"));
-    let kept = [home.staged(), home.good()].map(|binary| build::described(&home, &binary));
+    let on = plugins_of(&home, None)
+        .map(|plugins| plugins.on)
+        .unwrap_or_default();
+    let kept = [home.staged(), home.good()].map(|binary| build::described(&home, &binary, &on));
     let report = last_report(&home);
     fs::remove_dir_all(home.root()).ok();
     assert!(kept.iter().all(Result::is_ok));

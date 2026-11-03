@@ -1,6 +1,6 @@
-//! What each plugin added, as data in the world: one entity per plugin
-//! `plugins.toml` lists (its `Name` and [`PluginSource`]), and
-//! [`ProvidedBy`] on what that plugin spawned, such as its commands,
+//! Which plugins the agent adds ([`load_chosen`]), and what each added, as
+//! data in the world: one entity per plugin the settings turn on (its
+//! `Name` and [`PluginSource`]), and [`ProvidedBy`] on what that plugin spawned, such as its commands,
 //! tools, prompt sections and observers. "What did plugin X add" is a
 //! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
 //! [`PluginSystems`]; what it keeps with the session is its [`Keeps`].
@@ -40,6 +40,10 @@ use bevy_reflect::prelude::*;
 use rig_ecs::prelude::Notice;
 use rig_ecs::restore::SavedKeys;
 use rig_ecs::stage::AgentPass;
+use rig_harness_protocol::{config, env};
+
+use crate::services::{Processes, ProjectRoot, RigHome};
+use crate::settings::Settings;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
 #[derive(Component, Reflect, Clone, Debug)]
@@ -47,7 +51,7 @@ use rig_ecs::stage::AgentPass;
 pub struct PluginSource {
     /// Its package, such as `rig-harness`.
     pub package: String,
-    /// Where the package is built from, as `plugins.toml` names it, such
+    /// Where the package is built from, as the launcher names it, such
     /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
     pub source: String,
 }
@@ -134,7 +138,7 @@ impl PluginSystems {
 /// for the harness's, the kernel's and Bevy's own), the systems and the
 /// data. It initializes the agent loop, as the loop's first run would; an
 /// app without one has none. `rig plugin check --build` reports these for
-/// the plugins `plugins.toml` lists, and a debug build at its start
+/// the plugins the settings turn on, and a debug build at its start
 /// ([`check_stages_at_start`]).
 pub fn stage_conflicts(world: &mut World) -> Vec<String> {
     let label = format!("{AgentPass:?}");
@@ -229,9 +233,85 @@ fn systems(world: &World) -> HashSet<(InternedScheduleLabel, SystemKey)> {
     systems.collect()
 }
 
+/// One plugin the agent was built with, which [`load_chosen`] adds when the
+/// settings turn it on: its type's path, its package and where that is
+/// built from.
+#[derive(Clone, Copy)]
+pub struct Compiled {
+    plugin: &'static str,
+    package: &'static str,
+    source: &'static str,
+    add: fn(&mut App, &str, &str),
+}
+
+impl Compiled {
+    /// The plugin `P`, named `plugin` (its type's path), from `package` at
+    /// `source`.
+    pub const fn new<P: Plugin + Default>(
+        plugin: &'static str,
+        package: &'static str,
+        source: &'static str,
+    ) -> Self {
+        Self {
+            plugin,
+            package,
+            source,
+            add: load::<P>,
+        }
+    }
+}
+
+/// Adds the plugins of `compiled` that this session runs, in the order the
+/// settings give: those [`env::PLUGINS`](crate::harness_protocol::env::PLUGINS)
+/// names, which the launcher sets and every child of a session inherits,
+/// else those the home's and the project's `settings.toml` turn on
+/// ([`config::chosen`]), read from the app's [`RigHome`] and
+/// [`ProjectRoot`]. Every process the agent starts gets the list, so a
+/// `rig -p` child runs with it. A list that does not read, or names a
+/// plugin this build lacks, is one of the [`Settings`] problems, which
+/// refuse the run.
+pub fn load_chosen(app: &mut App, compiled: &[Compiled]) {
+    let world = app.world_mut();
+    let dir = world
+        .get_resource::<ProjectRoot>()
+        .cloned()
+        .unwrap_or_default();
+    let on = match config::chosen(&RigHome::of(world), &dir.0) {
+        Ok(chosen) => {
+            for note in chosen.notes {
+                world.write_message(Notice::info(None, note));
+            }
+            chosen.on
+        }
+        Err(problem) => {
+            Settings::refuse(world, problem.to_string());
+            return;
+        }
+    };
+    if let Some(processes) = world.get_resource::<Processes>() {
+        processes.set(
+            processes
+                .launcher()
+                .with_env(env::PLUGINS, config::to_env(&on)),
+        );
+    }
+    for name in &on {
+        match compiled.iter().find(|compiled| compiled.plugin == name) {
+            Some(plugin) => (plugin.add)(app, plugin.package, plugin.source),
+            None => Settings::refuse(
+                app.world_mut(),
+                format!(
+                    "`{name}` is on, but this build of the agent lacks it; `rig build` builds \
+                     the plugins settings.toml names"
+                ),
+            ),
+        }
+    }
+}
+
 /// Adds `P`, unless the app has it already (another plugin added it), as
-/// the generated `main.rs` adds each plugin `plugins.toml` lists: with an
-/// entity of its own, named after it, from `package` at `source`.
+/// [`load_chosen`] adds each plugin the settings turn on: with an entity of
+/// its own, named after it, from `package` at `source`.
 pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;

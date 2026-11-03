@@ -62,7 +62,7 @@ pub struct Provenance {
 pub struct Setup {
     /// rig's version.
     pub agent_version: String,
-    /// The plugins `plugins.toml` loaded, by crate.
+    /// The plugins the agent loaded, by crate.
     pub plugins: BTreeMap<String, PluginVersion>,
     /// Each agent the user started, by id, with its model.
     pub models: BTreeMap<String, AgentModel>,
@@ -307,7 +307,7 @@ fn read_setup((plugins, models, root, workspace, processes): &SetupInputs) -> Se
     }
 }
 
-/// A plugin's version from where `plugins.toml` builds it: `version 0.3`
+/// A plugin's version from where the agent was built from it: `version 0.3`
 /// is `0.3`; a path or git source is kept as it is.
 fn version_of(source: &str) -> String {
     match source.strip_prefix("version ") {

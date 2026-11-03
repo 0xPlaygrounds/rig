@@ -45,7 +45,7 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 # Questions' answers, and the user's settings for plugins.
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-toml = "1"
+toml = { workspace = true }
 
 # SIGINT, SIGTERM and SIGHUP, each heard on its own, and whether one was
 # ignored from the start; whether stdout's reader is gone.

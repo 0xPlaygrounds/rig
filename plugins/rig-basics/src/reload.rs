@@ -1,5 +1,6 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
-//! the new build, in the same session. The build runs as a child process,
+//! the new build, in the same session, with the plugins `settings.toml`
+//! turns on then. The build runs as a child process,
 //! and its latest line of output is the progress. Quitting during the build
 //! kills it with cargo and rustc.
 //!
@@ -17,8 +18,8 @@
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`. A run nobody
 //! sits at (`--print`) waits for a reload and restarts on the new build too.
 //!
-//! [`PluginsPlugin`](plugins::PluginsPlugin) adds `/plugins`, which turns the plugins of
-//! `plugins.toml` on and off and reloads.
+//! [`PluginsPlugin`](plugins::PluginsPlugin) adds `/plugins`, which turns plugins on and
+//! off in `settings.toml` and reloads.
 
 use rig_harness::harness_protocol;
 use rig_harness::prelude::*;
@@ -37,8 +38,8 @@ impl Plugin for ReloadPlugin {
     fn build(&self, app: &mut App) {
         app.add_command(
             "reload",
-            "Rebuild with the plugins in plugins.toml and restart once no turn runs; \
-             `/reload cancel` cancels",
+            "Rebuild what changed and restart with the plugins settings.toml turns on once no \
+             turn runs; `/reload cancel` cancels",
             reload,
         )
         .init_resource::<ReloadStatus>()

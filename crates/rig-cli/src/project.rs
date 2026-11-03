@@ -1,23 +1,36 @@
 //! The generated agent project: `Cargo.toml`, `src/main.rs` and
-//! `.cargo/config.toml` under `$RIG_HOME/project`. Each file is written only
-//! when its contents change, so cargo's fingerprints stay valid, and each
-//! names the launcher version, so a new launcher rebuilds the agent.
+//! `.cargo/config.toml` under `$RIG_HOME/project`. It holds every one of
+//! rig's own plugins that builds on this target and the home's extra
+//! crates, so turning a plugin on or off needs no build: the agent adds
+//! those its settings turn on when it starts ([`rig_harness::load_chosen`]).
+//! Each file is written only when its contents change, so cargo's
+//! fingerprints stay valid, and each names the launcher version, so a new
+//! launcher rebuilds the agent.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
+use rig_harness_protocol::config::{BUILT_IN, Extra, Source};
 use rig_harness_protocol::{Home, env};
 
-use super::plugin_list::{Package, PluginList, Source, parse_string, shipped};
 use super::{Result, VERSION};
 
 /// The generated package's name, and so its binary's.
 pub const PACKAGE: &str = "rig-harness-agent";
 
-/// The lock this launcher was built with: the workspace's in a checkout,
-/// the `rig` crate's own when installed from crates.io.
-const LOCK: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
+/// The rig checkout this launcher is built in, when it is built from one:
+/// `crates/rig-cli` is two folders below its root.
+pub(super) const CHECKOUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+
+/// The crates of rig's own plugins that build on this target.
+pub fn built_in_crates() -> BTreeSet<&'static str> {
+    (BUILT_IN.iter())
+        .filter(|built_in| built_in.available())
+        .map(|built_in| built_in.krate)
+        .collect()
+}
 
 /// Where the agent project gets the `rig-harness` crate from.
 pub enum RigSource {
@@ -44,14 +57,14 @@ impl RigSource {
             }
             return Ok(Self::Local(checkout));
         }
-        let installed_from = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let installed_from = std::path::absolute(CHECKOUT)?;
         let cargo_home = std::env::var_os("CARGO_HOME")
             .filter(|path| !path.is_empty())
             .map(PathBuf::from)
             .or_else(|| std::env::home_dir().map(|home| home.join(".cargo")));
         let in_cargo_cache = cargo_home.is_some_and(|cargo| installed_from.starts_with(cargo));
-        Ok(if is_checkout(installed_from) && !in_cargo_cache {
-            Self::Local(installed_from.to_path_buf())
+        Ok(if is_checkout(&installed_from) && !in_cargo_cache {
+            Self::Local(installed_from)
         } else {
             Self::Registry
         })
@@ -87,24 +100,20 @@ pub fn crate_dir(checkout: &Path, name: &str) -> Option<PathBuf> {
         .find(|directory| directory.join("Cargo.toml").is_file())
 }
 
-/// The rig crates the agent built for `list` uses: [`CORE_CRATES`], the
-/// rig crates `list` lists, the rig crates a plugin crate listed by path
-/// depends on, and what each of those that is a plugin crate depends on in
-/// turn. Without a checkout, [`CORE_CRATES`] and the rig crates listed.
-pub fn rig_crates(list: &PluginList, source: &RigSource) -> BTreeSet<String> {
+/// The rig crates the agent uses: [`CORE_CRATES`], rig's plugin crates,
+/// the rig crates an extra crate by path depends on, and what each of
+/// those that is a plugin crate depends on in turn. Without a checkout,
+/// [`CORE_CRATES`] and rig's plugin crates.
+pub fn rig_crates(extras: &[Extra], source: &RigSource) -> BTreeSet<String> {
     let mut used: BTreeSet<String> = CORE_CRATES.map(str::to_owned).into();
-    let packages = list.plugins.iter().map(|plugin| &plugin.package);
     let RigSource::Local(checkout) = source else {
-        let listed = packages.filter(|package| package.source == Source::Rig);
-        used.extend(listed.map(|package| package.name.clone()));
+        used.extend(built_in_crates().into_iter().map(str::to_owned));
         return used;
     };
-    let mut pending: Vec<String> = Vec::new();
-    for package in packages {
-        match &package.source {
-            Source::Rig => pending.push(package.name.clone()),
-            Source::Path(directory) => pending.extend(dependencies(directory)),
-            Source::Git { .. } | Source::Version(_) => {}
+    let mut pending: Vec<String> = built_in_crates().into_iter().map(str::to_owned).collect();
+    for extra in extras {
+        if let Source::Path(directory) = &extra.source {
+            pending.extend(dependencies(directory));
         }
     }
     while let Some(name) = pending.pop() {
@@ -118,40 +127,48 @@ pub fn rig_crates(list: &PluginList, source: &RigSource) -> BTreeSet<String> {
     used
 }
 
-/// The names of the dependencies the crate in `directory` always has: the
-/// keys of its `[dependencies]` tables, its target-specific ones included,
-/// without the optional ones, each written on one line.
-fn dependencies(directory: &Path) -> Vec<String> {
-    let Ok(manifest) = fs::read_to_string(directory.join("Cargo.toml")) else {
-        return Vec::new();
-    };
-    let mut names = Vec::new();
-    let mut in_dependencies = false;
-    for line in manifest.lines().map(str::trim) {
-        if let Some(header) = line
-            .strip_prefix('[')
-            .and_then(|line| line.strip_suffix(']'))
-        {
-            let header = header.trim();
-            in_dependencies = header == "dependencies"
-                || (header.starts_with("target.") && header.ends_with(".dependencies"));
-            continue;
-        }
-        let Some((name, value)) = line.split_once('=') else {
-            continue;
-        };
-        if in_dependencies && !line.starts_with('#') && !value.contains("optional = true") {
-            names.push(name.trim().trim_matches('"').to_owned());
-        }
-    }
-    names
+/// The manifest of the crate in `directory`, if it reads.
+pub fn read_manifest(directory: &Path) -> Option<DocumentMut> {
+    fs::read_to_string(directory.join("Cargo.toml"))
+        .ok()?
+        .parse()
+        .ok()
 }
 
-/// What is wrong with `package` when it is a crate of a rig checkout listed
+/// The names of the dependencies the crate in `directory` always has: the
+/// keys of its `[dependencies]` tables, its target-specific ones included,
+/// without the optional ones.
+fn dependencies(directory: &Path) -> Vec<String> {
+    let Some(manifest) = read_manifest(directory) else {
+        return Vec::new();
+    };
+    let targets = (manifest.get("target").and_then(Item::as_table_like))
+        .into_iter()
+        .flat_map(|targets| targets.iter().map(|(_, target)| target.get("dependencies")));
+    let tables = [manifest.get("dependencies")]
+        .into_iter()
+        .chain(targets)
+        .flatten()
+        .filter_map(Item::as_table_like);
+    let required = |item: &Item| {
+        let optional = item.get("optional").and_then(Item::as_bool);
+        optional != Some(true)
+    };
+    tables
+        .flat_map(|table| {
+            (table.iter())
+                .filter(|(_, item)| required(item))
+                .map(|(name, _)| name.to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// What is wrong with `extra` when it is a crate of a rig checkout listed
 /// by path while the agent's rig crates come from elsewhere (`source`): it
 /// would bring a second copy of each rig crate it uses.
-pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String> {
-    let Source::Path(directory) = &package.source else {
+pub fn foreign_rig_crate(extra: &Extra, source: &RigSource) -> Option<String> {
+    let Source::Path(directory) = &extra.source else {
         return None;
     };
     // Through symlinks and `..`, so an alias of the directory is the same. A
@@ -168,15 +185,13 @@ pub fn foreign_rig_crate(package: &Package, source: &RigSource) -> Option<String
         RigSource::Local(own) => format!("the rig checkout {}", own.display()),
         RigSource::Registry => format!("crates.io at rig {VERSION}"),
     };
-    let name = &package.name;
+    let name = &extra.krate;
     let checkout = checkout.display();
-    let entry = if shipped().contains(name) {
-        format!(
-            "List it as one of rig's own plugin crates, `crate = \"{name}\"` with no `path`, \
-             to build it with the agent's rig crates, or build"
-        )
+    let entry = if built_in_crates().contains(name.as_str()) {
+        "Its plugins are rig's own, which every agent has: name them in `[plugins] enable` \
+         instead, or build"
     } else {
-        "rig ships no crate of that name; build".to_owned()
+        "rig ships no crate of that name; build"
     };
     Some(format!(
         "`{name}` is listed by path from the rig checkout {checkout}, but the agent's rig \
@@ -208,60 +223,34 @@ pub fn rig_version(source: &RigSource) -> String {
     let RigSource::Local(checkout) = source else {
         return VERSION.to_owned();
     };
-    fs::read_to_string(checkout.join("Cargo.toml"))
-        .ok()
-        .and_then(|manifest| manifest_string(&manifest, "workspace.package", "version"))
-        .unwrap_or_else(|| VERSION.to_owned())
+    let manifest = read_manifest(checkout);
+    let version = manifest.as_ref().and_then(|manifest| {
+        let workspace = manifest.get("workspace")?.get("package")?;
+        workspace.get("version")?.as_str().map(str::to_owned)
+    });
+    version.unwrap_or_else(|| VERSION.to_owned())
 }
 
-/// The string `key` of the table `[table]` of a Cargo manifest, such as the
-/// `name` of `[package]`, when it is written as `key = "value"`.
-pub fn manifest_string(manifest: &str, table: &str, key: &str) -> Option<String> {
-    let mut current = String::new();
-    for line in manifest.lines() {
-        let line = line.trim();
-        if let Some(header) = line
-            .strip_prefix('[')
-            .and_then(|line| line.strip_suffix(']'))
-        {
-            current = header.trim().to_owned();
-            continue;
-        }
-        if current != table {
-            continue;
-        }
-        let Some((name, value)) = line.split_once('=') else {
-            continue;
-        };
-        if name.trim() == key {
-            return parse_string(value.trim()).map(|(value, _)| value);
-        }
-    }
-    None
-}
-
-/// Writes the agent project for `list`.
-pub fn generate(home: &Home, list: &PluginList, source: &RigSource) -> Result<()> {
+/// Writes the agent project with rig's plugins and `extras`.
+pub fn generate(home: &Home, extras: &[Extra], source: &RigSource) -> Result<()> {
     let project = home.project();
-    write_if_changed(&project.join("Cargo.toml"), &manifest(home, list, source)?)?;
-    write_if_changed(&project.join("src/main.rs"), &main_rs(home, list, source))?;
+    write_if_changed(
+        &project.join("Cargo.toml"),
+        &manifest(home, extras, source)?,
+    )?;
+    write_if_changed(&project.join("src/main.rs"), &main_rs(home, extras, source))?;
     write_if_changed(&project.join(".cargo/config.toml"), &cargo_config(home))?;
-    // A lock seeds the versions CI tested: the checkout's, or the one
-    // packaged with this launcher. The packaged one covers the `rig` crate's
-    // own dependencies only; cargo resolves rig-harness's and Bevy's fresh.
+    // A checkout's lock seeds the versions CI tested.
     let lock = project.join("Cargo.lock");
-    if !lock.exists() {
-        match source {
-            RigSource::Local(checkout) => {
-                fs::copy(checkout.join("Cargo.lock"), lock)?;
-            }
-            RigSource::Registry => fs::write(lock, LOCK)?,
-        }
+    if let RigSource::Local(checkout) = source
+        && !lock.exists()
+    {
+        fs::copy(checkout.join("Cargo.lock"), lock)?;
     }
     Ok(())
 }
 
-fn manifest(home: &Home, list: &PluginList, source: &RigSource) -> Result<String> {
+fn manifest(home: &Home, extras: &[Extra], source: &RigSource) -> Result<String> {
     let mut text = format!(
         "# Generated by rig {VERSION} from {}. `rig build` and /reload rewrite this file.\n\
          [package]\n\
@@ -274,67 +263,64 @@ fn manifest(home: &Home, list: &PluginList, source: &RigSource) -> Result<String
          [workspace]\n\
          \n\
          [dependencies]\n",
-        home.plugins_toml().display()
+        home.settings().display()
     );
-    text.push_str(&format!(
-        "rig-harness = {{ {} }}\n",
-        rig_source(source, "rig-harness")?
-    ));
+    for name in ["rig-harness"].into_iter().chain(built_in_crates()) {
+        text.push_str(&format!("{name} = {{ {} }}\n", rig_source(source, name)?));
+    }
     let mut listed = BTreeSet::new();
-    for package in list.plugins.iter().map(|plugin| &plugin.package) {
+    for extra in extras {
         // A crate with several plugins is one dependency.
-        if !listed.insert(package.name.as_str()) {
+        if !listed.insert(extra.krate.as_str()) {
             continue;
         }
-        let source = match &package.source {
+        let from = match &extra.source {
             Source::Path(path) => {
-                if let Some(problem) = foreign_rig_crate(package, source) {
+                if let Some(problem) = foreign_rig_crate(extra, source) {
                     return Err(problem.into());
                 }
                 format!("path = {}", quoted_path(path))
             }
             Source::Git { url, branch, rev } => {
-                let mut source = format!("git = {}", quoted(url));
+                let mut from = format!("git = {}", quoted(url));
                 if let Some(branch) = branch {
-                    source.push_str(&format!(", branch = {}", quoted(branch)));
+                    from.push_str(&format!(", branch = {}", quoted(branch)));
                 }
                 if let Some(rev) = rev {
-                    source.push_str(&format!(", rev = {}", quoted(rev)));
+                    from.push_str(&format!(", rev = {}", quoted(rev)));
                 }
-                source
+                from
             }
             Source::Version(version) => format!("version = {}", quoted(version)),
-            Source::Rig => rig_source(source, &package.name)?,
         };
-        text.push_str(&format!("{} = {{ {source} }}\n", package.name));
+        text.push_str(&format!("{} = {{ {from} }}\n", extra.krate));
     }
     if let RigSource::Local(checkout) = source {
         // A plugin naming the crates.io releases builds against the checkout.
         text.push('\n');
-        text.push_str(&rig_patch(checkout, &rig_crates(list, source)));
+        text.push_str(&rig_patch(checkout, &rig_crates(extras, source)));
     }
-    text.push_str(&profile(list, source));
+    text.push_str(&profile(extras, source));
     Ok(text)
 }
 
 /// The agent's build profile: dependencies at full speed, built once, and
-/// the crates `/reload` rebuilds (rig's own from a checkout, and plugins by
+/// the crates `/reload` rebuilds (rig's own from a checkout, and extras by
 /// path or git) at opt-level 1, so a rebuild stays quick.
-fn profile(list: &PluginList, source: &RigSource) -> String {
+fn profile(extras: &[Extra], source: &RigSource) -> String {
     let mut text = String::from(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
          \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug-assertions = false\n\
          overflow-checks = false\n",
     );
     let mut edited: BTreeSet<String> = match source {
-        RigSource::Local(_) => rig_crates(list, source),
+        RigSource::Local(_) => rig_crates(extras, source),
         RigSource::Registry => BTreeSet::new(),
     };
-    let packages = list.plugins.iter().map(|plugin| &plugin.package);
     edited.extend(
-        packages
-            .filter(|package| matches!(package.source, Source::Path(_) | Source::Git { .. }))
-            .map(|package| package.name.clone()),
+        (extras.iter())
+            .filter(|extra| matches!(extra.source, Source::Path(_) | Source::Git { .. }))
+            .map(|extra| extra.krate.clone()),
     );
     for name in edited {
         text.push_str(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n"));
@@ -349,9 +335,8 @@ fn rig_source(source: &RigSource, name: &str) -> Result<String> {
         RigSource::Local(checkout) => {
             let directory = crate_dir(checkout, name).ok_or_else(|| {
                 format!(
-                    "plugins.toml lists the crate `{name}` without a source, so as one of rig's \
-                     own crates, but the rig checkout {} has no crates/{name} or plugins/{name}; \
-                     give it `path`, `git` or `version` if it comes from elsewhere",
+                    "the rig checkout {} has no crates/{name} or plugins/{name}, which this \
+                     launcher builds the agent with; build it with the launcher of that checkout",
                     checkout.display()
                 )
             })?;
@@ -372,11 +357,11 @@ fn rig_origin(source: &RigSource, name: &str) -> String {
     }
 }
 
-/// The agent: the harness, then each plugin in the list's order, through
-/// `rig_harness::load`, which skips a plugin an earlier one added and
-/// records where each comes from; `rig_harness::run` runs it, or describes
-/// what its plugins add when the launcher asks.
-fn main_rs(home: &Home, list: &PluginList, source: &RigSource) -> String {
+/// The agent: the harness, then every plugin it is built with, of which
+/// `rig_harness::load_chosen` adds those the settings turn on, in their
+/// order; `rig_harness::run` runs it, or describes what its plugins add
+/// when the launcher asks.
+fn main_rs(home: &Home, extras: &[Extra], source: &RigSource) -> String {
     let mut text = format!(
         "// Generated by rig {VERSION} from {}. /reload rewrites this file.\n\
          fn main() -> rig_harness::AppExit {{\n    \
@@ -384,24 +369,34 @@ fn main_rs(home: &Home, list: &PluginList, source: &RigSource) -> String {
              // A failing system, observer or command from a plugin is logged.\n    \
              app.set_error_handler(rig_harness::error::warn);\n    \
              // Bevy's base and the headless loop come first, so the agent runs on\n    \
-             // their clock and a windowing plugin listed below can replace the loop.\n    \
-             app.add_plugins((rig_harness::HeadlessPlugins, rig_harness::RigHarnessPlugins));\n",
-        home.plugins_toml().display(),
+             // their clock and a windowing plugin added later can replace the loop.\n    \
+             app.add_plugins((rig_harness::HeadlessPlugins, rig_harness::RigHarnessPlugins));\n    \
+             rig_harness::load_chosen(\n        \
+                 &mut app,\n        \
+                 &[\n",
+        home.settings().display(),
     );
-    for plugin in &list.plugins {
-        let package = &plugin.package;
-        let krate = package.name.as_str();
-        let from = match &package.source {
-            Source::Rig => rig_origin(source, krate),
-            other => other.to_string(),
-        };
+    let built_in = (BUILT_IN.iter())
+        .filter(|built_in| built_in.available())
+        .map(|built_in| {
+            let from = rig_origin(source, built_in.krate);
+            (built_in.plugin, built_in.krate, from)
+        });
+    let extra = extras.iter().map(|extra| {
+        (
+            extra.plugin.as_str(),
+            extra.krate.as_str(),
+            extra.source.to_string(),
+        )
+    });
+    for (plugin, krate, from) in built_in.chain(extra) {
         text.push_str(&format!(
-            "    rig_harness::load::<{}>(&mut app, {krate:?}, {from:?});\n",
-            plugin.type_path
+            "            rig_harness::Compiled::new::<{plugin}>({plugin:?}, {krate:?}, {from:?}),\n"
         ));
     }
     text.push_str(
-        "    // A debug build warns at start of agent-loop systems left unordered.\n    \
+        "        ],\n    );\n    \
+         // A debug build warns at start of agent-loop systems left unordered.\n    \
          #[cfg(debug_assertions)]\n    \
          rig_harness::check_stages_at_start(&mut app);\n",
     );

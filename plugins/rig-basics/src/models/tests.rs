@@ -129,7 +129,7 @@ fn an_unknown_model_given_with_model_leaves_the_agent_without_one() {
     })
     .add_plugins((AgentPlugin, ModelsPlugin));
     tell(&mut app);
-    // The remembered model, as `defaults.json` gives it.
+    // The remembered model, as `[model]` gives it.
     app.add_systems(
         PostStartup,
         |agents: Query<Entity, With<Agent>>, mut commands: Commands| {
@@ -221,8 +221,9 @@ fn the_picker_lists_contributed_choices_first_and_the_status_line_their_label() 
     assert!(says("no model: /model picks one"), "{shown:?}");
 }
 
-/// What `defaults.json` holds before each test: a model no test chooses.
-const SAVED: &str = r#"{"model":"corpus-test/saved","effort":null}"#;
+/// What `[model]` of `settings.toml` holds before each test, with a
+/// comment of the user's: a model no test chooses.
+const SAVED: &str = "# mine\n[model]\ndefault = \"corpus-test/saved\" # kept\n";
 
 /// An app in a scratch home named `name` whose saved default is `saved`,
 /// choosing among scripted `corpus-test/saved` and `corpus-test/chosen`,
@@ -238,7 +239,7 @@ fn remembering(
     let home = scratch_home(name);
     fs::create_dir_all(home.root()).ok();
     if let Some(saved) = saved {
-        fs::write(home.defaults(), saved).ok();
+        fs::write(home.settings(), saved).ok();
     }
     let saved = MockCompletionModel::from_stream_turns([reply("saved")]);
     let (mut app, wakes) = app_in(&home, &SessionId::generate());
@@ -275,9 +276,9 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
     });
 }
 
-/// What `defaults.json` in `home` holds.
+/// What `settings.toml` in `home` holds.
 fn saved(home: &Home) -> String {
-    fs::read_to_string(home.defaults()).unwrap_or_default()
+    fs::read_to_string(home.settings()).unwrap_or_default()
 }
 
 /// The model `agent` is on.
@@ -321,7 +322,7 @@ fn a_headless_runs_automatic_pick_is_used_for_that_run_only() {
         "{ended:?}"
     );
     assert!(model_of(&app, agent).is_some());
-    assert!(!home.defaults().exists());
+    assert!(!home.settings().exists());
 }
 
 #[test]
@@ -335,10 +336,14 @@ fn a_model_picked_with_model_is_remembered_once_it_answered() {
     assert_eq!(model_of(&app, agent), Some("corpus-test/chosen"));
     assert_eq!(saved(&home), SAVED, "not before it answered");
     ask(&mut app, &wakes, agent, "Hello.");
+    let kept = saved(&home);
     assert!(
-        saved(&home).contains("\"corpus-test/chosen\""),
-        "{}",
-        saved(&home)
+        kept.contains("default = \"corpus-test/chosen\" # kept"),
+        "{kept}"
+    );
+    assert!(
+        kept.starts_with("# mine\n"),
+        "the user's comments stay: {kept}"
     );
 }
 
@@ -444,10 +449,10 @@ fn an_effort_picked_is_remembered_with_the_users_model_only() {
         let model = MockCompletionModel::from_stream_turns([reply("hi")]);
         let (mut app, wakes, home, agent) = remembering(name, &model, (None, Some(SAVED)), |_| {});
         let saved_before = match users {
-            true => r#"{"model":"deepseek/deepseek-flash","effort":null}"#,
+            true => "[model]\ndefault = \"deepseek/deepseek-flash\"\n",
             false => SAVED,
         };
-        fs::write(home.defaults(), saved_before).ok();
+        fs::write(home.settings(), saved_before).ok();
         // On DeepSeek as `--model` leaves an agent: not the user's choice.
         let connected = rig_harness_test_support::connect(&model);
         assert!(connected.is_some());
@@ -627,7 +632,7 @@ fn a_model_without_its_key_given_with_model_leaves_the_agent_without_one() {
     .insert_resource(models)
     .add_plugins((AgentPlugin, ModelsPlugin));
     tell(&mut app);
-    // The remembered model, as `defaults.json` gives it.
+    // The remembered model, as `[model]` gives it.
     app.add_systems(
         PostStartup,
         |agents: Query<Entity, With<Agent>>, mut commands: Commands| {
@@ -676,4 +681,19 @@ fn the_model_picker_opens_on_the_agents_model_and_says_it_is_current() {
         current.count()
     });
     assert_eq!(marked, Some(1));
+}
+
+#[test]
+fn an_effort_no_setting_is_named_refuses_the_run() {
+    let mut app = App::new();
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[model]\ndefault = \"x/y\"\neffort = \"hihg\"\n",
+    ))
+    .add_plugins(DefaultsPlugin);
+    let settings = app.world().resource::<rig_harness::settings::Settings>();
+    let problems = settings.problems().join("\n");
+    assert!(
+        problems.contains("[model]") && problems.contains("hihg"),
+        "{problems}"
+    );
 }

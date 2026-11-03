@@ -208,3 +208,110 @@ fn plugin_systems_list_each_system_with_its_plugin() {
             .all(|&(system, schedule, plugin)| systems.plugin(system, schedule) == plugin)
     );
 }
+
+/// Stands in for `rig_basics::budget::BudgetPlugin`, off by default.
+#[derive(Default)]
+struct OffByDefault;
+
+impl Plugin for OffByDefault {
+    fn build(&self, _: &mut App) {}
+}
+
+/// Stands in for `rig_basics::skills::SkillsPlugin`, on by default.
+#[derive(Default)]
+struct OnByDefault;
+
+impl Plugin for OnByDefault {
+    fn build(&self, _: &mut App) {}
+}
+
+const BUDGET: &str = "rig_basics::budget::BudgetPlugin";
+const SKILLS: &str = "rig_basics::skills::SkillsPlugin";
+
+/// Run by [`a_session_adds_the_plugins_its_settings_or_its_parent_turn_on`]
+/// in a process of its own: builds an app in the home `RIG_TEST_CHOSEN`
+/// names, from its `work` directory, and prints which of the two plugins
+/// it added and the list every process it starts gets.
+#[test]
+fn chosen_in_a_process_of_its_own() {
+    use crate::services::{Processes, ProjectRoot, RigHome};
+    use rig_harness_protocol::Home;
+
+    let Ok(root) = std::env::var("RIG_TEST_CHOSEN") else {
+        return;
+    };
+    let root = std::path::PathBuf::from(root);
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(root.join("home"))))
+        .insert_resource(ProjectRoot(root.join("work")))
+        .init_resource::<Processes>();
+    super::load_chosen(
+        &mut app,
+        &[
+            super::Compiled::new::<OffByDefault>(BUDGET, "rig-basics", ""),
+            super::Compiled::new::<OnByDefault>(SKILLS, "rig-basics", ""),
+        ],
+    );
+    let launcher = app.world().resource::<Processes>().launcher();
+    let handed = (launcher.env.iter())
+        .find(|(name, _)| name == "RIG_PLUGINS")
+        .map(|(_, value)| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    println!(
+        "budget={} skills={} handed={handed}",
+        app.is_plugin_added::<OffByDefault>(),
+        app.is_plugin_added::<OnByDefault>()
+    );
+}
+
+#[test]
+fn a_session_adds_the_plugins_its_settings_or_its_parent_turn_on() {
+    let root = std::env::temp_dir().join(format!("rig-load-chosen-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let project = root.join("work/.rig");
+    assert!(std::fs::create_dir_all(root.join("home")).is_ok());
+    assert!(std::fs::create_dir_all(&project).is_ok());
+    let settings = format!("[plugins]\nenable = [\"{BUDGET}\"]\ndisable = [\"{SKILLS}\"]\n");
+    assert!(std::fs::write(root.join("home/settings.toml"), settings).is_ok());
+    let run = |parent: Option<&str>| {
+        let test = std::env::current_exe().ok()?;
+        let mut command = std::process::Command::new(test);
+        command
+            .args([
+                "load::tests::chosen_in_a_process_of_its_own",
+                "--exact",
+                "--nocapture",
+            ])
+            .env("RIG_TEST_CHOSEN", &root)
+            .env_remove("RIG_PLUGINS");
+        if let Some(parent) = parent {
+            command.env("RIG_PLUGINS", parent);
+        }
+        let started = rig_tools::process::Process::start(command, Default::default());
+        let output = started.and_then(|child| child.output(None)).ok()?;
+        let said = String::from_utf8_lossy(&output.stdout).into_owned();
+        said.lines()
+            .find(|line| line.starts_with("budget="))
+            .map(str::to_owned)
+    };
+    let home = run(None).unwrap_or_default();
+    // The project turns skills back on, with the same build.
+    assert!(
+        std::fs::write(
+            project.join("settings.toml"),
+            format!("[plugins]\nenable = [\"{SKILLS}\"]\n")
+        )
+        .is_ok()
+    );
+    let project = run(None).unwrap_or_default();
+    // A child of a session runs its parent's list, whatever the settings.
+    let child = run(Some(SKILLS)).unwrap_or_default();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        home.starts_with("budget=true skills=false handed="),
+        "{home}"
+    );
+    assert!(home.contains(BUDGET) && !home.contains(SKILLS), "{home}");
+    assert!(project.starts_with("budget=true skills=true"), "{project}");
+    assert_eq!(child, format!("budget=false skills=true handed={SKILLS}"));
+}

@@ -8,7 +8,7 @@
 //!
 //! [`HeadlessPlugins`] is what a terminal app takes from Bevy, and
 //! [`RigHarnessPlugins`] is the harness. The launcher's generated `main.rs`
-//! adds the plugins `plugins.toml` lists with [`load`]. The error handler is
+//! adds the plugins the settings turn on with [`load_chosen`]. The error handler is
 //! the application's to set:
 //!
 //! ```no_run
@@ -64,8 +64,8 @@ pub mod workspace;
 
 pub use describe::run;
 pub use load::{
-    AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
-    check_stages_at_start, load, stage_conflicts,
+    AppKeepsExt, Compiled, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
+    SavedAs, check_stages_at_start, load, load_chosen, stage_conflicts,
 };
 
 use bevy::MinimalPlugins;
@@ -161,7 +161,7 @@ pub mod prelude {
 /// commands, the clock the loop sleeps by, file watches, the questions and
 /// pickers every front answers, the run's start and `--tools`
 /// ([`run`](mod@run)), and tool progress. Everything else is a
-/// plugin `plugins.toml` lists, which can leave it out.
+/// plugin the settings turn on, which can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {

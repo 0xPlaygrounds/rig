@@ -24,7 +24,7 @@ use rig_harness_protocol::{
     AgentDescription, Home, SessionId, env, first_errors, secret_variables,
 };
 
-use super::plugin_list::PluginList;
+use super::plugin_list;
 use super::project::{self, PACKAGE, RigSource};
 use super::{BEVY_VERSION, Result, locks};
 
@@ -69,7 +69,7 @@ const ERROR_LINES: usize = 40;
 #[derive(Debug)]
 pub struct BuildFailure {
     /// What failed, such as `cargo could not build the agent (exit
-    /// status: 101)` or a `plugins.toml` mistake.
+    /// status: 101)` or a `settings.toml` mistake.
     pub reason: String,
     /// The output from its first error on, at most [`ERROR_LINES`] lines;
     /// empty when no line starts with `error`.
@@ -116,8 +116,10 @@ impl fmt::Display for BuildFailure {
 
 impl std::error::Error for BuildFailure {}
 
-/// Reads `plugins.toml`, writes the agent project, checks its Bevy version,
-/// builds it, and copies the binary to `staged` as `staging` says. The
+/// Writes the agent project with rig's plugins and the home's extra
+/// crates, checks its Bevy version, builds it, and copies the binary to
+/// `staged` as `staging` says, once it describes itself with the plugins
+/// `on`. The
 /// build's output goes to [`Home::build_log`], and to stderr as `output`
 /// says.
 pub fn compile(
@@ -125,9 +127,10 @@ pub fn compile(
     staged: &Path,
     staging: Staging,
     output: BuildOutput,
+    on: &[String],
 ) -> std::result::Result<(), BuildFailure> {
     let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
-    match compile_logged(home, staged, staging, &mut log) {
+    match compile_logged(home, staged, staging, on, &mut log) {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
@@ -136,10 +139,16 @@ pub fn compile(
     }
 }
 
-fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildLog) -> Result<()> {
-    let list = PluginList::load(&home.plugins_toml())?;
+fn compile_logged(
+    home: &Home,
+    staged: &Path,
+    staging: Staging,
+    on: &[String],
+    log: &mut BuildLog,
+) -> Result<()> {
+    let extras = plugin_list::of_home(home)?.extra;
     let source = RigSource::detect()?;
-    project::generate(home, &list, &source)?;
+    project::generate(home, &extras, &source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(home);
@@ -155,10 +164,10 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     let checked = home.project().join("Cargo.lock.checked");
     if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
         log.say("Resolving dependencies…");
-        let rig_crates = project::rig_crates(&list, &source);
+        let rig_crates = project::rig_crates(&extras, &source);
         check_bevy(
             home,
-            &list,
+            &extras,
             &rig_crates,
             &project::rig_version(&source),
             log,
@@ -170,27 +179,43 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
-    stage(home, staged, staging)
+    stage(home, staged, staging, on)
 }
 
 /// `rig build`, holding the root's build lock. It always stages, so it also
 /// retries a build that was rolled back. Run by an agent's `/reload`
-/// (`RIG_SESSION` set), it stages for that agent's launcher alone.
+/// (`RIG_SESSION` set), it stages for that agent's launcher alone. The
+/// build is checked with the plugins a session here runs.
 pub fn build(home: &Home) -> Result<()> {
+    let on = here(home)?;
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     let staged = match SessionId::from_env()? {
         Some(session) => home.staged_for(&session),
         None => home.staged(),
     };
-    Ok(compile(home, &staged, Staging::Always, BuildOutput::Live)?)
+    Ok(compile(
+        home,
+        &staged,
+        Staging::Always,
+        BuildOutput::Live,
+        &on,
+    )?)
 }
 
 /// `rig plugin check --build`, holding the root's build lock: builds the
-/// agent like [`build`] but stages nothing, and returns its report.
+/// agent like [`build`] but stages nothing, and returns its report with the
+/// plugins a session here runs.
 pub fn check(home: &Home) -> Result<AgentDescription> {
+    let on = here(home)?;
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
-    compile(home, &home.staged(), Staging::Never, BuildOutput::Live)?;
-    described(home, &artifact(home))
+    compile(home, &home.staged(), Staging::Never, BuildOutput::Live, &on)?;
+    described(home, &artifact(home), &on)
+}
+
+/// The plugins a session in the working directory runs.
+fn here(home: &Home) -> Result<Vec<String>> {
+    let dir = std::env::current_dir()?;
+    Ok(rig_harness_protocol::config::chosen(home, &dir)?.on)
 }
 
 /// The binary cargo builds the agent into.
@@ -475,12 +500,12 @@ impl BuildLog {
 /// the copy carries its [`stamp`], once it described itself: a build that
 /// does not is rejected, and the build fails. A build `rig build` staged
 /// for any launcher that differs from this one is older, so it goes.
-fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
+fn stage(home: &Home, staged: &Path, staging: Staging, on: &[String]) -> Result<()> {
     let artifact = artifact(home);
     let built = stamp(&artifact)?;
-    if let Err(why) = described(home, &artifact) {
+    if let Err(why) = described(home, &artifact, on) {
         if staging != Staging::Never {
-            fs::write(home.rejected(), &built)?;
+            fs::write(home.rejected(), rejection(&built, on))?;
         }
         return Err(format!("the new build does not start: {why}").into());
     }
@@ -494,7 +519,8 @@ fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
     let known = [home.good(), shared]
         .iter()
         .any(|binary| stamp(binary).is_ok_and(|stamp| stamp == built))
-        || fs::read_to_string(home.rejected()).is_ok_and(|rejected| rejected == built);
+        || fs::read_to_string(home.rejected())
+            .is_ok_and(|rejected| rejected == rejection(&built, on));
     if staging == Staging::OnlyNew && known {
         return Ok(());
     }
@@ -526,7 +552,10 @@ fn prune_described(home: &Home) {
         return;
     };
     for entry in fs::read_dir(directory).into_iter().flatten().flatten() {
-        if !stamps.contains(&*entry.file_name().to_string_lossy()) {
+        let name = entry.file_name();
+        let stamp = name.to_string_lossy();
+        let stamp = stamp.rsplit_once('-').map_or(&*stamp, |(stamp, _)| stamp);
+        if !stamps.contains(stamp) {
             fs::remove_file(entry.path()).ok();
         }
     }
@@ -535,18 +564,18 @@ fn prune_described(home: &Home) {
 /// How long a build may take to describe itself before it is killed.
 const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// What the plugins of the build `binary` add to the command line: the
-/// report kept for its stamp ([`Home::described`]), else the one it gives
-/// when asked, which is kept. A build from before reports, which ignores
+/// What the plugins `on` of the build `binary` add to the command line:
+/// the report kept for its stamp and that list ([`Home::described`]), else
+/// the one it gives when asked, which is kept. A build from before reports, which ignores
 /// the request, has an empty one. Fails when the build exits with a
 /// failure, such as two plugins adding one command, or takes over
 /// [`DESCRIBE_TIMEOUT`].
-pub fn described(home: &Home, binary: &Path) -> Result<AgentDescription> {
-    if let Some(report) = good_report(home, binary) {
+pub fn described(home: &Home, binary: &Path, on: &[String]) -> Result<AgentDescription> {
+    if let Some(report) = good_report(home, binary, on) {
         return Ok(report);
     }
-    let kept = home.described(&stamp(binary)?);
-    let text = describe(home, binary)?;
+    let kept = report_path(home, binary, on)?;
+    let text = describe(home, binary, on)?;
     let parent = kept.parent().ok_or("no directory for build reports")?;
     fs::create_dir_all(parent)?;
     // Written whole, then renamed: another launcher may read it meanwhile.
@@ -556,18 +585,24 @@ pub fn described(home: &Home, binary: &Path) -> Result<AgentDescription> {
     Ok(AgentDescription::parse(&text))
 }
 
-/// The report kept for the build `binary`, if any.
-pub fn good_report(home: &Home, binary: &Path) -> Option<AgentDescription> {
-    let text = fs::read_to_string(home.described(&stamp(binary).ok()?)).ok()?;
+/// The report kept for the build `binary` with the plugins `on`, if any.
+pub fn good_report(home: &Home, binary: &Path, on: &[String]) -> Option<AgentDescription> {
+    let text = fs::read_to_string(report_path(home, binary, on).ok()?).ok()?;
     Some(AgentDescription::parse(&text))
 }
 
-/// Runs `binary` with [`env::DESCRIBE`] and returns what it wrote, empty
-/// when it wrote nothing. It runs with stdin closed, in a scratch
+/// Where the report of the build `binary` with the plugins `on` is kept.
+fn report_path(home: &Home, binary: &Path, on: &[String]) -> Result<PathBuf> {
+    let stamp = stamp(binary)?;
+    Ok(home.described(&format!("{}-{}", stamp.trim(), plugin_list::key(on))))
+}
+
+/// Runs `binary` with [`env::DESCRIBE`] and the plugins `on` and returns
+/// what it wrote, empty when it wrote nothing. It runs with stdin closed, in a scratch
 /// `RIG_HOME` of its own that is its working directory, without the
 /// session, run or secrets, so a build that ignores the request cannot
 /// reach the user's sessions; it is killed after [`DESCRIBE_TIMEOUT`].
-fn describe(home: &Home, binary: &Path) -> Result<String> {
+fn describe(home: &Home, binary: &Path, on: &[String]) -> Result<String> {
     let run = home.run(std::process::id());
     let scratch = run.path().join("describe");
     fs::remove_dir_all(&scratch).ok();
@@ -578,6 +613,7 @@ fn describe(home: &Home, binary: &Path) -> Result<String> {
     command
         .env(env::DESCRIBE, &report)
         .env(env::HOME, &scratch_home)
+        .env(env::PLUGINS, rig_harness_protocol::config::to_env(on))
         .current_dir(&scratch_home)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -631,11 +667,18 @@ fn wait_described(mut child: Child, report: &Path, timeout: Duration) -> Result<
     Ok(fs::read_to_string(report).unwrap_or_default())
 }
 
-/// Records `trial`, a build that stopped before it was ready, as rejected,
-/// so a start does not stage it again until something changes.
-pub fn reject(home: &Home, trial: &Path) -> Result<()> {
-    fs::write(home.rejected(), stamp(trial)?)?;
+/// Records `trial`, a build that stopped before it was ready with the
+/// plugins `on`, as rejected, so a start does not stage it again until the
+/// build or the plugins change.
+pub fn reject(home: &Home, trial: &Path, on: &[String]) -> Result<()> {
+    fs::write(home.rejected(), rejection(&stamp(trial)?, on))?;
     Ok(())
+}
+
+/// What [`Home::rejected`] holds for the build `stamp` with the plugins
+/// `on`: whether it starts depends on both.
+fn rejection(stamp: &str, on: &[String]) -> String {
+    format!("{} {}\n", stamp.trim(), plugin_list::key(on))
 }
 
 /// What tells builds apart: the binary's modification time and size.
@@ -654,7 +697,7 @@ fn stamp(binary: &Path) -> Result<String> {
 /// other than the agent's.
 fn check_bevy(
     home: &Home,
-    list: &PluginList,
+    extras: &[rig_harness_protocol::config::Extra],
     rig_crates: &BTreeSet<String>,
     rig_version: &str,
     log: &mut BuildLog,
@@ -670,22 +713,16 @@ fn check_bevy(
     };
     // Every package that depends on the foreign Bevy, directly or not.
     let dependents = tree(home, &["--invert", &format!("{bevy}@{version}")], log)?;
-    let culprit = list
-        .plugins
-        .iter()
-        .map(|plugin| &plugin.package)
-        .find(|plugin| {
-            dependents
-                .iter()
-                .any(|line| package(line).is_some_and(|(name, _)| name == plugin.name))
-        });
+    let culprit = extras.iter().map(|extra| &extra.krate).find(|krate| {
+        (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == *krate))
+    });
     Err(match culprit {
         Some(plugin) => format!(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
              Change {name}'s bevy dependencies to `={BEVY_VERSION}` (with default-features = \
-             false), or remove it from plugins.toml.",
-            name = plugin.name
+             false), or remove it from [[plugins.extra]] in settings.toml.",
+            name = plugin
         ),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \

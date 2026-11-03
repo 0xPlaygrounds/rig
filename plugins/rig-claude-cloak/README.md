@@ -9,18 +9,18 @@ gated to those platforms. Windows and WASM are unsupported.
 
 ## Enable and use
 
-It ships with every rig release, at the launcher's version. Only if you want
-subscription authentication, add it:
+It ships with every rig release, at the launcher's version, and every agent
+built on Linux or macOS has it, off by default. Only if you want subscription
+authentication, turn it on:
 
 ```sh
-rig plugin add rig_claude_cloak::ClaudeCloakPlugin
+rig plugin enable rig_claude_cloak::ClaudeCloakPlugin
 ```
 
-The entry names the crate and no source, so the agent builds it at the
-launcher's version from crates.io, or from the rig checkout the agent is built
-from (`RIG_SOURCE`). If your `plugins.toml` lists it disabled, as the default
-one does, `rig plugin add` enables that entry instead, as `/plugins` and
-`rig plugin enable rig_claude_cloak::ClaudeCloakPlugin` do.
+That names it in `[plugins] enable` of `RIG_HOME/settings.toml`, as `/plugins`
+does. The agent builds it with rig's other crates, at the launcher's version
+from crates.io or from the rig checkout the agent is built from
+(`RIG_SOURCE`), so turning it on needs no build.
 
 Then reload Rig yourself. Run `/claude-cloak login` to open the browser,
 complete authorization, and use `/model` to select a `claude-cloak/*`
