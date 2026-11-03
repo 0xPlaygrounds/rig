@@ -302,15 +302,14 @@ struct ProjectSettingsPlugin;
 
 impl Plugin for ProjectSettingsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Project>()
-            .configure_sets(
-                PreStartup,
-                (ProjectSettingsSystems::Read, ProjectSettingsSystems::Apply).chain(),
-            )
-            .add_systems(
-                PreStartup,
-                read_project_settings.in_set(ProjectSettingsSystems::Read),
-            );
+        app.configure_sets(
+            PreStartup,
+            (ProjectSettingsSystems::Read, ProjectSettingsSystems::Apply).chain(),
+        )
+        .add_systems(
+            PreStartup,
+            read_project_settings.in_set(ProjectSettingsSystems::Read),
+        );
     }
 }
 

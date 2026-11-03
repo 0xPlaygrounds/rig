@@ -248,8 +248,8 @@ The project is the working directory or the nearest directory above it
 that holds `.git` or a `.rig` directory, below your home directory: rig
 started anywhere inside one reads the same `.rig/settings.toml`,
 `.rig/mcp.json` and per-project data. Your home directory is not a
-project: started there, rig reads only `RIG_HOME`'s files. Commands still
-start in the working directory.
+project: started there, rig reads only `RIG_HOME`'s settings and MCP
+servers. Commands still start in the working directory.
 
 Two default plugins add to it when the agent starts. `AgentsMdPlugin` adds
 the `AGENTS.md` files of the working directory and of each directory above

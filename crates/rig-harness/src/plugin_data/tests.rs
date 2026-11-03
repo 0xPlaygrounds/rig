@@ -25,6 +25,8 @@ fn a_session_file_is_kept_in_its_store_and_the_other_places_are_in_the_home() {
     };
     let session = home.session(&id);
     fs::create_dir_all(session.path()).ok();
+    // Its own `.git` makes it the project, wherever the test runs.
+    fs::create_dir_all(home.root().join(".git")).ok();
     let store = DirStore::open(session.path());
     assert!(store.is_ok());
     let Ok(store) = store else { return };
