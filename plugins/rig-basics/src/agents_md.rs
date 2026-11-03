@@ -1,6 +1,6 @@
 //! The project's instructions ([`AgentsMdPlugin`]): the `AGENTS.md` files
 //! of the working directory and each directory above it up to the
-//! repository root, and the user's own `RIG_HOME/AGENTS.md`, as one
+//! project's root ([`Project`]), and the user's own `RIG_HOME/AGENTS.md`, as one
 //! section of every agent's system prompt.
 //!
 //! The files are read once, when the agent starts, so the prompt stays the
@@ -14,7 +14,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig_ecs::prompt::PromptSection;
-use rig_harness::services::{ProjectRoot, RigHome};
+use rig_harness::services::{Project, ProjectRoot, RigHome};
 
 /// The file name read in each directory.
 pub const FILE_NAME: &str = "AGENTS.md";
@@ -31,8 +31,9 @@ impl Plugin for AgentsMdPlugin {
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
         let home = RigHome::of(world);
-        let root = world.resource::<ProjectRoot>().0.clone();
-        let text = section(&instruction_files(&root, home.root()));
+        let dir = world.resource::<ProjectRoot>().0.clone();
+        let project = world.get_resource_or_init::<Project>().clone();
+        let text = section(&instruction_files(&project, &dir, home.root()));
         world.spawn((
             Name::new("prompt:project_instructions"),
             PromptSection::new(PromptSection::ORDER_PROJECT, "project_instructions", text),
@@ -41,21 +42,12 @@ impl Plugin for AgentsMdPlugin {
 }
 
 /// The `AGENTS.md` files that apply in `dir`, in the order the model reads
-/// them: the user's in `home` first, then from the repository root (the
-/// nearest directory above `dir` holding `.git`) down to `dir`, so the
-/// nearest comes last. Outside a repository only `dir`'s counts. A file
-/// reached twice, such as through a symlink, is listed once.
-pub fn instruction_files(dir: &Path, home: &Path) -> Vec<PathBuf> {
-    let repository = dir.ancestors().find(|place| place.join(".git").exists());
-    let mut places: Vec<&Path> = match repository {
-        Some(top) => dir
-            .ancestors()
-            .take_while(|place| *place != top)
-            .chain([top])
-            .collect(),
-        None => vec![dir],
-    };
-    places.push(home);
+/// them: the user's in `home` first, then from the root of `project` down
+/// to `dir`, so the nearest comes last. A file reached twice, such as
+/// through a symlink, is listed once.
+pub fn instruction_files(project: &Project, dir: &Path, home: &Path) -> Vec<PathBuf> {
+    let mut places = project.levels(dir);
+    places.push(home.to_owned());
     places.reverse();
     let mut files: Vec<PathBuf> = Vec::new();
     let mut seen: Vec<PathBuf> = Vec::new();
@@ -94,7 +86,7 @@ fn section(files: &[PathBuf]) -> String {
     }
     format!(
         "Instructions from the user and the project, in AGENTS.md files: the user's own \
-         first, then from the repository root down to the working directory. Follow them; \
+         first, then from the project's root down to the working directory. Follow them; \
          where two disagree, the later file wins.\n\n{}",
         texts.join("\n\n")
     )

@@ -138,7 +138,7 @@ pub mod prelude {
     pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::run::{AppRunExt, KeepRunning, RunStart, Starting, Work};
     pub use crate::secrets::{Secret, Secrets};
-    pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
+    pub use crate::services::{Processes, Project, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{
         AppSettingsExt, ProjectSetting, ProjectSettings, ProjectSettingsSystems, Settings,
     };

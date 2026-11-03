@@ -31,7 +31,7 @@ use rig_ecs::prompt::PromptSection;
 use rig_ecs::stage::ForAgent;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::rig_core::conversation::Author;
-use rig_harness::services::{ProjectRoot, RigHome};
+use rig_harness::services::{Project, ProjectRoot, RigHome};
 use serde::Deserialize;
 
 /// The file that makes a directory a skill.
@@ -56,8 +56,9 @@ impl Plugin for SkillsPlugin {
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
         let home = RigHome::of(world);
-        let root = world.resource::<ProjectRoot>().0.clone();
-        let (skills, problems) = discover(&roots(&root, home.root()));
+        let dir = world.resource::<ProjectRoot>().0.clone();
+        let project = world.get_resource_or_init::<Project>().clone();
+        let (skills, problems) = discover(&roots(&project, &dir, home.root()));
         for problem in &problems {
             warn!("{problem}");
         }
@@ -116,19 +117,10 @@ struct Frontmatter {
 }
 
 /// The directories skills are found in, first first: `.rig/skills` and
-/// `.agents/skills` of `dir` and of each directory above it up to the
-/// repository root (the nearest holding `.git`; outside a repository, `dir`
-/// alone), then `home/skills`, then `~/.agents/skills`.
-pub fn roots(dir: &Path, home: &Path) -> Vec<PathBuf> {
-    let repository = dir.ancestors().find(|place| place.join(".git").exists());
-    let places: Vec<&Path> = match repository {
-        Some(top) => dir
-            .ancestors()
-            .take_while(|place| *place != top)
-            .chain([top])
-            .collect(),
-        None => vec![dir],
-    };
+/// `.agents/skills` of `dir` and of each directory above it up to the root
+/// of `project`, then `home/skills`, then `~/.agents/skills`.
+pub fn roots(project: &Project, dir: &Path, home: &Path) -> Vec<PathBuf> {
+    let places = project.levels(dir);
     let mut roots: Vec<PathBuf> = places
         .into_iter()
         .flat_map(|place| [place.join(".rig/skills"), place.join(".agents/skills")])

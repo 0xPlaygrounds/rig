@@ -42,7 +42,7 @@ use super::exit::ExitReason;
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
-use crate::services::{ProjectRoot, RigHome};
+use crate::services::{Project, ProjectRoot, RigHome};
 use crate::timings::{self, SystemTimings, TimeSystems};
 use crate::workspace::ProjectWorkspace;
 
@@ -312,8 +312,8 @@ fn list_keys(keys: Option<Res<SavedKeys>>, stores: Option<ResMut<StoreOpener>>) 
 }
 
 /// Inserts the [`PluginData`] of this run, unless the app has one: in the
-/// session's store when it opened, for the [`ProjectRoot`] in the
-/// [`ProjectWorkspace`].
+/// session's store when it opened, for the [`Project`], or the
+/// [`ProjectRoot`] of a [`ProjectWorkspace`] on another host.
 fn insert_plugin_data(world: &mut World) {
     if world.contains_resource::<PluginData>() {
         return;
@@ -322,13 +322,20 @@ fn insert_plugin_data(world: &mut World) {
     let session = world
         .get_resource::<SessionStore>()
         .map(|store| -> Arc<dyn Files> { store.0.clone() });
-    let root = world
-        .get_resource::<ProjectRoot>()
-        .cloned()
-        .unwrap_or_default();
     let workspace = world.get_resource::<ProjectWorkspace>();
-    let host = workspace.and_then(|workspace| workspace.0.host());
-    let data = PluginData::new(&home, session, &root.0, host);
+    let host = workspace.and_then(|workspace| workspace.0.host().map(str::to_owned));
+    // This machine's directories say nothing of a project on another host.
+    let root = match host {
+        None => world.get_resource_or_init::<Project>().root.clone(),
+        Some(_) => {
+            world
+                .get_resource::<ProjectRoot>()
+                .cloned()
+                .unwrap_or_default()
+                .0
+        }
+    };
+    let data = PluginData::new(&home, session, &root, host.as_deref());
     world.insert_resource(data);
 }
 

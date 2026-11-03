@@ -30,7 +30,7 @@ mod config;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::num::NonZeroU64;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -98,7 +98,7 @@ impl Plugin for McpCorePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<McpSettings>("mcp")
             .init_resource::<RigHome>()
-            .init_resource::<ProjectRoot>()
+            .init_resource::<Project>()
             .init_resource::<Processes>()
             .init_resource::<Approvals>()
             .init_resource::<Groups>()
@@ -378,24 +378,23 @@ struct Connect<'w> {
     settings: Res<'w, McpSettings>,
     processes: Res<'w, Processes>,
     groups: Res<'w, Groups>,
-    root: Res<'w, ProjectRoot>,
+    project: Res<'w, Project>,
     home: Res<'w, RigHome>,
     workspace: Option<Res<'w, ProjectWorkspace>>,
 }
 
 impl Connect<'_> {
-    /// The project approvals are about: its canonical path.
+    /// The project approvals are about: its root.
     fn project(&self) -> String {
-        let root = &self.root.0;
-        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
-        root.display().to_string()
+        self.project.root.display().to_string()
     }
 
     /// The user's file and the project's, but for a project on another
-    /// host, whose `.rig` is not on this machine, or one whose `.rig` is
-    /// `RIG_HOME`, as the home directory's is.
+    /// host, whose `.rig` is not on this machine, or one without a `.rig`
+    /// of its own ([`Project::config`]).
     fn files(&self) -> Vec<McpFile> {
-        let [user, project] = config::files(self.home.0.root(), &self.root.0);
+        let home = self.home.0.root();
+        let [user, project] = config::files(home, self.project.config.as_deref().unwrap_or(home));
         match self.no_project_file() {
             Some(_) => vec![user],
             None => vec![user, project],
@@ -404,16 +403,15 @@ impl Connect<'_> {
 
     /// Why the project has no file of its own, if it has none.
     fn no_project_file(&self) -> Option<&'static str> {
-        let home = self.home.0.root();
-        let same = |a: &Path, b: &Path| matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(a), Ok(b)) if a == b);
         if self.workspace.as_ref().and_then(|it| it.0.host()).is_some() {
             Some("This project is on another host: rig reads only RIG_HOME/mcp.json for it.")
-        } else if self.root.0.to_str().is_none() {
+        } else if self.project.root.to_str().is_none() {
             // Its approvals could not tell it from another such path.
             Some("This project's path is not UTF-8: rig reads only RIG_HOME/mcp.json for it.")
-        } else if same(&self.root.0.join(".rig"), home) {
+        } else if self.project.config.is_none() {
             Some(
-                "This project's .rig is RIG_HOME itself: its servers are those of RIG_HOME/mcp.json.",
+                "This project's .rig is RIG_HOME, or it is your home folder: its servers are \
+                 those of RIG_HOME/mcp.json.",
             )
         } else {
             None
@@ -515,7 +513,7 @@ impl Connect<'_> {
             spec,
             processes: self.processes.clone(),
             groups: self.groups.clone(),
-            root: self.root.0.clone(),
+            root: self.project.root.clone(),
             limit: Duration::from_secs(self.settings.connect_timeout_secs.get()),
             line_limit: LINE_LIMIT,
         };
@@ -565,7 +563,8 @@ fn connect_configured(
         }
     }
     if !waiting.is_empty() {
-        let path = connect.root.0.join(".rig/mcp.json");
+        let path = connect.file(Scope::Project).map(|file| file.path());
+        let path = path.unwrap_or_default();
         let text = format!(
             "{} names MCP servers you have not approved, so they did not start:\n{}\n/mcp \
              approve <name> starts one and remembers it; /mcp deny <name> stops asking.",
