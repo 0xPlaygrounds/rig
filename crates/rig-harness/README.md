@@ -67,12 +67,12 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
 | `rig-basics` | `redact::RedactPlugin` | API keys, tokens and private keys become placeholders (`‹SECRET_1›`) where they come in (the model's reply as it streams, tool output and results, messages), so the model, the logs, every front, subagents and a resumed session never hold them; a tool call naming one runs with the real value, kept in memory for the run. Without it nothing is redacted |
 | `rig-basics` | `telemetry::effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
-| `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain; what they spend is the caller's |
+| `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain, as `[helpers]` sets; what they spend is the caller's |
 | `rig-basics` | `budget::BudgetPlugin` | `[budget] usd` and `tokens`, and `/budget`: at the limit the running turns stop, helpers included, and new model calls are refused |
 | `rig-basics` | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |
 | `rig-basics` | `telemetry::diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
-| `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools |
+| `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools, within `[steel]` |
 | `rig-mcp-client` | `McpPlugin` | the tools of the MCP servers of `RIG_HOME/mcp.json` and the approved ones of the project's `.rig/mcp.json`, as `<server>__<tool>`; `/mcp` |
 | `rig-acp` | `AcpPlugin` | `rig acp`: the Agent Client Protocol on stdin and stdout, for editors such as Zed |
 | `rig-claude-cloak` | `ClaudeCloakPlugin` | `claude-cloak/*` models signed in with a Claude subscription (OAuth), and `/claude-cloak login` and `logout` |

@@ -10,13 +10,13 @@
 //! named), of those registered as the parent started: a fresh rig of the
 //! same build has those, and refuses a `--tools` name it has not. A child
 //! built from a plugin list changed since the parent started may lack one:
-//! its refusal names it, and the model can name the tools it needs. It runs [`HelperCommand`] through [`Processes`], with an empty
-//! stdin. Past the call's `timeout`, else `[helpers] timeout_secs` (600 s by
-//! default), or dead, it fails its task; stopping the turn stops every
-//! child, so none outlives the call: on unix, while the run
-//! goes on, each gets the time a launcher takes to end ([`STOP_WINDOW`])
-//! before it is killed, so its own helpers are stopped in turn; as the run
-//! exits, the usual grace.
+//! its refusal names it, and the model can name the tools it needs. It
+//! runs [`HelperCommand`] through [`Processes`], with an empty stdin. Past
+//! the call's `timeout`, else `[helpers] timeout_secs` (600 s by default),
+//! or dead, it fails its task; stopping the turn stops every child, so none
+//! outlives the call: on unix, while the run goes on, each gets the time a
+//! launcher takes to end ([`STOP_WINDOW`]) before it is killed, so its own
+//! helpers are stopped in turn; as the run exits, the usual grace.
 //!
 //! What a child spends is the calling agent's, as purpose `helper`: each
 //! `usage` line it writes is recorded as a [`Spent`] as it arrives, and
@@ -91,8 +91,8 @@ struct HelperSettings {
 impl Default for HelperSettings {
     fn default() -> Self {
         Self {
-            timeout_secs: NonZeroU64::MIN.saturating_add(599),
-            at_once: NonZeroUsize::MIN.saturating_add(3),
+            timeout_secs: NonZeroU64::new(600).unwrap_or(NonZeroU64::MIN),
+            at_once: NonZeroUsize::new(4).unwrap_or(NonZeroUsize::MIN),
         }
     }
 }
@@ -498,7 +498,7 @@ impl Runner {
             for _ in 0..self.at_once.get().min(jobs.len()) {
                 let (call, next, done, jobs) = (&call, &next, &done, &jobs);
                 let worker = move || loop {
-                    let at = next.fetch_add(1, Ordering::SeqCst);
+                    let at = next.fetch_add(1, Ordering::Relaxed);
                     let (Some((_, (args, dir))), Some(slot)) = (jobs.get(at), done.get(at)) else {
                         break;
                     };
@@ -593,7 +593,7 @@ impl Runner {
         let answer = match ended {
             Ok(Ended::Exited(status)) => read.answer(status.code()),
             Ok(Ended::TimedOut) => Err(format!(
-                "it timed out after {}s (the call's `timeout`, else `[helpers] timeout_secs`)",
+                "it timed out after {} s (the call's `timeout`, else `[helpers] timeout_secs`)",
                 self.timeout.as_secs()
             )),
             Ok(_) => Err("stopped".to_owned()),

@@ -144,8 +144,7 @@ impl Work<'_, '_> {
 }
 
 /// Declares `--tools`, reads `[retry]` and `[tools]` and keeps the run
-/// contract: see
-/// [`run`](self). Part of [`RigHarnessPlugins`](crate::RigHarnessPlugins);
+/// contract: see [`run`](self). Part of [`RigHarnessPlugins`](crate::RigHarnessPlugins);
 /// a plugin that reads [`RunStart`] adds it when it is missing, as a test
 /// app may leave it out.
 pub struct RunPlugin;
@@ -162,6 +161,15 @@ struct RetrySettings {
     max_wait_secs: u64,
 }
 
+impl Default for RetrySettings {
+    fn default() -> Self {
+        Self {
+            max_retries: RetryPolicy::DEFAULT.max_retries,
+            max_wait_secs: RetryPolicy::DEFAULT.max_asked_wait.as_secs(),
+        }
+    }
+}
+
 /// `[tools]` in `settings.toml`: the kernel's [`UnavailableCalls`], three
 /// unless set; 0 does not read.
 #[derive(Resource, serde::Deserialize, Clone, Copy)]
@@ -175,15 +183,6 @@ impl Default for ToolsSettings {
     fn default() -> Self {
         Self {
             max_unavailable_calls: UnavailableCalls::default().0,
-        }
-    }
-}
-
-impl Default for RetrySettings {
-    fn default() -> Self {
-        Self {
-            max_retries: RetryPolicy::DEFAULT.max_retries,
-            max_wait_secs: RetryPolicy::DEFAULT.max_asked_wait.as_secs(),
         }
     }
 }

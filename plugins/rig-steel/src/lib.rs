@@ -111,7 +111,7 @@ impl Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            max_seconds: NonZeroU64::MIN.saturating_add(59),
+            max_seconds: NonZeroU64::new(60).unwrap_or(NonZeroU64::MIN),
             max_calls: 1000,
             max_output_bytes: 64 * 1024,
         }

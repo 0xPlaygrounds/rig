@@ -253,6 +253,7 @@ fn a_long_answer_is_read_whole() {
     assert_eq!(answered, 200_000, "{:.100}", answer);
 }
 
+/// A `timeout` of 0 is refused, naming the key the call falls back to.
 #[test]
 fn a_timeout_of_zero_is_refused() {
     let (mut app, wakes, dir) = helped("zero", &[json!({ "task": "one", "timeout": 0 })]);
@@ -580,7 +581,7 @@ fn a_helper_past_its_timeout_says_which_key_set_it() {
     let said = output(&mut app, &wakes, 0);
     assert!(
         said.contains(
-            "it timed out after 1s (the call's `timeout`, else `[helpers] timeout_secs`)"
+            "it timed out after 1 s (the call's `timeout`, else `[helpers] timeout_secs`)"
         ),
         "{said}"
     );

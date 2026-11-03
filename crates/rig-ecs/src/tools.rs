@@ -524,33 +524,26 @@ pub(crate) fn keep_within_parents(
                 lost.sort_unstable();
                 lost
             };
-            // The run's tools as it started were the user's to give.
-            let by_run = match run_changed {
-                true => lost(&access, &in_run),
-                false => Vec::new(),
-            };
-            for (lost, [one, many]) in [
-                (
-                    by_run,
-                    [
-                        "this run's tools leave it out",
-                        "this run's tools leave them out",
-                    ],
-                ),
-                (
-                    lost(&in_run, &within),
-                    [
-                        "an agent above it does not have it",
-                        "an agent above it does not have them",
-                    ],
-                ),
-            ] {
-                let why = if lost.len() == 1 { one } else { many };
+            let mut warn = |lost: Vec<&str>, one: &str, many: &str| {
                 if !lost.is_empty() {
+                    let why = if lost.len() == 1 { one } else { many };
                     let lost = lost.join("`, `");
                     notices.write(Notice::warn(agent, format!("Lost `{lost}`: {why}.")));
                 }
+            };
+            // The run's tools as it started were the user's to give.
+            if run_changed {
+                warn(
+                    lost(&access, &in_run),
+                    "this run's tools leave it out",
+                    "this run's tools leave them out",
+                );
             }
+            warn(
+                lost(&in_run, &within),
+                "an agent above it does not have it",
+                "an agent above it does not have them",
+            );
             commands.entity(agent).insert(within);
         }
     }
@@ -636,7 +629,7 @@ pub struct UnavailableCalls(pub NonZeroU32);
 
 impl Default for UnavailableCalls {
     fn default() -> Self {
-        Self(NonZeroU32::MIN.saturating_add(2))
+        Self(NonZeroU32::new(3).unwrap_or(NonZeroU32::MIN))
     }
 }
 

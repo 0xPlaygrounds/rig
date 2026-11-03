@@ -1011,8 +1011,8 @@ const LEAST_SHARE: u64 = 16;
 
 /// The explicit output limit, within the model's own, as one past it is
 /// refused (a request moved to a smaller model keeps its first model's), or
-/// `answer` ([`CompactionPolicy::answer_tokens`])
-/// else the model's output limit within its window, plus thinking
+/// else `answer` ([`CompactionPolicy::answer_tokens`]), else the model's
+/// output limit within its window, plus thinking
 /// ([`with_thinking`]); `None`, for the server's default, when none of them
 /// is known.
 fn output_budget(

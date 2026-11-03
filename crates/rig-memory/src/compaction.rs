@@ -228,7 +228,7 @@ pub enum CompactReason {
 
 /// Tokens of the newest messages an automatic compaction keeps unless
 /// [`CompactionPolicy::keep_recent`] says otherwise.
-pub const KEEP_RECENT: usize = 20_000;
+const KEEP_RECENT: usize = 20_000;
 
 /// How a conversation is compacted: what the summarizer is asked, the tool
 /// arguments a summary keeps track of, such as the files a coding agent's
@@ -260,7 +260,7 @@ pub struct CompactionPolicy {
     pub tracked: Vec<TrackArgument>,
     /// Tokens of the newest messages an automatic compaction keeps as they
     /// are: the work carries on, so its recent part stays. `None` keeps
-    /// [`KEEP_RECENT`], a quarter of the model's input limit at most, so a
+    /// 20 000 tokens, a quarter of the model's input limit at most, so a
     /// compaction frees most of the window; a number is kept as given.
     pub keep_recent: Option<usize>,
     /// Tokens of the newest messages a compaction the user asked for keeps
@@ -279,7 +279,7 @@ pub struct CompactionPolicy {
 }
 
 impl Default for CompactionPolicy {
-    /// [`Summarizer::DEFAULT`], nothing tracked, the newest [`KEEP_RECENT`]
+    /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20 000
     /// tokens, a quarter of the input limit at most, kept by an automatic
     /// compaction and none beyond the newest reply or
     /// message by an asked one, [`ClearToolOutputs::default`], and notes
@@ -397,7 +397,7 @@ impl CompactionPolicy {
 
     /// Tokens of the newest messages an automatic compaction with `spec`
     /// keeps: [`keep_recent`](Self::keep_recent) when set, else
-    /// [`KEEP_RECENT`] within a quarter of `spec`'s input limit.
+    /// 20 000 tokens within a quarter of `spec`'s input limit.
     pub fn keep_recent(&self, spec: Option<&ModelSpec>) -> usize {
         self.keep_recent.unwrap_or_else(|| {
             let quarter = spec.and_then(ModelSpec::input_limit).map(|limit| limit / 4);

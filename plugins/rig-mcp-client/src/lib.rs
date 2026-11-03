@@ -167,7 +167,10 @@ const COMMANDS: &str = "/mcp, /mcp add [--user|--project] <name> <command…|url
                         [--user|--project] <name>, /mcp approve <name> or /mcp deny <name>";
 
 /// How long an attempt waits for a server by default: 30 seconds.
-const CONNECT_TIMEOUT: NonZeroU64 = NonZeroU64::MIN.saturating_add(29);
+const CONNECT_TIMEOUT: NonZeroU64 = match NonZeroU64::new(30) {
+    Some(secs) => secs,
+    None => NonZeroU64::MIN,
+};
 
 /// The `[mcp]` table of `settings.toml`, read from the user's file only.
 #[derive(Resource, Deserialize, Clone, Debug)]
