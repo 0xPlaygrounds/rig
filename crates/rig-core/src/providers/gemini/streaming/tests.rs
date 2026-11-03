@@ -631,3 +631,38 @@ fn two_signed_thought_parts_keep_both_signatures() {
         .collect();
     assert_eq!(signatures, ["b25l", "dHdv"], "{:?}", response.choice);
 }
+
+/// A reply cut short still relays the usage its chunks reported, the
+/// latest replacing the first.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn a_reply_cut_short_relays_the_usage_its_chunks_reported() {
+    use crate::streaming::Relayed;
+    use futures::StreamExt;
+    let chunk = |text: &str, output: u64| {
+        json!({
+            "candidates": [{ "content": { "parts": [{ "text": text }], "role": "model" } }],
+            "usageMetadata": { "promptTokenCount": 23, "candidatesTokenCount": output }
+        })
+        .to_string()
+    };
+    let (first, second) = (chunk("The answer", 2), chunk(" is", 4));
+    let model = streamed("gemini-2.5-flash", &[&first, &second]);
+    let Ok(stream) = model.stream(streaming_request()) else {
+        return;
+    };
+    let relayed: Vec<_> = stream.into_relay().collect().await;
+    let reported: Vec<(Option<u64>, Option<u64>)> = (relayed.iter())
+        .filter_map(|item| match item {
+            Ok(Relayed::Usage(usage)) => Some((usage.input_tokens, usage.output_tokens)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reported.last(), Some(&(Some(23), Some(4))), "{relayed:?}");
+    assert!(
+        !relayed
+            .iter()
+            .any(|item| matches!(item, Ok(Relayed::Done(_)))),
+        "the reply never ended: {relayed:?}"
+    );
+}

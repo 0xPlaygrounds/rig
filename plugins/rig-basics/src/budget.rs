@@ -14,8 +14,12 @@
 //! every model call about to start is refused, and every running turn is
 //! stopped, with an error notice of the reason, which fails a `-p` run;
 //! on unix a stopped turn's `helper` call stops its children, and they
-//! theirs. A model call in flight then is cancelled, and what its
-//! provider bills for it is not counted, so the bill can pass the budget.
+//! theirs. A model call in flight then is cancelled, and counts what its
+//! provider reported, else an estimate, so the bill can pass the budget by
+//! about that call. Once a call stopped before anything of its reply came,
+//! or a helper, spent what is not known, the next model call is refused
+//! until `/budget` is set again, which accepts what is not known so far:
+//! stopping calls never spends past the budget unattended.
 //!
 //! A `helper` child gets what was left when its call started in
 //! [`USD_VARIABLE`] and [`TOKENS_VARIABLE`], and a run with this plugin
@@ -30,7 +34,7 @@ use rig_core::completion::{UsageTotals, tokens_label};
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
-use crate::telemetry::usage::{SessionUsage, UsagePlugin};
+use crate::telemetry::usage::{SessionUsage, StoppedUsage, UnknownSpend, UsagePlugin};
 
 #[cfg(test)]
 mod tests;
@@ -68,6 +72,7 @@ impl Plugin for BudgetPlugin {
             variable(std::env::var(TOKENS_VARIABLE)),
         );
         app.insert_resource(Budget(limit))
+            .init_resource::<Accepted>()
             .insert_resource(HandedDown(handed))
             .add_command(
                 "budget",
@@ -261,16 +266,59 @@ fn reached(budget: &Budget, handed: &HandedDown, spent: &UsageTotals) -> Option<
     }
 }
 
-/// Once the budget is reached, refuses every model call about to start.
+/// How many model calls and helpers whose spend is not known the budget
+/// was last set after; saved with the session.
+#[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq)]
+#[reflect(Resource, Saved, Default)]
+pub(crate) struct Accepted(pub(crate) u64);
+
+/// How many model calls and helpers spent what is not known.
+fn not_known(stopped: &StoppedUsage, helpers: &UnknownSpend) -> u64 {
+    stopped.unknown.saturating_add(helpers.0)
+}
+
+/// Why the session may spend no more: [`reached`], or, under a budget,
+/// spend that is not known since it was last set.
+fn uncertain(
+    (budget, handed): (&Budget, &HandedDown),
+    spent: &UsageTotals,
+    unknown: u64,
+    accepted: &Accepted,
+) -> Option<String> {
+    if let Some(why) = reached(budget, handed, spent) {
+        return Some(why);
+    }
+    let limit = budget.0.lower(handed.0);
+    let bounded = limit.usd.is_some() || limit.tokens.is_some();
+    (bounded && unknown > accepted.0).then(|| unknown_since(unknown - accepted.0))
+}
+
+/// Why calls are refused after `count` calls or helpers whose spend is not
+/// known.
+fn unknown_since(count: u64) -> String {
+    let what = match count {
+        1 => "1 model call or helper".to_owned(),
+        n => format!("{n} model calls or helpers"),
+    };
+    format!(
+        "Budget reached: what {what} spent since the budget was set is not known. Set \
+         /budget again to go on."
+    )
+}
+
+/// Once the budget is reached, or spend is not known since it was set
+/// ([`uncertain`]), refuses every model call about to start.
 fn refuse_when_reached(
     mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls)>,
     (budget, handed): (Res<Budget>, Res<HandedDown>),
     spending: Res<SessionUsage>,
+    (stopped, helpers, accepted): (Res<StoppedUsage>, Res<UnknownSpend>, Res<Accepted>),
 ) {
     if calls.is_empty() {
         return;
     }
-    let Some(why) = reached(&budget, &handed, &spending.0.total) else {
+    let unknown = not_known(&stopped, &helpers);
+    let Some(why) = uncertain((&budget, &handed), &spending.0.total, unknown, &accepted) else {
         return;
     };
     for mut decision in &mut calls {
@@ -278,9 +326,9 @@ fn refuse_when_reached(
     }
 }
 
-/// Once the budget is reached, as spending grows or the budget is lowered,
-/// stops every running turn with the reason, as the user's stop does: from
-/// each agent nothing spawned whose tree has one, so a subagent's report
+/// Once the budget is reached ([`reached`]), as spending grows or the
+/// budget is lowered, stops every running turn with the reason, as the
+/// user's stop does: from each agent nothing spawned whose tree has one, so a subagent's report
 /// says it was stopped and starts no turn. An error notice tells the root,
 /// and each agent stopped working, why. A turn's running `helper` call
 /// stops its children, and they theirs.
@@ -314,9 +362,11 @@ fn budget(
     In(args): In<CommandArgs>,
     (mut budget, handed): (ResMut<Budget>, Res<HandedDown>),
     spending: Res<SessionUsage>,
+    (stopped, helpers, mut accepted): (Res<StoppedUsage>, Res<UnknownSpend>, ResMut<Accepted>),
     mut notices: MessageWriter<Notice>,
 ) {
     let spent = &spending.0.total;
+    let unknown = not_known(&stopped, &helpers);
     let words: Vec<&str> = args.args.split_whitespace().collect();
     let positive = |usd: &f64| usd.is_finite() && *usd > 0.0;
     let set = match words.as_slice() {
@@ -343,6 +393,9 @@ fn budget(
         return;
     };
     budget.set_if_neq(Budget(limit));
+    if !words.is_empty() {
+        accepted.set_if_neq(Accepted(unknown));
+    }
     let mut text = match limit.against(spent) {
         Some((used, _)) => format!("Budget: {used} spent."),
         None => format!("No budget: {} spent.", spent.cost_or_tokens()),
@@ -351,7 +404,12 @@ fn budget(
         let variables = handed.0.variables();
         text.push_str(&format!(" Against {variables}: {used} spent."));
     }
-    if limit.lower(handed.0).usd.is_some() && spent.unpriced > 0 {
+    let bounded = limit.lower(handed.0);
+    if (bounded.usd.is_some() || bounded.tokens.is_some()) && unknown > accepted.0 {
+        text.push(' ');
+        text.push_str(&unknown_since(unknown - accepted.0));
+    }
+    if bounded.usd.is_some() && spent.unpriced > 0 {
         text.push_str(&format!(
             " {} of {} calls had no price, such as a subscription model's, and are not in \
              the dollars: /budget 500000 tokens counts them.",

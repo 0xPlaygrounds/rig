@@ -6,6 +6,7 @@ use rig_core::catalog::Catalog;
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey};
+use rig_core::error::ErrorReport;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -643,8 +644,12 @@ fn stopped(items: Vec<Relayed>, streamed: Option<&str>) -> Option<(App, Entity, 
     notices(world);
     world.trigger(RunCommand::new(agent, "usage".to_owned()));
     world.flush();
-    let shown = notices(world).join("\n");
-    Some((app, agent, shown))
+    // The line every priced `/usage` has, on list prices as estimates.
+    let shown: Vec<String> = (notices(world).join("\n").lines())
+        .filter(|line| !line.contains("API list-price estimates"))
+        .map(str::to_owned)
+        .collect();
+    Some((app, agent, shown.join("\n")))
 }
 
 /// (a) A call stopped after its provider reported usage counts what the
@@ -655,7 +660,11 @@ fn a_stopped_call_counts_the_usage_its_provider_reported() {
     let Some((app, agent, shown)) = stopped(items, Some("The answer is")) else {
         return;
     };
-    let spent = app.world().get::<AgentUsage>(agent).cloned().unwrap_or_default();
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
     assert_eq!(spent.total.calls, 1, "{shown}");
     assert_eq!(spent.total.tokens.input_tokens, Some(1000), "{shown}");
     assert_eq!(spent.total.tokens.output_tokens, Some(7), "{shown}");
@@ -672,11 +681,21 @@ fn a_stopped_call_with_no_reported_usage_counts_an_estimate() {
     else {
         return;
     };
-    let spent = app.world().get::<AgentUsage>(agent).cloned().unwrap_or_default();
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
     assert_eq!(spent.total.calls, 1, "{shown}");
     let tokens = spent.total.tokens;
-    assert!(tokens.input_tokens.is_some_and(|tokens| tokens > 0), "{shown}");
-    assert!(tokens.output_tokens.is_some_and(|tokens| tokens > 0), "{shown}");
+    assert!(
+        tokens.input_tokens.is_some_and(|tokens| tokens > 0),
+        "{shown}"
+    );
+    assert!(
+        tokens.output_tokens.is_some_and(|tokens| tokens > 0),
+        "{shown}"
+    );
     assert!(shown.to_lowercase().contains("estimat"), "{shown}");
 }
 
@@ -688,7 +707,11 @@ fn a_call_stopped_before_anything_streamed_is_shown_as_unknown() {
     let Some((app, agent, shown)) = stopped(Vec::new(), None) else {
         return;
     };
-    let spent = app.world().get::<AgentUsage>(agent).cloned().unwrap_or_default();
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
     let session = &app.world().resource::<SessionUsage>().0;
     for totals in [&spent.total, &session.total] {
         assert_eq!(totals.total_tokens(), 0, "{shown}");
@@ -699,4 +722,21 @@ fn a_call_stopped_before_anything_streamed_is_shown_as_unknown() {
         shown_lower.contains("not known") || shown_lower.contains("unknown"),
         "{shown}"
     );
+}
+
+/// Cumulative reports replace earlier counters instead of adding to them.
+#[test]
+fn a_stopped_call_uses_the_latest_cumulative_report() {
+    let items = vec![reported(1000, 3), reported(1000, 7), text("done")];
+    let Some((app, agent, shown)) = stopped(items, Some("done")) else {
+        return;
+    };
+    let spent = app
+        .world()
+        .get::<AgentUsage>(agent)
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(spent.total.calls, 1, "{shown}");
+    assert_eq!(spent.total.tokens.input_tokens, Some(1000), "{shown}");
+    assert_eq!(spent.total.tokens.output_tokens, Some(7), "{shown}");
 }

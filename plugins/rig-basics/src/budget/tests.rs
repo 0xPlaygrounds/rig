@@ -12,8 +12,8 @@ use serde_json::json;
 
 use super::*;
 use crate::helpers::{HELPER, HelperCommand, HelpersPlugin};
-use crate::telemetry::usage::Spent;
 use crate::telemetry::usage::tests::{reported, stalling, streaming, text};
+use crate::telemetry::usage::{Spent, StoppedUsage};
 use rig_core::streaming::Relayed;
 use rig_ecs::inbox::Recalled;
 
@@ -426,15 +426,15 @@ fn lowering_the_budget_below_what_was_spent_stops_the_running_helper() {
 /// under a budget of 50 tokens: the budget refuses a call within a bounded
 /// number of them, whatever the provider reported, `streamed` being what
 /// each reply streamed before its stop, if anything.
-fn stopped_calls_reach_the_budget(name: &str, items: &[Relayed], streamed: Option<&str>) {
+fn stopped_calls_reach_the_budget(
+    name: &str,
+    items: &[Relayed],
+    streamed: Option<&str>,
+) -> Option<(App, Receiver<()>, Entity)> {
     let model = MockCompletionModel::from_stream_turns([reply("unused")]);
     let (mut app, wakes, _) = budgeted(name, "[budget]\ntokens = 50", &model);
-    let Some(connection) = stalling(items.to_vec()) else {
-        return;
-    };
-    let Some(agent) = first_agent(app.world_mut()) else {
-        return;
-    };
+    let connection = stalling(items.to_vec())?;
+    let agent = first_agent(app.world_mut())?;
     app.world_mut().entity_mut(agent).insert(connection);
     let ended = |world: &World| world.resource::<Ended>().0.len();
     let mut refused = false;
@@ -456,6 +456,7 @@ fn stopped_calls_reach_the_budget(name: &str, items: &[Relayed], streamed: Optio
         app.update();
     }
     assert!(refused, "{:?}", seen(&app));
+    Some((app, wakes, agent))
 }
 
 #[test]
@@ -470,7 +471,20 @@ fn stopped_calls_with_an_estimate_reach_the_budget() {
     stopped_calls_reach_the_budget("stopped-estimated", &items, Some("The answer is"));
 }
 
+/// A call stopped before anything came refuses the next, and setting the
+/// budget again accepts it.
 #[test]
 fn calls_stopped_before_anything_streamed_reach_the_budget() {
-    stopped_calls_reach_the_budget("stopped-unknown", &[], None);
+    let Some((mut app, wakes, agent)) =
+        stopped_calls_reach_the_budget("stopped-unknown", &[], None)
+    else {
+        return;
+    };
+    assert_eq!(app.world().resource::<StoppedUsage>().unknown, 1);
+    let shown = command(&mut app, "budget").join("\n");
+    assert!(shown.contains("Set /budget again to go on."), "{shown}");
+    command(&mut app, "budget 50 tokens");
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Go on.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| streaming(world, agent, None));
 }

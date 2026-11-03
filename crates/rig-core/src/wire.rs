@@ -334,6 +334,9 @@ pub(crate) mod reply {
         pub(crate) fold: Op::Fold,
         pub(crate) items: VecDeque<Result<Item<Op::Event>, ProviderError>>,
         pub(crate) end: Option<Op::End>,
+        /// The usage the provider reported before the end that no relay
+        /// has forwarded yet.
+        pub(crate) usage: Option<crate::completion::Usage>,
         pub(crate) raw: Option<serde_json::Value>,
         /// The response a relayed reply's origin already folded.
         pub(crate) response: Option<Op::Response>,
@@ -350,6 +353,7 @@ pub(crate) mod reply {
                 fold,
                 items: VecDeque::new(),
                 end: None,
+                usage: None,
                 raw: None,
                 response: None,
                 request_id: None,
@@ -637,6 +641,14 @@ impl<'id, Op: Operation> Out<'id, Op> {
         <Op::Emit as reply::Closing<Op>>::close(&mut shared);
         shared.end = Some(end);
         Flow::Ended(Ended(()))
+    }
+
+    /// What the provider reported the reply used so far, before its end,
+    /// such as the input counted as it starts. A relay forwards it as
+    /// [`Relayed::Usage`](crate::streaming::Relayed::Usage); a later report
+    /// replaces it, and the end's usage is the whole.
+    pub fn usage(&mut self, usage: crate::completion::Usage) {
+        self.lock().usage = Some(usage);
     }
 
     /// A payload the provider sent that this decoder does not model. It

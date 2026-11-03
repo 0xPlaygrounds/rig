@@ -67,8 +67,8 @@ impl From<serde_json::Value> for UnknownPayload {
 mod unknown_payload_tests;
 
 /// One item of a completion stream relayed by a handler: who the reply is
-/// from, an item of the reply, or the response the origin folded when the
-/// provider ended it.
+/// from, an item of the reply, the usage the provider reported so far, or
+/// the response the origin folded when the provider ended it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Relayed {
     /// The wire, provider and model the reply is from, sent before its
@@ -76,6 +76,10 @@ pub enum Relayed {
     Origin(crate::message::Origin),
     /// An event, or a payload the origin's decoder did not model.
     Item(Item<StreamEvent>),
+    /// What the provider reported the reply used so far, before its end,
+    /// such as its input as the reply starts: all of it until now, so a
+    /// later report replaces an earlier one.
+    Usage(crate::completion::Usage),
     /// The provider ended the reply; the origin's response, shared.
     Done(Arc<CompletionResponse>),
 }
@@ -97,6 +101,13 @@ pub struct Streamed<Op: Operation> {
     provider: String,
     /// The error the stream yielded, which ends it.
     failed: Option<ProviderError>,
+}
+
+/// What [`Streamed`] takes next: an item, or the usage the provider
+/// reported since the last one.
+enum Taken<E> {
+    Item(Result<Item<E>, ProviderError>),
+    Usage(crate::completion::Usage),
 }
 
 /// A streamed completion.
@@ -126,14 +137,26 @@ impl<Op: Operation> Streamed<Op> {
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Item<Op::Event>, ProviderError>>> {
+        self.poll_taken(cx, false).map(|taken| match taken? {
+            Taken::Item(item) => Some(item),
+            Taken::Usage(_) => None,
+        })
+    }
+
+    /// [`Self::poll_item`], or with `usage` the usage the provider reported
+    /// since the last look, before the items.
+    fn poll_taken(&mut self, cx: &mut Context<'_>, usage: bool) -> Poll<Option<Taken<Op::Event>>> {
         loop {
             if self.failed.is_some() {
                 return Poll::Ready(None);
             }
             {
                 let mut shared = lock(&self.shared);
-                if let Some(item) = shared.take() {
-                    if let Err(error) = &item {
+                if usage && let Some(reported) = shared.usage.take() {
+                    return Poll::Ready(Some(Taken::Usage(reported)));
+                }
+                if let Some(item) = shared.take().map(Taken::Item) {
+                    if let Taken::Item(Err(error)) = &item {
                         record_request_id(&self.span, error.provider_request_id());
                         shared.items.clear();
                         self.failed = Some(error.clone());
@@ -233,6 +256,10 @@ impl Streamed<Completion> {
                             shared.items.push_back(Ok(item));
                             false
                         }
+                        Ok(Relayed::Usage(usage)) => {
+                            shared.usage = Some(usage);
+                            false
+                        }
                         Ok(Relayed::Done(response)) => {
                             shared.response = Some(Arc::unwrap_or_clone(response));
                             true
@@ -255,14 +282,22 @@ impl Streamed<Completion> {
         Self::new(Box::pin(reading), shared, tracing::Span::none(), label)
     }
 
-    /// This stream as a handler relays it: its items, then the response it
-    /// folds into, or the error that ended it. A reply cut short closes the
+    /// This stream as a handler relays it: its items and the usage its
+    /// provider reported before the end, then the response it folds into,
+    /// or the error that ended it. A reply cut short closes the
     /// relay without a response, as its transport closed.
     pub fn into_relay(mut self) -> StreamEvents {
         let origin = lock(&self.shared).fold.origin().clone();
         Box::pin(async_stream::stream! {
             yield Ok(Relayed::Origin(origin));
-            while let Some(item) = self.next().await {
+            while let Some(taken) = futures::future::poll_fn(|cx| self.poll_taken(cx, true)).await {
+                let item = match taken {
+                    Taken::Usage(usage) => {
+                        yield Ok(Relayed::Usage(usage));
+                        continue;
+                    }
+                    Taken::Item(item) => item,
+                };
                 match item {
                     Ok(item) => yield Ok(Relayed::Item(item)),
                     Err(ProviderError::Truncated) => return,

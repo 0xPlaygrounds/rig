@@ -34,7 +34,7 @@ use futures::StreamExt;
 use rig_core::completion::message::{turn_delivered_no_answer, turn_failure};
 use rig_core::completion::{
     self, CompletionRequest, CompletionResponse, GenerationOptions, Message, Section,
-    UnsupportedOption,
+    UnsupportedOption, Usage,
 };
 use rig_core::conversation::pairing::close_pending_with;
 use rig_core::conversation::{
@@ -270,8 +270,19 @@ pub(crate) struct Feed(Receiver<Fed>);
 const FEED_ITEMS: usize = 1024;
 
 /// What a model call's stream feeds its entity: an item of any kind came
-/// at this time, the reply's end too, with its event, if it is one.
-pub(crate) struct Fed(web_time::SystemTime, Option<StreamEvent>);
+/// at this time, the reply's end too, with its event, if it is one; or
+/// the usage its provider reported so far.
+pub(crate) enum Fed {
+    Item(web_time::SystemTime, Option<StreamEvent>),
+    Usage(Usage),
+}
+
+/// On a model call whose provider reported usage before its reply ended:
+/// the latest report, all the reply used until then, such as its input
+/// counted as the reply starts. A reply that ended carries its own whole
+/// usage; a call stopped or superseded before has only this.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct ReportedUsage(pub Usage);
 
 /// An event a model call streamed, any model call, written in
 /// [`Stage::Arrive`] in the order it came, before the call's outcome is
@@ -1275,13 +1286,19 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Done(response)) => {
                 // The call may be gone, which closes the feed; the reply
                 // still finishes.
-                feed.send(Fed(web_time::SystemTime::now(), None)).await.ok();
+                let end = Fed::Item(web_time::SystemTime::now(), None);
+                feed.send(end).await.ok();
                 return Ok(effect::Answered::Completion(response));
+            }
+            Ok(Relayed::Usage(usage)) => {
+                feed.send(Fed::Usage(usage)).await.ok();
+                wake.wake();
+                continue;
             }
             Ok(Relayed::Item(Item::Event(event))) => Some(event),
             Ok(Relayed::Item(_)) => None,
         };
-        feed.send(Fed(web_time::SystemTime::now(), event))
+        feed.send(Fed::Item(web_time::SystemTime::now(), event))
             .await
             .ok();
         wake.wake();
@@ -1298,8 +1315,8 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`StreamTiming`], a [`StreamDelta`] per event, in order, and each event
-/// into its [`Partial`], if it has one.
+/// [`StreamTiming`], a [`StreamDelta`] per event, in order, each event
+/// into its [`Partial`], if it has one, and its [`ReportedUsage`].
 pub(crate) fn stream_partials(
     mut calls: Query<(
         Entity,
@@ -1319,7 +1336,14 @@ pub(crate) fn stream_partials(
         // What came before this look, so a stream that keeps feeding never
         // holds the frame; a finished reply sent all of it before it did.
         let came = feed.0.len();
-        for Fed(at, event) in std::iter::from_fn(|| feed.0.try_recv().ok()).take(came) {
+        for fed in std::iter::from_fn(|| feed.0.try_recv().ok()).take(came) {
+            let (at, event) = match fed {
+                Fed::Item(at, event) => (at, event),
+                Fed::Usage(usage) => {
+                    commands.entity(effect).try_insert(ReportedUsage(usage));
+                    continue;
+                }
+            };
             match streamed.as_deref_mut().or(first.as_mut()) {
                 Some(stamp) => {
                     stamp.last = at;

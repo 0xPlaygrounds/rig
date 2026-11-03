@@ -257,7 +257,7 @@ where
                 }
             }
             // An unmodeled provider event carries no visible text.
-            Ok(Some(Ok(Relayed::Item(Item::Unknown(_))))) => {}
+            Ok(Some(Ok(Relayed::Item(Item::Unknown(_)) | Relayed::Usage(_)))) => {}
         }
     }
 

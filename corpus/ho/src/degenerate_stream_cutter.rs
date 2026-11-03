@@ -242,7 +242,7 @@ impl Cutter {
                 }
                 self.items.push(item.clone());
             }
-            Relayed::Done(_) => {}
+            Relayed::Done(_) | Relayed::Usage(_) => {}
         }
         vec![relayed]
     }
