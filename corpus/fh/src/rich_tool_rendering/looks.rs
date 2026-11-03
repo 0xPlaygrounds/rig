@@ -242,6 +242,13 @@ fn search(view: &ToolCallView<'_>) -> Vec<LookLine> {
     if let Some(more) = (found.unread.len().checked_sub(UNREAD_ROWS)).filter(|more| *more > 0) {
         hits.push(format!("could not read {more} more"));
     }
+    match found.skipped {
+        0 => {}
+        1 => hits.push("skipped 1 file: too large, not a regular file or not text".to_owned()),
+        files => hits.push(format!(
+            "skipped {files} files: too large, not regular files or not text"
+        )),
+    }
     let mut lines = vec![LookLine::from(view.header(title, count))];
     lines.extend(looked(text_rows(&hits.join("\n"), Style::new().dim())));
     lines

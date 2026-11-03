@@ -46,6 +46,17 @@ fn a_listing_shows_what_files_lists_down_to_its_depth() {
     );
     assert_eq!(context.result::<OutputCut>().ok().flatten(), None);
 
+    let zero = futures::executor::block_on(
+        list.call(&mut ToolContext::new(), ListArgs::new(".").depth(0)),
+    );
+    let said = zero
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(
+        said.contains("depth must be at least 1"),
+        "a depth of 0 is refused: {said}"
+    );
     let (all, _) = run(ListArgs::new("src"));
     assert_eq!(all, "deep/mod.rs\nlib.rs\n");
     let (refused, _) = run(ListArgs::new(".."));

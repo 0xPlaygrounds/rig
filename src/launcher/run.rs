@@ -281,6 +281,7 @@ fn launch(
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
             .env_remove(env::NOTICE)
+            .env_remove(env::WARNING)
             .env_remove(env::BUILD_FAILURE)
             .envs(&answers);
         if let Some(working) = &claimed.directory {
@@ -288,6 +289,10 @@ fn launch(
         }
         if let Some(notice) = notice.take() {
             command.env(env::NOTICE, notice);
+        }
+        // Only the first start runs elsewhere than it was.
+        if let Some(moved) = claimed.moved.take() {
+            command.env(env::WARNING, moved);
         }
         // Only the first start follows the failed build.
         if let Some(failure) = build_failure.take() {
@@ -584,6 +589,8 @@ struct Claimed {
     reason: StartReason,
     /// The directory the session runs in, when known and still there.
     directory: Option<PathBuf>,
+    /// Why it runs elsewhere than the directory it saved, which is gone.
+    moved: Option<String>,
     _lock: File,
 }
 
@@ -652,10 +659,18 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
         }
     };
     let session = home.session(&id);
+    let mut moved = None;
     let directory = match session.working_directory() {
         Some(directory) => Some(directory),
         None => {
             if let Some(here) = here {
+                moved = session.saved_directory().map(|gone| {
+                    format!(
+                        "The session's directory {} is gone, so it runs in {}.",
+                        gone.display(),
+                        here.display()
+                    )
+                });
                 session.set_working_directory(here)?;
             }
             here.map(Path::to_path_buf)
@@ -666,6 +681,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
             id,
             reason,
             directory,
+            moved,
             _lock: lock,
         },
         notice,

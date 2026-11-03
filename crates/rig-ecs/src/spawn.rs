@@ -51,6 +51,8 @@ pub struct AgentSpec {
     /// A catalog model that calls tools, as `vendor/model`.
     pub model: Option<String>,
     /// An effort, such as `low`, which becomes its reasoning setting.
+    /// Without one it has its origin's on its origin's model, and its
+    /// model's default on another.
     pub effort: Option<String>,
     /// Its tools, by name: each a registered tool its origin keeps.
     pub tools: Option<Vec<String>>,

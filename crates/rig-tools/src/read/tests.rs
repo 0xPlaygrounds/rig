@@ -85,6 +85,17 @@ fn an_offset_past_the_end_says_so() {
     assert_eq!(shown, "[offset 5 is past the end: the file has 3 lines]\n");
 }
 
+/// An offset of 0 is refused rather than read as 1.
+#[test]
+fn an_offset_of_zero_is_refused() {
+    let (read, _) = call(ReadArgs::new("Cargo.toml").lines(0, 10));
+    let said = read
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(said.contains("offset counts lines from 1"), "{said}");
+}
+
 /// A file of long lines reads as far as one of short lines: its lines are
 /// cut to fit the bytes a read shows, and a note says so and how to see
 /// more of each, while a read of a few of them shows them whole.

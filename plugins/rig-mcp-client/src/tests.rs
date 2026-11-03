@@ -611,7 +611,8 @@ fn a_list_left_unanswered_holds_back_no_later_change() {
     app.finish();
     run_until(&mut app, &wakes, |world| has(world, "stub__mul"));
     let told = notices(app.world());
-    let unlisted = "its tools could not be listed again: no answer within 1s";
+    let unlisted =
+        "its tools could not be listed again: no answer within 1s (`[mcp] connect_timeout_secs`)";
     assert!(told.iter().any(|text| text.contains(unlisted)), "{told:?}");
     std::fs::remove_dir_all(project).ok();
 }
@@ -647,7 +648,8 @@ fn a_headless_run_gives_up_on_a_server_that_fails_or_never_answers() {
     };
     assert!(failed("broken") && failed("silent"), "{told:?}");
     assert!(
-        told.iter().any(|text| text.contains("no answer within 1s")),
+        told.iter()
+            .any(|text| text.contains("no answer within 1s (`[mcp] connect_timeout_secs`)")),
         "{told:?}"
     );
     std::fs::remove_dir_all(project).ok();
@@ -1267,4 +1269,19 @@ fn a_tool_list_past_the_limit_loses_the_server_saying_why() {
     let ran = runtime.block_on(start.run(&Outbox(sender)));
     let why = ran.err().unwrap_or_default();
     assert!(why.contains("more than 1024 bytes"), "{why}");
+}
+
+/// A wait of 0 seconds does not read, so the user's settings refuse the
+/// run naming the key, rather than it becoming 1.
+#[test]
+fn a_wait_of_zero_seconds_does_not_read() {
+    for key in ["connect_timeout_secs", "first_retry_secs"] {
+        let settings = Settings::from_toml(&format!("[mcp]\n{key} = 0"));
+        let read = settings.get::<McpSettings>("mcp");
+        assert!(
+            read.as_ref().is_err_and(|why| why.contains("[mcp]")),
+            "{key}: {:?}",
+            read.err()
+        );
+    }
 }

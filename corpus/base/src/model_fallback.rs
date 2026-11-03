@@ -5,7 +5,8 @@
 //! turn, to the next model of the chain that is not cooling down, and the
 //! model that failed is skipped for the cooldown; after it, new turns go
 //! back to it. A Review system reads the kernel's [`RetryVerdict`] (the
-//! retries gave up, or a retry would not help) and supersedes the call; a
+//! retries gave up, or a retry would not help, or the kernel would retry
+//! without end, having no `[retry] max_retries`) and supersedes the call; a
 //! Prepare system sends a call bound for a cooling model to the chain
 //! instead. A context overflow is left to compaction, and a failure another
 //! plugin holds or superseded is left to it. Both systems are in the public
@@ -26,6 +27,7 @@ use crate::model_router::RouteSystems;
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_ecs::retry::RetryPolicy;
 use serde::{Deserialize, Deserializer};
 
 #[cfg(test)]
@@ -180,7 +182,8 @@ fn route(
 /// A turn's call that failed for good, its retries spent or not worth
 /// trying, is sent again at once on the next model of the chain, which
 /// gets the usual retries of its own: a new call with the same request
-/// supersedes it in the same turn.
+/// supersedes it in the same turn. With no `[retry] max_retries`, whose
+/// retries never run out, a failure that would be retried moves on at once.
 fn fall_back(
     failed: Query<
         (
@@ -200,6 +203,7 @@ fn fall_back(
         ),
     >,
     mut turns: Query<&mut Recovery>,
+    policy: Res<RetryPolicy>,
     mut chain: Chain,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -208,7 +212,9 @@ fn fall_back(
         let (Err(report), Some(model)) = (&outcome.0, &request.connection) else {
             continue;
         };
-        if !matches!(verdict.0, Verdict::GaveUp(_) | Verdict::Final) || !falls_back(report) {
+        let spent = matches!(verdict.0, Verdict::GaveUp(_) | Verdict::Final);
+        let endless = matches!(verdict.0, Verdict::Retry(_)) && policy.max_retries.is_none();
+        if !(spent || endless) || !falls_back(report) {
             continue;
         }
         chain.cool(model);

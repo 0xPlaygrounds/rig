@@ -30,6 +30,7 @@ impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Activity>()
             .init_resource::<MessageFeed>()
+            .init_resource::<rig_ecs::retry::RetryPolicy>()
             .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
             .add_observer(feed_deliveries);
         #[cfg(feature = "tui")]
@@ -299,17 +300,17 @@ const STATUS: rig_tui::StatusItem =
 /// Each agent's status, in its status line: green when idle, yellow at
 /// work, red waiting to retry.
 #[cfg(feature = "tui")]
-fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>) {
+fn show_status(
+    mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>,
+    policy: Res<rig_ecs::retry::RetryPolicy>,
+) {
     use rig_tui::Tone;
     for (activity, mut items) in &mut agents {
         let shown = match &activity.status {
             ActivityStatus::Idle => STATUS.says("idle", Tone::Green),
             ActivityStatus::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
             ActivityStatus::Retrying { attempt, seconds } => STATUS.says(
-                format!(
-                    "retry {attempt}/{} in {seconds}s…",
-                    rig_ecs::turn::RETRY_POLICY.max_retries
-                ),
+                format!("retry {} in {seconds}s…", policy.tries(*attempt)),
                 Tone::Red,
             ),
             status => STATUS.says(format!("{status}…"), Tone::Yellow),

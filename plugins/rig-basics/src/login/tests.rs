@@ -370,7 +370,7 @@ fn pace(retries: u32, cooldown: std::time::Duration) -> offered::Pace {
     let quick = std::time::Duration::from_millis(1);
     offered::Pace {
         retry: rig_ecs::retry::RetryPolicy {
-            max_retries: retries,
+            max_retries: Some(retries),
             first_backoff: quick,
             max_backoff: quick,
             ..rig_ecs::retry::RetryPolicy::DEFAULT
@@ -398,7 +398,7 @@ fn a_sign_in_during_a_retrys_wait_stops_the_old_fetch() {
     let session = app.world().resource::<super::Session>();
     let wait = std::time::Duration::from_millis(300);
     let retry = rig_ecs::retry::RetryPolicy {
-        max_retries: 1,
+        max_retries: Some(1),
         first_backoff: wait,
         max_backoff: wait,
         ..rig_ecs::retry::RetryPolicy::DEFAULT

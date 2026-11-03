@@ -550,6 +550,41 @@ fn a_task_subagents_subagents_subagent_starts() {
     assert!(access.is_some_and(|access| access.allows(TASK)));
 }
 
+/// A subagent given a model of its own and no effort works at that
+/// model's default, and `task`'s answer says so; on its parent's model it
+/// works at its parent's, unsaid.
+#[test]
+fn a_subagent_on_another_model_is_said_to_work_at_its_default_effort() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let builtin = |app: &mut App| {
+        app.insert_resource(Models(Connector::new(Catalog::builtin().clone())));
+    };
+    let mut session = Session::with(&MemoryStore::default(), Some(&model), builtin);
+    session
+        .app
+        .add_systems(AgentPass, hold_turn_calls.in_set(Stage::Gate));
+    let parent = session.parent;
+    let world = session.app.world();
+    let spec = world.get::<Connection>(parent).map(|it| it.spec.clone());
+    let high = spec.and_then(|spec| spec.reasoning.named("high").ok());
+    assert!(high.is_some(), "the parent's model takes a high effort");
+    let high = ReasoningSetting(high.and_then(|high| high.reasoning));
+    (session.app.world_mut().entity_mut(parent)).insert(high);
+    let other = json!({
+        "description": "elsewhere",
+        "prompt": "Look.",
+        "model": "openrouter/moonshotai/kimi-k3",
+    });
+    let said = session.call(parent, TASK, "t1", other);
+    assert!(said.ends_with("Its effort is its model's default, as its model differs from yours; give `effort` to choose one."), "{said}");
+    let same = json!({ "description": "here", "prompt": "Look." });
+    let said = session.call(parent, TASK, "t2", same);
+    assert!(
+        said.starts_with("Started subagent") && !said.contains("effort"),
+        "{said}"
+    );
+}
+
 #[test]
 fn what_a_parent_knows_of_the_environment_goes_to_every_subagent_below_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());

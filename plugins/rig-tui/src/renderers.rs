@@ -12,7 +12,8 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{
-    Audio, Document, Image, ToolCall, ToolFunction, ToolResult, UserContent, Video,
+    Audio, Document, Image, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
+    Video,
 };
 use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, ToolResultContext};
 use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, MessageId};
@@ -420,14 +421,24 @@ pub(crate) fn plugin_name(author: &Author) -> &str {
     }
 }
 
-/// A tool result's text, joined.
+/// A tool result's blocks, joined: its text, its JSON as JSON, and a last
+/// line counting its images, which are not drawn.
 pub(crate) fn result_text(result: &ToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content| content.as_text())
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut parts: Vec<String> = Vec::new();
+    let mut images = 0;
+    for content in &result.content {
+        match content {
+            ToolResultContent::Text(text) => parts.push(text.text.clone()),
+            ToolResultContent::Json { value } => parts.push(value.to_string()),
+            ToolResultContent::Image(_) => images += 1,
+        }
+    }
+    match images {
+        0 => {}
+        1 => parts.push("[1 image]".to_owned()),
+        images => parts.push(format!("[{images} images]")),
+    }
+    parts.join("\n")
 }
 
 /// The style of a tool result's lines: red for an error, else dimmed.

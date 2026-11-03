@@ -21,7 +21,9 @@
 //! ([`RunStart::take_refusal`]) in `Update`; else the harness refuses the
 //! run on stderr, and the launcher says it again once the screen is back.
 //! A run that keeps no session runs no agent and checks nothing: `rig
-//! acp`'s router hands `--tools` to its sessions.
+//! acp`'s router hands `--tools` to its sessions. A failed model call is
+//! retried as the user's `[retry]` table says ([`RetryPolicy`]): without
+//! it, until it succeeds or the turn is stopped.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -42,6 +44,7 @@ use rig_ecs::StopTurnsOnExit;
 use rig_ecs::agent::{RunTools, TurnOf};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::restore::{CarryOn, Restored};
+use rig_ecs::retry::RetryPolicy;
 use rig_ecs::stage::{AgentLoop, Effect, Outcome, Settled, Started};
 use rig_ecs::tasks::{PollTasks, Running, Wake};
 use rig_ecs::tools::ToolDef;
@@ -49,6 +52,7 @@ use rig_ecs::tools::ToolDef;
 use crate::host::cli::{self, AppCliExt, Cli, Flag};
 use crate::host::exit::{ExitReason, ExitRequest};
 use crate::host::launcher::{self, Invoked};
+use crate::settings::AppSettingsExt;
 
 /// The option that leaves the run only the tools named ([`RunTools`]):
 /// every agent keeps the access the session saved, within these, for this
@@ -139,10 +143,23 @@ impl Work<'_, '_> {
     }
 }
 
-/// Declares `--tools` and keeps the run contract: see [`run`](self). Part
-/// of [`RigHarnessPlugins`](crate::RigHarnessPlugins); a plugin that reads
-/// [`RunStart`] adds it when it is missing, as a test app may leave it out.
+/// Declares `--tools`, reads `[retry]` and keeps the run contract: see
+/// [`run`](self). Part of [`RigHarnessPlugins`](crate::RigHarnessPlugins);
+/// a plugin that reads [`RunStart`] adds it when it is missing, as a test
+/// app may leave it out.
 pub struct RunPlugin;
+
+/// `[retry]` in `settings.toml`, the kernel's [`RetryPolicy`]: a key left
+/// out sets no limit.
+#[derive(Resource, serde::Deserialize, Default, Clone, Copy)]
+#[serde(default, deny_unknown_fields)]
+struct RetrySettings {
+    /// Retries of a failed model call in a row before its turn fails.
+    max_retries: Option<u32>,
+    /// The longest wait, in seconds, a provider may ask for before a retry;
+    /// past it the turn fails.
+    max_wait_secs: Option<u64>,
+}
 
 impl Plugin for RunPlugin {
     fn build(&self, app: &mut App) {
@@ -153,6 +170,15 @@ impl Plugin for RunPlugin {
             )
             .value("NAME[,NAME…]"),
         );
+        let retry = *app
+            .add_setting::<RetrySettings>("retry")
+            .world()
+            .resource::<RetrySettings>();
+        app.insert_resource(RetryPolicy {
+            max_retries: retry.max_retries,
+            max_asked_wait: retry.max_wait_secs.map(std::time::Duration::from_secs),
+            ..RetryPolicy::DEFAULT
+        });
         start(app);
     }
 
@@ -206,7 +232,8 @@ impl AppRunExt for App {
                     .in_set(RunExitSystems)
                     .in_set(OnAppExitSystems)
                     .before(StopTurnsOnExit)
-                    .run_if(on_message::<AppExit>),
+                    .run_if(on_message::<AppExit>)
+                    .run_if(signalled_unstarted),
             )
     }
 }
@@ -253,22 +280,24 @@ fn exit_unstarted(
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RunExitSystems;
 
-/// On a signal before the start was over, lets each restored turn carry on
-/// ([`CarryOn`]): no plugin had its say about it yet, so the exit leaves it
-/// as the session has it, for the next run to decide. A run that ends
-/// itself first, as on a refused `--tools`, stops it as any exit does.
-fn keep_restored(
-    start: Res<RunStart>,
-    reason: Option<Res<ExitReason>>,
+/// Lets each restored turn carry on ([`CarryOn`]): the exit leaves it as
+/// the session has it, for the next run to decide. Run on a signal before
+/// the start was over ([`signalled_unstarted`]), as no plugin had its say
+/// about it yet, and on a refused run.
+pub(crate) fn keep_restored(
     turns: Query<Entity, (With<Restored>, With<TurnOf>, Without<CarryOn>)>,
     mut commands: Commands,
 ) {
-    if start.over || !matches!(reason.as_deref(), Some(ExitReason::Signal)) {
-        return;
-    }
     for turn in &turns {
         commands.entity(turn).insert(CarryOn);
     }
+}
+
+/// Whether a signal ended the run before its start was over. A run that
+/// ends itself first, as on a refused `--tools`, stops its restored turns
+/// as any exit does.
+fn signalled_unstarted(start: Res<RunStart>, reason: Option<Res<ExitReason>>) -> bool {
+    !start.over && matches!(reason.as_deref(), Some(ExitReason::Signal))
 }
 
 /// The names `--tools` gives, until the start checks them.

@@ -701,12 +701,53 @@ fn stalled() -> Vec<MockStreamEvent> {
     vec![MockStreamEvent::Error(MockError::Stalled(idle))]
 }
 
-/// A summary call that times out is sent again once; timing out again, it
-/// fails, and the refused call fails as it is, with nothing cleared.
+/// With no `[retry]` limit, a summary call that times out twice is sent a
+/// third time and the turn goes on.
 #[test]
-fn a_summary_call_that_times_out_is_retried_once() {
+fn a_summary_call_that_times_out_twice_is_retried_again() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns(vec![
+        too_long(),
+        stalled(),
+        stalled(),
+        reply("## Goal\nAnswer the next question."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    limit_input(&mut app, agent, 120_000);
+    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
+    app.world_mut().trigger(steer);
+    let waiting = |world: &World| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Backoff>())
+    };
+    for _ in 0..2 {
+        run_until(&mut app, &wakes, waiting);
+        advance(&mut app, std::time::Duration::from_secs(10));
+    }
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
+    assert_eq!((sent.len(), summaries), (5, 3), "{sent:?}");
+}
+
+/// A summary call that times out is retried as the turn's calls are, here
+/// once (`[retry] max_retries = 1`); timing out again, it fails, and the
+/// refused call fails as it is, with nothing cleared.
+#[test]
+fn a_summary_call_that_times_out_is_retried_as_a_turns_call_is() {
     let (mut app, wakes) = start(&MemoryStore::default());
     collect::<Notice>(&mut app);
+    app.insert_resource(RetryPolicy {
+        max_retries: Some(1),
+        ..RetryPolicy::DEFAULT
+    });
     let model = MockCompletionModel::from_stream_turns(vec![
         too_long(),
         stalled(),
@@ -738,15 +779,18 @@ fn a_summary_call_that_times_out_is_retried_once() {
     assert_eq!((sent.len(), summaries), (3, 2), "{sent:?}");
     let live = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
     assert!(!live.contains(rig_memory::ClearToolOutputs::PLACEHOLDER));
-    // Its notice promises the one retry, not the turn's four.
     let notices = notices(&app);
     assert!(
         notices
             .iter()
-            .any(|it| it.contains("(once, as it timed out); stopping the turn (Esc)")),
+            .any(|it| it.contains("(retry 1/1); stopping the turn (Esc)")),
         "{notices:?}"
     );
-    assert!(!notices.iter().any(|it| it.contains("1/4")), "{notices:?}");
+    assert!(
+        notices.iter().any(|it| it
+            .contains("Not retrying: it failed 2 times in a row (`[retry] max_retries` is 1)")),
+        "the failure names the setting that ended the retries: {notices:?}"
+    );
 }
 
 /// A request fits when the input limit holds it and the window leaves
@@ -769,18 +813,19 @@ fn a_request_fits_only_with_room_for_its_answer() {
     ));
 }
 
-/// A turn asks for its own limit, or 64k plus any thinking budget within
-/// the model's limit, within the room left. With no room, or a model whose
-/// limits are unknown (`None`), it is left as it is.
+/// A turn asks for its own limit, or the model's output limit with any
+/// thinking budget, within the room left. With no room, or a model whose
+/// output limit is unknown (`None`), it is left as it is, for the server's
+/// default. `answer_tokens` sets the budget in the request's place.
 #[test]
-fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
+fn turn_output_uses_the_models_limit_and_preserves_explicit_limits() {
     let spec = rig_core::catalog::Catalog::builtin().resolve("openrouter/moonshotai/kimi-k3");
     assert!(spec.is_ok(), "the catalog lists Kimi K3");
     let Ok(spec) = spec else { return };
     for (limit, asked, thinking, used, expected) in [
-        (Some(943_718), None, None, 100_000, Some(64_000)),
+        (Some(943_718), None, None, 100_000, Some(943_718)),
         (Some(943_718), Some(200_000), None, 100_000, Some(200_000)),
-        (Some(943_718), None, Some(16_000), 100_000, Some(81_024)),
+        (Some(943_718), None, Some(16_000), 100_000, Some(943_718)),
         (Some(64_000), None, Some(16_384), 100_000, Some(64_000)),
         (Some(32_000), None, None, 100_000, Some(32_000)),
         (Some(943_718), None, None, 1_000_000, Some(44_480)),
@@ -795,12 +840,51 @@ fn turn_output_uses_a_working_budget_and_preserves_explicit_limits() {
         request.max_tokens = asked;
         request.options.reasoning = thinking.map(|tokens| completion::Reasoning::Budget { tokens });
         let mut model = ModelRequest::new(request);
-        fit_output(&mut model, &spec, used);
+        fit_output(&mut model, &spec, used, None);
         assert_eq!(
             model.request.max_tokens, expected,
             "{limit:?}, {asked:?}, {thinking:?}, {used}"
         );
     }
+    let fitted = |max_output, answer| {
+        let mut spec = spec.spec.clone();
+        spec.max_output_tokens = max_output;
+        let mut model = ModelRequest::new(CompletionRequest::new("Answer."));
+        fit_output(&mut model, &spec, 100_000, answer);
+        model.request.max_tokens
+    };
+    assert_eq!(fitted(None, None), None);
+    assert_eq!(fitted(Some(943_718), Some(8_000)), Some(8_000));
+    // A request moved to a model of a smaller output limit, as a fallback
+    // moves it, asks for no more than that model gives.
+    let mut smaller = spec.spec.clone();
+    smaller.max_output_tokens = Some(64_000);
+    let mut request = CompletionRequest::new("Answer.");
+    request.max_tokens = Some(128_000);
+    let mut model = ModelRequest::new(request);
+    let said = fit_output(&mut model, &smaller, 100_000, None);
+    assert_eq!(model.request.max_tokens, Some(64_000));
+    assert!(
+        said.is_some_and(|said| said.contains("an output limit of 128000 tokens")),
+        "a lowered limit is said"
+    );
+}
+
+/// `[compaction] answer_tokens = 0` does not read, so the settings refuse
+/// the run rather than asking every request for no answer.
+#[test]
+fn an_answer_budget_of_zero_does_not_read() {
+    let (mut app, _wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[compaction]\nanswer_tokens = 0",
+    ));
+    app.add_plugins(CompactionPlugin);
+    let problems = app
+        .world()
+        .resource::<rig_harness::settings::Settings>()
+        .problems()
+        .join("\n");
+    assert!(problems.contains("[compaction]"), "{problems}");
 }
 
 /// The one request a turn on five 15k reads sends, clearing near the
@@ -1006,6 +1090,39 @@ fn an_overflow_with_nothing_to_summarize_clears_only_what_reads_back_unchanged()
             );
         }
     }
+}
+
+/// A compaction left with nothing older to summarize names a
+/// `keep_recent` the user set, as it is one reason why.
+#[test]
+fn a_set_keep_recent_is_named_when_nothing_older_is_left() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    collect::<Notice>(&mut app);
+    app.world_mut()
+        .resource_mut::<CompactionDefault>()
+        .0
+        .keep_recent = Some(1_000_000);
+    let model = MockCompletionModel::from_stream_turns(vec![too_long()]);
+    let agent = agent(&mut app, &model, 1_000_000, Vec::new());
+    assert!(agent.is_some(), "the catalog lists the model");
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    let outputs: Vec<(String, String)> = (0..6)
+        .map(|n| (format!("gone{n}.rs"), "x".repeat(60_000)))
+        .collect();
+    let read = summarized_then_read(app.world_mut(), agent, &outputs);
+    assert!(read.is_some(), "the conversation was summarized");
+    let world = app.world_mut();
+    let turn = world.spawn(TurnOf(agent)).id();
+    world.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let notices = notices(&app);
+    assert!(
+        notices.iter().any(|it| it
+            .contains("(`[compaction] keep_recent` keeps the newest 1000000 tokens as they are)")),
+        "{notices:?}"
+    );
 }
 
 /// Near the limit, notes too big to ask with nothing older to summarize
@@ -1533,42 +1650,6 @@ fn notes_too_big_near_the_limit_give_way_to_a_summary_on_the_route() {
             if summary.contains("You summarize a conversation") && summary.len() < 60_000 * 3),
         "a summary of its own within the routed model's limit, then the request: {sent:?}"
     );
-}
-
-/// A summary call that times out, fails for another passing reason, then
-/// times out again is not sent a fourth time: the timeout is remembered
-/// across the failure in between.
-#[test]
-fn a_timeout_is_remembered_across_another_failure() {
-    let (mut app, wakes) = start(&MemoryStore::default());
-    let model = MockCompletionModel::from_stream_turns(vec![
-        too_long(),
-        stalled(),
-        unavailable(),
-        stalled(),
-        reply("## Goal\nNever asked."),
-    ]);
-    let agent = agent(&mut app, &model, 1_000_000, read_files(6));
-    assert!(agent.is_some(), "the catalog lists the model");
-    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
-    limit_input(&mut app, agent, 120_000);
-    let steer = Deliver::new(agent, "And the next question?", DeliveryMode::Steer);
-    app.world_mut().trigger(steer);
-    let waiting = |world: &World| {
-        world
-            .iter_entities()
-            .any(|entity| entity.contains::<Backoff>())
-    };
-    for _ in 0..2 {
-        run_until(&mut app, &wakes, waiting);
-        advance(&mut app, std::time::Duration::from_secs(10));
-    }
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
-    let sent = sent(&model);
-    let summaries = sent.iter().filter(|request| asks_summary(request)).count();
-    assert_eq!((sent.len(), summaries), (4, 3), "{sent:?}");
 }
 
 /// After an overflow the summary reads at most half the input limit: one
@@ -2392,7 +2473,7 @@ fn settings_set_only_what_they_name() {
     ));
     app.add_plugins(CompactionPlugin);
     let default = app.world().resource::<CompactionDefault>().0.clone();
-    assert_eq!(default.keep_recent, 5000);
+    assert_eq!(default.keep_recent, Some(5000));
     assert_eq!(default.summarizer.limits.reserve, 30_000);
     let built_in = CompactionDefault::default().0;
     assert_eq!(default.keep_asked, built_in.keep_asked);

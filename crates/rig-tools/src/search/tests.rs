@@ -128,7 +128,11 @@ fn a_search_for_files_lists_their_paths() {
         &mut context,
         SearchArgs::new("todo").files(),
     ));
-    assert_eq!(found.ok().as_deref(), Some("src/a.rs"));
+    let found = found.unwrap_or_default();
+    assert!(
+        found.starts_with("src/a.rs\n[skipped 1 file: "),
+        "the binary file was not searched, and that is said: {found}"
+    );
     let read = context.result::<FilesRead>().ok().flatten();
     assert_eq!(read.map(|read| read.0.len()), Some(1));
     let mut context = ToolContext::new();
@@ -265,4 +269,23 @@ fn a_saved_search_without_unread_paths_loads_and_saves_as_before() {
     assert!(saved.is_ok_and(|found| found.unread.is_empty()));
     let written = serde_json::to_value(super::Found::default()).unwrap_or_default();
     assert!(written.get("unread").is_none(), "{written}");
+}
+
+/// Files a search does not read, as not text, are counted, so its result
+/// never reads as "no matches" for them.
+#[test]
+fn a_search_counts_the_files_it_skipped() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-skipped-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("text.txt"), "nothing here\n").ok();
+    std::fs::write(dir.join("blob.bin"), b"needle \xff\xfe\n").ok();
+    let args = SearchArgs::new("needle").in_path(dir.to_string_lossy());
+    let found = find(&Local, &args).unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(found.skipped, 1);
+    let text = render(&found);
+    assert!(
+        text.starts_with("No matches in the files read.\n[skipped 1 file: larger than 16 MB"),
+        "{text}"
+    );
 }

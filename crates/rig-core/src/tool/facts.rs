@@ -593,8 +593,8 @@ pub enum ExitStatus {
     Signaled,
     /// It ran past its time limit and was killed.
     TimedOut,
-    /// The tool killed it for another reason, such as printing too much or
-    /// the call being cancelled.
+    /// The tool killed it for another reason, such as the call being
+    /// cancelled.
     Killed,
 }
 

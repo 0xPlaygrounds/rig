@@ -173,7 +173,7 @@ impl Plugin for ShellTool {
 /// How much of a command's output the `shell` tool gives the model, read
 /// as each call runs: [`OutputLimit::default`] unless set. A plugin that cuts or
 /// summarizes output itself turns the cut off with `set(None)`, such as
-/// from its `finish`; the command is still killed past 10 MB of output.
+/// from its `finish`, and then holds all of it.
 /// Shared by its clones: change it with [`set`](Self::set), not by
 /// inserting a new one.
 #[derive(Resource, Clone, Debug)]

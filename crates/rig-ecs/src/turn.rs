@@ -8,7 +8,7 @@
 //! [`Footprint`]s conflict ([`Waiting`]); once all settled, their results go
 //! back in call order and the next `TurnCall` is spawned.
 //!
-//! A failed call gets the [`RETRY_POLICY`]'s [`RetryVerdict`] in Arrive,
+//! A failed call gets the [`RetryPolicy`]'s [`RetryVerdict`] in Arrive,
 //! which Review may edit or act on; Commit then backs off ([`Backoff`]) and
 //! retries, or ends the turn, and a call refused before it was sent ends
 //! it: the user's unanswered message goes back to the views. Every end is
@@ -80,10 +80,6 @@ pub const PURPOSE: &str = "turn";
 /// The notice when the agent has no model to call.
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 
-/// How failed model calls are retried: rig-core's default, four retries in
-/// a row per turn (a reply resets the count).
-pub const RETRY_POLICY: RetryPolicy = RetryPolicy::DEFAULT;
-
 /// A turn's recovery so far: the failed calls retried since its last reply.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
@@ -100,7 +96,7 @@ pub struct Recovery {
 #[derive(Component, Reflect, Clone, Debug)]
 #[reflect(Component, from_reflect = false)]
 pub struct Backoff {
-    /// Which retry this wait is for, from 1 to [`RETRY_POLICY`]'s `max_retries`.
+    /// Which retry this wait is for, from 1.
     pub attempt: u32,
     /// When the call is sent again.
     #[reflect(ignore)]
@@ -112,7 +108,10 @@ impl Backoff {
     pub fn after(attempt: u32, delay: Duration) -> Self {
         Self {
             attempt,
-            until: Instant::now() + delay,
+            // A verdict never waits past what the clock counts.
+            until: Instant::now()
+                .checked_add(delay)
+                .unwrap_or_else(Instant::now),
         }
     }
 
@@ -250,7 +249,7 @@ pub struct TurnCall;
 #[require(Effect)]
 pub struct SideCall(pub Entity);
 
-/// On a model call whose handler failed: what the [`RETRY_POLICY`] policy says,
+/// On a model call whose handler failed: what the [`RetryPolicy`] says,
 /// put by the kernel in Arrive with the turn's [`Recovery`]. Review may read
 /// it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over
 /// by superseding the call; for a [`TurnCall`], Commit carries out what is
@@ -1355,7 +1354,7 @@ pub(crate) fn stream_partials(
     }
 }
 
-/// Puts the [`RETRY_POLICY`] policy's [`RetryVerdict`] on each model call whose
+/// Puts the [`RetryPolicy`]'s [`RetryVerdict`] on each model call whose
 /// handler just failed, in [`Stage::Arrive`], counting its turn's
 /// [`Recovery`].
 pub(crate) fn judge_failures(
@@ -1364,6 +1363,7 @@ pub(crate) fn judge_failures(
         (With<ModelRequest>, Added<Outcome>, Without<Settled>),
     >,
     turns: Query<&Recovery>,
+    policy: Res<RetryPolicy>,
     mut commands: Commands,
 ) {
     for (call, effect, Outcome(outcome), of) in &failed {
@@ -1379,7 +1379,7 @@ pub(crate) fn judge_failures(
         // std's clock, which a `Retry-After` date is read against, read
         // through `web_time` so it works on the web too.
         let now = UNIX_EPOCH + Duration::from_millis(now_ms());
-        let verdict = RETRY_POLICY.verdict(report, retries, now);
+        let verdict = policy.verdict(report, retries, now);
         commands.entity(call).try_insert(RetryVerdict(verdict));
     }
 }
@@ -1400,6 +1400,7 @@ pub(crate) fn back_off(
         ),
     >,
     mut turns: Query<(&TurnOf, &mut Recovery, Option<&TurnOutcome>)>,
+    policy: Res<RetryPolicy>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1418,10 +1419,9 @@ pub(crate) fn back_off(
         notices.write(Notice::info(
             agent,
             format!(
-                "The model call failed: {report}. Retrying in {}s ({}/{}).",
+                "The model call failed: {report}. Retrying in {}s (retry {}).",
                 backoff.seconds_left(),
-                backoff.attempt,
-                RETRY_POLICY.max_retries
+                policy.tries(backoff.attempt)
             ),
         ));
         let hold = commands

@@ -68,7 +68,7 @@ use rig_core::tool::{
 };
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
-use rig_ecs::turn::RETRY_POLICY;
+use rig_ecs::retry::RetryPolicy;
 use serde::{Deserialize, Serialize};
 
 /// How long a test waits for a tool to answer.
@@ -1806,11 +1806,8 @@ fn a_call_that_gave_up_is_superseded_on_another_model_and_the_turn_goes_on() {
     let fallback = MockCompletionModel::from_stream_turns([answer("ok")]);
     app.init_resource::<Ended>()
         .add_observer(log_ended)
-        // The retries ran out already: the first failure gives up.
-        .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
-            let retries = RETRY_POLICY.max_retries;
-            commands.entity(turn.entity).insert(Recovery { retries });
-        })
+        // No retries: the first failure gives up.
+        .insert_resource(no_retries())
         .add_systems(
             AgentPass,
             fall_back(connection(&fallback)).in_set(Stage::Review),
@@ -1997,16 +1994,21 @@ fn a_failed_turn_gives_the_message_back_and_sent_again_it_goes_once() {
     }
 }
 
+/// A policy that gives up on the first failure.
+fn no_retries() -> RetryPolicy {
+    RetryPolicy {
+        max_retries: Some(0),
+        ..RetryPolicy::DEFAULT
+    }
+}
+
 fn send_again_after(failed: Vec<MockStreamEvent>, out_of_retries: bool) {
     let mut app = app();
     app.init_resource::<Ended>().add_observer(log_ended);
     collect_recalled(&mut app);
     if out_of_retries {
-        // The retries ran out already: a failure gives up at once.
-        app.add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
-            let retries = RETRY_POLICY.max_retries;
-            commands.entity(turn.entity).insert(Recovery { retries });
-        });
+        // No retries: a failure gives up at once.
+        app.insert_resource(no_retries());
     }
     let model = MockCompletionModel::from_stream_turns([failed, answer("ok")]);
     let agent = agent_on(&mut app, &model);

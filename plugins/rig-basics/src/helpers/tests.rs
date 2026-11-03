@@ -27,8 +27,11 @@ usage='{"v":3,"type":"usage","model":"test/model","purpose":"turn","usage":{"inp
 case "$task" in
   fail*) echo '{"v":3,"type":"exit","code":1,"error":"it broke","usage_complete":true}'; rm "$d/run/$$"; exit 1;;
   crash*) echo boom >&2; rm "$d/run/$$"; exit 3;;
+  noisy*) for n in 1 2 3 4 5 6 7; do echo "line $n" >&2; done; rm "$d/run/$$"; exit 3;;
   slow*) sleep 30;;
-  wait*) sleep 0.3;;
+  wait*) i=0; while [ "$(ls "$d/run" | wc -l)" -lt 10 ] && [ $i -lt 40 ]; do sleep 0.25; i=$((i+1)); done
+         ls "$d/run" | wc -l >> "$d/counts";;
+  long*) printf '{"v":3,"type":"exit","code":0,"answer":"%s","usage_complete":true}\n' "$(head -c 200000 /dev/zero | tr '\0' 'y')"; rm "$d/run/$$"; exit 0;;
   old*) echo '{"v":2,"type":"exit","code":0,"answer":"old"}'; rm "$d/run/$$"; exit 0;;
   partial*) echo "$usage"; rm "$d/run/$$"; exit 3;;
   spend*) echo "$usage"; while [ ! -e "$d/go" ]; do sleep 0.05; done; echo "$usage";
@@ -150,59 +153,78 @@ fn a_helper_gets_only_the_tools_of_this_run() {
     );
     // The caller keeps `read`; this run leaves it only `helper`.
     app.insert_resource(RunTools::new([HELPER]));
-    assert!(output(&mut app, &wakes, 0).starts_with("did: one"));
+    let refused = output(&mut app, &wakes, 0);
+    assert!(
+        refused.contains("`read` is not one of this run's tools"),
+        "a tool asked for is refused, not dropped: {refused}"
+    );
     assert!(output(&mut app, &wakes, 1).starts_with("did: two"));
     let args = std::fs::read_to_string(dir.join("args")).unwrap_or_default();
-    let mut lines = args.lines();
-    for task in ["one", "two"] {
-        let line = lines.next().unwrap_or_default();
-        assert!(
-            line.starts_with(&format!("-p --json --tools= -- {task}")),
-            "{args}"
-        );
-    }
+    assert_eq!(args.lines().count(), 1, "{args}");
+    assert!(args.starts_with("-p --json --tools= -- two"), "{args}");
 }
 
 #[test]
-fn side_by_side_helpers_run_four_at_a_time_and_failures_are_reported() {
-    let mut tasks: Vec<Value> = (0..5)
+fn side_by_side_helpers_all_run_at_once_and_failures_are_reported() {
+    let mut tasks: Vec<Value> = (0..10)
         .map(|n| json!({ "task": format!("wait {n}") }))
         .collect();
-    tasks.extend([json!({ "task": "fail" }), json!({ "task": "crash" })]);
-    let nine: Vec<Value> = (0..9).map(|n| json!({ "task": format!("{n}") })).collect();
+    tasks.extend([
+        json!({ "task": "fail" }),
+        json!({ "task": "crash" }),
+        json!({ "task": "noisy" }),
+    ]);
     let (mut app, wakes, dir) = helped(
         "side",
         &[
-            json!({ "tasks": tasks }),
-            json!({ "tasks": nine }),
+            json!({ "tasks": tasks, "timeout": 7200 }),
             json!({ "task": "fail" }),
         ],
     );
     let side = output(&mut app, &wakes, 0);
-    assert!(side.starts_with("5 of 7 helpers answered."), "{side}");
+    assert!(side.starts_with("10 of 13 helpers answered."), "{side}");
     assert!(
-        side.contains("did: wait 4") && side.contains("it broke"),
+        side.contains("did: wait 9") && side.contains("it broke"),
         "{side}"
     );
     assert!(
         side.contains("exit code 3") && side.contains("boom"),
         "{side}"
     );
+    assert!(
+        side.contains("[2 earlier lines of stderr dropped]\nline 3"),
+        "a cut stderr says so: {side}"
+    );
     let counts = std::fs::read_to_string(dir.join("counts")).unwrap_or_default();
     let most = counts
         .lines()
         .filter_map(|count| count.trim().parse::<usize>().ok())
         .max();
-    assert!(most.is_some_and(|most| most <= AT_ONCE), "{counts}");
-    let too_many = output(&mut app, &wakes, 1);
+    assert!(most.is_some_and(|most| most >= 10), "{counts}");
     assert!(
-        too_many.contains("give at most 8 tasks, not 9"),
-        "{too_many}"
-    );
-    assert!(
-        output(&mut app, &wakes, 2).contains("it broke"),
+        output(&mut app, &wakes, 1).contains("it broke"),
         "a failed child fails the call"
     );
+}
+
+/// An answer longer than a piece of output, 64 KB, is read whole.
+#[test]
+fn a_long_answer_is_read_whole() {
+    let (mut app, wakes, _) = helped("long", &[json!({ "task": "long" })]);
+    let answer = output(&mut app, &wakes, 0);
+    let answered = answer.chars().take_while(|c| *c == 'y').count();
+    assert_eq!(answered, 200_000, "{:.100}", answer);
+}
+
+#[test]
+fn a_timeout_of_zero_is_refused() {
+    let (mut app, wakes, dir) = helped("zero", &[json!({ "task": "one", "timeout": 0 })]);
+    let refused = output(&mut app, &wakes, 0);
+    assert!(
+        refused.contains("`timeout` must be at least 1 second"),
+        "{refused}"
+    );
+    assert!(!dir.join("args").exists(), "no helper started");
 }
 
 #[test]
@@ -382,17 +404,17 @@ fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
     }
 }
 
-/// A stopped call starts no more children: the four running are stopped,
-/// their spend unknown, and the fifth, refused its start, spent nothing.
+/// A stopped call stops every child it runs, all at once, and each one's
+/// spend is unknown: it may have spent before the stop.
 #[test]
-fn a_helper_a_stopped_call_never_started_spent_nothing() {
+fn a_stopped_calls_children_have_unknown_spend() {
     let tasks: Vec<Value> = (0..5)
         .map(|n| json!({ "task": format!("slow {n}") }))
         .collect();
     let (mut app, wakes, dir) = helped("stopped-start", &[json!({ "tasks": tasks })]);
     let running = dir.join("run");
     run_until(&mut app, &wakes, |_| {
-        std::fs::read_dir(&running).is_ok_and(|entries| entries.count() == AT_ONCE)
+        std::fs::read_dir(&running).is_ok_and(|entries| entries.count() == 5)
     });
     if let Some(agent) = first_agent(app.world_mut()) {
         app.world_mut().trigger(StopTurn::new(agent));
@@ -415,16 +437,8 @@ fn a_helper_a_stopped_call_never_started_spent_nothing() {
         app.update();
         std::thread::sleep(Duration::from_millis(50));
     }
-    // The fifth's start comes a moment after the fourth settles: let it.
-    for _ in 0..5 {
-        std::thread::sleep(Duration::from_millis(100));
-        app.update();
-    }
-    assert_eq!(
-        app.world().resource::<UnknownSpend>().0,
-        AT_ONCE as u64,
-        "the fifth spent nothing"
-    );
+    app.update();
+    assert_eq!(app.world().resource::<UnknownSpend>().0, 5);
 }
 
 /// A task too long to start a child with never ran: nothing spent.
@@ -485,4 +499,13 @@ fn a_helper_in_tilde_is_in_the_home_directory() {
         lent.child(&job).err(),
         Some(format!("{} is outside your directory", home.display()))
     );
+}
+
+/// A call's `timeout` is each helper's deadline as given, however long; a
+/// call without one gives none.
+#[test]
+fn a_helpers_deadline_is_the_calls_timeout_or_none() {
+    assert_eq!(timeout(Some(7200)), Ok(Some(Duration::from_secs(7200))));
+    assert_eq!(timeout(None), Ok(None));
+    assert!(timeout(Some(0)).is_err());
 }

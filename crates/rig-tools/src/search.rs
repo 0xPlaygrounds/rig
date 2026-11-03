@@ -167,6 +167,15 @@ pub struct Found {
     /// as [`Hit::path`] names them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unread: Vec<Unread>,
+    /// How many files it did not search as they are larger than
+    /// [`MAX_FILE_BYTES`], not a regular file, or not UTF-8 text.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skipped: usize,
+}
+
+/// Whether `count` is 0, so a search that skipped nothing saves as before.
+fn is_zero(count: &usize) -> bool {
+    *count == 0
 }
 
 /// A path a search could not read, and why.
@@ -267,8 +276,8 @@ impl Tool for Search {
 
 /// `found` as [`Search`] shows it: a `path:line: text` line per hit, or a
 /// path per file of a search for file names, a line when it stopped at
-/// [`MAX_MATCHES`] or [`MAX_FILES`], and a last line naming the paths it
-/// could not read.
+/// [`MAX_MATCHES`] or [`MAX_FILES`], a line counting the files it
+/// skipped, and a last line naming the paths it could not read.
 pub fn render(found: &Found) -> String {
     let (mut lines, stop): (Vec<String>, _) = match found.names.is_empty() {
         true => (
@@ -284,7 +293,7 @@ pub fn render(found: &Found) -> String {
             format!("[stopped at {MAX_FILES} files; narrow the search with path or glob]"),
         ),
     };
-    if lines.is_empty() && found.unread.is_empty() {
+    if lines.is_empty() && found.unread.is_empty() && found.skipped == 0 {
         return "No matches.".to_owned();
     }
     if lines.is_empty() {
@@ -292,6 +301,18 @@ pub fn render(found: &Found) -> String {
     }
     if found.stopped {
         lines.push(stop);
+    }
+    if found.skipped > 0 {
+        let (files, mb) = (found.skipped, MAX_FILE_BYTES / 1024 / 1024);
+        let files = if files == 1 {
+            "1 file".to_owned()
+        } else {
+            format!("{files} files")
+        };
+        lines.push(format!(
+            "[skipped {files}: larger than {mb} MB, not a regular file, or not text; `shell` with \
+             `grep -a` searches them]"
+        ));
     }
     if !found.unread.is_empty() {
         let unread_paths = found
@@ -355,11 +376,17 @@ pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolE
                 found.unread.push(Unread::of(file, &error));
                 continue;
             }
-            // Gone since the walk, larger than the limit or no regular file.
-            Observation::Missing | Observation::Excluded => continue,
+            // Gone since the walk.
+            Observation::Missing => continue,
+            // Larger than the limit or no regular file.
+            Observation::Excluded => {
+                found.skipped += 1;
+                continue;
+            }
         };
         // Not text, as `rg` skips a binary file.
         let Ok(text) = String::from_utf8(bytes) else {
+            found.skipped += 1;
             continue;
         };
         if let Some(whole) = &whole

@@ -10,6 +10,7 @@ use rig_harness_protocol::Invocation;
 use super::*;
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitPlugin;
+use crate::settings::Settings;
 
 /// How many frames ran the agent loop.
 #[derive(Resource, Default)]
@@ -27,6 +28,7 @@ fn app(front: Front, terminal: bool, tools: Option<&str>) -> (App, Entity) {
         },
         terminal,
     })
+    .insert_resource(Settings::default())
     .add_plugins((
         TaskPoolPlugin::default(),
         AgentPlugin,
@@ -152,4 +154,23 @@ fn the_start_makes_the_names_the_runs_tools_and_leaves_every_access() {
     let run = world.get_resource::<RunTools>();
     assert_eq!(run, Some(&RunTools::new(["read"])));
     assert_eq!(world.get::<ToolAccess>(agent), Some(&ToolAccess::all()));
+}
+
+/// `[retry]` sets the kernel's retry policy; without it nothing is limited.
+#[test]
+fn the_retry_table_sets_the_retry_policy() {
+    let policy = |toml: &str| {
+        let mut app = App::new();
+        app.insert_resource(Settings::from_toml(toml)).add_plugins((
+            TaskPoolPlugin::default(),
+            AgentPlugin,
+            RunPlugin,
+        ));
+        *app.world().resource::<RetryPolicy>()
+    };
+    let set = policy("[retry]\nmax_retries = 2\nmax_wait_secs = 90\n");
+    assert_eq!(set.max_retries, Some(2));
+    assert_eq!(set.max_asked_wait, Some(std::time::Duration::from_secs(90)));
+    assert_eq!(policy(""), RetryPolicy::DEFAULT);
+    assert_eq!(RetryPolicy::DEFAULT.max_retries, None);
 }

@@ -28,10 +28,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::agent::{AgentId, CallOf, RunTools, SpawnedBy, ToolAccess};
+use super::agent::{AgentId, Notice, RunTools, SpawnedBy, ToolAccess};
 use super::effects::Handler;
 use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
-use super::turn::fail;
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -114,9 +113,8 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// does not declare; no gate sees it and no later answer replaces it. Start
 /// runs the handler, or opens the call for an open tool.
 ///
-/// An unavailable name gets feedback listing the agent's allowed tools.
-/// Calling the same unavailable name three times in one turn fails that
-/// turn, even when successful calls occur between them.
+/// An unavailable name gets feedback listing the agent's allowed tools,
+/// each time it is called.
 ///
 /// [`CallOf`]: super::agent::CallOf
 #[derive(Component, Clone, Debug)]
@@ -478,12 +476,16 @@ pub(crate) fn offered<'a>(
 /// Keeps each agent's access within this run's tools ([`RunTools`]) and
 /// the access of every agent above it, before anything is admitted: a
 /// child never calls or is offered a tool its parent or the run may not,
-/// however its access was made or restored. Looks only when an access, a
+/// however its access was made or restored. An agent that so loses a
+/// registered tool gets a warning naming it, but for the run's tools as
+/// the run started, which the user gave. Looks only when an access, a
 /// parent or the run's tools changed.
 pub(crate) fn keep_within_parents(
     agents: Query<(Entity, Ref<ToolAccess>, Option<Ref<SpawnedBy>>)>,
+    tools: Query<&ToolDef>,
     run: Option<Res<RunTools>>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
     let changed = (agents.iter())
         .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
@@ -493,8 +495,13 @@ pub(crate) fn keep_within_parents(
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
         .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|it| it.parent()))))
         .collect();
+    let run_changed = run
+        .as_ref()
+        .is_some_and(|run| run.is_changed() && !run.is_added());
+    let names: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
     for (agent, access, parent) in &agents {
-        let mut within = access.for_run(run.as_deref());
+        let in_run = access.for_run(run.as_deref());
+        let mut within = in_run.clone();
         let mut next = parent.map(|it| it.parent());
         // A cycle of parents ends once every agent was passed.
         for _ in 0..above.len() {
@@ -506,6 +513,40 @@ pub(crate) fn keep_within_parents(
         }
         // Inserted, so what follows an agent's access sees it change.
         if within != *access {
+            let lost = |from: &ToolAccess, to: &ToolAccess| {
+                let mut lost: Vec<&str> = (names.iter().copied())
+                    .filter(|name| from.allows(name) && !to.allows(name))
+                    .collect();
+                lost.sort_unstable();
+                lost
+            };
+            // The run's tools as it started were the user's to give.
+            let by_run = match run_changed {
+                true => lost(&access, &in_run),
+                false => Vec::new(),
+            };
+            for (lost, [one, many]) in [
+                (
+                    by_run,
+                    [
+                        "this run's tools leave it out",
+                        "this run's tools leave them out",
+                    ],
+                ),
+                (
+                    lost(&in_run, &within),
+                    [
+                        "an agent above it does not have it",
+                        "an agent above it does not have them",
+                    ],
+                ),
+            ] {
+                let why = if lost.len() == 1 { one } else { many };
+                if !lost.is_empty() {
+                    let lost = lost.join("`, `");
+                    notices.write(Notice::warn(agent, format!("Lost `{lost}`: {why}.")));
+                }
+            }
             commands.entity(agent).insert(within);
         }
     }
@@ -524,28 +565,23 @@ impl ToolStarts<'_, '_> {
     /// The tool that runs `call` for `agent`, or why the kernel refuses
     /// it: no agent, no tool of its name is registered, the agent may not
     /// use it (a refusal, `Denied`), or its arguments do not fit the tool's
-    /// parameters; with the refusal, whether the agent's request offers a
-    /// tool of that name, served or not.
+    /// parameters.
     fn tool(
         &self,
         call: &ToolCall,
         agent: Option<Entity>,
-    ) -> Result<(Entity, &Serves), (ErrorReport, bool)> {
+    ) -> Result<(Entity, &Serves), ErrorReport> {
         let name = call.function.name.as_str();
         let tool_error = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
         let Some(access) = agent.and_then(|agent| self.agents.get(agent).ok()) else {
             let why = "a tool call needs an agent".to_owned();
-            return Err((tool_error(ToolErrorKind::NotFound, why), false));
+            return Err(tool_error(ToolErrorKind::NotFound, why));
         };
         let missing = |kind| {
             let offered = access.map(|access| offered(self.defs.iter(), access));
             let offered = offered.unwrap_or_default();
-            let named = offered.iter().any(|def| def.0.name.as_str() == name);
             let names = offered.iter().map(|def| def.0.name.as_str());
-            (
-                ErrorReport::new(kind, unknown_tool_feedback(name, names)),
-                named,
-            )
+            ErrorReport::new(kind, unknown_tool_feedback(name, names))
         };
         let Some((tool, def, serves)) = self
             .tools
@@ -555,11 +591,10 @@ impl ToolStarts<'_, '_> {
             return Err(missing(ErrorKind::Tool(ToolErrorKind::NotFound)));
         };
         if !access.is_some_and(|access| access.allows(name)) {
-            let (report, named) = missing(ErrorKind::Denied);
-            return Err((report.refused(), named));
+            return Err(missing(ErrorKind::Denied).refused());
         }
         if let Some(why) = arguments_refusal(&def.0.parameters, call) {
-            return Err((tool_error(ToolErrorKind::InvalidArgs, why), false));
+            return Err(tool_error(ToolErrorKind::InvalidArgs, why));
         }
         Ok((tool, serves))
     }
@@ -574,7 +609,7 @@ impl ToolStarts<'_, '_> {
         agent: Option<Entity>,
     ) -> ToolStart {
         match (self.tool(call, agent), handler) {
-            (Err((report, _)), _) => ToolStart::Refused(report),
+            (Err(report), _) => ToolStart::Refused(report),
             (Ok(_), Some(CallHandler(handler))) | (Ok((_, Serves::Handler(handler))), None) => {
                 ToolStart::Run(handler.clone(), EffectKind::from(call))
             }
@@ -583,10 +618,6 @@ impl ToolStarts<'_, '_> {
     }
 }
 
-/// Unavailable names called during this turn, including calls between successes.
-#[derive(Component, Default)]
-pub(crate) struct MissingTools(HashMap<String, u32>);
-
 /// Answers each admitted tool call that has not started, held or not,
 /// that the kernel refuses ([`ToolStarts`]), unless it is decided: after
 /// the answers from a record and before every gate, so no gate sees it,
@@ -594,13 +625,7 @@ pub(crate) struct MissingTools(HashMap<String, u32>);
 /// what changed since, such as the agent's [`ToolAccess`], counts.
 pub(crate) fn refuse_calls(
     calls: Query<
-        (
-            Entity,
-            &ToolRequest,
-            &Decision,
-            Option<&ForAgent>,
-            Option<&CallOf>,
-        ),
+        (Entity, &ToolRequest, &Decision, Option<&ForAgent>),
         (
             With<Admitted>,
             Without<Started>,
@@ -610,33 +635,13 @@ pub(crate) fn refuse_calls(
         ),
     >,
     tools: ToolStarts,
-    mut turns: Query<&mut MissingTools>,
     mut commands: Commands,
 ) {
-    for (entity, ToolRequest { call }, decision, agent, turn) in &calls {
+    for (entity, ToolRequest { call }, decision, agent) in &calls {
         if decision.is_decided() {
             continue;
         }
-        if let Err((report, offered)) = tools.tool(call, agent.map(|agent| agent.0)) {
-            if matches!(
-                report.kind,
-                ErrorKind::Tool(ToolErrorKind::NotFound) | ErrorKind::Denied
-            ) && let Some(&CallOf(turn)) = turn
-                && agent.is_some()
-                // A name the request offers is the kernel's to answer for.
-                && !offered
-                && let Ok(mut missing) = turns.get_mut(turn)
-            {
-                let name = call.function.name.as_str();
-                let count = missing.0.entry(name.to_owned()).or_default();
-                *count += 1;
-                // It fails only this turn, so the agent's subagents go on.
-                if *count >= 3 {
-                    let why =
-                        format!("the model kept calling `{name}`, which is not one of its tools");
-                    fail(&mut commands, turn, why);
-                }
-            }
+        if let Err(report) = tools.tool(call, agent.map(|agent| agent.0)) {
             commands
                 .entity(entity)
                 .try_insert_if_new(Outcome(Err(report)));

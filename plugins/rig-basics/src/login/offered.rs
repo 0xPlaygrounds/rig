@@ -44,14 +44,16 @@ pub(super) struct Pace {
     pub(super) cooldown: Duration,
 }
 
-/// Two retries, as a model call is retried, and a listing asks again 10 s
-/// after a failure, which keeps the listing that follows each answer from
-/// asking again at once.
+/// Two retries, waiting as a model call does but at most a minute where
+/// the server asks for a wait, and a listing asks again 10 s after a
+/// failure, which keeps the listing that follows each answer from asking
+/// again at once: a fetch nobody waits for stays bounded.
 impl Default for Pace {
     fn default() -> Self {
         Self {
             retry: RetryPolicy {
-                max_retries: 2,
+                max_retries: Some(2),
+                max_asked_wait: Some(Duration::from_secs(60)),
                 ..RetryPolicy::DEFAULT
             },
             cooldown: LIST_TIMEOUT,
@@ -201,7 +203,12 @@ impl Offered {
                     Asking::Answered(listed) => return Ok(Arc::clone(listed)),
                     Asking::Failed(failure, at, wait) => {
                         let left = wait.saturating_sub(at.elapsed());
-                        if left > self.pace.retry.max_asked_wait {
+                        if self
+                            .pace
+                            .retry
+                            .max_asked_wait
+                            .is_some_and(|most| left > most)
+                        {
                             return Err(failure.clone());
                         }
                         left

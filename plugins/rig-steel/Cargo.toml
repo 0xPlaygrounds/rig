@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
-description = "Code mode for rig-ecs agents (and the rig-harness app): a `run_steel` tool whose Steel (Scheme) program orchestrates agents and tools."
+description = "Code mode for rig-harness agents: a `run_steel` tool whose Steel (Scheme) program orchestrates agents and tools."
 repository = "https://github.com/0xPlaygrounds/rig"
 readme = "README.md"
 
@@ -22,6 +22,8 @@ futures = { workspace = true }
 futures-timer = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs", version = "0.46.0", default-features = false }
+# `[steel]` in the user's settings.
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
 # `run_steel`'s parameters, derived from its arguments type.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

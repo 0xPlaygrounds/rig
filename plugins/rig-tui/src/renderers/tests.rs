@@ -597,3 +597,24 @@ fn streaming_calls_sharing_a_provider_id_each_get_their_own_look() {
     looks.dedup();
     assert_eq!(looks, ["probe 1", "probe 2"]);
 }
+
+/// A result's images, which are not drawn, are counted on a line of their
+/// own, and its JSON is drawn as JSON, so no block is left out silently.
+#[test]
+fn a_results_images_are_counted_and_its_json_shown() {
+    let Ok(name) = ToolName::new("read") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
+    let result = call.result(vec![
+        ToolResultContent::text("a.png: a PNG image of 1 KB"),
+        ToolResultContent::image_base64("AAAA", None, None),
+        ToolResultContent::Json {
+            value: json!({ "count": 3 }),
+        },
+    ]);
+    assert_eq!(
+        result_text(&result),
+        "a.png: a PNG image of 1 KB\n{\"count\":3}\n[1 image]"
+    );
+}

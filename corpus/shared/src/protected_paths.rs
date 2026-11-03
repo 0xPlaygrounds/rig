@@ -370,6 +370,7 @@ fn filter_searches(
         let mut hidden = Vec::new();
         let mut kept = Found {
             stopped: found.stopped,
+            skipped: found.skipped,
             ..Found::default()
         };
         for hit in found.hits {

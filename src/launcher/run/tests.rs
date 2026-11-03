@@ -427,6 +427,32 @@ fn a_refused_run_of_a_saved_session_names_the_log_of_the_run() {
     assert_eq!(named.ok(), Some((true, "earlier runs\n".to_owned())));
 }
 
+/// A resumed session whose saved directory is gone runs where rig was
+/// started, and its start notice names both.
+#[cfg(unix)]
+#[test]
+fn a_resumed_session_whose_directory_is_gone_says_where_it_runs() {
+    let root = std::env::temp_dir().join(format!("rig-gone-dir-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let (gone, here) = (root.join("gone"), root.join("here"));
+    let said = locks::hold_run(&home).and_then(|_run| {
+        let (id, session) = home.new_session()?;
+        session.mark_saved()?;
+        session.set_working_directory(&gone)?;
+        fs::create_dir_all(&here)?;
+        let (claimed, _) = claim(&home, Start::Resume(id), Some(&here))?;
+        Ok((claimed.directory, claimed.moved))
+    });
+    fs::remove_dir_all(&root).ok();
+    let moved = format!(
+        "The session's directory {} is gone, so it runs in {}.",
+        gone.display(),
+        here.display()
+    );
+    assert_eq!(said.ok(), Some((Some(here), Some(moved))));
+}
+
 /// A `/resume` of a session whose run is refused, such as one an older rig
 /// saved, goes back to the session it left, told why, instead of ending.
 #[cfg(unix)]

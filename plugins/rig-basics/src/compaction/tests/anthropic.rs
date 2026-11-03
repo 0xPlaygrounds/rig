@@ -459,6 +459,11 @@ fn recoverable_overflow(window: u32, routed: bool, words: usize) {
 fn a_transport_timeout_during_the_summary_preserves_history() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
+    // One retry, so the timeout that follows ends the compaction.
+    app.insert_resource(rig_ecs::retry::RetryPolicy {
+        max_retries: Some(1),
+        ..rig_ecs::retry::RetryPolicy::DEFAULT
+    });
     let partial = response_events("Partial text before timeout", "end_turn")
         .into_iter()
         .take(4)

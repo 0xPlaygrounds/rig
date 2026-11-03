@@ -20,10 +20,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::steel_vm::builtin::BuiltInModule;
 use steel::steel_vm::engine::Engine;
 
-use crate::{Control, Harness, MAX_OUTPUT_BYTES, RUN_STEEL, capped, wait};
-
-/// How many host function calls a program may make.
-const MAX_HOST_CALLS: u32 = 1000;
+use crate::{Control, Harness, Limits, RUN_STEEL, capped, wait};
 
 /// Steel's modules that reach the host. Steel's sandboxed engine still
 /// registers some of them for `require-builtin`; each is replaced by an
@@ -88,7 +85,7 @@ pub(crate) struct Ended {
 
 /// Runs `code` to its end on the calling thread.
 pub(crate) fn run(code: String, host: Host) -> Ended {
-    let printed = Printed::default();
+    let printed = Printed::new(host.limits.max_output_bytes);
     let outcome = run_program(code, host, printed.clone());
     Ended {
         printed: printed.text(),
@@ -118,7 +115,10 @@ fn run_program(code: String, host: Host, printed: Printed) -> Result<String, Str
     let ran = engine.run(code);
     host.control.pause_clock();
     match ran {
-        Ok(values) => Ok(capped(text_of_value(values.last()))),
+        Ok(values) => Ok(capped(
+            text_of_value(values.last()),
+            host.limits.max_output_bytes,
+        )),
         Err(error) => Err(engine
             .raise_error_to_string(error.clone())
             .unwrap_or_else(|| error.to_string())),
@@ -261,6 +261,8 @@ pub(crate) struct Host {
     cancelled: Shared<oneshot::Receiver<()>>,
     /// How many host functions the program called.
     calls: AtomicU32,
+    /// The bounds it runs within.
+    limits: Limits,
     /// How many requests it sent, which numbers their ids.
     sent: AtomicU32,
     /// The agents it spawned, which `send` reaches.
@@ -270,10 +272,10 @@ pub(crate) struct Host {
 impl Host {
     pub(crate) fn new(
         harness: Harness,
-        me: AgentId,
-        call: String,
+        (me, call): (AgentId, String),
         control: Arc<Control>,
         cancelled: Shared<oneshot::Receiver<()>>,
+        limits: Limits,
     ) -> Self {
         Self {
             harness,
@@ -282,18 +284,15 @@ impl Host {
             control,
             cancelled,
             calls: AtomicU32::new(0),
+            limits,
             sent: AtomicU32::new(0),
             spawned: Mutex::new(Vec::new()),
         }
     }
 
     fn count_call(&self) -> Result<(), String> {
-        if self.calls.fetch_add(1, Ordering::Relaxed) >= MAX_HOST_CALLS {
-            return Err(format!(
-                "the program made more than {MAX_HOST_CALLS} host function calls"
-            ));
-        }
-        Ok(())
+        let made = self.calls.fetch_add(1, Ordering::Relaxed);
+        self.limits.call(made)
     }
 
     /// Waits for a [`Harness`] call on this thread.
@@ -403,18 +402,27 @@ impl Host {
     }
 }
 
-/// The program's output port: keeps the first [`MAX_OUTPUT_BYTES`] bytes
-/// written to it and drops the rest.
-#[derive(Clone, Default)]
+/// The program's output port: keeps the first [`Limits::max_output_bytes`]
+/// bytes written to it and drops the rest.
+#[derive(Clone)]
 struct Printed(Arc<Mutex<PrintedBytes>>);
 
-#[derive(Default)]
 struct PrintedBytes {
     bytes: Vec<u8>,
+    most: usize,
     cut: bool,
 }
 
 impl Printed {
+    fn new(most: usize) -> Self {
+        let bytes = PrintedBytes {
+            bytes: Vec::new(),
+            most,
+            cut: false,
+        };
+        Self(Arc::new(Mutex::new(bytes)))
+    }
+
     fn text(&self) -> String {
         let Ok(printed) = self.0.lock() else {
             return String::new();
@@ -422,7 +430,8 @@ impl Printed {
         let mut text = String::from_utf8_lossy(&printed.bytes).into_owned();
         if printed.cut {
             text.push_str(&format!(
-                "\n[printed output cut at {MAX_OUTPUT_BYTES} bytes]"
+                "\n[printed output cut at {} bytes (`[steel] max_output_bytes`)]",
+                printed.most
             ));
         }
         text
@@ -432,7 +441,7 @@ impl Printed {
 impl Write for Printed {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if let Ok(mut printed) = self.0.lock() {
-            let room = MAX_OUTPUT_BYTES.saturating_sub(printed.bytes.len());
+            let room = printed.most.saturating_sub(printed.bytes.len());
             printed.bytes.extend(buf.iter().take(room));
             if buf.len() > room {
                 printed.cut = true;

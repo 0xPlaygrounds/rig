@@ -44,7 +44,6 @@
 use std::collections::HashSet;
 use std::io::{IsTerminal, Read};
 use std::sync::mpsc::RecvTimeoutError;
-use std::time::Instant;
 
 use async_channel::Receiver;
 use bevy_ecs::message::{MessageCursor, Messages};
@@ -52,6 +51,7 @@ use bevy_ecs::system::SystemParam;
 use rig_core::json_utils::remove_preserving_order;
 use rig_ecs::{StopTurnsOnExit, WriteLogs};
 use rig_harness::harness_protocol::REFUSED_EXIT_CODE;
+use rig_harness::host::launcher::Refused;
 use rig_harness::host::pipes::{self, Stream, TooLarge, Writer};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::feedback::not_finished;
@@ -236,6 +236,12 @@ impl Plugin for PrintPlugin {
         app.configure_sets(Update, AgentLoop.run_if(output_has_room))
             .add_systems(First, exit_when_backlogged);
         if json && prompt.is_none() {
+            if app.world().contains_resource::<Refused>() {
+                // Refused already: no request is read, and the refusal ends it.
+                app.world_mut().spawn(KeepRunning);
+                app.run_headless(None);
+                return;
+            }
             // A long-lived `--json` run: the driver answers questions, and
             // stdin keeps it going until it ends.
             app.world_mut()
@@ -260,28 +266,16 @@ impl Plugin for PrintPlugin {
         let signalled = signals::interruption(app.world());
         let interrupted = move || signalled() || unread.is_some_and(|unread| unread());
         let piped = app.world_mut().remove_resource::<PipedIn>();
-        // What the wait says goes through the front's writer too.
-        let world = app.world();
-        let writer = if json {
-            world.get_resource::<JsonOut>().map(|out| out.out.clone())
-        } else {
-            world
-                .get_resource::<Printed>()
-                .map(|printed| printed.writer.clone())
-        };
-        let say = move |text: String| {
-            if let Some(writer) = &writer {
-                writer.write(Stream::Err, text.into_bytes());
-            }
-        };
         // Refused input holds the run as an interrupted one is held: the
-        // refusal ends it with code 2 after the first frame.
-        let prompt = full_prompt(&prompt, piped, interrupted, say).unwrap_or_else(|refused| {
-            app.refuse_run(format!(
-                "stdin: {refused} were piped in, which is too much: pipe in less"
-            ));
-            None
-        });
+        // refusal ends it with code 2 after the first frame. A run refused
+        // already, such as for its settings, reads nothing.
+        let prompt = match app.world().contains_resource::<Refused>() {
+            true => None,
+            false => full_prompt(&prompt, piped, interrupted).unwrap_or_else(|refused| {
+                app.refuse_run(format!("stdin: {refused}"));
+                None
+            }),
+        };
         let interrupted = prompt.is_none();
         if interrupted {
             app.insert_resource(HoldCalls);
@@ -382,94 +376,93 @@ pub const PIPED_LIMIT: usize = 64 * 1024 * 1024;
 /// The most bytes of one request line of a long-lived `--json` run.
 pub const REQUEST_LIMIT: usize = 64 * 1024 * 1024;
 
-/// How long a prompt waits for the first of what is piped in on stdin: a
-/// pipe its driver never writes to nor closes, as an agent's shell may
-/// leave stdin, must not hold the run.
-const PIPED_WAIT: Duration = Duration::from_secs(1);
-
 /// What a one-shot run reads after its prompt: stdin unless the app
 /// inserted another.
 #[derive(Resource)]
 struct PipedIn(Box<dyn Read + Send + Sync>);
 
-/// The prompt with what was piped in after it, on stdin or `piped`;
-/// `None` once `interrupted` says the run is, and [`TooLarge`] past
-/// [`PIPED_LIMIT`]. `say` tells the user what the wait decided.
+/// Why what was piped in is not taken, which refuses the run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Unpiped {
+    /// More than [`PIPED_LIMIT`] bytes.
+    TooLarge(TooLarge),
+    /// Reading it failed, for this reason.
+    Failed(String),
+    /// It is not UTF-8 from this byte on.
+    NotText(usize),
+}
+
+impl std::fmt::Display for Unpiped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooLarge(large) => {
+                write!(f, "{large} were piped in, which is too much: pipe in less")
+            }
+            Self::Failed(why) => write!(f, "reading what was piped in failed: {why}"),
+            Self::NotText(at) => write!(
+                f,
+                "what was piped in is not UTF-8 text from byte {at} on: pipe in text"
+            ),
+        }
+    }
+}
+
+/// The prompt with what was piped in after it, on stdin or `piped`, read
+/// to its end; `None` once `interrupted` says the run is, and [`Unpiped`]
+/// when what was piped in is past [`PIPED_LIMIT`], could not be read, or
+/// is not text. A stdin that stays open holds the run until it closes, as
+/// it holds any filter: give `/dev/null` for none.
 fn full_prompt(
     prompt: &str,
     piped: Option<PipedIn>,
     interrupted: impl Fn() -> bool,
-    say: impl FnOnce(String),
-) -> Result<Option<String>, TooLarge> {
+) -> Result<Option<String>, Unpiped> {
     let piped = match piped {
         Some(PipedIn(piped)) => piped,
         None if std::io::stdin().is_terminal() => return Ok(Some(prompt.to_owned())),
         None => Box::new(std::io::stdin()),
     };
-    with_piped(prompt, piped, PIPED_WAIT, PIPED_LIMIT, interrupted, say)
+    with_piped(prompt, piped, PIPED_LIMIT, interrupted)
 }
 
 /// How often a wait for what is piped in looks whether the run was
 /// interrupted.
 const INTERRUPT_CHECK: Duration = Duration::from_millis(50);
 
-/// `prompt` with what `piped` holds after it. Without a prompt, `piped` is
-/// the prompt, read to its end; with one, it is read only when something
-/// comes within `wait`. At most `limit` bytes are read: more is refused
-/// ([`TooLarge`]) without holding more than one byte past it. `None` once
-/// `interrupted` says the run is, however long the wait was. `say` gets
-/// the warning that the prompt goes alone.
+/// `prompt` with what `piped` holds after it, read to its end. At most
+/// `limit` bytes are read: more is refused ([`Unpiped::TooLarge`])
+/// without holding more than one byte past it, as are a failed read and
+/// bytes that are not UTF-8. `None` once `interrupted` says the run is,
+/// however long the wait was.
 fn with_piped(
     prompt: &str,
-    mut piped: impl Read + Send + 'static,
-    wait: Duration,
+    piped: impl Read + Send + 'static,
     limit: usize,
     interrupted: impl Fn() -> bool,
-    say: impl FnOnce(String),
-) -> Result<Option<String>, TooLarge> {
+) -> Result<Option<String>, Unpiped> {
     let (sender, read) = std::sync::mpsc::channel();
-    let (first, rest) = (sender.clone(), sender);
     std::thread::spawn(move || {
         let mut text = Vec::new();
-        let mut byte = [0];
-        let got = piped.read(&mut byte).unwrap_or_default();
-        first.send(None).ok();
-        text.extend(byte.get(..got).unwrap_or_default());
-        if got > 0 {
-            let room = u64::try_from(limit.saturating_sub(got)).unwrap_or(u64::MAX);
-            piped
-                .take(room.saturating_add(1))
-                .read_to_end(&mut text)
-                .ok();
-        }
-        let read = if text.len() > limit {
-            let asked = text.len();
-            Err(TooLarge { limit, asked })
-        } else {
-            Ok(String::from_utf8_lossy(&text).into_owned())
+        let room = u64::try_from(limit).unwrap_or(u64::MAX).saturating_add(1);
+        let read = match piped.take(room).read_to_end(&mut text) {
+            Err(error) => Err(Unpiped::Failed(error.to_string())),
+            Ok(_) if text.len() > limit => {
+                let asked = text.len();
+                Err(Unpiped::TooLarge(TooLarge { limit, asked }))
+            }
+            Ok(_) => String::from_utf8(text)
+                .map_err(|bad| Unpiped::NotText(bad.utf8_error().valid_up_to())),
         };
-        rest.send(Some(read)).ok();
+        sender.send(read).ok();
     });
-    let deadline = (!prompt.trim().is_empty()).then(|| Instant::now() + wait);
-    let mut came = false;
     let piped = loop {
         if interrupted() {
             return Ok(None);
         }
         match read.recv_timeout(INTERRUPT_CHECK) {
-            Ok(Some(piped)) => break piped?,
-            Ok(None) => came = true,
+            Ok(piped) => break piped?,
             Err(RecvTimeoutError::Disconnected) => break String::new(),
-            Err(RecvTimeoutError::Timeout) => {
-                if !came && deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                    say(format!(
-                        "rig: nothing came on stdin within {}s, so the prompt goes alone; give \
-                         -p stdin from /dev/null, or pipe in what goes with it\n",
-                        wait.as_secs_f32()
-                    ));
-                    return Ok(Some(prompt.to_owned()));
-                }
-            }
+            Err(RecvTimeoutError::Timeout) => {}
         }
     };
     Ok(Some(match piped {
@@ -1441,9 +1434,9 @@ fn note_cut_off(
 /// On the exit frame, once the turns are stopped and the session log is
 /// written: the lines [`note_cut_off`] kept, then the `exit` line of a run
 /// that ended ([`HeadlessEnded`]) or of a one-shot run cut off, with the
-/// agent's exit code.
+/// agent's exit code, and the reason of a refused run ([`Refused`]).
 fn json_exit(
-    reason: Option<Res<ExitReason>>,
+    (reason, refused): (Option<Res<ExitReason>>, Option<Res<Refused>>),
     primary: MainAgentQuery,
     (paths, usage, unknown): (
         Option<Res<SessionPaths>>,
@@ -1476,7 +1469,8 @@ fn json_exit(
                 .and_then(|ended| ended.agent)
                 .or(main_agent(&primary)),
             ended.and_then(|ended| ended.answer),
-            (code != 0).then(|| why.to_owned()),
+            (code != 0)
+                .then(|| refused.map_or_else(|| why.to_owned(), |refused| refused.0.clone())),
         ),
     };
     let fields = json!({

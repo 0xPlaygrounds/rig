@@ -14673,6 +14673,7 @@ dependencies = [
  "futures-timer",
  "rig-core",
  "rig-ecs",
+ "rig-harness",
  "rig-harness-test-support",
  "schemars 1.2.1",
  "serde",
