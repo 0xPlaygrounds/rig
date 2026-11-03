@@ -439,13 +439,13 @@ fn usage(
     match unknown.0 {
         0 => {}
         1 => lines.push(
-            "One helper's spend in this session is not all known: the totals are at least \
-             what was spent."
+            "One helper's spend in this session is not all known: what was spent is at \
+             least these totals."
                 .to_owned(),
         ),
         n => lines.push(format!(
-            "{n} helpers' spend in this session is not all known: the totals are at least \
-             what was spent."
+            "{n} helpers' spend in this session is not all known: what was spent is at \
+             least these totals."
         )),
     }
     if total.unpriced > 0 {

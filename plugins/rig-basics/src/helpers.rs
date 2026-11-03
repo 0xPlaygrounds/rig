@@ -21,7 +21,8 @@
 //! its own helpers' are among them. A child that is not on this protocol
 //! version, that ended before its `exit` line, one of whose `usage` lines
 //! did not read, whose `exit` line says its spend is not all known, or
-//! that failed to start after its process was made, counts in
+//! that failed to start in a way that may come after its process was
+//! made, counts in
 //! [`UnknownSpend`], and its result says so; one that never started, such
 //! as after its call was stopped, spent nothing. With a
 //! [`budget`](crate::budget), a child is started with what is left of it.
@@ -498,13 +499,15 @@ impl Runner {
         let mut process = match launcher.spawn(&self.command.program, args, how) {
             Ok(process) => process,
             Err(error) => {
-                // A program that was not found or may not run, or a start
-                // the stopped call refused, never ran; one whose process was
-                // made before another error may have spent.
+                // A program that was not found or may not run, arguments too
+                // long to start it with, or a start the stopped call refused,
+                // never ran; one whose process was made before another error
+                // may have spent.
                 let ran = !matches!(
                     error.kind(),
                     std::io::ErrorKind::NotFound
                         | std::io::ErrorKind::PermissionDenied
+                        | std::io::ErrorKind::ArgumentListTooLong
                         | std::io::ErrorKind::Interrupted
                 );
                 self.reports.ended(!ran);

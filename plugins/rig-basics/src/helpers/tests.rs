@@ -427,6 +427,20 @@ fn a_helper_a_stopped_call_never_started_spent_nothing() {
     );
 }
 
+/// A task too long to start a child with never ran: nothing spent.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_helper_whose_task_is_too_long_to_start_spent_nothing() {
+    let long = "x".repeat(200_000);
+    let (mut app, wakes, _) = helped("too-long", &[json!({ "task": long })]);
+    let said = output(&mut app, &wakes, 0);
+    assert!(said.starts_with("it could not start"), "{said}");
+    assert!(!said.contains("spend unknown"), "{said}");
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert_eq!(app.world().resource::<UnknownSpend>().0, 0);
+}
+
 #[test]
 fn a_helper_is_left_what_is_left_of_the_budget() {
     let (mut app, wakes, dir) = helped("budget", &[json!({ "task": "one" })]);
