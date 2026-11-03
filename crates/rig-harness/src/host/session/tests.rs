@@ -27,7 +27,7 @@ use crate::host::exit::ExitReason;
 use crate::host::launcher::{Invoked, LauncherRun};
 use crate::load::AppKeepsExt;
 use crate::plugin_data::PluginData;
-use crate::services::RigHome;
+use crate::services::{ProjectRoot, RigHome};
 
 /// What the session plugin said, frame after frame.
 #[derive(Resource, Default)]
@@ -960,5 +960,27 @@ fn an_edit_or_a_rewrite_of_a_stopped_session_keeps_its_listing() {
     assert_eq!((meta.messages, &meta.listed), (2, &listed("[secret]")));
     assert!(meta.updated > 1, "updated");
     drop(app);
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Folders of one project share its plugin data.
+#[test]
+fn the_folders_of_a_project_share_its_data() {
+    let home = scratch_home("project-data-roots");
+    let repo = home.root().join("repo");
+    for dir in [".git", "a", "b"] {
+        assert!(fs::create_dir_all(repo.join(dir)).is_ok());
+    }
+    let data = |dir: &str| {
+        let mut world = World::new();
+        world.insert_resource(RigHome(home.clone()));
+        world.insert_resource(ProjectRoot(repo.join(dir)));
+        super::insert_plugin_data(&mut world);
+        world.remove_resource::<PluginData>()
+    };
+    let written = data("a").map(|data| data.project.write_file("test/value", b"shared"));
+    assert!(matches!(written, Some(Ok(()))));
+    let read = data("b").and_then(|data| data.project.read_file("test/value").ok());
+    assert_eq!(read, Some(b"shared".to_vec()));
     fs::remove_dir_all(home.root()).ok();
 }

@@ -244,10 +244,17 @@ tool rules in it, and each tool says in its own description when to pick it.
 Models whose catalog entry lists a prompt cache get it, with the agent's id
 as the cache key where the provider takes one.
 
+The project is the working directory or the nearest directory above it
+that holds `.git` or a `.rig` directory, below your home directory: rig
+started anywhere inside one reads the same `.rig/settings.toml`,
+`.rig/mcp.json` and per-project data. Your home directory is not a
+project: started there, rig reads only `RIG_HOME`'s settings and MCP
+servers. Commands still start in the working directory.
+
 Two default plugins add to it when the agent starts. `AgentsMdPlugin` adds
 the `AGENTS.md` files of the working directory and of each directory above
-it up to the repository root (the nearest holding `.git`), nearest last,
-after your own `RIG_HOME/AGENTS.md`. `CLAUDE.md` is not read; a repository
+it up to the project's root, nearest last, after your own
+`RIG_HOME/AGENTS.md`. `CLAUDE.md` is not read; a repository
 that has only one can link `AGENTS.md` to it. `SkillsPlugin` lists your
 skills: each directory with a `SKILL.md` (the Agent Skills format, a `name`
 and a `description` in its frontmatter) under `.rig/skills` or

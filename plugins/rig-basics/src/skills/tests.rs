@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
 use rig_harness::harness_protocol::Home;
-use rig_harness::services::{ProjectRoot, RigHome};
+use rig_harness::services::{Project, ProjectRoot, RigHome};
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, connect, log_ended, reply, run_until, scratch_home,
 };
@@ -117,9 +117,13 @@ fn the_listing_leaves_out_skills_only_sent_by_hand() {
 fn project_roots_come_first_from_the_working_directory_up_to_the_repository() {
     let scratch = scratch_home("skills-roots").root().to_owned();
     let (repository, home) = (scratch.join("repo"), scratch.join("home"));
-    let dir = repository.join("sub");
     assert!(std::fs::create_dir_all(repository.join(".git")).is_ok());
-    let found = roots(&dir, &home);
+    assert!(std::fs::create_dir_all(repository.join("sub")).is_ok());
+    let Ok(repository) = repository.canonicalize() else {
+        return;
+    };
+    let dir = repository.join("sub");
+    let found = roots(&Project::find(&dir, &home, None), &dir, &home);
     let expected = [
         dir.join(".rig/skills"),
         dir.join(".agents/skills"),

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
 use rig_harness::harness_protocol::Home;
-use rig_harness::services::{ProjectRoot, RigHome};
+use rig_harness::services::{Project, ProjectRoot, RigHome};
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, connect, log_ended, reply, run_until, scratch_home,
 };
@@ -45,16 +45,21 @@ fn the_files_run_from_the_users_to_the_nearest_and_stop_at_the_repository() {
         return;
     };
     let repository = dir.join("../..");
-    let found = instruction_files(&dir, &home);
+    let found = |dir: &Path| instruction_files(&Project::find(dir, &home, None), dir, &home);
+    let same = |found: &[PathBuf], expected: &[PathBuf]| {
+        let same = |a: &PathBuf, b: &PathBuf| a.canonicalize().ok() == b.canonicalize().ok();
+        found.len() == expected.len() && found.iter().zip(expected).all(|(a, b)| same(a, b))
+    };
     let expected = [
         home.join("AGENTS.md"),
         repository.join("AGENTS.md"),
         dir.join("AGENTS.md"),
     ];
-    let same = |a: &PathBuf, b: &PathBuf| a.canonicalize().ok() == b.canonicalize().ok();
-    let matches =
-        found.len() == expected.len() && found.iter().zip(&expected).all(|(a, b)| same(a, b));
-    assert!(matches, "{found:?}");
+    assert!(same(&found(&dir), &expected), "{:?}", found(&dir));
+    // A `.rig` in `a` makes it the project: the repository's file is not its.
+    assert!(std::fs::create_dir_all(dir.join("../.rig")).is_ok());
+    let expected = [home.join("AGENTS.md"), dir.join("AGENTS.md")];
+    assert!(same(&found(&dir), &expected), "{:?}", found(&dir));
 }
 
 /// The files are in the system prompt of every request, in order; the

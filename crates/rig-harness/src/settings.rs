@@ -47,7 +47,7 @@ use serde::de::DeserializeOwned;
 
 use crate::host::cli::Declared;
 use crate::run::closest;
-use crate::services::{ProjectRoot, RigHome};
+use crate::services::{Project, RigHome};
 use crate::workspace::ProjectWorkspace;
 
 /// A settings file's tables, and what was wrong with it. Each problem
@@ -190,8 +190,8 @@ pub trait AppSettingsExt {
 
     /// As [`add_setting`](Self::add_setting), then, when the app starts
     /// ([`PreStartup`]), the same table of the project's
-    /// `.rig/settings.toml`, read through the [`ProjectWorkspace`] under the
-    /// [`ProjectRoot`], merged key by key over the user's: so read `T` in
+    /// `.rig/settings.toml`, read through the [`ProjectWorkspace`] from the
+    /// [`Project`]'s config, merged key by key over the user's: so read `T` in
     /// systems, not while building. A project file that is not TOML, or a
     /// merged table that does not read as `T`, keeps the user's value and
     /// is one of [`Settings::problems`].
@@ -314,16 +314,15 @@ impl Plugin for ProjectSettingsPlugin {
 }
 
 /// Reads the project's `.rig/settings.toml` into [`ProjectSettings`],
-/// saying what was wrong with it.
-fn read_project_settings(
-    root: Option<Res<ProjectRoot>>,
-    workspace: Option<Res<ProjectWorkspace>>,
-    settings: Option<ResMut<Settings>>,
-    mut commands: Commands,
-) {
-    let root = root.map_or_else(|| ProjectRoot::default().0, |root| root.0.clone());
-    let workspace = workspace.map(|it| it.clone()).unwrap_or_default();
-    let path: PathBuf = root.join(".rig").join("settings.toml");
+/// saying what was wrong with it. The [`Project`] is found here, when the
+/// app starts, unless the app has one.
+fn read_project_settings(world: &mut World) {
+    let Some(config) = world.get_resource_or_init::<Project>().config.clone() else {
+        return;
+    };
+    let workspace = world.get_resource::<ProjectWorkspace>();
+    let workspace = workspace.cloned().unwrap_or_default();
+    let path: PathBuf = config.join("settings.toml");
     let file = path.display().to_string();
     let project = match workspace.0.read(&path, rig_tools::MAX_FILE_BYTES) {
         Ok(contents) => Settings::parse(file, &String::from_utf8_lossy(&contents.bytes)),
@@ -336,10 +335,10 @@ fn read_project_settings(
     for problem in &project.problems {
         warn!("{problem}");
     }
-    if let Some(mut settings) = settings {
+    if let Some(mut settings) = world.get_resource_mut::<Settings>() {
         settings.problems.extend(project.problems.iter().cloned());
     }
-    commands.insert_resource(ProjectSettings(project));
+    world.insert_resource(ProjectSettings(project));
 }
 
 /// Inserts `T` from each table declared as read into it that the project

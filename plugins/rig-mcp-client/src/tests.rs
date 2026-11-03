@@ -215,6 +215,8 @@ fn project(name: &str) -> PathBuf {
     let project = exe.with_file_name(run).join(name);
     std::fs::remove_dir_all(&project).ok();
     std::fs::create_dir_all(project.join("home")).ok();
+    // Its own `.rig` makes it the project, wherever the test runs.
+    std::fs::create_dir_all(project.join(".rig")).ok();
     project
 }
 
@@ -226,7 +228,7 @@ fn write_servers(path: &Path, servers: Value) {
     std::fs::write(path, json!({ "mcpServers": servers }).to_string()).ok();
 }
 
-/// An app with the plugin on `project`, its home inside it, `settings`, and
+/// An app with the plugin started in `project`, its home inside it, `settings`, and
 /// the notices it writes collected; `invoked` makes it a headless run.
 fn app_in(project: &Path, settings: &str, invoked: Option<Invocation>) -> (App, Receiver<()>) {
     app_with::<McpPlugin>(project, settings, invoked)
@@ -834,8 +836,30 @@ fn what_a_server_started_goes_with_it() {
     }
 }
 
+/// Started in a folder of the project, rig reads the project's file, and
+/// its approvals are the project's.
 #[test]
-fn a_project_whose_rig_is_rig_home_has_no_project_file() {
+fn a_folder_of_a_project_has_the_projects_servers() {
+    let project = project("folder");
+    let dir = project.join("sub/dir");
+    std::fs::create_dir_all(dir.join("home")).ok();
+    let server = stub_server(json!({}));
+    write_servers(&project.join(".rig/mcp.json"), json!({ "stub": server }));
+    let (mut app, _) = app_in(&dir, "", None);
+    app.finish();
+    app.update();
+    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::NotApproved));
+    let told = notices(app.world()).join("\n");
+    let file = project.join(".rig/mcp.json");
+    let file = file.canonicalize().unwrap_or(file);
+    assert!(told.contains(&file.display().to_string()), "{told}");
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_project_in_the_home_directory_has_no_project_file() {
     // Rig run in the home directory: `~/.rig` is the user's own.
     let project = project("home-dir");
     let home = project.join(".rig");
@@ -844,7 +868,10 @@ fn a_project_whose_rig_is_rig_home_has_no_project_file() {
         json!({ "mine": { "command": "x", "disabled": true } }),
     );
     let (mut app, _) = app_in(&project, "", None);
-    app.insert_resource(RigHome(Home::at(home)));
+    // As rig finds it run in the home directory, which is the project.
+    let found = Project::find(&project, &home, Some(&project));
+    app.insert_resource(RigHome(Home::at(home)))
+        .insert_resource(found);
     app.finish();
     app.update();
     assert_eq!(scope(app.world_mut(), "mine"), Some(Scope::User));
@@ -859,7 +886,7 @@ fn a_project_whose_rig_is_rig_home_has_no_project_file() {
     let refused = &app.world().resource::<Collected<Recalled>>().0;
     let why = refused.last().and_then(|recalled| recalled.why.as_deref());
     assert!(
-        why.is_some_and(|why| why.contains(".rig is RIG_HOME itself")),
+        why.is_some_and(|why| why.contains(".rig is RIG_HOME, or it is your home folder")),
         "{why:?}"
     );
     std::fs::remove_dir_all(project).ok();

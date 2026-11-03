@@ -126,11 +126,13 @@ struct Others {
 }
 
 /// A project overrides, key by key, only the tables a plugin declared it
-/// may: another table of its file is not read.
+/// may: another table of its file is not read. Its file is the project's,
+/// read from a folder inside it too.
 #[test]
 fn a_project_overrides_only_the_tables_declared_for_it() {
     let root = std::env::temp_dir().join(format!("rig-settings-project-{}", std::process::id()));
     std::fs::create_dir_all(root.join(".rig")).ok();
+    std::fs::create_dir_all(root.join("sub")).ok();
     std::fs::write(
         root.join(".rig/settings.toml"),
         "[a]\nn = 2\n\n[b]\nn = 2\n",
@@ -138,7 +140,7 @@ fn a_project_overrides_only_the_tables_declared_for_it() {
     .ok();
     let mut app = App::new();
     app.insert_resource(Settings::from_toml("[a]\nn = 1\nm = 5\n\n[b]\nn = 1\n"))
-        .insert_resource(ProjectRoot(root.clone()))
+        .insert_resource(ProjectRoot(root.join("sub")))
         .add_project_setting::<Counts>("a")
         .add_setting::<Others>("b");
     assert_eq!(app.world().resource::<Counts>(), &Counts { n: 1, m: 5 });
