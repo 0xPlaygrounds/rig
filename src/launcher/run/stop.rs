@@ -8,15 +8,9 @@
 
 use std::process::Child;
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-/// How long the agent has to end once told to: its own clean exit takes
-/// at most a few seconds, and an ACP router's at most about eleven, while
-/// its sessions answer and end.
-pub(super) const STOP_WAIT: Duration = Duration::from_secs(15);
-
-/// How long the launcher's own closing output may take after a signal.
-const CLOSE_WAIT: Duration = Duration::from_secs(1);
+use rig_harness_protocol::{CLOSE_WAIT, STOP_WAIT};
 
 /// Runs `close`, the launcher's closing output after a signal, for at most
 /// [`CLOSE_WAIT`]: a terminal or pipe whose reader stopped would otherwise

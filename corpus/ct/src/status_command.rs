@@ -388,6 +388,7 @@ fn run(launcher: &Launcher, command: &str, input: Vec<u8>, timeout: Duration) ->
     let how = Spawn {
         stdin: Some(input),
         merge_stderr: false,
+        ..Spawn::default()
     };
     let process = match launcher.spawn("sh", ["-c", command], how) {
         Ok(process) => process,

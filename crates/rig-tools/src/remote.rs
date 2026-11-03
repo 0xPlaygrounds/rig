@@ -224,6 +224,7 @@ impl Remote {
         let how = Spawn {
             stdin: stdin.map(<[u8]>::to_vec),
             merge_stderr: false,
+            ..Spawn::default()
         };
         let output = Process::start(command, how)
             .map_err(|error| self.unstarted(&program, error))?

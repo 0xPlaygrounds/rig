@@ -467,6 +467,7 @@ fn start(
     let how = Spawn {
         stdin: None,
         merge_stderr: true,
+        ..Spawn::default()
     };
     let process = workspace
         .spawn(launcher, Some(root), "sh".as_ref(), &args, how)

@@ -533,6 +533,7 @@ impl Git {
         let how = Spawn {
             stdin,
             merge_stderr: false,
+            ..Spawn::default()
         };
         let mut process = launcher
             .spawn("git", all, how)

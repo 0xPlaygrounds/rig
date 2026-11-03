@@ -8,11 +8,12 @@ One task:
                           (an open stdin that stays silent costs a second).
                           More than 64 MiB piped in is refused (exit 2).
   rig -p --json "task"    The same run as JSON lines (below); its last line
-                          is {"v":2,"type":"exit","ms":…,"code":0,
+                          is {"v":3,"type":"exit","ms":…,"code":0,
                           "answer":"…","error":null,"session":"…",
-                          "usage":{…}}.
+                          "usage":{…},"usage_complete":true}.
   Exit codes: 0 answered, 1 failed (also a run whose last turn ends with
-  no answer text), 2 no task, a refused /command, an unknown --tools name
+  no answer text, and one a plugin stopped, such as at a budget, even
+  after an answer), 2 no task, a refused /command, an unknown --tools name
   or a --model the catalog lacks, 130 interrupted: by a signal, the
   launcher's death, or nobody reading stdout any more (`| head -1`), which
   plain -p says on stderr. A reader that leaves while the final answer is
@@ -57,18 +58,18 @@ its output elsewhere (`server > log 2>&1 &`), ends when rig exits; `setsid`
 keeps it running after (on macOS: perl -MPOSIX -e 'POSIX::setsid(); exec
 @ARGV' CMD).
 
-Every line, both ways, is a JSON object with "v":2. A line of another
+Every line, both ways, is a JSON object with "v":3. A line of another
 version is refused with a reply saying whether rig or the driver needs
 updating. Every event has "ms", when it was written (Unix milliseconds).
 
 Requests, each with an optional "id" its reply repeats, and "agent" (an
 agent's id; the main agent without one):
-  {"v":2,"type":"send","text":"Fix the tests."}   a message: it starts a
+  {"v":3,"type":"send","text":"Fix the tests."}   a message: it starts a
         turn, or joins the running one at its next model call
-  {"v":2,"type":"stop"}                           stop the turn
-  {"v":2,"type":"answer","ask":7,"choices":["allow"]}   answer a question;
+  {"v":3,"type":"stop"}                           stop the turn
+  {"v":3,"type":"answer","ask":7,"choices":["allow"]}   answer a question;
         "text":"…" answers one whose "text" is true
-  {"v":2,"type":"state"}      the agents (working or not, model) and the
+  {"v":3,"type":"state"}      the agents (working or not, model) and the
         open questions, in the reply's "state"
 
 Events, each with "agent" when it is an agent's:
@@ -91,21 +92,42 @@ Events, each with "agent" when it is an agent's:
         an approval (choices deny and allow) or a question, waiting
   turn_end {outcome, answer, error, usage, first_token_ms}   answered
         with its final answer, or failed or stopped with why (a turn
-        that ends with no answer text failed); usage has
-        the turn's tokens, calls, and cost in USD, which leaves out the
-        "unpriced" calls, such as a subscription model's; first_token_ms
+        that ends with no answer text failed); usage has the turn's
+        tokens, calls, and cost in USD, with what its helpers reported
+        while it ran, which leaves out the "unpriced" calls, such as a
+        subscription model's; first_token_ms
         is when a reply first streamed
   notice {level, text}                 info, warn or error; what is
         written at once puts its notices before the text streamed with it
   recalled {text, why}                 messages the agent did not answer
         or send, taken out of the session: a failed turn's, which go
         again only if sent again, or a refused /command, with why
+  usage {model, purpose, usage}        one per model call, its own or
+        one a helper reported, as its usage is recorded, with the agent
+        it counts for: the agent's own calls (purpose turn, compaction,
+        …), and each call its helpers (`rig -p --json` children) reported,
+        theirs and their helpers' (purpose helper, the agent that ran
+        helper); usage has its tokens and, when known, its cost
   reply {id, ok, error, state}         one per request
-  exit {code, answer, error, session, usage}   the last line of
-        `rig -p --json`, and of a conversation that cannot start (an
-        unknown --tools name, no model reachable), after which nothing is
-        written; error says why for any code but 0; usage counts this
-        session's own model calls, not its helpers'
+  exit {code, answer, error, session, usage, usage_complete}
+        the last line of `rig -p --json`, and of a conversation that
+        cannot start (an unknown --tools name, no model reachable), after
+        which nothing is written; error says why for any code but 0;
+        usage is the session's total: its usage lines, and those of runs
+        before when it went on with a session; usage_complete is false
+        when a helper's spend in the session (earlier runs included) was
+        not all reported, so usage is a lower bound, or when no usage is
+        kept; it does not count a model call a stop cancelled, whose bill
+        the provider alone knows
+
+With rig_basics::budget::BudgetPlugin enabled, RIG_BUDGET_USD and
+RIG_BUDGET_TOKENS hold a run's session to them as a budget does, besides
+its own budget, its earlier runs' spend included: once they are spent it
+refuses its model calls and stops its turns; a model call in flight then is
+cancelled, and what its provider bills for it is not counted. They are read
+as rig starts; an empty or garbled value allows nothing, so unset one to
+lift it (env -u RIG_BUDGET_USD). A helper child gets what its parent has
+left in them.
 
 A turn's final answer is its turn_end "answer". A message sent mid-turn
 joins that turn, so one turn_end answers both.
@@ -143,7 +165,7 @@ In Python:
   import json, subprocess
   rig = subprocess.Popen(["rig", "--json"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
   def send(**request):
-      rig.stdin.write(json.dumps({"v": 2, **request}) + "\n"); rig.stdin.flush()
+      rig.stdin.write(json.dumps({"v": 3, **request}) + "\n"); rig.stdin.flush()
   send(type="send", text="Which file here is the largest?")
   for event in map(json.loads, rig.stdout):
       if event["type"] == "ask":

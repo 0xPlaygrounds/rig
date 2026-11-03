@@ -1352,8 +1352,10 @@ required otherwise, and `SpawnedBy` has no public constructor (Bevy's
   setting with that model, the system prompt, and the tools. Named tools
   are granted from the origin's (`ToolAccess::grant`), and the model calls
   are recorded under the spec's effect, else the origin's.
-- **Depth.** The kernel sets no limit on how deep agents nest. Each agent's
-  `SpawnedBy` lineage is there for a plugin that wants to count its depth.
+- **Depth.** The kernel sets no limit on how deep agents nest. What a tree
+  spends is `rig_basics::telemetry::usage`'s: each agent's `AgentUsage`
+  keeps its own calls and, in `below`, those of every agent below it, and
+  `rig_basics::budget` bounds the session's.
 
 ```rust
 use rig_harness::prelude::*;
@@ -1515,19 +1517,19 @@ such table is a `ProjectSetting` entity, the project's file is the
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
-/// The `[budget]` table: `max_calls = 50`; no limit by default.
+/// The `[call-cap]` table: `max_calls = 50`; no limit by default.
 #[derive(Resource, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
-pub struct Budget {
+pub struct CallCap {
     pub max_calls: Option<usize>,
 }
 
 fn build(app: &mut App) {
-    app.add_setting::<Budget>("budget")
-        .add_flag(Flag::new("budget", "Stop a turn after N tool calls").value("N"));
+    app.add_setting::<CallCap>("call-cap")
+        .add_flag(Flag::new("call-cap", "Stop a turn after N tool calls").value("N"));
     let invoked = app.world().get_resource::<Invoked>();
-    if let Some(n) = invoked.and_then(|it| it.flag_value("budget")?.parse().ok()) {
-        app.insert_resource(Budget { max_calls: Some(n) });
+    if let Some(n) = invoked.and_then(|it| it.flag_value("call-cap")?.parse().ok()) {
+        app.insert_resource(CallCap { max_calls: Some(n) });
     }
 }
 ```
@@ -1774,7 +1776,9 @@ rig-tools `Launcher` (a wrapper command, a directory, environment): the
 shell tool reads it for each command, so a sandbox plugin that sets it
 (`processes.set(..)`) wraps every later process. A plugin builds its own
 with `processes.launcher().command(program)`, or `.spawn(program, args,
-Spawn { stdin, merge_stderr })`, a `Process`. Every launcher it hands out
+Spawn { stdin, merge_stderr, grace })`, a `Process`; `grace` is how long a
+stop gives it to end before it is killed, for one that stops processes of
+its own, such as a `rig`. Every launcher it hands out
 drops the session's [secrets](#sessions-their-store-secrets-and-exiting),
 which a bare `std::process::Command` passes on; one that runs in the
 project goes through the workspace (`workspace.0.spawn(&launcher, ..)`).
@@ -2047,13 +2051,17 @@ A provider plugin's models are catalog models: it declares its vendor and
 adds them to the catalog in `Models` (rig-core's `ProviderId::declare`,
 `Connector::provide`, `catalog_mut`) at any time.
 
-Spending is data too. `rig_basics::telemetry` adds each settled model call's
-usage to its agent's `AgentUsage`, the session's `SessionUsage` (both saved)
-and its turn's `TurnUsage`, per model and per purpose (`turn`, `compaction`, a
-plugin's `Effect::with_purpose`), and shows the session's in its `/resume`
-line (the `spent` label); a plugin that pays for work that is no model request
-`record`s it, and one whose model call settles without a reply (superseded,
-cancelled) puts its usage on it, `CallUsage`.
+Spending is data too. `rig_basics::telemetry` records each settled model
+call's usage as a `Spent`: on its agent's `AgentUsage`, in the `below` of every
+agent above it, on the session's `SessionUsage` (all saved) and its turn's
+`TurnUsage`, per model and per purpose (`turn`, `compaction`, a plugin's
+`Effect::with_purpose`), and shows the session's in its `/resume` line (the
+`spent` label). A plugin that pays for a call made elsewhere triggers a `Spent`
+of its own, as `helper` does for its children's, and `rig -p --json` writes
+each as a `usage` line; one whose model call settles without a reply
+(superseded, cancelled) puts its usage on it, `CallUsage`. The shipped
+`rig_basics::budget::BudgetPlugin` holds the session to `[budget]` and
+`/budget`; a plugin's own cap reads the same data:
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -2066,12 +2074,12 @@ const CAP: f64 = 5.0;
 /// Refuses the turns' model calls once the session spent `CAP`, and says
 /// what is left in `/usage` and after a `--print` answer.
 fn build(app: &mut App) {
-    app.world_mut().spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
-    let show = show_budget.run_if(resource_exists_and_changed::<SessionUsage>);
-    app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate)).add_systems(Update, show);
+    app.world_mut().spawn((UsageRow::new("cost-cap", ""), PrintSection::new("cost-cap", "")));
+    let show = show_cap.run_if(resource_exists_and_changed::<SessionUsage>);
+    app.add_systems(AgentPass, refuse_over_cap.in_set(Stage::Gate)).add_systems(Update, show);
 }
 
-fn refuse_over_budget(
+fn refuse_over_cap(
     mut calls: Query<&mut Decision, (ReadyToStart, ModelCalls, With<TurnCall>)>,
     spent: Option<Res<SessionUsage>>,
 ) {
@@ -2079,14 +2087,14 @@ fn refuse_over_budget(
         return;
     }
     for mut decision in &mut calls {
-        let why = format!("The session spent its ${CAP:.2} budget.");
-        decision.decide(Decider::plugin("budget"), Outcome::refused(why));
+        let why = format!("The session spent its ${CAP:.2} cap.");
+        decision.decide(Decider::plugin("cost-cap"), Outcome::refused(why));
     }
 }
 
-fn show_budget(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
+fn show_cap(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut PrintSection)>) {
     let left = (CAP - spent.0.total.cost).max(0.0);
-    let text = format!("Budget: ${left:.2} of ${CAP:.2} left.");
+    let text = format!("Cap: ${left:.2} of ${CAP:.2} left.");
     for (mut row, mut section) in &mut shown {
         row.text.clone_from(&text);
         section.text.clone_from(&text);

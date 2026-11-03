@@ -19,7 +19,7 @@
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write as _};
 use std::path::PathBuf;
@@ -167,6 +167,11 @@ pub struct Spawn {
     /// Whether stderr goes into stdout's pipe, so the two keep their order
     /// and every line arrives as [`OutputLine::Out`].
     pub merge_stderr: bool,
+    /// How long a stop gives its group to end once asked (`SIGTERM`)
+    /// before it kills it: [`STOP_GRACE`] when `None`, and never less. A
+    /// process that stops processes of its own, such as a `rig`, needs the
+    /// time it takes.
+    pub grace: Option<Duration>,
 }
 
 /// A piece of a process's output, as [`Process::lines`] hands it over: a
@@ -259,7 +264,8 @@ impl Process {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
         // From here on, an error drops the process, which kills it.
-        let (mut process, sender) = Self::owned(command)?;
+        let grace = how.grace.map_or(STOP_GRACE, |grace| grace.max(STOP_GRACE));
+        let (mut process, sender) = Self::owned(command, grace)?;
         let (stdout, stderr) = (process.child.stdout.take(), process.child.stderr.take());
         #[cfg(unix)]
         let (stdout, stderr) = match (stdout, stderr) {
@@ -440,6 +446,8 @@ pub struct Process {
     remote: Option<String>,
     /// Whether it was [handed over](Self::release).
     released: bool,
+    /// How long a stop gives it to end before it is killed.
+    grace: Duration,
     /// How many threads still read its pipes: none once every process
     /// holding them closed them.
     reading: Arc<AtomicUsize>,
@@ -455,13 +463,14 @@ impl Process {
     ///
     /// As [`start`](Self::start).
     pub fn start_with_stdio(command: Command) -> io::Result<Self> {
-        Self::owned(command).map(|(process, _)| process)
+        Self::owned(command, STOP_GRACE).map(|(process, _)| process)
     }
 
-    /// Spawns `command` detached, lists its group and adds it to the
-    /// current scope, all while the scope cannot stop, so no process is
-    /// ever outside both; also the sender of its lines.
-    fn owned(mut command: Command) -> io::Result<(Self, Sender<OutputLine>)> {
+    /// Spawns `command` detached, lists its group, with the `grace` a stop
+    /// gives it, and adds it to the current scope, all while the scope
+    /// cannot stop, so no process is ever outside both; also the sender of
+    /// its lines.
+    fn owned(mut command: Command, grace: Duration) -> io::Result<(Self, Sender<OutputLine>)> {
         detach(&mut command);
         let scope = Scope::current();
         let mut calls = scope.as_ref().map(Scope::calls);
@@ -478,7 +487,7 @@ impl Process {
         // reading never ends.
         drop(command);
         let child = spawned?;
-        list(child.id());
+        list(child.id(), grace);
         let group = Group(Arc::new(AtomicU32::new(child.id())));
         if let Some(calls) = &mut calls {
             calls.groups.retain(Group::running);
@@ -491,6 +500,7 @@ impl Process {
             group,
             remote: None,
             released: false,
+            grace,
             reading: Arc::default(),
         };
         Ok((process, sender))
@@ -627,7 +637,7 @@ impl Process {
                 deadline.saturating_duration_since(Instant::now())
             });
             if left.is_zero() {
-                self.stop(STOP_GRACE).ok();
+                self.stop(self.grace).ok();
                 return Err(timed_out());
             }
             match self.lines.recv_timeout(left.min(POLL)) {
@@ -647,7 +657,7 @@ impl Process {
                 stderr,
             }),
             None => {
-                self.stop(STOP_GRACE).ok();
+                self.stop(self.grace).ok();
                 Err(timed_out())
             }
         }
@@ -664,9 +674,9 @@ impl Process {
     /// running that still holds its output gets a moment (100 ms) to
     /// finish, then the rest of its group is killed, as it is when `sink`
     /// stops taking output then (which ends the wait as [`Ended::Stopped`]); past the deadline or
-    /// stopped while it runs, the group is [stopped](Self::stop) with
-    /// [`STOP_GRACE`]. Output that came before a kill is still read, and
-    /// the pipes for that moment after it: a process that left the group
+    /// stopped while it runs, the group is [stopped](Self::stop) with its
+    /// grace ([`Spawn::grace`]). Output that came before a kill is still
+    /// read, and the pipes for that moment after it: a process that left the group
     /// survives the kill and may hold them for good. Something a command left running with its output
     /// elsewhere, in its group, lives on until it ends or rig exits.
     pub fn run(
@@ -695,7 +705,7 @@ impl Process {
             }
         };
         if !matches!(ended, Ended::Exited(_)) {
-            self.stop(STOP_GRACE).ok();
+            self.stop(self.grace).ok();
             self.read_rest(&mut drop);
             return Ok(ended);
         }
@@ -836,7 +846,7 @@ impl Group {
 /// Stops a [`Process`]'s group when dropped: kept in a future that waits
 /// for the process on another thread, it asks the group to stop
 /// (`SIGTERM`) the moment the future is dropped, such as when a call is
-/// interrupted or the app quits, and kills it [`STOP_GRACE`] later if it
+/// interrupted or the app quits, and kills it its grace later if it
 /// still runs. The thread waiting for the process must go on reaping it
 /// meanwhile, as [`Process::run`] does. Work [`blocking`](crate::blocking)
 /// runs needs none: its [`Scope`] does this for every process it starts.
@@ -849,19 +859,23 @@ impl Drop for KillOnDrop {
 }
 
 /// Asks each of the groups `ids` to stop (`SIGTERM`) and kills those still
-/// listed [`STOP_GRACE`] later: so one whose leader ended on the request
-/// while a member ignores it is killed all the same.
+/// listed once the longest grace of theirs passed: so one whose leader
+/// ended on the request while a member ignores it is killed all the same.
 fn stop_groups(ids: Vec<u32>) {
     if ids.is_empty() {
         return;
     }
     signal_listed(&ids, Signal::Terminate);
-    ledger().stopping.extend(&ids);
+    let grace = {
+        let mut ledger = ledger();
+        ledger.stopping.extend(&ids);
+        ledger.grace(&ids)
+    };
     let later = ids.clone();
     let spawned = thread::Builder::new()
         .name("rig-process-stop".to_owned())
         .spawn(move || {
-            thread::sleep(STOP_GRACE);
+            thread::sleep(grace);
             killed(&later);
         });
     if spawned.is_err() {
@@ -952,7 +966,7 @@ impl Scope {
     }
 
     /// Stops it: asks the groups of its processes still running to stop
-    /// (`SIGTERM`), kills them [`STOP_GRACE`] later, and refuses every
+    /// (`SIGTERM`), kills them their grace later, and refuses every
     /// process started in it from now on.
     pub fn stop(&self) {
         let mut calls = self.calls();
@@ -982,9 +996,11 @@ struct Ledger {
     path: Option<PathBuf>,
     listed: BTreeSet<u32>,
     left: BTreeSet<u32>,
-    /// Groups asked to stop and killed after [`STOP_GRACE`] if they still
+    /// Groups asked to stop and killed after their grace if they still
     /// run ([`stop_groups`]).
     stopping: BTreeSet<u32>,
+    /// The grace of each listed group ([`Spawn::grace`]).
+    graces: BTreeMap<u32, Duration>,
     sweeping: bool,
 }
 
@@ -993,6 +1009,7 @@ static LEDGER: Mutex<Ledger> = Mutex::new(Ledger {
     listed: BTreeSet::new(),
     left: BTreeSet::new(),
     stopping: BTreeSet::new(),
+    graces: BTreeMap::new(),
     sweeping: false,
 });
 
@@ -1001,6 +1018,12 @@ fn ledger() -> MutexGuard<'static, Ledger> {
 }
 
 impl Ledger {
+    /// The longest grace of the groups `ids`, at least [`STOP_GRACE`].
+    fn grace(&self, ids: &[u32]) -> Duration {
+        let graces = ids.iter().filter_map(|id| self.graces.get(id)).copied();
+        graces.fold(STOP_GRACE, Duration::max)
+    }
+
     /// Mirrors the list in the file, if one is kept; a file that cannot be
     /// written lists nothing new.
     fn write(&self) {
@@ -1071,8 +1094,10 @@ pub fn end_stopping() {
     end(&ids);
 }
 
-/// Asks the groups `ids` to stop, waits at most [`STOP_GRACE`] for them to
-/// empty, kills what is left and lists none of them.
+/// Asks the groups `ids` to stop, waits at most [`STOP_GRACE`] for them
+/// to empty, kills what is left and lists none of them. As the agent exits,
+/// a longer grace is not given: its launcher kills an agent that takes
+/// longer than a few seconds, then ends what it left.
 fn end(ids: &[u32]) {
     signal_listed(ids, Signal::Terminate);
     let deadline = Instant::now() + STOP_GRACE;
@@ -1090,9 +1115,11 @@ fn ledger_path() -> Option<PathBuf> {
     ledger().path.clone()
 }
 
-/// Lists the group a process just started leads.
-fn list(id: u32) {
+/// Lists the group a process just started leads, with the `grace` a stop
+/// gives it.
+fn list(id: u32, grace: Duration) {
     let mut ledger = ledger();
+    ledger.graces.insert(id, grace);
     if ledger.listed.insert(id) {
         ledger.write();
     }
@@ -1103,6 +1130,7 @@ fn unlist(id: u32) {
     let mut ledger = ledger();
     ledger.left.remove(&id);
     ledger.stopping.remove(&id);
+    ledger.graces.remove(&id);
     if ledger.listed.remove(&id) {
         ledger.write();
     }
@@ -1135,6 +1163,7 @@ fn sweep() {
             ledger.left.remove(id);
             ledger.listed.remove(id);
             ledger.stopping.remove(id);
+            ledger.graces.remove(id);
         }
         if !empty.is_empty() {
             ledger.write();

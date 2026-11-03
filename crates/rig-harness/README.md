@@ -45,7 +45,7 @@ The default `plugins.toml`, in order:
 | `rig-basics` | `sessions::SessionsPlugin` | `/new`, `/resume`, `/name` |
 | `rig-basics` | `sessions::agents::AgentsPlugin` | `/fork`, `/agents` and rewind (Alt+Up to an earlier message, then Enter): the agents of this session |
 | `rig-basics` | `compaction::CompactionPlugin` | summarizing a conversation near the context window; `/compact` |
-| `rig-basics` | `telemetry::usage::UsagePlugin` | what model calls cost; `/usage` |
+| `rig-basics` | `telemetry::usage::UsagePlugin` | what model calls cost, per agent and per tree; `/usage` |
 | `rig-traffic` | `TrafficPlugin` | with `--traffic-log` or `[traffic] log = true`, provider HTTP exchanges in the session's `traffic.jsonl` |
 | `rig-basics` | `activity::ActivityPlugin` | what each agent is doing, for views |
 | `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
@@ -67,7 +67,8 @@ Listed disabled by default, each a commented-out entry that `/plugins` or
 | `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
 | `rig-basics` | `redact::RedactPlugin` | API keys, tokens and private keys become placeholders (`‹SECRET_1›`) where they come in (the model's reply as it streams, tool output and results, messages), so the model, the logs, every front, subagents and a resumed session never hold them; a tool call naming one runs with the real value, kept in memory for the run. Without it nothing is redacted |
 | `rig-basics` | `telemetry::effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
-| `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain |
+| `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain; what they spend is the caller's |
+| `rig-basics` | `budget::BudgetPlugin` | `[budget] usd` and `tokens`, and `/budget`: at the limit the running turns stop, helpers included, and new model calls are refused |
 | `rig-basics` | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools, and the agents at work in the status line |
 | `rig-basics` | `telemetry::diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |

@@ -216,6 +216,7 @@ impl Shell {
         let how = Spawn {
             stdin: None,
             merge_stderr: false,
+            ..Spawn::default()
         };
         let line = [OsString::from("-c"), OsString::from(&args.command)];
         self.workspace

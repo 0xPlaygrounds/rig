@@ -176,6 +176,11 @@ plugin = "rig_tui::TuiPlugin"
 # crate = "rig-basics"
 # plugin = "rig_basics::helpers::HelpersPlugin"
 
+# A budget for what the session spends, helpers included: [budget] usd and tokens in settings.toml, and /budget. Enable with `rig plugin enable rig_basics::budget::BudgetPlugin`.
+# [[plugin]]
+# crate = "rig-basics"
+# plugin = "rig_basics::budget::BudgetPlugin"
+
 # Subagents: the task, message and wait tools, with which the agent starts other agents, messages them and waits on their reports.
 # [[plugin]]
 # crate = "rig-basics"

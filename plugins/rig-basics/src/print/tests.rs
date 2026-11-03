@@ -19,6 +19,7 @@ use rig_harness_test_support::{
 
 use super::*;
 use crate::approval::{ApprovalPlugin, NeedsApproval};
+use crate::telemetry::usage::{UnknownSpend, UsagePlugin};
 
 mod tools;
 
@@ -1109,6 +1110,92 @@ fn a_held_start_holds_a_drivers_first_request() {
     assert_eq!(model.request_count(), 1);
 }
 
+/// Each model call's usage is a `usage` line once it is recorded, before
+/// the `turn_end` that sums it, and so is one a plugin records for a call
+/// made elsewhere, such as a helper child's: so a parent reading these
+/// lines counts its helper's helpers too.
+#[test]
+fn each_recorded_call_is_a_usage_line() {
+    let model =
+        MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({})), reply("Done.")]);
+    let lines = Lines::default();
+    let (input, requests) = JsonIn::channel();
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, wakes) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(lines.clone()))
+        .insert_resource(requests)
+        .insert_resource(scripted_models([(MODEL, &model)]))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin, UsagePlugin))
+        .add_open_tool(
+            "wait",
+            "Wait.",
+            ToolOptions::default(),
+            |called: On<ToolCalled<Value>>, mut commands: Commands| {
+                let done = rig_core::tool::ToolResult::success("Waited.".into());
+                commands.entity(called.call).insert(Outcome::from(done));
+            },
+        );
+    app.finish();
+    app.update();
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "send", "text": "Go." }),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("turn_end").is_empty());
+    let world = app.world_mut();
+    let agent = first_agent(world);
+    world.trigger(Spent {
+        agent,
+        turn: None,
+        model: Some("test/other".to_owned()),
+        purpose: Some("helper".to_owned()),
+        usage: Usage::new().input_tokens(7).output_tokens(3),
+    });
+    app.update();
+
+    let kinds: Vec<String> = lines
+        .parsed()
+        .iter()
+        .filter_map(|line| at(line, "type").as_str().map(str::to_owned))
+        .collect();
+    let usage = |n: usize| {
+        kinds
+            .iter()
+            .enumerate()
+            .filter(|(_, kind)| *kind == "usage")
+            .nth(n)
+            .map(|(at, _)| at)
+    };
+    let end = kinds.iter().position(|kind| kind == "turn_end");
+    let before = usage(1).zip(end).is_some_and(|(usage, end)| usage < end);
+    let after = usage(2).zip(end).is_some_and(|(usage, end)| usage > end);
+    assert!(before && after, "{kinds:?}");
+    let used = lines.of("usage");
+    let fields = |line: &Value| {
+        (
+            at(line, "v").clone(),
+            at(line, "purpose").clone(),
+            at(line, "model").clone(),
+        )
+    };
+    let helper = used.get(2).map(fields);
+    assert_eq!(
+        helper,
+        Some((json!(3), json!("helper"), json!("test/other")))
+    );
+    let turn = used.first().map(fields);
+    assert_eq!(turn.map(|(_, purpose, _)| purpose), Some(json!("turn")));
+    let named = used.iter().all(|line| at(line, "agent").is_string());
+    assert!(named && used.len() == 3, "{used:?}");
+    let tokens = used
+        .get(2)
+        .map(|line| at(at(line, "usage"), "output_tokens").clone());
+    assert_eq!(tokens, Some(json!(3)));
+}
+
 #[test]
 fn a_driver_sends_a_message_mid_turn_and_reads_the_answer() {
     let model = MockCompletionModel::from_stream_turns([
@@ -1762,6 +1849,85 @@ fn a_tool_call_of_no_turn_cut_off_by_a_signal_is_closed_too() {
         "{:?}",
         lines.parsed()
     );
+}
+
+/// A plugin's stop that reaches the agent fails the run with its reason,
+/// also after the agent answered, as a budget's stop of a subagent's
+/// helper does once the main agent's turn ended.
+#[test]
+fn a_plugins_stop_of_the_work_fails_the_run_after_an_answer() {
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.add_observer(
+            |settled: On<Add<Settled>>,
+             turns: Query<(&TurnOutcome, &ForAgent)>,
+             mut commands: Commands| {
+                if let Ok((TurnOutcome::Answered(_), &ForAgent(agent))) = turns.get(settled.entity)
+                {
+                    commands.trigger(StopTurn::plugin(agent, "budget", "Budget reached."));
+                }
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+    let exits = lines.of("exit");
+    let fields = exits
+        .first()
+        .map(|exit| ["code", "answer", "error"].map(|key| at(exit, key).clone()));
+    assert_eq!(
+        fields,
+        Some([json!(1), json!("hello"), json!("Budget reached.")]),
+        "{exits:?}"
+    );
+}
+
+/// A plugin's stop of only its own other agent, as a plugin ends its
+/// helpers' work, fails nothing.
+#[test]
+fn a_plugins_stop_of_another_agent_fails_nothing() {
+    let model = answering(&["hello"]);
+    let (app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+        app.add_observer(
+            |settled: On<Add<Settled>>,
+             turns: Query<&TurnOutcome>,
+             mut spawner: Spawner,
+             mut commands: Commands| {
+                if let Ok(TurnOutcome::Answered(_)) = turns.get(settled.entity) {
+                    let spec = rig_ecs::spawn::AgentSpec::default();
+                    let spawned = spawner.spawn(rig_ecs::spawn::Origin::Root, spec);
+                    if let Ok(helper) = spawned.map(|helper| helper.id()) {
+                        commands.trigger(StopTurn::plugin(helper, "review", "the review ended"));
+                    }
+                }
+            },
+        );
+    });
+    assert_eq!(app.should_exit(), Some(AppExit::Success));
+    let exits = lines.of("exit");
+    let fields = exits
+        .first()
+        .map(|exit| ["code", "answer", "error"].map(|key| at(exit, key).clone()));
+    assert_eq!(
+        fields,
+        Some([json!(0), json!("hello"), Value::Null]),
+        "{exits:?}"
+    );
+}
+
+/// The `exit` line says whether all the session's spend is known: not
+/// once a helper's was not.
+#[test]
+fn the_exit_line_says_whether_all_spend_is_known() {
+    for (unknown, complete) in [(0, true), (1, false)] {
+        let model = answering(&["hello"]);
+        let (_app, lines) = one_shot("hi", Some(MODEL), &model, true, |app| {
+            app.add_plugins(UsagePlugin)
+                .insert_resource(UnknownSpend(unknown));
+        });
+        let exits = lines.of("exit");
+        let said = exits.first().map(|exit| at(exit, "usage_complete").clone());
+        assert_eq!(said, Some(json!(complete)), "{exits:?}");
+    }
 }
 
 /// Holds each exit asked for until the run's own end, as a plugin that

@@ -492,6 +492,7 @@ impl Runner {
         let how = Spawn {
             stdin: Some(args.to_string().into_bytes()),
             merge_stderr: false,
+            ..Spawn::default()
         };
         let process = launcher
             .with_env("RIG_TOOL_FILE", &script.path)

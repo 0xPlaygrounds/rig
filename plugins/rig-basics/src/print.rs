@@ -34,7 +34,9 @@
 //! for no prompt, a refused slash command, a `--tools` name no tool has or
 //! a `--model` the catalog lacks or that does not connect, 130 when cut off, as by a signal or a
 //! reader of stdout gone, else 1, such as for a failed turn, a turn that
-//! ended with no answer, or an error notice about the agent and no answer;
+//! ended with no answer, an error notice about the agent and no answer, or
+//! a plugin's stop that reached the agent, such as a budget's, answer or
+//! not;
 //! a run of several turns exits with the worst. A `--json` run that exits
 //! before its work ends still closes each tool call and turn it started,
 //! and a one-shot one writes its `exit` line.
@@ -58,7 +60,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use crate::models::FirstPick;
-use crate::telemetry::usage::{SessionUsage, TurnUsage};
+use crate::telemetry::usage::{SessionUsage, Spent, TurnUsage, UnknownSpend};
 
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";
@@ -74,7 +76,7 @@ pub const ORIGIN: &str = "print";
 pub const ANSWER: &str = "answer";
 
 /// The version of the JSON lines, `v` on every line both ways.
-pub const VERSION: u64 = 2;
+pub const VERSION: u64 = 3;
 
 /// What a print run writes to stdout after the answer, such as a todo
 /// list: spawn one and keep its `text` current. Sections follow the
@@ -179,6 +181,7 @@ impl Plugin for PrintPlugin {
             app.add_observer(turn_started)
                 .add_observer(started)
                 .add_observer(settled)
+                .add_observer(spent)
                 .add_observer(json_ended)
                 .add_systems(
                     Update,
@@ -510,6 +513,7 @@ impl AppHeadlessExt for App {
         // prompt sees the tools still coming, or a refused `--tools`.
         .run_after_start()
         .add_observer(keep_answer)
+        .add_observer(fail_on_plugin_stop)
         .add_observer(|_: On<Add<KeepRunning>>, mut run: ResMut<Run>| run.kept = true)
     }
 }
@@ -890,6 +894,20 @@ enum Reason<'a> {
     Told(String),
     /// The worst failure so far, else the latest error notice.
     Worst,
+}
+
+/// A plugin's stop that reached the agent the run follows, and so the
+/// work below it, such as a budget's, fails the run with code 1 and its
+/// reason, even after an answer: the work it cut off never ended. The
+/// plugin tells why itself, as the kernel leaves it to; a stop of only a
+/// plugin's own agents, such as its helpers', fails nothing.
+fn fail_on_plugin_stop(reached: On<StopReached>, primary: MainAgentQuery, mut run: ResMut<Run>) {
+    if run.agent(&primary) != Some(reached.event_target()) {
+        return;
+    }
+    if let StopCause::Plugin { why, .. } = reached.cause() {
+        run.fail(1, why.clone(), true);
+    }
 }
 
 /// Notes each turn of the agent the prompts go to that ended, with its
@@ -1427,7 +1445,11 @@ fn note_cut_off(
 fn json_exit(
     reason: Option<Res<ExitReason>>,
     primary: MainAgentQuery,
-    (paths, usage): (Option<Res<SessionPaths>>, Option<Res<SessionUsage>>),
+    (paths, usage, unknown): (
+        Option<Res<SessionPaths>>,
+        Option<Res<SessionUsage>>,
+        Option<Res<UnknownSpend>>,
+    ),
     mut out: Out,
 ) {
     let reason = reason.as_deref();
@@ -1462,7 +1484,8 @@ fn json_exit(
         "answer": answer,
         "error": error,
         "session": session_id(paths),
-        "usage": usage.map(|usage| usage.0.total),
+        "usage": usage.as_ref().map(|usage| usage.0.total),
+        "usage_complete": usage.is_some() && unknown.is_none_or(|unknown| unknown.0 == 0),
     });
     out.emit(agent, "exit", fields);
     // Nothing after it.
@@ -1557,6 +1580,20 @@ fn settled(
         let fields = turn_end_fields(TurnEnd::of(ended), used, first);
         out.emit(Some(agent), "turn_end", fields);
     }
+}
+
+/// A model call's usage was recorded ([`Spent`]): its agent's, a
+/// plugin's for a call made elsewhere, such as a helper's, included.
+fn spent(spent: On<Spent>, mut out: Out) {
+    let Spent {
+        agent,
+        model,
+        purpose,
+        usage,
+        ..
+    } = spent.event();
+    let fields = json!({ "model": model, "purpose": purpose, "usage": usage });
+    out.emit(*agent, "usage", fields);
 }
 
 /// The fields of a `turn_end` line.

@@ -160,6 +160,11 @@ pub struct SpawnedAgent(pub Entity);
 #[derive(Component)]
 pub(super) struct TaskCall(pub(super) RequestId);
 
+/// On a [`SpawnSubagent`] a `task` call made: it has a model or tools of
+/// the [`SubagentDefaults`](super::SubagentDefaults), which a refusal names.
+#[derive(Component)]
+pub(super) struct Defaulted;
+
 /// On a subagent just spawned: its first message, sent once the other
 /// subagents spawned with it are there too, so that it names its peers.
 #[derive(Component)]
@@ -329,12 +334,12 @@ fn spawn_requested(
 /// started, or with why none did.
 fn answer_task(
     settled: On<Add<Settled>>,
-    requests: Query<(&SpawnSubagent, &Outcome, &ChildOf), With<TaskCall>>,
+    requests: Query<(&SpawnSubagent, &Outcome, &ChildOf, Has<Defaulted>), With<TaskCall>>,
     agents: Query<&AgentId>,
     spawned: Query<&SpawnedAgent>,
     mut calls: Query<&mut Decision, ToolCalls>,
 ) {
-    let Ok((request, outcome, of)) = requests.get(settled.entity) else {
+    let Ok((request, outcome, of, defaulted)) = requests.get(settled.entity) else {
         return;
     };
     let agent = spawned.get(settled.entity).ok();
@@ -347,8 +352,14 @@ fn answer_task(
             request.title.trim(),
         )),
         (Err(report), _) => refused(format!(
-            "{}. No subagent was started; fix the call and send it again.",
-            report.message.trim_end_matches('.')
+            "{}.{} No subagent was started; fix the call and send it again.",
+            report.message.trim_end_matches('.'),
+            match defaulted {
+                true =>
+                    " It had the default model or tools of [subagents] in settings.toml; \
+                         name `model` and `tools` to choose others.",
+                false => "",
+            }
         )),
         (Ok(_), None) => refused("No subagent was started.".to_owned()),
     };

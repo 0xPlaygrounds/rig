@@ -46,7 +46,10 @@ so each can be turned off alone.
   stdin or JSON lines (`PrintPlugin`), and the loop of any run nobody sits
   at (`AppHeadlessExt`);
 - `helpers`: the `helper` tool, which runs `rig -p --json` children
-  (`HelpersPlugin`);
+  (`HelpersPlugin`), whose spend is the caller's as they report it;
+- `budget`: `[budget]` and `/budget`, which bound what the session spends,
+  helpers included, in dollars (priced calls only) or tokens
+  (`BudgetPlugin`);
 - `subagents`: the `task`, `message` and `wait` tools (`SubagentsPlugin`).
 
 In TUI, print and JSON runs, `--tools=read,write` limits that run to those
@@ -73,7 +76,8 @@ Without an explicit output limit, a turn asks for 64,000 tokens plus any
 thinking budget and 1,024, within the model's output limit, or the server's
 default for a model whose limits are unknown. The room left in the window caps it.
 
-`/usage` reports provider-supplied cost when available, otherwise API list-price
+`/usage` reports what the agent, the agents below it (despawned ones
+included) and the session spent: provider-supplied cost when available, otherwise API list-price
 estimates. These are not subscription charges or verified invoices. Missing
 usage details or prices leave a partial estimate; previously saved estimates
 are not retroactively recalculated.
@@ -90,10 +94,11 @@ plugin = "rig_basics::compaction::CompactionPlugin"
 `rig plugin disable rig_basics::compaction::CompactionPlugin` comments an
 entry out, and `rig plugin enable <type>` puts it back; `/plugins` does the
 same from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
-`CheckpointPlugin`, `HelpersPlugin`, `SubagentsPlugin`, `EffectLogPlugin`,
-`DiagnosticsPlugin` and `RedactPlugin` are listed disabled by default. A
-plugin that needs another adds it when it is missing, as `SessionsPlugin` adds
-`SessionPickerPlugin` and `SubagentsPlugin` adds `ApprovalPlugin`.
+`CheckpointPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
+`EffectLogPlugin`, `DiagnosticsPlugin` and `RedactPlugin` are listed disabled
+by default. A plugin that needs another adds it when it is missing, as
+`SessionsPlugin` adds `SessionPickerPlugin`, `SubagentsPlugin` adds
+`ApprovalPlugin`, and `HelpersPlugin` and `BudgetPlugin` add `UsagePlugin`.
 
 With the default `tui` feature, each plugin also draws its part in the
 terminal view; `default-features = false` leaves that out.
