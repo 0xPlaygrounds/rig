@@ -66,6 +66,10 @@ pub mod env {
     pub const LAUNCHER: &str = "RIG_LAUNCHER";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
+    /// A line the agent warns of at startup, which a run nobody sits at
+    /// shows too: what the launcher changed of what was asked, such as a
+    /// resumed session's directory that is gone.
+    pub const WARNING: &str = "RIG_WARNING";
     /// Why the build before this start failed, so an older build runs:
     /// the reason and the first compiler errors. The whole output is in
     /// [`Home::build_log`](super::Home::build_log). The agent puts it in
@@ -81,7 +85,7 @@ pub mod env {
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, BUILD_FAILURE, RUN, START];
+    pub const AGENT_ONLY: &[&str] = &[SESSION, NOTICE, WARNING, BUILD_FAILURE, RUN, START];
     /// On every process the agent starts for its tools: the path of the
     /// launcher's [`RunDir::groups`](super::RunDir::groups), which the
     /// launcher finds on a listed group's leader before it kills the
@@ -906,12 +910,18 @@ impl SessionDir {
         self.0.join("switch")
     }
 
+    /// The directory [`Self::directory`] names, whether or not it still
+    /// exists.
+    pub fn saved_directory(&self) -> Option<PathBuf> {
+        let text = std::fs::read_to_string(self.directory()).ok()?;
+        Some(PathBuf::from(text.trim_end_matches('\n')))
+    }
+
     /// The session's working directory, when [`Self::directory`] names one
     /// that still exists.
     pub fn working_directory(&self) -> Option<PathBuf> {
-        let text = std::fs::read_to_string(self.directory()).ok()?;
-        let directory = PathBuf::from(text.trim_end_matches('\n'));
-        directory.is_dir().then_some(directory)
+        self.saved_directory()
+            .filter(|directory| directory.is_dir())
     }
 }
 

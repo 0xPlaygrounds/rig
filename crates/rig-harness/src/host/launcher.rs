@@ -22,6 +22,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
+use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{error, warn};
@@ -35,7 +36,9 @@ use crate::secrets::Secrets;
 use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_core::conversation::Author;
+use rig_ecs::StopTurnsOnExit;
 use rig_ecs::agent::Notice;
+use rig_ecs::stage::AgentLoop;
 use rig_ecs::tasks::Wake;
 
 use crate::main_agent::{MainAgentQuery, main_agent};
@@ -130,10 +133,11 @@ impl Plugin for LauncherPlugin {
             .add_systems(Last, signal_ready.before(reason_from_exit));
     }
 
-    /// Refuses a run the build cannot take: see [`cli`]. Else tells the
-    /// launcher when the run's front takes the terminal's screen
-    /// ([`RunDir::screen`]).
-    fn cleanup(&self, app: &mut App) {
+    /// Refuses a run whose `RIG_HOME/settings.toml` does not read, before
+    /// any plugin's `finish` waits on anything, such as for what is piped
+    /// in: the tables plugins read as they were built. `cleanup` checks
+    /// again, for those read in a `finish`.
+    fn finish(&self, app: &mut App) {
         // Read even when no plugin read a table, so the file's tables are
         // checked at startup all the same.
         let world = app.world_mut();
@@ -141,7 +145,17 @@ impl Plugin for LauncherPlugin {
             let settings = Settings::read(&RigHome::of(world).settings());
             world.insert_resource(settings);
         }
-        if let Some(refusal) = cli::refusal(app) {
+        if let Some(refusal) = settings_refusal(app.world()) {
+            refuse(app, refusal);
+        }
+    }
+
+    /// Refuses a run the build cannot take (see [`cli`]), or whose settings
+    /// table a plugin read in its own `finish` does not read. Else tells the
+    /// launcher when the run's front takes the terminal's screen
+    /// ([`RunDir::screen`]).
+    fn cleanup(&self, app: &mut App) {
+        if let Some(refusal) = cli::refusal(app).or_else(|| settings_refusal(app.world())) {
             refuse(app, refusal);
         }
         let world = app.world();
@@ -158,6 +172,24 @@ impl Plugin for LauncherPlugin {
             warn!("the launcher will not put the terminal back after the agent: {failure}");
         }
     }
+}
+
+/// What is wrong with the user's settings file, which refuses the run: a
+/// table that does not read is never run with its defaults instead. Each
+/// problem names the file, and a table's its table and key. Only the
+/// user's file has problems before the app starts; a project's
+/// `.rig/settings.toml` is read later and stays a warning, so a cloned
+/// repository cannot stop rig from starting. A build describing itself is
+/// not refused.
+fn settings_refusal(world: &World) -> Option<String> {
+    if world.contains_resource::<Describing>() {
+        return None;
+    }
+    let problems = world.get_resource::<Settings>()?.problems();
+    let problems: Vec<String> = (problems.iter())
+        .map(|problem| problem.trim_end().replace('\n', " "))
+        .collect();
+    (!problems.is_empty()).then(|| format!("{}; fix the file and start again", problems.join("; ")))
 }
 
 /// Exits the app, as a signal to it does, once the launcher in
@@ -249,33 +281,47 @@ fn exit_when_launcher_gone(
 }
 
 /// Marks a run refused ([`AppCliExt::refuse_run`](super::cli::AppCliExt::refuse_run))
-/// from `cleanup` until it exits at the end of its first frame: a front
+/// as it is built, until it exits at the end of its first frame: a front
 /// leaves the terminal alone meanwhile.
-#[derive(Resource, Debug)]
-pub struct Refused;
+///
+/// It holds why, for a front that says why a run ended itself, such as
+/// `--json`'s `exit` line.
+#[derive(Resource, Clone, Debug)]
+pub struct Refused(pub String);
 
 /// Refuses this run, once the app is built: says `why` on stderr now,
 /// before any front takes the terminal, and in the launcher's
 /// [`RunDir::refusal`], keeps the run out of its session's directory
-/// (`leave_session`), so the launcher names the run's own log, and exits
-/// with [`REFUSED_EXIT_CODE`] at the end of the first frame. Only the
-/// first refusal is said.
+/// (`leave_session`), so the launcher names the run's own log, holds the
+/// agent loop, so no work a restored session left starts, and exits with
+/// [`REFUSED_EXIT_CODE`] at the end of the first frame. Only the first
+/// refusal is said.
 pub(crate) fn refuse(app: &mut App, why: String) {
     if app.world().contains_resource::<Refused>() {
         return;
     }
     leave_session(app.world_mut());
     tell_refusal(app.world(), &why);
+    // The first reason of a run stands: no other exit, such as the end of
+    // its input, ends it first with another code.
+    if !app.world().contains_resource::<ExitReason>() {
+        app.insert_resource(ExitReason::Failed(REFUSED_EXIT_CODE));
+    }
     if let Some(run) = app.world().get_resource::<LauncherRun>() {
         // No front takes the screen.
         std::fs::remove_file(run.0.screen()).ok();
     }
-    app.insert_resource(Refused).add_systems(
-        Last,
-        exit_refused
-            .after(signal_ready)
-            .run_if(resource_exists::<Refused>),
-    );
+    app.insert_resource(Refused(why))
+        .configure_sets(Update, AgentLoop.run_if(not(resource_exists::<Refused>)))
+        .add_systems(PostUpdate, exit_held.run_if(resource_exists::<Refused>))
+        .add_systems(
+            Last,
+            crate::run::keep_restored
+                .in_set(OnAppExitSystems)
+                .before(StopTurnsOnExit)
+                .run_if(on_message::<AppExit>)
+                .run_if(resource_exists::<Refused>),
+        );
 }
 
 /// Refuses this run once it runs, as for a `--tools` name no tool has
@@ -305,11 +351,17 @@ fn tell_refusal(world: &World, why: &str) {
     }
 }
 
-/// Exits a refused run once the launcher knows that the build started: it
-/// is not rolled back.
-fn exit_refused(mut commands: Commands) {
-    commands.remove_resource::<Refused>();
-    commands.trigger(Exit(ExitReason::Failed(REFUSED_EXIT_CODE)));
+/// Exits a refused run as its exit effect would, without the agent loop,
+/// which stays held until the app is gone.
+fn exit_held(
+    reason: Option<Res<ExitReason>>,
+    mut exits: MessageWriter<AppExit>,
+    mut exited: Local<bool>,
+) {
+    if let Some(reason) = reason.filter(|_| !*exited) {
+        *exited = true;
+        exits.write(reason.exit());
+    }
 }
 
 /// The failed build the launcher started after, until the primary agent
@@ -344,6 +396,7 @@ pub fn inform_build_failure(commands: &mut Commands, agent: Entity, text: String
 /// the user's settings, its tables no plugin reads included, at startup.
 fn launcher_notice(
     settings: Option<Res<Settings>>,
+    refused: Option<Res<Refused>>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -352,6 +405,13 @@ fn launcher_notice(
     {
         notices.write(Notice::info(None, notice));
     }
+    if let Ok(warning) = std::env::var(env::WARNING)
+        && !warning.is_empty()
+    {
+        notices.write(Notice::warn(None, warning));
+    }
+    // A run refused for them said them already.
+    let settings = settings.filter(|_| refused.is_none());
     for problem in settings.iter().flat_map(|settings| settings.problems()) {
         notices.write(Notice::error(None, problem.clone()));
     }

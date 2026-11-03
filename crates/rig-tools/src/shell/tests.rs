@@ -121,6 +121,44 @@ fn cut_output_is_read_back_by_its_handle() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+/// A cut output whose file could not be made says so, rather than naming
+/// no file without a word.
+#[cfg(unix)]
+#[test]
+fn a_spill_that_fails_says_so() {
+    let spill = Some(crate::Spill("/dev/null/rig-spill".into()));
+    let output = shell("seq 1 3000", spill);
+    let first = output.lines().next().unwrap_or_default();
+    assert!(
+        first.contains("; the whole output could not be kept, as making its file failed: "),
+        "{first}"
+    );
+}
+
+/// A timeout of 0 is refused rather than read as 1 second.
+#[test]
+fn a_timeout_of_zero_is_refused() {
+    let args = ShellArgs::new("echo hi").timeout_secs(0);
+    let refused = futures::executor::block_on(Shell::default().run(args)).err();
+    let said = refused.map(|error| error.to_string()).unwrap_or_default();
+    assert!(said.contains("timeout_secs must be at least 1"), "{said}");
+}
+
+/// Output past what the result keeps is not a reason to stop the command:
+/// it runs to its end, however much it prints.
+#[cfg(unix)]
+#[test]
+fn a_command_that_prints_much_runs_to_its_end() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-much-{}", std::process::id()));
+    let spill = Some(crate::Spill(dir.clone()));
+    let output = shell(
+        "head -c 12000000 /dev/zero | tr '\\0' 'x' | fold -w 1000; echo end",
+        spill,
+    );
+    std::fs::remove_dir_all(dir).ok();
+    assert!(output.ends_with("end\n[exit code 0]"), "{:.200}", output);
+}
+
 /// Each piece of output reaches the shell's `Live` while the command still
 /// runs: here the command waits for a file the sink makes on its first line.
 #[cfg(unix)]

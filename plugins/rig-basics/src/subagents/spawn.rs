@@ -334,20 +334,41 @@ fn spawn_requested(
 /// started, or with why none did.
 fn answer_task(
     settled: On<Add<Settled>>,
-    requests: Query<(&SpawnSubagent, &Outcome, &ChildOf, Has<Defaulted>), With<TaskCall>>,
-    agents: Query<&AgentId>,
+    requests: Query<
+        (
+            &SpawnSubagent,
+            &Outcome,
+            &ChildOf,
+            &ForAgent,
+            Has<Defaulted>,
+        ),
+        With<TaskCall>,
+    >,
+    agents: Query<(&AgentId, &ReasoningSetting)>,
     spawned: Query<&SpawnedAgent>,
     mut calls: Query<&mut Decision, ToolCalls>,
 ) {
-    let Ok((request, outcome, of, defaulted)) = requests.get(settled.entity) else {
+    let Ok((request, outcome, of, &ForAgent(parent), defaulted)) = requests.get(settled.entity)
+    else {
         return;
     };
     let agent = spawned.get(settled.entity).ok();
-    let id = agent.and_then(|agent| agents.get(agent.0).ok());
-    let output = match (&outcome.0, id) {
+    let child = agent.and_then(|agent| agents.get(agent.0).ok());
+    // A model of its own and no effort: its model's default, said, as it is
+    // not the effort the parent works at.
+    let reset = request.model.is_some() && request.effort.is_none();
+    let effort = match (child, agents.get(parent).ok()) {
+        (Some((_, child)), Some((_, yours))) if reset && child != yours => {
+            " Its effort is its model's default, as its model differs from yours; give \
+             `effort` to choose one."
+        }
+        _ => "",
+    };
+    let output = match (&outcome.0, child.map(|(id, _)| id)) {
         (Ok(_), Some(id)) => answered(format!(
             "Started subagent `{}` on \"{}\". It works in the background; its report will \
-             arrive as a message when it is done. Continue it with `message`; /agents shows it.",
+             arrive as a message when it is done. Continue it with `message`; /agents shows \
+             it.{effort}",
             id.short(),
             request.title.trim(),
         )),

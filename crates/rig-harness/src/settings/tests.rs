@@ -95,6 +95,16 @@ fn a_bad_file_names_itself() {
         unparsed.problems()
     );
     assert_eq!(unparsed.problems().len(), 1);
+    // One line, saying where in the file.
+    assert!(
+        unparsed
+            .problems()
+            .iter()
+            .all(|problem| !problem.contains('\n')
+                && problem.contains("not TOML at line 1, column ")),
+        "{:?}",
+        unparsed.problems()
+    );
     let problem = mistyped.err().unwrap_or_default();
     assert!(
         problem.starts_with(&format!("{} [limits]: ", think.display())),

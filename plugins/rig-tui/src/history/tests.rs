@@ -235,23 +235,23 @@ fn a_repeated_prompt_moves_to_the_newest_and_is_kept_once() {
     assert_eq!(PromptHistory::load(files).entries, ["test it", "fix it"]);
 }
 
+/// Every distinct prompt is kept, however many; a file of more than twice
+/// as many lines, as repeats make it, is rewritten with them once each.
 #[test]
-fn a_long_file_loads_the_newest_distinct_prompts_and_is_rewritten() {
+fn a_long_file_loads_every_distinct_prompt_and_is_rewritten_without_repeats() {
     let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
-    // The last 500 lines repeat one prompt, so the distinct ones before
-    // them are kept too.
     let lines: String = (0..700)
         .map(|n| format!("prompt {n}"))
-        .chain(std::iter::repeat_n("prompt 699".to_owned(), 500))
+        .chain(std::iter::repeat_n("prompt 699".to_owned(), 800))
         .map(|prompt| format!("{prompt:?}\n"))
         .chain(["not json\n".to_owned()])
         .collect();
     files.write_file(HISTORY_FILE, lines.as_bytes()).ok();
-    let newest: Vec<String> = (200..700).map(|n| format!("prompt {n}")).collect();
-    assert_eq!(PromptHistory::load(files.clone()).entries, newest);
+    let every: Vec<String> = (0..700).map(|n| format!("prompt {n}")).collect();
+    assert_eq!(PromptHistory::load(files.clone()).entries, every);
     let rewritten = files.read_file(HISTORY_FILE).unwrap_or_default();
-    assert_eq!(String::from_utf8_lossy(&rewritten).lines().count(), 500);
-    assert_eq!(PromptHistory::load(files).entries, newest);
+    assert_eq!(String::from_utf8_lossy(&rewritten).lines().count(), 700);
+    assert_eq!(PromptHistory::load(files).entries, every);
 }
 
 #[test]
@@ -342,4 +342,24 @@ fn browsing_follows_the_prompt_shown_when_the_history_moves() {
         press(&mut app, "down");
         assert_eq!(typed(&app), expected);
     }
+}
+
+/// More than 500 prompts typed in a run are all kept, in the history and
+/// in the file.
+#[test]
+fn every_prompt_typed_is_kept_and_saved() {
+    let files: Arc<dyn Files> = Arc::new(MemoryStore::default());
+    let mut world = World::new();
+    world.insert_resource(PromptHistory::load(files.clone()));
+    let typed: Vec<String> = (0..600).map(|n| format!("prompt {n}")).collect();
+    {
+        let mut history = world.resource_mut::<PromptHistory>();
+        for prompt in &typed {
+            history.newest(prompt.clone());
+            history.unsaved.push(prompt.clone());
+        }
+    }
+    world.run_system_once(save).ok();
+    assert_eq!(world.resource::<PromptHistory>().entries, typed);
+    assert_eq!(PromptHistory::load(files).entries, typed);
 }

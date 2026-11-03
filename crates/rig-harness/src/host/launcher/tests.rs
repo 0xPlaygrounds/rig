@@ -2,6 +2,7 @@
 
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 use rig_harness_protocol::{Home, Invocation, SIGNAL_EXIT_CODE};
@@ -9,12 +10,14 @@ use rig_harness_protocol::{Home, Invocation, SIGNAL_EXIT_CODE};
 use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
 use crate::host::exit::{Exit, ExitPlugin, ExitReason};
 use crate::host::session::Scratch;
+use crate::settings::{AppSettingsExt, Settings};
 
 /// An app started with `args` on a terminal or not, through `finish` and
 /// `cleanup`.
 fn started(args: &[&str], terminal: bool) -> App {
     let mut app = App::new();
     app.add_message::<AppExit>()
+        .insert_resource(Settings::default())
         .insert_resource(Invoked {
             args: Invocation::parse(args).unwrap_or_default(),
             terminal,
@@ -38,6 +41,56 @@ fn a_run_the_build_cannot_take_exits_with_2_after_its_first_frame() {
     fine.update();
     fine.update();
     assert_eq!(fine.should_exit(), None);
+}
+
+/// A table of the user's settings that does not read refuses the run,
+/// naming the file, the table and the key, rather than running it on that
+/// table's defaults.
+#[test]
+fn a_settings_table_that_does_not_read_refuses_the_run() {
+    #[derive(bevy_ecs::prelude::Resource, serde::Deserialize, Default)]
+    #[serde(default, deny_unknown_fields)]
+    struct Limits {
+        #[allow(dead_code, reason = "read only to be checked")]
+        lines: usize,
+    }
+    let mut app = App::new();
+    #[derive(bevy_ecs::prelude::Resource, Default)]
+    struct Passes(usize);
+    app.add_message::<AppExit>()
+        .insert_resource(Invoked {
+            args: Invocation::parse(&["-p", "hi"]).unwrap_or_default(),
+            terminal: false,
+        })
+        .insert_resource(Settings::from_toml("[limits]\nlinez = 3\n"))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_setting::<Limits>("limits")
+        .add_plugins((LauncherPlugin, ExitPlugin))
+        .init_resource::<Passes>()
+        .add_systems(
+            Update,
+            (|mut passes: bevy_ecs::prelude::ResMut<Passes>| passes.0 += 1)
+                .in_set(rig_ecs::stage::AgentLoop),
+        );
+    app.finish();
+    app.cleanup();
+    for _ in 0..3 {
+        if app.should_exit().is_none() {
+            app.update();
+        }
+    }
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    assert_eq!(app.world().resource::<Passes>().0, 0, "no agent work ran");
+    let mut notices = app
+        .world_mut()
+        .resource_mut::<bevy_ecs::message::Messages<Notice>>();
+    let repeated = notices.drain().any(|notice| notice.text.contains("linez"));
+    assert!(!repeated, "the refusal said it; no notice says it again");
+    let problems = app.world().resource::<Settings>().problems().join("\n");
+    assert!(
+        problems.contains("settings.toml [limits]") && problems.contains("linez"),
+        "{problems}"
+    );
 }
 
 #[test]
@@ -224,4 +277,40 @@ fn jobs_a_reload_kept_are_taken_over_while_marked() {
     std::fs::remove_dir_all(&root).ok();
     let owned: Vec<&str> = owned.lines().collect();
     assert_eq!(owned, [kept.id().to_string()]);
+}
+
+/// A table a plugin reads in its own `finish`, after the launcher looked,
+/// refuses the run all the same.
+#[test]
+fn a_settings_table_read_in_a_finish_refuses_the_run() {
+    #[derive(bevy_ecs::prelude::Resource, serde::Deserialize, Default)]
+    #[serde(default, deny_unknown_fields)]
+    struct Late {
+        #[allow(dead_code, reason = "read only to be checked")]
+        lines: usize,
+    }
+    struct ReadsLate;
+    impl Plugin for ReadsLate {
+        fn build(&self, _: &mut App) {}
+        fn finish(&self, app: &mut App) {
+            app.add_setting::<Late>("late");
+        }
+    }
+    let mut app = App::new();
+    app.add_message::<AppExit>()
+        .insert_resource(Invoked {
+            args: Invocation::parse(&["-p", "hi"]).unwrap_or_default(),
+            terminal: false,
+        })
+        .insert_resource(Settings::from_toml("[late]\nlinez = 3\n"))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_plugins((LauncherPlugin, ExitPlugin, ReadsLate));
+    app.finish();
+    app.cleanup();
+    for _ in 0..3 {
+        if app.should_exit().is_none() {
+            app.update();
+        }
+    }
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
 }

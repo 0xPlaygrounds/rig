@@ -29,6 +29,7 @@ mod config;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
+use std::num::NonZeroU64;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -165,17 +166,24 @@ const USAGE: &str = "MCP servers; `/mcp add [--user|--project] <name> <commandâ€
 const COMMANDS: &str = "/mcp, /mcp add [--user|--project] <name> <commandâ€¦|url>, /mcp remove \
                         [--user|--project] <name>, /mcp approve <name> or /mcp deny <name>";
 
+/// How long an attempt waits for a server by default: 30 seconds.
+const CONNECT_TIMEOUT: NonZeroU64 = match NonZeroU64::new(30) {
+    Some(secs) => secs,
+    None => NonZeroU64::MIN,
+};
+
 /// The `[mcp]` table of `settings.toml`, read from the user's file only.
 #[derive(Resource, Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct McpSettings {
-    /// Seconds before a lost server is connected again, at least 1; the
-    /// wait doubles up to a minute and starts over once the server answers.
-    pub first_retry_secs: u64,
+    /// Seconds before a lost server is connected again; the wait doubles
+    /// up to a minute and starts over once the server answers. 0 does not
+    /// read, so the settings refuse the run.
+    pub first_retry_secs: NonZeroU64,
     /// Seconds an attempt waits for a server to start, answer and list its
-    /// tools before it counts as failed, at least 1; what a headless run
-    /// waits at most for a server.
-    pub connect_timeout_secs: u64,
+    /// tools before it counts as failed; what a headless run waits at most
+    /// for a server. 0 does not read.
+    pub connect_timeout_secs: NonZeroU64,
     /// The servers of `RIG_HOME/mcp.json` trusted to say which of their
     /// tools only read; a project's server never is. A tool
     /// of one whose `readOnlyHint` says so only reads: its calls run beside
@@ -189,8 +197,8 @@ pub struct McpSettings {
 impl Default for McpSettings {
     fn default() -> Self {
         Self {
-            first_retry_secs: 1,
-            connect_timeout_secs: 30,
+            first_retry_secs: NonZeroU64::MIN,
+            connect_timeout_secs: CONNECT_TIMEOUT,
             trust_read_only: Vec::new(),
         }
     }
@@ -508,10 +516,10 @@ impl Connect<'_> {
             processes: self.processes.clone(),
             groups: self.groups.clone(),
             root: self.root.0.clone(),
-            limit: Duration::from_secs(self.settings.connect_timeout_secs.max(1)),
+            limit: Duration::from_secs(self.settings.connect_timeout_secs.get()),
             line_limit: LINE_LIMIT,
         };
-        let first = Duration::from_secs(self.settings.first_retry_secs.max(1));
+        let first = Duration::from_secs(self.settings.first_retry_secs.get());
         // The connection lasts until nothing reads its events: until the
         // server's entity, and its `Running` with them, is gone.
         let closed = sender.clone();
@@ -741,7 +749,7 @@ impl Start {
         };
         let (connection, tools, child) = tokio::time::timeout(self.limit, opened)
             .await
-            .map_err(|_| format!("no answer within {limit}s"))??;
+            .map_err(|_| format!("no answer within {limit} s (`[mcp] connect_timeout_secs`)"))??;
         outbox
             .send(ServerEvent::Connected(connection.clone(), tools))
             .await;
@@ -757,7 +765,9 @@ impl Start {
             // Each list is bounded too, so one left unanswered never holds
             // back the next change.
             let listed = tokio::time::timeout(self.limit, list(&connection, &changes)).await;
-            match listed.map_err(|_| format!("no answer within {limit}s")) {
+            match listed
+                .map_err(|_| format!("no answer within {limit} s (`[mcp] connect_timeout_secs`)"))
+            {
                 Ok(Ok(tools)) => outbox.send(ServerEvent::Listed(tools)).await,
                 Ok(Err(error)) | Err(error) => outbox.send(ServerEvent::Unlisted(error)).await,
             }

@@ -27,8 +27,13 @@ usage='{"v":3,"type":"usage","model":"test/model","purpose":"turn","usage":{"inp
 case "$task" in
   fail*) echo '{"v":3,"type":"exit","code":1,"error":"it broke","usage_complete":true}'; rm "$d/run/$$"; exit 1;;
   crash*) echo boom >&2; rm "$d/run/$$"; exit 3;;
+  noisy*) for n in 1 2 3 4 5 6 7; do echo "line $n" >&2; done; rm "$d/run/$$"; exit 3;;
   slow*) sleep 30;;
-  wait*) sleep 0.3;;
+  meet4*) i=0; while [ "$(ls "$d/run" | wc -l)" -lt 4 ] && [ $i -lt 40 ]; do sleep 0.25; i=$((i+1)); done
+         ls "$d/run" | wc -l >> "$d/counts";;
+  wait*) i=0; while [ "$(ls "$d/run" | wc -l)" -lt 10 ] && [ $i -lt 40 ]; do sleep 0.25; i=$((i+1)); done
+         ls "$d/run" | wc -l >> "$d/counts";;
+  long*) printf '{"v":3,"type":"exit","code":0,"answer":"%s","usage_complete":true}\n' "$(head -c 200000 /dev/zero | tr '\0' 'y')"; rm "$d/run/$$"; exit 0;;
   old*) echo '{"v":2,"type":"exit","code":0,"answer":"old"}'; rm "$d/run/$$"; exit 0;;
   partial*) echo "$usage"; rm "$d/run/$$"; exit 3;;
   spend*) echo "$usage"; while [ ! -e "$d/go" ]; do sleep 0.05; done; echo "$usage";
@@ -43,6 +48,15 @@ printf '{"v":3,"type":"exit","code":0,"answer":"did: %s","usage_complete":true}\
 /// An app whose agent's model calls `helper` with each of `args` in turn,
 /// then answers, its helpers the [`CHILD`] noting in its own directory.
 fn helped(name: &str, args: &[Value]) -> (App, std::sync::mpsc::Receiver<()>, PathBuf) {
+    helped_with(name, args, HelperSettings::default())
+}
+
+/// [`helped`], with `[helpers]` as `set` says.
+fn helped_with(
+    name: &str,
+    args: &[Value],
+    set: HelperSettings,
+) -> (App, std::sync::mpsc::Receiver<()>, PathBuf) {
     let dir = scratch_home(&format!("rig-basics-helpers-{name}"))
         .root()
         .to_path_buf();
@@ -66,6 +80,7 @@ fn helped(name: &str, args: &[Value]) -> (App, std::sync::mpsc::Receiver<()>, Pa
     };
     app.insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, SessionLogPlugin, HelpersPlugin))
+        .insert_resource(set)
         .insert_resource(command)
         .add_open_tool(
             "read",
@@ -150,59 +165,104 @@ fn a_helper_gets_only_the_tools_of_this_run() {
     );
     // The caller keeps `read`; this run leaves it only `helper`.
     app.insert_resource(RunTools::new([HELPER]));
-    assert!(output(&mut app, &wakes, 0).starts_with("did: one"));
+    let refused = output(&mut app, &wakes, 0);
+    assert!(
+        refused.contains("`read` is not one of this run's tools"),
+        "a tool asked for is refused, not dropped: {refused}"
+    );
     assert!(output(&mut app, &wakes, 1).starts_with("did: two"));
     let args = std::fs::read_to_string(dir.join("args")).unwrap_or_default();
-    let mut lines = args.lines();
-    for task in ["one", "two"] {
-        let line = lines.next().unwrap_or_default();
-        assert!(
-            line.starts_with(&format!("-p --json --tools= -- {task}")),
-            "{args}"
-        );
-    }
+    assert_eq!(args.lines().count(), 1, "{args}");
+    assert!(args.starts_with("-p --json --tools= -- two"), "{args}");
 }
 
+/// Side by side, four helpers run at a time by default and the rest wait
+/// their turn: any number of tasks is taken, with a timeout as long as the
+/// call gives, and failures are reported.
 #[test]
 fn side_by_side_helpers_run_four_at_a_time_and_failures_are_reported() {
-    let mut tasks: Vec<Value> = (0..5)
-        .map(|n| json!({ "task": format!("wait {n}") }))
+    let mut tasks: Vec<Value> = (0..8)
+        .map(|n| json!({ "task": format!("meet4 {n}") }))
+        .chain((0..2).map(|n| json!({ "task": format!("quick {n}") })))
         .collect();
-    tasks.extend([json!({ "task": "fail" }), json!({ "task": "crash" })]);
-    let nine: Vec<Value> = (0..9).map(|n| json!({ "task": format!("{n}") })).collect();
+    tasks.extend([
+        json!({ "task": "fail" }),
+        json!({ "task": "crash" }),
+        json!({ "task": "noisy" }),
+    ]);
     let (mut app, wakes, dir) = helped(
         "side",
         &[
-            json!({ "tasks": tasks }),
-            json!({ "tasks": nine }),
+            json!({ "tasks": tasks, "timeout": 7200 }),
             json!({ "task": "fail" }),
         ],
     );
     let side = output(&mut app, &wakes, 0);
-    assert!(side.starts_with("5 of 7 helpers answered."), "{side}");
+    assert!(side.starts_with("10 of 13 helpers answered."), "{side}");
     assert!(
-        side.contains("did: wait 4") && side.contains("it broke"),
+        side.contains("did: quick 1") && side.contains("it broke"),
         "{side}"
     );
     assert!(
         side.contains("exit code 3") && side.contains("boom"),
         "{side}"
     );
+    assert!(
+        side.contains("[2 earlier lines of stderr dropped]\nline 3"),
+        "a cut stderr says so: {side}"
+    );
     let counts = std::fs::read_to_string(dir.join("counts")).unwrap_or_default();
     let most = counts
         .lines()
         .filter_map(|count| count.trim().parse::<usize>().ok())
         .max();
-    assert!(most.is_some_and(|most| most <= AT_ONCE), "{counts}");
-    let too_many = output(&mut app, &wakes, 1);
+    assert_eq!(most, Some(4), "four at a time, never more: {counts}");
     assert!(
-        too_many.contains("give at most 8 tasks, not 9"),
-        "{too_many}"
-    );
-    assert!(
-        output(&mut app, &wakes, 2).contains("it broke"),
+        output(&mut app, &wakes, 1).contains("it broke"),
         "a failed child fails the call"
     );
+}
+
+/// `[helpers] at_once` lets more helpers of a call run together.
+#[test]
+fn more_helpers_run_at_once_as_the_setting_says() {
+    let tasks: Vec<Value> = (0..10)
+        .map(|n| json!({ "task": format!("wait {n}") }))
+        .collect();
+    let set = HelperSettings {
+        at_once: NonZeroUsize::MIN.saturating_add(9),
+        ..HelperSettings::default()
+    };
+    let (mut app, wakes, dir) = helped_with("at-once", &[json!({ "tasks": tasks })], set);
+    let side = output(&mut app, &wakes, 0);
+    assert!(side.starts_with("10 of 10 helpers answered."), "{side}");
+    let counts = std::fs::read_to_string(dir.join("counts")).unwrap_or_default();
+    let most = counts
+        .lines()
+        .filter_map(|count| count.trim().parse::<usize>().ok())
+        .max();
+    assert!(most.is_some_and(|most| most >= 10), "{counts}");
+}
+
+/// An answer longer than a piece of output, 64 KB, is read whole.
+#[test]
+fn a_long_answer_is_read_whole() {
+    let (mut app, wakes, _) = helped("long", &[json!({ "task": "long" })]);
+    let answer = output(&mut app, &wakes, 0);
+    let answered = answer.chars().take_while(|c| *c == 'y').count();
+    assert_eq!(answered, 200_000, "{:.100}", answer);
+}
+
+/// A `timeout` of 0 is refused, naming the key the call falls back to.
+#[test]
+fn a_timeout_of_zero_is_refused() {
+    let (mut app, wakes, dir) = helped("zero", &[json!({ "task": "one", "timeout": 0 })]);
+    let refused = output(&mut app, &wakes, 0);
+    assert!(
+        refused.contains("`timeout` must be at least 1 second"),
+        "{refused}"
+    );
+    assert!(!dir.join("args").exists(), "no helper started");
 }
 
 #[test]
@@ -392,7 +452,7 @@ fn a_helper_a_stopped_call_never_started_spent_nothing() {
     let (mut app, wakes, dir) = helped("stopped-start", &[json!({ "tasks": tasks })]);
     let running = dir.join("run");
     run_until(&mut app, &wakes, |_| {
-        std::fs::read_dir(&running).is_ok_and(|entries| entries.count() == AT_ONCE)
+        std::fs::read_dir(&running).is_ok_and(|entries| entries.count() == 4)
     });
     if let Some(agent) = first_agent(app.world_mut()) {
         app.world_mut().trigger(StopTurn::new(agent));
@@ -422,7 +482,7 @@ fn a_helper_a_stopped_call_never_started_spent_nothing() {
     }
     assert_eq!(
         app.world().resource::<UnknownSpend>().0,
-        AT_ONCE as u64,
+        4,
         "the fifth spent nothing"
     );
 }
@@ -484,5 +544,45 @@ fn a_helper_in_tilde_is_in_the_home_directory() {
     assert_eq!(
         lent.child(&job).err(),
         Some(format!("{} is outside your directory", home.display()))
+    );
+}
+
+/// A call's `timeout` is each helper's deadline as given, however long; a
+/// call without one gets `[helpers] timeout_secs`, 600 s by default.
+#[test]
+fn a_helpers_deadline_is_the_calls_timeout_or_the_setting() {
+    let default = HelperSettings::default().timeout_secs;
+    assert_eq!(default.get(), 600);
+    assert_eq!(timeout(Some(7200), default), Ok(Duration::from_secs(7200)));
+    assert_eq!(timeout(None, default), Ok(Duration::from_secs(600)));
+    let set = NonZeroU64::MIN.saturating_add(29);
+    assert_eq!(timeout(None, set), Ok(Duration::from_secs(30)));
+    assert!(timeout(Some(0), default).is_err_and(|why| why.contains("[helpers] timeout_secs")));
+}
+
+/// `[helpers]` sets the defaults; 0 does not read for either key.
+#[test]
+fn the_helpers_table_reads_its_keys_and_refuses_zero() {
+    let read = |toml: &str| Settings::from_toml(toml).get::<HelperSettings>("helpers");
+    let set = read("[helpers]\ntimeout_secs = 30\nat_once = 8\n");
+    assert_eq!(
+        set.map(|set| (set.timeout_secs.get(), set.at_once.get())),
+        Ok((30, 8))
+    );
+    assert!(read("[helpers]\nat_once = 0\n").is_err());
+    assert!(read("[helpers]\ntimeout_secs = 0\n").is_err());
+}
+
+/// A helper past its deadline fails its task, naming where the deadline
+/// came from.
+#[test]
+fn a_helper_past_its_timeout_says_which_key_set_it() {
+    let (mut app, wakes, _) = helped("timeout", &[json!({ "task": "slow", "timeout": 1 })]);
+    let said = output(&mut app, &wakes, 0);
+    assert!(
+        said.contains(
+            "it timed out after 1 s (the call's `timeout`, else `[helpers] timeout_secs`)"
+        ),
+        "{said}"
     );
 }

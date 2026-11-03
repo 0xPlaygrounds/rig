@@ -434,10 +434,9 @@ pub trait AppCliExt {
 
     /// Refuses this run, such as for an option value no plugin can take:
     /// says `why` on stderr at once, before any front takes the terminal,
-    /// keeps the run out of its session's directory, and exits with code 2
-    /// at the end of the first frame. Only the first refusal is said. Work
-    /// the restored session left may start in that frame unless the
-    /// plugin holds it.
+    /// keeps the run out of its session's directory, holds the agent loop,
+    /// and exits with code 2 at the end of the first frame. Only the first
+    /// refusal is said.
     fn refuse_run(&mut self, why: String) -> &mut Self;
 }
 

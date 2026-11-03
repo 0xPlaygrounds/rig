@@ -192,6 +192,8 @@ impl Plugin for AgentPlugin {
             .add_systems(SaveConversations, save_conversations)
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
+            .init_resource::<retry::RetryPolicy>()
+            .init_resource::<tools::UnavailableCalls>()
             .add_message::<Notice>()
             .add_message::<session_log::ConversationChanged>()
             .add_message::<inbox::Recalled>()

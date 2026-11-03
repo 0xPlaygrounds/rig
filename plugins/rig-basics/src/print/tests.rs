@@ -657,6 +657,48 @@ fn a_json_exit_during_a_held_start_closes_the_restored_turn_it_leaves() {
     assert_eq!(ended(&mut app), answered("hello"));
 }
 
+/// A run refused as it starts, such as for its settings, leaves the turn
+/// its session restored as it was, for the next run.
+#[test]
+fn a_refused_run_leaves_the_restored_turn_to_the_next_run() {
+    let store = MemoryStore::default();
+    killed_two_frames_in(&store);
+    let refused = silent();
+    let (mut app, _) = scripted(&store, (&refused, false), Some("again"), || {});
+    app.refuse_run("the settings do not read".to_owned());
+    for _ in 0..5 {
+        if app.should_exit().is_none() {
+            app.update();
+        }
+    }
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+    assert_eq!(refused.request_count(), 0);
+    drop(app);
+    let next = silent();
+    let in_place = (carry_on, answer_in_place).in_set(Stage::Gate);
+    let (mut app, _) = scripted(&store, (&next, false), None, in_place);
+    assert_eq!(ended(&mut app), answered("hello"));
+}
+
+/// A long-lived `--json` run refused as it starts reads no request: its
+/// end of input cannot end it first, with 0.
+#[test]
+fn a_refused_json_run_ends_refused_whatever_its_input() {
+    let invoked = Invocation {
+        flags: vec![(JSON.to_owned(), None)],
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(JsonOut::new(Lines::default()))
+        .insert_resource(JsonIn(pipes::read_lines(std::io::empty(), REQUEST_LIMIT)))
+        .add_plugins((SessionLogPlugin, ExitPlugin, PrintPlugin));
+    app.refuse_run("the settings do not read".to_owned());
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
+}
+
 /// `rig -m <MODEL> -p hi` on `store`, killed two frames in, before any
 /// reply; its model, which got no request.
 fn killed_two_frames_in(store: &MemoryStore) -> MockCompletionModel {
@@ -885,30 +927,26 @@ fn sections_follow_the_answer_by_tag() {
     assert_eq!(output(None, &[]), None);
 }
 
+/// A prompt takes what is piped in after it, however late it comes: the
+/// run reads stdin to its end.
 #[test]
-fn a_prompt_takes_what_is_piped_in_and_never_waits_on_a_silent_stdin() {
-    let wait = Duration::from_millis(50);
-    let on = || false;
+fn a_prompt_takes_what_is_piped_in_however_late() {
     let piped = |prompt: &str, text: &'static [u8]| {
-        with_piped(prompt, text, wait, PIPED_LIMIT, on, drop)
+        with_piped(prompt, text, PIPED_LIMIT, || false)
             .ok()
             .flatten()
     };
     assert_eq!(piped("Review", b"diff").as_deref(), Some("Review\n\ndiff"));
     assert_eq!(piped("", b"diff").as_deref(), Some("diff"));
-    // A pipe whose writer stays open and silent, as an agent's shell may
-    // leave stdin.
-    let Ok((silent, writer)) = std::io::pipe() else {
+    let Ok((late, mut writer)) = std::io::pipe() else {
         return;
     };
-    assert_eq!(
-        with_piped("Review", silent, wait, PIPED_LIMIT, on, drop)
-            .ok()
-            .flatten()
-            .as_deref(),
-        Some("Review")
-    );
-    drop(writer);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        writer.write_all(b"late").ok();
+    });
+    let read = with_piped("Review", late, PIPED_LIMIT, || false);
+    assert_eq!(read.ok().flatten().as_deref(), Some("Review\n\nlate"));
 }
 
 /// A run waiting for its whole prompt on stdin, which may never come, stops
@@ -920,7 +958,7 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
     };
     let since = std::time::Instant::now();
     let interrupted = move || since.elapsed() > Duration::from_millis(100);
-    let waited = with_piped("", silent, Duration::MAX, PIPED_LIMIT, interrupted, drop);
+    let waited = with_piped("", silent, PIPED_LIMIT, interrupted);
     assert_eq!(waited, Ok(None));
     drop(writer);
 }
@@ -929,14 +967,38 @@ fn an_interrupted_run_stops_waiting_for_stdin() {
 /// with or without a prompt before it.
 #[test]
 fn piped_input_past_its_limit_is_refused() {
-    let read = |prompt: &str, text: &'static [u8]| {
-        with_piped(prompt, text, Duration::from_secs(5), 4, || false, drop)
-    };
+    let read = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 4, || false);
     assert_eq!(read("", b"abcd"), Ok(Some("abcd".to_owned())));
-    assert_eq!(read("", b"abcde"), Err(TooLarge { limit: 4, asked: 5 }));
+    let large = Unpiped::TooLarge(TooLarge { limit: 4, asked: 5 });
+    assert_eq!(read("", b"abcde"), Err(large.clone()));
+    assert_eq!(read("Review", b"abcdefgh"), Err(large));
+}
+
+/// What is piped in that is not text, or that could not be read, refuses
+/// the run rather than going to the model mangled or cut short.
+#[test]
+fn piped_input_that_is_not_text_or_fails_is_refused() {
+    let read = |prompt: &str, text: &'static [u8]| with_piped(prompt, text, 64, || false);
+    assert_eq!(read("", b"ok \xff no"), Err(Unpiped::NotText(3)));
+    assert_eq!(read("Review", b"\xc3"), Err(Unpiped::NotText(0)));
+    /// A reader that fails after its first bytes.
+    struct Broken(bool);
+    impl Read for Broken {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            match std::mem::replace(&mut self.0, true) {
+                false => buf
+                    .first_mut()
+                    .map(|byte| *byte = b'a')
+                    .map_or(Ok(0), |()| Ok(1)),
+                true => Err(std::io::Error::other("the pipe broke")),
+            }
+        }
+    }
+    let failed = with_piped("", Broken(false), 64, || false);
+    assert_eq!(failed, Err(Unpiped::Failed("the pipe broke".to_owned())));
     assert_eq!(
-        read("Review", b"abcdefgh"),
-        Err(TooLarge { limit: 4, asked: 5 })
+        Unpiped::NotText(3).to_string(),
+        "what was piped in is not UTF-8 text from byte 3 on: pipe in text"
     );
 }
 
@@ -1411,25 +1473,6 @@ fn input_that_ends_past_the_backlog_limit_is_cut_off() {
     );
 }
 
-/// The warning that the prompt goes alone, after a silent stdin, goes
-/// through the front's writer.
-#[test]
-fn the_silent_stdin_warning_goes_through_the_writer() {
-    let Ok((silent, held)) = std::io::pipe() else {
-        return;
-    };
-    let model = answering(&["hello"]);
-    let stderr = Lines::default();
-    let (app, _) = one_shot("hi", Some(MODEL), &model, false, |app| {
-        app.insert_resource(Printed::to(stderr.clone()))
-            .insert_resource(PipedIn(Box::new(silent)));
-    });
-    drop(held);
-    assert_eq!(app.should_exit(), Some(AppExit::Success));
-    let said = stderr.text().join("\n");
-    assert!(said.contains("nothing came on stdin"), "{said}");
-}
-
 /// A reader that takes its first write, then stops reading until `1`.
 struct OnceThenStalled(bool, Arc<std::sync::atomic::AtomicBool>);
 
@@ -1612,6 +1655,60 @@ fn a_failed_one_shot_run_ends_with_exit_last_naming_its_error() {
         assert_eq!(ms.len(), parsed.len(), "every line is timed");
         assert!(ms.is_sorted(), "{ms:?}");
     }
+}
+
+/// A run refused before it starts, as for what was piped in, says why in
+/// its `exit` line, where a driver such as `helper` reads it.
+#[test]
+fn a_refused_run_says_why_in_its_exit_line() {
+    let parsed = one_shot("hi", None, &silent(), true, |app| {
+        app.insert_resource(PipedIn(Box::new(&b"ok \xff"[..])));
+    })
+    .1
+    .parsed();
+    let exit = parsed.last().cloned().unwrap_or_default();
+    assert_eq!(
+        (at(&exit, "type"), at(&exit, "code")),
+        (&json!("exit"), &json!(2))
+    );
+    let why = at(&exit, "error").as_str().unwrap_or_default();
+    assert!(why.contains("not UTF-8 text from byte 3"), "{exit}");
+}
+
+/// A run whose settings do not read is refused before it waits for what
+/// is piped in, so a stdin that stays open never holds the refusal.
+#[test]
+fn a_run_refused_for_its_settings_never_waits_for_stdin() {
+    #[derive(Resource, serde::Deserialize, Default)]
+    #[serde(default, deny_unknown_fields)]
+    struct Table {
+        #[allow(dead_code, reason = "read only to be checked")]
+        key: u32,
+    }
+    let Ok((silent, held)) = std::io::pipe() else {
+        return;
+    };
+    let invoked = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let (mut app, _) = noting(&MemoryStore::default(), invoked);
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[table]\nkye = 1\n",
+    ))
+    .add_setting::<Table>("table")
+    .insert_resource(PipedIn(Box::new(silent)))
+    .add_plugins((
+        SessionLogPlugin,
+        ExitPlugin,
+        rig_harness::host::launcher::LauncherPlugin,
+        PrintPlugin,
+    ));
+    app.finish();
+    app.cleanup();
+    run_until(&mut app, |_| false);
+    drop(held);
+    assert_eq!(app.should_exit(), Some(AppExit::from_code(2)));
 }
 
 #[test]
@@ -2096,8 +2193,8 @@ fn a_failed_turn_fails_the_run_whatever_turn_settles_with_it() {
 
 #[test]
 fn a_failed_plain_run_writes_its_reason_once() {
-    // The third call of a tool nobody has fails the turn with a notice that
-    // wraps the reason.
+    // A tool nobody has is refused at each call; the turn fails once the
+    // scripted model has no reply left, with a notice that wraps the reason.
     let unknown = MockCompletionModel::from_stream_turns(
         ["c1", "c2", "c3"].map(|id| calls(id, "bash", json!({}))),
     );

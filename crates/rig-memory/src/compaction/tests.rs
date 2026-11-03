@@ -112,6 +112,13 @@ fn a_compaction_keeps_the_recent_work_unless_asked() {
     let policy = CompactionPolicy::default();
     let keep = |window| policy.keep(&CompactReason::Threshold, spec(window).as_ref());
     assert_eq!((keep(200_000), keep(40_000)), (20_000, 10_000));
+    // A `keep_recent` the user set is kept as set, whatever the window.
+    let set = CompactionPolicy {
+        keep_recent: Some(30_000),
+        ..CompactionPolicy::default()
+    };
+    let keep = |window| set.keep(&CompactReason::Threshold, spec(window).as_ref());
+    assert_eq!((keep(200_000), keep(100_000)), (30_000, 30_000));
 }
 
 /// The text of each message of `request`, by its role.
@@ -297,7 +304,7 @@ fn a_policy_reads_from_a_table_keeping_what_it_does_not_name() {
 
     let policy: CompactionPolicy =
         serde_json::from_value(serde_json::json!({"keep_recent": 1000})).expect("table");
-    assert_eq!(policy.keep_recent, 1000);
+    assert_eq!(policy.keep_recent, Some(1000));
     assert_eq!(policy.summarizer, Summarizer::DEFAULT);
     let reserve: CompactionPolicy =
         serde_json::from_value(serde_json::json!({"limits": {"reserve": 1}})).expect("table");

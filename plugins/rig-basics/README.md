@@ -72,9 +72,12 @@ in that run.
 The kernel keeps every agent within the run's tools (`rig_ecs::agent::RunTools`)
 before anything is admitted, as it keeps each within its parents.
 
-Without an explicit output limit, a turn asks for 64,000 tokens plus any
-thinking budget and 1,024, within the model's output limit, or the server's
-default for a model whose limits are unknown. The room left in the window caps it.
+Without an explicit output limit, a turn asks for `[compaction] answer_tokens`
+plus any thinking budget and 1,024, else the model's output limit within its
+window, thinking included, or no limit for a model whose output limit is
+unknown (the server's default; rig-core's own for an Anthropic-format
+gateway). The room left in the window caps it. An explicit limit past the
+model's output limit is held to it, with a warning.
 
 `/usage` reports what the agent, the agents below it (despawned ones
 included) and the session spent: provider-supplied cost when available, otherwise API list-price

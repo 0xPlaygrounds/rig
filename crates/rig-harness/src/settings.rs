@@ -1,9 +1,10 @@
 //! The user's settings for plugins: `RIG_HOME/settings.toml`, one table
 //! per plugin. A plugin names its table and a type that reads it, and gets
 //! that type as a resource, its `Default` where the user set nothing. A
-//! table that does not read as the type leaves the default and says why
-//! at startup, as does a file that is not TOML. So does a table no plugin
-//! reads: an error when it is a likely misspelling of one a plugin reads
+//! table that does not read as the type refuses the run, naming the file,
+//! the table and the key, as does a file that is not TOML or cannot be
+//! read ([`Settings::problems`]). A table no plugin reads is said at
+//! startup: an error when it is a likely misspelling of one a plugin reads
 //! (`[trafic]` for `[traffic]`), else a note, such as for a disabled
 //! plugin's table.
 //!
@@ -109,7 +110,20 @@ impl Settings {
                 ..Self::empty(file)
             },
             Err(failure) => {
-                let problem = format!("{file}: not TOML: {failure}");
+                // toml's own text draws the line in several; a refusal is one.
+                let at = (failure.span())
+                    .and_then(|span| text.get(..span.start))
+                    .map(|before| {
+                        let line = before.matches('\n').count() + 1;
+                        let column = before
+                            .rsplit('\n')
+                            .next()
+                            .map_or(0, |it| it.chars().count())
+                            + 1;
+                        format!(" at line {line}, column {column}")
+                    })
+                    .unwrap_or_default();
+                let problem = format!("{file}: not TOML{at}: {}", failure.message().trim_end());
                 Self {
                     problems: vec![problem],
                     ..Self::empty(file)
@@ -131,7 +145,8 @@ impl Settings {
     }
 
     /// What was wrong with the file or with a table a plugin read, to show
-    /// the user.
+    /// the user. The user's file's problems refuse the run; a project's
+    /// are warned of.
     pub fn problems(&self) -> &[String] {
         &self.problems
     }
@@ -168,7 +183,8 @@ pub trait AppSettingsExt {
     /// Inserts `T` from the `[section]` table of the [`Settings`], read
     /// from `RIG_HOME/settings.toml` the first time (unless the app
     /// inserted some, as a test does). A table that does not read as `T`
-    /// inserts `T::default()` and is one of [`Settings::problems`].
+    /// inserts `T::default()` and is one of [`Settings::problems`], which
+    /// refuse the run.
     fn add_setting<T: Resource + DeserializeOwned + Default>(&mut self, section: &str)
     -> &mut Self;
 

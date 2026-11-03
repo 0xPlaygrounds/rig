@@ -23,8 +23,8 @@ const HISTORY_FILE: &str = "tui/history.jsonl";
 /// The view loads it in `PreStartup`, puts each prompt [`Sent`] and the
 /// text an [`Editor`] dropped unsent, in the order they happened, as the
 /// newest in [`HistorySystems::Record`], and in [`HistorySystems::Save`]
-/// adds to the file those recorded since that are still in `entries`,
-/// keeping the newest [`Self::KEPT`]. A plugin filters `entries` between
+/// adds to the file those recorded since that are still in `entries`;
+/// every distinct prompt is kept. A plugin filters `entries` between
 /// the two, such as to keep secrets out. After another agent is shown,
 /// [`HistorySystems::Seed`] [seeds](Self::seed) its conversation's typed
 /// prompts as the newest before the next key; a filter that should also
@@ -59,26 +59,24 @@ pub struct PromptHistory {
 }
 
 impl PromptHistory {
-    /// How many prompts are kept.
-    pub const KEPT: usize = 500;
-
-    /// The newest [`Self::KEPT`] distinct prompts kept in `files`, which
-    /// new ones are saved to. Saving only appends, so the file is
-    /// rewritten with them once it holds more than twice that many lines.
+    /// The distinct prompts kept in `files`, each where it was last typed,
+    /// which new ones are saved to. Saving only appends, so the file is
+    /// rewritten with them once it holds more than twice as many prompts.
     pub fn load(files: Arc<dyn Files>) -> Self {
         let file = Kept(files.clone(), HISTORY_FILE);
         let text = files.read_file(HISTORY_FILE).unwrap_or_default();
         let text = String::from_utf8_lossy(&text);
-        let mut seen = HashSet::new();
-        let mut entries: Vec<String> = text
-            .lines()
-            .rev()
+        let saved: Vec<String> = (text.lines())
             .filter_map(|line| serde_json::from_str::<String>(line).ok())
-            .filter(|prompt| seen.insert(prompt.clone()))
-            .take(Self::KEPT)
+            .collect();
+        let mut seen = HashSet::new();
+        let mut entries: Vec<String> = (saved.iter().rev())
+            .filter(|prompt| seen.insert(*prompt))
+            .cloned()
             .collect();
         entries.reverse();
-        if text.lines().count() > 2 * Self::KEPT
+        // Only repeats make it rewrite the file; lines it cannot read go then.
+        if saved.len() > 2 * entries.len()
             && let Err(failure) = jsonl::write(&file, &entries)
         {
             warn!("could not trim {file}: {failure}");
@@ -104,7 +102,7 @@ impl PromptHistory {
 
     /// Puts `prompts`, in order, as the newest, moving any already there,
     /// without saving them: the prompts of a conversation shown, which
-    /// the file has unless its retention dropped them.
+    /// the file has already.
     pub fn seed(&mut self, prompts: impl IntoIterator<Item = String>) {
         for prompt in prompts {
             self.newest(prompt);
@@ -207,9 +205,9 @@ pub(crate) fn record(
 }
 
 /// Adds the prompts recorded since the last save that are still kept to
-/// the file, then keeps the newest.
+/// the file.
 pub(crate) fn save(mut history: ResMut<PromptHistory>) {
-    if history.unsaved.is_empty() && history.entries.len() <= PromptHistory::KEPT {
+    if history.unsaved.is_empty() {
         return;
     }
     let unsaved = std::mem::take(&mut history.unsaved);
@@ -219,8 +217,6 @@ pub(crate) fn save(mut history: ResMut<PromptHistory>) {
     {
         warn!("could not save the prompt history: {failure}");
     }
-    let excess = history.entries.len().saturating_sub(PromptHistory::KEPT);
-    history.entries.drain(..excess);
 }
 
 #[cfg(test)]

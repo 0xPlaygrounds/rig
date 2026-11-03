@@ -15,6 +15,7 @@
 use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
+use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
@@ -225,6 +226,10 @@ pub enum CompactReason {
     Overflow,
 }
 
+/// Tokens of the newest messages an automatic compaction keeps unless
+/// [`CompactionPolicy::keep_recent`] says otherwise.
+const KEEP_RECENT: usize = 20_000;
+
 /// How a conversation is compacted: what the summarizer is asked, the tool
 /// arguments a summary keeps track of, such as the files a coding agent's
 /// file tools read and changed, how much of the newest conversation stays
@@ -240,7 +245,7 @@ pub enum CompactReason {
 ///
 /// let policy: CompactionPolicy =
 ///     serde_json::from_value(serde_json::json!({"keep_recent": 1000, "limits": {"reserve": 1}}))?;
-/// assert_eq!(policy.keep_recent, 1000);
+/// assert_eq!(policy.keep_recent, Some(1000));
 /// assert_eq!(policy.summarizer.limits.reserve, 1);
 /// assert_eq!(policy.keep_asked, CompactionPolicy::default().keep_asked);
 /// # Ok::<(), serde_json::Error>(())
@@ -254,9 +259,10 @@ pub struct CompactionPolicy {
     /// The tool arguments tracked across compactions.
     pub tracked: Vec<TrackArgument>,
     /// Tokens of the newest messages an automatic compaction keeps as they
-    /// are, a quarter of the model's input limit at most: the work carries on,
-    /// so its recent part stays.
-    pub keep_recent: usize,
+    /// are: the work carries on, so its recent part stays. `None` keeps
+    /// 20 000 tokens, a quarter of the model's input limit at most, so a
+    /// compaction frees most of the window; a number is kept as given.
+    pub keep_recent: Option<usize>,
     /// Tokens of the newest messages a compaction the user asked for keeps
     /// as they are; the newest reply or message always stays.
     pub keep_asked: usize,
@@ -264,21 +270,29 @@ pub struct CompactionPolicy {
     pub clearing: ClearToolOutputs,
     /// What happens to the tool outputs a clearing near the window drops.
     pub near_window: NearWindow,
+    /// The most tokens a turn's answer may take, besides its thinking,
+    /// unless its request names its own (held to the model's output
+    /// limit); `None` takes the model's output limit, or the server's
+    /// default when the catalog does not know it. Either way within the
+    /// room the window leaves. 0 does not read.
+    pub answer_tokens: Option<NonZeroU64>,
 }
 
 impl Default for CompactionPolicy {
-    /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20k tokens kept
-    /// by an automatic compaction and none beyond the newest reply or
+    /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20 000
+    /// tokens, a quarter of the input limit at most, kept by an automatic
+    /// compaction and none beyond the newest reply or
     /// message by an asked one, [`ClearToolOutputs::default`], and notes
     /// on what clearing drops near the window.
     fn default() -> Self {
         Self {
             summarizer: Summarizer::DEFAULT,
             tracked: Vec::new(),
-            keep_recent: 20_000,
+            keep_recent: None,
             keep_asked: 0,
             clearing: ClearToolOutputs::default(),
             near_window: NearWindow::default(),
+            answer_tokens: None,
         }
     }
 }
@@ -305,10 +319,13 @@ struct PolicyTable {
     prompts: SummaryPrompts,
     limits: SummaryLimits,
     tracked: Vec<TrackArgument>,
-    keep_recent: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keep_recent: Option<usize>,
     keep_asked: usize,
     clearing: ClearToolOutputs,
     near_window: NearWindow,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    answer_tokens: Option<NonZeroU64>,
 }
 
 impl Default for PolicyTable {
@@ -329,6 +346,7 @@ impl From<PolicyTable> for CompactionPolicy {
             keep_asked: table.keep_asked,
             clearing: table.clearing,
             near_window: table.near_window,
+            answer_tokens: table.answer_tokens,
         }
     }
 }
@@ -343,6 +361,7 @@ impl From<CompactionPolicy> for PolicyTable {
             keep_asked: policy.keep_asked,
             clearing: policy.clearing,
             near_window: policy.near_window,
+            answer_tokens: policy.answer_tokens,
         }
     }
 }
@@ -372,13 +391,20 @@ impl CompactionPolicy {
     pub fn keep(&self, reason: &CompactReason, spec: Option<&ModelSpec>) -> usize {
         match reason {
             CompactReason::Asked { .. } => self.keep_asked,
-            CompactReason::Threshold | CompactReason::Overflow => spec
-                .and_then(ModelSpec::input_limit)
-                .map_or(self.keep_recent, |limit| {
-                    self.keep_recent
-                        .min(usize::try_from(limit / 4).unwrap_or(usize::MAX))
-                }),
+            CompactReason::Threshold | CompactReason::Overflow => self.keep_recent(spec),
         }
+    }
+
+    /// Tokens of the newest messages an automatic compaction with `spec`
+    /// keeps: [`keep_recent`](Self::keep_recent) when set, else
+    /// 20 000 tokens within a quarter of `spec`'s input limit.
+    pub fn keep_recent(&self, spec: Option<&ModelSpec>) -> usize {
+        self.keep_recent.unwrap_or_else(|| {
+            let quarter = spec.and_then(ModelSpec::input_limit).map(|limit| limit / 4);
+            let quarter =
+                quarter.map_or(usize::MAX, |it| usize::try_from(it).unwrap_or(usize::MAX));
+            KEEP_RECENT.min(quarter)
+        })
     }
 
     /// Where a compaction for `reason` should end: the index of the first

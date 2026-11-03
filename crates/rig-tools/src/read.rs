@@ -252,6 +252,11 @@ impl Tool for Read {
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<ToolOutput, ToolExecutionError> {
+        if args.offset == Some(0) {
+            return Err(ToolExecutionError::invalid_args(
+                "offset counts lines from 1; give 1 or more, or leave it out",
+            ));
+        }
         let path = self
             .workspace
             .place(self.base.as_deref(), self.confine, &args.path)?;

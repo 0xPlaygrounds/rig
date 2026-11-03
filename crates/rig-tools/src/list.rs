@@ -171,7 +171,14 @@ fn list(
     args: &ListArgs,
 ) -> Result<(String, FilesListed, Option<OutputCut>), ToolExecutionError> {
     let listed = listed(workspace, root, args.glob.as_deref(), args.listing())?;
-    let depth = args.depth.unwrap_or(usize::MAX).max(1);
+    let depth = match args.depth {
+        Some(0) => {
+            return Err(ToolExecutionError::invalid_args(
+                "depth must be at least 1; leave it out to list every level",
+            ));
+        }
+        depth => depth.unwrap_or(usize::MAX),
+    };
     let entries: BTreeSet<String> = listed
         .files
         .iter()

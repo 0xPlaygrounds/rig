@@ -741,8 +741,12 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
     app.world_mut()
         .entity_mut(agent)
         .insert(ToolAccess::all().narrow(["add", "plan"]));
-    let reason =
-        |name: &str| format!("the model kept calling `{name}`, which is not one of its tools");
+    let reason = |name: &str| {
+        format!(
+            "the model kept calling `{name}`, which is not one of its tools \
+                 (`[tools] max_unavailable_calls` is 3)"
+        )
+    };
     let feedback = |name: &str| {
         format!(
             "There is no tool named `{name}`. Your tools are: `add`, `plan`. Call one by its \
@@ -800,4 +804,38 @@ fn unknown_tools_get_filtered_feedback_and_fail_the_turn_on_the_third_call() {
             .collect();
         assert_eq!(errors, expected, "turn {turn}");
     }
+}
+
+/// `[tools] max_unavailable_calls` set higher lets a model call a tool it
+/// does not have more often in a turn, each call refused with its tools.
+#[test]
+fn a_higher_unavailable_call_limit_lets_the_turn_go_on() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let ran = Arc::new(AtomicU32::new(0));
+    app.add_tool(Add(ran.clone()));
+    let most = std::num::NonZeroU32::new(10).unwrap_or(std::num::NonZeroU32::MIN);
+    app.insert_resource(rig_ecs::tools::UnavailableCalls(most));
+    let call = |name: &str| {
+        let call = MockStreamEvent::tool_call("call", name, serde_json::json!({"a": 2, "b": 3}));
+        vec![call, MockStreamEvent::final_response_with_default_usage()]
+    };
+    let mut turns: Vec<_> = ["bash", "bash", "bash", "bash"]
+        .iter()
+        .map(|name| call(name))
+        .collect();
+    turns.push(vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]);
+    let model = MockCompletionModel::from_stream_turns(turns);
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let ended = app.world().resource::<Ended>().0.last().cloned();
+    assert!(matches!(ended, Some(TurnOutcome::Answered(_))), "{ended:?}");
+    assert_eq!(model.request_count(), 5);
 }

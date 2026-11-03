@@ -23,11 +23,6 @@ use crate::{
     Excerpt, LineFilter, Live, MAX_LINE_CHARS, OutputLimit, Source, Spill, blocking, shell_path,
 };
 
-/// Output past which the command is killed. While it runs, only what the
-/// [`OutputLimit`] keeps, and each stream's unfinished line, is held in
-/// memory.
-const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
-
 /// Runs a command with `sh -c` in its own session and process group, in its
 /// [`Workspace`], as its [`Launcher`] starts processes. Its stdout and
 /// stderr come back interleaved line by line, as each line ends, without
@@ -53,9 +48,9 @@ pub struct Shell {
     pub filter: Option<LineFilter>,
     /// Where output that is cut is kept whole, named in the cut output.
     pub spill: Option<Spill>,
-    /// How much of the output the result keeps; `None` keeps all of it, up
-    /// to the 10 MB the command is killed at, for a host that cuts output
-    /// itself.
+    /// How much of the output the result keeps; `None` keeps all of it,
+    /// for a host that cuts output itself. While the command runs, only
+    /// what it keeps, and each stream's unfinished line, is held in memory.
     pub cut: Option<OutputLimit>,
     /// Whether a `cwd` that resolves outside the launcher's directory is
     /// refused. What the command itself does is not confined: it may still
@@ -140,9 +135,12 @@ impl Shell {
         &self,
         args: ShellArgs,
     ) -> Result<(ShellRun, Option<OutputCut>), ToolExecutionError> {
-        let timeout = args
-            .timeout_secs
-            .map(|secs| Duration::from_secs(secs.max(1)));
+        if args.timeout_secs == Some(0) {
+            return Err(ToolExecutionError::invalid_args(
+                "timeout_secs must be at least 1; leave it out to wait until the command ends",
+            ));
+        }
+        let timeout = args.timeout_secs.map(Duration::from_secs);
         let shell = self.clone();
         blocking(move || shell.finish(shell.start(&args)?, timeout)).await
     }
@@ -243,7 +241,7 @@ impl Shell {
         let end = process
             .run(deadline, |line| {
                 kept.push(&line);
-                kept.written <= OUTPUT_LIMIT
+                true
             })
             .map_err(|error| {
                 ToolExecutionError::other(format!("waiting for the command failed: {error}"))
@@ -273,12 +271,9 @@ impl Shell {
                 output.push(']');
                 ExitStatus::TimedOut
             }
+            // Never: every line is taken.
             Ended::Stopped => {
-                output.push_str(&format!(
-                    "{LIMIT_PREFIX}{} MB{}]",
-                    OUTPUT_LIMIT / 1024 / 1024,
-                    there(&process)
-                ));
+                output.push_str(&format!("{KILLED_PREFIX}this tool{}]", there(&process)));
                 ExitStatus::Killed
             }
         };
@@ -307,15 +302,13 @@ const EXIT_PREFIX: &str = "[exit code ";
 const KILLED_PREFIX: &str = "[killed by ";
 /// How the status line of a command stopped at its timeout begins.
 const TIMEOUT_PREFIX: &str = "[timed out after ";
-/// How the status line of a command stopped at the output limit begins.
-const LIMIT_PREFIX: &str = "[stopped after printing more than ";
 
 /// How each line [`Shell`] ends a command's output with begins, one per
 /// way the command can end.
-const STATUS_STARTS: [&str; 4] = [EXIT_PREFIX, KILLED_PREFIX, TIMEOUT_PREFIX, LIMIT_PREFIX];
+const STATUS_STARTS: [&str; 3] = [EXIT_PREFIX, KILLED_PREFIX, TIMEOUT_PREFIX];
 
 /// The status line of a command that ended by a signal this tool did not
-/// send (its timeout and output limit say so themselves): which signal,
+/// send (its timeout says so itself): which signal,
 /// what likely sent it, and what to do. With `remote`, the process was the
 /// transport to that machine, and its end there stopped the command.
 fn killed(status: std::process::ExitStatus, remote: Option<&str>) -> String {
@@ -582,6 +575,9 @@ struct Kept {
     spill: Option<Spill>,
     /// The file it goes to, from the first cut on, and its path.
     spilled: Option<(PathBuf, File)>,
+    /// Why the whole output is not in a file, once making or writing it
+    /// failed.
+    unspilled: Option<String>,
     /// Where each line is reported as it comes.
     live: Option<Live>,
     /// What each line goes through first.
@@ -640,9 +636,10 @@ impl Kept {
         if let Some(live) = &self.live {
             live.line(&line);
         }
-        if let Some((_, file)) = &mut self.spilled
-            && file.write_all(line.as_bytes()).is_err()
+        if let Some((path, file)) = &mut self.spilled
+            && let Err(error) = file.write_all(line.as_bytes())
         {
+            self.unspilled = Some(format!("writing {} failed: {error}", path.display()));
             self.spilled = None;
         }
         let body = line.strip_suffix('\n').unwrap_or(&line);
@@ -744,13 +741,15 @@ impl Kept {
         let Some(spill) = self.spill.take() else {
             return;
         };
-        self.spilled = spill.create("shell").ok().filter(|(_, file)| {
-            let mut file = file;
-            self.tail
-                .iter()
+        let spilled = spill.create("shell").and_then(|(path, mut file)| {
+            (self.tail.iter())
                 .try_for_each(|line| file.write_all(line.text().as_bytes()))
-                .is_ok()
+                .map(|()| (path, file))
         });
+        match spilled {
+            Ok(spilled) => self.spilled = Some(spilled),
+            Err(error) => self.unspilled = Some(format!("making its file failed: {error}")),
+        }
     }
 
     /// The file that has the whole output, quoted for `sh`, when a command
@@ -829,7 +828,12 @@ impl Kept {
                         path.display(),
                     ));
                 }
-                None => text.push_str(&format!("[{what}]\n")),
+                None => match &self.unspilled {
+                    Some(why) => text.push_str(&format!(
+                        "[{what}; the whole output could not be kept, as {why}]\n"
+                    )),
+                    None => text.push_str(&format!("[{what}]\n")),
+                },
             }
             fact = Some(OutputCut {
                 kept: KeptEnd::Ends,

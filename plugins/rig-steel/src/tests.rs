@@ -359,3 +359,121 @@ fn a_reply_read_after_a_compaction_still_arrives_and_only_once() {
     let again = answered(&mut app, &wakes, harness.reply(request));
     assert!(matches!(again, Some(Err(_))), "{again:?}");
 }
+
+/// The output of the program `code` run with `limits` by a fresh app's
+/// agent, once it has one.
+fn ran_with(limits: crate::Limits, code: &str) -> String {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes, agent) = app(&model);
+    app.insert_resource(limits);
+    let call = start_call(
+        app.world_mut(),
+        agent,
+        (RUN_STEEL, "s1"),
+        json!({ "code": code }),
+    );
+    let call = call.unwrap_or(Entity::PLACEHOLDER);
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(call).is_some()
+    });
+    let result = app.world().get::<Outcome>(call).map(Outcome::tool_result);
+    result
+        .map(|result| result.output().render())
+        .unwrap_or_default()
+}
+
+/// A program's calls are limited by `[steel] max_calls`, and the refusal
+/// at it names the key.
+#[test]
+fn a_programs_calls_are_limited_by_its_setting() {
+    let code = r#"(call-tool "look") (call-tool "look") (call-tool "look") "done""#;
+    assert_eq!(ran_with(crate::Limits::default(), code), "done");
+    let two = crate::Limits {
+        max_calls: 2,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(two, code);
+    assert!(
+        said.contains("too many host function calls: 2 at most (`[steel] max_calls`)"),
+        "{said}"
+    );
+}
+
+/// What a program printed is cut at `[steel] max_output_bytes`, and how it
+/// ended still follows, however much it printed.
+#[test]
+fn a_programs_failure_is_kept_past_what_it_printed() {
+    let small = crate::Limits {
+        max_output_bytes: 1024,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(
+        small,
+        r#"(display (make-string 5000 #\a)) (error "it broke")"#,
+    );
+    assert!(
+        said.contains("[printed output cut at 1024 bytes (`[steel] max_output_bytes`)]")
+            && said.contains("it broke"),
+        "{said}"
+    );
+}
+
+/// A program may make 1000 host calls by default, and as many as
+/// `[steel] max_calls` says; the call past them is refused naming the key.
+#[test]
+fn a_programs_calls_are_a_thousand_unless_set() {
+    let default = crate::Limits::default();
+    assert_eq!(default.call(999), Ok(()));
+    assert!(
+        default
+            .call(1000)
+            .is_err_and(|why| why.contains("1000 at most"))
+    );
+    let more = crate::Limits {
+        max_calls: 1_000_000,
+        ..crate::Limits::default()
+    };
+    assert_eq!(more.call(999_999), Ok(()));
+    let two = crate::Limits {
+        max_calls: 2,
+        ..crate::Limits::default()
+    };
+    assert_eq!(two.call(1), Ok(()));
+    assert!(
+        two.call(2)
+            .is_err_and(|why| why.contains("`[steel] max_calls`"))
+    );
+}
+
+/// A program runs past `[steel] max_seconds` of execution only as long as
+/// it takes the watchdog to look, then stops, naming the key.
+#[test]
+fn a_program_stops_at_its_time_setting() {
+    let one = crate::Limits {
+        max_seconds: std::num::NonZeroU64::MIN,
+        ..crate::Limits::default()
+    };
+    let said = ran_with(one, "(define (spin n) (spin (+ n 1))) (spin 0)");
+    assert!(
+        said.contains("it ran for more than 1 s") && said.contains("`[steel] max_seconds`"),
+        "{said}"
+    );
+}
+
+/// `[steel]` in the user's settings sets the limits.
+#[test]
+fn the_steel_table_sets_the_limits() {
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.insert_resource(rig_harness::settings::Settings::from_toml(
+        "[steel]\nmax_seconds = 5\nmax_calls = 2\n",
+    ))
+    .add_plugins((AgentPlugin, SessionLogPlugin, SteelPlugin));
+    let limits = *app.world().resource::<crate::Limits>();
+    assert_eq!((limits.max_seconds.get(), limits.max_calls), (5, 2));
+    let default = crate::Limits::default();
+    assert_eq!((default.max_seconds.get(), default.max_calls), (60, 1000));
+    assert_eq!(
+        limits.max_output_bytes,
+        crate::Limits::default().max_output_bytes
+    );
+}

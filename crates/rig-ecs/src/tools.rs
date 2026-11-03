@@ -26,9 +26,10 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use super::agent::{AgentId, CallOf, RunTools, SpawnedBy, ToolAccess};
+use super::agent::{AgentId, CallOf, Notice, RunTools, SpawnedBy, ToolAccess};
 use super::effects::Handler;
 use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
 use super::turn::fail;
@@ -115,8 +116,9 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// runs the handler, or opens the call for an open tool.
 ///
 /// An unavailable name gets feedback listing the agent's allowed tools.
-/// Calling the same unavailable name three times in one turn fails that
-/// turn, even when successful calls occur between them.
+/// Calling the same unavailable name [`UnavailableCalls`] times in one turn
+/// (three by default) fails that turn, even when successful calls occur
+/// between them.
 ///
 /// [`CallOf`]: super::agent::CallOf
 #[derive(Component, Clone, Debug)]
@@ -478,12 +480,16 @@ pub(crate) fn offered<'a>(
 /// Keeps each agent's access within this run's tools ([`RunTools`]) and
 /// the access of every agent above it, before anything is admitted: a
 /// child never calls or is offered a tool its parent or the run may not,
-/// however its access was made or restored. Looks only when an access, a
+/// however its access was made or restored. An agent that so loses a
+/// registered tool gets a warning naming it, but for the run's tools as
+/// the run started, which the user gave. Looks only when an access, a
 /// parent or the run's tools changed.
 pub(crate) fn keep_within_parents(
     agents: Query<(Entity, Ref<ToolAccess>, Option<Ref<SpawnedBy>>)>,
+    tools: Query<&ToolDef>,
     run: Option<Res<RunTools>>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
     let changed = (agents.iter())
         .any(|(_, access, parent)| access.is_changed() || parent.is_some_and(|it| it.is_changed()));
@@ -493,8 +499,13 @@ pub(crate) fn keep_within_parents(
     let above: HashMap<Entity, (ToolAccess, Option<Entity>)> = (agents.iter())
         .map(|(agent, access, parent)| (agent, ((*access).clone(), parent.map(|it| it.parent()))))
         .collect();
+    let run_changed = run
+        .as_ref()
+        .is_some_and(|run| run.is_changed() && !run.is_added());
+    let names: Vec<&str> = tools.iter().map(|def| def.0.name.as_str()).collect();
     for (agent, access, parent) in &agents {
-        let mut within = access.for_run(run.as_deref());
+        let in_run = access.for_run(run.as_deref());
+        let mut within = in_run.clone();
         let mut next = parent.map(|it| it.parent());
         // A cycle of parents ends once every agent was passed.
         for _ in 0..above.len() {
@@ -506,6 +517,33 @@ pub(crate) fn keep_within_parents(
         }
         // Inserted, so what follows an agent's access sees it change.
         if within != *access {
+            let lost = |from: &ToolAccess, to: &ToolAccess| {
+                let mut lost: Vec<&str> = (names.iter().copied())
+                    .filter(|name| from.allows(name) && !to.allows(name))
+                    .collect();
+                lost.sort_unstable();
+                lost
+            };
+            let mut warn = |lost: Vec<&str>, one: &str, many: &str| {
+                if !lost.is_empty() {
+                    let why = if lost.len() == 1 { one } else { many };
+                    let lost = lost.join("`, `");
+                    notices.write(Notice::warn(agent, format!("Lost `{lost}`: {why}.")));
+                }
+            };
+            // The run's tools as it started were the user's to give.
+            if run_changed {
+                warn(
+                    lost(&access, &in_run),
+                    "this run's tools leave it out",
+                    "this run's tools leave them out",
+                );
+            }
+            warn(
+                lost(&in_run, &within),
+                "an agent above it does not have it",
+                "an agent above it does not have them",
+            );
             commands.entity(agent).insert(within);
         }
     }
@@ -583,6 +621,18 @@ impl ToolStarts<'_, '_> {
     }
 }
 
+/// How many calls of one unavailable tool name in a turn fail that turn:
+/// rig's `[tools] max_unavailable_calls`, three by default, so a model that
+/// keeps calling a tool it does not have stops rather than looping.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnavailableCalls(pub NonZeroU32);
+
+impl Default for UnavailableCalls {
+    fn default() -> Self {
+        Self(NonZeroU32::new(3).unwrap_or(NonZeroU32::MIN))
+    }
+}
+
 /// Unavailable names called during this turn, including calls between successes.
 #[derive(Component, Default)]
 pub(crate) struct MissingTools(HashMap<String, u32>);
@@ -610,6 +660,7 @@ pub(crate) fn refuse_calls(
         ),
     >,
     tools: ToolStarts,
+    most: Res<UnavailableCalls>,
     mut turns: Query<&mut MissingTools>,
     mut commands: Commands,
 ) {
@@ -631,9 +682,12 @@ pub(crate) fn refuse_calls(
                 let count = missing.0.entry(name.to_owned()).or_default();
                 *count += 1;
                 // It fails only this turn, so the agent's subagents go on.
-                if *count >= 3 {
-                    let why =
-                        format!("the model kept calling `{name}`, which is not one of its tools");
+                if *count >= most.0.get() {
+                    let why = format!(
+                        "the model kept calling `{name}`, which is not one of its tools \
+                         (`[tools] max_unavailable_calls` is {})",
+                        most.0
+                    );
                     fail(&mut commands, turn, why);
                 }
             }
