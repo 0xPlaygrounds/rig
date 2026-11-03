@@ -110,7 +110,20 @@ impl Settings {
                 ..Self::empty(file)
             },
             Err(failure) => {
-                let problem = format!("{file}: not TOML: {failure}");
+                // toml's own text draws the line in several; a refusal is one.
+                let at = (failure.span())
+                    .and_then(|span| text.get(..span.start))
+                    .map(|before| {
+                        let line = before.matches('\n').count() + 1;
+                        let column = before
+                            .rsplit('\n')
+                            .next()
+                            .map_or(0, |it| it.chars().count())
+                            + 1;
+                        format!(" at line {line}, column {column}")
+                    })
+                    .unwrap_or_default();
+                let problem = format!("{file}: not TOML{at}: {}", failure.message().trim_end());
                 Self {
                     problems: vec![problem],
                     ..Self::empty(file)

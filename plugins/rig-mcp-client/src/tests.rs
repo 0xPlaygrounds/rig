@@ -612,7 +612,7 @@ fn a_list_left_unanswered_holds_back_no_later_change() {
     run_until(&mut app, &wakes, |world| has(world, "stub__mul"));
     let told = notices(app.world());
     let unlisted =
-        "its tools could not be listed again: no answer within 1s (`[mcp] connect_timeout_secs`)";
+        "its tools could not be listed again: no answer within 1 s (`[mcp] connect_timeout_secs`)";
     assert!(told.iter().any(|text| text.contains(unlisted)), "{told:?}");
     std::fs::remove_dir_all(project).ok();
 }
@@ -649,7 +649,7 @@ fn a_headless_run_gives_up_on_a_server_that_fails_or_never_answers() {
     assert!(failed("broken") && failed("silent"), "{told:?}");
     assert!(
         told.iter()
-            .any(|text| text.contains("no answer within 1s (`[mcp] connect_timeout_secs`)")),
+            .any(|text| text.contains("no answer within 1 s (`[mcp] connect_timeout_secs`)")),
         "{told:?}"
     );
     std::fs::remove_dir_all(project).ok();

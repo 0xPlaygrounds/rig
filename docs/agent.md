@@ -282,8 +282,9 @@ A model call that fails on a rate limit, an overloaded provider or a dropped
 connection is retried up to four times. It waits as long as the provider's
 `Retry-After` asks, up to 60 seconds; a longer requested wait ends retries.
 Without a retry delay, it waits 2, 4, 8, then 16 seconds, and 30 seconds for
-any retry after that, each shortened at random by up to a quarter. `[retry]` in `RIG_HOME/settings.toml` changes both,
-with no upper bound: `max_retries` and `max_wait_secs`. A model that calls a
+any retry after that, each shortened at random by up to a quarter. `[retry]`
+in `RIG_HOME/settings.toml` changes both, with no upper bound: `max_retries`
+and `max_wait_secs`. A model that calls a
 tool it does not have three times in a turn fails the turn;
 `[tools] max_unavailable_calls` changes that. When the turn fails, your
 message goes back into the input: press Enter to send it again, or switch
@@ -363,9 +364,9 @@ subagent's model calls name the call that gave it its work as their parent.
 `rig -p "fix the failing test"` answers one prompt and exits: the answer goes
 to stdout, failures to stderr, and the exit code is 0 when the turn ended with
 an answer, 1 when it failed or a plugin such as the budget stopped its work
-(answer or not), 2 for a refused slash command, a `settings.toml` that is not
-TOML or a table of it that does not read, or piped input that is over 64 MiB, fails to read or is not
-UTF-8. Piped input is read until stdin closes; give `</dev/null` (`<NUL` on
+(answer or not), 2 for a refused slash command, a `RIG_HOME/settings.toml`
+that cannot be read, is not TOML or has a table that does not read, or piped
+input that is over 64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` (`<NUL` on
 Windows) for none. A
 command that would open a list to pick from, such as `/model`, `/effort`,
 `/resume`, `/login` or `/fork at`, is refused there with the commands to
@@ -534,7 +535,7 @@ processes can share one:
 | --- | --- |
 | `plugins.toml` | The plugin list. |
 | `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
-| `settings.toml` | Settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A file that is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
+| `settings.toml` | Settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |

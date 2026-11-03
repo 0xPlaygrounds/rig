@@ -749,7 +749,7 @@ impl Start {
         };
         let (connection, tools, child) = tokio::time::timeout(self.limit, opened)
             .await
-            .map_err(|_| format!("no answer within {limit}s (`[mcp] connect_timeout_secs`)"))??;
+            .map_err(|_| format!("no answer within {limit} s (`[mcp] connect_timeout_secs`)"))??;
         outbox
             .send(ServerEvent::Connected(connection.clone(), tools))
             .await;
@@ -766,7 +766,7 @@ impl Start {
             // back the next change.
             let listed = tokio::time::timeout(self.limit, list(&connection, &changes)).await;
             match listed
-                .map_err(|_| format!("no answer within {limit}s (`[mcp] connect_timeout_secs`)"))
+                .map_err(|_| format!("no answer within {limit} s (`[mcp] connect_timeout_secs`)"))
             {
                 Ok(Ok(tools)) => outbox.send(ServerEvent::Listed(tools)).await,
                 Ok(Err(error)) | Err(error) => outbox.send(ServerEvent::Unlisted(error)).await,

@@ -108,7 +108,8 @@ impl Backoff {
     pub fn after(attempt: u32, delay: Duration) -> Self {
         Self {
             attempt,
-            // A verdict never waits past what the clock counts.
+            // The kernel's verdict never waits past what the clock counts;
+            // a plugin that edits one past it gets a retry at once.
             until: Instant::now()
                 .checked_add(delay)
                 .unwrap_or_else(Instant::now),

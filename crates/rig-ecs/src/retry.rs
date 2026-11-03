@@ -51,7 +51,7 @@ impl RetryPolicy {
         }
         if retries >= self.max_retries {
             let most = self.max_retries;
-            let times = match retries + 1 {
+            let times = match retries.saturating_add(1) {
                 1 => "once".to_owned(),
                 times => format!("{times} times in a row"),
             };
@@ -61,14 +61,14 @@ impl RetryPolicy {
         }
         match report.retry_after(now) {
             Some(asked) if asked > self.max_asked_wait => Verdict::GaveUp(format!(
-                "the provider asks to wait {}s before the next call (`[retry] max_wait_secs` \
+                "the provider asks to wait {} s before the next call (`[retry] max_wait_secs` \
                  is {})",
                 asked.as_secs(),
                 self.max_asked_wait.as_secs()
             )),
             Some(asked) if web_time::Instant::now().checked_add(asked).is_none() => {
                 Verdict::GaveUp(format!(
-                    "the provider asks to wait {}s before the next call, longer than this \
+                    "the provider asks to wait {} s before the next call, longer than this \
                      machine's clock counts",
                     asked.as_secs()
                 ))
