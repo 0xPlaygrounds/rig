@@ -753,3 +753,94 @@ fn a_failed_image_read_fails_the_load() {
     let loaded = load(&gate, "agent").expect("a missing blob is a placeholder");
     assert_eq!(loaded.messages().len(), conversation.messages().len());
 }
+
+/// Every log of `store`, by name, as stored.
+fn logs_of(store: &dyn Store) -> Vec<(String, Vec<u8>)> {
+    let names = store.logs().expect("the logs").into_iter();
+    names
+        .map(|name| (store.read_log(&name).expect("a log"), name))
+        .map(|(bytes, name)| (name, bytes))
+        .collect()
+}
+
+/// A session read before another save, or before a rewrite, is refused
+/// whole and writes nothing, not even a new agent's log: saving it would
+/// put back what the newer save or the rewrite took out. A session read
+/// after them, and one that saved, save again.
+#[test]
+fn a_stale_session_is_refused_before_it_writes() {
+    let redact = crate::Strings(|text: &mut String| {
+        let found = text.contains("secret");
+        *text = text.replace("secret", "[gone]");
+        found
+    });
+    let newer: [&dyn Fn(&mut Session, &dyn Store); 4] = [
+        &|session, _| {
+            session.saved.insert("added".into(), json!(1));
+        },
+        &|session, _| {
+            let agent = session.agent_mut("main").expect("main");
+            agent.saved.insert("key".into(), json!("newer"));
+        },
+        &|session, _| session.agent_mut("main").expect("main").retired = true,
+        &|session, store| {
+            crate::rewrite(store, Author::plugin("redact"), &redact).expect("rewritten");
+            *session = Session::read(store).expect("read");
+        },
+    ];
+    for change in newer {
+        let store = MemoryStore::default();
+        let mut first = Session::default();
+        first.agents.push(SavedAgent {
+            id: "main".into(),
+            saved: [("key".into(), json!("older"))].into(),
+            ..SavedAgent::default()
+        });
+        first.saved.insert("token".into(), json!("secret"));
+        first.save(&store).expect("saved");
+        let mut stale = Session::read(&store).expect("read");
+        let mut other = Session::read(&store).expect("read");
+        change(&mut other, &store);
+        other.save(&store).expect("the newer save");
+        stale.agents.push(SavedAgent {
+            id: "unsaved".into(),
+            conversation: Conversation::from_messages([Message::user("unsaved")]),
+            ..SavedAgent::default()
+        });
+        let before = logs_of(&store);
+
+        assert!(matches!(
+            stale.save(&store),
+            Err(SessionError::Changed { .. })
+        ));
+        assert_eq!(logs_of(&store), before);
+        other.saved.insert("again".into(), json!(true));
+        other
+            .save(&store)
+            .expect("a session that saved saves again");
+        let mut fresh = Session::read(&store).expect("read");
+        fresh.save(&store).expect("a fresh session saves");
+        assert_eq!(fresh.saved.get("again"), Some(&json!(true)));
+    }
+}
+
+/// A session a writer opened saves, though it leaves a retired agent out.
+#[test]
+fn a_session_a_writer_opened_saves() {
+    let store: Arc<dyn Store> = Arc::new(MemoryStore::default());
+    let mut first = Session::default();
+    for id in ["main", "old"] {
+        first.agents.push(SavedAgent {
+            id: id.into(),
+            conversation: Conversation::from_messages([Message::user(id)]),
+            retired: id == "old",
+            ..SavedAgent::default()
+        });
+    }
+    first.saved.insert("token".into(), json!("secret"));
+    first.save(&*store).expect("saved");
+    let (_writer, mut opened) = Writer::open(store.clone()).expect("opened");
+    assert!(opened.agent("old").is_none());
+    opened.saved.insert("more".into(), json!(1));
+    opened.save(&*store).expect("an opened session saves");
+}

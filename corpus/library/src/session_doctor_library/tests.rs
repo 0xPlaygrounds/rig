@@ -42,10 +42,8 @@ fn saved(dir: &Path, longer: bool) -> Option<()> {
         conversation,
         ..SavedAgent::default()
     };
-    let mut session = Session {
-        agents: vec![agent],
-        ..Session::default()
-    };
+    let mut session = Session::default();
+    session.agents = vec![agent];
     ok(session.save(&ok(DirStore::open(dir))?))
 }
 

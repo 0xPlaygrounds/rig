@@ -13,8 +13,8 @@ use crate::blobs::{PutBlob, put_blob, read_blob, store_change};
 use crate::fork::turn_cut;
 use crate::format::{Header, LogLines, Meta, SESSION, write_change, write_meta};
 use crate::session::{
-    Fold, Folded, fold_all, fold_lines, log_lines, read_header, read_logs, repairs, retired,
-    session_of,
+    End, Fold, Folded, ends, fold_all, fold_lines, log_lines, read_header, read_logs, repairs,
+    retired, session_of,
 };
 use crate::store::now;
 use crate::{LogWriteError, Repair, SavedAgent, Session, SessionError, Stamp, Store};
@@ -87,6 +87,13 @@ impl Book {
             book.next_n = book.next_n.max(log.next_n);
         }
         book
+    }
+
+    /// Where each log in the store ends, with nothing of it left to write.
+    pub fn written(&self) -> impl Iterator<Item = (String, End)> + '_ {
+        let written = self.logs.iter();
+        let written = written.filter(|(_, log)| log.len > 0 && log.pending.is_empty());
+        written.map(|(name, log)| (name.clone(), (log.lineage, log.next_seq)))
     }
 
     /// Sets aside the torn line each log of `torn` ends in, given with its
@@ -448,13 +455,18 @@ impl Writer {
             }
         }
         let book = Book::after(&folded);
+        let ends = ends(&folded);
         let skipped = retired(&folded);
         folded.retain(|log| !skipped.contains(&log.name));
         let writer = Self(Arc::new(Mutex::new(Inner {
             store: Some(store),
             book,
         })));
-        Ok((writer, session_of(folded, repairs)))
+        let session = Session {
+            ends,
+            ..session_of(folded, repairs)
+        };
+        Ok((writer, session))
     }
 
     /// Starts logging, once the host restored the session: what it did to

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rig_core::tool::{FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
+use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
 
 use super::resolve;
 use crate::{Read, ReadArgs, Write, WriteArgs};
@@ -136,4 +136,69 @@ fn the_unread_note_is_bounded() {
         "{}",
         note.len()
     );
+}
+
+/// A confined write refuses a dangling link in its base that leads out,
+/// however its target is spelled, and changes nothing outside; one that
+/// stays in the base creates its target and keeps the link.
+#[cfg(unix)]
+#[test]
+fn a_confined_write_never_follows_a_link_out_of_its_base() {
+    use std::os::unix::fs::symlink;
+    let dir = scratch("dangling");
+    let base = dir.join("real");
+    std::fs::create_dir(dir.join("out")).ok();
+    std::fs::write(dir.join("out/victim.txt"), "kept\n").ok();
+    symlink("../out/new.txt", base.join("relative")).ok();
+    symlink(dir.join("out/new.txt"), base.join("absolute")).ok();
+    symlink("../out/missing/../victim.txt", base.join("back")).ok();
+    symlink("relative", base.join("chain")).ok();
+    symlink(dir.join("out/missing"), base.join("folder")).ok();
+    symlink("inside/new.txt", base.join("stays")).ok();
+    let write = Write {
+        base: Some(base.clone()),
+        confine: true,
+        ..Default::default()
+    };
+    let call = |path: &str, context: &mut ToolContext| {
+        let args = WriteArgs::new(path, "escaped\n");
+        futures::executor::block_on(write.call(context, args))
+    };
+
+    for path in ["relative", "absolute", "back", "chain", "folder/new.txt"] {
+        let mut context = ToolContext::new();
+        assert_eq!(
+            call(path, &mut context).err().map(|error| error.kind()),
+            Some(ToolErrorKind::PermissionDenied),
+            "{path}"
+        );
+        assert!(context.result::<FilesChanged>().ok().flatten().is_none());
+    }
+    assert!(!dir.join("out/new.txt").exists());
+    assert!(!dir.join("out/missing").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("out/victim.txt")).ok(),
+        Some("kept\n".to_owned())
+    );
+    assert!(call("stays", &mut ToolContext::new()).is_ok());
+    assert_eq!(
+        std::fs::read_to_string(base.join("inside/new.txt")).ok(),
+        Some("escaped\n".to_owned())
+    );
+    assert!(std::fs::symlink_metadata(base.join("stays")).is_ok_and(|meta| meta.is_symlink()));
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A dangling link resolves to the file a write creates, so the path a
+/// tool checks and reports is the one it changes.
+#[cfg(unix)]
+#[test]
+fn a_dangling_link_resolves_to_what_a_write_creates() {
+    let dir = scratch("dangling-resolve");
+    std::os::unix::fs::symlink("real/new/../made.txt", dir.join("link")).ok();
+    let resolved = resolve(Some(&dir), "link");
+    assert_eq!(resolved, dir.join("real/made.txt"));
+    assert!(super::write_atomic(&dir.join("link"), b"x").is_ok());
+    assert!(resolved.exists());
+    std::fs::remove_dir_all(dir).ok();
 }
