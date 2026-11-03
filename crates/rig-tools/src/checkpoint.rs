@@ -279,8 +279,8 @@ struct Scanned {
     /// file it could not `stat`.
     unknown: Vec<PathBuf>,
     /// The files it found but whose content it could not read, too large
-    /// or failing, with why: a change to one shows no diff, and it cannot be
-    /// restored.
+    /// or failing, with why, unless `earlier` had one unread at the same
+    /// size: a change to one shows no diff, and it cannot be restored.
     unread: Vec<(PathBuf, String)>,
 }
 
@@ -343,8 +343,17 @@ fn scan(
                         format!("larger than {} MiB", MAX_FILE_BYTES >> 20),
                     )),
                 };
+                // Told once: not again while it stays unread at the same
+                // size, also where the workspace cannot tell its time.
+                let told = earlier
+                    .and_then(|(files, _)| files.get(&path))
+                    .is_some_and(|was| was.hash.is_none() && was.size == size);
                 let bytes = read
-                    .inspect_err(|error| unread.push((path.clone(), error.to_string())))
+                    .inspect_err(|error| {
+                        if !told {
+                            unread.push((path.clone(), error.to_string()));
+                        }
+                    })
                     .ok()
                     .map(|contents| contents.bytes);
                 let hash = bytes.as_deref().map(content_hash);

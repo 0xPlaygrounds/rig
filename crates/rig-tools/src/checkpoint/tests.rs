@@ -1,8 +1,10 @@
 #![allow(clippy::disallowed_methods, reason = "test fixtures")]
 
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use rig_core::effect::{EffectId, EffectKind, HandlerKey};
 use rig_core::serve::adapters::ToolAdapter;
@@ -580,18 +582,30 @@ fn a_file_a_scan_could_not_look_at_is_not_deleted() {
 }
 
 /// A scan names each file whose content it could not read, here one past
-/// the read limit, so the checkpoint can say it shows no diff of it.
+/// the read limit, so the checkpoint can say it shows no diff of it; a
+/// later scan that finds it as it was does not name it again, even one
+/// that hashes every file again, as where the workspace cannot tell times.
 #[test]
-fn a_scan_names_a_file_too_large_to_read() {
+fn a_scan_names_a_file_too_large_to_read_once() {
     let dir = scratch("checkpoint-scan-large");
     let (large, small) = (dir.join("large.bin"), dir.join("small.txt"));
     std::fs::write(&small, "one\n").ok();
     let sized = std::fs::File::create(&large)
         .and_then(|file| file.set_len(crate::MAX_FILE_BYTES + 1))
         .is_ok();
-    let scanned = super::scan(&Local, &dir, &[], None, None);
+    let first = super::scan(&Local, &dir, &[], None, None);
+    // Began at the epoch, so no file had settled: every one is read again.
+    let earlier = first
+        .as_ref()
+        .ok()
+        .map(|first| (&first.seen, SystemTime::UNIX_EPOCH));
+    let again = super::scan(&Local, &dir, &[], earlier, None);
     std::fs::remove_dir_all(&dir).ok();
     assert!(sized);
-    let unread = scanned.map(|scanned| scanned.unread.into_iter().map(|(path, _)| path));
-    assert_eq!(unread.map(Vec::from_iter).ok(), Some(vec![large]));
+    let unread = |scanned: io::Result<super::Scanned>| {
+        let unread = scanned.map(|scanned| scanned.unread.into_iter().map(|(path, _)| path));
+        unread.map(Vec::from_iter).ok()
+    };
+    assert_eq!(unread(first), Some(vec![large]));
+    assert_eq!(unread(again), Some(vec![]));
 }
