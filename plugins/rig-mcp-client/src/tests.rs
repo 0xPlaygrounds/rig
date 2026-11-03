@@ -859,7 +859,7 @@ fn a_folder_of_a_project_has_the_projects_servers() {
 }
 
 #[test]
-fn a_project_whose_rig_is_rig_home_has_no_project_file() {
+fn a_project_in_the_home_directory_has_no_project_file() {
     // Rig run in the home directory: `~/.rig` is the user's own.
     let project = project("home-dir");
     let home = project.join(".rig");

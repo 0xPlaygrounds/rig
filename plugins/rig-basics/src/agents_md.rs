@@ -1,7 +1,7 @@
 //! The project's instructions ([`AgentsMdPlugin`]): the `AGENTS.md` files
 //! of the working directory and each directory above it up to the
-//! project's root ([`Project`]), and the user's own `RIG_HOME/AGENTS.md`, as one
-//! section of every agent's system prompt.
+//! project's root ([`Project`]), and the user's own `RIG_HOME/AGENTS.md`,
+//! as one section of every agent's system prompt.
 //!
 //! The files are read once, when the agent starts, so the prompt stays the
 //! same for the whole session and the provider's prompt cache keeps it. An
