@@ -477,4 +477,4 @@ fn split(split: &BTreeMap<String, UsageTotals>) -> impl Iterator<Item = String> 
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
