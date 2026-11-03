@@ -107,8 +107,9 @@ impl Seen {
 /// per hash. A file that changed just before `earlier` began is hashed
 /// again too: a write within its change time's precision after `earlier`
 /// read it would leave its size and time as they were (what git calls
-/// "racily clean"). The kept content is scratch, not forced to disk: no
-/// run after this one reads it ([`forget_kept`]).
+/// "racily clean"). A scan warns of each file it hashed whose content it
+/// could not read, too large or failing. The kept content is scratch, not
+/// forced to disk: no run after this one reads it ([`forget_kept`]).
 ///
 /// Blocking: run it off a thread that must not wait ([`blocking`]).
 ///
@@ -150,9 +151,23 @@ pub fn snapshot(
             };
             let blobs = keep.map(|keep| private(keep, root).join("blobs"));
             let began = SystemTime::now();
-            let (files, unknown) = scan(workspace, root, &also, before, blobs.as_deref())?;
+            let Scanned {
+                seen,
+                unknown,
+                unread,
+            } = scan(workspace, root, &also, before, blobs.as_deref())?;
+            if !unread.is_empty() {
+                let files: Vec<String> = unread
+                    .iter()
+                    .map(|(path, why)| format!("{} ({why})", path.display()))
+                    .collect();
+                tracing::warn!(
+                    "the checkpoint could not read, so it shows no diff of and cannot restore: {}",
+                    files.join(", ")
+                );
+            }
             Ok(Snapshot(Taken::Scan {
-                files: Arc::new(files),
+                files: Arc::new(seen),
                 unknown: Arc::new(unknown),
                 began,
                 blobs,
@@ -256,20 +271,31 @@ impl Snapshot {
     }
 }
 
+/// What a [`scan`] saw.
+struct Scanned {
+    /// Each file it found, by path.
+    seen: BTreeMap<PathBuf, Seen>,
+    /// The paths it could not look at: a directory it could not list, a
+    /// file it could not `stat`.
+    unknown: Vec<PathBuf>,
+    /// The files it found but whose content it could not read, too large
+    /// or failing, with why: a change to one shows no diff, and it cannot be
+    /// restored.
+    unread: Vec<(PathBuf, String)>,
+}
+
 /// The files under `root`, and every file under each of `also`, with what
 /// a scan sees of them, reusing the hash of the scan `earlier` (its files
 /// and when it began) for a file whose size and change time are the same
 /// and that had not just changed when it began ([`snapshot`]); with
 /// `blobs`, the content of each file it read is kept there, by hash, once.
-/// Also the paths it could not look at: a directory it could not list, a
-/// file it could not `stat`.
 fn scan(
     workspace: &dyn Workspace,
     root: &Path,
     also: &[PathBuf],
     earlier: Option<(&BTreeMap<PathBuf, Seen>, SystemTime)>,
     blobs: Option<&Path>,
-) -> io::Result<(BTreeMap<PathBuf, Seen>, Vec<PathBuf>)> {
+) -> io::Result<Scanned> {
     if let Some(blobs) = blobs {
         std::fs::create_dir_all(blobs)?;
     }
@@ -289,6 +315,7 @@ fn scan(
         }
     }
     let mut seen = BTreeMap::new();
+    let mut unread = Vec::new();
     for path in listed {
         let (size, modified) = match workspace.stat(&path) {
             Ok(Stat::File { size, modified, .. }) => (size, modified),
@@ -309,9 +336,16 @@ fn scan(
             None => {
                 // A file `stat` found but that could not be read is there, by
                 // its size and time.
-                let bytes = (size <= MAX_FILE_BYTES)
-                    .then(|| workspace.read(&path, MAX_FILE_BYTES).ok())
-                    .flatten()
+                let read = match size <= MAX_FILE_BYTES {
+                    true => workspace.read(&path, MAX_FILE_BYTES),
+                    false => Err(io::Error::new(
+                        ErrorKind::FileTooLarge,
+                        format!("larger than {} MiB", MAX_FILE_BYTES >> 20),
+                    )),
+                };
+                let bytes = read
+                    .inspect_err(|error| unread.push((path.clone(), error.to_string())))
+                    .ok()
                     .map(|contents| contents.bytes);
                 let hash = bytes.as_deref().map(content_hash);
                 if let (Some(blobs), Some(bytes), Some(hash)) = (blobs, &bytes, &hash) {
@@ -330,7 +364,11 @@ fn scan(
         };
         seen.insert(path, file);
     }
-    Ok((seen, unknown))
+    Ok(Scanned {
+        seen,
+        unknown,
+        unread,
+    })
 }
 
 /// Whether `path` is at or under one of the paths a scan could not look

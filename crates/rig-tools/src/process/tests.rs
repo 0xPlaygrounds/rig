@@ -1,7 +1,9 @@
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
-use super::{Ended, LEDGER_VARIABLE, Launcher, OutputLine, Spawn, piece_end, record_groups};
+use super::{
+    Ended, LEDGER_VARIABLE, Launcher, OutputLine, Spawn, forward, piece_end, record_groups,
+};
 
 /// What a process reads on stdin reaches it, and its stdout and stderr
 /// lines arrive tagged, each with its `\n`.
@@ -534,4 +536,34 @@ fn a_command_finds_no_editor() {
         "{said}"
     );
     assert!(started.elapsed() < Duration::from_secs(10));
+}
+
+/// A pipe whose read fails ends with a line saying so, after the line it
+/// was writing, never as if its writers had closed it.
+#[test]
+fn a_failed_read_is_told_not_taken_for_the_end() {
+    struct Broken;
+    impl std::io::Read for Broken {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("the pipe broke"))
+        }
+    }
+    let (sender, receiver) = std::sync::mpsc::channel();
+    forward(
+        std::io::Read::chain(&b"one\npar"[..], Broken),
+        OutputLine::Err,
+        &sender,
+    );
+    drop(sender);
+    let lines: Vec<String> = receiver
+        .iter()
+        .map(|line| line.text().into_owned())
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "one\n",
+            "par\nrig: the rest of this output could not be read: the pipe broke\n"
+        ]
+    );
 }

@@ -310,7 +310,8 @@ impl Process {
 }
 
 /// Reads `pipe` until every writer closed it, or the receiver is gone,
-/// and sends what it reads on line by line.
+/// and sends what it reads on line by line. A read that fails ends it with
+/// a line saying so ([`lost`]).
 ///
 /// When the receiver stops listening while a process that left the group
 /// still holds the pipe, this thread stays blocked in `read` until that
@@ -325,7 +326,10 @@ fn forward(mut pipe: impl Read, tag: Tag, lines: &Sender<OutputLine>) {
             Ok(0) => break,
             Ok(read) => read,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-            Err(_) => break,
+            Err(error) => {
+                lines.send(tag(lost(pending, &error))).ok();
+                return;
+            }
         };
         pending.extend_from_slice(buffer.get(..read).unwrap_or_default());
         let mut start = 0;
@@ -377,28 +381,35 @@ fn forward_both(
         // outlives the call, and its length is passed with it.
         let ready = unsafe { libc::poll(polled.as_mut_ptr(), 2, -1) };
         if ready < 0 {
-            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
                 continue;
             }
-            break;
+            for (_, tag, pending, _) in pipes.iter_mut().filter(|(.., open)| *open) {
+                lines.send(tag(lost(std::mem::take(pending), &error))).ok();
+            }
+            return;
         }
         for (poll, (pipe, tag, pending, open)) in polled.iter().zip(&mut pipes) {
             if !*open || poll.revents == 0 {
                 continue;
             }
-            let read = match pipe.read(&mut buffer) {
+            let ended = match pipe.read(&mut buffer) {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Ok(0) | Err(_) => None,
-                Ok(read) => Some(read),
+                Ok(0) => Some(std::mem::take(pending)),
+                Err(error) => Some(lost(std::mem::take(pending), &error)),
+                Ok(read) => {
+                    pending.extend_from_slice(buffer.get(..read).unwrap_or_default());
+                    None
+                }
             };
-            let Some(read) = read else {
+            if let Some(rest) = ended {
                 *open = false;
-                if !pending.is_empty() && lines.send(tag(std::mem::take(pending))).is_err() {
+                if !rest.is_empty() && lines.send(tag(rest)).is_err() {
                     return;
                 }
                 continue;
-            };
-            pending.extend_from_slice(buffer.get(..read).unwrap_or_default());
+            }
             let mut start = 0;
             while let Some(end) = pending.get(start..).and_then(piece_end) {
                 let piece = pending.get(start..start + end).unwrap_or_default();
@@ -410,6 +421,17 @@ fn forward_both(
             pending.drain(..start);
         }
     }
+}
+
+/// The last piece of a pipe whose read failed: `pending`, the line it was
+/// writing, then on a line of its own that the rest could not be read and
+/// why, so a reader never takes a failed read for the end.
+fn lost(mut pending: Vec<u8>, error: &io::Error) -> Vec<u8> {
+    if !pending.is_empty() {
+        pending.push(b'\n');
+    }
+    pending.extend(format!("rig: the rest of this output could not be read: {error}\n").bytes());
+    pending
 }
 
 /// Where the first piece of `bytes` ends: after its first `\n`, else after

@@ -578,3 +578,20 @@ fn a_file_a_scan_could_not_look_at_is_not_deleted() {
         "{content:?}"
     );
 }
+
+/// A scan names each file whose content it could not read, here one past
+/// the read limit, so the checkpoint can say it shows no diff of it.
+#[test]
+fn a_scan_names_a_file_too_large_to_read() {
+    let dir = scratch("checkpoint-scan-large");
+    let (large, small) = (dir.join("large.bin"), dir.join("small.txt"));
+    std::fs::write(&small, "one\n").ok();
+    let sized = std::fs::File::create(&large)
+        .and_then(|file| file.set_len(crate::MAX_FILE_BYTES + 1))
+        .is_ok();
+    let scanned = super::scan(&Local, &dir, &[], None, None);
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(sized);
+    let unread = scanned.map(|scanned| scanned.unread.into_iter().map(|(path, _)| path));
+    assert_eq!(unread.map(Vec::from_iter).ok(), Some(vec![large]));
+}
