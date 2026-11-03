@@ -709,7 +709,7 @@ pub(crate) fn draw_editors(
             }
         }
         let top = u16::try_from(top).unwrap_or(u16::MAX);
-        let (left, right) = match line.filter(|_| editor.is_empty()) {
+        let (left, right) = match line {
             Some(line) => {
                 let (left, right) = status.line(line, area.width - 2);
                 let pad = |mut line: Line<'static>, at: usize| {
