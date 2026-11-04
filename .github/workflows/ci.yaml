@@ -18,13 +18,17 @@ on:
   schedule:
     - cron: "0 6 * * *"
   # With `base`, a dispatch runs the plan a PR from this branch into `base`
-  # would get; without it, every check.
+  # would get; without it, every check. With `cold`, no job restores a cache.
   workflow_dispatch:
     inputs:
       base:
         description: Plan against this branch, as a PR into it would be
         required: false
         default: ""
+      cold:
+        description: Restore no cache (measures a cold run)
+        type: boolean
+        default: false
   workflow_call:
 
 permissions:
@@ -32,6 +36,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # rust-cache keys hash every CARGO_* variable, so a per-run value here
+  # matches no saved entry.
+  CARGO_CACHE_SALT: ${{ inputs.cold && github.run_id || '' }}
 
 # One run per PR: a newer push cancels the in-flight run. Keyed on the PR
 # number, not head_ref, so two forks with the same branch name do not cancel
