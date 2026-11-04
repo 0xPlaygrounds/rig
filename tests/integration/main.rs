@@ -25,7 +25,6 @@ mod huggingface;
 #[path = "../providers/hyperbolic/mod.rs"]
 mod hyperbolic;
 mod integrations;
-mod launcher_plugins;
 #[allow(clippy::expect_used, clippy::panic)]
 #[path = "../providers/minimax/mod.rs"]
 mod minimax;
