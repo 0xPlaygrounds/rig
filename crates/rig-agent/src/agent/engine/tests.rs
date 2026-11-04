@@ -3221,6 +3221,169 @@ async fn tool_target_patch_is_refused_on_stream() {
     check_tool_target_patch_is_refused(true).await;
 }
 
+#[derive(Clone, Copy, Debug)]
+enum CompletionToolPatch {
+    Forbid,
+    AllowOther,
+    Remove,
+    Rename,
+    Add,
+    DefinitionsOnly,
+}
+
+impl AgentHook for CompletionToolPatch {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        use rig_core::effect::EffectKind;
+        let EffectKind::Completion { request, stream } = event.kind else {
+            return DispatchAction::Proceed;
+        };
+        let mut request = (**request).clone();
+        match self {
+            Self::Forbid => request.tool_choice = Some(ToolChoice::None),
+            Self::AllowOther => {
+                request.tool_choice = Some(ToolChoice::Specific {
+                    function_names: vec![
+                        rig_core::message::ToolName::new(RenameBoundaryTool::<true>::NAME)
+                            .expect("tool name"),
+                    ],
+                });
+            }
+            Self::Remove => request.tools.clear(),
+            Self::Rename | Self::Add => {
+                let mut definition = (**request.tools.first().expect("one tool")).clone();
+                definition.name =
+                    rig_core::message::ToolName::new("unprepared").expect("tool name");
+                if matches!(self, Self::Rename) {
+                    request.tools.remove(0);
+                }
+                request.tools.push(Arc::new(definition));
+            }
+            Self::DefinitionsOnly => {
+                request.tools.reverse();
+                for definition in &mut request.tools {
+                    let definition = Arc::make_mut(definition);
+                    definition.description = "rewritten at dispatch".into();
+                    definition.parameters = json!({"type": "object", "properties": {}});
+                }
+            }
+        }
+        DispatchAction::Patch(EffectKind::Completion {
+            request: request.into(),
+            stream: *stream,
+        })
+    }
+}
+
+#[derive(Clone, Default)]
+struct CompletionPatchSpy(Arc<AtomicU32>);
+
+impl AgentHook for CompletionPatchSpy {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if matches!(event.kind, rig_core::effect::EffectKind::Completion { .. }) {
+            self.0.fetch_add(1, SeqCst);
+        }
+        DispatchAction::Proceed
+    }
+}
+
+async fn check_completion_dispatch_tool_policy(streaming: bool) {
+    for patch in [
+        CompletionToolPatch::Forbid,
+        CompletionToolPatch::AllowOther,
+        CompletionToolPatch::Remove,
+        CompletionToolPatch::Rename,
+        CompletionToolPatch::Add,
+        CompletionToolPatch::DefinitionsOnly,
+    ] {
+        let executed = Arc::new(AtomicU32::new(0));
+        let turns = [
+            ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+                id: "patched-completion",
+                name: RenameBoundaryTool::<false>::NAME,
+                args: json!({}),
+            }]),
+            ScriptedTurn::Text("done"),
+        ];
+        let model = if streaming {
+            MockCompletionModel::from_stream_turns(
+                turns
+                    .iter()
+                    .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+            )
+        } else {
+            MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn))
+        };
+        let probe = model.clone();
+        let observed = CompletionPatchSpy::default();
+        let runner = AgentBuilder::new(model)
+            .tool(RenameBoundaryTool::<false>(executed.clone()))
+            .tool(RenameBoundaryTool::<true>(Arc::new(AtomicU32::new(0))))
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec![
+                    rig_core::message::ToolName::new(RenameBoundaryTool::<false>::NAME)
+                        .expect("tool name"),
+                ],
+            })
+            .add_hook(patch)
+            .add_hook(observed.clone())
+            .build()
+            .prompt("go")
+            .max_turns(3);
+        let result = if streaming {
+            let mut stream = runner.stream();
+            let mut result = Ok(());
+            while let Some(item) = stream.next().await {
+                if let Err(error) = item {
+                    result = Err(error);
+                    break;
+                }
+            }
+            result
+        } else {
+            runner.run().await.map(|_| ())
+        };
+        if matches!(patch, CompletionToolPatch::DefinitionsOnly) {
+            assert!(result.is_ok(), "{patch:?}: {result:?}");
+            assert_eq!(probe.request_count(), 2);
+            assert_eq!(executed.load(SeqCst), 1);
+            assert_eq!(observed.0.load(SeqCst), 2);
+            assert!(probe.requests().iter().all(|request| {
+                request.tools.iter().all(|tool| {
+                    tool.description == "rewritten at dispatch"
+                        && tool.parameters == json!({"type": "object", "properties": {}})
+                })
+            }));
+        } else {
+            assert!(
+                matches!(result, Err(PromptError::Report(ref report))
+                if report.message.contains("on_completion_call")),
+                "{patch:?}: {result:?}"
+            );
+            assert_eq!(
+                probe.request_count(),
+                0,
+                "{patch:?} must fail before provider I/O"
+            );
+            assert_eq!(executed.load(SeqCst), 0);
+            assert_eq!(
+                observed.0.load(SeqCst),
+                0,
+                "a later hook must not observe the rejected patch: {patch:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn completion_dispatch_tool_policy_on_run() {
+    check_completion_dispatch_tool_policy(false).await;
+}
+
+#[tokio::test]
+async fn completion_dispatch_tool_policy_on_stream() {
+    check_completion_dispatch_tool_policy(true).await;
+}
+
 #[derive(serde::Deserialize)]
 struct FirstGenerationArgs {
     old: String,

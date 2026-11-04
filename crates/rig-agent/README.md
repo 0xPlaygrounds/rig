@@ -129,6 +129,11 @@ model.
 
 Hooks attached through `AgentBuilder::add_hook` apply to every later runner
 from that agent; hooks appended to a prompt or runner apply only to that run.
+Tool policy changes belong in `on_completion_call`, using `RequestPatch`'s
+`tool_choice` and `active_tools`. A completion patch in `on_dispatch` must keep
+the prepared tool names and tool choice; a change is rejected before provider
+execution. Definitions may still be reordered or have their descriptions and
+parameter schemas rewritten at dispatch.
 `using_model` changes the run's initial candidate but does not suppress routing
 hooks. To force a model, omit routing hooks or append a final hook that always
 selects it. Blocking and streaming prompts share this lifecycle: `Stop`

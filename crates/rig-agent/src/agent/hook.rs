@@ -30,7 +30,7 @@ use rig_core::streaming::Part;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
     any::{Any, TypeId},
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     future::Future,
     sync::Arc,
 };
@@ -642,7 +642,9 @@ pub enum DispatchAction {
     /// Dispatch this effect instead. A patch must keep the family; the
     /// stack rejects a family change as an internal error before later hooks
     /// observe it. Tool calls must also retain their target name; only their
-    /// arguments may be patched.
+    /// arguments may be patched. Completions must retain their tool names
+    /// and tool choice; use [`AgentHook::on_completion_call`] and
+    /// [`RequestPatch`] to change the turn's tool policy before preparation.
     Patch(EffectKind),
     /// Do not dispatch: the effect resolves failed with this report and
     /// never reaches a handler. For a tool call a report of kind
@@ -665,6 +667,23 @@ pub(crate) fn validate_dispatch_patch(
                 next.name()
             ),
         ));
+    }
+    if let (
+        EffectKind::Completion {
+            request: current, ..
+        },
+        EffectKind::Completion { request: next, .. },
+    ) = (current, next)
+    {
+        let current_names: BTreeSet<_> = current.tools.iter().map(|tool| &tool.name).collect();
+        let next_names: BTreeSet<_> = next.tools.iter().map(|tool| &tool.name).collect();
+        if current.tool_choice != next.tool_choice || current_names != next_names {
+            return Err(ErrorReport::new(
+                ErrorKind::Other,
+                "a completion dispatch patch cannot change tool names or tool choice; \
+                 use on_completion_call with RequestPatch before the turn is prepared",
+            ));
+        }
     }
     if let (EffectKind::ToolCall { name: current, .. }, EffectKind::ToolCall { name: next, .. }) =
         (current, next)
