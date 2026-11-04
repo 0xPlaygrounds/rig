@@ -55,23 +55,41 @@ fn corpus() -> Vec<String> {
         .collect()
 }
 
-/// `value` with every object's keys sorted, so key order never shows.
-fn canonical(value: &Value) -> Value {
+/// `value` as compact JSON with every object's keys sorted, so key order
+/// never shows.
+fn canonical(value: &Value) -> String {
+    let mut out = Vec::new();
+    write_canonical(value, &mut out);
+    String::from_utf8(out).expect("JSON is UTF-8")
+}
+
+fn write_canonical(value: &Value, out: &mut Vec<u8>) {
     match value {
         Value::Object(map) => {
-            let sorted: BTreeMap<&String, Value> = map
-                .iter()
-                .map(|(key, value)| (key, canonical(value)))
-                .collect();
-            Value::Object(
-                sorted
-                    .into_iter()
-                    .map(|(key, value)| (key.clone(), value))
-                    .collect(),
-            )
+            let mut entries: Vec<(&String, &Value)> = map.iter().collect();
+            entries.sort_unstable_by_key(|(key, _)| *key);
+            out.push(b'{');
+            for (index, (key, value)) in entries.into_iter().enumerate() {
+                if index > 0 {
+                    out.push(b',');
+                }
+                serde_json::to_writer(&mut *out, key).expect("a key writes");
+                out.push(b':');
+                write_canonical(value, out);
+            }
+            out.push(b'}');
         }
-        Value::Array(items) => Value::Array(items.iter().map(canonical).collect()),
-        other => other.clone(),
+        Value::Array(items) => {
+            out.push(b'[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(b',');
+                }
+                write_canonical(item, out);
+            }
+            out.push(b']');
+        }
+        leaf => serde_json::to_writer(&mut *out, leaf).expect("a value writes"),
     }
 }
 
@@ -116,12 +134,17 @@ fn http(encoded: &Encoded) -> Value {
             .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(bytes).into_owned())),
         _ => Value::String("<not bytes>".to_owned()),
     };
-    json!({
-        "method": request.method().as_str(),
-        "uri": request.uri().to_string(),
-        "headers": headers,
-        "body": body,
-    })
+    // Built in place: `json!` would copy the parsed body through serde.
+    let headers = headers
+        .into_iter()
+        .map(|(name, value)| (name, Value::String(value)))
+        .collect();
+    Value::Object(serde_json::Map::from_iter([
+        ("method".to_owned(), Value::from(request.method().as_str())),
+        ("uri".to_owned(), Value::String(request.uri().to_string())),
+        ("headers".to_owned(), Value::Object(headers)),
+        ("body".to_owned(), body),
+    ]))
 }
 
 /// What `wire` sends for `request`, prepared as the driver prepares it, as
@@ -135,7 +158,7 @@ fn sent<W: Wire<Op = Completion>>(
         .and_then(|request| Ok(wire.encode(request, Mode::Unary)?))
         .map(|payload| show(&payload));
     match result {
-        Ok(value) => canonical(&value).to_string(),
+        Ok(value) => canonical(&value),
         Err(error) => format!("ERR {error}"),
     }
 }
@@ -445,23 +468,40 @@ fn workers() -> usize {
         .map_or(cores, |cap| cap.clamp(1, cores))
 }
 
-/// Encode the corpus on every wire, one thread per wire at a time, on at
-/// most [`workers`] threads.
+/// How many model ids one thread encodes on one wire before it takes the
+/// next task, so the slowest wire does not finish alone.
+const MODELS_PER_TASK: usize = 128;
+
+/// Encode the corpus on every wire, a run of model ids on one wire at a
+/// time, on at most [`workers`] threads.
 fn encode_all(models: &[String], encoders: &[Encoder]) -> Outputs {
     let shapes = shapes();
+    let tasks: Vec<(&Encoder, &[String])> = encoders
+        .iter()
+        .flat_map(|encoder| {
+            models
+                .chunks(MODELS_PER_TASK)
+                .map(move |chunk| (encoder, chunk))
+        })
+        .collect();
     let next = std::sync::atomic::AtomicUsize::new(0);
-    let results = std::sync::Mutex::new(Outputs::new());
+    let results = std::sync::Mutex::new(
+        encoders
+            .iter()
+            .map(|encoder| (encoder.key.clone(), BTreeMap::new()))
+            .collect::<Outputs>(),
+    );
     let threads = workers();
     std::thread::scope(|scope| {
         for _ in 0..threads {
             scope.spawn(|| {
                 loop {
                     let index = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    let Some(encoder) = encoders.get(index) else {
+                    let Some((encoder, chunk)) = tasks.get(index) else {
                         break;
                     };
                     let mut by_model = BTreeMap::new();
-                    for model in models {
+                    for model in *chunk {
                         let quoted = serde_json::to_string(model).expect("a string");
                         let escaped = &quoted[1..quoted.len() - 1];
                         let outputs = shapes
@@ -475,7 +515,9 @@ fn encode_all(models: &[String], encoders: &[Encoder]) -> Outputs {
                     results
                         .lock()
                         .expect("results")
-                        .insert(encoder.key.clone(), by_model);
+                        .entry(encoder.key.clone())
+                        .or_default()
+                        .extend(by_model);
                 }
             });
         }
