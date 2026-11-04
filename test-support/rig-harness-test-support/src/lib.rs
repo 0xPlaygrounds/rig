@@ -278,14 +278,29 @@ pub fn answer_open(world: &mut World, title: &str, answer: &Answer) -> bool {
 }
 
 /// Runs one frame of `app` `by` later on Bevy's clock, which timers and
-/// delayed commands run on; frames after it take no time.
+/// delayed commands run on; frames after it take no time. Fixed time moves
+/// `by` in one step too, as a jump of an hour is otherwise 230,400 runs of
+/// the fixed schedule.
 pub fn advance(app: &mut App, by: Duration) {
-    let mut time = app.world_mut().resource_mut::<Time<Virtual>>();
+    let world = app.world_mut();
+    let mut time = world.resource_mut::<Time<Virtual>>();
     let max = time.max_delta().max(by);
     time.set_max_delta(max);
+    let fixed = world
+        .get_resource::<Time<Fixed>>()
+        .map(Time::<Fixed>::timestep)
+        .filter(|step| by > *step);
+    set_fixed_timestep(world, fixed.map(|_| by));
     app.insert_resource(TimeUpdateStrategy::ManualDuration(by));
     app.update();
+    set_fixed_timestep(app.world_mut(), fixed);
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+}
+
+fn set_fixed_timestep(world: &mut World, step: Option<Duration>) {
+    if let (Some(step), Some(mut fixed)) = (step, world.get_resource_mut::<Time<Fixed>>()) {
+        fixed.set_timestep(step);
+    }
 }
 
 /// Moves every [`WakeAt`] `by` earlier, as if that much wall-clock time
