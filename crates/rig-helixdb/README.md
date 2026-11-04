@@ -1,6 +1,11 @@
 # Rig HelixDB integration
 This crate integrates HelixDB into Rig, allowing you to easily use RAG with this database.
 
+Both `top_n` and `top_n_ids` evaluate metadata filters against the stored JSON
+payloads after receiving candidates from HelixDB. Filtering can therefore return
+fewer results than the requested sample count. A malformed payload returns an
+error when a metadata filter needs to inspect it.
+
 ## Installation
 To install this crate, run the following command in a Rust project directory which will add `rig-helixdb` as a dependency (requires `rig-core` added for intended usage):
 ```bash
