@@ -366,7 +366,7 @@ sqlx = "0.9"
 steel-core = "0.8.3"
 # 3.2.5: earlier releases no longer build against the newest
 # `surrealdb-core` their requirement accepts.
-surrealdb = "3.2.5"
+surrealdb = "3.3.5"
 syn = "2"
 term_size = "0.3"
 testcontainers = "0.27"
