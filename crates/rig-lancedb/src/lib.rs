@@ -451,7 +451,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .into_iter()
             .map(|value| {
                 Ok(VectorSearchIdResult {
-                    score: match value.get("distance") {
+                    score: match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
