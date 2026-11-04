@@ -8,6 +8,47 @@ use super::send;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::main_agent::ShownAgent;
 
+#[test]
+fn mouse_wheel_scrolls_the_transcript_without_browsing_prompt_history() {
+    use crossterm::event::{Event, KeyModifiers, MouseEvent, MouseEventKind};
+    use rig_core::completion::Message;
+    use rig_harness::prelude::Conversation;
+
+    use crate::tests::{input, push, type_text, view_app};
+    use crate::{KeyInput, MainPane, TranscriptView, TuiTestScreen};
+
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        for index in 0..30 {
+            conversation.push(Message::user(format!("question {index}")));
+        }
+    }
+    type_text(&mut app, "unsent draft");
+    let scrolled = |app: &mut App| {
+        let world = app.world_mut();
+        world
+            .query_filtered::<&TranscriptView, With<MainPane>>()
+            .iter(world)
+            .any(|view| view.top().is_some())
+    };
+    assert!(!scrolled(&mut app));
+    for kind in [MouseEventKind::ScrollUp, MouseEventKind::ScrollDown] {
+        push(
+            &mut app,
+            KeyInput::Event(Event::Mouse(MouseEvent {
+                kind,
+                column: 10,
+                row: 5,
+                modifiers: KeyModifiers::NONE,
+            })),
+        );
+        app.update();
+        assert_eq!(scrolled(&mut app), kind == MouseEventKind::ScrollUp);
+        assert_eq!(input(&app).text(), "unsent draft");
+    }
+}
+
 /// The texts agents accepted.
 #[derive(Resource, Default)]
 struct Delivered(Vec<String>);
