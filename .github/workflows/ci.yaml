@@ -140,8 +140,11 @@ jobs:
           # The repository-repair tests format proposed patches.
           components: rustfmt
           alsa: "true"
+      # The all-features dependency graph, saved by this job on push to
+      # main and shared with the doctests.
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          shared-key: all-features
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --job test
         env:
@@ -245,9 +248,11 @@ jobs:
         with:
           protoc: "true"
           alsa: "true"
+      # The all-features entry `stable / test` saves.
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+          shared-key: all-features
+          save-if: "false"
       - run: cargo xtask verify --job doctest
         env:
           RIG_CI_PLAN: ${{ needs.plan.outputs.plan }}
