@@ -173,8 +173,10 @@ impl SummaryState {
 
 /// Where a new compaction of `messages`, whose first `from` are summarized
 /// already, should end: the first message it keeps. Walking back from the
-/// newest message, it keeps at least `keep_tokens` and cuts before a reply
-/// or a user's own message, never between a tool call and its result.
+/// newest message, it keeps at least `keep_tokens` and cuts before a reply,
+/// a user's own message or a system message, never between a tool call
+/// and its results: once it passes a result, it cuts no later than the
+/// reply before it, which made the call.
 /// With `force`, a shorter conversation still has its older messages
 /// summarized, all but the newest reply or message. `None` when nothing
 /// new would be summarized.
@@ -187,9 +189,19 @@ fn cut_at(
 ) -> Option<usize> {
     let mut kept = 0;
     let mut newest = None;
+    let mut answering = false;
     for (index, message) in messages.iter().enumerate().skip(from + 1).rev() {
         kept += counter.count(message);
-        if !can_start_live(message) {
+        match message.as_ref() {
+            Message::User { content } => {
+                answering |= content
+                    .iter()
+                    .any(|item| matches!(item, UserContent::ToolResult(_)));
+            }
+            Message::Assistant(_) => answering = false,
+            Message::System { .. } => {}
+        }
+        if answering {
             continue;
         }
         newest.get_or_insert(index);
@@ -198,17 +210,6 @@ fn cut_at(
         }
     }
     newest.filter(|_| force)
-}
-
-/// Whether the messages a request sends as they are may start with
-/// `message`: a reply, or a user message that answers no tool call.
-fn can_start_live(message: &Message) -> bool {
-    match message {
-        Message::User { content } => !content
-            .iter()
-            .any(|item| matches!(item, UserContent::ToolResult(_))),
-        Message::Assistant(_) | Message::System { .. } => true,
-    }
 }
 
 /// Why a conversation is compacted.
