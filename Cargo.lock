@@ -4432,7 +4432,7 @@ name = "corpus-base"
 version = "0.0.0"
 dependencies = [
  "async-channel",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bevy",
  "bevy_app",
  "bevy_ecs",
@@ -4581,7 +4581,7 @@ dependencies = [
 name = "corpus-oc"
 version = "0.0.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
@@ -4695,7 +4695,7 @@ dependencies = [
 name = "corpus-rf-06"
 version = "0.0.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures",
  "prost 0.14.4",
  "rig-agent",
@@ -13904,7 +13904,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "assert_fs",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "ctrlc",
  "futures",
@@ -13956,7 +13956,7 @@ version = "0.46.0"
 dependencies = [
  "agent-client-protocol",
  "async-channel",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bevy_ecs",
  "bevy_tasks",
  "chrono",
@@ -14035,7 +14035,7 @@ dependencies = [
  "aws-smithy-eventstream",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "futures",
  "http-body",
@@ -14087,7 +14087,7 @@ dependencies = [
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "axum 0.8.9",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "divan",
  "futures",
@@ -14136,7 +14136,7 @@ name = "rig-claude-cloak"
 version = "0.46.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bevy_ecs",
  "bevy_reflect",
  "bevy_tasks",
@@ -14168,7 +14168,7 @@ dependencies = [
  "anyhow",
  "assert_fs",
  "async-stream",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "divan",
  "epub",
@@ -14372,7 +14372,7 @@ dependencies = [
 name = "rig-history-conformance"
 version = "0.0.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "rig-core",
  "rig-memory",
  "serde_json",
@@ -14452,7 +14452,7 @@ dependencies = [
 name = "rig-memory"
 version = "0.46.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "divan",
  "memchr",
  "rig-core",
@@ -14702,7 +14702,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "futures",
  "http",
@@ -14727,7 +14727,7 @@ dependencies = [
 name = "rig-tools"
 version = "0.46.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "divan",
  "futures",
  "ignore",
@@ -14765,7 +14765,7 @@ dependencies = [
 name = "rig-tui"
 version = "0.46.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",
@@ -14839,7 +14839,7 @@ name = "rig-vertexai"
 version = "0.46.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
