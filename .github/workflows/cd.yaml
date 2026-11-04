@@ -1,4 +1,4 @@
-# Release: both gates on every push to main, then release-plz. Serialized per
+# Release: the full gate on every push to main, then release-plz. Serialized per
 # ref and never cancelled, so a run that may be publishing is not killed.
 name: "Build & Release"
 
@@ -16,16 +16,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # No `secrets: inherit`: the gates are hermetic and use no secrets.
+  # No `secrets: inherit`: the gate is hermetic and uses no secrets.
   run-ci:
     uses: ./.github/workflows/ci.yaml
 
-  run-slow:
-    uses: ./.github/workflows/slow.yaml
-
   release-plz:
     name: Release-plz
-    needs: [run-ci, run-slow]
+    needs: run-ci
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

@@ -62,7 +62,7 @@ static GUARD: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 /// # Worked examples
 ///
 /// - Log capture: `crates/rig-core/tests/common/tracing_capture.rs` packages
-///   all of the above, and `crates/rig-core/tests/model_listing_warnings.rs`
+///   all of the above, and `crates/rig-core/tests/integration/model_listing_warnings.rs`
 ///   uses it.
 /// - Span capture: `assert_stream_usage_recorded_on_chat_spans` in
 ///   `crates/rig-agent/src/agent/streaming/tests.rs`.

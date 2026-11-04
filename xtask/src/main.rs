@@ -73,11 +73,14 @@ const USAGE: &str = "\
 usage: cargo xtask <task>
 
 tasks:
-  verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
-  verify --check ID           run one check by id (CI runs one per job)
   verify --affected --base REF
-                              run every test the change can break: its packages'
-                              and their dependents' (before every push)
+                              run every check the change selects: the tests of
+                              each package that can observe it (before every push)
+  verify --plan --base REF|--full
+                              print the plan CI's jobs run (`plan=` and `jobs=`)
+  verify --job ID             run one CI job's checks from the plan in RIG_CI_PLAN
+  verify --full | --check ID  run every check, or one by id
+  (each takes --dry-run to print the selection only)
   check-packaging             fail if the published facade carries files that
                               are not its source, if a publishable crate grows
                               past the size ceiling, if a manifest names a

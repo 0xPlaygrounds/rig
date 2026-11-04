@@ -100,7 +100,7 @@ Download the official artifacts with the reproducible helper:
 ```bash
 export RIG_CANDLE_TEST_MODEL_DIR="$PWD/crates/rig-candle/test-models/qwen3-4b-q4-k-m"
 ./crates/rig-candle/tests/download_qwen3.sh
-cargo test --release -p rig-candle --test live_conformance \
+cargo test --release -p rig-candle --test integration live_conformance \
   -- --ignored --nocapture --test-threads=1
 ```
 
@@ -208,7 +208,7 @@ files, and the opt-in live test checks the nano checkpoint on a photo:
 
 ```bash
 ./crates/rig-candle/tests/download_yolov8_pose.sh
-cargo test --release -p rig-candle --test live_pose -- --ignored --nocapture
+cargo test --release -p rig-candle --test integration live_pose -- --ignored --nocapture
 ```
 
 | artifact | revision | bytes | SHA-256 |

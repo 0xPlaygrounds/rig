@@ -65,7 +65,7 @@
 //! No cell was dropped for cost.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini thought_text_matrix -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::thought_text_matrix -- --test-threads=1`
 //!
 //! The `reader` column's `text_response` entries name the cells (whose
 //! function names are frozen), not a surviving method: on those cells the

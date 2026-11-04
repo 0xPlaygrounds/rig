@@ -32,14 +32,15 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
             "clippy",
             "doctests",
             "docs",
-            "full-tests",
+            "tests",
+            "service-tests",
             "dependency-floors",
         ]
         .contains(&check.id.as_str())
         {
             probes.insert(("protoc", vec!["--version"]));
         }
-        if check.id == "full-tests" {
+        if check.id == "service-tests" {
             probes.insert(("docker", vec!["info", "--format", "{{.ServerVersion}}"]));
         }
     }

@@ -69,7 +69,6 @@ features = [
     "cassette",
     "derive",
     "epub",
-    "facade-build-tests",
     "fastembed",
     "fastembed-hf-hub",
     "fastembed-ort-download-binaries",
@@ -143,7 +142,7 @@ members = [
 # own suite (trybuild cases and the dependency-rename fixtures) runs in the
 # `stable / test rig-derive` job, which names `-p rig-derive` explicitly, and
 # the macro-hygiene consumer runs in the `test guards` job's
-# `cargo test -p rig-core --test macro_hygiene` step. Both are required for
+# `macro-hygiene` check (the `macro_hygiene` suite of rig-core's tests). Both are required for
 # this exclusion to stay honest: until the first existed, every test in
 # rig-derive ran nowhere.
 # The nested cassette runner is selected separately by bus-verification:
@@ -230,7 +229,7 @@ rust-version = "1.97.1"
 # raised floors, forcing downstream users to `cargo update` a dozen crates
 # just to take a point release (#2195). Raise a floor when rig starts using
 # an API the old floor lacks, and say so in the changelog.
-# `scripts/check-dependency-floors.py` (CI: slow.yaml `dependency-floors`)
+# `scripts/check-dependency-floors.py` (CI: `stable / dependency floors`)
 # downgrades every direct dependency to its floor and builds the workspace,
 # so a floor that has silently rotted fails there rather than downstream.
 #
@@ -498,10 +497,6 @@ agent = ["dep:rig-agent", "rig-cassette?/agent"]
 # classic-agent adapter (`rig::cassette::agent`).
 cassette = ["dep:rig-cassette"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
-# Internal: opt in to the slow nested-`cargo check` facade build tests
-# (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
-# lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
-facade-build-tests = []
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [

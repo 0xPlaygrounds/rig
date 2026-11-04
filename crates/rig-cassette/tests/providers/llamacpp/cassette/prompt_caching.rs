@@ -31,8 +31,8 @@
 //!
 //! ```text
 //! # restart the default server first: turn 1 is only cold on an empty KV cache
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test llamacpp --all-features \
-//!     prompt_caching:: -- --test-threads=1
+//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
+//!     llamacpp::cassette::prompt_caching:: -- --test-threads=1
 //! ```
 //!
 

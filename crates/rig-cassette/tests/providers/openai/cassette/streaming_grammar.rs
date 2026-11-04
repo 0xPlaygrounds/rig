@@ -5,7 +5,7 @@
 //! synthetic chunks.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record OPENAI_API_KEY=... cargo test --test openai streaming_grammar -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record OPENAI_API_KEY=... cargo test -p rig-cassette --all-features --test integration openai::cassette::streaming_grammar -- --test-threads=1`
 //!
 //! Cassette IDs are scrub placeholders (prefixes such as `msg_`/`resp_` are
 //! preserved); assertions derive expected IDs from the recorded turn and never

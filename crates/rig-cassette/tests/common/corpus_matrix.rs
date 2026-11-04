@@ -17,12 +17,7 @@
 //! holds only the scenario literals (the cassette census reads them off
 //! the call sites), the wire's models and the wire-specific `#[ignore]`
 //! reasons.
-#[allow(
-    dead_code,
-    reason = "each target uses a different subset of the corpus"
-)]
-#[path = "../corpus/mod.rs"]
-pub(crate) mod corpus;
+pub(crate) use crate::corpus;
 
 #[path = "corpus_matrix/agent.rs"]
 pub(crate) mod agent;

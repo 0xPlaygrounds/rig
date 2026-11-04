@@ -5,8 +5,6 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
-use syn::{Expr, ExprLit, Lit};
-
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/cassettes");
 
 struct ProviderCassetteSuite {
@@ -282,29 +280,9 @@ fn cassettes_do_not_contain_obvious_secrets() {
         return;
     }
 
-    // Each provider binary scans only its own `crates/rig-cassette/fixtures/cassettes/<provider>`
-    // directory. This module compiles into every provider test binary, and
-    // the scan (YAML parse + scrub + re-serialize + base64 decode + several
-    // regex families per file) is expensive — when every binary scanned the
-    // whole tree, CI ran the identical full-tree scan once per binary, and
-    // that duplication alone was the single largest execution cost in the PR
-    // gate's test sweep (~16s × 16 binaries per run).
-    //
-    // Scoping is safe because the partition below is asserted, in every
-    // binary, before anything is skipped:
-    //
-    //   * every top-level entry under `crates/rig-cassette/fixtures/cassettes` must be a directory
-    //     named after a suite registered in `PROVIDER_CASSETTE_SUITES` — a
-    //     stray file or an unregistered provider directory fails everywhere
-    //     rather than silently escaping the scan;
-    //   * every registered suite's `tests/<provider>.rs` must include this
-    //     module — so each registered directory is provably scanned by
-    //     exactly the binary that owns it, and adding a suite without wiring
-    //     the scan into its binary fails everywhere too;
-    //   * every registered provider name must be a valid crate identifier —
-    //     `env!("CARGO_CRATE_NAME")` mangles hyphens to underscores, so a
-    //     hyphenated provider would resolve `own_dir` to a path that never
-    //     exists and skip its own scan without a single failure.
+    // Every top-level entry must be a registered provider directory, so a
+    // stray file or an unregistered directory fails instead of escaping the
+    // scan of every registered one below.
     let mut failures = Vec::new();
 
     let registered: BTreeSet<&str> = PROVIDER_CASSETTE_SUITES
@@ -318,42 +296,21 @@ fn cassettes_do_not_contain_obvious_secrets() {
         if !entry.path().is_dir() {
             failures.push(format!(
                 "crates/rig-cassette/fixtures/cassettes/{name} is not a provider directory; loose files under the \
-                 cassette root are scanned by no binary"
+                 cassette root are scanned by no test"
             ));
         } else if !registered.contains(name.as_str()) {
             failures.push(format!(
                 "crates/rig-cassette/fixtures/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
-                 binary scans it for secrets — register it in \
+                 scans it for secrets: register it in \
                  tests/common/cassette_safety.rs"
             ));
         }
     }
     for suite in PROVIDER_CASSETTE_SUITES {
-        if !suite
-            .provider
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
-        {
-            failures.push(format!(
-                "provider {:?} is not equal to its test binary's CARGO_CRATE_NAME (hyphens and \
-                 other non-identifier characters are mangled), so its cassette directory would \
-                 be scanned by no binary — rename the provider or its directory",
-                suite.provider
-            ));
+        let dir = root.join(suite.provider);
+        if dir.is_dir() {
+            scan_dir(&dir, &mut failures);
         }
-        let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
-        if !binary_compiles_cassette_scan(&binary_source) {
-            failures.push(format!(
-                "tests/{}.rs does not include common/cassette_safety.rs as an unconditional \
-                 `mod`, so crates/rig-cassette/fixtures/cassettes/{} is scanned for secrets by no binary",
-                suite.provider, suite.provider
-            ));
-        }
-    }
-
-    let own_dir = root.join(env!("CARGO_CRATE_NAME"));
-    if own_dir.is_dir() {
-        scan_dir(&own_dir, &mut failures);
     }
 
     assert!(
@@ -404,17 +361,24 @@ fn cassette_files_match_registered_scenarios() {
 /// of the cell that recorded it: declared on its `CassetteSpec`, or by the
 /// wrapper that presents the rejected credential. The recorder refuses an
 /// undeclared one at record time; this keeps the committed corpus to the
-/// same rule. Each binary checks its own provider's fixtures.
+/// same rule, for every registered provider.
 #[test]
 fn account_failures_are_declared_by_their_cells() {
-    let own = env!("CARGO_CRATE_NAME");
-    let Some(suite) = PROVIDER_CASSETTE_SUITES
-        .iter()
-        .find(|suite| suite.provider == own)
-    else {
-        return;
-    };
     let mut failures = Vec::new();
+    for suite in PROVIDER_CASSETTE_SUITES {
+        undeclared_account_failures(suite, &mut failures);
+    }
+    assert!(
+        failures.is_empty(),
+        "account failures without a declaring cell:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// Appends to `failures` each account failure in `suite`'s fixtures that no
+/// cell of its sources declares.
+fn undeclared_account_failures(suite: &ProviderCassetteSuite, failures: &mut Vec<String>) {
+    let own = suite.provider;
 
     let mut declaring = std::collections::BTreeMap::<String, Vec<String>>::new();
     for dir in [format!("tests/providers/{own}"), "tests/common".to_owned()] {
@@ -483,12 +447,6 @@ fn account_failures_are_declared_by_their_cells() {
             }
         }
     }
-
-    assert!(
-        failures.is_empty(),
-        "account failures without a declaring cell:\n{}",
-        failures.join("\n")
-    );
 }
 
 /// Fixtures recorded before the recorder refused stored state: each stores a
@@ -502,7 +460,6 @@ const STORED_STATE_GRANDFATHERED: &str = include_str!("stored_state_grandfathere
 /// state, or names no fixture, is stale and must go.
 #[test]
 fn stored_responses_are_deleted_or_grandfathered() {
-    let own = env!("CARGO_CRATE_NAME");
     let grandfathered: BTreeSet<&str> = STORED_STATE_GRANDFATHERED
         .lines()
         .map(str::trim)
@@ -511,30 +468,29 @@ fn stored_responses_are_deleted_or_grandfathered() {
     let root = Path::new(CASSETTE_ROOT);
     let mut failures = Vec::new();
     let mut storing = BTreeSet::new();
-    for fixture in collect_yaml_files(&root.join(own)) {
-        let contents = fs::read_to_string(&fixture).expect("cassette should be readable");
-        let stored = crate::cassettes::cassette_stored_state(own, &contents);
-        let relative = fixture
-            .strip_prefix(root)
-            .expect("fixture under the cassette root")
-            .display()
-            .to_string();
-        if stored.is_empty() {
-            continue;
-        }
-        storing.insert(relative.clone());
-        if !grandfathered.contains(relative.as_str()) {
-            failures.push(format!(
-                "{relative} stores responses it never deletes ({}): send `store: false` or \
-                 delete them in the same cassette",
-                stored.join(", ")
-            ));
+    for suite in PROVIDER_CASSETTE_SUITES {
+        for fixture in collect_yaml_files(&root.join(suite.provider)) {
+            let contents = fs::read_to_string(&fixture).expect("cassette should be readable");
+            let stored = crate::cassettes::cassette_stored_state(suite.provider, &contents);
+            let relative = fixture
+                .strip_prefix(root)
+                .expect("fixture under the cassette root")
+                .display()
+                .to_string();
+            if stored.is_empty() {
+                continue;
+            }
+            storing.insert(relative.clone());
+            if !grandfathered.contains(relative.as_str()) {
+                failures.push(format!(
+                    "{relative} stores responses it never deletes ({}): send `store: false` or \
+                     delete them in the same cassette",
+                    stored.join(", ")
+                ));
+            }
         }
     }
-    for line in grandfathered
-        .iter()
-        .filter(|line| line.split('/').next() == Some(own))
-    {
+    for line in &grandfathered {
         if !storing.contains(*line) {
             failures.push(format!(
                 "stored_state_grandfathered.txt lists {line}, which no longer stores state: \
@@ -551,13 +507,15 @@ fn stored_responses_are_deleted_or_grandfathered() {
 
 /// No cassette test compares a volatile key (one the recorder normalizes)
 /// exactly outside replay: such a comparison passes in CI and fails only on
-/// the next recording. Each binary checks its own provider's sources and the
-/// shared ones.
+/// the next recording. It checks every provider's sources and the shared ones.
 #[test]
 fn volatile_keys_are_not_compared_exactly_outside_replay() {
-    let own = env!("CARGO_CRATE_NAME");
     let mut failures = Vec::new();
-    for dir in [format!("tests/providers/{own}"), "tests/common".to_owned()] {
+    let dirs = PROVIDER_CASSETTE_SUITES
+        .iter()
+        .map(|suite| format!("tests/providers/{}", suite.provider))
+        .chain(["tests/common".to_owned()]);
+    for dir in dirs {
         let dir = repo_path(&dir);
         if !dir.exists() {
             continue;
@@ -695,43 +653,6 @@ fn collect_rust_files_in_dir(dir: &Path, files: &mut Vec<PathBuf>) {
             files.push(path);
         }
     }
-}
-
-/// Structural, not substring: the guarded claim is "this binary *compiles*
-/// the secret scan", so the check must parse the source and find an actual
-/// `#[path = ".../common/cassette_safety.rs"] mod …` item with no `#[cfg]`
-/// attached. A raw `contents.contains(...)` would stay satisfied by a
-/// commented-out include or by a cfg-gated one — a false green on the safety
-/// net itself, the same paper-claim failure mode the streaming-conformance
-/// registry's CI-step check guards against.
-fn binary_compiles_cassette_scan(source: &Path) -> bool {
-    let Ok(contents) = fs::read_to_string(source) else {
-        return false;
-    };
-    let Ok(syntax) = syn::parse_file(&contents) else {
-        return false;
-    };
-    syntax.items.iter().any(|item| {
-        let syn::Item::Mod(module) = item else {
-            return false;
-        };
-        let cfg_gated = module
-            .attrs
-            .iter()
-            .any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"));
-        let includes_scan = module.attrs.iter().any(|attr| {
-            attr.path().is_ident("path")
-                && matches!(
-                    &attr.meta,
-                    syn::Meta::NameValue(name_value) if matches!(
-                        &name_value.value,
-                        Expr::Lit(ExprLit { lit: Lit::Str(path), .. })
-                            if path.value().ends_with("common/cassette_safety.rs")
-                    )
-                )
-        });
-        includes_scan && !cfg_gated
-    })
 }
 
 fn cassette_scenarios_in_file(

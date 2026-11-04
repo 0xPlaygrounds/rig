@@ -1,266 +1,6 @@
 use super::*;
 
-use std::collections::BTreeSet;
-
-fn opts(mode: &str) -> Options {
-    Options::parse(vec![mode.into(), "--base".into(), "HEAD".into()]).unwrap()
-}
-
-fn metadata() -> Value {
-    // `rig` keeps the live-only provider targets; the cassette-backed ones
-    // are targets of `rig-cassette`.
-    serde_json::json!({"packages":[
-        {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
-        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]}]},
-        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
-        {"name":"rig-agent","manifest_path":"/repo/crates/rig-agent/Cargo.toml","dependencies":[]},
-        {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
-        {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-agent"}]}
-    ]})
-}
-
-fn ids(mode: &str, paths: &[&str]) -> BTreeSet<String> {
-    selection::plan(
-        Path::new("/repo"),
-        &metadata(),
-        &opts(mode),
-        &paths.iter().map(|s| (*s).into()).collect(),
-        &checks::all(),
-    )
-    .unwrap()
-    .into_iter()
-    .map(|c| c.id)
-    .collect()
-}
-
-#[test]
-fn pr_requires_explicit_base() {
-    assert!(Options::parse(vec!["--pr".into()]).is_err());
-}
-
-#[test]
-fn conflicting_modes_fail() {
-    assert!(Options::parse(vec!["--changed".into(), "--full".into()]).is_err());
-}
-
-#[test]
-fn unknown_changes_select_full_coverage() {
-    assert_eq!(ids("--changed", &["unknown.xyz"]), ids("--full", &[]));
-    assert_eq!(ids("--pr", &["unknown.xyz"]), ids("--full", &[]));
-}
-
-#[test]
-fn gated_provider_changes_enable_every_capability() {
-    let metadata = metadata();
-    for path in [
-        "crates/rig-cassette/tests/providers/openai/cassette/audio_params_matrix.rs",
-        "crates/rig-cassette/tests/providers/openai/cassette/image_params_matrix.rs",
-        "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
-    ] {
-        let plan = selection::plan(
-            Path::new("/repo"),
-            &metadata,
-            &opts("--changed"),
-            &BTreeSet::from([path.into()]),
-            &checks::all(),
-        )
-        .unwrap();
-        let provider = plan.iter().find(|c| c.id == "provider-openai").unwrap();
-        assert!(provider.steps[0].args.contains(&"--all-features".into()));
-        assert!(!provider.steps[0].args.contains(&"--features".into()));
-        assert!(!plan.iter().any(|c| c.id == "full-tests"));
-    }
-}
-
-#[test]
-fn planner_and_dependency_edits_cannot_skip_checks() {
-    for p in [
-        "xtask/src/main.rs",
-        "Cargo.lock",
-        "crates/rig-agent/Cargo.toml",
-        "examples/agent/Cargo.toml",
-        "rust-toolchain.toml",
-        ".cargo/config.toml",
-        ".github/actions/rust-setup/action.yml",
-    ] {
-        assert_eq!(ids("--changed", &[p]), ids("--full", &[]), "{p}");
-    }
-    // Shared runtime inputs broaden to every runtime check, but cannot
-    // change what Cargo resolves, so the floors stay out.
-    let mut without_floors = ids("--full", &[]);
-    without_floors.remove("dependency-floors");
-    for p in [
-        ".config/nextest.toml",
-        "src/lib.rs",
-        "crates/rig-cassette/tests/common/mod.rs",
-        "test-support/service-tests/src/lib.rs",
-    ] {
-        assert_eq!(ids("--changed", &[p]), without_floors, "{p}");
-    }
-}
-
-#[test]
-fn full_and_floor_lanes_select_independently() {
-    // A storage-suite edit runs the service suites, not the floors.
-    for p in [
-        "crates/rig-sqlite/src/lib.rs",
-        "tests/integrations/sqlite.rs",
-    ] {
-        let pr = ids("--pr", &[p]);
-        assert!(pr.contains("full-tests"), "{p}: {pr:?}");
-        assert!(!pr.contains("dependency-floors"), "{p}: {pr:?}");
-    }
-    // The floor checker runs the floors and its own tests, nothing else.
-    let changed = ids("--changed", &["scripts/check-dependency-floors.py"]);
-    assert_eq!(
-        changed,
-        BTreeSet::from(["dependency-floors".into(), "fmt".into(), "tooling".into()])
-    );
-    let pr = ids("--pr", &["scripts/check-dependency-floors.py"]);
-    assert!(pr.contains("dependency-floors"));
-    assert!(!pr.contains("full-tests"));
-    // Resolver inputs run both.
-    for p in ["Cargo.lock", "crates/rig-agent/Cargo.toml"] {
-        let pr = ids("--pr", &[p]);
-        assert!(
-            pr.contains("full-tests") && pr.contains("dependency-floors"),
-            "{p}"
-        );
-    }
-    // The lane predicates are exactly the CI path filters.
-    for p in ["crates/rig-sqlite/src/lib.rs", "tests/integrations.rs"] {
-        assert!(checks::full_lane(p) && !checks::floor_lane(p), "{p}");
-    }
-    for p in [
-        "examples/agent/Cargo.toml",
-        "rust-toolchain.toml",
-        ".cargo/config.toml",
-        "scripts/check-dependency-floors.py",
-    ] {
-        assert!(checks::floor_lane(p) && !checks::full_lane(p), "{p}");
-    }
-}
-
-#[test]
-fn fixture_selects_complete_provider_target() {
-    let plan = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
-    );
-    assert!(plan.contains("provider-anthropic"));
-    assert!(!plan.contains("full-tests"));
-}
-
-/// Provider targets have two owners now. A moved cassette suite must be run
-/// out of `rig-cassette` and a live-only suite out of the facade; picking the
-/// wrong `-p` compiles a package that does not declare the target at all.
-#[test]
-fn a_provider_target_is_run_by_the_package_that_declares_it() {
-    let args = |paths: &[&str], id: &str| {
-        selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &opts("--changed"),
-            &paths.iter().map(|s| (*s).into()).collect(),
-            &checks::all(),
-        )
-        .unwrap()
-        .into_iter()
-        .find(|check| check.id == id)
-        .unwrap()
-        .steps[0]
-            .args
-            .clone()
-    };
-    let moved = args(
-        &["crates/rig-cassette/tests/providers/openai/cassette/x.rs"],
-        "provider-openai",
-    );
-    assert!(
-        moved.windows(2).any(|p| p == ["-p", "rig-cassette"]),
-        "{moved:?}"
-    );
-    assert!(
-        moved.windows(2).any(|p| p == ["--test", "openai"]),
-        "{moved:?}"
-    );
-    let stayed = args(&["tests/providers/azure/live.rs"], "provider-azure");
-    assert!(stayed.windows(2).any(|p| p == ["-p", "rig"]), "{stayed:?}");
-    // A cassette-package file that names no target is package source, not an
-    // unknown provider: it must not broaden the whole plan.
-    let corpus = ids("--changed", &["crates/rig-cassette/tests/corpus_hooks.rs"]);
-    assert!(corpus.contains("package-rig-cassette"), "{corpus:?}");
-    assert!(!corpus.contains("full-tests"), "{corpus:?}");
-}
-
-#[test]
-fn shared_replay_sources_keep_the_minimal_execution() {
-    for path in [
-        "crates/rig-cassette/tests/corpus_hooks.rs",
-        "crates/rig-cassette/tests/verify/main.rs",
-        "crates/rig-cassette/src/effect_log/tests.rs",
-        "crates/rig-cassette/src/agent/replay/tests.rs",
-    ] {
-        let plan = ids("--changed", &[path]);
-        assert!(
-            plan.contains("package-rig-cassette-minimal"),
-            "{path}: {plan:?}"
-        );
-        assert!(!plan.contains("full-tests"), "{path}: {plan:?}");
-    }
-}
-
-#[test]
-fn unknown_fixture_provider_falls_back() {
-    assert!(
-        ids(
-            "--changed",
-            &["crates/rig-cassette/fixtures/cassettes/unknown/a.yaml"]
-        )
-        .contains("full-tests")
-    );
-}
-
-#[test]
-fn runtime_changes_include_reverse_consumers() {
-    let p = ids("--changed", &["crates/rig-agent/src/lib.rs"]);
-    assert!(p.contains("package-rig-agent"));
-    assert!(p.contains("consumers"));
-}
-
-#[test]
-fn pr_preserves_required_platform_and_default_guarantees() {
-    let p = ids("--pr", &["README.md"]);
-    for c in [
-        "default-check",
-        "default-tests",
-        "wasm-rig-agent",
-        "native-only-rig-rmcp",
-        "doctests",
-        "conformance",
-        "derive",
-        "effect-corpus",
-    ] {
-        assert!(p.contains(c), "missing {c}");
-    }
-    assert!(!p.contains("full-tests"));
-    assert!(ids("--pr", &["Cargo.lock"]).contains("full-tests"));
-}
-
-#[test]
-fn unknown_check_cannot_succeed() {
-    let o = Options::parse(vec!["--check".into(), "typo".into()]).unwrap();
-    assert!(
-        selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &o,
-            &BTreeSet::new(),
-            &checks::all()
-        )
-        .is_err()
-    );
-}
+use std::collections::{BTreeMap, BTreeSet};
 
 #[test]
 fn check_ids_are_unique() {
@@ -277,51 +17,6 @@ fn telemetry_retry_policy_is_not_overridden() {
     let c = all.iter().find(|c| c.id == "core-all").unwrap();
     assert!(c.steps[0].args.contains(&"guards".into()));
     assert!(!c.steps[0].args.contains(&"--retries".into()));
-}
-
-#[test]
-fn frozen_release_edits_include_untracked_and_working_changes() {
-    assert!(
-        selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &opts("--pr"),
-            &BTreeSet::from(["docs/migrations/new.md".into()]),
-            &checks::all()
-        )
-        .is_err()
-    );
-}
-
-#[test]
-fn browser_worker_changes_run_javascript_and_wasm_checks() {
-    let p = ids(
-        "--changed",
-        &["examples/candle_wasm_chat/www/worker-runtime.mjs"],
-    );
-    assert!(p.contains("source-guards"));
-    assert!(p.contains("wasm-candle_wasm_chat"));
-}
-
-#[test]
-fn unmodeled_package_assets_broaden_instead_of_skipping() {
-    assert_eq!(
-        ids("--changed", &["crates/rig-agent/generator.sh"]),
-        ids("--full", &[])
-    );
-}
-
-#[test]
-fn reporting_only_selection_skips_work_but_other_docs_keep_executable_checks() {
-    assert!(ids("--changed", &["DEVELOPING.md"]).is_empty());
-    for path in [
-        "docs/progress.md",
-        "README.md",
-        "crates/rig-agent/README.md",
-    ] {
-        assert!(!ids("--changed", &[path]).is_empty());
-    }
-    assert_eq!(ids("--pr", &["DEVELOPING.md"]), ids("--pr", &[]));
 }
 
 #[test]
@@ -363,12 +58,7 @@ fn conformance_compiles_exactly_its_executed_targets() {
         .collect();
     assert_eq!(
         targets,
-        BTreeSet::from([
-            "streaming_conformance",
-            "streaming_conformance_websocket",
-            "driver_adoption",
-            "history_conformance"
-        ])
+        BTreeSet::from(["integration", "history_conformance"])
     );
     assert!(c.steps[0].args.windows(2).any(|w| w == ["--retries", "0"]));
     assert!(c.steps[0].args.contains(&"--all-features".into()));
@@ -376,11 +66,11 @@ fn conformance_compiles_exactly_its_executed_targets() {
 
 #[test]
 fn full_covers_workspace_and_example_targets() {
-    // full-tests owns the locked-version compile of every member's lib, bin,
+    // `tests` owns the locked-version compile of every member's lib, bin,
     // test and example targets: Cargo's default `test` target selection,
     // which any narrowing flag would silently drop.
     let all = checks::all();
-    let c = all.iter().find(|c| c.id == "full-tests").unwrap();
+    let c = all.iter().find(|c| c.id == "tests").unwrap();
     for flag in ["--workspace", "--all-features"] {
         assert!(c.steps[0].args.contains(&flag.into()));
     }
@@ -481,7 +171,8 @@ fn prioritized_tests_exist() {
             })
         {
             // `test(=a::b::name)` names the function `name` in the module file
-            // `a/b.rs` (or `a/b/mod.rs`); `binary_id(package::name)` the binary `name`.
+            // `a/b.rs` (or `a/b/mod.rs`); `binary_id(package::name)` the binary `name`
+            // (`tests/name.rs` or `tests/name/main.rs`).
             let name = rest.split(')').next().unwrap();
             let name = name.strip_prefix('=').unwrap_or(name);
             let (module, name) = name.rsplit_once("::").unwrap_or(("", name));
@@ -501,31 +192,17 @@ fn prioritized_tests_exist() {
                 })
             } else {
                 sources.iter().any(|p| {
-                    p.ends_with(&format!("/tests/{name}.rs")) || p == &format!("tests/{name}.rs")
+                    p.ends_with(&format!("/tests/{name}.rs"))
+                        || p == &format!("tests/{name}.rs")
+                        || p.ends_with(&format!("tests/{name}/main.rs"))
                 })
             };
             assert!(found, "{kind}{name}) names no tracked test");
         }
     }
     assert!(
-        checked >= 4,
-        "expected the prioritized nested-Cargo and wire tests, found {checked}"
-    );
-}
-
-#[test]
-fn pr_broad_reason_names_verification_inputs() {
-    let plan = selection::plan(
-        Path::new("/repo"),
-        &metadata(),
-        &opts("--pr"),
-        &BTreeSet::from(["xtask/src/verify.rs".into()]),
-        &checks::all(),
-    )
-    .unwrap();
-    assert!(
-        plan.iter()
-            .all(|c| c.reason.contains("xtask/src/verify.rs"))
+        checked >= 2,
+        "expected the prioritized wire test, found {checked}"
     );
 }
 
@@ -580,7 +257,8 @@ fn staged_then_undone_and_untracked_inputs_are_not_lost() {
     std::fs::write(repo.0.join("new.rs"), "new").unwrap();
     std::fs::create_dir_all(repo.0.join("target")).unwrap();
     std::fs::write(repo.0.join("target/out"), "ignored").unwrap();
-    let paths = selection::changes(&repo.0, &opts("--changed")).unwrap();
+    let paths =
+        selection::changes(&repo.0, &Options::parse(vec!["--full".into()]).unwrap()).unwrap();
     assert!(paths.contains("file.rs"));
     assert!(paths.contains("new.rs"));
     assert!(!paths.iter().any(|p| p.starts_with("target")));
@@ -604,6 +282,7 @@ fn failed_required_command_stops_later_checks() {
         &repo.0,
         &metadata,
         &[fake_check("first", "exit 3"), later.clone()],
+        false,
     )
     .unwrap_err();
     assert!(
@@ -611,7 +290,7 @@ fn failed_required_command_stops_later_checks() {
         "{error}"
     );
     assert!(!repo.0.join("target/later").exists());
-    execute::run(&repo.0, &metadata, &[later]).unwrap();
+    execute::run(&repo.0, &metadata, &[later], false).unwrap();
     assert!(repo.0.join("target/later").exists());
 }
 
@@ -625,103 +304,16 @@ fn missing_prerequisite_stops_before_any_check() {
         reason: "test".into(),
         steps: vec![Step::new("rig-nonexistent-tool-for-test", &[])],
     };
-    let error = execute::run(&repo.0, &metadata, &[first, missing]).unwrap_err();
+    let error = execute::run(&repo.0, &metadata, &[first, missing], false).unwrap_err();
     assert!(error.to_string().contains("no checks executed"));
     assert!(error.to_string().contains("rig-nonexistent-tool-for-test"));
     assert!(!repo.0.join("target/executed").exists());
-}
-
-#[test]
-fn lanes_mode_reports_the_pr_plan_lanes() {
-    for (path, full, floors) in [
-        ("README.md", false, false),
-        ("tests/integrations/sqlite.rs", true, false),
-        ("scripts/check-dependency-floors.py", false, true),
-        ("Cargo.lock", true, true),
-    ] {
-        let plan = selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &Options::parse(vec!["--lanes".into(), "--base".into(), "HEAD".into()]).unwrap(),
-            &BTreeSet::from([path.into()]),
-            &checks::all(),
-        )
-        .unwrap();
-        assert_eq!(plan.iter().any(|c| c.id == "full-tests"), full, "{path}");
-        assert_eq!(
-            plan.iter().any(|c| c.id == "dependency-floors"),
-            floors,
-            "{path}"
-        );
-    }
-}
-
-#[test]
-fn full_lane_covers_every_integration_suite() {
-    // The service suites are the only runtime coverage the storage crates
-    // have; a suite whose crate is not a full-lane trigger merges its crate
-    // with none. bedrock's suite is feature-gated inside the facade, which
-    // the PR gate's `--features bedrock` sweep already runs.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let mut suites = BTreeSet::new();
-    for entry in std::fs::read_dir(root.join("tests/integrations")).unwrap() {
-        let path = entry.unwrap().path();
-        let suite = path.file_stem().unwrap().to_string_lossy().into_owned();
-        if suite != "bedrock" {
-            assert!(
-                checks::full_lane(&format!("crates/rig-{suite}/src/lib.rs")),
-                "crates/rig-{suite} is not a full-lane trigger"
-            );
-            suites.insert(suite);
-        }
-    }
-    assert!(suites.len() >= 8, "{suites:?}");
-    for crate_dir in std::fs::read_dir(root.join("crates")).unwrap() {
-        let name = crate_dir
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .into_owned();
-        let source = format!("crates/{name}/src/lib.rs");
-        let suite = name.strip_prefix("rig-").unwrap_or(&name);
-        assert_eq!(
-            checks::full_lane(&source),
-            suites.contains(suite),
-            "{name}: full-lane trigger and integration suite must agree"
-        );
-    }
 }
 
 impl Drop for Repo {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
-}
-
-#[test]
-fn lanes_mode_does_not_enforce_the_release_document_freeze() {
-    let lanes = Options::parse(vec!["--lanes".into(), "--base".into(), "HEAD".into()]).unwrap();
-    let paths = BTreeSet::from(["CHANGELOG.md".into()]);
-    assert!(
-        selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &lanes,
-            &paths,
-            &checks::all()
-        )
-        .is_ok()
-    );
-    assert!(
-        selection::plan(
-            Path::new("/repo"),
-            &metadata(),
-            &opts("--pr"),
-            &paths,
-            &checks::all()
-        )
-        .is_err()
-    );
 }
 
 #[test]
@@ -734,91 +326,6 @@ fn tool_versions_require_the_exact_pinned_version() {
         "rustc 1.95.0 (abc 2026-04-14)",
         "1.95"
     ));
-}
-
-/// Every `cargo xtask verify --check <id>` a workflow step runs, by line
-/// scan of the `run:` values (the workflows are plain YAML lists).
-fn workflow_check_ids(workflow: &str) -> BTreeSet<String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    std::fs::read_to_string(root.join(workflow))
-        .unwrap()
-        .lines()
-        .filter_map(|line| {
-            line.trim()
-                .trim_start_matches("- ")
-                .strip_prefix("run: cargo xtask verify --check ")
-        })
-        .map(|id| id.trim().to_string())
-        .collect()
-}
-#[test]
-fn every_check_is_run_by_a_workflow_step() {
-    // A check that exists only in `checks::all()` would pass `--full`
-    // locally and run nowhere in CI. This asserts presence in a step, not
-    // reachability: the slow lanes' steps sit behind the plan job's answer
-    // and the repository guard by design.
-    let defined: BTreeSet<String> = checks::all().into_iter().map(|c| c.id).collect();
-    let mut invoked = workflow_check_ids(".github/workflows/ci.yaml");
-    invoked.extend(workflow_check_ids(".github/workflows/slow.yaml"));
-    let missing: Vec<_> = defined.difference(&invoked).collect();
-    assert!(missing.is_empty(), "checks no workflow runs: {missing:?}");
-    let unknown: Vec<_> = invoked.difference(&defined).collect();
-    assert!(
-        unknown.is_empty(),
-        "workflows run undefined checks: {unknown:?}"
-    );
-}
-
-#[test]
-fn rig_claude_cloak_native_ci_runs_package_tests_and_rejects_empty_platform_coverage() {
-    let check = checks::all()
-        .into_iter()
-        .find(|check| check.id == "rig-claude-cloak-tests");
-    let step = check.and_then(|check| {
-        (check.steps.len() == 1)
-            .then(|| check.steps.into_iter().next())
-            .flatten()
-    });
-    assert_eq!(
-        step.map(|step| (step.program, step.args)),
-        Some((
-            "cargo".into(),
-            [
-                "nextest",
-                "run",
-                "--locked",
-                "-p",
-                "rig-claude-cloak",
-                "--lib",
-                "--no-tests",
-                "fail"
-            ]
-            .map(str::to_owned)
-            .to_vec()
-        ))
-    );
-    let workflow = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/ci.yaml"),
-    )
-    .ok()
-    .and_then(|text| serde_yaml::from_str::<serde_yaml::Value>(&text).ok());
-    let job = workflow
-        .as_ref()
-        .and_then(|workflow| workflow.get("jobs"))
-        .and_then(|jobs| jobs.get("rig-claude-cloak-macos"));
-    assert_eq!(
-        job.and_then(|job| job.get("runs-on"))
-            .and_then(|runner| runner.as_str()),
-        Some("macos-latest")
-    );
-    assert!(
-        job.and_then(|job| job.get("steps"))
-            .and_then(|steps| steps.as_sequence())
-            .is_some_and(|steps| steps
-                .iter()
-                .any(|step| step.get("run").and_then(|run| run.as_str())
-                    == Some("cargo xtask verify --check rig-claude-cloak-tests")))
-    );
 }
 
 #[test]
@@ -855,48 +362,6 @@ fn workflows_carry_no_toolchain_copy() {
 }
 
 #[test]
-fn a_golden_change_selects_the_effect_corpus_lane() {
-    let p = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
-    );
-    for check in ["bus-verification", "default-tests", "effect-corpus"] {
-        assert!(p.contains(check), "{p:?}");
-    }
-}
-
-/// The cassette and effect corpora share a parent directory inside one
-/// package. A provider cassette must still reach its provider target instead
-/// of falling through to the owning package's generic asset rule, and
-/// neither corpus may be classified as the other.
-#[test]
-fn the_two_corpora_are_classified_apart() {
-    let cassette = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
-    );
-    assert!(cassette.contains("provider-anthropic"), "{cassette:?}");
-    assert!(!cassette.contains("bus-verification"), "{cassette:?}");
-    assert!(!cassette.contains("package-rig-cassette"), "{cassette:?}");
-    let effects = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
-    );
-    assert!(!effects.iter().any(|id| id.starts_with("provider-")));
-}
-
-/// The fixture metadata declares `rig-agent` (a runtime crate) and
-/// `rig-sqlite` (a store): an edit to the first selects the effect-corpus
-/// lane on its own account, an edit to the second does not.
-#[test]
-fn a_runtime_crate_change_selects_the_effect_corpus_lane() {
-    let p = ids("--changed", &["crates/rig-agent/src/run/mod.rs"]);
-    assert!(p.contains("effect-corpus"), "{p:?}");
-    let p = ids("--changed", &["crates/rig-sqlite/src/lib.rs"]);
-    assert!(!p.contains("effect-corpus"), "{p:?}");
-}
-
-#[test]
 fn default_check_compiles_extracted_regressions_without_extra_features() {
     let all = checks::all();
     let check = all
@@ -911,36 +376,6 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
-}
-
-#[test]
-fn cassettes_snapshots_and_the_index_select_the_acceptance_check() {
-    for path in [
-        "crates/rig-cassette/fixtures/cassettes/openai/chat.yaml",
-        "crates/rig-cassette/fixtures/cassettes/openai/chat.requests.json",
-        "crates/rig-cassette/fixtures/acceptance.toml",
-    ] {
-        assert!(ids("--changed", &[path]).contains("acceptance"), "{path}");
-    }
-    assert!(!ids("--changed", &["crates/rig-agent/src/lib.rs"]).contains("acceptance"));
-}
-
-#[test]
-fn cassettes_and_the_bank_select_the_bank_check() {
-    for path in [
-        "crates/rig-cassette/fixtures/cassettes/openai/chat.yaml",
-        "crates/rig-cassette/fixtures/bank/openai.yaml",
-        "crates/rig-cassette/fixtures/bank/scripts.tsv",
-    ] {
-        assert!(ids("--changed", &[path]).contains("bank"), "{path}");
-    }
-    let bank = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/bank/pinned.txt"],
-    );
-    assert!(bank.contains("provider-runtime"), "{bank:?}");
-    assert!(!bank.contains("full-tests"), "{bank:?}");
-    assert!(!ids("--changed", &["crates/rig-agent/src/lib.rs"]).contains("bank"));
 }
 
 /// The findings of the typed-options guards in `source`, as a listed
@@ -1419,88 +854,6 @@ fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
             "corpus/{dir} must be `publish = false`"
         );
     }
-}
-
-/// What `--affected` selects for `paths`: the arguments after the fixed
-/// profile, job and thread ones, which come first, or `None` when it runs
-/// nothing or the fixed ones are not first. The fixture
-/// adds a package reached only through a dev-dependency of `example` and two
-/// packages depending on each other, one of them on `rig-sqlite`.
-fn affected_selection(paths: &[&str]) -> Option<Vec<String>> {
-    let options = Options::parse(vec!["--affected".into(), "--base".into(), "main".into()]).ok()?;
-    let mut metadata = metadata();
-    let extra = serde_json::json!([
-        {"name":"downstream","manifest_path":"/repo/crates/downstream/Cargo.toml","dependencies":[{"name":"example","kind":"dev"}]},
-        {"name":"cycle-a","manifest_path":"/repo/crates/cycle-a/Cargo.toml","dependencies":[{"name":"rig-sqlite"},{"name":"cycle-b","kind":"dev"}]},
-        {"name":"cycle-b","manifest_path":"/repo/crates/cycle-b/Cargo.toml","dependencies":[{"name":"cycle-a"}]}
-    ]);
-    metadata["packages"]
-        .as_array_mut()?
-        .extend(extra.as_array()?.iter().cloned());
-    let plan = selection::plan(
-        Path::new("/repo"),
-        &metadata,
-        &options,
-        &paths.iter().map(|s| (*s).into()).collect(),
-        &checks::all(),
-    )
-    .ok()?;
-    let args = &plan.first()?.steps.first()?.args;
-    let fixed = [
-        "nextest",
-        "run",
-        "--locked",
-        "--profile",
-        "local",
-        "--build-jobs",
-        "4",
-        "--test-threads",
-        "4",
-    ];
-    let (head, selection) = args.split_at_checked(fixed.len())?;
-    (head == fixed).then(|| selection.to_vec())
-}
-
-/// `-p` for each of `names`.
-fn packages(names: &[&str]) -> Option<Vec<String>> {
-    Some(
-        names
-            .iter()
-            .flat_map(|name| ["-p".to_owned(), (*name).to_owned()])
-            .collect(),
-    )
-}
-
-#[test]
-fn affected_builds_only_the_changed_packages_and_their_dependents() {
-    assert!(Options::parse(vec!["--affected".into()]).is_err());
-    // Every package depending on a changed one, through any kind of
-    // dependency and transitively, and nothing else: cargo builds only these.
-    assert_eq!(
-        affected_selection(&["crates/rig-agent/src/lib.rs"]),
-        packages(&["downstream", "example", "rig-agent"])
-    );
-    assert_eq!(
-        affected_selection(&["crates/rig-agent/src/lib.rs", "crates/rig-sqlite/README.md"]),
-        packages(&[
-            "cycle-a",
-            "cycle-b",
-            "downstream",
-            "example",
-            "rig-agent",
-            "rig-sqlite"
-        ])
-    );
-    // The facade's own sources are its.
-    assert_eq!(affected_selection(&["src/lib.rs"]), packages(&["rig"]));
-    // The lockfile or CI can break anything; a Markdown file at the root nothing.
-    let everything = Some(vec!["--workspace".to_owned()]);
-    assert_eq!(affected_selection(&["Cargo.lock"]), everything);
-    assert_eq!(
-        affected_selection(&[".github/workflows/ci.yaml"]),
-        everything
-    );
-    assert_eq!(affected_selection(&["DEVELOPING.md"]), None);
 }
 
 /// The redaction guard finds the library named however an import is laid

@@ -2,44 +2,29 @@
 # encodes on, is set for tests from 0.9.130.
 nextest-version = { required = "0.9.130" }
 
-# The tests that shell out to a nested Cargo build, and the pinned request
-# bodies of every wire (about 7 minutes), are the slowest in the tree by an
-# order of magnitude (the facade feature-forwarding guard runs
-# four `cargo check`s over the facade's dependency graph). In lexicographic
-# order they start late and finish minutes after every other test, so the
-# whole all-features run waits on them alone. Start them first.
-#
-# The wire test encodes on as many threads as the run has
-# (`NEXTEST_TEST_THREADS`), so it holds every slot and the run stays within
-# `--test-threads`. Nextest starts tests strictly in order, and one that needs
-# every slot waits for all running ones, so it goes first, while every slot
-# is free.
+# The pinned request bodies of every wire are the slowest test in the run.
+# It encodes on as many threads as the run has (`NEXTEST_TEST_THREADS`), so
+# it holds every slot and the run stays within `--test-threads`. Nextest
+# starts tests strictly in order, and one that needs every slot waits for all
+# running ones, so it goes first, while every slot is free.
 [[profile.default.overrides]]
-filter = 'binary_id(rig::core) & test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies)'
+filter = 'binary_id(rig::integration) & test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies)'
 priority = 100
 threads-required = "num-test-threads"
 
-[[profile.default.overrides]]
-filter = 'test(portable_tool_facade_is_feature_additive) + binary(macro_hygiene)'
-priority = 99
-
 # A test that runs past a minute is reported as slow, and killed after three:
 # a hang fails in minutes and names itself, not when the CI job times out.
-# The suites that start a nested Cargo build, trybuild or Docker containers
-# get longer.
+# The suites that start a nested Cargo build (ignored tests the compile
+# guards run), trybuild or Docker containers get longer.
 [profile.default]
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = '''
     package(rig-service-tests)
-    | binary_id(rig-core::macro_hygiene)
-    | (binary_id(rig::tool_facade_features) & test(=portable_tool_facade_is_feature_additive))
-    | (binary_id(rig-reqwest::middleware_features) & test(=middleware_clients_are_available_for_each_tls_selector))
-    | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
-    | (binary_id(rig::core) & test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies))
-    | binary_id(rig-derive::dependency_rename)
-    | binary_id(rig-derive::ui)
+    | (binary_id(rig::integration) & test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies))
+    | (binary_id(rig-derive::integration) & test(/^ui::/))
+    | (kind(test) & test(/(^|::)(tool_facade_features|middleware_features|agent_run_stepper|macro_hygiene|dependency_rename)::/))
 '''
 slow-timeout = { period = "120s", terminate-after = 10 }
 
@@ -53,21 +38,9 @@ filter = 'test(telemetry::) + test(span_safety_net::)'
 retries = 0
 
 # The inner loop: skips the service suites (`rig-service-tests`, mostly
-# Docker-backed) and tests that launch a nested Cargo build or trybuild. CI
-# runs all of them. Each guard is named by binary and exact name, so ordinary
-# tests in the same binaries still run. A new guard belongs here; one missing
-# only slows the local loop.
+# Docker-backed) and the trybuild cases. The nested-Cargo guards are ignored
+# tests, so no run reaches them but `--run-ignored`.
 [profile.local]
 retries = 0
 fail-fast = true
-default-filter = '''not (
-    package(rig-service-tests)
-    | binary_id(rig-core::macro_hygiene)
-    | (binary_id(rig::tool_facade_features) & test(=portable_tool_facade_is_feature_additive))
-    | (binary_id(rig-reqwest::middleware_features) & test(=middleware_clients_are_available_for_each_tls_selector))
-    | (binary_id(rig::core) & test(=core::agent_run_stepper::agent_run_is_steppable_without_the_futures_driver))
-    | (binary_id(rig-derive::dependency_rename) & test(=generated_paths_follow_cargo_dependency_renames))
-    | (binary_id(rig-derive::dependency_rename) & test(=contextual_tool_compiles_with_rig_core_only))
-    | (binary_id(rig-derive::ui) & test(=ui_cases))
-)'''
-
+default-filter = 'not (package(rig-service-tests) | (binary_id(rig-derive::integration) & test(=ui::ui_cases)))'

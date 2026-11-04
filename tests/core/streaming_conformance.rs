@@ -6,7 +6,7 @@
 //! the `rig-2257-code-review-findings-*.md` entry.
 //!
 //! Run the suite with:
-//! `cargo test -p rig --test core core::streaming_conformance`
+//! `cargo test -p rig --test integration core::streaming_conformance`
 
 use rig::completion::CompletionRequest;
 use rig_core::test_utils::streaming_conformance::{

@@ -33,7 +33,7 @@
 //! this matrix was written, and a fixture is never fabricated. To record once
 //! valid credentials exist: remove the `#[ignore]` attributes, flip the table
 //! to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test bedrock bedrock::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration bedrock::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/bedrock/raw_stream_capture_matrix/` (the
 //! streaming bodies are base64; decode before scanning).
 

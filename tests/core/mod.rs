@@ -3,6 +3,10 @@
 //! the agent over it is verified in `crates/rig-cassette`; provider behaviour
 //! in `tests/providers`; anything needing crate-private types stays a unit
 //! test in its crate.
+//!
+//! Run them with `cargo nextest run -p rig --test integration -E
+//! 'test(/^core::/)'`, and one with `cargo test -p rig --test integration
+//! core::prompt_response_messages::standard_prompt_returns_string`.
 
 mod agent_run_stepper;
 mod catalog_constants;

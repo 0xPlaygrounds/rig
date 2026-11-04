@@ -4,19 +4,30 @@ Run the smallest useful local check for changed behavior and leave comprehensive
 execution to CI; see [DEVELOPING.md](../DEVELOPING.md) for check selection,
 `cargo xtask verify` modes, review, and publication.
 
-Provider test targets have two owners:
+Each package links its integration tests into one binary, `integration`, whose
+root (`tests/integration.rs`, or `tests/integration/main.rs` when the suites
+sit beside it) declares one module per suite. A suite's tests are named after
+its module (`kernel_only::...`), so select one with
+`cargo nextest run -p <package> -E 'test(/^<suite>::/)'` or a `cargo test
+--test integration <suite>::` name filter. rig-core's `websocket_off_runtime`
+stays a binary of its own: it asserts the calling thread has no tokio runtime.
+Tests that start a nested Cargo build are `#[ignore]`d and run only by their
+`guard-*` check (`cargo xtask verify --check guard-facade-features`).
 
-- Cassette-backed suites are targets of `rig-cassette`, beside the corpus they
-  replay: `crates/rig-cassette/tests/<provider>.rs` with its modules under
-  `crates/rig-cassette/tests/providers/<provider>/cassette/` (and `/live/`
-  for the ignored live cells those suites still carry). The shared drivers they
-  include live in `crates/rig-cassette/tests/common/`.
+Provider suites have two owners:
+
+- Cassette-backed suites are modules of `rig-cassette`'s binary, beside the
+  corpus they replay: `crates/rig-cassette/tests/providers/<provider>/` with
+  its `cassette/` cells (and `live/` for the ignored live cells those suites
+  still carry). The shared drivers they include live in
+  `crates/rig-cassette/tests/common/`.
 - Providers with no recorded corpus keep their live-only suites in the facade:
-  `tests/<provider>.rs` with `tests/providers/<provider>/`. These are ignored
-  tests that require a real service.
-- `tests/core.rs` contains provider-agnostic core behavior tests and the guards
-  that scan the source tree, which need the repository root.
-- `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. `tests/integrations.rs` retains the root Bedrock integrations.
+  `tests/providers/<provider>/`, a module of the facade's binary. These are
+  ignored tests that require a real service.
+- The facade's `core` suite (`tests/core/`) contains provider-agnostic core
+  behavior tests and the guards that scan the source tree, which need the
+  repository root.
+- `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. The facade's `integrations` suite (`tests/integration/integrations.rs`) retains the root Bedrock integrations.
 
 Cassette suites require a checkout of this repository: `rig-cassette` excludes
 its fixtures and integration tests from the published package. The unpublished
@@ -81,7 +92,7 @@ verification.
 ```bash
 cargo nextest run --locked --profile local -p rig-core --lib <test-name-filter>
 cargo test --locked -p rig-core --lib <test-name-filter>
-cargo test --locked -p rig --test <provider> <test-name-filter>
+cargo test --locked -p rig --test integration <provider>::<test-name-filter>
 cargo clippy --locked -p rig-core --all-features --tests -- -D warnings
 ```
 
@@ -90,7 +101,7 @@ patterns, not a mandatory check for every edit. Use the owning package and
 relevant features for other changes. Broader facade test commands:
 
 ```bash
-cargo test -p rig --test core          # provider-agnostic core tests
+cargo test -p rig --test integration core::  # provider-agnostic core tests
 cargo test -p rig                      # all default non-ignored root-crate tests
 cargo test -p rig --all-features       # same, with all root crate features
 ```
@@ -130,7 +141,7 @@ Replay one migrated provider suite (`anthropic`, `bedrock`, `chatgpt`, `cohere`,
 with:
 
 ```bash
-cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
+cargo test -p rig-cassette --all-features --test integration <provider>::cassette -- --nocapture --test-threads=1
 ```
 
 Record mode requires the relevant provider credentials in the environment and
@@ -138,7 +149,7 @@ overwrites existing cassette files:
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
-cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
+cargo test -p rig-cassette --all-features --test integration <provider>::cassette -- --nocapture --test-threads=1
 ```
 
 Prefer re-recording by fixture, from the repository root:
@@ -162,8 +173,8 @@ The other commands:
   credentials, account ids, emails and home paths. It matches case-sensitively
   on whole tokens, and searches for every exported `*_API_KEY`, `*_TOKEN` and
   `*_SECRET` value literally.
-- `cassette goldens [--test TARGET]...` regenerates effect goldens from
-  replay: each selected target runs with `RIG_REGENERATE_GOLDEN=1`, so each
+- `cassette goldens [--test SUITE]...` regenerates effect goldens from
+  replay: each selected suite (every one by default) runs with `RIG_REGENERATE_GOLDEN=1`, so each
   golden holds what its producer logs over its replayed cassette.
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
 
@@ -324,7 +335,7 @@ opts out with `CassetteSpec::exact_matched()`.
 
 ```bash
 cargo xtask cassette snapshots                  # rewrite every snapshot from replay
-cargo xtask cassette snapshots --test openai    # rewrite only what one target replays
+cargo xtask cassette snapshots --test openai    # rewrite only what one suite replays
 cargo xtask cassette snapshots --check          # replay and fail on any difference
 ```
 
@@ -381,13 +392,13 @@ proxy. Both keep a binary reply byte for byte and a multipart request body part
 by part. A cassette recorded before that has no multipart request body; it still
 matches a multipart request, and its request snapshot pins the parts Rig sends.
 
-Run one cassette test by passing a test-name substring after the test target;
+Run one cassette test by passing a test-name substring after the test binary;
 the filter is a substring match, so use the full module path only when the
 shorter name is ambiguous:
 
 ```bash
-cargo test -p rig-cassette --all-features --test gemini \
-  streaming_tools_smoke \
+cargo test -p rig-cassette --all-features --test integration \
+  cohere::streaming_tools \
   -- --nocapture --test-threads=1
 ```
 
@@ -530,7 +541,7 @@ Record one scenario at a time:
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
-cargo test -p rig-cassette --all-features --test openai openai::cassette::prompt_caching \
+cargo test -p rig-cassette --all-features --test integration openai::cassette::prompt_caching \
   -- --exact --nocapture --test-threads=1
 ```
 
@@ -592,7 +603,7 @@ cargo xtask cassette record --cap 3 <provider>/long_run_caching/<fixture>.yaml .
 A 100-turn run takes six to eleven minutes to record. Replay prints the figures:
 
 ```bash
-cargo test -p rig-cassette --all-features --test anthropic long_run_caching -- --nocapture --test-threads=1
+cargo test -p rig-cassette --all-features --test integration long_run_caching -- --nocapture --test-threads=1
 ```
 
 #### Workloads beyond the support chat (`cache_longrun::workloads`)
@@ -640,7 +651,8 @@ its cache semantics under us. Each cell prints a `LIVE-CACHE-ECONOMICS` row, so 
 table can be regenerated rather than trusted as a transcription:
 
 ```bash
-cargo test -p rig-cassette --all-features --test openai live_cache_economics \
+cargo test -p rig-cassette --all-features --test integration \
+  openai::cassette::prompt_caching::live_cache_economics \
   -- --exact --ignored --nocapture --test-threads=1
 ```
 
@@ -713,10 +725,10 @@ Live provider tests use real provider APIs, local model servers, or account cred
 ignored by default unless a test file says otherwise.
 
 ```bash
-# all ignored tests for one provider target
-cargo test -p rig-cassette --all-features --test openrouter -- --ignored --nocapture --test-threads=1
+# all ignored tests for one provider suite
+cargo test -p rig-cassette --all-features --test integration openrouter:: -- --ignored --nocapture --test-threads=1
 # one ignored provider test
-cargo test -p rig-cassette --all-features --test openai \
+cargo test -p rig-cassette --all-features --test integration \
   responses_document_file_id_roundtrip_live \
   -- --ignored --nocapture --test-threads=1
 ```
@@ -739,7 +751,7 @@ through Rig's agent driver.
 ```bash
 export RIG_CANDLE_TEST_MODEL_DIR="$PWD/crates/rig-candle/test-models/qwen3-4b-q4-k-m"
 ./crates/rig-candle/tests/download_qwen3.sh
-cargo test --release -p rig-candle --test live_conformance \
+cargo test --release -p rig-candle --test integration live_conformance \
   -- --ignored --nocapture --test-threads=1
 ```
 
@@ -781,19 +793,18 @@ cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- 
 cargo test -p rig-service-tests --features mongodb --test integrations mongodb -- --nocapture
 cargo test -p rig-service-tests --features sqlite --test integrations sqlite -- --nocapture
 # ignored groups
-cargo test -p rig --features bedrock --test integrations bedrock -- --ignored --nocapture --test-threads=1
+cargo test -p rig --features bedrock --test integration integrations::bedrock -- --ignored --nocapture --test-threads=1
 cargo test -p rig-service-tests --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1
 ```
 
 ## Shared test implementation
 
 `test-support/rig-test-support` compiles neutral tools, cassette paths, cache and
-stream assertions and golden comparison once. Provider binaries import these
-modules; their cassette-safety tests remain registered in each binary. The
-generic corpus matrix drivers live under
-`crates/rig-cassette/tests/common/corpus_matrix`: a cell edit then rebuilds its
-provider binaries without invalidating unrelated providers. Their long-loop
-regression tests stay with those modules. Other shared helper regressions run
+stream assertions and golden comparison once. The cassette binary imports these
+modules once at its root, beside the cassette-safety tests, which scan every
+provider's fixtures. The generic corpus matrix drivers live under
+`crates/rig-cassette/tests/common/corpus_matrix`, also declared once. Their
+long-loop regression tests stay with those modules. Other shared helper regressions run
 in the support crate; its `corpus_` regressions also retain the standalone
 effect-corpus dependency configuration.
 
@@ -812,7 +823,7 @@ alone does not establish that a configuration registers or executes a test.
 
 The agent loop, tool lifecycle, turn endings, resume, memory and the effect
 bus behave the same on every provider. Their scenarios run
-once, in the `runtime` target of `rig-cassette`
+once, in the `runtime` suite of `rig-cassette`
 (`crates/rig-cassette/tests/runtime.rs` and `runtime/`), over replies from
 the reply bank instead of a provider's cassette. A bank transport serves the
 replies in order and ignores what was sent, so each reply still passes
@@ -848,10 +859,10 @@ the cassette and rewrite the bank.
 ```bash
 cargo xtask cassette bank           # rewrite the bank after a cassette changed
 cargo xtask cassette bank --check   # CI's `verify --check bank`
-cargo nextest run --locked --profile local -p rig-cassette --test runtime
+cargo nextest run --locked --profile local -p rig-cassette -E 'test(/^runtime::/)'
 ```
 
-The runtime target holds the corpus matrix's cells on rig-agent (`cells`),
+The runtime suite holds the corpus matrix's cells on rig-agent (`cells`),
 its focused families (`families`, `faults`), the turn-termination cells
 (`termination`, run over every bank reply that decodes to the cell's
 ending), the agent tool sessions (`sessions`), the lifecycle matrix

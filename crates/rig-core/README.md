@@ -99,7 +99,7 @@ You can find more examples in the repository-level `examples/` directory.
 Provider suites live under `crates/rig-cassette/tests/providers`, with live-only
 suites under `tests/providers`. Many provider-specific examples are ignored
 live integration tests in those suites. Run them with provider-specific targets
-such as `cargo test -p rig-cassette --features http,agent --test openai -- --ignored --test-threads=1`
+such as `cargo test -p rig-cassette --features http,agent --test integration openai:: -- --ignored --test-threads=1`
 to avoid rate-limiting. More detailed walkthroughs are regularly published on
 our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
 

@@ -47,3 +47,13 @@ pub(crate) fn output(dir: &Path, program: &str, args: &[&str]) -> Result<String,
     String::from_utf8(result.stdout)
         .map_err(|error| format!("{command} produced non-UTF-8 output: {error}"))
 }
+
+/// A nextest filter selecting the tests of each suite in `suites`: the
+/// modules at the root of a package's one `integration` test binary.
+pub(crate) fn suite_filter(suites: &[impl AsRef<str>]) -> String {
+    suites
+        .iter()
+        .map(|suite| format!("test(/^{}::/)", suite.as_ref()))
+        .collect::<Vec<_>>()
+        .join(" + ")
+}

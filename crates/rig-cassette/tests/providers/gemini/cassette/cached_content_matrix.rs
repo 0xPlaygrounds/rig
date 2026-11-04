@@ -45,8 +45,8 @@
 //! # Recording
 //!
 //! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test gemini --all-features \
-//!     cached_content_matrix -- --test-threads=1
+//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
+//!     gemini::cassette::cached_content_matrix -- --test-threads=1
 //! ```
 //!
 
