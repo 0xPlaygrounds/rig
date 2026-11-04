@@ -24,7 +24,9 @@
 mod bevy;
 mod cassette;
 mod catalog;
+mod driver_adoption;
 mod packaging;
+mod random_ids;
 mod stage_order;
 mod support;
 mod test_layout;

@@ -2,7 +2,6 @@
 //! binary. The websocket suites need the `tungstenite` feature.
 
 mod custom_token_store;
-mod driver_adoption;
 mod macro_hygiene;
 mod model_listing_warnings;
 mod openai_responses_websocket;

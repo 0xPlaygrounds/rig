@@ -1,4 +1,4 @@
-# Allowlist for the serde policy wall (see driver_adoption.rs,
+# Allowlist for the serde policy wall (see xtask/src/driver_adoption.rs,
 # `provider_streaming_modules_never_raw_parse_the_wire`).
 #
 # Format: `path suffix | line snippet | one-line justification`.

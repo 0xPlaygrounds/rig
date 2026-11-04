@@ -112,6 +112,8 @@ pub(super) fn all() -> Vec<Check> {
                 Step::new("@ecs-boundary", &[]),
                 Step::new("@redact-boundary", &[]),
                 Step::new("@options-guards", &[]),
+                Step::new("@driver-adoption", &[]),
+                Step::new("@random-ids", &[]),
                 Step::new("@stage-order", &[]),
                 Step::new(
                     "node",
@@ -476,7 +478,7 @@ pub(super) fn all() -> Vec<Check> {
                 "--no-tests",
                 "fail",
                 "-E",
-                "test(/^streaming_conformance::/) + test(/^streaming_conformance_websocket::/) + test(/^driver_adoption::/) + test(/^history_conformance::/) + binary(history_conformance)",
+                "test(/^streaming_conformance::/) + test(/^streaming_conformance_websocket::/) + test(/^history_conformance::/) + binary(history_conformance)",
             ])],
         ),
         // Every request fact Rig sends has a live recording: the corpus
