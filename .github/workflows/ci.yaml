@@ -68,11 +68,11 @@ jobs:
         run: |
           if [ -n "$BASE_REF" ]; then
             git fetch --no-tags origin "$BASE_REF"
-            cargo xtask verify --plan --base "origin/$BASE_REF" | tee plan.txt
+            cargo xtask verify --plan --base "origin/$BASE_REF" | tee "$RUNNER_TEMP/plan.txt"
           else
-            cargo xtask verify --plan --full | tee plan.txt
+            cargo xtask verify --plan --full | tee "$RUNNER_TEMP/plan.txt"
           fi
-          grep -E '^(plan|jobs)=' plan.txt >> "$GITHUB_OUTPUT"
+          grep -E '^(plan|jobs)=' "$RUNNER_TEMP/plan.txt" >> "$GITHUB_OUTPUT"
 
   # CHANGELOG.md, crates/*/CHANGELOG.md, MIGRATING.md and docs/migrations/ are
   # written on the release PR only; the script exempts release PRs (a
