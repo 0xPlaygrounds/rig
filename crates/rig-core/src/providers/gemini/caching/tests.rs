@@ -109,3 +109,187 @@ fn a_book_shows_its_policy_and_prefix() {
         "{shown}"
     );
 }
+
+#[derive(Default)]
+struct CacheRequests {
+    creates: usize,
+    reads: Vec<Option<String>>,
+}
+
+#[derive(Clone, Default)]
+struct ExpiryTransport(Arc<Mutex<CacheRequests>>);
+
+impl crate::driver::Transport<super::super::completion::GenerateContent> for ExpiryTransport {
+    fn send(
+        &self,
+        payload: crate::wire::Encoded,
+        _: crate::driver::Exchange,
+    ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        use crate::driver::Opened;
+        use crate::error::ProviderError;
+        use crate::wire::{Body, WireFrame};
+        use serde_json::{Value, json};
+
+        let requests = self.0.clone();
+        crate::driver::Opening::new(async move {
+            let Body::Bytes(bytes) = payload.request.body() else {
+                return Err(ProviderError::request("expected a JSON request"));
+            };
+            let body: Value = serde_json::from_slice(bytes)
+                .map_err(|error| ProviderError::request(error.to_string()))?;
+            let mut requests = requests.lock().unwrap_or_else(PoisonError::into_inner);
+            let reply = if payload.request.uri().path().ends_with("/cachedContents")
+                && payload.request.method() == http::Method::POST
+            {
+                requests.creates += 1;
+                json!({
+                    "name": format!("cachedContents/cache-{}", requests.creates),
+                    "usageMetadata": {"totalTokenCount": 2048}
+                })
+            } else {
+                let cached = body.get("cachedContent").and_then(Value::as_str);
+                requests.reads.push(cached.map(str::to_owned));
+                json!({
+                    "candidates": [{
+                        "content": {"role": "model", "parts": [{"text": "ok"}]},
+                        "finishReason": "STOP", "index": 0
+                    }],
+                    "usageMetadata": {
+                        "promptTokenCount": 2050, "candidatesTokenCount": 1,
+                        "totalTokenCount": 2051,
+                        "cachedContentTokenCount": if cached.is_some() { 2048 } else { 0 }
+                    }
+                })
+            };
+            let bytes = serde_json::to_vec(&reply)
+                .map_err(|error| ProviderError::request(error.to_string()))?;
+            Ok(Opened::new(futures::stream::iter([Ok(WireFrame::Bytes(
+                bytes,
+            ))])))
+        })
+    }
+}
+
+/// The book's clock and creation deduplication are local policy, so a
+/// controlled transport checks expiry boundaries without recording provider traffic.
+#[test]
+fn shared_prefix_replacement_follows_the_expiry_margin() -> anyhow::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use crate::completion::CompletionRequest;
+    use crate::driver::Model;
+    use crate::providers::gemini::{GeminiConfig, completion::GenerateContent};
+
+    futures::executor::block_on(async {
+        for replacement_time in [4595, 4600, 4620] {
+            let clock = Arc::new(AtomicU64::new(1000));
+            let reading = clock.clone();
+            let book = CacheBook::new(AutoCache::default())
+                .with_clock(move || reading.load(Ordering::SeqCst));
+            let transport = ExpiryTransport::default();
+            let model = Model::new(
+                GenerateContent::new(GeminiConfig::new("test-key"), "gemini-2.5-flash"),
+                transport.clone(),
+            )
+            .caching(&book);
+            let request = |question| {
+                CompletionRequest::new(format!("question {question}")).preamble("x".repeat(8192))
+            };
+
+            for question in 0..3 {
+                model.call(request(question)).await?;
+            }
+            let old = book
+                .leases()
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("the shared prefix should create a cache"))?;
+            anyhow::ensure!(old.covers == 0 && old.expires_at == 4600);
+
+            clock.store(4594, Ordering::SeqCst);
+            model.call(request(3)).await?;
+            anyhow::ensure!(book.leases() == [old.clone()]);
+
+            clock.store(replacement_time, Ordering::SeqCst);
+            model.call(request(4)).await?;
+            model.call(request(5)).await?;
+            let leases = book.leases();
+            anyhow::ensure!(leases.len() == 1);
+            let replacement = leases
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("the shared prefix should retain a replacement"))?;
+            anyhow::ensure!(
+                replacement.name == "cachedContents/cache-2"
+                    && replacement.digest == old.digest
+                    && replacement.covers == 0
+                    && replacement.expires_at == replacement_time + 3600,
+                "wrong replacement at {replacement_time}: {replacement:?}"
+            );
+            let requests = transport.0.lock().unwrap_or_else(PoisonError::into_inner);
+            anyhow::ensure!(
+                requests.creates == 2,
+                "creates at {replacement_time}: {}",
+                requests.creates
+            );
+            let reads: Vec<_> = requests.reads.iter().map(Option::as_deref).collect();
+            anyhow::ensure!(
+                reads
+                    == [
+                        None,
+                        Some("cachedContents/cache-1"),
+                        Some("cachedContents/cache-1"),
+                        Some("cachedContents/cache-1"),
+                        Some("cachedContents/cache-2"),
+                        Some("cachedContents/cache-2"),
+                    ],
+                "reads at {replacement_time}: {reads:?}"
+            );
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn delayed_cache_events_leave_the_replacement_intact() {
+    let old = Lease {
+        name: "cachedContents/old".to_owned(),
+        digest: "prefix".to_owned(),
+        covers: 0,
+        tokens: 2048,
+        expires_at: 999,
+        model: "gemini-2.5-flash".to_owned(),
+    };
+    let replacement = Lease {
+        name: "cachedContents/new".to_owned(),
+        expires_at: 4600,
+        ..old.clone()
+    };
+    for action in ["lost", "retired", "extended"] {
+        let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+        book.restore(vec![old.clone()]);
+        book.restore(vec![replacement.clone()]);
+        match action {
+            "lost" => book.lost(&old),
+            "retired" => book.retired(&old),
+            _ => book.extended(&old, 100),
+        }
+        assert_eq!(book.leases(), [replacement.clone()], "{action}");
+
+        match action {
+            "lost" => book.lost(&replacement),
+            "retired" => book.retired(&replacement),
+            _ => book.extended(&replacement, 100),
+        }
+        if action == "extended" {
+            assert_eq!(
+                book.leases(),
+                [Lease {
+                    expires_at: 1100,
+                    ..replacement.clone()
+                }]
+            );
+        } else {
+            assert!(book.leases().is_empty(), "{action}");
+        }
+    }
+}
