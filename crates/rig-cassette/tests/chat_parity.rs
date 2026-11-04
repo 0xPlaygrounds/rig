@@ -6,6 +6,7 @@
 
 #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
+#[allow(clippy::module_inception, reason = "the suite and its shared driver share a name")]
 #[path = "common/chat_parity.rs"]
 mod chat_parity;
 

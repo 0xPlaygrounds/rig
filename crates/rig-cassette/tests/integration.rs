@@ -3,7 +3,13 @@
 //! scenarios, the corpus guards, the effect-bus verification suite `verify`,
 //! and the cassette safety checks, which scan every provider's fixtures.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
 
 use rig_test_support::cassettes;
 #[cfg(all(feature = "http", feature = "agent"))]

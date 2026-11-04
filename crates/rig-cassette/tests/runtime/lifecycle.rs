@@ -34,6 +34,10 @@ mod support {
 // their provider; the module's own directory is this file's.
 #[path = "."]
 mod cassette {
+    #[allow(
+        clippy::duplicate_mod,
+        reason = "the same cells, run on the runtime's support instead of the provider's"
+    )]
     #[path = "../providers/anthropic/cassette/lifecycle_matrix.rs"]
     mod lifecycle_matrix;
 }
