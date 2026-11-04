@@ -831,7 +831,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
             .into_iter()
             .filter_map(|relayed| match relayed {
                 Relayed::Item(item) => Some(item),
-                Relayed::Origin(_) | Relayed::Done(_) => None,
+                Relayed::Origin(_) | Relayed::Usage(_) | Relayed::Done(_) => None,
             })
             .collect()
     };

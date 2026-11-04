@@ -6,8 +6,12 @@
 //!   agent's [`AgentUsage`] total, to the [`below`](AgentUsage::below) of
 //!   every agent above it, to the session's [`SessionUsage`] (all saved) and
 //!   to its turn's [`TurnUsage`]. A reply the turn-failure rule rejects
-//!   still counts. A call settled without a reply (cancelled, superseded,
-//!   failed mid-stream) counts its [`CallUsage`], if one was put on it.
+//!   still counts. A call settled without a reply (stopped, superseded,
+//!   failed mid-stream) counts what its provider reported before the end
+//!   ([`ReportedUsage`]), else its [`CallUsage`], else, if anything of its
+//!   reply came, an estimate of what it was sent and streamed. One stopped
+//!   or superseded with nothing come is not known, and counts in no total;
+//!   [`StoppedUsage`] counts both kinds, which `/usage` says.
 //! - **How it is kept.** Each [`AgentUsage`] keeps a total, and splits per
 //!   model ([`SentTo`]) and per purpose (`turn`, `compaction`, a plugin's
 //!   own). Cost is the provider's figure, else the catalog's
@@ -23,9 +27,12 @@
 
 use std::collections::BTreeMap;
 
-use rig_core::completion::{ContextUse, Usage, UsageTotals};
+use rig_core::completion::{CompletionRequest, ContextUse, Message, Usage, UsageTotals};
+use rig_core::error::ErrorKind;
+use rig_core::streaming::StreamEvent;
 use rig_ecs::session_log::Reset;
 use rig_harness::prelude::*;
+use rig_memory::{HeuristicTokenCounter, TokenCounter};
 use serde::{Deserialize, Serialize};
 
 use crate::sessions::agents::{AgentColumn, ColumnOf};
@@ -42,8 +49,10 @@ impl Plugin for UsagePlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, AgentUsage>()
             .register_required_components::<TurnOf, TurnUsage>()
+            .register_required_components::<ModelRequest, Streamed>()
             .init_resource::<SessionUsage>()
             .init_resource::<UnknownSpend>()
+            .init_resource::<StoppedUsage>()
             .add_command(
                 "usage",
                 "Show the tokens, cost and context this agent, its subagents and the session used",
@@ -53,7 +62,9 @@ impl Plugin for UsagePlugin {
             .add_observer(account)
             .add_observer(add_column)
             .add_observer(forget_input_limit)
-            .add_systems(Update, show_column);
+            .add_systems(Update, show_column)
+            // Between every stage, as a delta moves none.
+            .add_systems(BetweenStages, follow_output);
         super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
@@ -140,6 +151,25 @@ pub struct Spent {
 #[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct UnknownSpend(pub u64);
 
+/// How many model calls settled without a reply, and without a count of
+/// what they used, are estimated or not known. Saved with the session.
+#[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
+pub struct StoppedUsage {
+    /// Calls counted at an estimate of the input they were sent and the
+    /// output they streamed: the totals are then in part an estimate.
+    pub estimated: u64,
+    /// Calls stopped or superseded once sent and before anything of their
+    /// reply came: whether their provider billed them is not known, so
+    /// they are in no total, which is then a lower bound.
+    pub unknown: u64,
+}
+
+/// What a model call streamed so far: its text, reasoning, tool names and
+/// arguments, what an estimate of its output counts.
+#[derive(Component, Clone, Debug, Default)]
+struct Streamed(String);
+
 /// What the running turn's model calls used so far, on the turn entity.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
@@ -169,11 +199,11 @@ impl UsageRow {
 }
 
 /// What a model call used that settled without a reply (cancelled,
-/// superseded, or failed mid-stream), as whoever knows says: a plugin's
-/// estimate, or the provider's partial count. Put it on the call before it
-/// settles, such as on a race's loser before superseding it; it counts as
-/// a reply's usage does, under the model the call went to and its purpose.
-/// A reply's own usage wins over it.
+/// superseded, or failed mid-stream), as a plugin estimates it. Put it on
+/// the call before it settles, such as on a race's loser before
+/// superseding it; it counts as a reply's usage does, under the model the
+/// call went to and its purpose. A reply's own usage, and what its
+/// provider reported before the end ([`ReportedUsage`]), win over it.
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct CallUsage(pub Usage);
 
@@ -203,36 +233,72 @@ fn forget_input_limit(changed: On<Insert<Connection>>, mut commands: Commands) {
 /// A model call as [`record_usage`] reads it.
 type UsageCall<'a> = (
     (&'a ModelRequest, &'a Effect, Option<&'a SentTo>),
-    (Option<&'a Outcome>, Option<&'a CallUsage>),
+    (
+        Option<&'a Outcome>,
+        Option<&'a ReportedUsage>,
+        Option<&'a CallUsage>,
+    ),
+    (Option<&'a Streamed>, Has<StreamTiming>),
     (Option<&'a ForAgent>, Option<&'a CallOf>, Has<TurnCall>),
 );
 
-/// Records a settled model call's usage, its reply's, else its
-/// [`CallUsage`], as a [`Spent`] of its agent and turn, under the model it
-/// went to (where it was sent, else the call's own connection, else its
-/// agent's, else the one its reply names) and its purpose. A turn's reply
+/// Records a settled model call's usage as a [`Spent`] of its agent and
+/// turn, under the model it went to (where it was sent, else the call's own
+/// connection, else its agent's, else the one its reply names) and its
+/// purpose: its reply's, else its [`ReportedUsage`], else its
+/// [`CallUsage`], else, once anything of its reply came, an estimate. A
+/// call stopped or superseded once sent with nothing of its reply come is
+/// not known; one that failed before anything came counts nothing, as one
+/// never sent. [`StoppedUsage`] counts the last two kinds. A turn's reply
 /// that reported its tokens sets its agent's [`InputLimit`].
 fn record_usage(
     settled: On<Add<Settled>>,
     calls: Query<UsageCall>,
     agents: Query<Option<&Connection>>,
+    mut stopped: ResMut<StoppedUsage>,
     mut commands: Commands,
 ) {
-    let Ok(((request, effect, sent), (outcome, estimate), (agent, of, turn_call))) =
-        calls.get(settled.entity)
+    let Ok((
+        (request, effect, sent),
+        (outcome, reported, given),
+        (streamed, came),
+        (agent, of, turn_call),
+    )) = calls.get(settled.entity)
     else {
         return;
     };
     let response = outcome.and_then(Outcome::completion);
-    let Some(usage) =
-        (response.map(|response| &response.usage)).or(estimate.map(|CallUsage(usage)| usage))
-    else {
-        return;
+    let reported = reported
+        .map(|ReportedUsage(usage)| *usage)
+        .filter(Usage::is_reported);
+    let usage = match (response, reported, given, sent) {
+        (Some(response), ..) => response.usage,
+        (None, Some(usage), ..) => usage,
+        (None, None, Some(CallUsage(usage)), _) => *usage,
+        (None, None, None, Some(_)) if came => {
+            stopped.estimated += 1;
+            estimate(&request.request, streamed)
+        }
+        (None, None, None, Some(_)) => {
+            let failed = outcome.is_some_and(|Outcome(outcome)| {
+                (outcome.as_ref()).is_err_and(|report| report.kind != ErrorKind::Cancelled)
+            });
+            if !failed {
+                stopped.unknown += 1;
+            }
+            return;
+        }
+        (None, None, None, None) => return,
     };
     let own = agent.and_then(|agent| agents.get(agent.0).ok().flatten());
     let went_to = (sent.map(|SentTo(connection)| connection))
         .or(request.connection.as_ref())
         .or(own);
+    let mut usage = usage;
+    if response.is_none() && usage.cost.is_none() {
+        let pricing = went_to.and_then(|connection| connection.spec.pricing.as_ref());
+        usage.cost = pricing.and_then(|pricing| pricing.cost(&usage));
+    }
     if let (Some(agent), true, Some(_), Some(_)) =
         (agent, turn_call, response, usage.context_tokens())
     {
@@ -252,8 +318,48 @@ fn record_usage(
         turn: of.map(|of| of.0),
         model,
         purpose: effect.purpose.as_deref().map(str::to_owned),
-        usage: *usage,
+        usage,
     });
+}
+
+/// About what `request` sends, and the output `streamed`, as rig-memory's
+/// heuristic counts them, with no cost.
+fn estimate(request: &CompletionRequest, streamed: Option<&Streamed>) -> Usage {
+    let counter = HeuristicTokenCounter::default();
+    let messages = request
+        .chat_history
+        .iter()
+        .map(|message| counter.count(message));
+    let tools = request.tools.iter().map(|tool| counter.count_tool(tool));
+    let input = messages.chain(tools).fold(0, usize::saturating_add);
+    let output = streamed
+        .filter(|Streamed(text)| !text.is_empty())
+        .map_or(0, |Streamed(text)| {
+            counter.count(&Message::assistant(text.clone()))
+        });
+    let tokens = |count: usize| u64::try_from(count).unwrap_or(u64::MAX);
+    let (input, output) = (tokens(input), tokens(output));
+    Usage::new()
+        .input_tokens(input)
+        .output_tokens(output)
+        .total_tokens(input.saturating_add(output))
+}
+
+/// Adds what each model call streamed to its [`Streamed`].
+fn follow_output(mut deltas: MessageReader<StreamDelta>, mut calls: Query<&mut Streamed>) {
+    for StreamDelta { effect, event, .. } in deltas.read() {
+        let text = match event {
+            StreamEvent::Text { text, .. } | StreamEvent::Reasoning { text, .. } => text.as_str(),
+            StreamEvent::Arguments { json, .. } => json.as_str(),
+            StreamEvent::Start {
+                name: Some(name), ..
+            } => name.as_str(),
+            _ => continue,
+        };
+        if let Ok(mut streamed) = calls.get_mut(*effect) {
+            streamed.0.push_str(text);
+        }
+    }
 }
 
 /// Adds a [`Spent`] to its turn's, its agent's, the `below` of every
@@ -344,7 +450,7 @@ fn usage(
     turns: Query<&TurnUsage>,
     everyone: Query<(&Name, &AgentUsage), With<Agent>>,
     families: Query<&Spawned>,
-    (session, unknown): (Res<SessionUsage>, Res<UnknownSpend>),
+    (session, unknown, unreported): (Res<SessionUsage>, Res<UnknownSpend>, Res<StoppedUsage>),
     rows: Query<&UsageRow>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -366,7 +472,9 @@ fn usage(
     let total = &session.total;
     let mut lines = Vec::new();
     if total.calls == 0 {
-        lines.push("No model call yet.".to_owned());
+        if unreported.unknown == 0 {
+            lines.push("No model call yet.".to_owned());
+        }
     } else if spent.calls == 0 {
         lines.push("This agent: no model call yet.".to_owned());
     } else {
@@ -436,6 +544,30 @@ fn usage(
                 .to_owned(),
         );
     }
+    match unreported.estimated {
+        0 => {}
+        1 => lines.push(
+            "One call that ended without a reply, before its provider reported usage, is \
+             counted at an estimate of what it was sent and streamed."
+                .to_owned(),
+        ),
+        n => lines.push(format!(
+            "{n} calls that ended without a reply, before their provider reported usage, \
+             are counted at an estimate of what they were sent and streamed."
+        )),
+    }
+    match unreported.unknown {
+        0 => {}
+        1 => lines.push(
+            "One call stopped before anything of its reply came: its spend is not known, \
+             so what was spent is at least these totals."
+                .to_owned(),
+        ),
+        n => lines.push(format!(
+            "{n} calls stopped before anything of their reply came: their spend is not \
+             known, so what was spent is at least these totals."
+        )),
+    }
     match unknown.0 {
         0 => {}
         1 => lines.push(
@@ -477,4 +609,4 @@ fn split(split: &BTreeMap<String, UsageTotals>) -> impl Iterator<Item = String> 
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -119,7 +119,9 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             self.model_version = Some(model.to_owned());
         }
         if let Some(usage) = data.get_mut("usageMetadata") {
-            self.usage = Some(usage.take());
+            let usage = usage.take();
+            out.usage(usage_of(&usage));
+            self.usage = Some(usage);
         }
         if let Some(error) = data.at("/error") {
             // An in-band failure is a provider error, not a truncation.

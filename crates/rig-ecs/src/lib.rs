@@ -89,7 +89,7 @@ pub mod prelude {
     };
     pub use crate::turn::{
         Adapted, Backoff, DroppedOptions, Exiting, FirstStreamed, ModelRequest, Recovery,
-        RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
+        ReportedUsage, RetryVerdict, SentTo, SideCall, StreamDelta, StreamTiming, TurnCall,
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, CallRef, Change, ChangeRecord, Entry, EntryRef, Halt,

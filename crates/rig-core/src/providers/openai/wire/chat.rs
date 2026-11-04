@@ -1619,7 +1619,14 @@ impl ChatDecoder {
 
     /// One `chat.completion.chunk`.
     fn chunk(&mut self, frame: &Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        let Some(choice) = self.absorb(frame) else {
+        let choice = self.absorb(frame);
+        if let Some(usage) = self.usage.as_ref() {
+            out.usage(
+                normalized_usage(usage, &self.quirks)
+                    .cost(reported::cost(self.usage.as_ref(), &self.reply_fields)),
+            );
+        }
+        let Some(choice) = choice else {
             return Ok(());
         };
         if let Some(delta) = choice.obj("delta") {

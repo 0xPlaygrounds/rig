@@ -447,7 +447,7 @@ impl StreamTap {
             return None;
         }
         let outcome = match item {
-            Ok(Relayed::Origin(_) | Relayed::Item(_)) => None,
+            Ok(Relayed::Origin(_) | Relayed::Item(_) | Relayed::Usage(_)) => None,
             Ok(Relayed::Done(response)) => Some(Ok(Answered::Completion(Arc::clone(response)))),
             Err(report) => Some(Err(report.clone())),
         };

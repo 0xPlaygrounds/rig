@@ -437,8 +437,10 @@ fn the_exit_counts_a_child_whose_end_is_not_in_as_unknown() {
             unknown,
             "ended: {ended}"
         );
-        let session = world.resource::<SessionUsage>().0.total;
-        assert_eq!(session.total_tokens(), 15, "the call it reported is in");
+        // The agent's own turn, stopped at the exit, may count as well.
+        let session = &world.resource::<SessionUsage>().0;
+        let reported = session.purposes.get(HELPER).map(UsageTotals::total_tokens);
+        assert_eq!(reported, Some(15), "the call it reported is in");
     }
 }
 

@@ -988,7 +988,7 @@ fn redact_stream(secrets: Secrets) -> impl FnMut(Relayed) -> Vec<Relayed> {
                 }
                 out.push(Relayed::Done(response));
             }
-            origin @ Relayed::Origin(_) => out.push(origin),
+            passed @ (Relayed::Origin(_) | Relayed::Usage(_)) => out.push(passed),
         }
         out
     }

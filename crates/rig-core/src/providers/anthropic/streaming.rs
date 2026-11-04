@@ -635,6 +635,13 @@ impl MessagesDecoder {
         )
     }
 
+    /// Reports the running counters as the usage so far.
+    fn report(&self, out: &mut Out<'_, Completion>) {
+        if let Ok(usage) = self.start.usage() {
+            out.usage(usage);
+        }
+    }
+
     /// A `message_delta`'s counters, falling back to the running ones for
     /// those it omits.
     fn terminal(&self, usage: Option<&Value>) -> Counts {
@@ -685,6 +692,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 {
                     self.message_started = true;
                     self.metadata(message);
+                    self.report(&mut out);
                 }
             }
             "content_block_start" => {
@@ -705,6 +713,7 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 let Some(reason) = delta.and_then(|delta| delta.str("stop_reason")) else {
                     if let Some(usage) = event.fields.get("usage") {
                         self.start = self.terminal(Some(usage));
+                        self.report(&mut out);
                     }
                     return Ok(Flow::More);
                 };
