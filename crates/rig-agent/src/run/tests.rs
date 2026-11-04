@@ -2283,3 +2283,86 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
     );
     assert!(run.next_step().is_err(), "the run has failed");
 }
+
+#[test]
+fn answer_all_ends_in_call_order_and_keeps_executed_siblings() {
+    for first_fails in [false, true] {
+        for last_action in [
+            InvalidToolCallAction::stop("last call"),
+            InvalidToolCallAction::Fail,
+            InvalidToolCallAction::repair("add"),
+        ] {
+            for reverse_answers in [false, true] {
+                let mut run = AgentRun::new("add").max_turns(2);
+                expect_call_model(&mut run);
+                let malformed = |id, name| {
+                    AssistantContent::ToolCall(ToolCall::from_wire(
+                        id,
+                        ToolFunction::parse(
+                            rig_core::message::ToolName::new(name).expect("tool name"),
+                            "{\"x\":",
+                        ),
+                    ))
+                };
+                expect_continue(
+                    run.model_response(ModelTurn::new(
+                        AssistantMessage::default(),
+                        vec![
+                            malformed("first", "add"),
+                            tool_call("executed", "add"),
+                            malformed("last", "subtract"),
+                        ],
+                        Usage::default(),
+                        policy(&["add", "subtract"]),
+                        hand_raw(),
+                    ))
+                    .expect("model_response"),
+                );
+                let calls = expect_call_tools(&mut run);
+                let [
+                    PendingToolCall::Malformed(first),
+                    PendingToolCall::Execute(executed),
+                    PendingToolCall::Malformed(last),
+                ] = <[_; 3]>::try_from(calls).expect("three calls")
+                else {
+                    panic!("two malformed calls around an executable call");
+                };
+                let first_action = if first_fails {
+                    InvalidToolCallAction::Fail
+                } else {
+                    InvalidToolCallAction::stop("first call")
+                };
+                let mut answers = vec![
+                    first.answer(Some(first_action)),
+                    executed.answer(success("executed sibling")),
+                    last.answer(Some(last_action.clone())),
+                ];
+                if reverse_answers {
+                    answers.reverse();
+                }
+                let error = run
+                    .answer_all(answers)
+                    .expect_err("the first call ends the run");
+                if first_fails {
+                    assert!(!matches!(error, PromptError::Cancelled { .. }), "{error:?}");
+                    assert!(
+                        error.to_string().contains(
+                            "tool `add` was called with arguments that are not a JSON object"
+                        ),
+                        "{error}"
+                    );
+                } else {
+                    assert!(
+                        matches!(error, PromptError::Cancelled { reason, .. } if reason == "first call")
+                    );
+                }
+                assert!(
+                    serde_json::to_string(&run.full_history())
+                        .expect("history serializes")
+                        .contains("executed sibling"),
+                    "executed results must survive whichever answer ends the run"
+                );
+            }
+        }
+    }
+}

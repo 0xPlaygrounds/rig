@@ -1380,7 +1380,7 @@ impl AgentRun {
         // The turn stays put until the batch is answered, so it names the batch.
         let (mut batch, policy, turn) = (batch.clone(), policy.clone(), self.current_turn);
         let mut answers: Vec<ToolAnswer> = answers.into_iter().collect();
-        answers.sort_by_key(ToolAnswer::ends_run);
+        answers.sort_by_key(|answer| (answer.ends_run(), answer.index));
         for ToolAnswer {
             turn: issued,
             index,
