@@ -253,7 +253,8 @@ pub struct DialectHooks {
     /// Derive a default endpoint from a credential. `None` uses the dialect's
     /// static URL. Called only at construction, never on credential replacement.
     pub default_endpoint: Option<fn(&str) -> Option<String>>,
-    /// Select the default route for a model, unless configuration chose a route.
+    /// Select the default route for a model, unless configuration or, for a
+    /// dialect that routes by catalog, the model's catalog row chose one.
     pub model_route: Option<fn(&str) -> Route>,
     /// Apply the completion envelope after shared authentication and identity.
     /// Called once by either completion encoder; builder errors remain attached
@@ -307,7 +308,7 @@ pub struct Quirks {
     pub completion_route: Route,
     /// Whether a model's catalog row picks
     /// [`OpenAI::completion`](crate::providers::openai::OpenAI::completion)'s
-    /// route when neither the configuration nor a hook does, for a gateway
+    /// route when the configuration does not, before any hook, for a gateway
     /// that serves each model on the API models.dev lists for it.
     pub routes_by_catalog: bool,
     /// The chat-completions path, relative to the base URL.

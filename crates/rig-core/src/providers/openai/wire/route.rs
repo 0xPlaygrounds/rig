@@ -1,7 +1,7 @@
 //! Dispatches completion requests to Chat Completions or Responses wires.
-//! Explicit configuration routes override model-specific hooks, which
-//! override the model's catalog row where the dialect routes by it, which
-//! overrides the dialect default.
+//! Explicit configuration routes override the model's catalog row where the
+//! dialect routes by it, which overrides model-specific hooks, which
+//! override the dialect default.
 //!
 //! ```
 //! use rig_core::providers::openai::{OpenAI, OpenAIConfig, Route};
@@ -56,7 +56,7 @@ fn catalog_route(spec: &crate::catalog::ModelSpec) -> Option<Route> {
     }
 }
 
-/// A completion wire selected by configuration, model hook, catalog row, or
+/// A completion wire selected by configuration, catalog row, model hook, or
 /// dialect default.
 /// Route-specific options are no-ops on the other route.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -69,10 +69,10 @@ pub enum OpenAiWire {
 
 impl OpenAiWire {
     /// The wire for `model` on `provider`: the route
-    /// [`with_route`](OpenAIConfig::with_route) configured, else the
-    /// dialect's model hook's, else, for a dialect that
-    /// [routes by catalog](super::Quirks::routes_by_catalog), the API the
-    /// built-in catalog lists for the model, else the dialect's
+    /// [`with_route`](OpenAIConfig::with_route) configured, else, for a
+    /// dialect that [routes by catalog](super::Quirks::routes_by_catalog),
+    /// the API the built-in catalog lists for the model, else the dialect's
+    /// model hook's, else the dialect's
     /// [`completion_route`](OpenAIConfig::completion_route).
     pub fn new(provider: OpenAIConfig, model: impl Into<String>) -> Self {
         Self::routed(provider, model, ModelFacts::builtin())
@@ -92,11 +92,11 @@ impl OpenAiWire {
             .and_then(|hooks| hooks.model_route);
         let route = provider
             .route
-            .or_else(|| hook.map(|route| route(&model)))
             .or_else(|| match provider.dialect.quirks.routes_by_catalog {
                 true => catalog_route(facts.for_model(provider.dialect.name, &model)?),
                 false => None,
             })
+            .or_else(|| hook.map(|route| route(&model)))
             .unwrap_or_else(|| provider.completion_route());
         match route {
             Route::Chat => Self::Chat(Chat::new(provider, model)),
