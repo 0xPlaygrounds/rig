@@ -623,7 +623,12 @@ async fn set_aside_tail_async<S: crate::AsyncStore + ?Sized>(
         let log = log.to_owned();
         return Err(SessionError::Changed { log });
     };
-    let name = format!("recovered/{log}-{:x}.part", Sha256::digest(tail));
+    let digest = Sha256::digest(tail)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join("");
+    let name = format!("recovered/{log}-{digest}.part");
     store.write_file_async(&name, tail).await?;
     let replaced = store.replace_log_async(log, kept + cut, prefix).await;
     refused(log, replaced)?;

@@ -60,7 +60,12 @@ fn validate_artifact(path: &Path, artifact: &Artifact) -> io::Result<()> {
         })?;
         hasher.update(chunk);
     }
-    let actual_hash = format!("{:x}", hasher.finalize());
+    let actual_hash = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join("");
     if actual_hash != artifact.sha256 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
