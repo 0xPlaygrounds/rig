@@ -334,24 +334,47 @@ pub(super) struct Read {
 }
 
 /// String literals that start with `../`, and whether each is the argument
-/// of an `include_str!` or `include_bytes!`.
+/// of an `include_str!` or `include_bytes!`. The text is tokenized, so
+/// comments, escapes and raw strings cannot shift what counts as a literal;
+/// text that does not tokenize names nothing.
 fn relative_literals(text: &str) -> Vec<(String, bool)> {
-    let pieces: Vec<&str> = text.split('"').collect();
-    pieces
-        .iter()
-        .enumerate()
-        .skip(1)
-        .step_by(2)
-        .filter(|(_, s)| s.starts_with("../") && !s.contains(char::is_whitespace))
-        .map(|(i, s)| {
-            let before = i
-                .checked_sub(1)
-                .and_then(|j| pieces.get(j))
-                .map_or("", |p| p.trim_end());
-            let included = before.ends_with("include_str!(") || before.ends_with("include_bytes!(");
-            ((*s).to_owned(), included)
-        })
-        .collect()
+    let mut out = Vec::new();
+    if let Ok(tokens) = text.parse::<proc_macro2::TokenStream>() {
+        literals(tokens, false, &mut out);
+    }
+    out
+}
+
+fn literals(tokens: proc_macro2::TokenStream, included: bool, out: &mut Vec<(String, bool)>) {
+    use proc_macro2::TokenTree;
+    let mut previous: Vec<String> = Vec::new();
+    for tree in tokens {
+        match tree {
+            TokenTree::Group(group) => {
+                let macro_call = matches!(
+                    previous.as_slice(),
+                    [.., name, bang] if bang == "!" && (name == "include_str" || name == "include_bytes")
+                );
+                literals(group.stream(), macro_call, out);
+                previous.clear();
+            }
+            TokenTree::Literal(literal) => {
+                let text = literal.to_string();
+                let value = text
+                    .trim_start_matches('r')
+                    .trim_matches('#')
+                    .strip_prefix('"')
+                    .and_then(|rest| rest.strip_suffix('"'));
+                if let Some(value) =
+                    value.filter(|v| v.starts_with("../") && !v.contains(char::is_whitespace))
+                {
+                    out.push((value.to_owned(), included));
+                }
+                previous.clear();
+            }
+            other => previous.push(other.to_string()),
+        }
+    }
 }
 
 /// `path` with `.` and `..` resolved lexically.

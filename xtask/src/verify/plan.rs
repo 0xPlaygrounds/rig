@@ -138,7 +138,7 @@ fn builds(id: &str) -> Option<Vec<(String, Features)>> {
             &default,
         ),
         "rig-claude-cloak-tests" => with(&["rig-claude-cloak"], &default),
-        "guard-facade-features" => with(&["rig"], &default),
+        "guard-facade-features" => with(&["rig"], &all),
         "guard-middleware-features" => with(&["rig-reqwest"], &all),
         "guard-agent-stepper" => with(&["rig-agent", "rig-core"], &default),
         "guard-macro-hygiene" => with(&["rig-core"], &default),

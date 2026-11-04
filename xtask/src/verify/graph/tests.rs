@@ -146,3 +146,21 @@ fn a_relative_path_into_another_package_is_a_read() {
         vec![read("store/fixtures", false), read("store/data.bin", true)]
     );
 }
+
+#[test]
+fn a_literal_is_found_whatever_quotes_and_comments_come_before_it() {
+    let text = r####"
+        // "../not/a/read" in a comment
+        const A: &str = "an escaped \" quote";
+        const B: &str = r#"a raw " string"#;
+        const C: &str = "../store/fixtures";
+        const D: &[u8] = include_bytes!("../../store/data.bin");
+    "####;
+    assert_eq!(
+        relative_literals(text),
+        vec![
+            ("../store/fixtures".to_owned(), false),
+            ("../../store/data.bin".to_owned(), true),
+        ]
+    );
+}

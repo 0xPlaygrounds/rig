@@ -24,7 +24,7 @@ filter = '''
     package(rig-service-tests)
     | (binary_id(rig::integration) & test(=core::request_bodies::tests::every_wire_sends_the_pinned_bodies))
     | (binary_id(rig-derive::integration) & test(/^ui::/))
-    | (kind(test) & test(/(^|::)(tool_facade_features|middleware_features|agent_run_stepper|macro_hygiene|dependency_rename)::/))
+    | (kind(test) & test(/(^|::)(middleware_features|agent_run_stepper|macro_hygiene|dependency_rename)::/))
 '''
 slow-timeout = { period = "120s", terminate-after = 10 }
 

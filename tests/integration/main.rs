@@ -38,7 +38,6 @@ mod moonshot;
 #[allow(clippy::expect_used)]
 #[path = "../providers/together/mod.rs"]
 mod together;
-mod tool_facade_features;
 mod tool_facade_traits;
 #[allow(clippy::expect_used, clippy::indexing_slicing)]
 #[path = "../providers/voyageai/mod.rs"]

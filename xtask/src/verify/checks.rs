@@ -408,7 +408,33 @@ pub(super) fn all() -> Vec<Check> {
         // The builds that start a nested Cargo, each an ignored test run on
         // its own: a fixture crate's `cargo check` under each feature set, so
         // they assert what compiles, not what runs.
-        guard("guard-facade-features", "rig", "tool_facade_features::"),
+        // The portable tool facade compiles under each feature set of a
+        // standalone consumer (`tests/fixtures/tool_facade`, whose `all_root`
+        // names every facade feature), against the workspace's lockfile.
+        check("guard-facade-features", {
+            let fixture = |args: &[&str]| {
+                let mut all = vec![
+                    "check",
+                    "--quiet",
+                    "--manifest-path",
+                    "tests/fixtures/tool_facade/Cargo.toml",
+                    "--target-dir",
+                    "target/tool-facade-fixture",
+                ];
+                all.extend(args);
+                cargo(&all)
+            };
+            vec![
+                Step::new(
+                    "cp",
+                    &["Cargo.lock", "tests/fixtures/tool_facade/Cargo.lock"],
+                ),
+                fixture(&["--no-default-features"]),
+                fixture(&["--no-default-features", "--features", "agent"]),
+                fixture(&[]),
+                fixture(&["--all-features"]),
+            ]
+        }),
         guard(
             "guard-middleware-features",
             "rig-reqwest",
@@ -708,18 +734,23 @@ pub(crate) fn scoped(id: &str, packages: &[String], names: &[&str]) -> Vec<Step>
         cargo(&args)
     };
     match id {
-        "tests" | "service-tests" => vec![with(
-            &[
-                "nextest",
-                "run",
-                "--locked",
-                "--retries",
-                "2",
-                "--no-tests",
-                "warn",
-            ],
-            &[],
-        )],
+        // A package may have no tests; a selected Docker suite that runs
+        // none is a gap, not a pass.
+        "tests" | "service-tests" => {
+            let none = if id == "tests" { "warn" } else { "fail" };
+            vec![with(
+                &[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "--retries",
+                    "2",
+                    "--no-tests",
+                    none,
+                ],
+                &[],
+            )]
+        }
         "doctests" => vec![with(&["test", "--locked", "--doc"], &[])],
         "docs" => {
             vec![with(&["doc", "--locked", "--no-deps"], &[]).env("RUSTDOCFLAGS", "-D warnings")]

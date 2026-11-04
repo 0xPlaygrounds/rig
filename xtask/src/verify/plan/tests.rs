@@ -64,11 +64,12 @@ fn a_store_change_runs_the_store_its_facade_feature_and_its_docker_suite_only() 
         "kernel-only",
         "default-check",
         "dependency-floors",
-        "guard-facade-features",
         "wasm-rig-core",
     ] {
         assert!(!plan.contains_key(skipped), "{skipped}");
     }
+    // The facade guard builds every facade feature, the store's among them.
+    assert_eq!(plan.get("guard-facade-features"), Some(&Scope::Full));
 }
 
 #[test]
