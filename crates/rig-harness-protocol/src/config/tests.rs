@@ -2,7 +2,6 @@ use super::*;
 
 const BUDGET: &str = "rig_basics::budget::BudgetPlugin";
 const SKILLS: &str = "rig_basics::skills::SkillsPlugin";
-const AGENTS_MD: &str = "rig_basics::agents_md::AgentsMdPlugin";
 
 fn file(path: &str, text: &str) -> SettingsFile {
     let parsed = SettingsFile::parse(PathBuf::from(path), text);
@@ -56,39 +55,6 @@ fn an_unknown_plugin_is_refused_naming_it_and_the_file() {
         refused.contains("rig_basics::nope::NopePlugin"),
         "{refused}"
     );
-}
-
-#[test]
-fn a_projects_plugins_are_reported_and_not_applied() {
-    let project = file(
-        "/work/p/.rig/settings.toml",
-        &format!("[plugins]\nenable = [\"{BUDGET}\"]\ndisable = [\"{AGENTS_MD}\"]\n"),
-    );
-    let notice = project_plugins(&project, Path::new("/home/.rig/settings.toml"));
-    let notice = notice.ok().flatten().unwrap_or_default();
-    assert!(
-        notice.contains("/work/p/.rig/settings.toml") && notice.contains("not applied"),
-        "{notice}"
-    );
-    let quiet = file("/work/p/.rig/settings.toml", "[large-change]\nlines = 10\n");
-    assert_eq!(
-        project_plugins(&quiet, Path::new("/home/.rig/settings.toml")),
-        Ok(None)
-    );
-}
-
-#[test]
-fn a_project_cannot_add_crates_and_is_refused_naming_its_file() {
-    let project = file(
-        "/work/p/.rig/settings.toml",
-        "[[plugins.extra]]\ncrate = \"evil\"\npath = \"evil\"\nplugin = \"evil::EvilPlugin\"\n",
-    );
-    let refused = project_plugins(&project, Path::new("/home/.rig/settings.toml"))
-        .err()
-        .map(|why| why.to_string())
-        .unwrap_or_default();
-    assert!(refused.contains("/work/p/.rig/settings.toml"), "{refused}");
-    assert!(refused.contains("extra"), "{refused}");
 }
 
 #[test]
@@ -246,45 +212,6 @@ fn an_edit_replaces_a_symlinked_file_where_it_points() {
         "still a link"
     );
     std::fs::remove_dir_all(&root).ok();
-}
-
-#[test]
-fn the_home_folder_is_no_project() {
-    let root = std::env::temp_dir().join(format!("rig-config-home-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    let rig = root.join(".rig");
-    assert!(std::fs::create_dir_all(&rig).is_ok());
-    assert!(std::fs::write(
-        rig.join("settings.toml"),
-        "[[plugins.extra]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n",
-    )
-    .is_ok());
-    let home = crate::Home::at(&rig);
-    assert_eq!(
-        project_notice(&home, &root),
-        Ok(None),
-        "the home's own file"
-    );
-    assert_eq!(chosen(&home).map(|chosen| chosen.extra.len()), Ok(1));
-    std::fs::remove_dir_all(&root).ok();
-}
-
-#[test]
-fn a_project_file_that_does_not_read_is_no_notice() {
-    let root = std::env::temp_dir().join(format!("rig-config-broken-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    let project = root.join("work");
-    assert!(std::fs::create_dir_all(project.join(".rig")).is_ok());
-    assert!(
-        std::fs::write(
-            project.join(".rig/settings.toml"),
-            "[large-change]\nlines = \n"
-        )
-        .is_ok()
-    );
-    let notice = project_notice(&crate::Home::at(root.join("home")), &project);
-    std::fs::remove_dir_all(&root).ok();
-    assert_eq!(notice, Ok(None), "rig starts, as with any project file");
 }
 
 #[test]

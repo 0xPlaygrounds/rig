@@ -257,10 +257,9 @@ impl Cli {
     }
 }
 
-/// On the entity of each declaration of an option, front, secret or
-/// [project setting](crate::settings::ProjectSetting): its place in the
-/// order they were declared, which is the order fronts are offered in,
-/// options described and project settings applied.
+/// On the entity of each declaration of an option, front or secret: its
+/// place in the order they were declared, which is the order fronts are
+/// offered in and options described.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Declared(pub usize);
 

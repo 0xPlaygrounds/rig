@@ -13,7 +13,7 @@ fn an_answer_keeps_the_answers_another_rig_gave_since() {
         project: Arc::new(DirFiles::new(dir.join("project"))),
         user: Arc::new(DirFiles::new(dir.join("user"))),
     };
-    let open = || Approvals::read(Some(&data), "/repo".to_owned(), dir.join("mcp.lock"));
+    let open = || Approvals::read(Some(&data), Path::new("/repo"), dir.join("mcp.lock"));
     let (a, b) = (json!({ "command": "a" }), json!({ "command": "b" }));
     let mut first = open();
     assert_eq!(first.set("a", a.clone(), true), Ok(()));
@@ -26,7 +26,7 @@ fn an_answer_keeps_the_answers_another_rig_gave_since() {
         (Some(false), Some(true))
     );
     // Another project's file, or a changed server, is no answer.
-    let elsewhere = Approvals::read(Some(&data), "/other".to_owned(), dir.join("mcp.lock"));
+    let elsewhere = Approvals::read(Some(&data), Path::new("/other"), dir.join("mcp.lock"));
     assert_eq!(elsewhere.answer("b", &b), None);
     assert_eq!(
         now.answer("b", &json!({ "command": "b", "args": ["x"] })),

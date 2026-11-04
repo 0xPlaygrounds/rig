@@ -83,7 +83,7 @@ to use a new one.
   an editor's servers, and the files' ones only with `McpPlugin` on.
 - **MCP servers:** those the editor names for a session (stdio, and
   streamable HTTP with its headers) connect through rig-mcp-client for that
-  session only: never saved, no approval, values taken as they are. The
+  session only: never saved, never held, values taken as they are. The
   session opens once each one connected or failed (at most
   `[mcp] connect_timeout_secs`); one that fails is reported and fails
   nothing else. Your own `mcp.json` servers join only when

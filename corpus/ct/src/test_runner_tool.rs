@@ -1,13 +1,13 @@
 //! CT-04: a structured test runner tool, `run_tests {filter?, only_failed?,
 //! timeout_secs?}`.
 //!
-//! The command comes from the project's `[tests]` table (`.rig/settings.toml`
-//! over the user's `settings.toml`: `command = "cargo test"`, `kind =
-//! "cargo"`), else from what the project looks like (`Cargo.toml`,
-//! `go.mod`, `pyproject.toml`, `package.json`). `run_tests` is an open tool:
-//! each call starts the command through the project's workspace and the
-//! shared launcher ([`Processes`]) on a thread of its own, whose output
-//! lines come back through a [`Running::stream`] on the call's job entity.
+//! The command comes from the `[tests]` table of `settings.toml` (`command =
+//! "cargo test"`, `kind = "cargo"`), else from what the project looks like
+//! (`Cargo.toml`, `go.mod`, `pyproject.toml`, `package.json`). `run_tests`
+//! is an open tool: each call starts the command through the project's
+//! workspace and the shared launcher ([`Processes`]) on a thread of its
+//! own, whose output lines come back through a [`Running::stream`] on the
+//! call's job entity.
 //! Each line is read by the kind's [`Parser`] and kept in a tail of 80, and
 //! becomes the call's [`ToolProgress`] (shown by every front) and its
 //! [`IfStopped`]: the counts and failures so far, which the kernel answers
@@ -73,14 +73,14 @@ impl Plugin for TestRunnerPlugin {
             .init_resource::<ProjectWorkspace>()
             .init_resource::<LastRun>()
             .keeps_saved::<LastRun>()
-            .add_project_setting::<TestsConfig>("tests")
+            .add_setting::<TestsConfig>("tests")
             .add_open_tool(RUN_TESTS, DESCRIPTION, ToolOptions::default(), start)
             .add_observer(take_event)
             .add_observer(end_job);
     }
 }
 
-/// The `[tests]` table, which a project's `.rig/settings.toml` may set.
+/// The `[tests]` table of `settings.toml`.
 #[derive(Resource, Deserialize, Default, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct TestsConfig {
@@ -259,8 +259,8 @@ fn run(plan: Plan, events: &UnboundedSender<RunEvent>) {
         }),
     };
     let Some((kind, command)) = picked else {
-        let why = "no test command: set `command` in the `[tests]` table of the project's \
-            `.rig/settings.toml`, or add a Cargo.toml, go.mod, pyproject.toml or package.json";
+        let why = "no test command: set `command` in the `[tests]` table of settings.toml, or \
+            add a Cargo.toml, go.mod, pyproject.toml or package.json";
         send(RunEvent::Ended(Ending::Failed(why.to_owned())));
         return;
     };

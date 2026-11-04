@@ -76,7 +76,8 @@ Off by default, each turned on by `/plugins`, `rig plugin enable <type>` or
 | `rig-basics` | `telemetry::diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
 | `rig-inspect` | `InspectPlugin` | the `inspect` tool, with which the agent reads its own running world |
 | `rig-steel` | `SteelPlugin` | the `run_steel` tool, whose Steel program orchestrates agents and tools, within `[steel]` |
-| `rig-mcp-client` | `McpPlugin` | the tools of the MCP servers of `RIG_HOME/mcp.json` and the approved ones of the project's `.rig/mcp.json`, as `<server>__<tool>`; `/mcp` |
+| `rig-mcp-client` | `McpPlugin` | the tools of the MCP servers of `RIG_HOME/mcp.json` and the project's `.rig/mcp.json`, as `<server>__<tool>`; `/mcp` |
+| `rig-mcp-client` | `approval::McpApprovalPlugin` | asks before a server of the project's `.rig/mcp.json` starts: `/mcp approve` and `/mcp deny` |
 | `rig-acp` | `AcpPlugin` | `rig acp`: the Agent Client Protocol on stdin and stdout, for editors such as Zed |
 | `rig-claude-cloak` | `ClaudeCloakPlugin` | `claude-cloak/*` models signed in with a Claude subscription (OAuth), and `/claude-cloak login` and `logout` |
 

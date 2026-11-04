@@ -127,5 +127,4 @@ and a `shell` call ends with that status. A transport must forward its stdin
 and close it there when it ends: a `shell` command on the host stops when
 that stdin closes, so a call stopped at its timeout, interrupted, or cut off
 by a transport killed on this machine leaves nothing running there. `ssh`
-does this; `koh exec` does on a stop or when its stdin closes. A project's
-`.rig/settings.toml` cannot add hosts.
+does this; `koh exec` does on a stop or when its stdin closes.

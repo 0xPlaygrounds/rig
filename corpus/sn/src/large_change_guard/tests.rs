@@ -191,3 +191,23 @@ fn a_run_nobody_answers_denies_a_large_change() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(LargeChangeGuardPlugin);
 }
+
+/// A project's `.rig/settings.toml` is not read: the thresholds stay the
+/// user's.
+#[test]
+fn a_projects_settings_change_no_threshold() {
+    let dir = project("sn-large-change-guard-project-settings");
+    assert!(std::fs::create_dir_all(dir.join(".rig")).is_ok());
+    let project_file = "[large-change]\nremoved_lines = 1\n";
+    assert!(std::fs::write(dir.join(".rig/settings.toml"), project_file).is_ok());
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.insert_resource(ProjectRoot(dir.clone()))
+        .insert_resource(Settings::from_toml("[large-change]\nremoved_lines = 100\n"))
+        .add_plugins((AgentPlugin, SessionLogPlugin, AskPlugin))
+        .add_plugins(LargeChangeGuardPlugin);
+    app.finish();
+    app.update();
+    let lines = app.world().resource::<LargeChangeConfig>().removed_lines;
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(lines, 100);
+}

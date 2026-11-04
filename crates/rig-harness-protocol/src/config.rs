@@ -2,10 +2,8 @@
 //! agent read it. Its `[plugins]` table holds only the user's changes to
 //! rig's built-in plugins ([`BUILT_IN`]): `enable` and `disable` name
 //! plugins, and `[[plugins.extra]]` tables add crates that are not rig's.
-//! Only `RIG_HOME/settings.toml` says which plugins run: the agent is built
-//! with exactly those, so a project's `.rig/settings.toml` cannot change
-//! them ([`project_plugins`]). Every edit rig makes ([`edit`]) keeps the
-//! user's comments and layout.
+//! The agent is built with exactly the plugins on. Every edit rig makes
+//! ([`edit`]) keeps the user's comments and layout.
 //!
 //! ```
 //! use rig_harness_protocol::config::{SettingsFile, plugins};
@@ -161,8 +159,12 @@ session's effects.jsonl.";
             off rig_basics::telemetry::diagnostics::DiagnosticsPlugin, "rig-basics", [], None,
                 "The warnings and errors the agent logs, kept as data for the inspect tool.";
             off rig_mcp_client::McpPlugin, "rig-mcp-client", [], None,
-                "MCP servers: those of RIG_HOME/mcp.json and the approved ones of the project's \
-.rig/mcp.json, their tools as <server>__<tool>, and /mcp.";
+                "MCP servers: those of RIG_HOME/mcp.json and the project's .rig/mcp.json, their \
+tools as <server>__<tool>, and /mcp.";
+            // Off: rig trusts a project's MCP servers as it trusts its other files.
+            off rig_mcp_client::approval::McpApprovalPlugin, "rig-mcp-client", [], None,
+                "With McpPlugin on, asks before a server of the project's .rig/mcp.json starts, \
+and again once its entry changes: /mcp approve and /mcp deny.";
             off rig_acp::AcpPlugin, "rig-acp", [], None,
                 "ACP: `rig acp` serves the Agent Client Protocol on stdin and stdout, so an editor \
 such as Zed uses rig, each session in a process of its own, with the MCP servers \
@@ -477,37 +479,6 @@ pub fn chosen(home: &crate::Home) -> Result<Plugins, Error> {
     plugins(&SettingsFile::read(&home.settings())?)
 }
 
-/// What to tell the user about the `[plugins]` table of a project's
-/// settings file `project`, which is never applied: only the home's file
-/// `home` says which plugins run. `None` when it has none.
-///
-/// # Errors
-///
-/// Naming the file, when the table adds crates (`extra`): a project must
-/// not look as if it could make rig build its code.
-pub fn project_plugins(project: &SettingsFile, home: &Path) -> Result<Option<String>, Error> {
-    let Some(table) = project.document.get("plugins") else {
-        return Ok(None);
-    };
-    if table.get("extra").is_some() {
-        return Err(Error::Table {
-            path: project.path.clone(),
-            table: "plugins".to_owned(),
-            problem: format!(
-                "a project cannot add plugin crates, since building one runs its code; only {} \
-                 takes `extra`",
-                home.display()
-            ),
-        });
-    }
-    Ok(Some(format!(
-        "{}: [plugins] is not applied; only {} says which plugins run (`rig plugin enable` and \
-         `disable`).",
-        project.path.display(),
-        home.display()
-    )))
-}
-
 /// Why `plugin` is refused when nothing provides it.
 fn unknown(plugin: &str) -> String {
     format!("no plugin `{plugin}`; `rig plugin list` shows them")
@@ -807,68 +778,6 @@ pub fn edit<T, E: From<Error>>(
         })?;
     }
     Ok((changed, value))
-}
-
-/// A project's root and its `.rig`: the working directory or the nearest
-/// directory above it that holds `.git` or a `.rig` directory. A `.rig`
-/// that is `RIG_HOME` marks nothing, and the search stops below the user's
-/// home directory, which is never a project's root unless rig starts there.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Project {
-    /// The project's top directory, canonical when it exists.
-    pub root: PathBuf,
-    /// The project's `.rig`, where its `settings.toml` and `mcp.json` are.
-    /// `None` when the root is the user's home directory or its `.rig` is
-    /// `RIG_HOME`: those files are the user's.
-    pub config: Option<PathBuf>,
-}
-
-impl Project {
-    /// The project of the working directory `dir`, for `rig_home` and the
-    /// user's home directory `user`. Symlinks are resolved before paths are
-    /// compared; a `dir` that does not resolve is taken as given.
-    pub fn find(dir: &Path, rig_home: &Path, user: Option<&Path>) -> Self {
-        let dir = dir.canonicalize().unwrap_or_else(|_| dir.to_owned());
-        let rig_home = rig_home.canonicalize().ok();
-        let user = user.and_then(|user| user.canonicalize().ok());
-        let is_rig_home = |rig: &Path| rig_home.is_some() && rig.canonicalize().ok() == rig_home;
-        let marked = |place: &Path| {
-            let rig = place.join(".rig");
-            place.join(".git").exists() || (rig.is_dir() && !is_rig_home(&rig))
-        };
-        let root = dir
-            .ancestors()
-            .take_while(|place| Some(*place) != user.as_deref())
-            .find(|place| marked(place))
-            .unwrap_or(&dir)
-            .to_owned();
-        let rig = root.join(".rig");
-        let config = (Some(&root) != user.as_ref() && !is_rig_home(&rig)).then_some(rig);
-        Self { root, config }
-    }
-
-    /// Its `.rig/settings.toml`, when it has a `.rig` of its own.
-    fn settings(&self) -> Option<PathBuf> {
-        self.config
-            .as_ref()
-            .map(|config| config.join("settings.toml"))
-    }
-}
-
-/// What to tell the user about the `[plugins]` table of the settings of
-/// the project around `dir` ([`project_plugins`]). A project file that is
-/// the home's own is none ([`Project::find`]), and so is one that does not
-/// read: a project stops rig from starting only by adding crates.
-///
-/// # Errors
-///
-/// As [`project_plugins`].
-pub fn project_notice(home: &crate::Home, dir: &Path) -> Result<Option<String>, Error> {
-    let project = Project::find(dir, home.root(), std::env::home_dir().as_deref());
-    let Some(file) = (project.settings()).and_then(|path| SettingsFile::read(&path).ok()) else {
-        return Ok(None);
-    };
-    project_plugins(&file, &home.settings())
 }
 
 #[cfg(test)]

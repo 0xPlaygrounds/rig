@@ -37,7 +37,7 @@ use std::time::Duration;
 
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
-    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, config, env, secret_variable,
+    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, Staging, child};
@@ -88,11 +88,6 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         locks::sweep(home)?;
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
-        // A project's `extra` stops the run before anything builds.
-        if let Err(failure) = project_warning(home, &claimed) {
-            claimed.discard_if_unsaved(home);
-            return Err(failure);
-        }
         let failure = rebuild(home, &claimed.id, output)?;
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
@@ -187,17 +182,6 @@ fn refused(why: &str) -> ExitCode {
     ExitCode::from(REFUSED_EXIT_CODE)
 }
 
-/// What the settings of the project the session `claimed` works in say of
-/// plugins ([`config::project_notice`]): a warning that its `[plugins]` is
-/// not applied, or the refusal of its `extra`.
-fn project_warning(home: &Home, claimed: &Claimed) -> Result<Option<String>> {
-    let dir = match &claimed.directory {
-        Some(dir) => dir.clone(),
-        None => std::env::current_dir()?,
-    };
-    Ok(config::project_notice(home, &dir)?)
-}
-
 /// What the plugins of the build the launcher of `session` starts next add
 /// to the command line; nothing when there is no build or it cannot say.
 fn report(home: &Home, session: &SessionId) -> AgentDescription {
@@ -265,33 +249,12 @@ fn launch(
         ..invocation.clone()
     };
     let mut invocation: &Invocation = invocation;
-    let mut first = true;
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
         let ready = run.ready();
-        // The project's `[plugins]` is told at the first start and after a
-        // switch to another session, whose project its `extra` refuses.
-        let project = if first || left.is_some() {
-            project_warning(home, &claimed)
-        } else {
-            Ok(None)
-        };
-        first = false;
-        let project = match project {
-            Ok(project) => project,
-            Err(failure) => {
-                run.kill_left_groups().ok();
-                claimed.leave(home, run, false);
-                return Ok(Ended {
-                    code: ExitCode::FAILURE,
-                    said: Some(format!("error: {failure}")),
-                    restore: screen || kept_screen,
-                });
-            }
-        };
         if ask {
             for secret in report(home, &session).secrets {
                 let variable = secret_variable(&secret.name);
@@ -328,9 +291,8 @@ fn launch(
             command.env(env::NOTICE, notice);
         }
         // Only the first start runs elsewhere than it was.
-        let warnings: Vec<String> = claimed.moved.take().into_iter().chain(project).collect();
-        if !warnings.is_empty() {
-            command.env(env::WARNING, warnings.join("\n"));
+        if let Some(moved) = claimed.moved.take() {
+            command.env(env::WARNING, moved);
         }
         // Only the first start follows the failed build.
         if let Some(failure) = build_failure.take() {

@@ -26,8 +26,8 @@ const SERVERS: &str = "mcpServers";
 pub enum Scope {
     /// `RIG_HOME/mcp.json`, the user's in every project.
     User,
-    /// `<project>/.rig/mcp.json`, which starts nothing the user did not
-    /// approve.
+    /// `<project>/.rig/mcp.json`, whose entries replace the user's of the
+    /// same name.
     Project,
     /// A client of rig's, such as an editor, for this run only: in no file.
     Client,
@@ -203,13 +203,6 @@ fn refuse_fields(fields: &[(&str, bool)], whose: &str) -> Result<(), String> {
         Some((field, _)) => Err(format!("`{field}` is {whose}")),
         None => Ok(()),
     }
-}
-
-/// The server `written` whole, on one line, as written: its `${VAR}`s
-/// are not expanded, so a line about a server not approved shows all that
-/// approving it approves, and no secret.
-pub fn describe(written: &Value) -> String {
-    written.to_string()
 }
 
 /// `text` with each `${VAR}` replaced by the variable, and each

@@ -251,10 +251,11 @@ as the cache key where the provider takes one.
 
 The project is the working directory or the nearest directory above it
 that holds `.git` or a `.rig` directory, below your home directory: rig
-started anywhere inside one reads the same `.rig/settings.toml`,
-`.rig/mcp.json` and per-project data. Your home directory is not a
-project: started there, rig reads only `RIG_HOME`'s settings and MCP
-servers. Commands still start in the working directory.
+started anywhere inside one reads the same `.rig/mcp.json`, `AGENTS.md`
+files, skills and per-project data. A project has no settings: rig never
+reads a `.rig/settings.toml`. Your home directory is not a project: started
+there, rig reads only `RIG_HOME`'s MCP servers. Commands still start in the
+working directory.
 
 Two default plugins add to it when the agent starts. `AgentsMdPlugin` adds
 the `AGENTS.md` files of the working directory and of each directory above
@@ -467,10 +468,8 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
 at the next start or `/reload`: only the generated crate compiles again, and
-a plugin's own crate the first time it is on. Only your `settings.toml` says which plugins run: a project's
-`.rig/settings.toml` that has a `[plugins]` table is warned of at start and not
-applied, and one with `extra` is refused at start, naming the file, before
-anything builds, since building a crate runs its code. A helper, `/reload`
+a plugin's own crate the first time it is on. Only your `settings.toml` says
+which plugins run. A helper, `/reload`
 and anything else a session starts run the same home's build.
 
 `rig plugin list` shows every plugin, `on` or `off`, with its crate and
@@ -507,9 +506,10 @@ tool, with which the agent reads its own Bevy world, read-only.
 
 The optional [`rig-mcp-client`](../plugins/rig-mcp-client) plugin offers the
 tools of MCP servers, stdio or streamable HTTP, named in `$RIG_HOME/mcp.json`
-and, once you approve each, in the project's `.rig/mcp.json`: `rig plugin
-enable rig_mcp_client::McpPlugin`. Its README covers the file format, approval,
-`/mcp` and `--tools`, which can name an MCP server's tools in every front.
+and in the project's `.rig/mcp.json`, which start with no question: `rig
+plugin enable rig_mcp_client::McpPlugin`. Its README covers the file format,
+`/mcp`, `--tools`, which can name an MCP server's tools in every front, and
+`approval::McpApprovalPlugin`, which asks before a project's server starts.
 
 The optional [`rig-acp`](../plugins/rig-acp) plugin adds `rig acp`, which
 serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed

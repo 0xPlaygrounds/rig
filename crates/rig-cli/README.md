@@ -17,8 +17,7 @@ runs it. `settings.toml` is the one file you edit: its `[plugins]` table holds
 only your changes to rig's built-in list (`enable`, `disable`, and
 `[[plugins.extra]]` crates). Turning a plugin on or off rebuilds the agent at
 the next start: only the generated crate compiles again, and a plugin's own
-crate the first time it is on. A project's
-`.rig/settings.toml` never changes which plugins run.
+crate the first time it is on.
 
 `rig help` lists the commands, `rig plugin --help` the plugin commands, and
 `rig help-agents` how a script drives rig headless. The

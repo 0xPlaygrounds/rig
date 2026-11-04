@@ -8,7 +8,7 @@
 //! which the model reads in the call's refusal. A run nobody can answer
 //! follows `on_headless`. A deletion is held while git is asked whether
 //! it tracks the file. The thresholds are `[large-change]` in
-//! `settings.toml`, which a project's `.rig/settings.toml` may override.
+//! `settings.toml`.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
@@ -23,8 +23,7 @@ use rig_tools::process::{Launcher, Spawn};
 use rig_tools::workspace::Workspace;
 use serde::Deserialize;
 
-/// The settings table, in `settings.toml` and a project's
-/// `.rig/settings.toml`.
+/// The settings table, in `settings.toml`.
 pub const SECTION: &str = "large-change";
 
 /// The refusal a run nobody can answer gives under `on_headless = "deny"`.
@@ -104,7 +103,7 @@ impl Plugin for LargeChangeGuardPlugin {
         if !app.is_plugin_added::<PreviewPlugin>() {
             app.add_plugins(PreviewPlugin);
         }
-        app.add_project_setting::<LargeChangeConfig>(SECTION)
+        app.add_setting::<LargeChangeConfig>(SECTION)
             .init_resource::<AllowedFiles>()
             .register_type::<AllowedFiles>()
             .init_resource::<ProjectRoot>()

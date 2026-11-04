@@ -419,7 +419,35 @@ fn stub_tools_come_and_go_with_its_server() {
 }
 
 #[test]
-fn a_project_server_starts_only_once_approved_as_written() {
+fn a_project_server_starts_with_no_question() {
+    let project = project("trusted");
+    let marker = project.join("started");
+    let server = stub_server(json!({ MARKER: marker }));
+    write_servers(&project.join(".rig/mcp.json"), json!({ "stub": server }));
+    let (mut app, wakes) = app_in(&project, "", None);
+    app.finish();
+    run_until(&mut app, &wakes, |world| has(world, "stub__add"));
+    assert!(marker.exists());
+    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
+    let told = notices(app.world());
+    assert!(
+        told.contains(&"MCP server `stub` connected: 2 tools.".to_owned()),
+        "{told:?}"
+    );
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// [`app_in`] with [`approval::McpApprovalPlugin`] on too.
+fn asking_app(project: &Path) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_in(project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.add_plugins(approval::McpApprovalPlugin);
+    app.finish();
+    app.update();
+    (app, wakes)
+}
+
+#[test]
+fn with_approval_a_project_server_waits_for_approve_and_a_changed_one_is_asked_again() {
     let project = project("approval");
     let marker = project.join("started");
     let mut server = stub_server(json!({ MARKER: marker }));
@@ -427,11 +455,9 @@ fn a_project_server_starts_only_once_approved_as_written() {
     if let Some(env) = server.get_mut("env").and_then(Value::as_object_mut) {
         env.insert("TOKEN".to_owned(), json!("${RIG_MCP_TEST_TOKEN:-none}"));
     }
-    let whole = config::describe(&server);
+    let whole = server.to_string();
     write_servers(&project.join(".rig/mcp.json"), json!({ "stub": server }));
-    let (mut app, wakes) = app_in(&project, "", None);
-    app.finish();
-    app.update();
+    let (mut app, wakes) = asking_app(&project);
     let agent =
         rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     // Time enough for a process to start, were one started.
@@ -442,34 +468,137 @@ fn a_project_server_starts_only_once_approved_as_written() {
     }
     assert!(!marker.exists(), "an unapproved server started");
     let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
+    assert_eq!(state, Some(McpState::Held));
     let told = notices(app.world());
-    let line = format!("  stub: {whole}\n");
-    assert!(told.iter().any(|text| text.contains(&line)), "{told:?}");
+    assert!(told.iter().any(|text| text.contains(&whole)), "{told:?}");
     mcp(&mut app, agent, "");
     let listed =
         format!("stub (project): not approved; /mcp approve stub starts it as written: {whole}");
-    assert!(notices(app.world()).iter().any(|text| text == &listed));
+    let told = notices(app.world());
+    assert!(told.iter().any(|text| text == &listed), "{told:?}");
+    // A word after the name is refused, and nothing is approved.
+    mcp(&mut app, agent, "approve stub --user");
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
 
     mcp(&mut app, agent, "approve stub");
-    let approved = format!("Approved `stub` as written: {whole}; connecting.");
+    let approved = format!("Approved `stub` as written: {whole}.");
     assert!(notices(app.world()).iter().any(|text| text == &approved));
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));
     assert!(marker.exists());
+    // Denied, it stops.
+    mcp(&mut app, agent, "deny stub");
+    run_until(&mut app, &wakes, |world| !has(world, "stub__add"));
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    mcp(&mut app, agent, "approve stub");
     drop(app);
 
     // The approval is kept, for the server as it was written then.
-    let (mut app, wakes) = app_in(&project, "", None);
-    app.finish();
+    let (mut app, wakes) = asking_app(&project);
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));
     drop(app);
     let changed = stub_server(json!({ MARKER: marker, "MORE": "1" }));
     write_servers(&project.join(".rig/mcp.json"), json!({ "stub": changed }));
-    let (mut app, _) = app_in(&project, "", None);
-    app.finish();
-    app.update();
+    let (mut app, _) = asking_app(&project);
     let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
+    assert_eq!(state, Some(McpState::Held));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn with_approval_a_users_server_is_never_held() {
+    let project = project("approval-home");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let (mut app, wakes) = asking_app(&project);
+    run_until(&mut app, &wakes, |world| has(world, "stub__add"));
+    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
+    std::fs::remove_dir_all(project).ok();
+}
+
+/// A policy plugin of a few lines, on the public API: it holds `held`.
+fn hold_held(added: On<Add<McpServer>>, servers: Query<&McpServer>, mut commands: Commands) {
+    if servers
+        .get(added.entity)
+        .is_ok_and(|server| server.name == "held")
+    {
+        let hold = McpHold("held by the test's policy".to_owned());
+        commands.entity(added.entity).insert(hold);
+    }
+}
+
+/// A policy of a few lines that holds a server once it sees one of its
+/// tools.
+fn hold_on_a_tool(added: On<Add<McpToolOf>>, tools: Query<&McpToolOf>, mut commands: Commands) {
+    if let Ok(McpToolOf(server)) = tools.get(added.entity) {
+        let hold = McpHold("a tool of it is not allowed".to_owned());
+        commands.entity(*server).insert(hold);
+    }
+}
+
+#[test]
+fn a_hold_that_comes_as_the_tools_register_takes_them_all_away() {
+    let project = project("policy-tools");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({ "stub": stub_server(json!({})) }),
+    );
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.add_observer(hold_on_a_tool);
+    app.finish();
+    run_until(&mut app, &wakes, |world| {
+        world
+            .try_query_filtered::<(), (With<McpServer>, With<McpHold>)>()
+            .is_some_and(|mut held| held.iter(world).next().is_some())
+    });
+    assert!(!has(app.world(), "stub__add") && !has(app.world(), "stub__hang"));
+    let state = status(app.world_mut(), "stub").map(|status| status.state);
+    assert_eq!(state, Some(McpState::Held));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_policy_plugin_holds_the_server_it_names_until_it_lets_go() {
+    let project = project("policy");
+    let marker = project.join("started");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({
+            "held": stub_server(json!({ MARKER: marker })),
+            "free": stub_server(json!({})),
+        }),
+    );
+    let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
+    app.add_observer(hold_held);
+    app.finish();
+    run_until(&mut app, &wakes, |world| has(world, "free__add"));
+    assert!(!marker.exists() && !has(app.world(), "held__add"));
+    let agent =
+        rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    mcp(&mut app, agent, "");
+    let told = notices(app.world());
+    let listed = "held (user): held by the test's policy";
+    assert!(told.iter().any(|text| text.contains(listed)), "{told:?}");
+    let world = app.world_mut();
+    let held = world
+        .query_filtered::<(Entity, &McpServer), With<McpHold>>()
+        .iter(world)
+        .map(|(entity, server)| (entity, server.name.clone()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        held.iter()
+            .map(|(_, name)| name.as_str())
+            .collect::<Vec<_>>(),
+        ["held"]
+    );
+    if let Some((entity, _)) = held.first() {
+        world.entity_mut(*entity).remove::<McpHold>();
+    }
+    run_until(&mut app, &wakes, |world| has(world, "held__add"));
+    assert!(marker.exists());
     std::fs::remove_dir_all(project).ok();
 }
 
@@ -501,7 +630,7 @@ fn add_and_remove_save_to_the_users_file_and_keep_the_rest() {
     assert_eq!(std::fs::read_to_string(&file).unwrap_or_default(), before);
     assert!(status(app.world_mut(), "web").is_none());
 
-    // A project server the user adds is approved as added.
+    // A project server the user adds starts as added.
     mcp(
         &mut app,
         agent,
@@ -513,8 +642,7 @@ fn add_and_remove_save_to_the_users_file_and_keep_the_rest() {
         written,
         json!({ "mcpServers": { "local": { "command": "/no/such/server", "args": ["--flag"] } } })
     );
-    let state = status(app.world_mut(), "local").map(|status| status.state);
-    assert_ne!(state, Some(McpState::NotApproved));
+    assert_eq!(scope(app.world_mut(), "local"), Some(Scope::Project));
 
     // A file that is not JSON is left alone.
     std::fs::write(&file, "{ not json").ok();
@@ -540,6 +668,17 @@ fn headless(
     tools: &str,
     model: &MockCompletionModel,
 ) -> (App, Option<HeadlessEnded>) {
+    headless_with(project, settings, tools, model, |_| {})
+}
+
+/// [`headless`], with `add` adding to the app first.
+fn headless_with(
+    project: &Path,
+    settings: &str,
+    tools: &str,
+    model: &MockCompletionModel,
+    add: impl FnOnce(&mut App),
+) -> (App, Option<HeadlessEnded>) {
     let invoked = Invocation {
         print: Some("Add 2 and 3.".to_owned()),
         flags: vec![(TOOLS.to_owned(), Some(tools.to_owned()))],
@@ -552,6 +691,7 @@ fn headless(
         .add_observer(|ended: On<HeadlessEnded>, mut log: ResMut<Ended>| {
             log.0 = Some(ended.event().clone());
         });
+    add(&mut app);
     app.finish();
     app.cleanup();
     run_until(&mut app, &wakes, |world| {
@@ -584,6 +724,30 @@ fn a_headless_run_waits_for_the_servers_its_tools_name() {
         names.collect::<Vec<_>>()
     });
     assert_eq!(first, Some(vec!["stub__add".to_owned()]));
+    std::fs::remove_dir_all(project).ok();
+}
+
+#[test]
+fn a_headless_run_waits_for_no_held_server() {
+    let project = project("headless-held");
+    let marker = project.join("started");
+    write_servers(
+        &project.join("home/mcp.json"),
+        json!({
+            "held": stub_server(json!({ MARKER: marker })),
+            "stub": stub_server(json!({})),
+        }),
+    );
+    let model = MockCompletionModel::from_stream_turns([
+        calls("c1", "stub__add", json!({ "a": 2, "b": 3 })),
+        reply("5"),
+    ]);
+    let (_app, ended) = headless_with(&project, "", "stub__add", &model, |app| {
+        app.add_observer(hold_held);
+    });
+    let how = ended.map(|ended| (ended.code, ended.answer));
+    assert_eq!(how, Some((0, Some("5".to_owned()))));
+    assert!(!marker.exists(), "a held server started");
     std::fs::remove_dir_all(project).ok();
 }
 
@@ -658,7 +822,7 @@ fn a_headless_run_gives_up_on_a_server_that_fails_or_never_answers() {
 }
 
 #[test]
-fn an_approved_project_server_takes_the_users_place_until_denied_or_removed() {
+fn a_project_server_takes_the_users_place_until_removed() {
     let project = project("same-name");
     let (user, theirs) = (project.join("home/mcp.json"), project.join(".rig/mcp.json"));
     write_servers(
@@ -669,87 +833,27 @@ fn an_approved_project_server_takes_the_users_place_until_denied_or_removed() {
     let users = std::fs::read_to_string(&user).unwrap_or_default();
     let (mut app, wakes) = app_in(&project, "[mcp]\nfirst_retry_secs = 3600", None);
     app.finish();
-    app.update();
-    let agent =
-        rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    // Not approved, the project's waits, said so, and the user's runs.
-    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
-    let told = notices(app.world());
-    let waits = "  stub (yours of that name comes first meanwhile): {\"command\":";
-    assert!(told.iter().any(|text| text.contains(waits)), "{told:?}");
-    mcp(&mut app, agent, "");
-    let listed = "stub (project): not approved, yours comes first meanwhile";
-    assert!(
-        notices(app.world())
-            .iter()
-            .any(|text| text.contains(listed))
-    );
-    // A word after the name is refused, and nothing is approved.
-    mcp(&mut app, agent, "approve stub --user");
-    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
-
-    mcp(&mut app, agent, "approve stub");
     run_until(&mut app, &wakes, |world| has(world, "stub__add"));
     assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
-    mcp(&mut app, agent, "deny stub");
-    // The user's server may say it could not start before this is read.
-    let told = notices(app.world());
-    let back = "Yours takes its place; connecting.";
-    assert!(told.iter().any(|text| text.ends_with(back)), "{told:?}");
-    run_until(&mut app, &wakes, |world| !has(world, "stub__add"));
-    assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
+    let agent =
+        rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    // A word after the name is refused, and nothing is removed.
+    mcp(&mut app, agent, "remove stub --project");
+    assert!(has(app.world(), "stub__add"));
 
     // A removal without a file takes the one shown, and the other's comes.
-    mcp(&mut app, agent, "approve stub");
     mcp(&mut app, agent, "remove stub");
+    let told = notices(app.world());
+    let back = "takes its place; /mcp shows it.";
+    assert!(told.iter().any(|text| text.ends_with(back)), "{told:?}");
     assert!(
         !std::fs::read_to_string(&theirs)
             .unwrap_or_default()
             .contains("stub")
     );
     assert_eq!(std::fs::read_to_string(&user).unwrap_or_default(), users);
+    run_until(&mut app, &wakes, |world| !has(world, "stub__add"));
     assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::User));
-    // A shadowed project server is listed whatever its state.
-    write_servers(
-        &theirs,
-        json!({ "stub": { "command": "x", "disabled": true } }),
-    );
-    mcp(&mut app, agent, "");
-    let listed = "stub (project): disabled in its mcp.json; yours comes first";
-    assert!(
-        notices(app.world())
-            .iter()
-            .any(|text| text.contains(listed))
-    );
-    let changed = stub_server(json!({ "MORE": "1" }));
-    write_servers(&theirs, json!({ "stub": changed }));
-    // A word after the name is refused, and nothing is removed.
-    mcp(&mut app, agent, "remove stub --project");
-    assert!(
-        std::fs::read_to_string(&user)
-            .unwrap_or_default()
-            .contains("stub")
-    );
-    mcp(&mut app, agent, "remove --user stub");
-    let told = notices(app.world());
-    let waits = "is not approved: /mcp approve stub starts it.";
-    assert!(
-        told.last().is_some_and(|text| text.ends_with(waits)),
-        "{told:?}"
-    );
-    assert!(
-        !std::fs::read_to_string(&user)
-            .unwrap_or_default()
-            .contains("stub")
-    );
-    assert!(
-        std::fs::read_to_string(&theirs)
-            .unwrap_or_default()
-            .contains("stub")
-    );
-    // What remains is the project's, changed since it was approved.
-    let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
     std::fs::remove_dir_all(project).ok();
 }
 
@@ -836,8 +940,7 @@ fn what_a_server_started_goes_with_it() {
     }
 }
 
-/// Started in a folder of the project, rig reads the project's file, and
-/// its approvals are the project's.
+/// Started in a folder of the project, rig reads the project's file.
 #[test]
 fn a_folder_of_a_project_has_the_projects_servers() {
     let project = project("folder");
@@ -849,12 +952,6 @@ fn a_folder_of_a_project_has_the_projects_servers() {
     app.finish();
     app.update();
     assert_eq!(scope(app.world_mut(), "stub"), Some(Scope::Project));
-    let state = status(app.world_mut(), "stub").map(|status| status.state);
-    assert_eq!(state, Some(McpState::NotApproved));
-    let told = notices(app.world()).join("\n");
-    let file = project.join(".rig/mcp.json");
-    let file = file.canonicalize().unwrap_or(file);
-    assert!(told.contains(&file.display().to_string()), "{told}");
     std::fs::remove_dir_all(project).ok();
 }
 
@@ -875,11 +972,6 @@ fn a_project_in_the_home_directory_has_no_project_file() {
     app.finish();
     app.update();
     assert_eq!(scope(app.world_mut(), "mine"), Some(Scope::User));
-    let told = notices(app.world());
-    assert!(
-        !told.iter().any(|text| text.contains("not approved")),
-        "{told:?}"
-    );
     let agent =
         rig_harness_test_support::first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     mcp(&mut app, agent, "add --project theirs x");
@@ -890,24 +982,6 @@ fn a_project_in_the_home_directory_has_no_project_file() {
         "{why:?}"
     );
     std::fs::remove_dir_all(project).ok();
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-fn a_project_whose_path_is_not_utf8_has_no_project_file() {
-    use std::os::unix::ffi::OsStrExt;
-    let parent = project("not-utf8");
-    let project = parent.join(std::ffi::OsStr::from_bytes(b"repo-\x80"));
-    write_servers(
-        &project.join(".rig/mcp.json"),
-        json!({ "theirs": stub_server(json!({})) }),
-    );
-    let (mut app, _) = app_in(&parent, "", None);
-    app.insert_resource(ProjectRoot(project));
-    app.finish();
-    app.update();
-    assert!(status(app.world_mut(), "theirs").is_none());
-    std::fs::remove_dir_all(parent).ok();
 }
 
 #[test]
@@ -1048,7 +1122,7 @@ fn a_client_server_is_taken_as_given_and_no_file_is_read_without_the_plugin() {
 }
 
 #[test]
-fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
+fn a_client_server_takes_its_name_over_the_users_and_the_projects() {
     let project = project("client-names");
     let (user, theirs) = (project.join("home/mcp.json"), project.join(".rig/mcp.json"));
     let (mine, ours) = (
@@ -1059,17 +1133,15 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
         project.join("first-started"),
         project.join("second-started"),
     );
-    let approved = stub_server(json!({ MARKER: ours }));
     write_servers(
         &user,
         json!({ "files": stub_server(json!({ MARKER: mine })) }),
     );
-    write_servers(&theirs, json!({ "files": approved }));
+    write_servers(
+        &theirs,
+        json!({ "files": stub_server(json!({ MARKER: ours })) }),
+    );
     let (mut app, wakes) = app_in(&project, "", None);
-    let data = app.world().resource::<PluginData>();
-    let lock = config::lock_path(&project.join("home"));
-    let mut approvals = Approvals::read(Some(data), project.display().to_string(), lock);
-    assert!(approvals.set("files", approved, true).is_ok());
     name_clients(
         &mut app,
         vec![
@@ -1082,13 +1154,12 @@ fn a_client_server_takes_its_name_over_the_users_and_the_approved_projects() {
     let agent = rig_harness_test_support::first_agent(app.world_mut());
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     // A file's server of the name stays stopped whatever /mcp does.
-    mcp(&mut app, agent, "approve files");
     mcp(&mut app, agent, "remove --user files");
     mcp(&mut app, agent, "");
     assert!(!mine.exists() && !ours.exists());
     assert!(first.exists() && !second.exists());
     assert_eq!(scope(app.world_mut(), "files"), Some(Scope::Client));
-    // The approved project's server stands for the user's, and gives way.
+    // The project's server stands for the user's, and gives way.
     let told = notices(app.world());
     assert!(
         told.contains(&gives_way("files", Scope::Project)),

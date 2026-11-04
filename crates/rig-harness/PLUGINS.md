@@ -1507,15 +1507,9 @@ A plugin's settings are its table of the user's `RIG_HOME/settings.toml`:
 `app.add_setting::<T>("section")` in `build` inserts the resource `T` read
 from `[section]`, else `T::default()`; a table that does not read as `T`,
 or a file that is not TOML, refuses the run (exit 2) with what is wrong,
-naming the file, the table and the key. A project's `.rig/settings.toml`
-table that does not read only warns. A test inserts
-`Settings::from_toml(..)` before adding the plugin, so the user's file is
-never read. `add_project_setting::<T>(section)` also merges the table of
-the project's `.rig/settings.toml` over the user's, key by key, at
-startup (a cloned repository changes only what a plugin lets it): each
-such table is a `ProjectSetting` entity, the project's file is the
-`ProjectSettings` resource, and both happen in `PreStartup`'s
-`ProjectSettingsSystems::{Read, Apply}`. Here a
+naming the file, the table and the key. A project has no settings. A test
+inserts `Settings::from_toml(..)` before adding the plugin, so the user's
+file is never read. Here a
 [command-line option](#fronts-options-and-commands) overrides the setting.
 
 ```rust,no_run

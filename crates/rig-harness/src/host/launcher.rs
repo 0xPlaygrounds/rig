@@ -176,11 +176,8 @@ impl Plugin for LauncherPlugin {
 
 /// What is wrong with the user's settings file, which refuses the run: a
 /// table that does not read is never run with its defaults instead. Each
-/// problem names the file, and a table's its table and key. Only the
-/// user's file has problems before the app starts; a project's
-/// `.rig/settings.toml` is read later and stays a warning, so a cloned
-/// repository cannot stop rig from starting. A build describing itself is
-/// not refused.
+/// problem names the file, and a table's its table and key. A build
+/// describing itself is not refused.
 fn settings_refusal(world: &World) -> Option<String> {
     if world.contains_resource::<Describing>() {
         return None;
