@@ -56,6 +56,12 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         "@driver-adoption" => crate::driver_adoption::check(root).map_err(invalid),
         "@random-ids" => crate::random_ids::check(root).map_err(invalid),
         "@stage-order" => crate::stage_order::check(root).map_err(invalid),
+        "@copy" => match step.args.as_slice() {
+            [from, to] => fs::copy(root.join(from), root.join(to))
+                .map(|_| ())
+                .map_err(|error| invalid(format!("copy {from} to {to}: {error}"))),
+            _ => Err(invalid("@copy takes a source and a destination")),
+        },
         "@fixture-paths" => {
             // `cargo test` runs from the crate root and nextest from the
             // workspace root, so a CWD-relative fixture path passes under one

@@ -407,9 +407,11 @@ pub(super) fn all() -> Vec<Check> {
                 ]),
             ],
         ),
-        // The builds that start a nested Cargo, each an ignored test run on
-        // its own: a fixture crate's `cargo check` under each feature set, so
-        // they assert what compiles, not what runs.
+        // The builds that start a nested Cargo: a fixture crate's `cargo check`
+        // under each feature set, so they assert what compiles, not what
+        // runs. The facade's runs as these steps; the others are ignored
+        // tests run on their own.
+        //
         // The portable tool facade compiles under each feature set of a
         // standalone consumer (`tests/fixtures/tool_facade`, whose `all_root`
         // names every facade feature), against the workspace's lockfile.
@@ -428,7 +430,7 @@ pub(super) fn all() -> Vec<Check> {
             };
             vec![
                 Step::new(
-                    "cp",
+                    "@copy",
                     &["Cargo.lock", "tests/fixtures/tool_facade/Cargo.lock"],
                 ),
                 fixture(&["--no-default-features"]),

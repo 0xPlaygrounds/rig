@@ -339,8 +339,9 @@ pub(super) struct Read {
 /// text that does not tokenize names nothing.
 fn relative_literals(text: &str) -> Vec<(String, bool)> {
     let mut out = Vec::new();
-    if let Ok(tokens) = text.parse::<proc_macro2::TokenStream>() {
-        literals(tokens, false, &mut out);
+    match text.parse::<proc_macro2::TokenStream>() {
+        Ok(tokens) => literals(tokens, false, &mut out),
+        Err(error) => eprintln!("a source file does not tokenize ({error}); its reads are unknown"),
     }
     out
 }

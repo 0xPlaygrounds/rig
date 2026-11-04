@@ -116,8 +116,9 @@ is deliberate.
 - `cargo nextest run --locked --profile local -p <crate> [filter]` is the inner
   loop. The `local` profile has no retries, stops at the first failure, and
   skips the service suites and the trybuild cases (`--ignore-default-filter`
-  runs them). Tests that launch a nested Cargo build are `#[ignore]`d; their
-  `guard-*` checks run them with `--run-ignored only`.
+  runs them). The nested-Cargo builds are `guard-*` checks: the facade's
+  runs its fixture's `cargo check`s directly, and the others are `#[ignore]`d
+  tests their check runs with `--run-ignored only`.
 - The dev profile keeps line tables for workspace code and no debuginfo for
   dependencies. For a debugger, add `--config 'profile.dev.debug=true' --config
   'profile.dev.package."*".debug=true'`; `CARGO_PROFILE_DEV_DEBUG` alone does
@@ -206,7 +207,7 @@ say what it builds in `plan::builds` (or make it package-scoped in
 `plan::SCOPED`, or always-on in `plan::always`). The tests in
 `xtask/src/verify/plan/tests.rs` check that every check's job runs it. A test
 that shells out to a nested Cargo build is `#[ignore]`d with a `guard-*`
-check of its own (`checks::guard`).
+check of its own (`checks::guard`), or its builds become the check's steps.
 
 ## Refreshing the model catalog
 
