@@ -27,8 +27,9 @@ use serde_json::Value;
 /// The JSON schema of the arguments type `A`, in the plain shape tool
 /// definitions use: inline, without `$schema`, `title`, `default`, `format`
 /// (providers support it unevenly) or the type's own doc comment, and with
-/// `Option` fields optional, not nullable (no `null` type, enum value or
-/// `anyOf` alternative), and each object refusing keys
+/// optional object properties non-nullable (no `null` type, enum value or
+/// `anyOf` alternative). Collection elements and required properties retain
+/// their nullability. Each object refuses keys
 /// it does not declare (`additionalProperties: false`, as
 /// `deny_unknown_fields` says; a map keeps its own).
 pub fn args_schema<A: JsonSchema>() -> Value {
@@ -44,10 +45,40 @@ pub fn args_schema<A: JsonSchema>() -> Value {
 
 /// Drops from one subschema what [`args_schema`] leaves out, keeping the
 /// other keys' order, closes an object to undeclared keys, joins a doc
-/// comment's lines as rustdoc does, and makes an `Option` optional rather
-/// than nullable: no `null` type or enum value, and no `{"type": "null"}`
-/// alternative (the one left is merged in).
+/// comment's lines as rustdoc does, and removes nullability only from
+/// properties that can be omitted.
 fn plain(schema: &mut Schema) {
+    let Some(schema) = schema.as_object_mut() else {
+        return;
+    };
+    if let Some(Value::String(text)) = schema.get_mut("description") {
+        let paragraphs: Vec<String> = text.split("\n\n").map(|p| p.replace('\n', " ")).collect();
+        *text = paragraphs.join("\n\n");
+    }
+    for key in ["title", "default", "format"] {
+        remove_preserving_order(schema, key);
+    }
+    if schema.contains_key("properties") && !schema.contains_key("additionalProperties") {
+        schema.insert("additionalProperties".to_owned(), Value::Bool(false));
+    }
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(Value::Object(properties)) = schema.get_mut("properties") {
+        for (name, property) in properties {
+            if !required
+                .iter()
+                .any(|required| required.as_str() == Some(name))
+            {
+                omit_null(property);
+            }
+        }
+    }
+}
+
+fn omit_null(schema: &mut Value) {
     let Some(schema) = schema.as_object_mut() else {
         return;
     };
@@ -65,16 +96,6 @@ fn plain(schema: &mut Schema) {
             }
         }
     }
-    if let Some(Value::String(text)) = schema.get_mut("description") {
-        let paragraphs: Vec<String> = text.split("\n\n").map(|p| p.replace('\n', " ")).collect();
-        *text = paragraphs.join("\n\n");
-    }
-    for key in ["title", "default", "format"] {
-        remove_preserving_order(schema, key);
-    }
-    if schema.contains_key("properties") && !schema.contains_key("additionalProperties") {
-        schema.insert("additionalProperties".to_owned(), Value::Bool(false));
-    }
     if let Some(Value::Array(types)) = schema.get_mut("type")
         && types.iter().any(|kind| kind == "null")
     {
@@ -88,3 +109,6 @@ fn plain(schema: &mut Schema) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
