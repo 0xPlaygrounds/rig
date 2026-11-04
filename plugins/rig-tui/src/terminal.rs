@@ -16,8 +16,9 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{
-    DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
-    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+    EnableFocusChange, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::terminal::{
     BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate, EnterAlternateScreen,
@@ -178,7 +179,12 @@ impl Tui {
         }
         execute!(backend, PopKeyboardEnhancementFlags).ok();
         // Every step is tried, so a failed one leaves no other undone.
-        let pastes = execute!(backend, DisableBracketedPaste, DisableFocusChange);
+        let pastes = execute!(
+            backend,
+            DisableBracketedPaste,
+            DisableFocusChange,
+            DisableMouseCapture
+        );
         let alternate = match keep_screen {
             true => Ok(()),
             false => execute!(backend, LeaveAlternateScreen),
@@ -235,6 +241,7 @@ where
         EnterAlternateScreen,
         EnableBracketedPaste,
         EnableFocusChange,
+        EnableMouseCapture,
         Clear(ClearType::All)
     )?;
     // A terminal without the keyboard protocol ignores these.

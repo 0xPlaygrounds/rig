@@ -12,7 +12,7 @@ use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use bevy_log::error;
 use crossbeam_channel::Receiver;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEventKind};
 use ratatui::layout::Rect;
 
 use super::clipboard;
@@ -566,7 +566,19 @@ pub(crate) fn read_input(
             Event::FocusLost => {
                 focus.set_if_neq(TerminalFocus(Some(false)));
             }
-            Event::Mouse(_) => {}
+            Event::Mouse(mouse) => {
+                if matches!(
+                    mouse.kind,
+                    MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                ) && let Some((_, _, mut state, _)) =
+                    pane.and_then(|pane| panes.get_mut(pane).ok())
+                {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => state.scroll.up(1),
+                        _ => state.scroll.down(1),
+                    }
+                }
+            }
         }
     }
 }
