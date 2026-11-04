@@ -456,23 +456,44 @@ impl Filter<serde_json::Value> {
 
         fn compare_pair(l: &Value, r: &Value) -> Option<Ordering> {
             match (l, r) {
-                // Prefer shared integer representations to avoid losing precision
-                // beyond 2^53; other numeric pairs fall back to f64.
                 (Number(l), Number(r)) => {
-                    if let (Some(l), Some(r)) = (l.as_i64(), r.as_i64()) {
-                        Some(l.cmp(&r))
-                    } else if let (Some(l), Some(r)) = (l.as_u64(), r.as_u64()) {
-                        Some(l.cmp(&r))
-                    } else {
-                        l.as_f64()
+                    let integer = |number: &serde_json::Number| {
+                        number
+                            .as_i64()
+                            .map(i128::from)
+                            .or_else(|| number.as_u64().map(i128::from))
+                    };
+                    match (integer(l), integer(r)) {
+                        (Some(l), Some(r)) => Some(l.cmp(&r)),
+                        (Some(l), None) => compare_integer_float(l, r.as_f64()?),
+                        (None, Some(r)) => {
+                            compare_integer_float(r, l.as_f64()?).map(Ordering::reverse)
+                        }
+                        (None, None) => l
+                            .as_f64()
                             .zip(r.as_f64())
-                            .and_then(|(l, r)| l.partial_cmp(&r))
+                            .and_then(|(l, r)| l.partial_cmp(&r)),
                     }
                 }
                 (String(l), String(r)) => Some(l.cmp(r)),
                 (Null, Null) => Some(Ordering::Equal),
                 (Bool(l), Bool(r)) => Some(l.cmp(r)),
                 _ => None,
+            }
+        }
+
+        fn compare_integer_float(integer: i128, float: f64) -> Option<Ordering> {
+            // All JSON integers fit in this range; guard it before truncating
+            // the float so rounding at the u64 boundary cannot create equality.
+            if float < i64::MIN as f64 {
+                return Some(Ordering::Greater);
+            }
+            if float >= 18_446_744_073_709_551_616.0 {
+                return Some(Ordering::Less);
+            }
+            match integer.cmp(&(float as i128)) {
+                Ordering::Equal => 0.0_f64.partial_cmp(&float.fract()),
+                ordering => Some(ordering),
             }
         }
 
