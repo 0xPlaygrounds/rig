@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
+use arrow_array_lancedb::{
+    ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type,
+};
 use rig::Embed;
 use rig::embeddings::Embedding;
 use serde::Deserialize;

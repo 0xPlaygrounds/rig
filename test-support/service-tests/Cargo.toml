@@ -22,6 +22,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 httpmock = { workspace = true }
 arrow-array = { workspace = true, optional = true }
+# LanceDB's public batch API is still built on Arrow 58.
+arrow-array-lancedb = { package = "arrow-array", version = "58.3", optional = true }
 assert_fs = { workspace = true, optional = true }
 lancedb = { workspace = true, optional = true }
 mongodb = { workspace = true, optional = true }
@@ -36,7 +38,13 @@ tokio-rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [features]
 default = []
-lancedb = ["rig/lancedb", "dep:lancedb", "dep:arrow-array", "dep:assert_fs"]
+lancedb = [
+  "rig/lancedb",
+  "dep:lancedb",
+  "dep:arrow-array",
+  "dep:arrow-array-lancedb",
+  "dep:assert_fs",
+]
 mongodb = ["rig/mongodb", "dep:mongodb", "dep:testcontainers"]
 neo4j = ["rig/neo4j", "dep:neo4rs", "dep:testcontainers"]
 postgres = [

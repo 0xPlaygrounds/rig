@@ -243,7 +243,7 @@ rig-rmcp = { path = "crates/rig-rmcp", version = "0.46.0" }
 rig-core = { path = "crates/rig-core", version = "0.46.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.46.0", default-features = false }
 anyhow = "1"
-arrow-array = "58"
+arrow-array = "60.1.0"
 assert_fs = "1"
 # 2.3: `force_send`, which Bevy Remote answers an in-process request with
 # (`BrpMessage::sender`).

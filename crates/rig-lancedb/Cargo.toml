@@ -14,7 +14,8 @@ workspace = true
 [dependencies]
 lancedb = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.46.0", default-features = false }
-arrow-array = { workspace = true }
+# LanceDB's public batch APIs still use Arrow 58 types, so keep this crate aligned.
+arrow-array = "58.3"
 serde_json = { workspace = true }
 serde = { workspace = true }
 futures = { workspace = true }
