@@ -51,8 +51,8 @@ impl SearchFilter for VectorizeFilter {
         Self(json!({ key.as_ref(): { "$lt": value } }))
     }
 
-    /// Merges both filters into one object, which Vectorize evaluates as a
-    /// conjunction. Keys present in both are taken from `rhs`.
+    /// Combines predicates by field and operator. Conflicting values for the
+    /// same operator produce a filter that fails validation.
     fn and(self, rhs: Self) -> Self {
         let mut merged = match self.0 {
             Value::Object(obj) => obj,
@@ -61,7 +61,31 @@ impl SearchFilter for VectorizeFilter {
 
         if let Value::Object(rhs_obj) = rhs.0 {
             for (k, v) in rhs_obj {
-                merged.insert(k, v);
+                let Some(current) = merged.get_mut(&k) else {
+                    merged.insert(k, v);
+                    continue;
+                };
+                if *current == v {
+                    continue;
+                }
+                let (Value::Object(current), Value::Object(operators)) = (current, v) else {
+                    return Self(json!({
+                        "$unsupported_and": format!("AND cannot combine predicates for field `{k}`")
+                    }));
+                };
+                for (operator, value) in operators {
+                    if current
+                        .get(&operator)
+                        .is_some_and(|existing| existing != &value)
+                    {
+                        return Self(json!({
+                            "$unsupported_and": format!(
+                                "AND cannot repeat operator `{operator}` with different values for field `{k}`"
+                            )
+                        }));
+                    }
+                    current.insert(operator, value);
+                }
             }
         }
 
@@ -103,14 +127,19 @@ impl VectorizeFilter {
         Self(json!({ key.as_ref(): { "$nin": values } }))
     }
 
-    /// Rejects filters built with a top-level disjunction. Nested disjunctions
-    /// are not detected.
+    /// Rejects disjunctions and conjunctions that cannot be represented without
+    /// replacing a predicate. Nested disjunctions are not detected.
     pub fn validate(&self) -> Result<(), VectorizeError> {
         if let Some(obj) = self.0.as_object()
             && obj.contains_key("$unsupported_or")
         {
             return Err(VectorizeError::UnsupportedFilterOperation(
                 "OR filters are not supported by Vectorize".to_string(),
+            ));
+        }
+        if let Some(message) = self.0.get("$unsupported_and").and_then(Value::as_str) {
+            return Err(VectorizeError::UnsupportedFilterOperation(
+                message.to_owned(),
             ));
         }
         Ok(())

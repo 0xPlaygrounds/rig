@@ -12,6 +12,12 @@ rig-core = "0.46.0"
 
 The root `rig` facade also exposes this crate behind the `vectorize` feature.
 
+Metadata filters joined with `and` preserve operators on the same field, so
+combining `gt("price", json!(10))` and `lt("price", json!(20))` represents a
+bounded range. Repeating an operator with different values fails validation
+rather than discarding a condition; express an equivalent single predicate when
+possible. Identical predicates are kept once.
+
 You can find end-to-end examples [here](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize/examples).
 
 For Vectorize-specific questions, ask in the [Cloudflare Developers Discord](https://discord.com/channels/595317990191398933/1152193114522525726).

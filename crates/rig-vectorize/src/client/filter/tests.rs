@@ -3,6 +3,70 @@ use rig_core::vector_store::request::SearchFilter;
 use serde_json::json;
 
 #[test]
+fn conjunction_preserves_both_bounds_in_either_order() {
+    for (lower, upper, expected) in [
+        (
+            VectorizeFilter::gt("price", json!(10)),
+            VectorizeFilter::lt("price", json!(20)),
+            json!({"price": {"$gt": 10, "$lt": 20}}),
+        ),
+        (
+            VectorizeFilter::gte("date", &json!("2026-01-01")),
+            VectorizeFilter::lte("date", &json!("2026-12-31")),
+            json!({"date": {"$gte": "2026-01-01", "$lte": "2026-12-31"}}),
+        ),
+    ] {
+        for filter in [lower.clone().and(upper.clone()), upper.and(lower)] {
+            assert!(filter.validate().is_ok());
+            assert_eq!(filter.into_inner(), expected);
+        }
+    }
+}
+
+#[test]
+fn identical_predicates_are_idempotent() {
+    let filter = VectorizeFilter::gt("price", json!(10));
+    let combined = filter.clone().and(filter.clone());
+    assert!(combined.validate().is_ok());
+    assert_eq!(combined.into_inner(), filter.into_inner());
+}
+
+#[test]
+fn repeated_operators_cannot_silently_drop_a_condition() {
+    for (left, right) in [
+        (
+            VectorizeFilter::gt("price", json!(10)),
+            VectorizeFilter::gt("price", json!(20)),
+        ),
+        (
+            VectorizeFilter::eq("status", json!("active")),
+            VectorizeFilter::eq("status", json!("archived")),
+        ),
+        (
+            VectorizeFilter::ne("status", &json!("active")),
+            VectorizeFilter::ne("status", &json!("archived")),
+        ),
+    ] {
+        for filter in [left.clone().and(right.clone()), right.and(left)] {
+            let filter = filter.and(VectorizeFilter::lt("price", json!(30)));
+            assert!(matches!(
+                filter.validate(),
+                Err(VectorizeError::UnsupportedFilterOperation(_))
+            ));
+        }
+    }
+}
+
+#[test]
+fn conjunction_keeps_an_unsupported_disjunction_invalid() {
+    let unsupported = VectorizeFilter::eq("a", json!(1)).or(VectorizeFilter::eq("b", json!(2)));
+    let range =
+        VectorizeFilter::gt("price", json!(10)).and(VectorizeFilter::lt("price", json!(20)));
+    assert!(unsupported.clone().and(range.clone()).validate().is_err());
+    assert!(range.and(unsupported).validate().is_err());
+}
+
+#[test]
 fn test_eq_filter() {
     let filter = VectorizeFilter::eq("category", json!("programming"));
     assert_eq!(
