@@ -2,7 +2,7 @@
 //!
 //! [`PostgresVectorStore`] searches a table holding a `pgvector` embedding
 //! column using a [`PgVectorDistanceFunction`] and optional [`PgSearchFilter`]
-//! conditions. With the `memory` feature, [`PostgresSessionStore`] keeps
+//! conditions. With the `memory` feature, `PostgresSessionStore` keeps
 //! rig-memory sessions in the same database. The `rig` facade re-exports
 //! this crate as `rig::postgres` under the `postgres` feature, and enables
 //! `memory` when its own `memory` feature is enabled too.

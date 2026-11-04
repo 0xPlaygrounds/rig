@@ -4,7 +4,7 @@
 //! storing embedded documents in SQLite with the `sqlite-vec` extension. Define
 //! document table schemas by implementing [`SqliteVectorStoreTable`].
 //!
-//! With the `memory` feature, [`SqliteSessionStore`] keeps rig-memory
+//! With the `memory` feature, `SqliteSessionStore` keeps rig-memory
 //! sessions in the same database.
 //!
 //! The root `rig` facade re-exports this crate as `rig::sqlite` when the
