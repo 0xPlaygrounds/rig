@@ -6,6 +6,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{Files, LogWriteError, SessionError, Store, check_log_name, check_name};
 
@@ -58,6 +59,25 @@ impl DirFiles {
         check_name(name)?;
         refuse_part(name)?;
         Ok(self.0.join(name))
+    }
+
+    /// The path to write `name` to. On a case-insensitive filesystem a
+    /// name such as `0.RIG-PART` is the name of the part file `0.rig-part`,
+    /// so it is written only where a file of exactly that name is kept
+    /// already, which no part file then is.
+    fn file_to_write(&self, name: &str) -> io::Result<PathBuf> {
+        let path = self.file(name)?;
+        let last = name.rsplit('/').next().unwrap_or(name);
+        let digits = last.bytes().take_while(u8::is_ascii_digit).count();
+        let tail = last.as_bytes().get(digits..).unwrap_or_default();
+        if digits > 0 && tail.eq_ignore_ascii_case(PART.as_bytes()) {
+            let kept = path.parent().map_or(Ok(Vec::new()), names)?;
+            if !kept.iter().any(|kept| kept == last) {
+                let why = format!("{name:?} can name a file being written");
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+            }
+        }
+        Ok(path)
     }
 }
 
@@ -130,46 +150,77 @@ fn absent_is_fine(removed: io::Result<()>) -> io::Result<()> {
 /// Writes `bytes` to `path` atomically: to a part file beside it, then
 /// renamed over it.
 fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let part = write_part(path, bytes, false)?;
-    fs::rename(&part, path)
+    Part::write(path, bytes, false)?.rename(path)
 }
 
 /// As [`write_atomic`], and durably: the part file is synced before the
 /// rename and the folder after it (best effort), so a power loss leaves
 /// the old file or the new, never an empty one.
 fn write_durable(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let part = write_part(path, bytes, true)?;
-    fs::rename(&part, path)?;
+    Part::write(path, bytes, true)?.rename(path)?;
     if let Some(parent) = path.parent() {
         let _ = File::open(parent).and_then(|folder| folder.sync_all());
     }
     Ok(())
 }
 
-/// Writes `bytes` to the part file beside `path`, whose folder it makes,
-/// synced with `sync`, and returns the part file's path.
-fn write_part(path: &Path, bytes: &[u8], sync: bool) -> io::Result<PathBuf> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+/// A part file beside the file it replaces, under a short name of its
+/// own (`<n>.rig-part`), so writers never write to or rename each other's
+/// and any name the folder takes can be replaced. Until it is renamed into
+/// place, dropping it removes it, so a write that fails leaves none behind.
+struct Part(Option<PathBuf>);
+
+impl Part {
+    /// Writes `bytes` to a new part file beside `path`, whose folder it
+    /// makes, synced with `sync`.
+    fn write(path: &Path, bytes: &[u8], sync: bool) -> io::Result<Self> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let (part, mut file) = loop {
+            let n = NEXT.fetch_add(1, Ordering::Relaxed);
+            let part = path.with_file_name(format!("{n}{PART}"));
+            // A name another process holds, or a crash left, is skipped.
+            match File::create_new(&part) {
+                Ok(file) => break (Self(Some(part)), file),
+                Err(failure) if failure.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(failure) => return Err(failure),
+            }
+        };
+        file.write_all(bytes)?;
+        if sync {
+            file.sync_all()?;
+        }
+        Ok(part)
     }
-    let mut part = path.as_os_str().to_owned();
-    part.push(PART);
-    let part = PathBuf::from(part);
-    let mut file = File::create(&part)?;
-    file.write_all(bytes)?;
-    if sync {
-        file.sync_all()?;
+
+    /// Renames the part file over `path`; its name is then free for
+    /// another writer, so it is no longer removed.
+    fn rename(mut self, path: &Path) -> io::Result<()> {
+        if let Some(part) = &self.0 {
+            fs::rename(part, path)?;
+        }
+        self.0 = None;
+        Ok(())
     }
-    Ok(part)
+}
+
+impl Drop for Part {
+    fn drop(&mut self) {
+        if let Some(part) = &self.0 {
+            let _ = fs::remove_file(part);
+        }
+    }
 }
 
 impl Files for DirFiles {
     fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        write_atomic(&self.file(name)?, bytes)
+        write_atomic(&self.file_to_write(name)?, bytes)
     }
 
     fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let path = self.file(name)?;
+        let path = self.file_to_write(name)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }

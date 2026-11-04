@@ -207,6 +207,15 @@ fn a_part_file_is_never_listed_or_named() {
     fs::write(dir.join("plugins/notes/b.json.rig-part"), b"half").expect("a part");
     assert_eq!(files.files().expect("files"), ["notes/a.json"]);
     assert!(files.write_file("c.json.rig-part", b"{}").is_err());
+    // A name that is a part file's on a case-insensitive filesystem is not
+    // made new; one kept already is read, written and removed as any other.
+    assert!(files.write_file("0.RIG-PART", b"{}").is_err());
+    for kept in ["0.RIG-PART", "notes.RIG-PART"] {
+        fs::write(dir.join("plugins").join(kept), b"kept").expect("a file");
+        assert_eq!(files.read_file(kept).expect("read"), b"kept");
+        files.write_file(kept, b"{}").expect("rewritten");
+        files.remove_file(kept).expect("removed");
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 
