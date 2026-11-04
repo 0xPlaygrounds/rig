@@ -718,6 +718,30 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     );
 }
 
+/// #2357: Codestral Embed answers a request naming no width with
+/// 1536-wide vectors, under both its ids, so that is the width a handle
+/// naming none reports, and the request still names none. A caller who
+/// names 1536 still sends it.
+#[test]
+fn codestral_embed_reports_the_width_it_returns_unasked() {
+    for model in [CODESTRAL_EMBED, "codestral-embed-2505"] {
+        let unasked = OpenAIConfig::with_key(&MISTRAL, "k").embedding(model, None);
+        assert_eq!(unasked.describe().capabilities.ndims, 1_536, "{model}");
+        let encoded = unasked
+            .encode(documents(), Mode::Unary)
+            .expect("the native width encodes");
+        let body = json_body(&encoded.request);
+        assert!(body.get("output_dimension").is_none(), "{body}");
+
+        let encoded = OpenAIConfig::with_key(&MISTRAL, "k")
+            .embedding(model, Some(1_536))
+            .encode(documents(), Mode::Unary)
+            .expect("the native width encodes");
+        let body = json_body(&encoded.request);
+        assert_eq!(body["output_dimension"], serde_json::json!(1_536), "{body}");
+    }
+}
+
 /// A width the dialect cannot honour is refused before the request is built.
 ///
 /// Request-side, because the reply-side check cannot see it: Doubleword
