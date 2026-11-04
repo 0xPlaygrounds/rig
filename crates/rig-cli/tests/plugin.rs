@@ -116,6 +116,16 @@ fn a_projects_plugins_change_nothing_and_its_crates_are_refused() {
             "{said}"
         );
         anyhow::ensure!(!home.join("project").exists() && !home.join("target").exists());
+        // So is a build there.
+        for args in [&["build"][..], &["plugin", "check", "--build"]] {
+            let output = rig(&home, &project, args)?;
+            anyhow::ensure!(output.status.code() == Some(1), "{args:?}: {output:?}");
+            anyhow::ensure!(
+                String::from_utf8(output.stderr)?.contains("extra"),
+                "{args:?}"
+            );
+        }
+        anyhow::ensure!(!home.join("project").exists() && !home.join("target").exists());
         Ok(())
     })();
     assert!(result.is_ok(), "{result:?}");

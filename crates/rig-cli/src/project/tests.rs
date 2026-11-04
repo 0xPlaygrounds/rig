@@ -62,6 +62,10 @@ fn a_home_without_plugins_builds_exactly_rigs_defaults() {
     let manifest = manifest(&home, &plugins, &source).unwrap_or_default();
     assert!(manifest.contains("\nrig-tui = "), "{manifest}");
     assert!(!manifest.contains("\nrig-steel = "), "off: {manifest}");
+    assert!(
+        manifest.contains("default-features = false, features = [\"tui\"] }\n"),
+        "{manifest}"
+    );
     let used = rig_crates(&plugins, &source);
     for name in ["rig-memory", "rig-reqwest", "rig-tui", "rig-basics"] {
         assert!(used.contains(name), "{name} is used");
@@ -98,6 +102,17 @@ fn enable_and_disable_change_the_programs_plugin_group() {
     assert!(!main.contains(&added(SKILLS)), "{main}");
     let manifest = manifest(&home, &plugins, &source).unwrap_or_default();
     assert!(manifest.contains("\nrig-steel = "), "{manifest}");
+    // Without the terminal view, nothing builds rig-tui.
+    let headless = home_with(&format!("[plugins]\ndisable = [\"{TUI}\"]\n")).unwrap_or_default();
+    let manifest = super::manifest(&home, &headless, &source).unwrap_or_default();
+    assert!(
+        !manifest.contains("rig-tui") && !manifest.contains("\"tui\""),
+        "{manifest}"
+    );
+    assert!(
+        manifest.contains("default-features = false }\n"),
+        "{manifest}"
+    );
     let refused = home_with("[plugins]\nenable = [\"rig_basics::nope::NopePlugin\"]\n")
         .err()
         .map(|why| why.to_string())

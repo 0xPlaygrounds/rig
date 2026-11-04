@@ -2,7 +2,8 @@
 //! `.cargo/config.toml` under `$RIG_HOME/project`. It holds exactly the
 //! plugins `RIG_HOME/settings.toml` turns on, added as one `PluginGroup`,
 //! so turning a plugin on or off rewrites it and the next start rebuilds
-//! the agent; only this crate changes, so it relinks. Each file is written
+//! the agent: only this crate compiles again, and a plugin's own crate the
+//! first time it is on. Each file is written
 //! only when its contents change, so cargo's fingerprints stay valid, and
 //! each names the launcher version, so a new launcher rebuilds the agent.
 
@@ -15,6 +16,9 @@ use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::{Home, env};
 
 use super::{Result, VERSION};
+
+/// The terminal view, whose plugin alone needs rig-basics' `tui` feature.
+const TUI: &str = "rig_tui::TuiPlugin";
 
 /// The generated package's name, and so its binary's.
 pub const PACKAGE: &str = "rig-harness-agent";
@@ -188,8 +192,7 @@ pub fn foreign_rig_crate(extra: &Extra, source: &RigSource) -> Option<String> {
     let name = &extra.krate;
     let checkout = checkout.display();
     let entry = if BUILT_IN.iter().any(|built_in| built_in.krate == name) {
-        "Its plugins are rig's own, which every agent has: name them in `[plugins] enable` \
-         instead, or build"
+        "Its plugins are rig's own: name them in `[plugins] enable` instead, or build"
     } else {
         "rig ships no crate of that name; build"
     };
@@ -269,7 +272,16 @@ fn manifest(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<String
         home.settings().display()
     );
     for name in ["rig-harness"].into_iter().chain(built_in_crates(plugins)) {
-        text.push_str(&format!("{name} = {{ {} }}\n", rig_source(source, name)?));
+        let mut from = rig_source(source, name)?;
+        // rig-basics' default `tui` feature builds rig-tui, for the terminal
+        // view alone.
+        if name == "rig-basics" {
+            from.push_str(", default-features = false");
+            if plugins.on.iter().any(|plugin| plugin == TUI) {
+                from.push_str(", features = [\"tui\"]");
+            }
+        }
+        text.push_str(&format!("{name} = {{ {from} }}\n"));
     }
     let mut listed = BTreeSet::new();
     for extra in plugins.extras_on() {

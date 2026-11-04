@@ -270,6 +270,24 @@ fn the_home_folder_is_no_project() {
 }
 
 #[test]
+fn a_project_file_that_does_not_read_is_no_notice() {
+    let root = std::env::temp_dir().join(format!("rig-config-broken-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let project = root.join("work");
+    assert!(std::fs::create_dir_all(project.join(".rig")).is_ok());
+    assert!(
+        std::fs::write(
+            project.join(".rig/settings.toml"),
+            "[large-change]\nlines = \n"
+        )
+        .is_ok()
+    );
+    let notice = project_notice(&crate::Home::at(root.join("home")), &project);
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(notice, Ok(None), "rig starts, as with any project file");
+}
+
+#[test]
 fn a_file_that_is_not_toml_is_refused_at_its_line() {
     let refused = SettingsFile::parse(PathBuf::from("/h/settings.toml"), "[tui]\nx = \n").err();
     let refused = refused.map(|why| why.to_string()).unwrap_or_default();

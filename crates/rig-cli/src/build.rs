@@ -176,6 +176,7 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
 /// retries a build that was rolled back. Run by an agent's `/reload`
 /// (`RIG_SESSION` set), it stages for that agent's launcher alone.
 pub fn build(home: &Home) -> Result<()> {
+    refuse_project_crates(home)?;
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     let staged = match SessionId::from_env()? {
         Some(session) => home.staged_for(&session),
@@ -187,9 +188,17 @@ pub fn build(home: &Home) -> Result<()> {
 /// `rig plugin check --build`, holding the root's build lock: builds the
 /// agent like [`build`] but stages nothing, and returns its report.
 pub fn check(home: &Home) -> Result<AgentDescription> {
+    refuse_project_crates(home)?;
     let _lock = locks::hold_build_lock(home, BuildOutput::Live)?;
     compile(home, &home.staged(), Staging::Never, BuildOutput::Live)?;
     described(home, &artifact(home))
+}
+
+/// Refuses a build in a project whose settings add plugin crates, as a
+/// start does ([`config::project_notice`]).
+fn refuse_project_crates(home: &Home) -> Result<()> {
+    config::project_notice(home, &std::env::current_dir()?)?;
+    Ok(())
 }
 
 /// The binary cargo builds the agent into.

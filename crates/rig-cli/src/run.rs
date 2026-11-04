@@ -80,7 +80,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         Ok(start) => start,
         Err(why) => return Ok(refused(&why)),
     };
-    let (run, mut claimed, mut claim_notice, project_notice, build_notice, build_failure, report) = {
+    let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
         let _lock = locks::hold_build_lock(home, output)?;
         // Before claiming, so a resumed session's leftover builds from its
@@ -88,17 +88,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         locks::sweep(home)?;
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
-        // A project's `[plugins]` is told, and its `extra` stops the run
-        // before anything builds.
-        let dir = claimed.directory.clone().or_else(|| here.clone());
-        let project = dir.map(|dir| config::project_notice(home, &dir));
-        let project_notice = match project.transpose() {
-            Ok(notice) => notice.flatten(),
-            Err(failure) => {
-                claimed.discard_if_unsaved(home);
-                return Err(failure.into());
-            }
-        };
+        // A project's `extra` stops the run before anything builds.
+        if let Err(failure) = project_warning(home, &claimed) {
+            claimed.discard_if_unsaved(home);
+            return Err(failure);
+        }
         let failure = rebuild(home, &claimed.id, output)?;
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
@@ -108,7 +102,6 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
             run,
             claimed,
             claim_notice,
-            project_notice,
             built,
             failure.map(|failure| failure.details()),
             report,
@@ -134,10 +127,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         claimed.discard_if_unsaved(home);
         (claimed, claim_notice) = (next, notice);
     }
-    let notice: Vec<String> = (claim_notice.into_iter())
-        .chain(project_notice)
-        .chain(build_notice)
-        .collect();
+    let notice: Vec<String> = claim_notice.into_iter().chain(build_notice).collect();
     let notice = (!notice.is_empty()).then(|| notice.join("\n"));
     let invocation = match report.invocation(args) {
         Ok(invocation) => invocation,
@@ -195,6 +185,17 @@ fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, Str
 fn refused(why: &str) -> ExitCode {
     eprintln!("rig: {why}\nRun `rig help` for usage.");
     ExitCode::from(REFUSED_EXIT_CODE)
+}
+
+/// What the settings of the project the session `claimed` works in say of
+/// plugins ([`config::project_notice`]): a warning that its `[plugins]` is
+/// not applied, or the refusal of its `extra`.
+fn project_warning(home: &Home, claimed: &Claimed) -> Result<Option<String>> {
+    let dir = match &claimed.directory {
+        Some(dir) => dir.clone(),
+        None => std::env::current_dir()?,
+    };
+    Ok(config::project_notice(home, &dir)?)
 }
 
 /// What the plugins of the build the launcher of `session` starts next add
@@ -264,12 +265,33 @@ fn launch(
         ..invocation.clone()
     };
     let mut invocation: &Invocation = invocation;
+    let mut first = true;
     loop {
         let left = switched_from.take();
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
         let ready = run.ready();
+        // The project's `[plugins]` is told at the first start and after a
+        // switch to another session, whose project its `extra` refuses.
+        let project = if first || left.is_some() {
+            project_warning(home, &claimed)
+        } else {
+            Ok(None)
+        };
+        first = false;
+        let project = match project {
+            Ok(project) => project,
+            Err(failure) => {
+                run.kill_left_groups().ok();
+                claimed.leave(home, run, false);
+                return Ok(Ended {
+                    code: ExitCode::FAILURE,
+                    said: Some(format!("error: {failure}")),
+                    restore: screen || kept_screen,
+                });
+            }
+        };
         if ask {
             for secret in report(home, &session).secrets {
                 let variable = secret_variable(&secret.name);
@@ -306,8 +328,9 @@ fn launch(
             command.env(env::NOTICE, notice);
         }
         // Only the first start runs elsewhere than it was.
-        if let Some(moved) = claimed.moved.take() {
-            command.env(env::WARNING, moved);
+        let warnings: Vec<String> = claimed.moved.take().into_iter().chain(project).collect();
+        if !warnings.is_empty() {
+            command.env(env::WARNING, warnings.join("\n"));
         }
         // Only the first start follows the failed build.
         if let Some(failure) = build_failure.take() {

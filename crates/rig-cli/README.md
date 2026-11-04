@@ -16,7 +16,8 @@ It generates a small Cargo project for the agent under `RIG_HOME` (default
 runs it. `settings.toml` is the one file you edit: its `[plugins]` table holds
 only your changes to rig's built-in list (`enable`, `disable`, and
 `[[plugins.extra]]` crates). Turning a plugin on or off rebuilds the agent at
-the next start; only the generated crate changes, so it relinks. A project's
+the next start: only the generated crate compiles again, and a plugin's own
+crate the first time it is on. A project's
 `.rig/settings.toml` never changes which plugins run.
 
 `rig help` lists the commands, `rig plugin --help` the plugin commands, and

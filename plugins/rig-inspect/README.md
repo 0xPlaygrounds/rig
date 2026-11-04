@@ -7,8 +7,9 @@ agent asks it which plugins are loaded and what each added, its agents, the
 state saved with the session, the warnings logged (the `Diagnostics`
 resource), schedules and every reflected type, before reading rig's source.
 
-It is off by default. Every agent is built with it, so turning it on needs no
-build: name it in `[plugins] enable` of `$RIG_HOME/settings.toml`, or run:
+It is off by default. Name it in `[plugins] enable` of
+`$RIG_HOME/settings.toml`, or run the command below; the next start or
+`/reload` builds the agent with it:
 
 ```bash
 rig plugin enable rig_inspect::InspectPlugin

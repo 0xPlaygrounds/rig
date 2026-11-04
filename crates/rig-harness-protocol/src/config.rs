@@ -120,9 +120,8 @@ SubagentsPlugin adds it.";
 after.";
             on rig_basics::reload::ReloadPlugin, "rig-basics", [],
                 Some("/reload, so a change applies only when rig starts again"),
-                "/reload, which rebuilds the agent when a plugin crate changed and restarts it \
-with the plugins settings.toml turns on. Without it the agent runs as it \
-started.";
+                "/reload, which rebuilds the agent when the plugins settings.toml turns on or a \
+plugin crate changed, and restarts it. Without it the agent runs as it started.";
             on rig_basics::reload::plugins::PluginsPlugin, "rig-basics", [],
                 Some("/plugins itself"),
                 "/plugins: every plugin, on and off, to turn on and off; applying rebuilds the \
@@ -858,17 +857,18 @@ impl Project {
 
 /// What to tell the user about the `[plugins]` table of the settings of
 /// the project around `dir` ([`project_plugins`]). A project file that is
-/// the home's own is none ([`Project::find`]).
+/// the home's own is none ([`Project::find`]), and so is one that does not
+/// read: a project stops rig from starting only by adding crates.
 ///
 /// # Errors
 ///
-/// As [`project_plugins`], and when the file cannot be read or is not TOML.
+/// As [`project_plugins`].
 pub fn project_notice(home: &crate::Home, dir: &Path) -> Result<Option<String>, Error> {
     let project = Project::find(dir, home.root(), std::env::home_dir().as_deref());
-    let Some(path) = project.settings() else {
+    let Some(file) = (project.settings()).and_then(|path| SettingsFile::read(&path).ok()) else {
         return Ok(None);
     };
-    project_plugins(&SettingsFile::read(&path)?, &home.settings())
+    project_plugins(&file, &home.settings())
 }
 
 #[cfg(test)]

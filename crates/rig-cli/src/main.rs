@@ -42,7 +42,8 @@ stdin; `rig help-agents` says how.
                          new binary for the next start. The agent holds only
                          the plugins [plugins] in RIG_HOME/settings.toml turns
                          on, so turning one on or off rebuilds it: only the
-                         generated crate changes, so it relinks.
+                         generated crate compiles again, and a plugin's own
+                         crate the first time it is on.
   rig help [command]     This text, or what a command does.
   rig help-agents        How a script or another agent drives rig headless,
                          over its stdin and stdout (-p, --json).

@@ -9,8 +9,8 @@ gated to those platforms. Windows and WASM are unsupported.
 
 ## Enable and use
 
-It ships with every rig release, at the launcher's version, and every agent
-built on Linux or macOS has it, off by default. Only if you want subscription
+It ships with every rig release, at the launcher's version, and is off by
+default; it builds on Linux and macOS. Only if you want subscription
 authentication, turn it on:
 
 ```sh

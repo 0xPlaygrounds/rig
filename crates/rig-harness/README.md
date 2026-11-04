@@ -54,7 +54,7 @@ default:
 | `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
 | `rig-basics` | `coding_tools::AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-basics` | `coding_tools::remote::RemoteHostsPlugin` | a path written `HOST:PATH` is that host's for every tool, through the transport `[remote.hosts]` in `settings.toml` gives it (such as `ssh` or `koh exec`); nothing without hosts |
-| `rig-basics` | `reload::ReloadPlugin` | `/reload`, which rebuilds the agent when a plugin crate changed and restarts it in the session with the plugins `settings.toml` turns on |
+| `rig-basics` | `reload::ReloadPlugin` | `/reload`, which rebuilds the agent when the plugins `settings.toml` turns on or a plugin crate changed, and restarts it in the session |
 | `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every plugin, on and off, in a picker that turns them on and off in `settings.toml`, then rebuilds and restarts at once |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/quit` |
 | `rig-basics` | `print::PrintPlugin` | `--print` and `--json`: the fronts of a run with `-p`, with stdin piped in, or driven by JSON lines (`rig help-agents`) |

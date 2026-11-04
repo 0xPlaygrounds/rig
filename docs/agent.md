@@ -415,8 +415,8 @@ bound.
 
 `/reload` rebuilds the agent when the plugins `settings.toml` turns on or a
 plugin crate changed, and restarts it on the same session. The agent holds
-only the plugins on, so turning one on or off rebuilds it; only the generated
-crate changes, so it relinks. Typed while
+only the plugins on, so turning one on or off rebuilds it: only the generated
+crate compiles again, and a plugin's own crate the first time it is on. Typed while
 a turn runs, it waits until no turn runs (`/reload cancel` drops it), and a
 turn started during the build delays the restart until it ends. It shows
 cargo's latest line, keeps the current build running if the new one does not
@@ -466,9 +466,9 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 ```
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
-at the next start or `/reload`; only the generated crate changes, so it
-relinks. Only your `settings.toml` says which plugins run: a project's
-`.rig/settings.toml` that has a `[plugins]` table is told at start and not
+at the next start or `/reload`: only the generated crate compiles again, and
+a plugin's own crate the first time it is on. Only your `settings.toml` says which plugins run: a project's
+`.rig/settings.toml` that has a `[plugins]` table is warned of at start and not
 applied, and one with `extra` is refused at start, naming the file, before
 anything builds, since building a crate runs its code. A helper, `/reload`
 and anything else a session starts run the same home's build.

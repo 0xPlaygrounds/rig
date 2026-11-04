@@ -41,8 +41,9 @@ pub const USAGE: &str = "  rig plugin list        Every plugin, rig's own and th
                          Turn a plugin on or off in RIG_HOME/settings.toml
                          ([plugins] enable and disable), keeping its comments.
                          The agent holds only the plugins on, so the next
-                         start, or /reload, rebuilds it; only the generated
-                         crate changes, so it relinks. A project's
+                         start, or /reload, rebuilds it: only the generated
+                         crate compiles again, and a plugin's own crate the
+                         first time it is on. A project's
                          .rig/settings.toml never changes which plugins run.
   rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
                          it to [[plugins.extra]]; the next start, or /reload,

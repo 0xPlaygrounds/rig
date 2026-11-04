@@ -14,7 +14,7 @@ It is off by default. Turn it on with:
 rig plugin enable rig_mcp_client::McpPlugin
 ```
 
-or in `/plugins`; nothing rebuilds. With it on and
+or in `/plugins`; the next start or `/reload` builds the agent with it. With it on and
 no `mcp.json`, it reads the two missing `mcp.json` files and its approvals at
 start, and does nothing else.
 

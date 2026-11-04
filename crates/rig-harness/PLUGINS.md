@@ -136,7 +136,8 @@ writes a working, commented slash command and the table `crate = "hello"`
 (the package), `path = "plugins/hello"` (relative to `RIG_HOME`; or `git`,
 with `branch` or `rev`, or `version`) and `plugin = "hello::HelloPlugin"`.
 The agent holds only the plugins on, so turning one on or off, or changing an
-extra, rebuilds it; only the generated crate changes, so it relinks.
+extra, rebuilds it: only the generated crate compiles again, and a plugin's
+own crate the first time it is on.
 
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
