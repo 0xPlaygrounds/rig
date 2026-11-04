@@ -702,6 +702,124 @@ fn the_log_holds_what_each_summary_first_replaced() {
     );
 }
 
+#[test]
+fn undo_after_a_reset_restores_only_the_current_conversation() {
+    use crate::{MemoryStore, Writer, load};
+
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let save = |conversation: &mut Conversation| {
+        writer.save("agent", conversation);
+        writer.flush().expect("flushed");
+        assert!(writer.failure().is_none());
+    };
+    let state = |summary: &str| SummaryState {
+        summary: summary.to_owned(),
+        ..Default::default()
+    };
+    let compact = |conversation: &mut Conversation, summary: &str| {
+        let keep_from = conversation.id(2);
+        apply_summary(conversation, keep_from, &state(summary)).expect("compacted");
+        save(conversation);
+    };
+    let messages = |prefix: &str| {
+        Conversation::from_messages(
+            ["one", "two", "three", "four"].map(|text| Message::user(format!("{prefix} {text}"))),
+        )
+    };
+
+    let mut conversation = messages("old");
+    save(&mut conversation);
+    compact(&mut conversation, "old first");
+    let old_summary = conversation.id(0);
+    compact(&mut conversation, "old second");
+
+    conversation = messages("current");
+    let expected = conversation.clone();
+    let queued = writer.save("agent", &mut conversation);
+    assert!(matches!(
+        queued.as_slice(),
+        [record] if matches!(record.change, Change::Reset { .. })
+    ));
+    writer.flush().expect("reset flushed");
+    let reset = summarized_in_log(&*store, "agent").expect("read");
+    assert!(reset.replaced.is_empty());
+    assert!(reset.records.is_empty());
+
+    compact(&mut conversation, "current first");
+    assert_eq!(conversation.id(0), old_summary, "reset reuses summary ids");
+    compact(&mut conversation, "current second");
+    let summarized = summarized_in_log(&*store, "agent").expect("read");
+    assert_eq!(
+        old_summary.and_then(|id| summarized.records.get(&id).map(|record| &record.state)),
+        Some(&state("current first"))
+    );
+
+    conversation = load(&*store, "agent").expect("reloaded");
+    let by = Author::plugin("undo");
+    let undone =
+        undo_summary(&mut conversation, &*store, "agent", by.clone()).expect("second undone");
+    assert_eq!(undone.state, state("current first"));
+    save(&mut conversation);
+    conversation = load(&*store, "agent").expect("reloaded");
+    undo_summary(&mut conversation, &*store, "agent", by).expect("first undone");
+    save(&mut conversation);
+
+    conversation = load(&*store, "agent").expect("reloaded after undo");
+    assert_eq!(conversation.messages(), expected.messages());
+    let ids = |conversation: &Conversation| -> Vec<MessageId> {
+        conversation.entries().map(|entry| entry.id).collect()
+    };
+    assert_eq!(ids(&conversation), ids(&expected));
+}
+
+#[test]
+fn a_summary_imported_by_reset_cannot_reuse_an_older_summarys_originals() {
+    use crate::{MemoryStore, Writer, load};
+
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let mut conversation = Conversation::from_messages([
+        Message::user("old request"),
+        Message::assistant("old reply"),
+    ]);
+    writer.save("agent", &mut conversation);
+    writer.flush().expect("flushed");
+    let state = SummaryState {
+        summary: "summary".to_owned(),
+        ..Default::default()
+    };
+    let keep_from = conversation.id(1);
+    apply_summary(&mut conversation, keep_from, &state).expect("compacted");
+    writer.save("agent", &mut conversation);
+    writer.flush().expect("flushed");
+    let old_summary = conversation.id(0);
+
+    conversation = Conversation::from_messages([
+        Message::user("current request"),
+        Message::assistant("current reply"),
+    ]);
+    let keep_from = conversation.id(1);
+    apply_summary(&mut conversation, keep_from, &state).expect("compacted elsewhere");
+    assert_eq!(conversation.id(0), old_summary);
+    let queued = writer.save("agent", &mut conversation);
+    assert!(matches!(
+        queued.as_slice(),
+        [record] if matches!(record.change, Change::Reset { .. })
+    ));
+    writer.flush().expect("reset flushed");
+    conversation = load(&*store, "agent").expect("reloaded");
+    let before = conversation.clone();
+
+    assert!(matches!(
+        undo_summary(&mut conversation, &*store, "agent", Author::plugin("undo")),
+        Err(UndoError::NotInLog)
+    ));
+    assert_eq!(conversation, before, "failed undo must change nothing");
+}
+
 /// A summary reads a stopped reply's call that no result answers as one
 /// that never ran.
 #[test]

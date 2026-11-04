@@ -653,7 +653,7 @@ pub enum UndoError {
     #[error("its summary is no longer in the conversation")]
     SummaryGone,
     /// The session's log does not hold what it replaced, such as before
-    /// the compaction was saved.
+    /// the compaction was saved or when a reset imported its summary.
     #[error("the session's log does not hold what it replaced")]
     NotInLog,
     /// The session's log could not be read.
@@ -709,9 +709,9 @@ pub struct Summarized {
 }
 
 /// What the compactions in the log `log` of `store` replaced, read in one
-/// pass over the log. A summary named again, as by an undo that put it
-/// back, keeps what it first replaced. A summary whose entries the log
-/// does not hold is left out.
+/// pass over the log after its latest reset. A summary named again, as by
+/// an undo that put it back, keeps what it first replaced. A summary whose
+/// entries the log does not hold since that reset is left out.
 ///
 /// # Errors
 ///
@@ -721,6 +721,11 @@ pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, Ses
     let mut records = BTreeMap::new();
     replay(store, log, |before, recorded| {
         let change = &recorded.change;
+        if matches!(change, Change::Reset { .. }) {
+            first.clear();
+            records.clear();
+            return;
+        }
         let (Some(summary), Change::Splice { removed, with, .. }) = (summary_in(change), change)
         else {
             return;
