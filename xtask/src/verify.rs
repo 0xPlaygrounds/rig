@@ -134,13 +134,13 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         &["metadata", "--locked", "--no-deps", "--format-version", "1"],
     )?)?;
     let changes = selection::changes(root, &opts)?;
-    let mut all = checks::all();
-    for check in &mut all {
+    let all = checks::all();
+    let mut plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    for check in &mut plan {
         if check.steps.iter().any(|s| s.program == "@full-tests") {
             check.steps = parts::steps(&metadata)?;
         }
     }
-    let mut plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
     if let Some(part) = &opts.part {
         for check in &mut plan {
             check.steps.retain(|s| s.part.as_ref() == Some(part));

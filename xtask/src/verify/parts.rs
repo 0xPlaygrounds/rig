@@ -208,9 +208,11 @@ fn members(metadata: &Value) -> Result<Vec<(String, Vec<String>, bool)>> {
                     .as_array()
                     .is_some_and(|k| k.iter().any(|x| kinds.iter().any(|kind| x == kind)))
             };
+            // `--test NAME` would also build a target marked `test = false`,
+            // which the default selection leaves out.
             let tests = targets
                 .iter()
-                .filter(|t| has(t, &["test"]))
+                .filter(|t| has(t, &["test"]) && t["test"] != false)
                 .filter_map(|t| t["name"].as_str().map(str::to_owned))
                 .collect();
             let lib = targets

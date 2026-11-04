@@ -92,6 +92,8 @@ jobs:
           shared-key: all-features
           save-if: "false"
       - run: cargo xtask verify --check full-tests --part ${{ matrix.part }}
+      - if: ${{ !cancelled() }}
+        run: df -h /
 
   # The required check: green only when every part passed.
   test-all-features:
