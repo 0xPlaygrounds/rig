@@ -2,13 +2,11 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
 
-/// `rig <args>` in `dir`, with `home` as `RIG_HOME` and no plugins handed
-/// down from a session.
+/// `rig <args>` in `dir`, with `home` as `RIG_HOME`.
 fn rig(home: &Path, dir: &Path, args: &[&str]) -> std::io::Result<Output> {
     Command::new(env!("CARGO_BIN_EXE_rig"))
         .env("RIG_HOME", home)
         .env_remove("RIG_SOURCE")
-        .env_remove("RIG_PLUGINS")
         .current_dir(dir)
         .args(args)
         .output()
@@ -88,7 +86,7 @@ fn a_fresh_home_lists_the_defaults_with_what_they_add_and_writes_nothing() {
 }
 
 #[test]
-fn a_project_turns_rig_plugins_off_here_and_cannot_add_crates() {
+fn a_projects_plugins_change_nothing_and_its_crates_are_refused() {
     let result = (|| -> anyhow::Result<()> {
         let root = assert_fs::TempDir::new()?;
         let home = root.path().join("home");
@@ -105,10 +103,7 @@ fn a_project_turns_rig_plugins_off_here_and_cannot_add_crates() {
         let row = (text.lines())
             .find(|line| line.split_whitespace().nth(1) == Some(agents_md))
             .unwrap_or_default();
-        anyhow::ensure!(
-            row.starts_with("off ") && row.contains("this project"),
-            "{row}"
-        );
+        anyhow::ensure!(row.starts_with("on "), "the home's list: {row}");
         let extra =
             "[[plugins.extra]]\ncrate = \"evil\"\npath = \"evil\"\nplugin = \"evil::Evil\"\n";
         fs::write(project.join(".rig/settings.toml"), extra)?;

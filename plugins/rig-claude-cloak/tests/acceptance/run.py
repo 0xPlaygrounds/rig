@@ -16,7 +16,7 @@ import re
 
 from audit import Evidence, FACTS, PHASE_NAMES, PROBE_VARIANTS, PROBE_ORDERS, import_effects, private_json, report, tool_result_detail
 from ledger import Ledger, AGGREGATE_REQUEST_LIMITS
-from preflight import verify_build, verify_claude, verify_root_ttl, verify_probe, private_capture, private_probe_metadata, ROOT_TTL_TEST, TOOL_RESULT_TEST, build_record, plugins_table
+from preflight import verify_build, verify_claude, verify_root_ttl, verify_probe, private_capture, private_probe_metadata, ROOT_TTL_TEST, TOOL_RESULT_TEST, build_record
 
 MODEL = "claude-cloak/claude-opus-5-5"
 PHASES = [
@@ -132,7 +132,7 @@ def live(args):
     evidence = Evidence(output)
     commit = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     dirty = bool(subprocess.check_output(["git", "-C", str(source), "status", "--porcelain"]))
-    settings = plugins_table(plugins) + "[compaction]\nkeep_recent = 1024\nkeep_asked = 0\nlimits = { reserve = 970000, summary_tokens = 1024 }\n"
+    settings = "[compaction]\nkeep_recent = 1024\nkeep_asked = 0\nlimits = { reserve = 970000, summary_tokens = 1024 }\n"
     prompt = ("Synthetic acceptance ledger. Memorize these facts: " + json.dumps(FACTS) +
               "\n" + "The neutral filler sentence carries no additional facts.\n" * 700 +
               "\nReturn the five ledger values only. Do not use tools.")

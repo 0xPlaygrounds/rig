@@ -174,9 +174,7 @@ impl Processes {
     }
 
     /// Starts every process from now on as `launcher` says, without the
-    /// secrets. Build it from [`launcher`](Self::launcher) to keep what is
-    /// set already, such as the session's plugin list
-    /// ([`load_chosen`](crate::load_chosen)).
+    /// secrets.
     pub fn set(&self, launcher: Launcher) {
         *self
             .launcher

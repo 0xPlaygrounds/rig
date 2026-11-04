@@ -105,11 +105,6 @@ pub mod env {
     pub const SECRET_PREFIX: &str = "RIG_SECRET_";
     /// A rig checkout the agent is built from instead of crates.io.
     pub const SOURCE: &str = "RIG_SOURCE";
-    /// The plugins the agent adds, by type path, separated by commas: the
-    /// launcher sets it from the settings ([`config::plugins_in`](super::config::plugins_in)),
-    /// and every process the agent starts inherits it, so a `rig -p` child
-    /// runs with its session's plugins.
-    pub const PLUGINS: &str = "RIG_PLUGINS";
 }
 
 /// The launcher that started this agent, if one did: it sets both
@@ -342,10 +337,9 @@ impl Home {
         self.bin().join("staged")
     }
 
-    /// The [`AgentDescription`] report kept under `stamp`: the build's
-    /// modification time in nanoseconds and its length (`"{mtime} {len}"`),
-    /// and the launcher's key of the plugins on, one per build and list,
-    /// which every copy of the build shares.
+    /// The [`AgentDescription`] report of the build whose stamp is `stamp` (its
+    /// modification time in nanoseconds and its length, as `"{mtime} {len}"`),
+    /// one per build, which every copy of the build shares.
     pub fn described(&self, stamp: &str) -> PathBuf {
         self.bin()
             .join("described")
@@ -1130,8 +1124,8 @@ const DESCRIBED_HEADER: &str = "rig-describe 1";
 /// writes it when the launcher sets [`env::DESCRIBE`]: their commands,
 /// their options and the secrets they ask for, and the plugins whose
 /// agent-loop systems clash, for `rig plugin check --build`. The launcher
-/// keeps one per build and plugin list ([`Home::described`]) and reads the
-/// command line against it.
+/// keeps one per build ([`Home::described`]) and reads the command line
+/// against it.
 ///
 /// The text form is a header line, then one line each, its fields separated by
 /// tabs (shown here as `⇥`):

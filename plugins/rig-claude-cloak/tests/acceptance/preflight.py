@@ -51,11 +51,6 @@ def enabled_plugins(plugins):
     return set(table.get("enable", [])) - set(table.get("disable", []))
 
 
-def plugins_table(plugins):
-    """A `[plugins]` table for a scratch RIG_HOME that turns on what `plugins` enables."""
-    return "[plugins]\nenable = " + json.dumps(sorted(enabled_plugins(plugins))) + "\n"
-
-
 def build_record(binary, source, plugins, generated_main, command):
     if not command:
         raise ValueError("record the exact successful build command")
@@ -71,12 +66,11 @@ def verify_build(binary, source, plugins, record_path):
         raise ValueError("binary/source/manifest changed since the successful build was recorded")
     missing = REQUIRED - enabled_plugins(plugins)
     generated = Path(record["generated_main"]).read_text()
-    missing |= {name for name in REQUIRED if "Compiled::new::<" + name + ">" not in generated}
+    missing |= {name for name in REQUIRED if "Loaded::<" + name + ">" not in generated}
     if missing:
         raise ValueError("acceptance build lacks required plugins: " + ", ".join(sorted(missing)))
     with tempfile.TemporaryDirectory(prefix="cloak-preflight-", dir="/dev/shm") as folder:
         path = Path(folder)
-        (path / "settings.toml").write_text(plugins_table(plugins))
         env = {"PATH": os.environ.get("PATH", os.defpath), "HOME": folder, "RIG_HOME": folder,
                "RIG_DESCRIBE": str(path / "description"), "RUST_LOG": "off"}
         result = subprocess.run([str(binary)], env=env, capture_output=True, timeout=30)

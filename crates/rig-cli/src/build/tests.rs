@@ -27,15 +27,15 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     let report = "printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' \
                   > \"$RIG_DESCRIBE\"";
     let home = built("staged", report);
-    let staged = stage(&home, &home.staged(), Staging::Always, &[]);
-    let kept = good_report(&home, &home.staged(), &[]);
+    let staged = stage(&home, &home.staged(), Staging::Always);
+    let kept = good_report(&home, &home.staged());
     fs::remove_dir_all(home.root()).ok();
     assert!(staged.is_ok(), "{staged:?}");
     assert!(kept.is_some_and(|report| report.command("stats").is_some()));
     // Two plugins with one command: the describe exits 2, saying why.
     let clash = "echo 'rig: plugins `a` and `b` both add the command `stats`' >&2; exit 2";
     let home = built("clash", clash);
-    let refused = stage(&home, &home.staged(), Staging::Always, &[]).map_err(|why| why.to_string());
+    let refused = stage(&home, &home.staged(), Staging::Always).map_err(|why| why.to_string());
     let rejected = fs::read_to_string(home.rejected()).ok();
     let (good, staged) = (home.good().exists(), home.staged().exists());
     let artifact = home.target().join("debug").join(PACKAGE);
@@ -47,46 +47,7 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
         "{refused}"
     );
     assert!(good && !staged);
-    assert_eq!(rejected, stamp.map(|stamp| rejection(&stamp, &[])));
-}
-
-#[test]
-fn a_build_rejected_with_some_plugins_is_staged_with_others() {
-    let clash = "if [ \"$RIG_PLUGINS\" = a::A ]; then echo clash >&2; exit 2; fi; \
-                 printf 'rig-describe 1\\n' > \"$RIG_DESCRIBE\"";
-    let home = built("relisted", clash);
-    let refused = stage(
-        &home,
-        &home.staged(),
-        Staging::OnlyNew,
-        &["a::A".to_owned()],
-    );
-    let staged = stage(
-        &home,
-        &home.staged(),
-        Staging::OnlyNew,
-        &["b::B".to_owned()],
-    );
-    let exists = home.staged().exists();
-    fs::remove_dir_all(home.root()).ok();
-    assert!(refused.is_err());
-    assert!(staged.is_ok() && exists, "{staged:?}");
-}
-
-#[test]
-fn a_build_describes_what_the_plugins_on_add_once_per_list() {
-    let report = "if [ \"$RIG_PLUGINS\" = a::A ]; then name=stats; else name=other; fi; \
-                  printf 'rig-describe 1\\ncommand\\t%s\\t-\\theadless\\tsession\\tCount\\n' \
-                  \"$name\" > \"$RIG_DESCRIBE\"";
-    let home = built("lists", report);
-    let artifact = home.target().join("debug").join(PACKAGE);
-    let one = described(&home, &artifact, &["a::A".to_owned()]).ok();
-    let other = described(&home, &artifact, &["b::B".to_owned()]).ok();
-    let kept = good_report(&home, &artifact, &["a::A".to_owned()]);
-    fs::remove_dir_all(home.root()).ok();
-    assert!(one.is_some_and(|report| report.command("stats").is_some()));
-    assert!(other.is_some_and(|report| report.command("other").is_some()));
-    assert!(kept.is_some_and(|report| report.command("stats").is_some()));
+    assert_eq!(rejected, stamp);
 }
 
 #[test]

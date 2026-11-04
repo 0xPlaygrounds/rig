@@ -8,7 +8,7 @@ and its slash commands.
 
 ## Turning it on
 
-It is off by default and in every build. Turn it on:
+It is off by default. Turn it on, and the next start builds it:
 
 ```sh
 rig plugin enable rig_acp::AcpPlugin

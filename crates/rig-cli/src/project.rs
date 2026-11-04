@@ -1,18 +1,17 @@
 //! The generated agent project: `Cargo.toml`, `src/main.rs` and
-//! `.cargo/config.toml` under `$RIG_HOME/project`. It holds every one of
-//! rig's own plugins that builds on this target and the home's extra
-//! crates, so turning a plugin on or off needs no build: the agent adds
-//! those its settings turn on when it starts ([`rig_harness::load_chosen`]).
-//! Each file is written only when its contents change, so cargo's
-//! fingerprints stay valid, and each names the launcher version, so a new
-//! launcher rebuilds the agent.
+//! `.cargo/config.toml` under `$RIG_HOME/project`. It holds exactly the
+//! plugins `RIG_HOME/settings.toml` turns on, added as one `PluginGroup`,
+//! so turning a plugin on or off rewrites it and the next start rebuilds
+//! the agent; only this crate changes, so it relinks. Each file is written
+//! only when its contents change, so cargo's fingerprints stay valid, and
+//! each names the launcher version, so a new launcher rebuilds the agent.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
-use rig_harness_protocol::config::{BUILT_IN, Extra, Source};
+use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::{Home, env};
 
 use super::{Result, VERSION};
@@ -24,10 +23,10 @@ pub const PACKAGE: &str = "rig-harness-agent";
 /// `crates/rig-cli` is two folders below its root.
 pub(super) const CHECKOUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-/// The crates of rig's own plugins that build on this target.
-pub fn built_in_crates() -> BTreeSet<&'static str> {
-    (BUILT_IN.iter())
-        .filter(|built_in| built_in.available())
+/// The crates of rig's own plugins that are on.
+fn built_in_crates(plugins: &Plugins) -> BTreeSet<&'static str> {
+    (plugins.on.iter())
+        .filter_map(|plugin| built_in(plugin))
         .map(|built_in| built_in.krate)
         .collect()
 }
@@ -100,18 +99,19 @@ pub fn crate_dir(checkout: &Path, name: &str) -> Option<PathBuf> {
         .find(|directory| directory.join("Cargo.toml").is_file())
 }
 
-/// The rig crates the agent uses: [`CORE_CRATES`], rig's plugin crates,
-/// the rig crates an extra crate by path depends on, and what each of
-/// those that is a plugin crate depends on in turn. Without a checkout,
-/// [`CORE_CRATES`] and rig's plugin crates.
-pub fn rig_crates(extras: &[Extra], source: &RigSource) -> BTreeSet<String> {
+/// The rig crates the agent uses: [`CORE_CRATES`], the crates of rig's
+/// plugins that are on, the rig crates an extra crate on by path depends
+/// on, and what each of those that is a plugin crate depends on in turn.
+/// Without a checkout, [`CORE_CRATES`] and the crates of rig's plugins on.
+pub fn rig_crates(plugins: &Plugins, source: &RigSource) -> BTreeSet<String> {
     let mut used: BTreeSet<String> = CORE_CRATES.map(str::to_owned).into();
+    let on = built_in_crates(plugins).into_iter().map(str::to_owned);
     let RigSource::Local(checkout) = source else {
-        used.extend(built_in_crates().into_iter().map(str::to_owned));
+        used.extend(on);
         return used;
     };
-    let mut pending: Vec<String> = built_in_crates().into_iter().map(str::to_owned).collect();
-    for extra in extras {
+    let mut pending: Vec<String> = on.collect();
+    for extra in plugins.extras_on() {
         if let Source::Path(directory) = &extra.source {
             pending.extend(dependencies(directory));
         }
@@ -187,7 +187,7 @@ pub fn foreign_rig_crate(extra: &Extra, source: &RigSource) -> Option<String> {
     };
     let name = &extra.krate;
     let checkout = checkout.display();
-    let entry = if built_in_crates().contains(name.as_str()) {
+    let entry = if BUILT_IN.iter().any(|built_in| built_in.krate == name) {
         "Its plugins are rig's own, which every agent has: name them in `[plugins] enable` \
          instead, or build"
     } else {
@@ -231,14 +231,17 @@ pub fn rig_version(source: &RigSource) -> String {
     version.unwrap_or_else(|| VERSION.to_owned())
 }
 
-/// Writes the agent project with rig's plugins and `extras`.
-pub fn generate(home: &Home, extras: &[Extra], source: &RigSource) -> Result<()> {
+/// Writes the agent project with the plugins on of `plugins`.
+pub fn generate(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<()> {
     let project = home.project();
     write_if_changed(
         &project.join("Cargo.toml"),
-        &manifest(home, extras, source)?,
+        &manifest(home, plugins, source)?,
     )?;
-    write_if_changed(&project.join("src/main.rs"), &main_rs(home, extras, source))?;
+    write_if_changed(
+        &project.join("src/main.rs"),
+        &main_rs(home, plugins, source),
+    )?;
     write_if_changed(&project.join(".cargo/config.toml"), &cargo_config(home))?;
     // A checkout's lock seeds the versions CI tested.
     let lock = project.join("Cargo.lock");
@@ -250,7 +253,7 @@ pub fn generate(home: &Home, extras: &[Extra], source: &RigSource) -> Result<()>
     Ok(())
 }
 
-fn manifest(home: &Home, extras: &[Extra], source: &RigSource) -> Result<String> {
+fn manifest(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<String> {
     let mut text = format!(
         "# Generated by rig {VERSION} from {}. `rig build` and /reload rewrite this file.\n\
          [package]\n\
@@ -265,11 +268,11 @@ fn manifest(home: &Home, extras: &[Extra], source: &RigSource) -> Result<String>
          [dependencies]\n",
         home.settings().display()
     );
-    for name in ["rig-harness"].into_iter().chain(built_in_crates()) {
+    for name in ["rig-harness"].into_iter().chain(built_in_crates(plugins)) {
         text.push_str(&format!("{name} = {{ {} }}\n", rig_source(source, name)?));
     }
     let mut listed = BTreeSet::new();
-    for extra in extras {
+    for extra in plugins.extras_on() {
         // A crate with several plugins is one dependency.
         if !listed.insert(extra.krate.as_str()) {
             continue;
@@ -298,27 +301,27 @@ fn manifest(home: &Home, extras: &[Extra], source: &RigSource) -> Result<String>
     if let RigSource::Local(checkout) = source {
         // A plugin naming the crates.io releases builds against the checkout.
         text.push('\n');
-        text.push_str(&rig_patch(checkout, &rig_crates(extras, source)));
+        text.push_str(&rig_patch(checkout, &rig_crates(plugins, source)));
     }
-    text.push_str(&profile(extras, source));
+    text.push_str(&profile(plugins, source));
     Ok(text)
 }
 
 /// The agent's build profile: dependencies at full speed, built once, and
 /// the crates `/reload` rebuilds (rig's own from a checkout, and extras by
 /// path or git) at opt-level 1, so a rebuild stays quick.
-fn profile(extras: &[Extra], source: &RigSource) -> String {
+fn profile(plugins: &Plugins, source: &RigSource) -> String {
     let mut text = String::from(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
          \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug-assertions = false\n\
          overflow-checks = false\n",
     );
     let mut edited: BTreeSet<String> = match source {
-        RigSource::Local(_) => rig_crates(extras, source),
+        RigSource::Local(_) => rig_crates(plugins, source),
         RigSource::Registry => BTreeSet::new(),
     };
     edited.extend(
-        (extras.iter())
+        (plugins.extras_on())
             .filter(|extra| matches!(extra.source, Source::Path(_) | Source::Git { .. }))
             .map(|extra| extra.krate.clone()),
     );
@@ -357,51 +360,48 @@ fn rig_origin(source: &RigSource, name: &str) -> String {
     }
 }
 
-/// The agent: the harness, then every plugin it is built with, of which
-/// `rig_harness::load_chosen` adds those the settings turn on, in their
-/// order; `rig_harness::run` runs it, or describes what its plugins add
-/// when the launcher asks.
-fn main_rs(home: &Home, extras: &[Extra], source: &RigSource) -> String {
+/// The agent: the harness, then the plugins on, in their order, as the
+/// `PluginGroup` `Chosen` of [`rig_harness::Loaded`] plugins;
+/// `rig_harness::run` runs it, or describes what its plugins add when the
+/// launcher asks.
+fn main_rs(home: &Home, plugins: &Plugins, source: &RigSource) -> String {
     let mut text = format!(
-        "// Generated by rig {VERSION} from {}. /reload rewrites this file.\n\
+        "// Generated by rig {VERSION} from {}. `rig build` and /reload rewrite this file.\n\
          fn main() -> rig_harness::AppExit {{\n    \
              let mut app = rig_harness::App::new();\n    \
              // A failing system, observer or command from a plugin is logged.\n    \
              app.set_error_handler(rig_harness::error::warn);\n    \
              // Bevy's base and the headless loop come first, so the agent runs on\n    \
              // their clock and a windowing plugin added later can replace the loop.\n    \
-             app.add_plugins((rig_harness::HeadlessPlugins, rig_harness::RigHarnessPlugins));\n    \
-             rig_harness::load_chosen(\n        \
-                 &mut app,\n        \
-                 &[\n",
+             app.add_plugins((rig_harness::HeadlessPlugins, rig_harness::RigHarnessPlugins, Chosen));\n    \
+             // A debug build warns at start of agent-loop systems left unordered.\n    \
+             #[cfg(debug_assertions)]\n    \
+             rig_harness::check_stages_at_start(&mut app);\n    \
+             // Runs the app, or describes it when the launcher asks.\n    \
+             rig_harness::run(app)\n\
+         }}\n\
+         \n\
+         /// The plugins settings.toml turns on, in the order the agent adds them.\n\
+         struct Chosen;\n\
+         \n\
+         impl rig_harness::PluginGroup for Chosen {{\n    \
+             fn build(self) -> rig_harness::PluginGroupBuilder {{\n        \
+                 rig_harness::PluginGroupBuilder::start::<Self>()\n",
         home.settings().display(),
     );
-    let built_in = (BUILT_IN.iter())
-        .filter(|built_in| built_in.available())
-        .map(|built_in| {
-            let from = rig_origin(source, built_in.krate);
-            (built_in.plugin, built_in.krate, from)
-        });
-    let extra = extras.iter().map(|extra| {
-        (
-            extra.plugin.as_str(),
-            extra.krate.as_str(),
-            extra.source.to_string(),
-        )
-    });
-    for (plugin, krate, from) in built_in.chain(extra) {
+    for plugin in &plugins.on {
+        let (krate, from) = match built_in(plugin) {
+            Some(built_in) => (built_in.krate, rig_origin(source, built_in.krate)),
+            None => match plugins.extra.iter().find(|extra| extra.plugin == *plugin) {
+                Some(extra) => (extra.krate.as_str(), extra.source.to_string()),
+                None => continue,
+            },
+        };
         text.push_str(&format!(
-            "            rig_harness::Compiled::new::<{plugin}>({plugin:?}, {krate:?}, {from:?}),\n"
+            "            .add(rig_harness::Loaded::<{plugin}>::new({krate:?}, {from:?}))\n"
         ));
     }
-    text.push_str(
-        "        ],\n    );\n    \
-         // A debug build warns at start of agent-loop systems left unordered.\n    \
-         #[cfg(debug_assertions)]\n    \
-         rig_harness::check_stages_at_start(&mut app);\n",
-    );
-    // Runs the app, or describes it when the launcher asks.
-    text.push_str("    rig_harness::run(app)\n}\n");
+    text.push_str("    }\n}\n");
     text
 }
 

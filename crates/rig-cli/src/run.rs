@@ -37,11 +37,11 @@ use std::time::Duration;
 
 use rig_harness_protocol::{
     AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
-    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
+    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, config, env, secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, Staging, child};
-use super::{Result, locks, plugin_list};
+use super::{Result, locks};
 
 mod stop;
 
@@ -76,12 +76,11 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // Before the build, `-r` as the last build reads it; the new build may
     // read it otherwise (below).
     let asked = last_report(home).unwrap_or_default().resume(args);
-    let session_dir = |claimed: &Claimed| claimed.directory.clone().or_else(|| here.clone());
     let start = match start_of(home, asked.as_deref()) {
         Ok(start) => start,
         Err(why) => return Ok(refused(&why)),
     };
-    let (run, mut claimed, mut claim_notice, build_notice, build_failure, report) = {
+    let (run, mut claimed, mut claim_notice, project_notice, build_notice, build_failure, report) = {
         let _typing = (terminal && !print).then(TypeAhead::hold).flatten();
         let _lock = locks::hold_build_lock(home, output)?;
         // Before claiming, so a resumed session's leftover builds from its
@@ -89,23 +88,27 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         locks::sweep(home)?;
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
-        // Settings that do not read stop the run before anything builds.
-        let on = match plugins_of(home, session_dir(&claimed)) {
-            Ok(plugins) => plugins.on,
+        // A project's `[plugins]` is told, and its `extra` stops the run
+        // before anything builds.
+        let dir = claimed.directory.clone().or_else(|| here.clone());
+        let project = dir.map(|dir| config::project_notice(home, &dir));
+        let project_notice = match project.transpose() {
+            Ok(notice) => notice.flatten(),
             Err(failure) => {
                 claimed.discard_if_unsaved(home);
-                return Err(failure);
+                return Err(failure.into());
             }
         };
-        let failure = rebuild(home, &claimed.id, output, &on)?;
+        let failure = rebuild(home, &claimed.id, output)?;
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
         });
-        let report = report(home, &claimed.id, &on);
+        let report = report(home, &claimed.id);
         (
             run,
             claimed,
             claim_notice,
+            project_notice,
             built,
             failure.map(|failure| failure.details()),
             report,
@@ -131,7 +134,10 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         claimed.discard_if_unsaved(home);
         (claimed, claim_notice) = (next, notice);
     }
-    let notice: Vec<String> = claim_notice.into_iter().chain(build_notice).collect();
+    let notice: Vec<String> = (claim_notice.into_iter())
+        .chain(project_notice)
+        .chain(build_notice)
+        .collect();
     let notice = (!notice.is_empty()).then(|| notice.join("\n"));
     let invocation = match report.invocation(args) {
         Ok(invocation) => invocation,
@@ -191,37 +197,25 @@ fn refused(why: &str) -> ExitCode {
     ExitCode::from(REFUSED_EXIT_CODE)
 }
 
-/// The plugins a session in `dir` (else the working directory) runs.
-fn plugins_of(home: &Home, dir: Option<PathBuf>) -> Result<plugin_list::Plugins> {
-    let dir = match dir {
-        Some(dir) => dir,
-        None => std::env::current_dir()?,
-    };
-    Ok(rig_harness_protocol::config::chosen(home, &dir)?)
-}
-
-/// What the plugins `on` of the build the launcher of `session` starts
-/// next add to the command line; nothing when there is no build or it
-/// cannot say.
-fn report(home: &Home, session: &SessionId, on: &[String]) -> AgentDescription {
+/// What the plugins of the build the launcher of `session` starts next add
+/// to the command line; nothing when there is no build or it cannot say.
+fn report(home: &Home, session: &SessionId) -> AgentDescription {
     let Some(binary) = next_build(home, session) else {
         return AgentDescription::default();
     };
-    build::described(home, &binary, on).unwrap_or_else(|failure| {
+    build::described(home, &binary).unwrap_or_else(|failure| {
         eprintln!("warning: the agent build does not say what its plugins add: {failure}");
         AgentDescription::default()
     })
 }
 
-/// The report of the build a new session in the working directory starts
-/// with, with the plugins the settings turn on there, as kept from its last
-/// start; `None` when it has none. It never builds.
+/// The report of the build a new session starts with, as kept from its
+/// last build; `None` when it has none. It never builds.
 pub fn last_report(home: &Home) -> Option<AgentDescription> {
-    let on = plugins_of(home, None).ok()?.on;
     [home.staged(), home.good()]
         .into_iter()
         .find(|binary| binary.exists())
-        .and_then(|binary| build::good_report(home, &binary, &on))
+        .and_then(|binary| build::good_report(home, &binary))
 }
 
 /// The build the launcher of `session` starts next, as [`pick`] picks it,
@@ -276,38 +270,8 @@ fn launch(
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
         let ready = run.ready();
-        // Read at each start: `/plugins` and a switch to a session elsewhere
-        // change them, and neither needs a build.
-        let dir = claimed
-            .directory
-            .clone()
-            .or_else(|| std::env::current_dir().ok());
-        let plugins = match plugins_of(home, dir) {
-            Ok(plugins) => plugins,
-            // Settings broken since the last start end the run as a refusal
-            // does, with the terminal put back and the session kept.
-            Err(failure) => {
-                run.kill_left_groups().ok();
-                claimed.leave(home, run, false);
-                let resume = resume_command(home, &session, true)
-                    .map(|resume| format!("; fix it, then resume: {resume}"))
-                    .unwrap_or_default();
-                return Ok(Ended {
-                    code: ExitCode::FAILURE,
-                    said: Some(format!("error: {failure}{resume}")),
-                    restore: screen || kept_screen,
-                });
-            }
-        };
-        if !plugins.notes.is_empty() {
-            let said = notice
-                .take()
-                .into_iter()
-                .chain(plugins.notes.iter().cloned());
-            notice = Some(said.collect::<Vec<_>>().join("\n"));
-        }
         if ask {
-            for secret in report(home, &session, &plugins.on).secrets {
+            for secret in report(home, &session).secrets {
                 let variable = secret_variable(&secret.name);
                 if std::env::var_os(&variable).is_some() || answers.contains_key(&variable) {
                     continue;
@@ -331,10 +295,6 @@ fn launch(
             .env(env::LAUNCHER, &launcher)
             .env(env::RUN, run.path())
             .env(env::START, reason.as_str())
-            .env(
-                env::PLUGINS,
-                rig_harness_protocol::config::to_env(&plugins.on),
-            )
             .env_remove(env::NOTICE)
             .env_remove(env::WARNING)
             .env_remove(env::BUILD_FAILURE)
@@ -386,7 +346,7 @@ fn launch(
         promoted?;
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
         if rejected {
-            build::reject(home, &trial, &plugins.on)?;
+            build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
         }
         if reload && restart {
@@ -842,12 +802,7 @@ fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
 /// build yet, the build is staged even if it was rejected before, so each
 /// start retries it. A failed build with an older binary at hand is
 /// returned, for that binary to start with.
-fn rebuild(
-    home: &Home,
-    session: &SessionId,
-    output: BuildOutput,
-    on: &[String],
-) -> Result<Option<BuildFailure>> {
+fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Option<BuildFailure>> {
     let first_run = !home.staged().exists() && !home.good().exists();
     if output == BuildOutput::Live {
         eprintln!(
@@ -860,7 +815,7 @@ fn rebuild(
     } else {
         Staging::OnlyNew
     };
-    match build::compile(home, &home.staged_for(session), staging, output, on) {
+    match build::compile(home, &home.staged_for(session), staging, output) {
         Ok(()) => Ok(None),
         Err(failure) if first_run => Err(failure.told(output).into()),
         Err(failure) => {

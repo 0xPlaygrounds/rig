@@ -3,10 +3,9 @@
 The harness of the rig coding agent: a terminal coding agent that is a
 [Bevy](https://bevy.org) app made of plugins, on the [`rig-ecs`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-ecs)
 kernel and [Rig](https://github.com/0xPlaygrounds/rig)'s rig-core. The `rig`
-launcher (`rig-cli`) generates a small Cargo project for it with every one of
-rig's plugins and the extra crates of `RIG_HOME/settings.toml`, builds it and
-runs it with the plugins `settings.toml` turns on; `/reload` rebuilds it when a
-plugin crate changed and restarts in the same session. The [agent guide](https://github.com/0xPlaygrounds/rig/blob/main/docs/agent.md)
+launcher (`rig-cli`) generates a small Cargo project for it with the plugins
+`RIG_HOME/settings.toml` turns on, builds it and runs it; `/reload` rebuilds it
+when the plugins or a plugin crate changed and restarts in the same session. The [agent guide](https://github.com/0xPlaygrounds/rig/blob/main/docs/agent.md)
 describes using it.
 
 ## A kernel, a harness and plugins
@@ -29,8 +28,8 @@ describes using it.
   to it. Most are in [`rig-basics`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics), one module
   per group, with the services only some plugins use: approvals, the preview
   and the checkpoint of tool calls, and the session picker. The launcher's
-  generated `main.rs` names every one of rig's plugins, and `load_chosen` adds
-  those the settings turn on, each with `load`, which records it as an entity
+  generated `main.rs` adds the plugins the settings turn on as one
+  `PluginGroup`, each wrapped in `Loaded`, which records it as an entity
   (`PluginSource`) and marks what it adds (`ProvidedBy`). Any of them can be
   turned off.
 
@@ -56,7 +55,7 @@ default:
 | `rig-basics` | `coding_tools::AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-basics` | `coding_tools::remote::RemoteHostsPlugin` | a path written `HOST:PATH` is that host's for every tool, through the transport `[remote.hosts]` in `settings.toml` gives it (such as `ssh` or `koh exec`); nothing without hosts |
 | `rig-basics` | `reload::ReloadPlugin` | `/reload`, which rebuilds the agent when a plugin crate changed and restarts it in the session with the plugins `settings.toml` turns on |
-| `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every plugin, on and off, in a picker that turns them on and off in `settings.toml` and restarts at once, with no build |
+| `rig-basics` | `reload::plugins::PluginsPlugin` | `/plugins`: every plugin, on and off, in a picker that turns them on and off in `settings.toml`, then rebuilds and restarts at once |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/quit` |
 | `rig-basics` | `print::PrintPlugin` | `--print` and `--json`: the fronts of a run with `-p`, with stdin piped in, or driven by JSON lines (`rig help-agents`) |
 | `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |

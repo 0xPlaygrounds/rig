@@ -18,9 +18,9 @@ rig plugin enable rig_claude_cloak::ClaudeCloakPlugin
 ```
 
 That names it in `[plugins] enable` of `RIG_HOME/settings.toml`, as `/plugins`
-does. The agent builds it with rig's other crates, at the launcher's version
-from crates.io or from the rig checkout the agent is built from
-(`RIG_SOURCE`), so turning it on needs no build.
+does. The next start or `/reload` builds the agent with it, at the
+launcher's version from crates.io or from the rig checkout the agent is built
+from (`RIG_SOURCE`).
 
 Then reload Rig yourself. Run `/claude-cloak login` to open the browser,
 complete authorization, and use `/model` to select a `claude-cloak/*`

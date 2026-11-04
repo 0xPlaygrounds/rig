@@ -125,23 +125,6 @@ impl Settings {
         }
     }
 
-    /// Refuses the run for `problem`, in the app's [`Settings`] (read
-    /// first when the app has none).
-    pub(crate) fn refuse(world: &mut World, problem: String) {
-        warn!("{problem}");
-        Self::of(world).problems.push(problem);
-    }
-
-    /// The app's settings, read from `RIG_HOME/settings.toml` the first
-    /// time unless the app inserted some.
-    fn of(world: &mut World) -> Mut<'_, Self> {
-        if !world.contains_resource::<Self>() {
-            let settings = Self::read(&RigHome::of(world).settings());
-            world.insert_resource(settings);
-        }
-        world.resource_mut::<Self>()
-    }
-
     /// The `[section]` table as a `T`: `T::default()` without one, and the
     /// reason when it does not read as `T`.
     pub fn get<T: DeserializeOwned + Default>(&self, section: &str) -> Result<T, String> {
@@ -232,7 +215,12 @@ impl AppSettingsExt for App {
         &mut self,
         section: &str,
     ) -> &mut Self {
-        let mut settings = Settings::of(self.world_mut());
+        let world = self.world_mut();
+        if !world.contains_resource::<Settings>() {
+            let settings = Settings::read(&RigHome::of(world).settings());
+            world.insert_resource(settings);
+        }
+        let mut settings = world.resource_mut::<Settings>();
         settings.read.insert(section.to_owned());
         let value = settings.get::<T>(section).unwrap_or_else(|problem| {
             warn!("{problem}");

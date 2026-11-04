@@ -1,10 +1,11 @@
+use bevy_app::PluginGroupBuilder;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use bevy_reflect::prelude::*;
 use rig_ecs::session_log::ReflectSaved;
 
-use super::{AppKeepsExt, Keeps, PluginEntity, PluginSource, ProvidedBy, load};
+use super::{AppKeepsExt, Keeps, Loaded, PluginEntity, PluginSource, ProvidedBy, load};
 
 /// Spawns a named entity in `build`, one in `finish`, and one at startup
 /// that it attributes itself.
@@ -209,109 +210,45 @@ fn plugin_systems_list_each_system_with_its_plugin() {
     );
 }
 
-/// Stands in for `rig_basics::budget::BudgetPlugin`, off by default.
-#[derive(Default)]
-struct OffByDefault;
+/// The plugins a generated program turns on, as its group adds them.
+struct Chosen;
 
-impl Plugin for OffByDefault {
-    fn build(&self, _: &mut App) {}
+impl PluginGroup for Chosen {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(Loaded::<Spawner>::new("spawner", "path plugins/spawner"))
+            .add(Loaded::<Other>::new("other", "version 1"))
+    }
 }
 
-/// Stands in for `rig_basics::skills::SkillsPlugin`, on by default.
-#[derive(Default)]
-struct OnByDefault;
-
-impl Plugin for OnByDefault {
-    fn build(&self, _: &mut App) {}
-}
-
-const BUDGET: &str = "rig_basics::budget::BudgetPlugin";
-const SKILLS: &str = "rig_basics::skills::SkillsPlugin";
-
-/// Run by [`a_session_adds_the_plugins_its_settings_or_its_parent_turn_on`]
-/// in a process of its own: builds an app in the home `RIG_TEST_CHOSEN`
-/// names, from its `work` directory, and prints which of the two plugins
-/// it added and the list every process it starts gets.
 #[test]
-fn chosen_in_a_process_of_its_own() {
-    use crate::services::{Processes, ProjectRoot, RigHome};
-    use rig_harness_protocol::Home;
-
-    let Ok(root) = std::env::var("RIG_TEST_CHOSEN") else {
-        return;
-    };
-    let root = std::path::PathBuf::from(root);
+fn a_plugin_group_adds_each_plugin_with_its_entity_and_source() {
     let mut app = App::new();
-    app.insert_resource(RigHome(Home::at(root.join("home"))))
-        .insert_resource(ProjectRoot(root.join("work")))
-        .init_resource::<Processes>();
-    super::load_chosen(
-        &mut app,
-        &[
-            super::Compiled::new::<OffByDefault>(BUDGET, "rig-basics", ""),
-            super::Compiled::new::<OnByDefault>(SKILLS, "rig-basics", ""),
-        ],
-    );
-    let launcher = app.world().resource::<Processes>().launcher();
-    let handed = (launcher.env.iter())
-        .find(|(name, _)| name == "RIG_PLUGINS")
-        .map(|(_, value)| value.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    println!(
-        "budget={} skills={} handed={handed}",
-        app.is_plugin_added::<OffByDefault>(),
-        app.is_plugin_added::<OnByDefault>()
-    );
-}
-
-#[test]
-fn a_session_adds_the_plugins_its_settings_or_its_parent_turn_on() {
-    let root = std::env::temp_dir().join(format!("rig-load-chosen-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    let project = root.join("work/.rig");
-    assert!(std::fs::create_dir_all(root.join("home")).is_ok());
-    assert!(std::fs::create_dir_all(&project).is_ok());
-    let settings = format!("[plugins]\nenable = [\"{BUDGET}\"]\ndisable = [\"{SKILLS}\"]\n");
-    assert!(std::fs::write(root.join("home/settings.toml"), settings).is_ok());
-    let run = |parent: Option<&str>| {
-        let test = std::env::current_exe().ok()?;
-        let mut command = std::process::Command::new(test);
-        command
-            .args([
-                "load::tests::chosen_in_a_process_of_its_own",
-                "--exact",
-                "--nocapture",
-            ])
-            .env("RIG_TEST_CHOSEN", &root)
-            .env_remove("RIG_PLUGINS");
-        if let Some(parent) = parent {
-            command.env("RIG_PLUGINS", parent);
-        }
-        let started = rig_tools::process::Process::start(command, Default::default());
-        let output = started.and_then(|child| child.output(None)).ok()?;
-        let said = String::from_utf8_lossy(&output.stdout).into_owned();
-        said.lines()
-            .find(|line| line.starts_with("budget="))
-            .map(str::to_owned)
+    app.add_plugins(Chosen);
+    app.finish();
+    app.cleanup();
+    app.update();
+    let world = app.world_mut();
+    let spawner = world.resource::<PluginEntity<Spawner>>().entity();
+    let other = world.resource::<PluginEntity<Other>>().entity();
+    let source = |entity: Entity| {
+        let source = world.get::<PluginSource>(entity);
+        source.map(|source| (source.package.clone(), source.source.clone()))
     };
-    let home = run(None).unwrap_or_default();
-    // The project turns skills back on, with the same build.
-    assert!(
-        std::fs::write(
-            project.join("settings.toml"),
-            format!("[plugins]\nenable = [\"{SKILLS}\"]\n")
-        )
-        .is_ok()
+    assert_eq!(
+        source(spawner),
+        Some(("spawner".to_owned(), "path plugins/spawner".to_owned()))
     );
-    let project = run(None).unwrap_or_default();
-    // A child of a session runs its parent's list, whatever the settings.
-    let child = run(Some(SKILLS)).unwrap_or_default();
-    std::fs::remove_dir_all(&root).ok();
-    assert!(
-        home.starts_with("budget=true skills=false handed="),
-        "{home}"
+    assert_eq!(
+        source(other),
+        Some(("other".to_owned(), "version 1".to_owned()))
     );
-    assert!(home.contains(BUDGET) && !home.contains(SKILLS), "{home}");
-    assert!(project.starts_with("budget=true skills=true"), "{project}");
-    assert_eq!(child, format!("budget=false skills=true handed={SKILLS}"));
+    let mut named = world.query::<(&Name, &ProvidedBy)>();
+    let mut by = |name: &str| {
+        (named.iter(world))
+            .find(|(named, _)| named.as_str() == name)
+            .map(|(_, by)| by.0)
+    };
+    assert_eq!(by("finished"), Some(spawner));
+    assert_eq!(by("other's"), Some(other));
 }

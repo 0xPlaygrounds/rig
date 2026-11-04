@@ -1,5 +1,5 @@
 //! `rig plugin`: turn a plugin on or off in `RIG_HOME/settings.toml`
-//! (`enable`, `disable`), show every plugin and whether it is on here
+//! (`enable`, `disable`), show every plugin and whether it is on
 //! (`list`), make a plugin crate under `RIG_HOME/plugins` and add it to the
 //! home's `[[plugins.extra]]` (`new`), and check the settings (`check`,
 //! with `--build` also building the agent without staging it and checking
@@ -20,7 +20,6 @@ use rig_harness_protocol::config::{
 use rig_harness_protocol::{Home, REFUSED_EXIT_CODE};
 
 use super::Result;
-use super::plugin_list;
 use super::project::{
     CORE_CRATES, PACKAGE, RigSource, crate_dir, foreign_rig_crate, quoted, quoted_path,
     read_manifest, rig_patch, rig_version,
@@ -34,15 +33,17 @@ const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
 
 /// `rig plugin`'s usage.
 pub const USAGE: &str = "  rig plugin list        Every plugin, rig's own and the extra crates of
-                         RIG_HOME/settings.toml, `on` or `off` here, with its
-                         crate and what it adds: rig's defaults, then the
-                         home's [plugins], then the project's .rig/settings.toml.
+                         RIG_HOME/settings.toml, `on` or `off`, with its crate
+                         and what it adds: rig's defaults, changed by [plugins]
+                         in RIG_HOME/settings.toml.
   rig plugin enable <type>
   rig plugin disable <type>
                          Turn a plugin on or off in RIG_HOME/settings.toml
                          ([plugins] enable and disable), keeping its comments.
-                         Nothing rebuilds: the next start, or /reload, runs
-                         with it.
+                         The agent holds only the plugins on, so the next
+                         start, or /reload, rebuilds it; only the generated
+                         crate changes, so it relinks. A project's
+                         .rig/settings.toml never changes which plugins run.
   rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
                          it to [[plugins.extra]]; the next start, or /reload,
                          builds it.
@@ -85,9 +86,7 @@ pub fn run(home: &Home, args: &[&str]) -> Result<ExitCode> {
 fn new(home: &Home, name: &str) -> Result<()> {
     let source = RigSource::detect()?;
     validate_name(name, &source)?;
-    if let Some(extra) =
-        (plugin_list::of_home(home)?.extra.iter()).find(|extra| extra.krate == name)
-    {
+    if let Some(extra) = (config::chosen(home)?.extra.iter()).find(|extra| extra.krate == name) {
         return Err(format!(
             "{} already has the crate `{name}` (as `{}`)",
             home.settings().display(),
@@ -166,7 +165,7 @@ fn add_extra(
             .as_array_of_tables_mut()
             .ok_or("[plugins] extra is not a list of [[plugins.extra]] tables")?;
         tables.push(extra);
-        let chosen = config::plugins(file, None)?;
+        let chosen = config::plugins(file)?;
         if let Some(problem) = chosen
             .extra
             .last()
@@ -180,24 +179,20 @@ fn add_extra(
 }
 
 /// `rig plugin list`: every plugin of rig's and of the home's extra crates,
-/// one line each: `on` or `off` here, the type, its crate and what it adds,
-/// with what turned it on or off when not rig's default, and a warning on
-/// an essential plugin turned off. `/plugins` reads these lines.
+/// one line each: `on` or `off`, the type, its crate and what it adds, with
+/// a note when the settings changed rig's default, and a warning on an
+/// essential plugin turned off. `/plugins` reads these lines.
 fn list(home: &Home) -> Result<()> {
-    let here = config::plugins_in(home, &std::env::current_dir()?)?;
-    let homes = plugin_list::of_home(home)?;
+    let chosen = config::chosen(home)?;
     let mut rows: Vec<(bool, String, String, String)> = Vec::new();
     for built_in in BUILT_IN {
-        let on = here.on.iter().any(|plugin| plugin == built_in.plugin);
+        let on = chosen.on.iter().any(|plugin| plugin == built_in.plugin);
         let mut about = built_in.about.to_owned();
-        let by_home = homes.on.iter().any(|plugin| plugin == built_in.plugin);
         if !built_in.available() {
             about.push_str(&format!(
                 " (builds on {} only)",
                 built_in.targets.join(" and ")
             ));
-        } else if on != by_home {
-            about.push_str(" (set by this project's .rig/settings.toml)");
         } else if on != built_in.on {
             about.push_str(" (set by RIG_HOME/settings.toml)");
         }
@@ -211,8 +206,8 @@ fn list(home: &Home) -> Result<()> {
             about,
         ));
     }
-    for extra in &homes.extra {
-        let on = here.on.contains(&extra.plugin);
+    for extra in &chosen.extra {
+        let on = chosen.on.contains(&extra.plugin);
         let about = format!("An extra crate, from {}.", extra.source);
         rows.push((on, extra.plugin.clone(), extra.krate.clone(), about));
     }
@@ -238,7 +233,7 @@ fn list(home: &Home) -> Result<()> {
 fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
     let path = home.settings();
     let (changed, ()) = config::edit(&path, |file| -> Result<_> {
-        let before = config::plugins(file, None)?;
+        let before = config::plugins(file)?;
         let by_default = match built_in(type_path) {
             Some(built_in) if on && !built_in.available() => {
                 return Err(config::Error::Unavailable {
@@ -258,7 +253,7 @@ fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
             }
         };
         let changed = set_on(&mut file.document, type_path, on, by_default);
-        config::plugins(file, None)?;
+        config::plugins(file)?;
         Ok((changed, ()))
     })?;
     let state = if on { "on" } else { "off" };
@@ -267,15 +262,8 @@ fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
     } else {
         println!(
             "Turned `{type_path}` {state} in {}.\n\
-             Nothing rebuilds: /reload in the agent, or the next start, runs with it.",
+             The next start, or /reload in the agent, rebuilds the agent with it.",
             path.display()
-        );
-    }
-    let here = config::plugins_in(home, &std::env::current_dir()?)?;
-    if here.on.iter().any(|plugin| plugin == type_path) != on {
-        println!(
-            "This project's .rig/settings.toml turns it {} here.",
-            if on { "off" } else { "on" }
         );
     }
     if !on && let Some(what) = essential(type_path) {
@@ -398,23 +386,23 @@ fn lib_rs(name: &str, type_name: &str) -> String {
         .replace("__name__", name)
 }
 
-/// `rig plugin check`: reads the settings here, the home's and the
-/// project's, and checks each extra plugin: that a crate listed by path is
+/// `rig plugin check`: reads the home's settings and checks each extra
+/// plugin on: that a crate listed by path is
 /// there, has the package name its table gives, and its library is the
 /// crate the plugin type names. Whether the code builds is for
 /// [`check_build`] (`--build`) or `rig build` to say.
 fn check(home: &Home) -> Result<()> {
-    let here = config::plugins_in(home, &std::env::current_dir()?)?;
+    let chosen = config::chosen(home)?;
     let source = RigSource::detect()?;
-    let problems: Vec<String> = (here.extra.iter())
+    let problems: Vec<String> = (chosen.extras_on())
         .filter_map(|extra| check_plugin(extra, &source))
         .collect();
     if problems.is_empty() {
         println!(
-            "{}: {} plugins on here, all valid; `rig plugin check --build` builds the agent \
-             with them and checks how their agent-loop systems are ordered.",
+            "{}: {} plugins on, all valid; `rig plugin check --build` builds the agent with \
+             them and checks how their agent-loop systems are ordered.",
             home.settings().display(),
-            here.on.len()
+            chosen.on.len()
         );
         return Ok(());
     }

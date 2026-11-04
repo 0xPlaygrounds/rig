@@ -1,10 +1,10 @@
 //! `settings.toml`, the one file a user edits, as both the launcher and the
-//! agent read it: the home's, then a project's `.rig/settings.toml` over it.
-//! Its `[plugins]` table holds only the user's changes to rig's built-in
-//! plugins ([`BUILT_IN`]): `enable` and `disable` name plugins, and the
-//! home's `[[plugins.extra]]` tables add crates that are not rig's. A
-//! project may turn rig's own plugins on and off but add no crate, since
-//! building one runs its code. Every edit rig makes ([`edit`]) keeps the
+//! agent read it. Its `[plugins]` table holds only the user's changes to
+//! rig's built-in plugins ([`BUILT_IN`]): `enable` and `disable` name
+//! plugins, and `[[plugins.extra]]` tables add crates that are not rig's.
+//! Only `RIG_HOME/settings.toml` says which plugins run: the agent is built
+//! with exactly those, so a project's `.rig/settings.toml` cannot change
+//! them ([`project_plugins`]). Every edit rig makes ([`edit`]) keeps the
 //! user's comments and layout.
 //!
 //! ```
@@ -14,7 +14,7 @@
 //!     "settings.toml".into(),
 //!     "[plugins]\nenable = [\"rig_basics::budget::BudgetPlugin\"]\n",
 //! )?;
-//! let chosen = plugins(&home, None)?;
+//! let chosen = plugins(&home)?;
 //! assert!(chosen.on.iter().any(|plugin| plugin == "rig_basics::budget::BudgetPlugin"));
 //! # Ok::<(), rig_harness_protocol::config::Error>(())
 //! ```
@@ -125,8 +125,8 @@ with the plugins settings.toml turns on. Without it the agent runs as it \
 started.";
             on rig_basics::reload::plugins::PluginsPlugin, "rig-basics", [],
                 Some("/plugins itself"),
-                "/plugins: every plugin, on and off, to turn on and off; applying restarts the \
-agent at once.";
+                "/plugins: every plugin, on and off, to turn on and off; applying rebuilds the \
+agent and restarts it.";
             on rig_basics::BasicCommandsPlugin, "rig-basics", [], None,
                 "/help and /quit.";
             on rig_basics::welcome::WelcomePlugin, "rig-basics", [], None,
@@ -389,17 +389,22 @@ impl SettingsFile {
     }
 }
 
-/// The plugins a session runs: the type paths of those on, rig's in
-/// [`BUILT_IN`]'s order and then the home's extras in theirs, and the
-/// home's extra crates, on or off, which the build holds beside rig's.
+/// The plugins the agent is built with: the type paths of those on, rig's
+/// in [`BUILT_IN`]'s order and then the extras in theirs, and every extra
+/// crate of the file, on or off.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Plugins {
     /// The plugins on, in the order the agent adds them.
     pub on: Vec<String>,
-    /// Every extra crate of the home's file.
+    /// Every `[[plugins.extra]]` table of the file.
     pub extra: Vec<Extra>,
-    /// What a project asked that was not done, to tell the user.
-    pub notes: Vec<String>,
+}
+
+impl Plugins {
+    /// The extras that are on, which the agent is built with.
+    pub fn extras_on(&self) -> impl Iterator<Item = &Extra> {
+        (self.extra.iter()).filter(|extra| self.on.contains(&extra.plugin))
+    }
 }
 
 /// The `[plugins]` table of one file, checked.
@@ -410,39 +415,30 @@ struct Changes {
     extra: Vec<Extra>,
 }
 
-/// The plugins `home` and then `project` turn on, over [`BUILT_IN`]'s
-/// defaults: the home's `disable`, then its `enable`, then the project's
-/// `enable` and `disable`, so the project's list comes last. A project's
-/// `disable` leaves on a plugin the home's file enables by name, so a
-/// cloned repository cannot turn off what the user chose to run, such as
-/// a budget.
+/// The plugins the home's settings file `home` turns on, over
+/// [`BUILT_IN`]'s defaults: its `disable`, then its `enable`.
 ///
 /// # Errors
 ///
 /// Naming the file: a `[plugins]` table that does not read, a plugin that
-/// is not rig's or the home's, one named both on and off, a project's
-/// `extra`, or turning on a plugin that does not build on this target.
-pub fn plugins(home: &SettingsFile, project: Option<&SettingsFile>) -> Result<Plugins, Error> {
-    let at = |file: &SettingsFile| {
-        let path = file.path.clone();
-        move |problem: String| Error::Table {
-            path: path.clone(),
-            table: "plugins".to_owned(),
-            problem,
-        }
-    };
-    let home_changes = changes(home, true).map_err(at(home))?;
-    let project_changes = project
-        .map(|project| changes(project, false).map_err(at(project)))
-        .transpose()?;
-    let extras: Vec<&str> = (home_changes.extra.iter())
+/// is not rig's or an extra, one named both on and off, or turning on a
+/// plugin that does not build on this target.
+pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
+    let changes = changes(home).map_err(|problem| Error::Table {
+        path: home.path.clone(),
+        table: "plugins".to_owned(),
+        problem,
+    })?;
+    let extras: Vec<&str> = (changes.extra.iter())
         .map(|extra| extra.plugin.as_str())
         .collect();
-    let known =
-        |plugin: &str, extras: &[&str]| built_in(plugin).is_some() || extras.contains(&plugin);
-    for plugin in home_changes.enable.iter().chain(&home_changes.disable) {
-        if !known(plugin, &extras) {
-            return Err(at(home)(unknown(plugin)));
+    for plugin in changes.enable.iter().chain(&changes.disable) {
+        if built_in(plugin).is_none() && !extras.contains(&plugin.as_str()) {
+            return Err(Error::Table {
+                path: home.path.clone(),
+                table: "plugins".to_owned(),
+                problem: unknown(plugin),
+            });
         }
     }
     let mut on: BTreeSet<&str> = (BUILT_IN.iter())
@@ -450,33 +446,10 @@ pub fn plugins(home: &SettingsFile, project: Option<&SettingsFile>) -> Result<Pl
         .map(|built_in| built_in.plugin)
         .chain(extras.iter().copied())
         .collect();
-    for plugin in &home_changes.disable {
+    for plugin in &changes.disable {
         on.remove(plugin.as_str());
     }
-    on.extend(home_changes.enable.iter().map(String::as_str));
-    let mut notes = Vec::new();
-    if let (Some(project), Some(changes)) = (project, &project_changes) {
-        for plugin in changes.enable.iter().chain(&changes.disable) {
-            if built_in(plugin).is_none() {
-                return Err(at(project)(format!(
-                    "{}; a project turns only rig's own plugins on and off",
-                    unknown(plugin)
-                )));
-            }
-        }
-        on.extend(changes.enable.iter().map(String::as_str));
-        for plugin in &changes.disable {
-            if home_changes.enable.contains(plugin) {
-                notes.push(format!(
-                    "{}: `{plugin}` stays on, as {} enables it.",
-                    project.path.display(),
-                    home.path.display()
-                ));
-            } else {
-                on.remove(plugin.as_str());
-            }
-        }
-    }
+    on.extend(changes.enable.iter().map(String::as_str));
     for plugin in &on {
         if let Some(missing) = built_in(plugin).filter(|built_in| !built_in.available()) {
             return Err(Error::Unavailable {
@@ -492,9 +465,48 @@ pub fn plugins(home: &SettingsFile, project: Option<&SettingsFile>) -> Result<Pl
         .collect();
     Ok(Plugins {
         on,
-        extra: home_changes.extra,
-        notes,
+        extra: changes.extra,
     })
+}
+
+/// The plugins `RIG_HOME/settings.toml` turns on ([`plugins`]).
+///
+/// # Errors
+///
+/// As [`plugins`], and when the file cannot be read or is not TOML.
+pub fn chosen(home: &crate::Home) -> Result<Plugins, Error> {
+    plugins(&SettingsFile::read(&home.settings())?)
+}
+
+/// What to tell the user about the `[plugins]` table of a project's
+/// settings file `project`, which is never applied: only the home's file
+/// `home` says which plugins run. `None` when it has none.
+///
+/// # Errors
+///
+/// Naming the file, when the table adds crates (`extra`): a project must
+/// not look as if it could make rig build its code.
+pub fn project_plugins(project: &SettingsFile, home: &Path) -> Result<Option<String>, Error> {
+    let Some(table) = project.document.get("plugins") else {
+        return Ok(None);
+    };
+    if table.get("extra").is_some() {
+        return Err(Error::Table {
+            path: project.path.clone(),
+            table: "plugins".to_owned(),
+            problem: format!(
+                "a project cannot add plugin crates, since building one runs its code; only {} \
+                 takes `extra`",
+                home.display()
+            ),
+        });
+    }
+    Ok(Some(format!(
+        "{}: [plugins] is not applied; only {} says which plugins run (`rig plugin enable` and \
+         `disable`).",
+        project.path.display(),
+        home.display()
+    )))
 }
 
 /// Why `plugin` is refused when nothing provides it.
@@ -502,8 +514,8 @@ fn unknown(plugin: &str) -> String {
     format!("no plugin `{plugin}`; `rig plugin list` shows them")
 }
 
-/// The `[plugins]` table of `file`; `extra` only where `allow_extra`.
-fn changes(file: &SettingsFile, allow_extra: bool) -> Result<Changes, String> {
+/// The `[plugins]` table of `file`.
+fn changes(file: &SettingsFile) -> Result<Changes, String> {
     let Some(item) = file.document.get("plugins") else {
         return Ok(Changes::default());
     };
@@ -513,13 +525,6 @@ fn changes(file: &SettingsFile, allow_extra: bool) -> Result<Changes, String> {
         match key {
             "enable" => changes.enable = names(key, value)?,
             "disable" => changes.disable = names(key, value)?,
-            "extra" if !allow_extra => {
-                return Err(
-                    "a project cannot add plugin crates, since building one runs its code; \
-                     only RIG_HOME/settings.toml takes `extra`"
-                        .to_owned(),
-                );
-            }
             "extra" => {
                 let tables = value
                     .as_array_of_tables()
@@ -547,8 +552,7 @@ fn changes(file: &SettingsFile, allow_extra: bool) -> Result<Changes, String> {
             }
             other => {
                 return Err(format!(
-                    "unknown key `{other}`; it takes `enable`, `disable`{}",
-                    if allow_extra { " and `extra`" } else { "" }
+                    "unknown key `{other}`; it takes `enable`, `disable` and `extra`"
                 ));
             }
         }
@@ -644,8 +648,7 @@ fn is_type_path(text: &str) -> bool {
 
 /// Turns `plugin` on or off in the `[plugins]` of `document`: it leaves
 /// the list of the other state, and joins this one unless that is what it
-/// is without the file. A name already in this list stays: a plugin the
-/// home enables by name is one a project cannot turn off. Returns whether
+/// is without the file. A name already in this list stays. Returns whether
 /// the document changed.
 pub fn set_on(document: &mut DocumentMut, plugin: &str, on: bool, by_default: bool) -> bool {
     let (into, out) = if on {
@@ -853,48 +856,19 @@ impl Project {
     }
 }
 
-/// The plugins a session in `dir` runs, from the home's settings file
-/// `home_settings` and the project's around `dir`, for the launcher and
-/// for an agent started without one. A project file that is the home's
-/// own is read once, as the home's ([`Project::find`]).
+/// What to tell the user about the `[plugins]` table of the settings of
+/// the project around `dir` ([`project_plugins`]). A project file that is
+/// the home's own is none ([`Project::find`]).
 ///
 /// # Errors
 ///
-/// As [`plugins`], and when a file cannot be read or is not TOML.
-pub fn plugins_in(home: &crate::Home, dir: &Path) -> Result<Plugins, Error> {
-    let home_file = SettingsFile::read(&home.settings())?;
+/// As [`project_plugins`], and when the file cannot be read or is not TOML.
+pub fn project_notice(home: &crate::Home, dir: &Path) -> Result<Option<String>, Error> {
     let project = Project::find(dir, home.root(), std::env::home_dir().as_deref());
-    // `Project::find` leaves out a `.rig` that resolves to RIG_HOME.
-    let project = project
-        .settings()
-        .map(|path| SettingsFile::read(&path))
-        .transpose()?;
-    plugins(&home_file, project.as_ref())
-}
-
-/// The plugins on, as [`env::PLUGINS`](crate::env::PLUGINS) carries them.
-pub fn to_env(on: &[String]) -> String {
-    on.join(",")
-}
-
-/// The plugins a session in `dir` runs: those
-/// [`env::PLUGINS`](crate::env::PLUGINS) names, which a session hands every
-/// process it starts, else [`plugins_in`].
-///
-/// # Errors
-///
-/// As [`plugins_in`].
-pub fn chosen(home: &crate::Home, dir: &Path) -> Result<Plugins, Error> {
-    // Set but empty is unset, so `export RIG_PLUGINS=` runs the settings.
-    let names = std::env::var(crate::env::PLUGINS).unwrap_or_default();
-    if names.is_empty() {
-        return plugins_in(home, dir);
-    }
-    let on = names.split(',').filter(|name| !name.is_empty());
-    Ok(Plugins {
-        on: on.map(str::to_owned).collect(),
-        ..Plugins::default()
-    })
+    let Some(path) = project.settings() else {
+        return Ok(None);
+    };
+    project_plugins(&SettingsFile::read(&path)?, &home.settings())
 }
 
 #[cfg(test)]

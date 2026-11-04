@@ -1,6 +1,6 @@
-//! Which plugins the agent adds ([`load_chosen`]), and what each added, as
-//! data in the world: one entity per plugin the settings turn on (its
-//! `Name` and [`PluginSource`]), and [`ProvidedBy`] on what that plugin spawned, such as its commands,
+//! What each plugin added, as data in the world: one entity per plugin the
+//! agent is built with ([`Loaded`], its `Name` and [`PluginSource`]), and
+//! [`ProvidedBy`] on what that plugin spawned, such as its commands,
 //! tools, prompt sections and observers. "What did plugin X add" is a
 //! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
 //! [`PluginSystems`]; what it keeps with the session is its [`Keeps`].
@@ -40,10 +40,6 @@ use bevy_reflect::prelude::*;
 use rig_ecs::prelude::Notice;
 use rig_ecs::restore::SavedKeys;
 use rig_ecs::stage::AgentPass;
-use rig_harness_protocol::{config, env};
-
-use crate::services::{Processes, ProjectRoot, RigHome};
-use crate::settings::Settings;
 
 /// Where a plugin comes from, on the entity [`load`] spawns for it.
 #[derive(Component, Reflect, Clone, Debug)]
@@ -233,85 +229,56 @@ fn systems(world: &World) -> HashSet<(InternedScheduleLabel, SystemKey)> {
     systems.collect()
 }
 
-/// One plugin the agent was built with, which [`load_chosen`] adds when the
-/// settings turn it on: its type's path, its package and where that is
-/// built from.
-#[derive(Clone, Copy)]
-pub struct Compiled {
-    plugin: &'static str,
+/// The plugin `P` added through [`load`], from `package` at `source`: how
+/// the generated program's `PluginGroup` adds each plugin the settings turn
+/// on, so each gets its entity and [`PluginSource`].
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_harness::{Loaded, PluginGroupBuilder};
+///
+/// #[derive(Default)]
+/// struct MyPlugin;
+///
+/// impl Plugin for MyPlugin {
+///     fn build(&self, _app: &mut App) {}
+/// }
+///
+/// struct Chosen;
+///
+/// impl PluginGroup for Chosen {
+///     fn build(self) -> PluginGroupBuilder {
+///         PluginGroupBuilder::start::<Self>().add(Loaded::<MyPlugin>::new("my-plugin", "version 0.1"))
+///     }
+/// }
+/// ```
+pub struct Loaded<P> {
     package: &'static str,
     source: &'static str,
-    add: fn(&mut App, &str, &str),
+    plugin: PhantomData<fn() -> P>,
 }
 
-impl Compiled {
-    /// The plugin `P`, named `plugin` (its type's path), from `package` at
-    /// `source`.
-    pub const fn new<P: Plugin + Default>(
-        plugin: &'static str,
-        package: &'static str,
-        source: &'static str,
-    ) -> Self {
+impl<P> Loaded<P> {
+    /// The plugin `P`, from `package` at `source`, as the launcher names
+    /// it, such as `path /home/me/.rig/plugins/viz` or `version 0.3`.
+    pub const fn new(package: &'static str, source: &'static str) -> Self {
         Self {
-            plugin,
             package,
             source,
-            add: load::<P>,
+            plugin: PhantomData,
         }
     }
 }
 
-/// Adds the plugins of `compiled` that this session runs, in the order the
-/// settings give: those [`env::PLUGINS`](crate::harness_protocol::env::PLUGINS)
-/// names, which the launcher sets and every child of a session inherits,
-/// else those the home's and the project's `settings.toml` turn on
-/// ([`config::chosen`]), read from the app's [`RigHome`] and
-/// [`ProjectRoot`]. Every process the agent starts gets the list, so a
-/// `rig -p` child runs with it. A list that does not read, or names a
-/// plugin this build lacks, is one of the [`Settings`] problems, which
-/// refuse the run.
-pub fn load_chosen(app: &mut App, compiled: &[Compiled]) {
-    let world = app.world_mut();
-    let dir = world
-        .get_resource::<ProjectRoot>()
-        .cloned()
-        .unwrap_or_default();
-    let on = match config::chosen(&RigHome::of(world), &dir.0) {
-        Ok(chosen) => {
-            for note in chosen.notes {
-                world.write_message(Notice::info(None, note));
-            }
-            chosen.on
-        }
-        Err(problem) => {
-            Settings::refuse(world, problem.to_string());
-            return;
-        }
-    };
-    if let Some(processes) = world.get_resource::<Processes>() {
-        processes.set(
-            processes
-                .launcher()
-                .with_env(env::PLUGINS, config::to_env(&on)),
-        );
-    }
-    for name in &on {
-        match compiled.iter().find(|compiled| compiled.plugin == name) {
-            Some(plugin) => (plugin.add)(app, plugin.package, plugin.source),
-            None => Settings::refuse(
-                app.world_mut(),
-                format!(
-                    "`{name}` is on, but this build of the agent lacks it; `rig build` builds \
-                     the plugins settings.toml names"
-                ),
-            ),
-        }
+impl<P: Plugin + Default> Plugin for Loaded<P> {
+    fn build(&self, app: &mut App) {
+        load::<P>(app, self.package, self.source);
     }
 }
 
 /// Adds `P`, unless the app has it already (another plugin added it), as
-/// [`load_chosen`] adds each plugin the settings turn on: with an entity of
-/// its own, named after it, from `package` at `source`.
+/// [`Loaded`] adds each plugin the settings turn on: with an entity of its
+/// own, named after it, from `package` at `source`.
 pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;

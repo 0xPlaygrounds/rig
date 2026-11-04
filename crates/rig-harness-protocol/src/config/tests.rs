@@ -22,7 +22,7 @@ fn defaults() -> Vec<String> {
 
 #[test]
 fn a_home_without_plugins_runs_the_built_in_defaults() {
-    let chosen = plugins(&file("/home/.rig/settings.toml", "[tui]\n"), None);
+    let chosen = plugins(&file("/home/.rig/settings.toml", "[tui]\n"));
     assert_eq!(chosen.map(|chosen| chosen.on), Ok(defaults()));
 }
 
@@ -32,9 +32,7 @@ fn enable_and_disable_change_the_defaults_in_their_order() {
         "/home/.rig/settings.toml",
         &format!("[plugins]\nenable = [\"{BUDGET}\"]\ndisable = [\"{SKILLS}\"]\n"),
     );
-    let on = plugins(&home, None)
-        .map(|chosen| chosen.on)
-        .unwrap_or_default();
+    let on = plugins(&home).map(|chosen| chosen.on).unwrap_or_default();
     assert!(on.iter().any(|plugin| plugin == BUDGET));
     assert!(!on.iter().any(|plugin| plugin == SKILLS));
     let order: Vec<&str> = BUILT_IN.iter().map(|built_in| built_in.plugin).collect();
@@ -49,7 +47,7 @@ fn an_unknown_plugin_is_refused_naming_it_and_the_file() {
         "/home/.rig/settings.toml",
         "[plugins]\nenable = [\"rig_basics::nope::NopePlugin\"]\n",
     );
-    let refused = plugins(&home, None)
+    let refused = plugins(&home)
         .err()
         .map(|why| why.to_string())
         .unwrap_or_default();
@@ -61,49 +59,31 @@ fn an_unknown_plugin_is_refused_naming_it_and_the_file() {
 }
 
 #[test]
-fn a_project_turns_rig_plugins_on_and_off_last() {
-    let home = file(
-        "/home/.rig/settings.toml",
-        &format!("[plugins]\ndisable = [\"{BUDGET}\"]\n"),
-    );
+fn a_projects_plugins_are_reported_and_not_applied() {
     let project = file(
         "/work/p/.rig/settings.toml",
         &format!("[plugins]\nenable = [\"{BUDGET}\"]\ndisable = [\"{AGENTS_MD}\"]\n"),
     );
-    let chosen = plugins(&home, Some(&project));
-    assert!(chosen.is_ok(), "{chosen:?}");
-    let on = chosen.map(|chosen| chosen.on).unwrap_or_default();
-    assert!(on.iter().any(|plugin| plugin == BUDGET), "the project wins");
-    assert!(!on.iter().any(|plugin| plugin == AGENTS_MD));
-}
-
-#[test]
-fn a_project_cannot_turn_off_what_the_home_enables() {
-    let home = file(
-        "/home/.rig/settings.toml",
-        &format!("[plugins]\nenable = [\"{BUDGET}\"]\n"),
-    );
-    let project = file(
-        "/work/p/.rig/settings.toml",
-        &format!("[plugins]\ndisable = [\"{BUDGET}\"]\n"),
-    );
-    let chosen = plugins(&home, Some(&project)).unwrap_or_default();
-    assert!(chosen.on.iter().any(|plugin| plugin == BUDGET));
+    let notice = project_plugins(&project, Path::new("/home/.rig/settings.toml"));
+    let notice = notice.ok().flatten().unwrap_or_default();
     assert!(
-        chosen.notes.iter().any(|note| note.contains(BUDGET)),
-        "{:?}",
-        chosen.notes
+        notice.contains("/work/p/.rig/settings.toml") && notice.contains("not applied"),
+        "{notice}"
+    );
+    let quiet = file("/work/p/.rig/settings.toml", "[large-change]\nlines = 10\n");
+    assert_eq!(
+        project_plugins(&quiet, Path::new("/home/.rig/settings.toml")),
+        Ok(None)
     );
 }
 
 #[test]
 fn a_project_cannot_add_crates_and_is_refused_naming_its_file() {
-    let home = file("/home/.rig/settings.toml", "");
     let project = file(
         "/work/p/.rig/settings.toml",
         "[[plugins.extra]]\ncrate = \"evil\"\npath = \"evil\"\nplugin = \"evil::EvilPlugin\"\n",
     );
-    let refused = plugins(&home, Some(&project))
+    let refused = project_plugins(&project, Path::new("/home/.rig/settings.toml"))
         .err()
         .map(|why| why.to_string())
         .unwrap_or_default();
@@ -112,14 +92,14 @@ fn a_project_cannot_add_crates_and_is_refused_naming_its_file() {
 }
 
 #[test]
-fn the_homes_extras_are_built_and_on_after_rig_plugins_unless_disabled() {
+fn the_homes_extras_are_on_after_rig_plugins_unless_disabled() {
     let home = file(
         "/home/.rig/settings.toml",
         "[[plugins.extra]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n\
          [[plugins.extra]]\ncrate = \"off\"\nversion = \"1\"\nplugin = \"off::OffPlugin\"\n\
          [plugins]\n",
     );
-    let chosen = plugins(&home, None).unwrap_or_default();
+    let chosen = plugins(&home).unwrap_or_default();
     assert_eq!(chosen.on.last().map(String::as_str), Some("off::OffPlugin"));
     assert_eq!(
         chosen.extra.first().map(|extra| &extra.source),
@@ -130,22 +110,10 @@ fn the_homes_extras_are_built_and_on_after_rig_plugins_unless_disabled() {
         "[plugins]\ndisable = [\"viz::VizPlugin\"]\n\
          [[plugins.extra]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n",
     );
-    let chosen = plugins(&disabled, None).unwrap_or_default();
-    assert_eq!(chosen.extra.len(), 1, "built, though off");
+    let chosen = plugins(&disabled).unwrap_or_default();
+    assert_eq!(chosen.extra.len(), 1, "listed, though off");
     assert!(!chosen.on.iter().any(|plugin| plugin == "viz::VizPlugin"));
-}
-
-#[test]
-fn a_project_names_only_rig_plugins() {
-    let home = file(
-        "/home/.rig/settings.toml",
-        "[[plugins.extra]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n",
-    );
-    let project = file(
-        "/work/p/.rig/settings.toml",
-        "[plugins]\ndisable = [\"viz::VizPlugin\"]\n",
-    );
-    assert!(plugins(&home, Some(&project)).is_err());
+    assert_eq!(chosen.extras_on().count(), 0, "not built");
 }
 
 #[test]
@@ -163,10 +131,7 @@ fn bad_tables_are_refused() {
         "[[plugins.extra]]\ncrate = \"x\"\npath = \"x\"\nplugin = \"x::X\"\n\
          [[plugins.extra]]\ncrate = \"x\"\nversion = \"1\"\nplugin = \"x::Y\"\n",
     ] {
-        assert!(
-            plugins(&file("/h/settings.toml", text), None).is_err(),
-            "{text}"
-        );
+        assert!(plugins(&file("/h/settings.toml", text)).is_err(), "{text}");
     }
 }
 
@@ -241,18 +206,6 @@ fn a_comment_above_a_removed_name_stays() {
 }
 
 #[test]
-fn turning_on_a_default_the_home_names_keeps_its_name() {
-    let text = format!("[plugins]\nenable = [\"{SKILLS}\"]\n");
-    let mut document: DocumentMut = text.parse().unwrap_or_default();
-    assert!(!set_on(&mut document, SKILLS, true, true));
-    assert_eq!(
-        document.to_string(),
-        text,
-        "it still shields it from a project"
-    );
-}
-
-#[test]
 fn turning_a_default_off_writes_only_that() {
     let mut document = DocumentMut::new();
     assert!(set_on(&mut document, SKILLS, false, true));
@@ -296,7 +249,7 @@ fn an_edit_replaces_a_symlinked_file_where_it_points() {
 }
 
 #[test]
-fn the_home_folder_is_read_once_as_the_home() {
+fn the_home_folder_is_no_project() {
     let root = std::env::temp_dir().join(format!("rig-config-home-{}", std::process::id()));
     std::fs::remove_dir_all(&root).ok();
     let rig = root.join(".rig");
@@ -306,18 +259,13 @@ fn the_home_folder_is_read_once_as_the_home() {
         "[[plugins.extra]]\ncrate = \"viz\"\npath = \"plugins/viz\"\nplugin = \"viz::VizPlugin\"\n",
     )
     .is_ok());
-    let chosen = plugins_in(&crate::Home::at(&rig), &root);
-    assert!(chosen.is_ok(), "the home's extra is accepted: {chosen:?}");
-    let chosen = chosen.unwrap_or_default();
-    assert_eq!(chosen.extra.len(), 1);
+    let home = crate::Home::at(&rig);
     assert_eq!(
-        chosen
-            .on
-            .iter()
-            .filter(|plugin| *plugin == "viz::VizPlugin")
-            .count(),
-        1
+        project_notice(&home, &root),
+        Ok(None),
+        "the home's own file"
     );
+    assert_eq!(chosen(&home).map(|chosen| chosen.extra.len()), Ok(1));
     std::fs::remove_dir_all(&root).ok();
 }
 

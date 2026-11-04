@@ -53,7 +53,7 @@ fn a_new_plugin_crate_is_an_extra_of_the_home() {
         fs::write(home.settings(), COMMENTED)?;
         run(&home, &["new", "word-count"])?;
         let text = fs::read_to_string(home.settings())?;
-        let extras = plugin_list::of_home(&home)?.extra;
+        let extras = config::chosen(&home)?.extra;
         Ok((text, extras))
     })();
     fs::remove_dir_all(home.root()).ok();

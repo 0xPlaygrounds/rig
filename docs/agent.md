@@ -4,8 +4,8 @@
 [`rig-harness`](../crates/rig-harness) crate, and every part of it but the
 harness is a plugin, built from a plugin crate and turned on or off in
 `settings.toml`. The `rig` command (the `rig-cli` crate) is its launcher: it
-generates a small Cargo project for the agent with every one of rig's plugins
-and your extra crates, builds it, and runs it with the plugins on.
+generates a small Cargo project for the agent with the plugins you turned on,
+builds it, and runs it.
 
 The agent's coding tools come from the [`rig-tools`](../crates/rig-tools)
 crate, usable by any rig agent, and its kernel (agents, turns and tool calls
@@ -413,10 +413,10 @@ bound.
 
 ## Reload and builds
 
-`/reload` rebuilds the agent when a plugin crate changed and restarts it on
-the same session with the plugins `settings.toml` turns on. Every one of
-rig's own plugins is in the one build, so turning a plugin on or off never
-rebuilds; adding, removing or changing a `[[plugins.extra]]` crate does. Typed while
+`/reload` rebuilds the agent when the plugins `settings.toml` turns on or a
+plugin crate changed, and restarts it on the same session. The agent holds
+only the plugins on, so turning one on or off rebuilds it; only the generated
+crate changes, so it relinks. Typed while
 a turn runs, it waits until no turn runs (`/reload cancel` drops it), and a
 turn started during the build delays the restart until it ends. It shows
 cargo's latest line, keeps the current build running if the new one does not
@@ -446,8 +446,8 @@ compaction, usage, activity, each tool, `@path` attachments, `/reload`,
 crate in [`plugins/`](../plugins), most from
 [`rig-basics`](../plugins/rig-basics), so any of them can be turned off or
 replaced ([`crates/rig-harness`](../crates/rig-harness/README.md) lists them).
-Every one of rig's own plugins is compiled into the one build, and the agent
-adds those on when it starts.
+The agent is built with exactly the plugins on, which it adds as one Bevy
+`PluginGroup`.
 
 `$RIG_HOME/settings.toml` is the one file you edit. Its `[plugins]` table holds
 only your changes to rig's built-in list, so a plugin rig adds to its defaults
@@ -465,25 +465,23 @@ path = "plugins/hello"            # relative to RIG_HOME; or git = "..." (branch
 plugin = "hello::HelloPlugin"     # implements Plugin + Default
 ```
 
-Turning a plugin on or off needs no build; adding, removing or changing an
-`extra` crate rebuilds. A project's `.rig/settings.toml` may hold `[plugins]
-enable` and `disable` too, naming rig's own plugins only. It comes after
-yours, so it wins, except that its `disable` leaves on a plugin your file
-enables by name: a cloned repository cannot turn off a budget you turned on.
-A project's `extra` is refused at start, naming the file, and nothing builds,
-since building a crate runs its code. Started in the folder that holds
-`RIG_HOME`, its `.rig` is read once, as yours. A `rig -p` child of a session,
-such as a helper, and anything else the session starts runs with that
-session's plugins (`RIG_PLUGINS`).
+Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
+at the next start or `/reload`; only the generated crate changes, so it
+relinks. Only your `settings.toml` says which plugins run: a project's
+`.rig/settings.toml` that has a `[plugins]` table is told at start and not
+applied, and one with `extra` is refused at start, naming the file, before
+anything builds, since building a crate runs its code. A helper, `/reload`
+and anything else a session starts run the same home's build.
 
-`rig plugin list` shows every plugin, `on` or `off` here, with its crate and
+`rig plugin list` shows every plugin, `on` or `off`, with its crate and
 what it adds. `rig plugin enable <type>` and `disable <type>` change
 `[plugins]`, keeping every comment. `rig plugin new hello` makes that crate in
 `$RIG_HOME/plugins/hello`, outside any workspace, and adds its
 `[[plugins.extra]]`, checked before `settings.toml` is written. Another
 crate's plugin is a `[[plugins.extra]]` table you write. In the agent, `/plugins` is a picker of the same list: tick and
-untick plugins, press Enter, and the agent restarts with them at once, with no
-build (without a terminal it prints the list).
+untick plugins, press Enter, and the agent rebuilds and restarts with them at
+once; a failed build keeps the running one (without a terminal it prints the
+list).
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the

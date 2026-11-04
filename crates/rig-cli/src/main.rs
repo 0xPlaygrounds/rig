@@ -1,7 +1,6 @@
 //! The `rig` launcher. It generates a Cargo project for the rig-harness agent
-//! with every one of rig's plugins and the extra crates of
-//! `$RIG_HOME/settings.toml`, builds it, and runs it with the plugins the
-//! home's and the project's `settings.toml` turn on.
+//! with the plugins `$RIG_HOME/settings.toml` turns on, builds it, and runs
+//! it.
 //! When the agent exits with the reload code it starts the new build, and a
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses std, and libc on unix (ctrlc elsewhere) to stop its build
@@ -15,7 +14,6 @@
 mod build;
 mod locks;
 mod plugin;
-mod plugin_list;
 mod project;
 mod run;
 
@@ -41,9 +39,10 @@ stdin; `rig help-agents` says how.
   rig                    Build the agent if needed and run it in a new session.
   rig <command> [args…]  Build the agent if needed and run a plugin's command.
   rig build              Regenerate the agent project, build it, and stage the
-                         new binary for the next start. Only [[plugins.extra]]
-                         in RIG_HOME/settings.toml changes what it builds;
-                         turning a plugin on or off never does.
+                         new binary for the next start. The agent holds only
+                         the plugins [plugins] in RIG_HOME/settings.toml turns
+                         on, so turning one on or off rebuilds it: only the
+                         generated crate changes, so it relinks.
   rig help [command]     This text, or what a command does.
   rig help-agents        How a script or another agent drives rig headless,
                          over its stdin and stdout (-p, --json).
@@ -66,8 +65,6 @@ Environment:
   RIG_HOME    Root of every rig directory (default: ~/.rig); its settings.toml
               is the one file to edit.
   RIG_SOURCE  A rig checkout to build the agent from instead of crates.io.
-  RIG_PLUGINS The plugins to run, by type, separated by commas, in place of
-              the settings; a session sets it for every process it starts.
 
 Exit codes:
   0           Success.

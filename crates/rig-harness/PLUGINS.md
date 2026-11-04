@@ -125,18 +125,18 @@ each plugin added): ask it before reading rig's source.
 
 ```sh
 rig plugin new hello    # RIG_HOME/plugins/hello, added to [[plugins.extra]]
-rig plugin list                              # every plugin, on or off here, with what it adds
+rig plugin list                              # every plugin, on or off, with what it adds
 rig plugin disable viz::VizPlugin            # turn it off in [plugins]; `enable` undoes it
 rig plugin check --build  # build the agent as /reload would, and check its stage order
 ```
 
 A crate that is not rig's is a `[[plugins.extra]]` table of
-`RIG_HOME/settings.toml`; only the home's file takes one. `rig plugin new`
+`RIG_HOME/settings.toml`; only the home's file says which plugins run. `rig plugin new`
 writes a working, commented slash command and the table `crate = "hello"`
 (the package), `path = "plugins/hello"` (relative to `RIG_HOME`; or `git`,
 with `branch` or `rev`, or `version`) and `plugin = "hello::HelloPlugin"`.
-Adding, removing or changing an extra rebuilds the agent; turning a plugin on
-or off does not.
+The agent holds only the plugins on, so turning one on or off, or changing an
+extra, rebuilds it; only the generated crate changes, so it relinks.
 
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
