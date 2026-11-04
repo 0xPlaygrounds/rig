@@ -91,12 +91,14 @@ pub(crate) fn store_images_with<'m>(
 
 /// Puts the data of each image `message` names in `store` back in place.
 /// An image whose blob cannot be read has no data any more ([`Unknown`]),
-/// which a request sends as a placeholder; the first such failure is
-/// returned.
+/// which a request sends as a placeholder; the first failure is returned,
+/// unless a later one is other than a missing blob, so a missing blob
+/// never hides a failing store.
 ///
 /// # Errors
 ///
-/// The first blob that could not be read.
+/// The first blob that could not be read for a reason other than that it
+/// is gone, else the first that is gone.
 pub fn load_images(message: &mut Message, store: &dyn Files) -> io::Result<()> {
     load_images_with(message, &|name| read_blob(store, name))
 }
@@ -106,7 +108,7 @@ pub(crate) fn load_images_with(
     message: &mut Message,
     blob: &dyn Fn(&str) -> io::Result<Vec<u8>>,
 ) -> io::Result<()> {
-    let mut gone = Ok(());
+    let mut gone = None;
     for image in message.images_mut() {
         if let Url(url) = &image.data
             && let Some(name) = url.strip_prefix(BLOB)
@@ -114,13 +116,17 @@ pub(crate) fn load_images_with(
             image.data = match blob(name) {
                 Ok(bytes) => Base64(STANDARD.encode(bytes)),
                 Err(failure) => {
-                    gone = gone.and(Err(failure));
+                    let missing = |failure: &io::Error| failure.kind() == io::ErrorKind::NotFound;
+                    match &gone {
+                        Some(first) if !missing(first) || missing(&failure) => {}
+                        _ => gone = Some(failure),
+                    }
                     Unknown
                 }
             };
         }
     }
-    gone
+    gone.map_or(Ok(()), Err)
 }
 
 /// Adds the name of every blob `bytes` names (`blob:<name>`) to `named`.
