@@ -3,8 +3,9 @@ short, copy-ready example per extension point.
 
 A plugin is a Bevy plugin: a type implementing `Plugin + Default` in a crate
 that depends on `rig-harness`. The agent's own tools, commands, subagents,
-compaction, sessions and terminal view are plugins of the same kind, listed in
-`RIG_HOME/plugins.toml` and built only on the same public API. A plugin that
+compaction, sessions and terminal view are plugins of the same kind, turned on
+or off in `RIG_HOME/settings.toml` (`[plugins]`) and built only on the same
+public API. A plugin that
 needs another adds it unless `app.is_plugin_added::<P>()`.
 
 Every name below comes from `use rig_harness::prelude::*;` (Bevy's preludes,
@@ -45,8 +46,9 @@ each plugin added): ask it before reading rig's source.
 # Words
 
 - **Crates.** The **kernel** is rig-ecs (never "runtime" or "core"), the
-  **harness** rig-harness, the **launcher** the `rig` binary (std, and libc on unix); a
-  **plugin** is a Bevy plugin `plugins.toml` lists. Sources: `crates/<name>`
+  **harness** rig-harness, the **launcher** the `rig` binary of `rig-cli` (std,
+  `toml_edit`, and libc on unix); a **plugin** is a Bevy plugin the agent is
+  built with, which `[plugins]` in `settings.toml` turns on or off. Sources: `crates/<name>`
   for libraries, kernel and harness; `plugins/rig-basics/src/<module>` for
   the default plugins, `plugins/<name>` for rig-tui and the optional ones.
 - **Agents.** An **agent** is an entity with `Agent`, a conversation and a
@@ -122,19 +124,20 @@ each plugin added): ask it before reading rig's source.
 # Making one
 
 ```sh
-rig plugin new hello    # RIG_HOME/plugins/hello, listed in plugins.toml
-rig plugin add viz::VizPlugin --path ~/viz   # an entry for an existing crate
-rig plugin remove viz::VizPlugin             # take an entry out; its crate stays
-rig plugin list                              # every entry, on or off, with its comment
-rig plugin disable viz::VizPlugin            # comment the entry out; `enable` undoes it
+rig plugin new hello    # RIG_HOME/plugins/hello, added to [[plugins.extra]]
+rig plugin list                              # every plugin, on or off, with what it adds
+rig plugin disable viz::VizPlugin            # turn it off in [plugins]; `enable` undoes it
 rig plugin check --build  # build the agent as /reload would, and check its stage order
 ```
 
-A commented-out entry is a disabled plugin, and the comment right above an
-entry is its description, which `rig plugin list` and `/plugins` show.
-`rig plugin new` writes a working, commented slash command and the entry
-`crate = "hello"` (the package), `path = "plugins/hello"` (or `git`, with
-`branch` or `rev`, or `version`) and `plugin = "hello::HelloPlugin"`.
+A crate that is not rig's is a `[[plugins.extra]]` table of
+`RIG_HOME/settings.toml`; only the home's file says which plugins run. `rig plugin new`
+writes a working, commented slash command and the table `crate = "hello"`
+(the package), `path = "plugins/hello"` (relative to `RIG_HOME`; or `git`,
+with `branch` or `rev`, or `version`) and `plugin = "hello::HelloPlugin"`.
+The agent holds only the plugins on, so turning one on or off, or changing an
+extra, rebuilds it: only the generated crate compiles again, and a plugin's
+own crate the first time it is on.
 
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
@@ -1504,15 +1507,9 @@ A plugin's settings are its table of the user's `RIG_HOME/settings.toml`:
 `app.add_setting::<T>("section")` in `build` inserts the resource `T` read
 from `[section]`, else `T::default()`; a table that does not read as `T`,
 or a file that is not TOML, refuses the run (exit 2) with what is wrong,
-naming the file, the table and the key. A project's `.rig/settings.toml`
-table that does not read only warns. A test inserts
-`Settings::from_toml(..)` before adding the plugin, so the user's file is
-never read. `add_project_setting::<T>(section)` also merges the table of
-the project's `.rig/settings.toml` over the user's, key by key, at
-startup (a cloned repository changes only what a plugin lets it): each
-such table is a `ProjectSetting` entity, the project's file is the
-`ProjectSettings` resource, and both happen in `PreStartup`'s
-`ProjectSettingsSystems::{Read, Apply}`. Here a
+naming the file, the table and the key. A project has no settings. A test
+inserts `Settings::from_toml(..)` before adding the plugin, so the user's
+file is never read. Here a
 [command-line option](#fronts-options-and-commands) overrides the setting.
 
 ```rust,no_run
@@ -2106,8 +2103,8 @@ fn show_cap(spent: Res<SessionUsage>, mut shown: Query<(&mut UsageRow, &mut Prin
 
 # Turning off or replacing what another plugin added
 
-A whole plugin is replaced in `plugins.toml`: disable its entry and list
-yours, as for [compaction](#changing-history). Tools, slash commands,
+A whole plugin is replaced in `settings.toml`: name it in `[plugins] disable`
+and add yours, as for [compaction](#changing-history). Tools, slash commands,
 key bindings, options, fronts and prompt sections are entities.
 `Disabled` on one turns it off and frees its name for a replacement (a second
 one of a taken name is refused), in `Plugin::finish`, which runs once every
@@ -2167,8 +2164,8 @@ A plugin with stage systems also checks they are ordered:
 `rig_harness::stage_conflicts(app.world_mut())` lists each pair of systems of
 one stage that write the same data [unordered](#ordering-against-other-plugins),
 naming their plugins, and is empty for an app with the plugin and those it is
-used with. `rig plugin check --build` runs the same check on the user's own
-`plugins.toml`, the default plugins included. How long each system takes is
+used with. `rig plugin check --build` runs the same check on the plugins the
+user's `settings.toml` turns on, the default plugins included. How long each system takes is
 `PluginTimings` (`totals()`, `last_frame()`), filled once a plugin crate
 depends on rig-harness with `features = ["trace"]`.
 

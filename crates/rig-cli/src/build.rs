@@ -21,10 +21,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use rig_harness_protocol::{
-    AgentDescription, Home, SessionId, env, first_errors, secret_variables,
+    AgentDescription, Home, SessionId, config, env, first_errors, secret_variables,
 };
 
-use super::plugin_list::PluginList;
 use super::project::{self, PACKAGE, RigSource};
 use super::{BEVY_VERSION, Result, locks};
 
@@ -69,7 +68,7 @@ const ERROR_LINES: usize = 40;
 #[derive(Debug)]
 pub struct BuildFailure {
     /// What failed, such as `cargo could not build the agent (exit
-    /// status: 101)` or a `plugins.toml` mistake.
+    /// status: 101)` or a `settings.toml` mistake.
     pub reason: String,
     /// The output from its first error on, at most [`ERROR_LINES`] lines;
     /// empty when no line starts with `error`.
@@ -116,10 +115,10 @@ impl fmt::Display for BuildFailure {
 
 impl std::error::Error for BuildFailure {}
 
-/// Reads `plugins.toml`, writes the agent project, checks its Bevy version,
-/// builds it, and copies the binary to `staged` as `staging` says. The
-/// build's output goes to [`Home::build_log`], and to stderr as `output`
-/// says.
+/// Writes the agent project with the plugins `settings.toml` turns on,
+/// checks its Bevy version, builds it, and copies the binary to `staged` as
+/// `staging` says. The build's output goes to [`Home::build_log`], and to
+/// stderr as `output` says.
 pub fn compile(
     home: &Home,
     staged: &Path,
@@ -137,9 +136,9 @@ pub fn compile(
 }
 
 fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildLog) -> Result<()> {
-    let list = PluginList::load(&home.plugins_toml())?;
+    let plugins = config::chosen(home)?;
     let source = RigSource::detect()?;
-    project::generate(home, &list, &source)?;
+    project::generate(home, &plugins, &source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(home);
@@ -155,10 +154,10 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     let checked = home.project().join("Cargo.lock.checked");
     if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
         log.say("Resolving dependencies…");
-        let rig_crates = project::rig_crates(&list, &source);
+        let rig_crates = project::rig_crates(&plugins, &source);
         check_bevy(
             home,
-            &list,
+            &plugins,
             &rig_crates,
             &project::rig_version(&source),
             log,
@@ -654,7 +653,7 @@ fn stamp(binary: &Path) -> Result<String> {
 /// other than the agent's.
 fn check_bevy(
     home: &Home,
-    list: &PluginList,
+    plugins: &config::Plugins,
     rig_crates: &BTreeSet<String>,
     rig_version: &str,
     log: &mut BuildLog,
@@ -670,22 +669,16 @@ fn check_bevy(
     };
     // Every package that depends on the foreign Bevy, directly or not.
     let dependents = tree(home, &["--invert", &format!("{bevy}@{version}")], log)?;
-    let culprit = list
-        .plugins
-        .iter()
-        .map(|plugin| &plugin.package)
-        .find(|plugin| {
-            dependents
-                .iter()
-                .any(|line| package(line).is_some_and(|(name, _)| name == plugin.name))
-        });
+    let culprit = plugins.extras_on().map(|extra| &extra.krate).find(|krate| {
+        (dependents.iter()).any(|line| package(line).is_some_and(|(name, _)| name == *krate))
+    });
     Err(match culprit {
         Some(plugin) => format!(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
              Change {name}'s bevy dependencies to `={BEVY_VERSION}` (with default-features = \
-             false), or remove it from plugins.toml.",
-            name = plugin.name
+             false), or remove it from [[plugins.extra]] in settings.toml.",
+            name = plugin
         ),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \

@@ -1,0 +1,34 @@
+[package]
+name = "rig-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "The `rig` command: builds the rig-harness coding agent with the plugins settings.toml turns on, and runs it."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+# `doc = false`: it shares the `rig` library's name, so its docs would
+# overwrite the library's.
+[[bin]]
+name = "rig"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+rig-harness-protocol = { path = "../rig-harness-protocol", version = "0.46.0" }
+
+# It kills its cargo's process group when it is told to end, and passes an
+# ending signal on to its agent and waits for it.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(not(unix))'.dependencies]
+ctrlc = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+assert_fs = { workspace = true }

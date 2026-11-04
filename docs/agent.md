@@ -2,9 +2,10 @@
 
 `rig` is a terminal coding agent. It is a Bevy app built on the
 [`rig-harness`](../crates/rig-harness) crate, and every part of it but the
-harness is a plugin, listed in `plugins.toml` and built from a plugin crate.
-The `rig` command is its launcher: it generates a small Cargo project for the
-agent with those plugins, builds it, and runs it.
+harness is a plugin, built from a plugin crate and turned on or off in
+`settings.toml`. The `rig` command (the `rig-cli` crate) is its launcher: it
+generates a small Cargo project for the agent with the plugins you turned on,
+builds it, and runs it.
 
 The agent's coding tools come from the [`rig-tools`](../crates/rig-tools)
 crate, usable by any rig agent, and its kernel (agents, turns and tool calls
@@ -27,7 +28,7 @@ as Bevy entities, one recorded effect path, session logs) is the
 ## Install and run
 
 ```bash
-cargo install rig
+cargo install rig-cli
 export OPENAI_API_KEY=...   # or any other provider key in the model catalog
 rig                         # builds the agent (later starts rebuild what changed), then opens it
 ```
@@ -49,7 +50,11 @@ any catalog model, such as a local one at its default address; one that does
 not connect, such as one with no key, is refused and the current model stays.
 A new session starts with the model and reasoning you last picked with
 `/model` and `/effort`, saved once that model has answered (an `/effort` is
-saved with a model you picked with `/model` or saved before). `-m
+saved with a model you picked with `/model` or saved before). They are saved
+as `[model]` in `RIG_HOME/settings.toml`, `default = "vendor/model"` and
+`effort = "high"` (`default`, `off`, a level, or `"1024 tokens"`), which you
+may also set by hand; rig rewrites only those two keys and keeps your
+comments. A project's `[model]` is not read. `-m
 vendor/model` picks one on the command line for that run only, with the saved
 reasoning setting when that model takes it, and none when it does not
 connect (a headless run then exits 2); an editor's
@@ -188,7 +193,7 @@ the one picked, in its own directory; `rig --resume <id or name>` (or
 `/resume <id or name>`) resumes a given one, such as after a crash.
 
 Rig redacts nothing unless you turn redaction on with `rig plugin enable
-rig_basics::redact::RedactPlugin` (then `rig build`, or `/reload`). With it,
+rig_basics::redact::RedactPlugin` (then `/reload`, or the next start). With it,
 API keys, tokens, private keys and the values of secret-named variables
 (`GITHUB_TOKEN=…`) become placeholders, `‹SECRET_1›`, one per distinct
 secret, where they come in: in the model's reply as it streams, in each
@@ -246,10 +251,11 @@ as the cache key where the provider takes one.
 
 The project is the working directory or the nearest directory above it
 that holds `.git` or a `.rig` directory, below your home directory: rig
-started anywhere inside one reads the same `.rig/settings.toml`,
-`.rig/mcp.json` and per-project data. Your home directory is not a
-project: started there, rig reads only `RIG_HOME`'s settings and MCP
-servers. Commands still start in the working directory.
+started anywhere inside one reads the same `.rig/mcp.json`, `AGENTS.md`
+files, skills and per-project data. A project has no settings: rig never
+reads a `.rig/settings.toml`. Your home directory is not a project: started
+there, rig reads only `RIG_HOME`'s MCP servers. Commands still start in the
+working directory.
 
 Two default plugins add to it when the agent starts. `AgentsMdPlugin` adds
 the `AGENTS.md` files of the working directory and of each directory above
@@ -333,8 +339,8 @@ while other paths stay on this machine
 
 ## Subagents
 
-With `rig_basics::subagents::SubagentsPlugin` enabled (it is listed disabled
-by default; `/plugins` or `rig plugin enable
+With `rig_basics::subagents::SubagentsPlugin` enabled (it is off by
+default; `/plugins` or `rig plugin enable
 rig_basics::subagents::SubagentsPlugin` enables it), the model can hand work
 to subagents with the `task` tool. Each is a new agent in the same process,
 with its own conversation and, if the call asks, another model, reasoning
@@ -408,7 +414,10 @@ bound.
 
 ## Reload and builds
 
-`/reload` rebuilds the agent and restarts it on the same session. Typed while
+`/reload` rebuilds the agent when the plugins `settings.toml` turns on or a
+plugin crate changed, and restarts it on the same session. The agent holds
+only the plugins on, so turning one on or off rebuilds it: only the generated
+crate compiles again, and a plugin's own crate the first time it is on. Typed while
 a turn runs, it waits until no turn runs (`/reload cancel` drops it), and a
 turn started during the build delays the restart until it ends. It shows
 cargo's latest line, keeps the current build running if the new one does not
@@ -431,43 +440,47 @@ failed and it can read the log and fix the cause; `/reload` then tries again.
 
 ## Plugins
 
-Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`. Everything but
-the harness (the session and the launcher protocol) is an entry in that list:
-the project context, models, sign-in, sessions, compaction, usage, activity,
-each tool, `@path` attachments, `/reload`, `/plugins`, the commands,
-`--print` and the terminal view, each from a plugin crate in
-[`plugins/`](../plugins), most from [`rig-basics`](../plugins/rig-basics), so
-any of them can be removed or replaced
-([`crates/rig-harness`](../crates/rig-harness/README.md) lists them):
+Plugins are Bevy plugins. Everything but the harness (the session and the
+launcher protocol) is one: the project context, models, sign-in, sessions,
+compaction, usage, activity, each tool, `@path` attachments, `/reload`,
+`/plugins`, the commands, `--print` and the terminal view, each from a plugin
+crate in [`plugins/`](../plugins), most from
+[`rig-basics`](../plugins/rig-basics), so any of them can be turned off or
+replaced ([`crates/rig-harness`](../crates/rig-harness/README.md) lists them).
+The agent is built with exactly the plugins on, which it adds as one Bevy
+`PluginGroup`.
+
+`$RIG_HOME/settings.toml` is the one file you edit. Its `[plugins]` table holds
+only your changes to rig's built-in list, so a plugin rig adds to its defaults
+later reaches you without a change; a name rig does not know is refused,
+naming it:
 
 ```toml
-[[plugin]]
-crate = "rig-basics"              # one of rig's own plugin crates: no source
-plugin = "rig_basics::coding_tools::ReadTool"
+[plugins]
+enable  = ["rig_basics::budget::BudgetPlugin"]
+disable = ["rig_basics::skills::SkillsPlugin"]
 
-[[plugin]]
-crate = "rig-tui"
-plugin = "rig_tui::TuiPlugin"
-
-[[plugin]]
+[[plugins.extra]]                 # a crate that is not rig's
 crate = "hello"                   # the package name
-path = "plugins/hello"            # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
+path = "plugins/hello"            # relative to RIG_HOME; or git = "..." (branch, rev), or version = "..."
 plugin = "hello::HelloPlugin"     # implements Plugin + Default
 ```
 
-`rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
-any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
-`--git`, `--version`) adds an entry for an existing crate; `rig plugin add
-<type>` with no source adds one for a plugin rig ships, at the launcher's
-version; and `rig plugin remove <type>` takes one out (its crate stays), each
-checked before `plugins.toml` is written. A commented-out entry is a disabled
-plugin: the template lists every plugin rig ships, the ones not on by default
-commented out. `rig plugin list` shows each entry, `on` or `off`, with its
-crate and the comment above it, and `rig plugin enable <type>` and `disable
-<type>` uncomment and comment out an entry, keeping every other line. In the
-agent, `/plugins` is a picker of the same list: tick and untick plugins, press
-Enter, and the agent rebuilds and restarts at once (without a terminal it
-prints the list).
+Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
+at the next start or `/reload`: only the generated crate compiles again, and
+a plugin's own crate the first time it is on. Only your `settings.toml` says
+which plugins run. A helper, `/reload`
+and anything else a session starts run the same home's build.
+
+`rig plugin list` shows every plugin, `on` or `off`, with its crate and
+what it adds. `rig plugin enable <type>` and `disable <type>` change
+`[plugins]`, keeping every comment. `rig plugin new hello` makes that crate in
+`$RIG_HOME/plugins/hello`, outside any workspace, and adds its
+`[[plugins.extra]]`, checked before `settings.toml` is written. Another
+crate's plugin is a `[[plugins.extra]]` table you write. In the agent, `/plugins` is a picker of the same list: tick and
+untick plugins, press Enter, and the agent rebuilds and restarts with them at
+once; a failed build keeps the running one (without a terminal it prints the
+list).
 
 `rig plugin check` checks the list. With `--build` it also builds the agent
 with its plugins in `$RIG_HOME/target` without staging it, and names the
@@ -493,9 +506,10 @@ tool, with which the agent reads its own Bevy world, read-only.
 
 The optional [`rig-mcp-client`](../plugins/rig-mcp-client) plugin offers the
 tools of MCP servers, stdio or streamable HTTP, named in `$RIG_HOME/mcp.json`
-and, once you approve each, in the project's `.rig/mcp.json`: `rig plugin
-enable rig_mcp_client::McpPlugin`. Its README covers the file format, approval,
-`/mcp` and `--tools`, which can name an MCP server's tools in every front.
+and in the project's `.rig/mcp.json`, which start with no question: `rig
+plugin enable rig_mcp_client::McpPlugin`. Its README covers the file format,
+`/mcp`, `--tools`, which can name an MCP server's tools in every front, and
+`approval::McpApprovalPlugin`, which asks before a project's server starts.
 
 The optional [`rig-acp`](../plugins/rig-acp) plugin adds `rig acp`, which
 serves the Agent Client Protocol on stdin and stdout, so an editor such as Zed
@@ -504,17 +518,16 @@ rig_acp::AcpPlugin`. Its README has the editor's settings.
 
 The optional [`rig-claude-cloak`](../plugins/rig-claude-cloak) plugin adds
 `claude-cloak/*` models signed in with a Claude subscription instead of an API
-key, on Linux and macOS: `rig plugin add rig_claude_cloak::ClaudeCloakPlugin`.
+key, on Linux and macOS: `rig plugin enable rig_claude_cloak::ClaudeCloakPlugin`.
 
 Code mode is the optional [`rig-steel`](../plugins/rig-steel) plugin: a
 `run_steel` tool whose [Steel](https://github.com/mattwparas/steel) (Scheme)
 program spawns agents, messages them and calls tools, in a sandbox. Enable it
-with:
+with `rig plugin enable rig_steel::SteelPlugin`, or:
 
 ```toml
-[[plugin]]
-crate = "rig-steel"
-plugin = "rig_steel::SteelPlugin"
+[plugins]
+enable = ["rig_steel::SteelPlugin"]
 ```
 
 A fan-out that asks three agents at once and keeps the shortest answer:
@@ -540,14 +553,12 @@ processes can share one:
 
 | Path | What it holds |
 | --- | --- |
-| `plugins.toml` | The plugin list. |
 | `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
-| `settings.toml` | Settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
+| `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |
 | `mcp.json` | The MCP servers of the optional `rig-mcp-client` plugin, in every project. |
-| `defaults.json` | The model and reasoning last picked with `/model` and `/effort` once that model answered, which a new session starts with. |
 | `data/` | Plugins' data across sessions and projects. |
 | `projects/` | Plugins' data per project, such as the prompt history `projects/<name>-<key>/tui/history.jsonl`. |
 | `sessions/<id>/` | A session: the agent logs in `logs/`, the name `/name` gave it in `name`, and `files/` (`meta.json`, the images in `blobs/`, the effect log `effects.jsonl` with `EffectLogPlugin`, opt-in `traffic.jsonl` with `TrafficPlugin`, plugins' files). |
@@ -563,6 +574,6 @@ To run the agent from a rig checkout instead of crates.io, install the
 launcher from it or point `RIG_SOURCE` at it:
 
 ```bash
-cd rig && cargo install --path . --root /some/dir
+cd rig && cargo install --path crates/rig-cli --root /some/dir
 RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```

@@ -2,14 +2,12 @@
 //! works, and a policy that decides, per tool call, whether it runs, is
 //! refused, or waits for the user's yes or no.
 //!
-//! The policy is the `[policy]` table of the user's `settings.toml`, with
-//! the project's `.rig/settings.toml` merged over it: rules
-//! `{ tool, path, command } -> allow | ask | deny`, the project's first,
-//! then the user's, the first that matches winning. A call no rule matches
-//! runs when its footprint only reads, and asks otherwise. A rule judges
-//! what a call touches (its kernel-computed footprint) rather than only
-//! its tool's name, so it covers every plugin's tools and every agent's
-//! calls, subagents' too.
+//! The policy is the `[policy]` table of `settings.toml`: rules
+//! `{ tool, path, command } -> allow | ask | deny`, the first that matches
+//! winning. A call no rule matches runs when its footprint only reads, and
+//! asks otherwise. A rule judges what a call touches (its kernel-computed
+//! footprint) rather than only its tool's name, so it covers every
+//! plugin's tools and every agent's calls, subagents' too.
 //!
 //! ```toml
 //! [policy]
@@ -29,7 +27,7 @@
 //! survives `/reload` and a restart, and a new session starts without it.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::Arc;
 
 use regex::Regex;
 use rig_basics::approval::ApprovalSystems;
@@ -131,8 +129,8 @@ pub struct PolicyPlugin;
 
 impl Plugin for PolicyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_project_setting::<Policy>("policy")
-            .add_project_setting::<RunTestsSettings>("run_tests")
+        app.add_setting::<Policy>("policy")
+            .add_setting::<RunTestsSettings>("run_tests")
             .register_type::<SessionApprovals>()
             .init_resource::<SessionApprovals>()
             .init_resource::<Rules>()
@@ -145,8 +143,8 @@ impl Plugin for PolicyPlugin {
             )
             .add_systems(Startup, compile_rules)
             .add_systems(AgentPass, (answered, gate).chain().in_set(PolicySystems));
-        let command = TestCommand::default();
-        app.insert_resource(command.clone());
+        let command = app.world().get_resource::<RunTestsSettings>().cloned();
+        let command = Arc::new(command.unwrap_or_default());
         let processes = app.world_mut().get_resource_or_init::<Processes>().clone();
         let tool = RunTests {
             workspace: Arc::new(Local),
@@ -168,43 +166,18 @@ struct Compiled {
     command: Option<Regex>,
 }
 
-/// The rules in force: the project's, then the user's.
+/// The rules in force, in order.
 #[derive(Resource, Default)]
 struct Rules(Vec<Compiled>);
 
-/// The `run_tests` command, set at startup once the project's settings are
-/// merged, read by each call.
-#[derive(Resource, Clone, Default)]
-struct TestCommand(Arc<RwLock<RunTestsSettings>>);
-
-impl TestCommand {
-    fn get(&self) -> RunTestsSettings {
-        self.0
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-}
-
-/// Puts the project's rules ahead of the user's and compiles them. The
-/// harness merges a project's table over the user's key by key, which
-/// replaces the user's list; the user's own table is read again so its
-/// rules still follow. A pattern that does not compile leaves the policy
+/// Compiles the rules. A pattern that does not compile leaves the policy
 /// at its default, with an error notice.
 fn compile_rules(
-    merged: Res<Policy>,
-    settings: Res<Settings>,
-    run_tests: Res<RunTestsSettings>,
-    command: Res<TestCommand>,
+    policy: Res<Policy>,
     mut rules: ResMut<Rules>,
     mut notices: MessageWriter<Notice>,
 ) {
-    *command.0.write().unwrap_or_else(PoisonError::into_inner) = run_tests.clone();
-    let user = settings.get::<Policy>("policy").unwrap_or_default();
-    let mut all = merged.rules.clone();
-    if user.rules != merged.rules {
-        all.extend(user.rules);
-    }
+    let all = policy.rules.clone();
     let compiled: Result<Vec<Compiled>, String> = all.into_iter().map(compile).collect();
     match compiled {
         Ok(compiled) => rules.0 = compiled,
@@ -461,7 +434,7 @@ struct RunTests {
     base: Option<PathBuf>,
     confine: bool,
     processes: Processes,
-    command: TestCommand,
+    command: Arc<RunTestsSettings>,
 }
 
 /// The arguments of `run_tests`.
@@ -505,7 +478,7 @@ impl Tool for RunTests {
         let RunTestsSettings {
             command,
             timeout_secs,
-        } = self.command.get();
+        } = RunTestsSettings::clone(&self.command);
         let (workspace, base, confine) = (self.workspace.clone(), self.base.clone(), self.confine);
         let launcher = self.processes.launcher();
         blocking(move || {

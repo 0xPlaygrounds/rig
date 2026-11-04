@@ -8,7 +8,8 @@
 //!
 //! [`HeadlessPlugins`] is what a terminal app takes from Bevy, and
 //! [`RigHarnessPlugins`] is the harness. The launcher's generated `main.rs`
-//! adds the plugins `plugins.toml` lists with [`load`]. The error handler is
+//! adds the plugins the settings turn on as a [`PluginGroup`] of [`Loaded`]
+//! plugins. The error handler is
 //! the application's to set:
 //!
 //! ```no_run
@@ -64,20 +65,19 @@ pub mod workspace;
 
 pub use describe::run;
 pub use load::{
-    AppKeepsExt, Keeps, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides, SavedAs,
-    check_stages_at_start, load, stage_conflicts,
+    AppKeepsExt, Keeps, Loaded, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
+    SavedAs, check_stages_at_start, load, stage_conflicts,
 };
 
 use bevy::MinimalPlugins;
 use bevy::diagnostic::FrameCountPlugin;
 use bevy::time::TimePlugin;
 use bevy_app::{
-    Plugin, PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
-    TaskPoolThreadAssignmentPolicy,
+    Plugin, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin, TaskPoolThreadAssignmentPolicy,
 };
 use bevy_log::LogPlugin;
 
-pub use bevy_app::{App, AppExit};
+pub use bevy_app::{App, AppExit, PluginGroup, PluginGroupBuilder};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
@@ -139,9 +139,7 @@ pub mod prelude {
     pub use crate::run::{AppRunExt, KeepRunning, RunStart, Starting, Work};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, Project, ProjectRoot, RigHome, TokioRuntime, WorkDir};
-    pub use crate::settings::{
-        AppSettingsExt, ProjectSetting, ProjectSettings, ProjectSettingsSystems, Settings,
-    };
+    pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::resend;
     pub use crate::timings::{PluginTimings, SystemTimings};
     pub use crate::watch::{FileChanges, FileWatch};
@@ -161,7 +159,7 @@ pub mod prelude {
 /// commands, the clock the loop sleeps by, file watches, the questions and
 /// pickers every front answers, the run's start and `--tools`
 /// ([`run`](mod@run)), and tool progress. Everything else is a
-/// plugin `plugins.toml` lists, which can leave it out.
+/// plugin the settings turn on, which can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {

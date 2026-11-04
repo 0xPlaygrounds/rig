@@ -7,14 +7,12 @@ agent asks it which plugins are loaded and what each added, its agents, the
 state saved with the session, the warnings logged (the `Diagnostics`
 resource), schedules and every reflected type, before reading rig's source.
 
-It is not in the default `plugins.toml`, because Bevy Remote makes the agent's
-build heavier and, on Linux, needs the ALSA development headers
-(`libasound2-dev` on Debian and Ubuntu, `alsa-lib-devel` on Fedora,
-`alsa-lib` on Arch). Enable it by uncommenting its entry in
-`$RIG_HOME/plugins.toml`, or with:
+It is off by default. Name it in `[plugins] enable` of
+`$RIG_HOME/settings.toml`, or run the command below; the next start or
+`/reload` builds the agent with it:
 
 ```bash
-rig plugin add rig_inspect::InspectPlugin
+rig plugin enable rig_inspect::InspectPlugin
 ```
 
 Only read-only methods are sent; a plugin

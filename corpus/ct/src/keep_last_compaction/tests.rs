@@ -111,7 +111,7 @@ fn compact_drops_the_oldest_turns_now() {
     assert_eq!(model.request_count(), 3);
 }
 
-/// The default `plugins.toml` with this plugin in place of the default
+/// The default plugins with this plugin in place of the default
 /// compaction: no default plugin adds that back, and this one's systems
 /// are ordered against theirs.
 #[test]

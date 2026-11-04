@@ -1,5 +1,5 @@
-//! The rig agent's default plugins, for tests: [`DEFAULTS`], the plugins
-//! of the default `plugins.toml`; [`add_defaults`], which adds them all;
+//! The rig agent's default plugins, for tests: [`DEFAULTS`], the built-in
+//! plugins on by default; [`add_defaults`], which adds them all;
 //! and [`assert_stages_ordered`], which fails when a plugin's agent-loop
 //! systems are left unordered against theirs, or against each other.
 
@@ -10,48 +10,31 @@ use rig_harness::prelude::*;
 #[doc(hidden)]
 pub use rig_harness as __rig_harness;
 
-/// Plugins by their paths, each with how the generated `main.rs` loads it
-/// from its crate: `(&str, fn(&mut App))` pairs, as [`DEFAULTS`] holds.
-#[macro_export]
-macro_rules! plugins {
-    ($($plugin:path),* $(,)?) => {
-        [$((stringify!($plugin), |app: &mut $crate::__rig_harness::App| {
-            let krate = stringify!($plugin).split("::").next().unwrap_or_default();
-            $crate::__rig_harness::load::<$plugin>(app, &krate.replace('_', "-"), "")
-        })),*]
+/// The `(path, how the agent adds it)` pairs of the plugins
+/// [`built_in_plugins!`](rig_harness::harness_protocol::built_in_plugins)
+/// lists as `on`, from its entries.
+macro_rules! on_by_default {
+    (@keep [$($kept:tt)*]) => { &[$($kept)*] };
+    (@keep [$($kept:tt)*] on $first:ident $(:: $rest:ident)*, $krate:literal, [$($os:literal),*],
+        $essential:expr, $about:literal; $($more:tt)*) => {
+        on_by_default!(@keep [$($kept)* (
+            concat!(stringify!($first) $(, "::", stringify!($rest))*),
+            |app: &mut App| rig_harness::load::<$first $(:: $rest)*>(app, $krate, ""),
+        ),] $($more)*)
     };
+    (@keep [$($kept:tt)*] off $first:ident $(:: $rest:ident)*, $krate:literal,
+        [$($os:literal),*], $essential:expr, $about:literal; $($more:tt)*) => {
+        on_by_default!(@keep [$($kept)*] $($more)*)
+    };
+    ($($entries:tt)*) => { on_by_default!(@keep [] $($entries)*) };
 }
 
-/// The default `plugins.toml`'s plugins, in its order: each one's path,
-/// and how the generated `main.rs` adds it.
-pub const DEFAULTS: [(&str, fn(&mut App)); 24] = plugins![
-    rig_basics::prompt::DefaultPromptPlugin,
-    rig_basics::agents_md::AgentsMdPlugin,
-    rig_basics::skills::SkillsPlugin,
-    rig_basics::models::ModelsPlugin,
-    rig_basics::login::LoginPlugin,
-    rig_basics::models::defaults::DefaultsPlugin,
-    rig_basics::sessions::SessionsPlugin,
-    rig_basics::sessions::agents::AgentsPlugin,
-    rig_basics::compaction::CompactionPlugin,
-    rig_basics::telemetry::usage::UsagePlugin,
-    rig_traffic::TrafficPlugin,
-    rig_basics::activity::ActivityPlugin,
-    rig_basics::coding_tools::ReadTool,
-    rig_basics::coding_tools::EditTool,
-    rig_basics::coding_tools::WriteTool,
-    rig_basics::coding_tools::ShellTool,
-    rig_basics::coding_tools::AttachPlugin,
-    rig_basics::coding_tools::remote::RemoteHostsPlugin,
-    rig_basics::reload::ReloadPlugin,
-    rig_basics::reload::plugins::PluginsPlugin,
-    rig_basics::BasicCommandsPlugin,
-    rig_basics::welcome::WelcomePlugin,
-    rig_basics::print::PrintPlugin,
-    rig_tui::TuiPlugin,
-];
+/// The built-in plugins on by default, in the order the agent adds them:
+/// each one's path, and how the agent adds it.
+pub const DEFAULTS: &[(&str, fn(&mut App))] =
+    rig_harness::harness_protocol::built_in_plugins!(on_by_default);
 
-/// Adds every default plugin to `app`, as the default `plugins.toml` does.
+/// Adds every default plugin to `app`, as a home without `[plugins]` does.
 pub fn add_defaults(app: &mut App) {
     for (_, add) in DEFAULTS {
         add(app);
@@ -78,8 +61,8 @@ pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
 }
 
 /// [`assert_stages_ordered`] for plugins that replace the default `R`:
-/// the defaults are added without it, as a `plugins.toml` with its entry
-/// disabled has them, and none of them may add it back.
+/// the defaults are added without it, as `[plugins] disable` naming it has
+/// them, and none of them may add it back.
 ///
 /// ```ignore
 /// rig_defaults_test_support::assert_stages_ordered_replacing::<CompactionPlugin, _>(

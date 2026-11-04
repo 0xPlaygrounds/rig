@@ -29,7 +29,7 @@ const INJECTED: &str = "Context from another plugin.";
 
 /// The kernel, the compaction and usage plugins on `store`, after the first frame
 /// restored the session, with its loop's wakes. The compaction plugin is
-/// loaded as `plugins.toml` loads it.
+/// loaded as the agent loads it.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     start_with(store, |_| {})
 }

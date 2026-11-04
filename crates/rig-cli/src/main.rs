@@ -1,5 +1,6 @@
 //! The `rig` launcher. It generates a Cargo project for the rig-harness agent
-//! with the plugins listed in `$RIG_HOME/plugins.toml`, builds it, and runs it.
+//! with the plugins `$RIG_HOME/settings.toml` turns on, builds it, and runs
+//! it.
 //! When the agent exits with the reload code it starts the new build, and a
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses std, and libc on unix (ctrlc elsewhere) to stop its build
@@ -10,13 +11,22 @@
 //! `--resume` included, once the agent is built, against the commands and
 //! options its plugins add (`rig help` lists them).
 
-mod launcher;
+mod build;
+mod locks;
+mod plugin;
+mod project;
+mod run;
 
 use std::process::ExitCode;
 
-use launcher::plugin::USAGE as PLUGIN_USAGE;
-use launcher::run::last_report;
+use plugin::USAGE as PLUGIN_USAGE;
 use rig_harness_protocol::{AgentDescription, Home, INVOCATION_USAGE, REFUSED_EXIT_CODE};
+use run::last_report;
+
+pub use rig_harness_protocol::{BEVY_VERSION, VERSION};
+
+/// Every launcher failure is reported to the user as its message.
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const USAGE: &str = "\
 Usage: rig [-r <id|name>] [options] [-p prompt…] | rig [options] <command> [args…]
@@ -28,8 +38,12 @@ stdin; `rig help-agents` says how.
 
   rig                    Build the agent if needed and run it in a new session.
   rig <command> [args…]  Build the agent if needed and run a plugin's command.
-  rig build              Regenerate the agent project from plugins.toml, build
-                         it, and stage the new binary for the next start.
+  rig build              Regenerate the agent project, build it, and stage the
+                         new binary for the next start. The agent holds only
+                         the plugins [plugins] in RIG_HOME/settings.toml turns
+                         on, so turning one on or off rebuilds it: only the
+                         generated crate compiles again, and a plugin's own
+                         crate the first time it is on.
   rig help [command]     This text, or what a command does.
   rig help-agents        How a script or another agent drives rig headless,
                          over its stdin and stdout (-p, --json).
@@ -49,7 +63,8 @@ Mode:
 
 const ENVIRONMENT: &str = "
 Environment:
-  RIG_HOME    Root of every rig directory (default: ~/.rig).
+  RIG_HOME    Root of every rig directory (default: ~/.rig); its settings.toml
+              is the one file to edit.
   RIG_SOURCE  A rig checkout to build the agent from instead of crates.io.
 
 Exit codes:
@@ -60,7 +75,7 @@ Exit codes:
 ";
 
 /// `rig help-agents`: the page a driver reads once.
-const AGENTS: &str = include_str!("launcher/help-agents.txt");
+const AGENTS: &str = include_str!("help-agents.txt");
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -71,8 +86,8 @@ fn main() -> ExitCode {
         .collect::<Vec<_>>()
         .as_slice()
     {
-        ["build"] => launcher::build::build(&home).map(|()| ExitCode::SUCCESS),
-        ["plugin", command @ ..] => launcher::plugin::run(&home, command),
+        ["build"] => build::build(&home).map(|()| ExitCode::SUCCESS),
+        ["plugin", command @ ..] => plugin::run(&home, command),
         ["help" | "--help" | "-h"] => {
             print!(
                 "{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{}{ENVIRONMENT}",
@@ -85,11 +100,11 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         ["--version" | "-V"] => {
-            println!("rig {}", launcher::VERSION);
+            println!("rig {}", VERSION);
             Ok(ExitCode::SUCCESS)
         }
         ["help", command] => Ok(help(&home, command)),
-        _ => launcher::run::run(&home, &args),
+        _ => run::run(&home, &args),
     };
     result.unwrap_or_else(|failure| {
         eprintln!("error: {failure}");

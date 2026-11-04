@@ -50,7 +50,9 @@ waits for its servers, each at most [mcp] connect_timeout_secs; with
 the failures, or every notice for a /command) and -r
 <session id or name> (go on with a session; the id is in the `ready` line). rig
 works in its current directory. RIG_HOME (default ~/.rig) holds its
-builds, settings and sessions. The first start builds the agent, which
+builds, settings and sessions; RIG_HOME/settings.toml says which plugins
+run ([plugins]), and the agent is built with exactly those. The first
+start builds the agent, which
 takes minutes, and a start waits for another rig's build; stderr says
 so in one line once the wait passes 3 seconds, and is otherwise quiet
 about the build unless it fails.

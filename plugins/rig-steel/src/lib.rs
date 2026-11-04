@@ -32,13 +32,12 @@
 //! [`Running`] task, and its own [`Harness`] handle, whose tool calls are
 //! tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like
 //! the model's own: gated, started and recorded, and children (`ChildOf`)
-//! of its `run_steel` call, which end with it. It is not in the default
-//! `plugins.toml`; add it with
+//! of its `run_steel` call, which end with it. It is off by default; turn
+//! it on in `settings.toml` with
 //!
 //! ```toml
-//! [[plugin]]
-//! crate = "rig-steel"
-//! plugin = "rig_steel::SteelPlugin"
+//! [plugins]
+//! enable = ["rig_steel::SteelPlugin"]
 //! ```
 
 mod harness;

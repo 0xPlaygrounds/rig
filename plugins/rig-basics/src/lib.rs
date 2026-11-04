@@ -1,7 +1,7 @@
 //! The basic slash commands ([`BasicCommandsPlugin`]): `/help` and `/quit`.
 //!
-//! Every module holds one group of rig's plugins, each listed in
-//! `plugins.toml` by the path of the module that defines it, its only
+//! Every module holds one group of rig's plugins, each named in
+//! `settings.toml` by the path of the module that defines it, its only
 //! path: [`prompt`], [`agents_md`], [`skills`], [`models`], [`login`],
 //! [`sessions`], [`compaction`], [`telemetry`], [`activity`],
 //! [`coding_tools`], [`redact`], [`reload`], [`print`](mod@print), [`helpers`],

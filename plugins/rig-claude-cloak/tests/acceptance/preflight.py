@@ -45,6 +45,12 @@ def source_identity(source):
             "untracked_sha256": untracked.hexdigest()}
 
 
+def enabled_plugins(plugins):
+    """The plugins the `[plugins] enable` of the settings file `plugins` turns on."""
+    table = tomllib.loads(Path(plugins).read_text()).get("plugins", {})
+    return set(table.get("enable", [])) - set(table.get("disable", []))
+
+
 def build_record(binary, source, plugins, generated_main, command):
     if not command:
         raise ValueError("record the exact successful build command")
@@ -58,11 +64,9 @@ def verify_build(binary, source, plugins, record_path):
     expected = build_record(binary, source, plugins, record["generated_main"], record["build_command"])
     if record != expected:
         raise ValueError("binary/source/manifest changed since the successful build was recorded")
-    manifest = tomllib.loads(Path(plugins).read_text())
-    enabled = {p.get("plugin") for p in manifest.get("plugin", []) if p.get("enabled", True) and not p.get("disabled", False)}
-    missing = REQUIRED - enabled
+    missing = REQUIRED - enabled_plugins(plugins)
     generated = Path(record["generated_main"]).read_text()
-    missing |= {name for name in REQUIRED if "load::<" + name + ">" not in generated}
+    missing |= {name for name in REQUIRED if "Loaded::<" + name + ">" not in generated}
     if missing:
         raise ValueError("acceptance build lacks required plugins: " + ", ".join(sorted(missing)))
     with tempfile.TemporaryDirectory(prefix="cloak-preflight-", dir="/dev/shm") as folder:

@@ -1,7 +1,7 @@
 //! A compaction that drops the oldest turns, in place of the default.
 //!
-//! It replaces `rig_basics::compaction::CompactionPlugin`: disable that
-//! entry in `plugins.toml` and add this one. When a turn's request would
+//! It replaces `rig_basics::compaction::CompactionPlugin`: name that in
+//! `[plugins] disable` of `settings.toml` and add this one. When a turn's request would
 //! leave less of the model's window free than `[compaction]`'s reserve,
 //! every turn but the last [`KEEP`] is taken out of the conversation, with
 //! no summary and no model call; `/compact` does the same at once. A turn is

@@ -83,11 +83,11 @@ impl Default for ProjectRoot {
 pub struct Project {
     /// The project's top directory, canonical when it exists: where the
     /// `AGENTS.md` files and skills are read down from, and what keys the
-    /// project's plugin data and MCP approvals.
+    /// project's plugin data.
     pub root: PathBuf,
-    /// The project's `.rig`, where its `settings.toml` and `mcp.json` are.
-    /// `None` when the root is the user's home directory or its `.rig` is
-    /// `RIG_HOME`: those files are the user's.
+    /// The project's `.rig`, where its `mcp.json` is. `None` when the root
+    /// is the user's home directory or its `.rig` is `RIG_HOME`: that file
+    /// is the user's.
     pub config: Option<PathBuf>,
 }
 

@@ -13906,10 +13906,8 @@ dependencies = [
  "assert_fs",
  "base64 0.22.1",
  "bytes",
- "ctrlc",
  "futures",
  "httpmock",
- "libc",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-bedrock",
@@ -13919,7 +13917,6 @@ dependencies = [
  "rig-derive",
  "rig-fastembed",
  "rig-gemini-grpc",
- "rig-harness-protocol",
  "rig-helixdb",
  "rig-history-conformance",
  "rig-lancedb",
@@ -14162,6 +14159,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-cli"
+version = "0.46.0"
+dependencies = [
+ "anyhow",
+ "assert_fs",
+ "ctrlc",
+ "libc",
+ "rig-harness-protocol",
+]
+
+[[package]]
 name = "rig-core"
 version = "0.46.0"
 dependencies = [
@@ -14340,6 +14348,9 @@ dependencies = [
 [[package]]
 name = "rig-harness-protocol"
 version = "0.46.0"
+dependencies = [
+ "toml_edit",
+]
 
 [[package]]
 name = "rig-harness-test-support"

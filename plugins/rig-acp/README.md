@@ -8,20 +8,16 @@ and its slash commands.
 
 ## Turning it on
 
-The plugin list a new `RIG_HOME` gets has it, turned off. Turn it on, and
-build:
+It is off by default. Turn it on, and the next start builds it:
 
 ```sh
 rig plugin enable rig_acp::AcpPlugin
-rig build
 ```
 
-A `RIG_HOME` made before this plugin shipped has no entry for it:
-`rig plugin add rig_acp::AcpPlugin` adds one, on. Sign in with `rig` first
-(`/login` in the terminal view): the editor gets the models you can reach.
-`rig acp` builds the agent first when it is out of date, as `rig` does, which
-can take minutes the first time; build it beforehand so the editor does not
-wait.
+Sign in with `rig` first (`/login` in the terminal view): the editor gets the
+models you can reach. `rig acp` builds the agent first when it is out of date,
+as `rig` does, which can take minutes the first time; build it beforehand so
+the editor does not wait.
 
 ## Zed
 
@@ -87,7 +83,7 @@ to use a new one.
   an editor's servers, and the files' ones only with `McpPlugin` on.
 - **MCP servers:** those the editor names for a session (stdio, and
   streamable HTTP with its headers) connect through rig-mcp-client for that
-  session only: never saved, no approval, values taken as they are. The
+  session only: never saved, never held, values taken as they are. The
   session opens once each one connected or failed (at most
   `[mcp] connect_timeout_secs`); one that fails is reported and fails
   nothing else. Your own `mcp.json` servers join only when

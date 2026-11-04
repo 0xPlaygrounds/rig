@@ -7,7 +7,7 @@
 
 use rig_harness::prelude::*;
 
-/// Listed in plugins.toml; the agent adds it with `Default`.
+/// An extra of `settings.toml`; the agent adds it with `Default`.
 #[derive(Default)]
 pub struct ScaffoldPlugin;
 

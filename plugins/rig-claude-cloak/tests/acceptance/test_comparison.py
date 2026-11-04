@@ -851,11 +851,11 @@ class ComparisonTests(unittest.TestCase):
     def test_missing_effect_log_fails_build_preflight_before_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            binary, plugins, main = root / "binary", root / "plugins.toml", root / "main.rs"
+            binary, plugins, main = root / "binary", root / "settings.toml", root / "main.rs"
             binary.write_bytes(b"offline fake binary")
             enabled = REQUIRED - {"rig_basics::telemetry::effect_log::EffectLogPlugin"}
-            plugins.write_text("\n".join('[[plugin]]\nplugin = "' + name + '"' for name in enabled))
-            main.write_text("\n".join("load::<" + name + ">" for name in enabled))
+            plugins.write_text("[plugins]\nenable = " + json.dumps(sorted(enabled)) + "\n")
+            main.write_text("\n".join("Loaded::<" + name + ">" for name in enabled))
             with patch("preflight.source_identity", return_value={"head": "fake", "tracked_diff_sha256": "fake"}):
                 record = build_record(binary, root, plugins, main, "successful offline build")
                 path = root / "record.json"

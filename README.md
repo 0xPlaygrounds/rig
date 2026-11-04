@@ -46,7 +46,7 @@ coding agent built on it that you extend with Bevy plugins.
 ## The coding agent
 
 ```bash
-cargo install rig
+cargo install rig-cli
 rig
 ```
 
@@ -58,10 +58,11 @@ one of the models those reach, and of a local Ollama or llama.cpp server once
 answers one prompt without the terminal view.
 
 - **Everything is a plugin.** The agent is a [Bevy](https://bevy.org) app; its
-  tools, commands, sessions, sign-in and terminal view are each a plugin listed
-  in `plugins.toml`, so any of them can be removed, replaced or added to.
+  tools, commands, sessions, sign-in and terminal view are each a plugin, turned
+  on or off in `settings.toml`, so any of them can be removed, replaced or
+  added to.
 - **It rebuilds itself.** `/reload` rebuilds the agent with your plugin
-  changes and restarts it in the same session, and keeps the old build running
+  crates and restarts it in the same session, and keeps the old build running
   if the new one does not compile.
 - **Scriptable.** `rig -p --json` and `rig --json` drive it over pipes;
   `rig help-agents` is the protocol.
@@ -142,7 +143,7 @@ crate behind a feature.
 | [`rig-ecs`](crates/rig-ecs), [`rig-harness`](crates/rig-harness) | The agent kernel on Bevy's ECS, and the harness the coding agent's plugins build on |
 | [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
 | [`rig-traffic`](plugins/rig-traffic) | Opt-in provider HTTP recording in the session store, using the cassette engine |
-| [`rig-mcp-client`](plugins/rig-mcp-client) | The coding agent's MCP client, off by default: MCP servers' tools, with project servers only once approved |
+| [`rig-mcp-client`](plugins/rig-mcp-client) | The coding agent's MCP client, off by default: MCP servers' tools, with an opt-in plugin that asks before a project's server starts |
 | [`rig-acp`](plugins/rig-acp) | `rig acp`, off by default: the coding agent for ACP clients (editors such as Zed) |
 
 ### Integrations

@@ -78,7 +78,7 @@ const PROBE: &str = "RIG_SECRET_PROBE";
 #[test]
 fn no_launcher_child_gets_a_secret() {
     if std::env::var_os(PROBE).is_none() {
-        let name = "launcher::build::tests::no_launcher_child_gets_a_secret";
+        let name = "build::tests::no_launcher_child_gets_a_secret";
         let output = std::env::current_exe().and_then(|test| {
             Command::new(test)
                 .args(["--exact", name, "--test-threads", "1"])
@@ -255,7 +255,7 @@ fn cargo_starts_with_no_signal_blocked() {
 fn an_ignored_hangup_stays_ignored_through_a_build() {
     const PROBE: &str = "RIG_IGNORED_HANGUP_PROBE";
     if std::env::var_os(PROBE).is_none() {
-        let name = "launcher::build::tests::an_ignored_hangup_stays_ignored_through_a_build";
+        let name = "build::tests::an_ignored_hangup_stays_ignored_through_a_build";
         let output = std::env::current_exe().and_then(|test| {
             Command::new(test)
                 .args(["--exact", name, "--test-threads", "1"])
@@ -337,7 +337,7 @@ fn a_launcher_leading_its_session_keeps_cargo_in_its_group() {
         log.run(cargo).ok();
         return;
     }
-    let name = "launcher::build::tests::a_launcher_leading_its_session_keeps_cargo_in_its_group";
+    let name = "build::tests::a_launcher_leading_its_session_keeps_cargo_in_its_group";
     let launcher = std::env::current_exe().and_then(|test| {
         Command::new("setsid")
             .arg(test)

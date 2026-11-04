@@ -17,7 +17,7 @@ bevy_app = { workspace = true }
 # The agent loop's build warnings, which `tests/removal.rs` reads.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The default plugins of `plugins.toml`.
+# The crates of the plugins on by default.
 rig-basics = { path = "../../plugins/rig-basics" }
 rig-tui = { path = "../../plugins/rig-tui" }
 rig-traffic = { path = "../../plugins/rig-traffic" }

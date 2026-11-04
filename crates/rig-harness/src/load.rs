@@ -1,5 +1,5 @@
-//! What each plugin added, as data in the world: one entity per plugin
-//! `plugins.toml` lists (its `Name` and [`PluginSource`]), and
+//! What each plugin added, as data in the world: one entity per plugin the
+//! agent is built with ([`Loaded`], its `Name` and [`PluginSource`]), and
 //! [`ProvidedBy`] on what that plugin spawned, such as its commands,
 //! tools, prompt sections and observers. "What did plugin X add" is a
 //! query for `ProvidedBy(x)`; which plugin added a schedule's system is in
@@ -47,7 +47,7 @@ use rig_ecs::stage::AgentPass;
 pub struct PluginSource {
     /// Its package, such as `rig-harness`.
     pub package: String,
-    /// Where the package is built from, as `plugins.toml` names it, such
+    /// Where the package is built from, as the launcher names it, such
     /// as `path /home/me/.rig/plugins/viz` or `version 0.3`.
     pub source: String,
 }
@@ -134,7 +134,7 @@ impl PluginSystems {
 /// for the harness's, the kernel's and Bevy's own), the systems and the
 /// data. It initializes the agent loop, as the loop's first run would; an
 /// app without one has none. `rig plugin check --build` reports these for
-/// the plugins `plugins.toml` lists, and a debug build at its start
+/// the plugins the settings turn on, and a debug build at its start
 /// ([`check_stages_at_start`]).
 pub fn stage_conflicts(world: &mut World) -> Vec<String> {
     let label = format!("{AgentPass:?}");
@@ -229,9 +229,56 @@ fn systems(world: &World) -> HashSet<(InternedScheduleLabel, SystemKey)> {
     systems.collect()
 }
 
+/// The plugin `P` added through [`load`], from `package` at `source`: how
+/// the generated program's `PluginGroup` adds each plugin the settings turn
+/// on, so each gets its entity and [`PluginSource`].
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_harness::{Loaded, PluginGroupBuilder};
+///
+/// #[derive(Default)]
+/// struct MyPlugin;
+///
+/// impl Plugin for MyPlugin {
+///     fn build(&self, _app: &mut App) {}
+/// }
+///
+/// struct Chosen;
+///
+/// impl PluginGroup for Chosen {
+///     fn build(self) -> PluginGroupBuilder {
+///         PluginGroupBuilder::start::<Self>().add(Loaded::<MyPlugin>::new("my-plugin", "version 0.1"))
+///     }
+/// }
+/// ```
+pub struct Loaded<P> {
+    package: &'static str,
+    source: &'static str,
+    plugin: PhantomData<fn() -> P>,
+}
+
+impl<P> Loaded<P> {
+    /// The plugin `P`, from `package` at `source`, as the launcher names
+    /// it, such as `path /home/me/.rig/plugins/viz` or `version 0.3`.
+    pub const fn new(package: &'static str, source: &'static str) -> Self {
+        Self {
+            package,
+            source,
+            plugin: PhantomData,
+        }
+    }
+}
+
+impl<P: Plugin + Default> Plugin for Loaded<P> {
+    fn build(&self, app: &mut App) {
+        load::<P>(app, self.package, self.source);
+    }
+}
+
 /// Adds `P`, unless the app has it already (another plugin added it), as
-/// the generated `main.rs` adds each plugin `plugins.toml` lists: with an
-/// entity of its own, named after it, from `package` at `source`.
+/// [`Loaded`] adds each plugin the settings turn on: with an entity of its
+/// own, named after it, from `package` at `source`.
 pub fn load<P: Plugin + Default>(app: &mut App, package: &str, source: &str) {
     if app.is_plugin_added::<P>() {
         return;

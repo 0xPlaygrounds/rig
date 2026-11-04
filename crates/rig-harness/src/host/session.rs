@@ -880,7 +880,7 @@ pub struct Logged {
 pub struct LoggedQueue(pub Receiver<Logged>);
 
 /// The `LogPlugin` layer passing warnings and errors on to [`LoggedQueue`],
-/// which exists before any plugin `plugins.toml` lists is added, and
+/// which exists before any plugin the settings turn on is added, and
 /// timing systems into [`SystemTimings`].
 pub fn log_events(app: &mut App) -> Option<BoxedLayer> {
     let (sender, receiver) = crossbeam_channel::bounded(256);

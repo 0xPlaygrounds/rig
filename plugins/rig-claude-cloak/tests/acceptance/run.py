@@ -161,8 +161,7 @@ def live(args):
         scratch = Path(temporary)
         for folder in ("home", "rig-home/anthropic-oauth", "source", "workspace", "ca", "raw"):
             (scratch / folder).mkdir(parents=True, exist_ok=True)
-        (scratch / "rig-home/settings.toml").write_text(settings)
-        private_json(scratch / "rig-home/defaults.json", {"model": MODEL, "effort": {"effort": "low"}})
+        (scratch / "rig-home/settings.toml").write_text(settings + "\n[model]\ndefault = " + json.dumps(MODEL) + "\neffort = \"low\"\n")
         (scratch / "workspace/facts.txt").write_text(json.dumps(FACTS))
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))

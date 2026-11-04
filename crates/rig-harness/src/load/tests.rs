@@ -1,10 +1,11 @@
+use bevy_app::PluginGroupBuilder;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use bevy_reflect::prelude::*;
 use rig_ecs::session_log::ReflectSaved;
 
-use super::{AppKeepsExt, Keeps, PluginEntity, PluginSource, ProvidedBy, load};
+use super::{AppKeepsExt, Keeps, Loaded, PluginEntity, PluginSource, ProvidedBy, load};
 
 /// Spawns a named entity in `build`, one in `finish`, and one at startup
 /// that it attributes itself.
@@ -207,4 +208,47 @@ fn plugin_systems_list_each_system_with_its_plugin() {
             .iter()
             .all(|&(system, schedule, plugin)| systems.plugin(system, schedule) == plugin)
     );
+}
+
+/// The plugins a generated program turns on, as its group adds them.
+struct Chosen;
+
+impl PluginGroup for Chosen {
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(Loaded::<Spawner>::new("spawner", "path plugins/spawner"))
+            .add(Loaded::<Other>::new("other", "version 1"))
+    }
+}
+
+#[test]
+fn a_plugin_group_adds_each_plugin_with_its_entity_and_source() {
+    let mut app = App::new();
+    app.add_plugins(Chosen);
+    app.finish();
+    app.cleanup();
+    app.update();
+    let world = app.world_mut();
+    let spawner = world.resource::<PluginEntity<Spawner>>().entity();
+    let other = world.resource::<PluginEntity<Other>>().entity();
+    let source = |entity: Entity| {
+        let source = world.get::<PluginSource>(entity);
+        source.map(|source| (source.package.clone(), source.source.clone()))
+    };
+    assert_eq!(
+        source(spawner),
+        Some(("spawner".to_owned(), "path plugins/spawner".to_owned()))
+    );
+    assert_eq!(
+        source(other),
+        Some(("other".to_owned(), "version 1".to_owned()))
+    );
+    let mut named = world.query::<(&Name, &ProvidedBy)>();
+    let mut by = |name: &str| {
+        (named.iter(world))
+            .find(|(named, _)| named.as_str() == name)
+            .map(|(_, by)| by.0)
+    };
+    assert_eq!(by("finished"), Some(spawner));
+    assert_eq!(by("other's"), Some(other));
 }
