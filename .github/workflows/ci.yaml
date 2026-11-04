@@ -17,7 +17,14 @@ on:
   merge_group:
   schedule:
     - cron: "0 6 * * *"
+  # With `base`, a dispatch runs the plan a PR from this branch into `base`
+  # would get; without it, every check.
   workflow_dispatch:
+    inputs:
+      base:
+        description: Plan against this branch, as a PR into it would be
+        required: false
+        default: ""
   workflow_call:
 
 permissions:
@@ -47,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+          fetch-depth: ${{ (github.event_name == 'pull_request' || inputs.base != '') && '0' || '1' }}
       - uses: ./.github/actions/rust-setup
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
@@ -57,9 +64,9 @@ jobs:
       - id: plan
         shell: bash
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ github.base_ref || inputs.base }}
         run: |
-          if [ "${{ github.event_name }}" = pull_request ]; then
+          if [ -n "$BASE_REF" ]; then
             git fetch --no-tags origin "$BASE_REF"
             cargo xtask verify --plan --base "origin/$BASE_REF" | tee plan.txt
           else
@@ -80,11 +87,12 @@ jobs:
         with:
           fetch-depth: 0
       - env:
-          BASE_REF: origin/${{ github.base_ref }}
+          BASE: ${{ github.base_ref || inputs.base }}
+          BASE_REF: origin/${{ github.base_ref || inputs.base }}
           HEAD_REF: ${{ github.head_ref }}
           LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
         run: |
-          git fetch --no-tags origin "${{ github.base_ref }}"
+          git fetch --no-tags origin "$BASE"
           bash .github/scripts/check-frozen-release-docs.sh
 
   # Formatting, source guards, xtask's own tests, the cassette acceptance

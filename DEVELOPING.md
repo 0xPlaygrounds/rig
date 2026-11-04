@@ -152,7 +152,8 @@ compiling anything; a missing tool is a failed run.
   runs `cargo xtask verify --job <id>`, and is skipped when the plan selects
   none of its checks. `stable / required` fails unless every planned job
   succeeded and every other job was skipped: it is the one context branch
-  protection and the merge queue require.
+  protection and the merge queue require. A manual dispatch with a `base`
+  input runs the plan a PR from that branch into `base` would get.
 - `cd.yaml`: the full gate on every push to `main`, then release-plz. Only
   these pushes save caches; PRs restore their base branch's entries.
   rust-cache runs at job level everywhere so a failed or cancelled job saves
