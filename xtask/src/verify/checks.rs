@@ -8,6 +8,8 @@ pub(crate) struct Step {
     pub(crate) program: String,
     pub(crate) args: Vec<String>,
     pub(crate) env: BTreeMap<String, String>,
+    /// The CI job that runs this step alone (`verify --part`).
+    pub(crate) part: Option<String>,
 }
 impl Step {
     pub(crate) fn new(program: &str, args: &[&str]) -> Self {
@@ -15,6 +17,7 @@ impl Step {
             program: program.into(),
             args: args.iter().map(|s| (*s).into()).collect(),
             env: BTreeMap::new(),
+            part: None,
         }
     }
     pub(crate) fn env(mut self, k: &str, v: &str) -> Self {
@@ -486,28 +489,13 @@ pub(super) fn all() -> Vec<Check> {
                 .env("RUSTDOCFLAGS", "-D warnings"),
             ],
         ),
-        check(
-            "full-tests",
-            vec![cargo(&[
-                "nextest",
-                "run",
-                "--locked",
-                "--workspace",
-                // The same sources run here through rig-cassette. The nested
-                // runner only adds coverage when selected without this graph.
-                "--exclude",
-                "rig-cassette-minimal",
-                "--all-features",
-                "--retries",
-                "2",
-                "-E",
-                "not package(rig-derive)",
-            ])],
-        ),
+        // One step per CI job, from the workspace's targets (`parts.rs`).
+        check("full-tests", vec![Step::new("@full-tests", &[])]),
         // No separate `cargo check --workspace --all-features --all-targets`:
-        // full-tests compiles workspace lib, bin, test and example targets
-        // under the same feature set (Cargo's default `test` target selection),
-        // except the separately executed minimal replay runner. Clippy checks
+        // full-tests' parts together compile every workspace lib, bin, test
+        // and example target under the same feature set (Cargo's default
+        // `test` target selection), except the separately executed minimal
+        // replay runner. Clippy checks
         // the default members' --all-targets, and every bench has an explicit
         // locked compile-only owner, enforced by the verification planner tests.
         // Existing repository floor checker; new verification tooling is Rust.

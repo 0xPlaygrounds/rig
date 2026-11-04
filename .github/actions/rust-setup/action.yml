@@ -64,19 +64,18 @@ runs:
       with:
         tool: nextest
 
-    # apt, not a prebuilt binary: the lance build scripts need a system
-    # protoc with its well-known-type includes.
-    - name: Install protoc
-      if: inputs.protoc == 'true'
-      shell: bash
-      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-    # rig-inspect builds on bevy_remote, which always pulls
-    # bevy_dev_tools and with it bevy_audio's `alsa-sys`; the corpus's
-    # window front builds on bevy_winit, whose `wayland-sys` needs the
-    # Wayland and xkbcommon headers. Their build scripts need the headers
+    # One apt-get for both inputs. protoc comes from apt, not a prebuilt
+    # binary: the lance build scripts need a system protoc with its
+    # well-known-type includes. rig-inspect builds on bevy_remote, which
+    # always pulls bevy_dev_tools and with it bevy_audio's `alsa-sys`; the
+    # corpus's window front builds on bevy_winit, whose `wayland-sys` needs
+    # the Wayland and xkbcommon headers. Their build scripts need the headers
     # even for `cargo check` and `cargo doc`.
-    - name: Install ALSA, Wayland and xkbcommon headers
-      if: inputs.alsa == 'true'
+    - name: Install protoc and the ALSA, Wayland and xkbcommon headers
+      if: inputs.protoc == 'true' || inputs.alsa == 'true'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y libasound2-dev libwayland-dev libxkbcommon-dev
+      run: |
+        packages=()
+        if [ "${{ inputs.protoc }}" = true ]; then packages+=(protobuf-compiler); fi
+        if [ "${{ inputs.alsa }}" = true ]; then packages+=(libasound2-dev libwayland-dev libxkbcommon-dev); fi
+        sudo apt-get update && sudo apt-get install -y "${packages[@]}"

@@ -5,6 +5,7 @@ mod checks;
 mod execute;
 mod extras;
 pub(crate) mod guards;
+mod parts;
 mod preflight;
 mod selection;
 #[cfg(test)]
@@ -50,6 +51,8 @@ struct Options {
     base: Option<String>,
     dry_run: bool,
     check: Option<String>,
+    /// With `--check`, run only the steps of this part (one CI job).
+    part: Option<String>,
 }
 impl Options {
     fn parse(args: Vec<String>) -> Result<Self> {
@@ -57,6 +60,7 @@ impl Options {
         let mut base = None;
         let mut dry_run = false;
         let mut check = None;
+        let mut part = None;
         let mut args = args.into_iter();
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -88,6 +92,12 @@ impl Options {
                             .ok_or_else(|| invalid("--base requires a revision"))?,
                     )
                 }
+                "--part" => {
+                    part = Some(
+                        args.next()
+                            .ok_or_else(|| invalid("--part requires a name"))?,
+                    )
+                }
                 "--dry-run" => dry_run = true,
                 _ => return Err(invalid(format!("unknown verify option {arg}"))),
             }
@@ -104,11 +114,15 @@ impl Options {
                  implicit main",
             ));
         }
+        if part.is_some() && mode != Mode::Check {
+            return Err(invalid("--part requires --check ID"));
+        }
         Ok(Self {
             mode,
             base,
             dry_run,
             check,
+            part,
         })
     }
 }
@@ -120,8 +134,21 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         &["metadata", "--locked", "--no-deps", "--format-version", "1"],
     )?)?;
     let changes = selection::changes(root, &opts)?;
-    let all = checks::all();
-    let plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    let mut all = checks::all();
+    for check in &mut all {
+        if check.steps.iter().any(|s| s.program == "@full-tests") {
+            check.steps = parts::steps(&metadata)?;
+        }
+    }
+    let mut plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    if let Some(part) = &opts.part {
+        for check in &mut plan {
+            check.steps.retain(|s| s.part.as_ref() == Some(part));
+            if check.steps.is_empty() {
+                return Err(invalid(format!("check {} has no part {part}", check.id)));
+            }
+        }
+    }
     if opts.mode == Mode::Lanes {
         let has = |id: &str| plan.iter().any(|c| c.id == id);
         println!(
@@ -140,7 +167,17 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
     for check in &plan {
         println!("SELECT {}: {}", check.id, check.reason);
         for step in &check.steps {
-            println!("  {} {} {:?}", step.program, step.args.join(" "), step.env);
+            let part = step
+                .part
+                .as_ref()
+                .map(|p| format!("[{p}] "))
+                .unwrap_or_default();
+            println!(
+                "  {part}{} {} {:?}",
+                step.program,
+                step.args.join(" "),
+                step.env
+            );
         }
     }
     for check in &all {

@@ -160,6 +160,12 @@ compiling anything; a missing tool is a failed run.
 - `slow.yaml`: a plan job runs `verify --lanes` on PRs and gates the
   all-features run and the dependency floors on its answer; the merge queue,
   the 06:00 UTC schedule, manual dispatch and every push to `main` run both.
+  The all-features run is one job per part of `full-tests`
+  (`verify --check full-tests --part <name>`, defined in
+  `xtask/src/verify/parts.rs`), and `stable / test all features` passes when
+  every part has. Each part selects the whole workspace and narrows by
+  target, so it builds the single run's units; `--check full-tests` without
+  `--part` runs the parts one after another.
 - `cd.yaml`: both gates on every push to `main`, then release-plz. Only
   these pushes save caches (the doctest job saves the shared `all-features`
   entry); PRs restore their base branch's entries. rust-cache runs at job

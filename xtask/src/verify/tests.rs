@@ -374,42 +374,114 @@ fn conformance_compiles_exactly_its_executed_targets() {
     assert!(c.steps[0].args.contains(&"--all-features".into()));
 }
 
-#[test]
-fn full_covers_workspace_and_example_targets() {
-    // full-tests owns the locked-version compile of every member's lib, bin,
-    // test and example targets: Cargo's default `test` target selection,
-    // which any narrowing flag would silently drop.
-    let all = checks::all();
-    let c = all.iter().find(|c| c.id == "full-tests").unwrap();
-    for flag in ["--workspace", "--all-features"] {
-        assert!(c.steps[0].args.contains(&flag.into()));
-    }
-    for flag in [
-        "--lib",
-        "--bins",
-        "--bin",
-        "--tests",
-        "--test",
-        "--examples",
-        "--example",
-        "--benches",
-    ] {
-        assert!(!c.steps[0].args.contains(&flag.into()), "{flag}");
-    }
-    assert!(!all.iter().any(|c| c.id == "workspace-check"));
-    // Bench targets are outside cargo test's default selection. Each needs
-    // an explicit locked compilation owner that does not execute it.
+/// The workspace's real `cargo metadata --no-deps`.
+fn workspace_metadata() -> Value {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    let metadata: Value = serde_json::from_str(
+    serde_json::from_str(
         &output(
             root,
             "cargo",
             &["metadata", "--locked", "--no-deps", "--format-version", "1"],
         )
-        .expect("cargo metadata --no-deps for the bench guard"),
+        .unwrap(),
     )
-    .unwrap();
+    .unwrap()
+}
+
+/// Whether a lib part's `-E` filter, `package(a) | …` or
+/// `not (package(a) | …)`, runs `package`'s tests.
+fn runs_package(filter: &str, package: &str) -> bool {
+    let named = |list: &str| {
+        list.split(" | ")
+            .any(|p| p == format!("package({package})"))
+    };
+    match filter
+        .strip_prefix("not (")
+        .and_then(|f| f.strip_suffix(')'))
+    {
+        Some(list) => !named(list),
+        None => named(filter),
+    }
+}
+
+#[test]
+fn full_tests_parts_build_and_run_the_single_runs_targets() {
+    // full-tests owns the locked-version compile of every member's lib, bin,
+    // test and example targets (Cargo's default `test` selection) and runs
+    // their tests once. Its parts narrow by target only, so together they
+    // must name every target exactly once.
+    let metadata = workspace_metadata();
+    let steps = parts::steps(&metadata).unwrap();
+    let arg = |step: &Step, flag: &str| step.args.iter().any(|a| a == flag);
+    let values = |step: &Step, flag: &str| -> Vec<String> {
+        step.args
+            .windows(2)
+            .filter(|w| w[0] == flag)
+            .map(|w| w[1].clone())
+            .collect()
+    };
+    for step in &steps {
+        assert!(step.part.is_some());
+        for flag in ["--locked", "--workspace", "--all-features"] {
+            assert!(arg(step, flag), "{flag}: {:?}", step.args);
+        }
+        assert!(values(step, "--exclude").contains(&"rig-cassette-minimal".into()));
+        assert!(!arg(step, "--tests") && !arg(step, "--all-targets") && !arg(step, "-p"));
+    }
     let packages = metadata["packages"].as_array().unwrap();
+    let tests: Vec<String> = steps.iter().flat_map(|s| values(s, "--test")).collect();
+    for package in packages
+        .iter()
+        .filter(|p| p["name"] != "rig-cassette-minimal")
+    {
+        for target in package["targets"].as_array().unwrap() {
+            let kinds = target["kind"].as_array().unwrap();
+            if kinds.iter().any(|k| k == "test") {
+                let name = target["name"].as_str().unwrap();
+                let parts = tests.iter().filter(|t| *t == name).count();
+                // A partitioned target is named once per half.
+                assert!(parts == 1 || parts == 2, "{name}: {parts} parts");
+            }
+        }
+    }
+    assert_eq!(steps.iter().filter(|s| arg(s, "--bins")).count(), 1);
+    let examples: Vec<_> = steps.iter().filter(|s| arg(s, "--examples")).collect();
+    assert_eq!(examples.len(), 1);
+    assert_eq!(examples[0].args[..3], ["build", "--profile", "test"]);
+    // Lib unittests: each package with a library is built by its own lib
+    // part (the core ones by every lib part) and run by exactly one.
+    let lib_steps: Vec<_> = steps.iter().filter(|s| arg(s, "--lib")).collect();
+    for package in packages {
+        let name = package["name"].as_str().unwrap();
+        let has_lib = package["targets"].as_array().unwrap().iter().any(|t| {
+            t["kind"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|k| ["lib", "rlib", "cdylib", "proc-macro"].contains(&k.as_str().unwrap()))
+        });
+        if !has_lib || name == "rig-cassette-minimal" {
+            continue;
+        }
+        let built: Vec<_> = lib_steps
+            .iter()
+            .filter(|s| !values(s, "--exclude").contains(&name.into()))
+            .collect();
+        if parts::CORE.contains(&name) {
+            assert_eq!(built.len(), lib_steps.len(), "{name}");
+        } else {
+            assert_eq!(built.len(), 1, "{name}");
+        }
+        let run = built
+            .iter()
+            .filter(|s| runs_package(&values(s, "-E")[0], name))
+            .count();
+        assert_eq!(run, usize::from(name != "rig-derive"), "{name}");
+    }
+    let all = checks::all();
+    assert!(!all.iter().any(|c| c.id == "workspace-check"));
+    // Bench targets are outside cargo test's default selection. Each needs
+    // an explicit locked compilation owner that does not execute it.
     assert!(packages.len() > 20, "workspace members not found");
     for package in packages {
         for bench in package["targets"]
@@ -748,9 +820,135 @@ fn workflow_check_ids(workflow: &str) -> BTreeSet<String> {
                 .trim_start_matches("- ")
                 .strip_prefix("run: cargo xtask verify --check ")
         })
-        .map(|id| id.trim().to_string())
+        .filter_map(|id| id.split_whitespace().next().map(str::to_owned))
         .collect()
 }
+/// The units Cargo would build for `selection` on CI's target, each named by
+/// its package, target, mode, profile, features and the names of its
+/// dependencies, so two graphs compare unit by unit. `RUSTC_BOOTSTRAP=1`
+/// only unlocks `--unit-graph` on the stable toolchain; nothing compiles.
+fn unit_graph(selection: &[&str], names: &mut BTreeMap<String, usize>) -> BTreeMap<usize, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let out = Command::new("cargo")
+        .args(["test", "--no-run", "--locked", "--all-features"])
+        .args(["--target", "x86_64-unknown-linux-gnu"])
+        .args(["--unit-graph", "-Z", "unstable-options"])
+        .args(selection)
+        .current_dir(root)
+        .env("RUSTC_BOOTSTRAP", "1")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let graph: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let units = graph["units"].as_array().unwrap();
+    fn name(
+        i: usize,
+        units: &[Value],
+        ids: &mut [Option<usize>],
+        names: &mut BTreeMap<String, usize>,
+    ) -> usize {
+        if let Some(id) = ids[i] {
+            return id;
+        }
+        let unit = &units[i];
+        let mut deps: Vec<usize> = unit["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|d| name(d["index"].as_u64().unwrap() as usize, units, ids, names))
+            .collect();
+        deps.sort_unstable();
+        let key = format!(
+            "{} {} {} {} {} {} {} {deps:?}",
+            unit["pkg_id"],
+            unit["target"]["name"],
+            unit["target"]["kind"],
+            unit["mode"],
+            unit["profile"]["name"],
+            unit["platform"],
+            unit["features"]
+        );
+        let next = names.len();
+        let id = *names.entry(key).or_insert(next);
+        ids[i] = Some(id);
+        id
+    }
+    let mut ids = vec![None; units.len()];
+    (0..units.len())
+        .map(|i| {
+            let unit = &units[i];
+            let label = format!(
+                "{} {} {}",
+                unit["pkg_id"], unit["target"]["name"], unit["features"]
+            );
+            (name(i, units, &mut ids, names), label)
+        })
+        .collect()
+}
+
+#[test]
+fn lib_parts_build_the_single_runs_units() {
+    // `--lib` takes every selected package, so a lib part leaves packages
+    // out, and leaving out the last package that asks for a dependency
+    // feature (or a package that a selected one depends on) builds a unit
+    // the single run doesn't. `cargo tree` merges feature views and misses
+    // some of these; the unit graph is what Cargo builds.
+    let mut names = BTreeMap::new();
+    let full = unit_graph(
+        &["--workspace", "--exclude", "rig-cassette-minimal"],
+        &mut names,
+    );
+    let steps = parts::steps(&workspace_metadata()).unwrap();
+    for step in steps.iter().filter(|s| s.args.iter().any(|a| a == "--lib")) {
+        let mut selection = vec!["--workspace", "--lib"];
+        for pair in step.args.windows(2).filter(|w| w[0] == "--exclude") {
+            selection.extend(["--exclude", pair[1].as_str()]);
+        }
+        let differ: Vec<_> = unit_graph(&selection, &mut names)
+            .into_iter()
+            .filter(|(id, _)| !full.contains_key(id))
+            .map(|(_, label)| label)
+            .collect();
+        assert!(
+            differ.is_empty(),
+            "{:?} builds units the single run doesn't: {differ:?}; keep the package that \
+             asks for them selected (parts::CORE)",
+            step.part
+        );
+    }
+}
+
+#[test]
+fn slow_workflow_runs_every_full_tests_part() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let workflow: serde_yaml::Value = serde_yaml::from_str(
+        &std::fs::read_to_string(root.join(".github/workflows/slow.yaml")).unwrap(),
+    )
+    .unwrap();
+    let job = &workflow["jobs"]["test-all-features-part"];
+    let matrix: Vec<&str> = job["strategy"]["matrix"]["part"]
+        .as_sequence()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    let mut names: Vec<String> = parts::steps(&workspace_metadata())
+        .unwrap()
+        .into_iter()
+        .filter_map(|s| s.part)
+        .collect();
+    names.dedup();
+    assert_eq!(matrix, names);
+    assert!(job["steps"].as_sequence().unwrap().iter().any(|step| {
+        step["run"].as_str()
+            == Some("cargo xtask verify --check full-tests --part ${{ matrix.part }}")
+    }));
+}
+
 #[test]
 fn every_check_is_run_by_a_workflow_step() {
     // A check that exists only in `checks::all()` would pass `--full`

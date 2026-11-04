@@ -219,6 +219,7 @@ fn dynamic(id: String, args: Vec<String>, reason: &str) -> Check {
             program: "cargo".into(),
             args,
             env: BTreeMap::new(),
+            part: None,
         }],
         reason: reason.into(),
     }
@@ -293,6 +294,7 @@ pub(super) fn plan(
             base: opts.base.clone(),
             dry_run: opts.dry_run,
             check: None,
+            part: None,
         };
         let local = plan(root, metadata, &changed, paths, all)?;
         let full_triggers: Vec<_> = paths.iter().filter(|p| checks::full_lane(p)).collect();
