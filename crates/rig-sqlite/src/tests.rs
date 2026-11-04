@@ -984,6 +984,137 @@ async fn live_reinsert_same_document_id_removes_stale_vec0_candidates() -> anyho
     Ok(())
 }
 
+async fn concurrent_search_ids(
+    index: &SqliteVectorIndex<TestDocument>,
+    filtered: bool,
+    documents: bool,
+) -> anyhow::Result<Vec<String>> {
+    let builder = VectorSearchRequest::builder()
+        .query("needle")
+        .samples(if filtered { 1 } else { 2 });
+    let request = if filtered {
+        builder
+            .filter(SqliteSearchFilter::eq("title", serde_json::json!("target")))
+            .build()
+    } else {
+        builder.build()
+    };
+    if documents {
+        Ok(index
+            .top_n::<TestDocument>(request)
+            .await?
+            .into_iter()
+            .map(|result| result.id)
+            .collect())
+    } else {
+        Ok(index
+            .top_n_ids(request)
+            .await?
+            .into_iter()
+            .map(|result| result.id)
+            .collect())
+    }
+}
+
+async fn concurrent_upsert_keeps_unchanged_document(
+    filtered: bool,
+    documents: bool,
+) -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![
+            row("A", "docs", "other", vec![1.0, 0.0]),
+            row("B", "docs", "target", vec![-1.0, 0.0]),
+        ])
+        .await?;
+    let index = store.clone().index(TestEmbeddingModel::model());
+    let expected = if filtered { vec!["B"] } else { vec!["A", "B"] };
+    let before = concurrent_search_ids(&index, filtered, documents).await?;
+    anyhow::ensure!(before == expected, "before upsert: {before:?}");
+
+    let (release, blocked) = std::sync::mpsc::channel();
+    let mut barrier = Box::pin(conn.call(move |_| {
+        blocked
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .map_err(|error| tokio_rusqlite::Error::Other(Box::new(error)))?;
+        Ok(())
+    }));
+    anyhow::ensure!(futures::poll!(barrier.as_mut()).is_pending());
+
+    // The ready embedding model lets this poll enqueue the search's first
+    // database call before the write. The worker cannot run either yet.
+    let mut search = Box::pin(concurrent_search_ids(&index, filtered, documents));
+    anyhow::ensure!(futures::poll!(search.as_mut()).is_pending());
+    let (document, mut embeddings) = row("A", "docs", "other", vec![1.0, 0.0]);
+    embeddings.push(Embedding {
+        document: "another close chunk".to_owned(),
+        vec: vec![0.9, 0.1],
+    });
+    let mut write = Box::pin(store.add_rows(vec![(document, embeddings)]));
+    anyhow::ensure!(futures::poll!(write.as_mut()).is_pending());
+    release.send(())?;
+    let (released, during, written) = futures::join!(barrier, search, write);
+    released?;
+    written?;
+    let during = during?;
+    let after = concurrent_search_ids(&index, filtered, documents).await?;
+    anyhow::ensure!(after == expected, "after upsert: {after:?}");
+    anyhow::ensure!(
+        during == expected,
+        "upserting A hid unchanged B: documents={documents}, filtered={filtered}, before={before:?}, during={during:?}, after={after:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn live_concurrent_upsert_preserves_unchanged_top_n() -> anyhow::Result<()> {
+    concurrent_upsert_keeps_unchanged_document(false, true).await
+}
+
+#[tokio::test]
+async fn live_concurrent_upsert_preserves_unchanged_top_n_ids() -> anyhow::Result<()> {
+    concurrent_upsert_keeps_unchanged_document(false, false).await
+}
+
+#[tokio::test]
+async fn live_concurrent_upsert_preserves_postfiltered_top_n() -> anyhow::Result<()> {
+    concurrent_upsert_keeps_unchanged_document(true, true).await
+}
+
+#[tokio::test]
+async fn live_concurrent_upsert_preserves_postfiltered_top_n_ids() -> anyhow::Result<()> {
+    concurrent_upsert_keeps_unchanged_document(true, false).await
+}
+
+#[tokio::test]
+async fn live_search_preserves_an_existing_transaction() -> anyhow::Result<()> {
+    let index = live_test_index(
+        "live_search_preserves_an_existing_transaction",
+        vec![row("A", "docs", "target", vec![1.0, 0.0])],
+    )
+    .await?;
+    let conn = &index.store.conn;
+    conn.call(|conn| {
+        conn.execute_batch("BEGIN")?;
+        Ok(())
+    })
+    .await?;
+    for documents in [false, true] {
+        let ids = concurrent_search_ids(&index, true, documents).await?;
+        anyhow::ensure!(ids == ["A"]);
+        let in_transaction = conn.call(|conn| Ok(!conn.is_autocommit())).await?;
+        anyhow::ensure!(in_transaction, "search committed the caller's transaction");
+    }
+    conn.call(|conn| {
+        conn.execute_batch("ROLLBACK")?;
+        Ok(())
+    })
+    .await?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn live_reinsert_preserves_unrelated_multivector_embeddings() -> anyhow::Result<()> {
     register_sqlite_vec_extension();
