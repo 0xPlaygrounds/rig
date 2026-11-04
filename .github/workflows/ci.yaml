@@ -61,10 +61,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = pull_request ]; then
             git fetch --no-tags origin "$BASE_REF"
-            cargo xtask verify --plan --base "origin/$BASE_REF" | tee -a "$GITHUB_OUTPUT"
+            cargo xtask verify --plan --base "origin/$BASE_REF" | tee plan.txt
           else
-            cargo xtask verify --plan --full | tee -a "$GITHUB_OUTPUT"
+            cargo xtask verify --plan --full | tee plan.txt
           fi
+          grep -E '^(plan|jobs)=' plan.txt >> "$GITHUB_OUTPUT"
 
   # CHANGELOG.md, crates/*/CHANGELOG.md, MIGRATING.md and docs/migrations/ are
   # written on the release PR only; the script exempts release PRs (a

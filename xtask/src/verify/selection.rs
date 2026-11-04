@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 pub(super) fn changes(root: &Path, opts: &Options) -> Result<BTreeSet<String>> {
     let revision = if let Some(base) = &opts.base {
         let merge = output(root, "git", &["merge-base", base, "HEAD"])?;
-        println!("Base: {base}; merge base: {}", merge.trim());
+        eprintln!("Base: {base}; merge base: {}", merge.trim());
         merge.trim().to_string()
     } else {
         "HEAD".into()
