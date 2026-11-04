@@ -67,6 +67,8 @@ const NOT_A_FILE: i32 = 3;
 const READ_ONLY: i32 = 4;
 const A_DIRECTORY: i32 = 5;
 const ROOT_IS_A_FILE: i32 = 6;
+/// A write to a link, which says where it points.
+const A_LINK: i32 = 7;
 
 /// A shell function for the scripts below: whether the path `$1`, which
 /// the shell does not see, is truly not there, since the nearest of its
@@ -84,7 +86,9 @@ const GONE: &str = "gone() { d=$1; while case $d in ?*/) :;; *) false;; esac; do
 /// docs). Its paths are that machine's: absolute, or under `~`, its user's
 /// home; a relative path is relative to that home, where the transport
 /// starts. Paths are folded without asking the machine
-/// ([`canonical`](Workspace::canonical)), so links there are not followed.
+/// ([`canonical`](Workspace::canonical)), so links there are not followed,
+/// and a write to one is refused: following it would write where no check
+/// of the path looked.
 #[derive(Clone)]
 pub struct Remote {
     name: String,
@@ -276,6 +280,14 @@ impl Remote {
                 "the file is read-only; leave it unchanged or ask the user",
             )),
             Some(A_DIRECTORY) => Err(ErrorKind::IsADirectory.into()),
+            Some(A_LINK) => Err(io::Error::new(
+                ErrorKind::Unsupported,
+                format!(
+                    "it is a link there to `{}`, which a write there does not follow; write \
+                     that file instead",
+                    ran.err
+                ),
+            )),
             _ => Err(self.failed(&ran, again)),
         }
     }
@@ -333,13 +345,14 @@ impl Remote {
     /// Runs `script`, which writes `bytes` to the file `path`, once. When
     /// it ends with no exit status it names, such as a transport that
     /// dropped mid-write, the file is hashed there again (a read, so tried
-    /// twice) and the error says whether it holds `bytes`: whether the
-    /// write happened.
+    /// twice) and the error says whether it holds `bytes` now. Only a file
+    /// that does shows the write happened: one that does not may have been
+    /// written and changed again since.
     fn written(&self, path: &Path, script: &str, bytes: &[u8]) -> io::Result<Vec<u8>> {
         let ran = self.once(script, Some(bytes))?;
         if matches!(
             ran.code,
-            Some(0 | NOT_FOUND | NOT_A_FILE | READ_ONLY | A_DIRECTORY)
+            Some(0 | NOT_FOUND | NOT_A_FILE | READ_ONLY | A_DIRECTORY | A_LINK)
         ) {
             return self.outcome(ran, Again::Never);
         }
@@ -355,19 +368,17 @@ impl Remote {
             Ok(hash) if hash.trim() == sent => {
                 "it holds what this write sent, so the write happened".to_owned()
             }
-            Ok(hash) if !hash.trim().is_empty() => "it does not hold what this write sent, so \
-                 the write did not happen; make the change again"
-                .to_owned(),
-            Err(error) if error.kind() == ErrorKind::NotFound => {
-                "it is not there, so the write did not happen; make the change again".to_owned()
+            other => {
+                let how = match other {
+                    Ok(hash) if !hash.trim().is_empty() => "it does not hold what this write sent",
+                    Err(error) if error.kind() == ErrorKind::NotFound => "it is not there",
+                    Ok(_) => "it could not be hashed there",
+                    Err(error) => &format!("that failed too ({error})"),
+                };
+                format!(
+                    "{how}, so the write may or may not have happened; read the file before going on"
+                )
             }
-            Ok(_) => "it could not be hashed there, so the write may or may not have \
-                 happened; read the file before going on"
-                .to_owned(),
-            Err(error) => format!(
-                "that failed too ({error}), so the write may or may not have happened; read \
-                 the file before going on"
-            ),
         };
         Err(io::Error::new(
             kind,
@@ -577,7 +588,7 @@ impl Workspace for Remote {
     fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
         let size = bytes.len();
         let script = format!(
-            "p={}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+            "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
              mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
              if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
@@ -613,7 +624,8 @@ impl Workspace for Remote {
     ) -> io::Result<Option<Contents>> {
         let size = bytes.len();
         let script = format!(
-            "p={}; [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
+            "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
+             [ -f \"$p\" ] || {{ [ -e \"$p\" ] && exit {NOT_A_FILE}; exit {NOT_FOUND}; }}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; \
              t=$(mktemp \"$(dirname -- \"$p\")/.rig-write.XXXXXX\") || exit 1; \
              cp -p -- \"$p\" \"$t\" || {{ rm -f -- \"$t\"; exit 1; }}; \
@@ -690,8 +702,9 @@ impl Workspace for Remote {
         out
     }
 
-    /// As git lists them there in a git work tree (unless `listing` is
-    /// [`All`](Listing::All)), else as `find` does, then filtered by
+    /// The regular files git lists there in a git work tree (unless
+    /// `listing` is [`All`](Listing::All)), else as `find` does: not one
+    /// deleted since it was added, nor a link. Then filtered by
     /// [`Listing::keeps`] and `glob`.
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
         let globs = glob
@@ -713,7 +726,10 @@ impl Workspace for Remote {
         let script = format!(
             "{GONE}; r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; \
              [ -e \"$r\" ] || ! gone \"$r\" || exit {NOT_FOUND}; cd \"$r\" || exit 1; \
-             if {git}; then git ls-files -z -co --exclude-standard; \
+             if {git}; then l=$(mktemp) || exit 1; trap 'rm -f \"$l\"' EXIT; \
+             git ls-files -z -co --exclude-standard > \"$l\" || exit 1; \
+             xargs -0 sh -c 'for f do if [ -f \"$f\" ] && [ ! -L \"$f\" ]; then \
+             printf \"%s\\0\" \"$f\"; fi; done' sh < \"$l\"; \
              else find . -type f -print0; fi",
             quote_path(root)
         );

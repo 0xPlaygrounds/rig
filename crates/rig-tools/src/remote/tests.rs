@@ -753,11 +753,11 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     let dir = scratch("unread");
     let home = dir.join("home");
     std::fs::write(home.join("strata/src/lib.rs"), "fn needle() {}\n").ok();
-    // Every script that copies files aside, as a batch read does, fails.
+    // Every batch read fails.
     let mut refusing = vec![
         "sh".to_owned(),
         "-c".to_owned(),
-        "case \"$1\" in *mktemp*) echo 'reads refused' >&2; exit 1;; esac; \
+        "case \"$1\" in *'for p in'*) echo 'reads refused' >&2; exit 1;; esac; \
          cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\""
             .to_owned(),
     ];
@@ -1058,7 +1058,10 @@ fn a_write_there_to_a_link_is_refused() {
         "{file}: it is a link there to `target.rs`, which a write there does not follow; \
          write that file instead"
     );
-    assert_eq!(said, [Some(refused.clone()), Some(refused.clone()), Some(refused)]);
+    assert_eq!(
+        said,
+        [Some(refused.clone()), Some(refused.clone()), Some(refused)]
+    );
 }
 
 /// A listing there in a git work tree holds only regular files there, as
