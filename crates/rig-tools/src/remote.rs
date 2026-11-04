@@ -285,7 +285,7 @@ impl Remote {
                 format!(
                     "it is a link there to `{}`, which a write there does not follow; write \
                      that file instead",
-                    ran.err
+                    ran.err.lines().last().unwrap_or_default()
                 ),
             )),
             _ => Err(self.failed(&ran, again)),
@@ -376,7 +376,8 @@ impl Remote {
                     Err(error) => &format!("that failed too ({error})"),
                 };
                 format!(
-                    "{how}, so the write may or may not have happened; read the file before going on"
+                    "{how}, so the write may or may not have happened; read the file before \
+                     going on"
                 )
             }
         };
@@ -588,7 +589,8 @@ impl Workspace for Remote {
     fn replace(&self, path: &Path, bytes: &[u8], limit: u64) -> io::Result<io::Result<Contents>> {
         let size = bytes.len();
         let script = format!(
-            "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
+            "p={}; [ -L \"$p\" ] && {{ readlink -- \"$p\" >&2; exit {A_LINK}; }}; \
+             if [ -e \"$p\" ]; then [ -f \"$p\" ] || exit {NOT_A_FILE}; \
              [ -w \"$p\" ] || exit {READ_ONLY}; fi; d=$(dirname -- \"$p\"); \
              mkdir -p -- \"$d\" && t=$(mktemp \"$d/.rig-write.XXXXXX\") || exit 1; \
              if [ -e \"$p\" ]; then cp -p -- \"$p\" \"$t\" && wc -c < \"$t\" && \
@@ -723,13 +725,14 @@ impl Workspace for Remote {
                 "git rev-parse --is-inside-work-tree >/dev/null 2>&1"
             }
         };
+        // A git that fails ends its list with `/`, a name it never lists,
+        // on which the filter, so the listing, fails too.
         let script = format!(
             "{GONE}; r={}; [ -f \"$r\" ] && exit {ROOT_IS_A_FILE}; \
              [ -e \"$r\" ] || ! gone \"$r\" || exit {NOT_FOUND}; cd \"$r\" || exit 1; \
-             if {git}; then l=$(mktemp) || exit 1; trap 'rm -f \"$l\"' EXIT; \
-             git ls-files -z -co --exclude-standard > \"$l\" || exit 1; \
-             xargs -0 sh -c 'for f do if [ -f \"$f\" ] && [ ! -L \"$f\" ]; then \
-             printf \"%s\\0\" \"$f\"; fi; done' sh < \"$l\"; \
+             if {git}; then {{ git ls-files -z -co --exclude-standard || printf '\\0/\\0'; }} | \
+             xargs -0 sh -c 'for f do [ \"$f\" != / ] || exit 255; \
+             if [ -f \"$f\" ] && [ ! -L \"$f\" ]; then printf \"%s\\0\" \"$f\"; fi; done' sh; \
              else find . -type f -print0; fi",
             quote_path(root)
         );

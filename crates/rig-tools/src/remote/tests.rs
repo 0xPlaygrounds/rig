@@ -753,11 +753,11 @@ fn what_could_not_be_read_there_is_not_taken_for_absent() {
     let dir = scratch("unread");
     let home = dir.join("home");
     std::fs::write(home.join("strata/src/lib.rs"), "fn needle() {}\n").ok();
-    // Every batch read fails.
+    // Every script that copies files aside, as a batch read does, fails.
     let mut refusing = vec![
         "sh".to_owned(),
         "-c".to_owned(),
-        "case \"$1\" in *'for p in'*) echo 'reads refused' >&2; exit 1;; esac; \
+        "case \"$1\" in *mktemp*) echo 'reads refused' >&2; exit 1;; esac; \
          cd \"$0\" && HOME=\"$0\" exec sh -c \"$1\""
             .to_owned(),
     ];
@@ -1066,7 +1066,9 @@ fn a_write_there_to_a_link_is_refused() {
 
 /// A listing there in a git work tree holds only regular files there, as
 /// one here does: not a file git still lists that was deleted, nor a
-/// link; and a listing git fails to give is an error, not an empty one.
+/// link, nor a scratch file of its own when the temporary directory there
+/// is in the tree; and a listing git fails to give is an error, not an
+/// empty one.
 #[cfg(unix)]
 #[test]
 fn a_git_listing_there_holds_only_files_there() {
@@ -1087,8 +1089,12 @@ fn a_git_listing_there_holds_only_files_there() {
     std::os::unix::fs::symlink("kept.rs", root.join("link.rs")).ok();
     let indexed = git(&["init", "-q"]) && git(&["add", "."]);
     std::fs::remove_file(root.join("gone.rs")).ok();
+    let mut inside = transport(&dir.join("home"));
+    if let Some(script) = inside.get_mut(2) {
+        *script = format!("export TMPDIR=\"$0/strata\"; {script}");
+    }
     let there = || {
-        Remote::new("bench", transport(&dir.join("home")), Launcher::default)
+        Remote::new("bench", inside.clone(), Launcher::default)
             .and_then(|bench| bench.files(&root, None, Listing::Visible))
     };
     let listed = there().map(|listed| listed.files);
