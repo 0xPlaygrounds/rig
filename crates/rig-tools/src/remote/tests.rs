@@ -632,8 +632,8 @@ fn a_write_cut_off_mid_way_says_whether_it_happened() {
          said nothing",
     ];
     let found = [
-        "it does not hold what this write sent, so the write did not happen; make the change \
-         again",
+        "it does not hold what this write sent, so the write may or may not have happened; \
+         read the file before going on",
         "it holds what this write sent, so the write happened",
     ];
     let wanted: Vec<String> = ended
@@ -1006,4 +1006,93 @@ fn a_policy_set_later_holds_from_the_next_operation() {
     let after = bench.read(file, 4096).is_ok() && mark.exists();
     std::fs::remove_dir_all(&dir).ok();
     assert!(before && after, "{before} {after}");
+}
+
+/// A write there, or an edit, of a link is refused, naming where it
+/// points, and leaves the link and its target as they were: a remote path
+/// is checked without following links, so following one would write where
+/// no check looked.
+#[cfg(unix)]
+#[test]
+fn a_write_there_to_a_link_is_refused() {
+    let dir = scratch("link");
+    let home = dir.join("home");
+    std::fs::write(home.join("strata/src/target.rs"), "fn old() {}\n").ok();
+    std::os::unix::fs::symlink("target.rs", home.join("strata/src/lib.rs")).ok();
+    let bench = Remote::new("bench", transport(&home), Launcher::default);
+    let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+    let seen = crate::Seen::default();
+    let read = Read {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+        seen: seen.clone(),
+    };
+    let edit = Edit {
+        workspace: workspace.clone(),
+        base: None,
+        confine: false,
+        seen: seen.clone(),
+    };
+    let write = crate::Write {
+        workspace,
+        base: None,
+        confine: false,
+        seen,
+    };
+    let file = "bench:~/strata/src/lib.rs";
+    let pub_fn = || EditArgs::new(file, [Replacement::new("fn", "pub fn")]);
+    let (wrote, _) = call(&write, crate::WriteArgs::new(file, "fn new() {}\n"));
+    let (edited, _) = call(&edit, pub_fn());
+    let (shown, _) = call(&read, ReadArgs::new(file));
+    let (edited_after_read, _) = call(&edit, pub_fn());
+    let link = std::fs::symlink_metadata(home.join("strata/src/lib.rs"))
+        .is_ok_and(|meta| meta.file_type().is_symlink());
+    let target = std::fs::read_to_string(home.join("strata/src/target.rs")).ok();
+    std::fs::remove_dir_all(&dir).ok();
+    let said = [wrote.err(), edited.err(), edited_after_read.err()]
+        .map(|error| error.map(|error| error.to_string()));
+    assert!(link && shown.is_ok(), "the link was replaced: {said:?}");
+    assert_eq!(target.as_deref(), Some("fn old() {}\n"));
+    let refused = format!(
+        "{file}: it is a link there to `target.rs`, which a write there does not follow; \
+         write that file instead"
+    );
+    assert_eq!(said, [Some(refused.clone()), Some(refused.clone()), Some(refused)]);
+}
+
+/// A listing there in a git work tree holds only regular files there, as
+/// one here does: not a file git still lists that was deleted, nor a
+/// link; and a listing git fails to give is an error, not an empty one.
+#[cfg(unix)]
+#[test]
+fn a_git_listing_there_holds_only_files_there() {
+    use crate::workspace::Listing;
+    let dir = scratch("git");
+    let root = dir.join("home/strata");
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(args)
+            .output()
+            .is_ok_and(|out| out.status.success())
+    };
+    for name in ["kept.rs", "gone.rs"] {
+        std::fs::write(root.join(name), "fn f() {}\n").ok();
+    }
+    std::os::unix::fs::symlink("kept.rs", root.join("link.rs")).ok();
+    let indexed = git(&["init", "-q"]) && git(&["add", "."]);
+    std::fs::remove_file(root.join("gone.rs")).ok();
+    let there = || {
+        Remote::new("bench", transport(&dir.join("home")), Launcher::default)
+            .and_then(|bench| bench.files(&root, None, Listing::Visible))
+    };
+    let listed = there().map(|listed| listed.files);
+    std::fs::write(root.join(".git/index"), b"broken").ok();
+    let broken = there();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(indexed);
+    assert_eq!(listed.ok(), Some(vec![root.join("kept.rs")]));
+    assert!(broken.is_err(), "{broken:?}");
 }
