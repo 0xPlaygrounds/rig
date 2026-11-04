@@ -3011,3 +3011,216 @@ impl rig_core::driver::Transport<rig_core::driver::Local<rig_core::operation::Em
         ])))
     }
 }
+
+/// `TestDocument` rows stored under another schema, picked by `S`.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct SchemaDocument<const S: u8>(TestDocument);
+
+const NOCASE_CATEGORY: u8 = 0;
+const UNIQUE_CATEGORY: u8 = 1;
+const UNIQUE_CATEGORY_INTEGER_ID: u8 = 2;
+
+impl<const S: u8> SqliteVectorStoreTable for SchemaDocument<S> {
+    fn name() -> &'static str {
+        "schema_documents"
+    }
+
+    fn schema() -> Vec<Column> {
+        let (id, category) = match S {
+            NOCASE_CATEGORY => ("TEXT PRIMARY KEY", "TEXT COLLATE\"NOCASE\""),
+            UNIQUE_CATEGORY => ("TEXT PRIMARY KEY", "TEXT UNIQUE"),
+            _ => ("INTEGER PRIMARY KEY", "TEXT UNIQUE"),
+        };
+        vec![
+            Column::new("id", id),
+            Column::new("category", category).indexed(),
+            Column::new("title", "TEXT"),
+        ]
+    }
+
+    fn id(&self) -> String {
+        self.0.id.clone()
+    }
+
+    fn column_values(&self) -> Vec<(&'static str, Box<dyn ColumnValue>)> {
+        self.0.column_values()
+    }
+}
+
+fn schema_row<const S: u8>(
+    id: &str,
+    category: &str,
+    vec: Vec<f64>,
+) -> (SchemaDocument<S>, Vec<Embedding>) {
+    let (document, embeddings) = row(id, category, id, vec);
+    (SchemaDocument(document), embeddings)
+}
+
+/// Documents, embedding map rows and vectors stored for `table`.
+async fn stored_counts(conn: &Connection, table: &'static str) -> anyhow::Result<[i64; 3]> {
+    Ok(conn
+        .call(move |conn| {
+            let count = |name: String| {
+                conn.query_row(&format!("SELECT COUNT(*) FROM {name}"), [], |row| {
+                    row.get::<_, i64>(0)
+                })
+            };
+            Ok([
+                count(table.to_string())?,
+                count(format!("{table}_embedding_map"))?,
+                count(format!("{table}_embeddings"))?,
+            ])
+        })
+        .await?)
+}
+
+async fn top_ids<T>(
+    index: &SqliteVectorIndex<T>,
+    filter: Option<SqliteSearchFilter>,
+) -> anyhow::Result<Vec<String>>
+where
+    T: SqliteVectorStoreTable + 'static,
+{
+    let builder = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(1);
+    let req = match filter {
+        Some(filter) => builder.filter(filter).build(),
+        None => builder.build(),
+    };
+    Ok(index
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .map(|result| result.id)
+        .collect())
+}
+
+#[tokio::test]
+async fn live_indexed_filter_keeps_the_columns_collation() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open("file:live_indexed_filter_keeps_the_columns_collation?mode=memory")
+        .await?;
+    let store = SqliteVectorStore::<SchemaDocument<NOCASE_CATEGORY>>::new(conn, 2).await?;
+    store
+        .add_rows(vec![
+            schema_row("near", "misc", vec![1.0, 0.0]),
+            schema_row("docs", "Docs", vec![0.0, 1.0]),
+        ])
+        .await?;
+
+    let ids = top_ids(
+        &store.index(TestEmbeddingModel::model()),
+        Some(SqliteSearchFilter::eq(
+            "category",
+            serde_json::json!("docs"),
+        )),
+    )
+    .await?;
+    anyhow::ensure!(
+        ids == ["docs"],
+        "a NOCASE column filtered for `docs` must match `Docs`, got {ids:?}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn live_failed_init_leaves_the_connection_usable() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    anyhow::ensure!(
+        SqliteVectorStore::<TestDocument>::new(conn.clone(), 0)
+            .await
+            .is_err(),
+        "a zero-width vector table should be rejected"
+    );
+    if let Err(err) = SqliteVectorStore::<TestDocument>::new(conn, 2).await {
+        anyhow::bail!("init after a failed init must work, got: {err:?}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn live_unique_replacement_removes_every_displaced_documents_vectors() -> anyhow::Result<()> {
+    check_unique_replacement::<UNIQUE_CATEGORY>().await?;
+    check_unique_replacement::<UNIQUE_CATEGORY_INTEGER_ID>().await
+}
+
+async fn check_unique_replacement<const S: u8>() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::<SchemaDocument<S>>::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![
+            schema_row("1", "a", vec![1.0, 0.0]),
+            schema_row("2", "b", vec![0.8, 0.2]),
+        ])
+        .await?;
+    // "3" takes category "a", so REPLACE deletes "1". With integer ids, "1"
+    // then comes back on its old rowid.
+    store
+        .add_rows(vec![schema_row("3", "a", vec![0.0, 1.0])])
+        .await?;
+    store
+        .add_rows(vec![schema_row("1", "c", vec![-1.0, 0.0])])
+        .await?;
+
+    let counts = stored_counts(&conn, "schema_documents").await?;
+    anyhow::ensure!(
+        counts == [3, 3, 3],
+        "schema {S}: displaced vectors left behind (documents, map, vectors): {counts:?}"
+    );
+    let ids = top_ids(&store.index(TestEmbeddingModel::model()), None).await?;
+    anyhow::ensure!(ids == ["2"], "schema {S}: wrong top-1: {ids:?}");
+    Ok(())
+}
+
+#[tokio::test]
+async fn live_replacement_follows_the_unique_keys_collation() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+
+    // A NOCASE unique index added after open: `ABC` replaces `abc`.
+    let conn = Connection::open_in_memory().await?;
+    let store = SqliteVectorStore::<TestDocument>::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![row("abc", "docs", "old", vec![1.0, 0.0])])
+        .await?;
+    conn.call(|conn| {
+        Ok(conn.execute_batch(
+            "CREATE UNIQUE INDEX nocase_id ON live_test_documents(id COLLATE NOCASE)",
+        )?)
+    })
+    .await?;
+    store
+        .add_rows(vec![row("ABC", "docs", "new", vec![0.0, 1.0])])
+        .await?;
+    let counts = stored_counts(&conn, "live_test_documents").await?;
+    anyhow::ensure!(
+        counts == [1, 1, 1],
+        "NOCASE unique index: displaced vectors left behind: {counts:?}"
+    );
+
+    // A NOCASE id column under a BINARY primary key: both documents stay.
+    let conn = Connection::open_in_memory().await?;
+    conn.call(|conn| {
+        Ok(conn.execute_batch(
+            "CREATE TABLE live_test_documents (
+                id TEXT COLLATE NOCASE, category TEXT, title TEXT,
+                PRIMARY KEY (id COLLATE BINARY))",
+        )?)
+    })
+    .await?;
+    let store = SqliteVectorStore::<TestDocument>::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![row("abc", "docs", "lower", vec![1.0, 0.0])])
+        .await?;
+    store
+        .add_rows(vec![row("ABC", "docs", "upper", vec![0.0, 1.0])])
+        .await?;
+    let counts = stored_counts(&conn, "live_test_documents").await?;
+    anyhow::ensure!(
+        counts == [2, 2, 2],
+        "BINARY primary key: a surviving document lost its vectors: {counts:?}"
+    );
+    Ok(())
+}

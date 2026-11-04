@@ -34,6 +34,9 @@ use utils::{execute_query, filter_embeddings};
 
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 /// Vector index over a LanceDB table.
 ///
 /// Queries are embedded with the same model that populated the table, so
