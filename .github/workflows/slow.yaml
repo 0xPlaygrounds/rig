@@ -77,7 +77,8 @@ jobs:
       matrix:
         part: [core-1, core-2, facade, cassette-1, cassette-2, guards, other, lib-1, lib-2, lib-3]
     steps:
-      - run: lscpu | grep -E '^(Model name|CPU\(s\))'
+      - name: Runner CPU
+        run: lscpu | grep -E '^(Model name|CPU\(s\))'
       - uses: actions/checkout@v5
       - uses: ./.github/actions/rust-setup
         with:
@@ -88,22 +89,9 @@ jobs:
           alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          shared-key: all-features
+          shared-key: all-features-cold-probe
           save-if: "false"
-      # The facade, middleware, macro-hygiene and stepper guards build nested
-      # fixtures in `target/*-fixture`; rust-cache keeps only the workspace's
-      # dependencies, so they get their own entry, written on a trusted push.
-      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: target/*-fixture
-          key: fixtures-${{ matrix.part }}-${{ env.RIG_CI_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: fixtures-${{ matrix.part }}-${{ env.RIG_CI_TOOLCHAIN }}-
       - run: cargo xtask verify --check full-tests --part ${{ matrix.part }}
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: target/*-fixture
-          key: fixtures-${{ matrix.part }}-${{ env.RIG_CI_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
 
   # The required check: green only when every part passed.
   test-all-features:
