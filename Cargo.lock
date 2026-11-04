@@ -4523,7 +4523,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "similar",
+ "similar 3.2.1",
  "toml",
 ]
 
@@ -4557,7 +4557,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "similar",
+ "similar 3.2.1",
  "tokio",
  "toml",
 ]
@@ -4608,7 +4608,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "similar",
+ "similar 3.2.1",
  "tar",
  "tokio",
  "toml",
@@ -4792,7 +4792,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2 0.10.9",
- "similar",
+ "similar 3.2.1",
  "tokio",
  "toml",
 ]
@@ -8371,7 +8371,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_regex",
- "similar",
+ "similar 2.7.0",
  "stringmetrics",
  "tabwriter",
  "thiserror 2.0.18",
@@ -14738,7 +14738,7 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "similar",
+ "similar 3.2.1",
  "tracing",
  "unicode-width 0.2.2",
 ]
@@ -14782,7 +14782,7 @@ dependencies = [
  "rig-tools",
  "serde",
  "serde_json",
- "similar",
+ "similar 3.2.1",
  "syntect",
  "terminal-colorsaurus",
  "two-face",
@@ -16003,6 +16003,15 @@ name = "similar"
 version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
+name = "similar"
+version = "3.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2f8bec09ae8fae0f4f265a4559a9334be3929d8504e9b536df0a41302bd1733"
+dependencies = [
+ "bstr",
+]
 
 [[package]]
 name = "simple_asn1"
