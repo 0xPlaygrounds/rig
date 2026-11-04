@@ -16,6 +16,7 @@ fn test_metadata_columns() -> Vec<SqliteMetadataColumn> {
     vec![SqliteMetadataColumn {
         name: "category",
         metadata_type: SqliteMetadataType::Text,
+        collated: false,
     }]
 }
 
@@ -24,14 +25,17 @@ fn typed_metadata_columns() -> Vec<SqliteMetadataColumn> {
         SqliteMetadataColumn {
             name: "priority",
             metadata_type: SqliteMetadataType::Integer,
+            collated: false,
         },
         SqliteMetadataColumn {
             name: "rating",
             metadata_type: SqliteMetadataType::Float,
+            collated: false,
         },
         SqliteMetadataColumn {
             name: "published",
             metadata_type: SqliteMetadataType::Boolean,
+            collated: false,
         },
     ]
 }
