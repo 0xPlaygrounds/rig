@@ -780,10 +780,11 @@ must not weaken the universal assertions or silently mark the scenario passed.
 ## Integration Tests
 
 External-service integration tests are collected under the `integrations` target and are gated by
-feature flags. Some start Docker containers through `testcontainers`, so Docker must be running;
-others are ignored because they need external credentials or pre-provisioned services. Check each
-integration module for required environment variables (Vectorize requires `VECTORIZE_INDEX_NAME`;
-Bedrock needs AWS credentials plus access to the configured Bedrock models).
+feature flags. Some start Docker containers through `testcontainers`, so Docker must be running:
+without it they fail. Others are ignored because they need external credentials or
+pre-provisioned services. Check each integration module for required environment variables
+(Vectorize requires `VECTORIZE_INDEX_NAME`; Bedrock needs AWS credentials plus access to the
+configured Bedrock models).
 
 ```bash
 # all enabled non-ignored integration tests
