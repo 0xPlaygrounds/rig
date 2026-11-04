@@ -676,31 +676,27 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
         "the dialect's table is the only place this model's width is written down"
     );
 
-    // At the native width the field is redundant: the model emits 4096
-    // unasked, so the vector is identical either way.
-    for wire in [
-        &unasked,
-        &OpenAIConfig::with_key(&DOUBLEWORD, "k").embedding(QWEN3_EMBEDDING_8B, Some(4_096)),
-    ] {
-        let encoded = wire
+    // Unasked, the model emits 4096, so the request names no width.
+    let encoded = unasked
+        .encode(documents(), Mode::Unary)
+        .expect("the native width encodes");
+    assert!(
+        json_body(&encoded.request).get("dimensions").is_none(),
+        "{}",
+        json_body(&encoded.request)
+    );
+
+    // A width the caller names goes out as asked, the native one included.
+    for ndims in [512, 4_096] {
+        let encoded = OpenAIConfig::with_key(&DOUBLEWORD, "k")
+            .embedding(QWEN3_EMBEDDING_8B, Some(ndims))
             .encode(documents(), Mode::Unary)
-            .expect("the native width encodes");
-        assert!(
-            json_body(&encoded.request).get("dimensions").is_none(),
-            "{}",
-            json_body(&encoded.request)
+            .expect("a width inside the documented range encodes");
+        assert_eq!(
+            json_body(&encoded.request)["dimensions"],
+            serde_json::json!(ndims)
         );
     }
-
-    // A truncating width is a real request and goes out.
-    let encoded = OpenAIConfig::with_key(&DOUBLEWORD, "k")
-        .embedding(QWEN3_EMBEDDING_8B, Some(512))
-        .encode(documents(), Mode::Unary)
-        .expect("a width inside the documented range encodes");
-    assert_eq!(
-        json_body(&encoded.request)["dimensions"],
-        serde_json::json!(512)
-    );
 
     // Mistral's fixed-width model is the same mechanism with a different
     // table: 1024 reported, and no `output_dimension` on the wire.
