@@ -367,7 +367,7 @@ steel-core = "0.8.3"
 # 3.2.5: earlier releases no longer build against the newest
 # `surrealdb-core` their requirement accepts.
 surrealdb = "3.2.5"
-syn = "2"
+syn = "3.0.3"
 term_size = "0.3"
 testcontainers = "0.27"
 textwrap = "0.16"

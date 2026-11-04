@@ -215,7 +215,7 @@ fn is_transport_parameter(parameter: &syn::TypeParam, generics: &syn::Generics) 
         || parameter
             .default
             .as_ref()
-            .is_some_and(|default| source_text(default).contains("DynHttpClient"))
+            .is_some_and(|(_, default)| source_text(default).contains("DynHttpClient"))
 }
 
 impl<'ast> Visit<'ast> for Wires {
@@ -260,7 +260,7 @@ impl<'ast> Visit<'ast> for Wires {
         let implemented = item
             .trait_
             .as_ref()
-            .and_then(|(_, path, _)| path.segments.last())
+            .and_then(|(path, _)| path.segments.last())
             .map(|segment| segment.ident.to_string());
 
         if let Some(name) = &implemented {
