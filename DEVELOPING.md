@@ -103,7 +103,10 @@ failed job's ID. A truncated log is not evidence that later errors are absent.
   of those packages compiles a changed one. A member manifest also selects the
   dependency floors and the compile guards.
 
-The merge queue, the nightly schedule, manual dispatch and every push to
+The PR plan is an approximation the full plan completes: a consumer's own
+code behind a feature that brings in nothing the change touches (rig-core's
+`pdf`, say, for a rig-http change) is linted on the merge queue, not on the
+PR. The merge queue, the nightly schedule, manual dispatch and every push to
 `main` run the full plan. A source-only change that starts using an API newer
 than a declared floor is caught there rather than on its own PR; that tradeoff
 is deliberate.
