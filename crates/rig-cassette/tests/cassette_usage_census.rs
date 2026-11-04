@@ -581,12 +581,6 @@ fn reported_total(documents: &[Value]) -> Option<u64> {
         .find_map(|key| usage.get(*key)?.as_u64())
 }
 
-/// The census, decoded once and shared by both tests.
-async fn census() -> &'static Census {
-    static CENSUS: tokio::sync::OnceCell<Census> = tokio::sync::OnceCell::const_new();
-    CENSUS.get_or_init(take_census).await
-}
-
 async fn take_census() -> Census {
     let root = cassette_root();
     let mut provider_dirs: Vec<String> = std::fs::read_dir(&root)
@@ -706,17 +700,24 @@ fn report(census: &Census) {
     }
 }
 
+/// Decoding the corpus is the cost, so one test decodes it once for both
+/// checks.
+#[tokio::test]
+async fn the_recorded_completions_are_censused_and_keep_the_usage_contract() {
+    let census = take_census().await;
+    every_recorded_completion_is_censused(&census);
+    every_recorded_call_keeps_the_usage_contract(&census);
+}
+
 /// Every provider directory is examined and every 200-status reply is either
 /// decoded or named as carrying no completion.
-#[tokio::test]
-async fn every_recorded_completion_is_censused() {
+fn every_recorded_completion_is_censused(census: &Census) {
     for (fragment, reason) in NOT_COMPLETIONS {
         assert!(
             !reason.trim().is_empty(),
             "NOT_COMPLETIONS entry `{fragment}` needs a reason"
         );
     }
-    let census = census().await;
     report(census);
 
     assert!(
@@ -753,9 +754,7 @@ async fn every_recorded_completion_is_censused() {
 /// `Usage`'s contract on every decoded call of every provider: cached plus
 /// written input within input, reasoning within output, the total input plus
 /// output, and that total the provider's own wherever it reports one.
-#[tokio::test]
-async fn every_recorded_call_keeps_the_usage_contract() {
-    let census = census().await;
+fn every_recorded_call_keeps_the_usage_contract(census: &Census) {
     let mut violations = Vec::new();
     for call in &census.calls {
         let Some(usage) = &call.usage else {
