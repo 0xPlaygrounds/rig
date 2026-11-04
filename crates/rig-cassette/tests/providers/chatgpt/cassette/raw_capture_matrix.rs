@@ -31,7 +31,7 @@
 //! once recorded. To record: export `CHATGPT_ACCESS_TOKEN` and
 //! `CHATGPT_ACCOUNT_ID` (the harness placeholders both on disk), remove the
 //! `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_capture_matrix/`.
 
 use super::GPT_5_4;

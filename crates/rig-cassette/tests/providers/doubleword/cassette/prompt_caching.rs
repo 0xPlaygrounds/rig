@@ -10,8 +10,8 @@
 //! # Recording
 //!
 //! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test doubleword --all-features \
-//!     prompt_caching:: -- --exact --test-threads=1
+//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
+//!     doubleword::cassette::prompt_caching:: -- --exact --test-threads=1
 //! ```
 
 use rig::providers::doubleword;

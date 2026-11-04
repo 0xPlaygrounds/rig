@@ -14,7 +14,7 @@
 use rig::completion::FinishReason;
 use rig_test_support::bank::{self, Entry};
 
-use crate::decode::{decode, with_model};
+use crate::runtime::decode::{decode, with_model};
 use crate::support::{
     Adder, EscalateCapOnTruncation, ObservedTermination, TurnTerminationProbe,
     collect_stream_final_response,

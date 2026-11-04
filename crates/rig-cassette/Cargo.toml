@@ -17,16 +17,16 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # (3 MiB) and the chat parity snapshots (1 MiB). Sweeping any of them into the
 # tarball would put the upload over the crates.io 10 MiB limit, which is
 # enforced server-side and so never surfaces in `cargo publish --dry-run`.
-# Cargo drops every `[[test]]` target below from the normalized manifest
-# because their sources are excluded; the engine's own unit tests live in
+# Cargo drops the `[[test]]` target below from the normalized manifest
+# because its sources are excluded; the engine's own unit tests live in
 # `src/` and stay published.
 exclude = [
     "benches/**",
     "fixtures/**",
     "tests/**",
 ]
-# Each target below names its entrypoint; the rest of `tests/` are modules
-# those entrypoints include, never targets of their own.
+# The one test target below names its entrypoint; the rest of `tests/` are
+# modules it includes, never targets of their own.
 autotests = false
 
 [[example]]
@@ -155,98 +155,4 @@ harness = false
 required-features = ["http"]
 
 [[test]]
-name = "verify"
-path = "tests/verify/main.rs"
-required-features = ["agent"]
-
-[[test]]
-name = "runtime"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "anthropic"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "bedrock"
-required-features = ["bedrock", "agent"]
-
-[[test]]
-name = "chatgpt"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "cohere"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "copilot"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "deepseek"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "doubleword"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "gemini"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "groq"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "llamacpp"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "mistral"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "mistralrs"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "ollama"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "openai"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "openrouter"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "perplexity"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "venice"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "xai"
-required-features = ["http", "agent"]
-
-[[test]]
-name = "cassette_cache_prefix"
-required-features = ["http"]
-
-[[test]]
-name = "cassette_history_survival"
-required-features = ["http"]
-
-[[test]]
-name = "chat_parity"
-required-features = ["http"]
-
-[[test]]
-name = "cassette_usage_census"
-required-features = ["http"]
+name = "integration"

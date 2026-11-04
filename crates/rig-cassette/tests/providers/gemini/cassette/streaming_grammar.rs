@@ -5,7 +5,7 @@
 //! traffic, not synthetic chunks.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini streaming_grammar -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::streaming_grammar -- --test-threads=1`
 //!
 //! Cassette IDs are scrub placeholders; assertions derive expected IDs from
 //! the recorded turn and never mint literal IDs.
@@ -304,7 +304,7 @@ async fn interactions_requires_action_roundtrip() {
 /// signature the wire delivered must survive into the aggregated choice.
 ///
 /// Re-record with:
-/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_signature_without_summaries -- --test-threads=1`
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::streaming_grammar::interactions_signature_without_summaries -- --test-threads=1`
 #[tokio::test]
 async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
     super::super::support::with_gemini_interactions_cassette(

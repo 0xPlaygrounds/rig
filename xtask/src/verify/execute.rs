@@ -53,7 +53,15 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         "@packaging" => crate::packaging::check(root).map_err(invalid),
         "@wires" => crate::wires::check(root).map_err(invalid),
         "@options-guards" => super::guards::check(root).map_err(invalid),
+        "@driver-adoption" => crate::driver_adoption::check(root).map_err(invalid),
+        "@random-ids" => crate::random_ids::check(root).map_err(invalid),
         "@stage-order" => crate::stage_order::check(root).map_err(invalid),
+        "@copy" => match step.args.as_slice() {
+            [from, to] => fs::copy(root.join(from), root.join(to))
+                .map(|_| ())
+                .map_err(|error| invalid(format!("copy {from} to {to}: {error}"))),
+            _ => Err(invalid("@copy takes a source and a destination")),
+        },
         "@fixture-paths" => {
             // `cargo test` runs from the crate root and nextest from the
             // workspace root, so a CWD-relative fixture path passes under one
@@ -231,7 +239,10 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         ))),
     }
 }
-pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
+/// Run `plan` in order. A failed step stops the run, or with `keep_going`
+/// (a CI job) ends only its check, and the run fails at the end naming each
+/// failed check.
+pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check], keep_going: bool) -> Result<()> {
     if plan.is_empty() {
         println!("No executable changes; no verification result claimed.");
         return Ok(());
@@ -243,6 +254,7 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
     );
     preflight::run(root, plan)?;
     let start = Instant::now();
+    let mut failed = Vec::new();
     for (index, check) in plan.iter().enumerate() {
         println!(
             "RUN {}/{} {} ({:.0}s elapsed)",
@@ -252,9 +264,10 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
             start.elapsed().as_secs_f64()
         );
         let check_start = Instant::now();
+        let mut outcome = Ok(());
         for step in &check.steps {
             println!("STEP {} {}", step.program, step.args.join(" "));
-            let outcome = if step.program.starts_with('@') {
+            outcome = if step.program.starts_with('@') {
                 internal(root, target, step)
             } else if command(root, step, target).status()?.success() {
                 Ok(())
@@ -264,18 +277,30 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
                     check.id, step.program, step.args
                 )))
             };
-            if let Err(error) = outcome {
+            if outcome.is_err() {
+                break;
+            }
+        }
+        match outcome {
+            Ok(()) => println!(
+                "PASS {}: {:.1}s",
+                check.id,
+                check_start.elapsed().as_secs_f64()
+            ),
+            Err(error) if keep_going => {
+                println!("FAIL {}: {error}", check.id);
+                failed.push(check.id.clone());
+            }
+            Err(error) => {
                 for remaining in plan.iter().skip(index + 1) {
                     println!("NOT RUN {}", remaining.id);
                 }
                 return Err(error);
             }
         }
-        println!(
-            "PASS {}: {:.1}s",
-            check.id,
-            check_start.elapsed().as_secs_f64()
-        );
+    }
+    if !failed.is_empty() {
+        return Err(invalid(format!("failed checks: {}", failed.join(", "))));
     }
     println!(
         "All {} checks passed in {:.0}s. This does not certify independent review or remote CI.",

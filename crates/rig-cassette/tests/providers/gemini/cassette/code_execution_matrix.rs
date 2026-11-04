@@ -41,7 +41,7 @@
 //! with a capped output budget.
 //!
 //! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini code_execution_matrix -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::code_execution_matrix -- --test-threads=1`
 
 use futures::StreamExt;
 use rig::message::AssistantContent;

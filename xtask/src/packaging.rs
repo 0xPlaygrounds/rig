@@ -289,9 +289,8 @@ fn facade_guard_covers_every_feature(
     let facade = packages
         .get("rig")
         .ok_or_else(|| "the workspace has no `rig` package".to_string())?;
-    // `default` is what the guard's other rows already build, and
-    // `facade-build-tests` only selects the guard itself.
-    let exempt = ["default", "facade-build-tests"];
+    // `default` is what the guard's other rows already build.
+    let exempt = ["default"];
     let mut missing: Vec<&str> = facade
         .features
         .keys()

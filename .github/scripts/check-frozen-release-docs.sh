@@ -5,13 +5,18 @@
 # requests' `## Changelog` / `## Migration` sections and the public API diff.
 # An ordinary PR never edits them — that is what makes several in-flight PRs
 # rebase cleanly. This guard fails a PR whose diff against its base touches
-# any of them. Release PRs (`release-plz-*` head branch or the `release`
-# label) are exempted by the workflow's job condition, not here.
+# any of them. Release PRs (a `release-plz-*` head branch, `HEAD_REF`, or the
+# `release` label among the space-separated `LABELS`) are exempt.
 
 set -euo pipefail
 
 base_ref="${1:-${BASE_REF:-origin/main}}"
 readonly base_ref
+
+if [[ "${HEAD_REF:-}" == release-plz-* || " ${LABELS:-} " == *" release "* ]]; then
+    echo "Release PR: release documents may change."
+    exit 0
+fi
 readonly frozen_pattern='^(CHANGELOG\.md|MIGRATING\.md|crates/[^/]+/CHANGELOG\.md|docs/migrations/.+)$'
 
 if ! merge_base="$(git merge-base "${base_ref}" HEAD)"; then

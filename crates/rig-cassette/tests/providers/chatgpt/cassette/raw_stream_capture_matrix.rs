@@ -26,7 +26,7 @@
 //! nor a usable ChatGPT OAuth cache was present when this matrix was written,
 //! and a fixture is never fabricated. To record: export the two variables,
 //! remove the `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration chatgpt::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_stream_capture_matrix/`.
 
 use super::GPT_5_4;

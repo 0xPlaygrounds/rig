@@ -3,7 +3,7 @@
 //! The two encrypted-reasoning scenarios need a model that emits
 //! `reasoning_details` of type `reasoning.encrypted` (`openai/o4-mini` with
 //! `reasoning.effort: high` + `include_reasoning: true`). Re-record them with:
-//! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig-cassette --all-features --test integration openrouter::cassette::streaming_tools::stream_encrypted_reasoning -- --test-threads=1`
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::streaming::Item;
 use std::sync::Arc;

@@ -132,10 +132,8 @@ native-tls = ["rig-reqwest?/native-tls", "rig-tungstenite?/native-tls"]
 name = "vector_search"
 harness = false
 
+# Its own process even under `cargo test`: it asserts the calling thread has
+# no tokio runtime, which another suite in a shared binary could break.
 [[test]]
 name = "websocket_off_runtime"
-required-features = ["tungstenite"]
-
-[[test]]
-name = "streaming_conformance_websocket"
 required-features = ["tungstenite"]

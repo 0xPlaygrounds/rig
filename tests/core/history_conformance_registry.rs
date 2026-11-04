@@ -20,38 +20,45 @@ struct OutOfBinaryWire {
     suite_file: &'static str,
     ci_check: &'static str,
     package: &'static str,
+    /// The nextest predicate inside that check which selects the suite.
+    selector: &'static str,
 }
 
 const OUT_OF_BINARY_WIRES: &[OutOfBinaryWire] = &[
     OutOfBinaryWire {
         wire: "candle",
-        suite_file: "crates/rig-candle/tests/history_conformance.rs",
+        suite_file: "crates/rig-candle/tests/integration/history_conformance.rs",
         ci_check: "conformance",
         package: "rig-candle",
+        selector: "test(/^history_conformance::/)",
     },
     OutOfBinaryWire {
         wire: "gemini_grpc",
-        suite_file: "crates/rig-gemini-grpc/tests/history_conformance.rs",
+        suite_file: "crates/rig-gemini-grpc/tests/integration/history_conformance.rs",
         ci_check: "conformance",
         package: "rig-gemini-grpc",
+        selector: "test(/^history_conformance::/)",
     },
     OutOfBinaryWire {
         wire: "vertexai",
-        suite_file: "crates/rig-vertexai/tests/history_conformance.rs",
+        suite_file: "crates/rig-vertexai/tests/integration/history_conformance.rs",
         ci_check: "conformance",
         package: "rig-vertexai",
+        selector: "test(/^history_conformance::/)",
     },
     OutOfBinaryWire {
         wire: "bedrock_claude",
         suite_file: "crates/rig-bedrock/tests/history_conformance.rs",
         ci_check: "conformance",
         package: "rig-bedrock",
+        selector: "binary(history_conformance)",
     },
     OutOfBinaryWire {
         wire: "bedrock_nova",
         suite_file: "crates/rig-bedrock/tests/history_conformance.rs",
         ci_check: "conformance",
         package: "rig-bedrock",
+        selector: "binary(history_conformance)",
     },
 ];
 
@@ -87,7 +94,7 @@ fn every_completion_wire_has_a_history_suite() {
 }
 
 /// Each out-of-binary suite runs in a check that compiles its package and
-/// selects its binary.
+/// selects its suite.
 #[test]
 fn out_of_binary_history_suites_name_a_live_check() {
     let checks = verification_checks::all();
@@ -108,11 +115,11 @@ fn out_of_binary_history_suites_name_a_live_check() {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            run.contains(&format!("-p {}", entry.package))
-                && run.contains("binary(history_conformance)"),
-            "{}'s check compiles `-p {}` and selects binary(history_conformance)",
+            run.contains(&format!("-p {}", entry.package)) && run.contains(entry.selector),
+            "{}'s check compiles `-p {}` and selects {}",
             entry.wire,
-            entry.package
+            entry.package,
+            entry.selector
         );
     }
 }

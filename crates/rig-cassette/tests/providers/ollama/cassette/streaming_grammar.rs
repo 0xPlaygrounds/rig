@@ -5,7 +5,7 @@
 //! synthetic chunks.
 //!
 //! Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key needed):
-//! `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama streaming_grammar -- --test-threads=1`
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration ollama::cassette::streaming_grammar -- --test-threads=1`
 //!
 //! Modern Ollama daemons issue tool-call ids (`"id":"call_..."`); rig reads
 //! them as the durable id and falls back to a minted `tool-{index}` identity

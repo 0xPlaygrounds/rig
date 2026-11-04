@@ -8,7 +8,7 @@
 )]
 
 use rig_cassette::agent::replay::register_all;
-use rig_cassette::effect_log::{self, *};
+use rig_cassette::effect_log::*;
 
 #[path = "../../src/agent/replay/tests.rs"]
 mod agent_replay;

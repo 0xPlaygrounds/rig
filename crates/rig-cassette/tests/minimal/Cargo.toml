@@ -22,9 +22,5 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }
 
 [[test]]
-name = "verify"
-path = "../verify/main.rs"
-
-[[test]]
-name = "effect_log"
-path = "effect_log.rs"
+name = "integration"
+path = "integration.rs"

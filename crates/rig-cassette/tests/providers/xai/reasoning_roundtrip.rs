@@ -1,7 +1,7 @@
 //! xAI reasoning roundtrip tests.
 //!
 //! Run only these cases with:
-//! `cargo test -p rig --test xai xai::reasoning_roundtrip::streaming -- --ignored --nocapture`
+//! `cargo test -p rig-cassette --test integration xai::reasoning_roundtrip::streaming -- --ignored --nocapture`
 
 use rig::providers::xai;
 

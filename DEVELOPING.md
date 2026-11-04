@@ -20,31 +20,30 @@ do not invent hypothetical risks to justify a full local gate. Install only the
 prerequisites the small local checks you choose need. Iterate on one package
 with the `local` nextest profile ([Local builds](#local-builds)).
 
-Before pushing, run every test the change can break: the tests of each package
-it touches and of every package that depends on one, by any kind of
-dependency, with the `local` profile and four build jobs and test threads.
-Only those packages' tests are built, under the features the selected
-packages turn on; CI runs the whole workspace. A change to the workspace manifest,
-the lockfile or CI configuration selects every test; `--dry-run` shows the
+Before pushing, run what CI's plan for the change selects (`--affected`): the
+tests of every package that can observe the change, each with only the
+features that observe it, and every other check whose build compiles a changed
+package. The Docker suites and the macOS job are left to CI. A change to a
+shared input (the workspace manifest, the lockfile, CI, xtask, nextest or Cargo
+configuration, test support, scripts) selects every check; `--dry-run` shows the
 selection first.
 
 ```sh
 cargo xtask verify --affected --base origin/main   # before every push
 ```
 
-The planner commands remain available for explicit requests or deliberate
-debugging:
+Other modes, for explicit requests or deliberate debugging:
 
 ```sh
-cargo xtask verify --changed --dry-run             # optional selection preview
-cargo xtask verify --changed                       # optional; only if selection is suitably small
-cargo xtask verify --pr --base origin/feat/effect-bus   # optional broad plan; use actual base
-cargo xtask verify --full                          # optional exhaustive verification
-cargo xtask verify --check core-all                # explicit check by id; assess its cost first
+cargo xtask verify --plan --base origin/main       # print the plan CI would run
+cargo xtask verify --full                          # every check; assess its cost first
+cargo xtask verify --check core-all                # one check by id, in full
 ```
 
 Every selected check executes, every time; nothing is reused or recorded
-between runs. A failed step stops the run and prints which checks did not run.
+between runs. Locally a failed step stops the run and prints which checks did
+not run; a CI job runs each of its selected checks and fails naming every
+failed one.
 Verification always replays cassettes (`RIG_PROVIDER_TEST_MODE=replay`), never
 records, and never regenerates goldens.
 
@@ -80,47 +79,46 @@ gh api repos/0xPlaygrounds/rig/actions/jobs/JOB_ID/logs
 Capture the response before extracting diagnostics; replace `JOB_ID` with the
 failed job's ID. A truncated log is not evidence that later errors are absent.
 
-## What each mode selects
+## What the plan selects
 
-`--changed` compares the working tree (staged, unstaged and untracked files)
-to `HEAD`, or to the merge base of `--base REF`. Provider source or cassette
-edits run that provider's complete test target with all facade features.
-Package edits run the package's tests under all its features and compile its
-reverse dependencies, including examples. Documentation edits run docs and
-doctests. Shared inputs (manifests, the lockfile, the toolchain, Cargo and
-nextest configuration, CI, xtask, scripts, test support, the facade source)
-and unknown files select the full plan rather than guessing. An edit only to
-this file selects nothing. Because of that, `--changed` is not a promise of
-cheap verification: inspect its dry-run selection first, and if it selects the
-full plan, choose explicit small checks or leave execution to CI.
+`xtask/src/verify/plan.rs` reads the diff from the merge base of `--base`
+(staged, unstaged and untracked files) and the workspace's `cargo metadata`:
 
-`--pr` requires the intended base and selects every check the PR gate runs,
-plus two slow lanes when the diff touches their inputs:
+- Each changed path belongs to the package whose directory holds it; the
+  facade owns only `src/`, `tests/`, `benches/` and `README.md` at the root.
+  A path in no package, or a shared input, runs every check in full. Markdown
+  files at the root (but README.md), `docs/` and `prompts/` run only the tree
+  guards.
+- The tests (`tests`), doctests, docs and Clippy run over every package that
+  can observe a changed one: a changed package with all its features; any
+  other package with its default features plus each feature that brings in a
+  package depending on a changed one, or adds features to a changed package.
+  So a vector-store change runs the store, the facade with only that store's
+  feature, and `rig-service-tests` with only that store's Docker suite.
+  Dev-dependencies count for a package's own tests only, never transitively.
+- A package whose sources name a path outside it (`"../rig-cassette/fixtures"`
+  from its manifest directory, or an `include_str!`) reads it: a change there
+  runs that package's own tests with all features.
+- Every other check names what it builds in `plan::builds` and runs when one
+  of those packages compiles a changed one. A member manifest also selects the
+  dependency floors and the compile guards.
 
-- `full-tests`, the all-features workspace run with the Docker-backed storage
-  suites and the facade feature-forwarding guard, for the storage crates,
-  `tests/integrations/**`, `test-support/**`, `.config/**`, the root manifest
-  and lockfile, xtask, the shared setup action and `slow.yaml`
-  (`checks::full_lane`);
-- `dependency-floors`, the workspace built at its declared minimum versions,
-  for Cargo's resolver inputs: any manifest, the lockfile, the toolchain,
-  `.cargo/**`, the floor checker, xtask, the setup action and `slow.yaml`
-  (`checks::floor_lane`).
-
-CI's `slow.yaml` asks the same planner (`cargo xtask verify --lanes --base
-<base>`) on every PR, so local and hosted selection cannot disagree. A
-source-only change that starts using an API newer than a declared floor is
-caught on the merge queue, the nightly schedule or the release gate rather
-than on its own PR; that tradeoff is deliberate.
-
-`--full` runs every check, including both slow lanes.
+The PR plan is an approximation the full plan completes: a consumer's own
+code behind a feature that brings in nothing the change touches (rig-core's
+`pdf`, say, for a rig-http change) is linted on the merge queue, not on the
+PR. The merge queue, the nightly schedule, manual dispatch and every push to
+`main` run the full plan. A source-only change that starts using an API newer
+than a declared floor is caught there rather than on its own PR; that tradeoff
+is deliberate.
 
 ## Local builds
 
 - `cargo nextest run --locked --profile local -p <crate> [filter]` is the inner
   loop. The `local` profile has no retries, stops at the first failure, and
-  skips the service suites and tests that launch a nested Cargo build or
-  trybuild. Add `--ignore-default-filter` to run them.
+  skips the service suites and the trybuild cases (`--ignore-default-filter`
+  runs them). The nested-Cargo builds are `guard-*` checks: the facade's
+  runs its fixture's `cargo check`s directly, and the others are `#[ignore]`d
+  tests their check runs with `--run-ignored only`.
 - The dev profile keeps line tables for workspace code and no debuginfo for
   dependencies. For a debugger, add `--config 'profile.dev.debug=true' --config
   'profile.dev.package."*".debug=true'`; `CARGO_PROFILE_DEV_DEBUG` alone does
@@ -149,27 +147,29 @@ compiling anything; a missing tool is a failed run.
 
 ## Hosted CI
 
-- `ci.yaml`, the PR gate: guards (fmt, source guards, layout, xtask's tests),
-  release-document freeze, the default-feature type check, the default/bedrock
-  sweep, the cross-crate guards (core-all, bus verification, macro hygiene,
-  out-of-facade conformance), rig-derive, doctests, docs, clippy, and the
-  wasm checks with the two native-only diagnostics.
-  Apart from the release-document freeze (a shell script) every job is
-  checkout, `.github/actions/rust-setup`, a job-level rust-cache where a warm
-  entry exists, and one or more `cargo xtask verify --check` steps.
-- `slow.yaml`: a plan job runs `verify --lanes` on PRs and gates the
-  all-features run and the dependency floors on its answer; the merge queue,
-  the 06:00 UTC schedule, manual dispatch and every push to `main` run both.
-- `cd.yaml`: both gates on every push to `main`, then release-plz. Only
-  these pushes save caches (the doctest job saves the shared `all-features`
-  entry); PRs restore their base branch's entries. rust-cache runs at job
-  level everywhere so a failed or cancelled job saves nothing.
+- `ci.yaml`, the gate: a plan job (`verify --plan`) and one job per group of
+  checks (`checks::job`): guards, the release-document freeze, the runtime
+  suite (`stable / test`), the Docker suites (`stable / services`), the
+  cross-crate tripwires (`stable / test guards`), the effect corpus, the
+  compile guards, doctests, docs, Clippy, the default-feature type check, the
+  wasm checks, kernel-only rig-ecs, the dependency floors and macOS. Each job
+  runs `cargo xtask verify --job <id>`, and is skipped when the plan selects
+  none of its checks. `stable / required` fails unless every planned job
+  succeeded and every other job was skipped: it is the one context branch
+  protection and the merge queue require. A manual dispatch with a `base`
+  input runs the plan a PR from that branch into `base` would get.
+- `cd.yaml`: the full gate on every push to `main`, then release-plz. Only
+  these pushes save caches; PRs restore their base branch's entries.
+  rust-cache runs at job level everywhere so a failed or cancelled job saves
+  nothing.
 
-Every cassette-backed test source lives in `crates/rig-cassette`: the provider
-targets, the agent corpus cells inside them, the cache-prefix guard, the
-verification target `verify`, and the effect-log and runtime-adapter library
+Each package links its integration tests into one binary, `integration`, with
+one module per suite (see [tests/README.md](tests/README.md)). Every
+cassette-backed test source lives in `crates/rig-cassette`: the provider
+suites, the agent corpus cells inside them, the cache-prefix guard, the
+verification suite `verify`, and the effect-log and runtime-adapter library
 regressions. The unpublished `rig-cassette-minimal` runner in
-`tests/minimal/Cargo.toml` shares the verification entrypoint and the
+`tests/minimal/Cargo.toml` shares the verification suite and the
 effect-log/classic-replay regression sources. It enables only cassette's
 `agent` feature, without native HTTP, the facade or provider helpers.
 The facade keeps live-only provider suites, `core`, feature guards and
@@ -177,42 +177,37 @@ integrations; it re-exports cassette's logs and enables its classic adapter
 with the facade's `agent` feature. The agent runtime remains free of normal
 dependencies on the concrete cassette/log implementation.
 
-The default sweep excludes the corpus cells and the verification target; the
-cassette library's own tests and every provider target stay in it.
 `effect-corpus` owns the corpus cells (both configurations, including the
 extracted `corpus_` regressions in `rig-test-support`) and the golden pairing
-guard that stayed in the facade's `core` target; `bus-verification` owns
-`verify` and the minimal `effect_log` regression target. `core-all` retains
+guard that stayed in the facade's `core` suite; `bus-verification` owns
+`verify` and the minimal `effect_log` regression suite. `core-all` retains
 the migrated classic replay unit tests under its all-features graph. The
-corpus filter excludes the `verify` binary from the `corpus_` pattern, whose
+corpus filter excludes the `verify` suite from the `corpus_` pattern, whose
 module names would otherwise match. Minimal verification executions select
 `package(rig-cassette-minimal)`, whose graph has no native HTTP engine, facade
 or provider helpers. The dependency-graph guard checks the resolved features
 of the packages selected by the CI commands, not just their names.
 Default-member executions and the standalone corpus run retain two retries;
 minimal verification retains zero. The minimal runner is outside
-default-members and excluded from `full-tests`, where its shared sources
-already execute through `rig-cassette`. Shared sources under cassette's
-`tests/`, `src/effect_log/` and `src/agent/replay*` also select the minimal
-runner in changed-file plans. `wasm-rig-cassette` builds the minimal library
+default-members and excluded from `tests`, where its shared sources
+already execute through `rig-cassette`. `wasm-rig-cassette` builds the minimal library
 and the `agent` integration; the HTTP engine is native-only. The wasm checks
 retain their distinct configuration coverage even when test names overlap. The standalone default-feature type check selects both the facade and
 `rig-test-support`, so extracted helper regression bodies still compile
-there. A `provider-<name>` check is planned against whichever package declares
-that target.
+there.
 
 Tokens are read-only except release-plz. No job receives provider secrets:
 cassettes replay with a dummy key and live tests are `#[ignore]`.
 
 ## Adding a check
 
-Add it to `checks::all()` with a stable id, decide which selection rule owns
-it in `selection.rs` (or leave it in the fast set every `--pr` runs), add a
-`cargo xtask verify --check <id>` step to the matching ci.yaml job, and update
-the tests in `xtask/src/verify/tests.rs` that pin ids and lanes. Checks that
-shell out to a nested Cargo build (the facade guard, macro hygiene) get a
-nextest priority so they start first, and every nested-Cargo or trybuild test
-belongs in the `local` profile's filter in `.config/nextest.toml`.
+Add it to `checks::all()` with a stable id, give it a job in `checks::job`
+(a new job also goes in ci.yaml and in `stable / required`'s `needs`), and
+say what it builds in `plan::builds` (or make it package-scoped in
+`plan::SCOPED`, or always-on in `plan::always`). The tests in
+`xtask/src/verify/plan/tests.rs` check that every check's job runs it. A test
+that shells out to a nested Cargo build is `#[ignore]`d with a `guard-*`
+check of its own (`checks::guard`), or its builds become the check's steps.
 
 ## Refreshing the model catalog
 

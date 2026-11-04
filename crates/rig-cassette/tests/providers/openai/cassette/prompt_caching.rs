@@ -29,8 +29,8 @@
 //! # Recording
 //!
 //! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test openai --all-features \
-//!     prompt_caching:: -- --exact --test-threads=1
+//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
+//!     openai::cassette::prompt_caching:: -- --exact --test-threads=1
 //! ```
 //!
 //! The cache TTL is minutes, so all three turns of a probe must record

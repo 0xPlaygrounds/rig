@@ -1,4 +1,4 @@
-use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client, skip_if_docker_unavailable};
+use crate::common::{WORD_DEFINITIONS, mock_embeddings, openai_client};
 use rig::postgres::{PgSearchFilter, PostgresSessionStore, PostgresVectorStore};
 use rig::providers::openai;
 use rig::vector_store::request::SearchFilter;
@@ -34,9 +34,6 @@ struct Word {
 /// Two pools, as two workers hold, on one database with no tables yet.
 #[tokio::test]
 async fn session_store_keeps_the_contract() {
-    if skip_if_docker_unavailable("session_store_keeps_the_contract") {
-        return;
-    }
     let container = start_container().await;
     let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(POSTGRES_PORT).await.unwrap();
@@ -59,9 +56,6 @@ async fn session_store_keeps_the_contract() {
 /// `public`, later on the search path, already holds a store's.
 #[tokio::test]
 async fn session_store_keeps_to_its_schema() {
-    if skip_if_docker_unavailable("session_store_keeps_to_its_schema") {
-        return;
-    }
     let container = start_container().await;
     let host = container.get_host().await.unwrap().to_string();
     let port = container.get_host_port_ipv4(POSTGRES_PORT).await.unwrap();
@@ -86,10 +80,6 @@ async fn session_store_keeps_to_its_schema() {
 
 #[tokio::test]
 async fn vector_search_test() {
-    if skip_if_docker_unavailable("vector_search_test") {
-        return;
-    }
-
     let container = start_container().await;
 
     let host = container.get_host().await.unwrap().to_string();

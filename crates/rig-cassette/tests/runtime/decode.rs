@@ -120,35 +120,36 @@ macro_rules! with_model {
         let encoder = entry.encoder.as_str();
         match entry.provider.as_str() {
             "anthropic" if encoder.ends_with("/messages") => {
-                let $model = $crate::decode::anthropic_model(http);
+                let $model = $crate::runtime::decode::anthropic_model(http);
                 Some($body)
             }
             "gemini" if encoder.ends_with("/interactions") => {
-                let $model =
-                    $crate::decode::gemini_model(http).interactions($crate::decode::GEMINI);
+                let $model = $crate::runtime::decode::gemini_model(http)
+                    .interactions($crate::runtime::decode::GEMINI);
                 Some($body)
             }
             "gemini" => {
-                let $model = $crate::decode::gemini_model(http).completion($crate::decode::GEMINI);
+                let $model = $crate::runtime::decode::gemini_model(http)
+                    .completion($crate::runtime::decode::GEMINI);
                 Some($body)
             }
             "cohere" => {
-                let $model = $crate::decode::cohere_model(http);
+                let $model = $crate::runtime::decode::cohere_model(http);
                 Some($body)
             }
             "ollama" if encoder.ends_with("/api/chat") => {
-                let $model = $crate::decode::ollama_native_model(http);
+                let $model = $crate::runtime::decode::ollama_native_model(http);
                 Some($body)
             }
             "ollama" => {
-                let $model = $crate::decode::ollama_model(http);
+                let $model = $crate::runtime::decode::ollama_model(http);
                 Some($body)
             }
             "copilot" => {
-                let $model = $crate::decode::copilot_model(http, encoder);
+                let $model = $crate::runtime::decode::copilot_model(http, encoder);
                 Some($body)
             }
-            provider => match $crate::decode::openai_family(provider) {
+            provider => match $crate::runtime::decode::openai_family(provider) {
                 Some(config) if encoder.ends_with("/chat/completions") => {
                     let $model = rig_test_support::cassette_models::OpenAiModels::new(config, http)
                         .chat("model");

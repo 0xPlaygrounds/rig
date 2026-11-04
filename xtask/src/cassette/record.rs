@@ -236,14 +236,8 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         }
     }
 
-    if !options.dry_run {
-        let providers: std::collections::BTreeSet<&str> = by_test
-            .keys()
-            .map(|(provider, _)| provider.as_str())
-            .collect();
-        for provider in providers {
-            build_tests(root, provider)?;
-        }
+    if !options.dry_run && !by_test.is_empty() {
+        build_tests(root)?;
     }
     let session = Session {
         root,
@@ -320,11 +314,10 @@ impl Session<'_> {
             .join(format!("{}.attempt{attempt}.log", test.replace("::", "__")));
         // A run that could not even start is a failed run: it still restores
         // and writes its result row, with the reason.
-        let (mut passed, spawn_error) =
-            match run_test(self.root, self.attempts, provider, test, &log) {
-                Ok(passed) => (passed, None),
-                Err(error) => (false, Some(error)),
-            };
+        let (mut passed, spawn_error) = match run_test(self.root, self.attempts, test, &log) {
+            Ok(passed) => (passed, None),
+            Err(error) => (false, Some(error)),
+        };
         let mut note = format!("log {}", log.display());
         if let Some(error) = &spawn_error {
             note.push_str(&format!("; could not run: {error}"));
@@ -392,9 +385,9 @@ impl Session<'_> {
     }
 }
 
-/// Build `provider`'s test binary without running it, so a compile error
-/// spends no attempt.
-fn build_tests(root: &Path, provider: &str) -> Result<(), String> {
+/// Build the cassette integration test binary without running it, so a
+/// compile error spends no attempt.
+fn build_tests(root: &Path) -> Result<(), String> {
     let status = Command::new("cargo")
         .args([
             "nextest",
@@ -406,7 +399,7 @@ fn build_tests(root: &Path, provider: &str) -> Result<(), String> {
             "--features",
             "http,agent,bedrock",
             "--test",
-            provider,
+            "integration",
         ])
         .current_dir(root)
         .status()
@@ -414,19 +407,11 @@ fn build_tests(root: &Path, provider: &str) -> Result<(), String> {
     if status.success() {
         Ok(())
     } else {
-        Err(format!(
-            "the {provider} test binary does not build; no attempt was spent"
-        ))
+        Err("the cassette test binary does not build; no attempt was spent".into())
     }
 }
 
-fn run_test(
-    root: &Path,
-    attempts: &Path,
-    provider: &str,
-    test: &str,
-    log: &Path,
-) -> Result<bool, String> {
+fn run_test(root: &Path, attempts: &Path, test: &str, log: &Path) -> Result<bool, String> {
     if let Some(parent) = log.parent() {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -442,7 +427,7 @@ fn run_test(
             "--features",
             "http,agent,bedrock",
             "--test",
-            provider,
+            "integration",
             "--run-ignored",
             "all",
             "--retries",
