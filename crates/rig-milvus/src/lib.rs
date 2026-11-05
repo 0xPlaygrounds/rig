@@ -52,6 +52,11 @@ struct InsertRequest<'a> {
     db_name: &'a str,
 }
 
+#[derive(Deserialize)]
+struct InsertResponse {
+    code: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchRequest<'a> {
@@ -230,16 +235,21 @@ impl InsertDocuments for MilvusVectorStore {
 
         let res = client.body(body).send().await.map_err(from_reqwest)?;
 
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await.map_err(from_reqwest)?;
-
+        let status = res.status();
+        let text = res.text().await.map_err(from_reqwest)?;
+        if status != StatusCode::OK {
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }
-
+        let response: InsertResponse = serde_json::from_str(&text)?;
+        if response.code != 0 {
+            return Err(VectorStoreError::ExternalAPIError(status, text));
+        }
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod insert_tests;
 
 impl VectorStoreIndex for MilvusVectorStore {
     type Filter = Filter;

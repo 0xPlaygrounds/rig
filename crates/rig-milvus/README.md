@@ -1,6 +1,9 @@
 # Rig Milvus integration
 This crate integrates [Milvus](https://milvus.io/) into Rig, allowing you to easily use RAG with this database.
 
+Inserts succeed only when Milvus returns an HTTP 200 response and application
+code `0`. Rejected inserts return an error containing the response status and body.
+
 ## Installation
 To install this crate, run the following command in a Rust project directory which will add `rig-milvus` as a dependency (requires `rig-core` added for intended usage):
 ```bash
