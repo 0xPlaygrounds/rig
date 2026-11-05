@@ -9,6 +9,9 @@
 #[allow(dead_code)]
 mod common;
 
+#[cfg(feature = "falkordb")]
+#[path = "../../tests/integrations/falkordb.rs"]
+mod falkordb;
 #[cfg(feature = "lancedb")]
 #[path = "../../tests/integrations/lancedb/mod.rs"]
 mod lancedb;

@@ -69,6 +69,7 @@ features = [
     "cassette",
     "derive",
     "epub",
+    "falkordb",
     "fastembed",
     "fastembed-hf-hub",
     "fastembed-ort-download-binaries",
@@ -282,6 +283,8 @@ dotenvy = "0.15"
 epub = "2"
 # 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
 fastembed = { version = "4.5", default-features = false }
+# 0.11: async vector-index readiness and typed result rows from falkordb-rs.
+falkordb = { version = "0.11", default-features = false }
 fastrand = "2"
 futures = "0.3"
 futures-timer = "3"
@@ -406,6 +409,7 @@ rig-agent = { path = "crates/rig-agent", version = "0.46.0", optional = true, de
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.46.0", optional = true }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.46.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.46.0", optional = true, default-features = false }
+rig-falkordb = { path = "crates/rig-falkordb", version = "0.46.0", optional = true, default-features = false }
 rig-fastembed = { path = "crates/rig-fastembed", version = "0.46.0", optional = true, default-features = false }
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.46.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.46.0", optional = true, default-features = false }
@@ -483,6 +487,7 @@ cassette = ["dep:rig-cassette"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 bedrock = ["dep:rig-bedrock"]
 candle = ["dep:rig-candle"]
+falkordb = ["dep:rig-falkordb"]
 fastembed = [
   "dep:rig-fastembed",
   "rig-fastembed/hf-hub",
