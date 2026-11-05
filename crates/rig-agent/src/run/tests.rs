@@ -2197,6 +2197,182 @@ fn answer_all_stores_nothing_when_one_answer_is_refused() {
     assert_eq!(expect_call_tools(&mut run).len(), 2, "no answer was stored");
 }
 
+fn terminating_actions() -> [InvalidToolCallAction; 3] {
+    [
+        InvalidToolCallAction::stop("stop"),
+        InvalidToolCallAction::fail(),
+        InvalidToolCallAction::repair("add"),
+    ]
+}
+
+fn pending_terminating_batch(run: &mut AgentRun) -> (MalformedCall, ExecCall, MalformedCall) {
+    let malformed = |id| {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
+            ToolFunction::parse(ToolName::new("add").expect("tool name"), "{\"x\":"),
+        ))
+    };
+    expect_call_model(run);
+    expect_continue(
+        run.model_response(ModelTurn::new(
+            AssistantMessage::default(),
+            vec![
+                malformed("first"),
+                tool_call("executed", "add"),
+                malformed("last"),
+            ],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        ))
+        .expect("model_response"),
+    );
+    let calls = expect_call_tools(run);
+    let [
+        PendingToolCall::Malformed(first),
+        PendingToolCall::Execute(executed),
+        PendingToolCall::Malformed(last),
+    ] = calls.as_slice()
+    else {
+        panic!("two malformed calls and an executable sibling: {calls:?}");
+    };
+    (first.clone(), executed.clone(), last.clone())
+}
+
+fn assert_answer_batch_rejected(
+    run: &mut AgentRun,
+    answers: impl IntoIterator<Item = ToolAnswer>,
+    reason: &str,
+) {
+    let before = serde_json::to_value(&run).expect("serialize the pending run");
+    let error = run.answer_all(answers).expect_err("the batch is invalid");
+    assert!(matches!(
+        error,
+        PromptError::Cancelled { reason: actual, .. }
+            if actual.contains("protocol violation") && actual.contains(reason)
+    ));
+    assert_eq!(
+        serde_json::to_value(&run).expect("serialize the rejected run"),
+        before,
+        "a rejected batch must leave every part of the run unchanged"
+    );
+    assert!(!expect_call_tools(run).is_empty());
+    answer_calls(run, "accepted after rejection").expect("the run remains drivable");
+    expect_call_model(run);
+}
+
+#[test]
+fn answer_all_rejects_stale_answers_after_terminating_actions() {
+    for action in terminating_actions() {
+        let mut run = AgentRun::new("add").max_turns(3);
+        let (_, _, stale) = pending_terminating_batch(&mut run);
+        answer_calls(&mut run, "previous turn").expect("answer the previous turn");
+        let (first, executed, _) = pending_terminating_batch(&mut run);
+        assert_answer_batch_rejected(
+            &mut run,
+            [
+                first.answer(Some(action)),
+                executed.answer(success("completed sibling")),
+                stale.answer(Some(InvalidToolCallAction::stop("stale"))),
+            ],
+            "model turn 1",
+        );
+    }
+}
+
+#[test]
+fn answer_all_rejects_duplicate_answers_after_terminating_actions() {
+    for action in terminating_actions() {
+        let mut run = AgentRun::new("add").max_turns(2);
+        let (first, executed, _) = pending_terminating_batch(&mut run);
+        assert_answer_batch_rejected(
+            &mut run,
+            [
+                first.clone().answer(Some(action)),
+                executed.answer(success("completed sibling")),
+                first.answer(Some(InvalidToolCallAction::stop("duplicate"))),
+            ],
+            "already answered",
+        );
+    }
+}
+
+#[test]
+fn answer_all_rejects_closed_calls_after_terminating_actions() {
+    for action in terminating_actions() {
+        let mut run = AgentRun::new("add").max_turns(2);
+        let (first, executed, last) = pending_terminating_batch(&mut run);
+        run.answer(last.clone().answer(None))
+            .expect("answer the last call");
+        assert_answer_batch_rejected(
+            &mut run,
+            [
+                first.answer(Some(action)),
+                executed.answer(success("completed sibling")),
+                last.answer(Some(InvalidToolCallAction::stop("already answered"))),
+            ],
+            "already answered",
+        );
+    }
+}
+
+#[test]
+fn answer_all_rejects_mismatched_slots_after_terminating_actions() {
+    for action in terminating_actions() {
+        // Position 1 belongs to an executable call; position 3 does not exist.
+        for index in [1, 3] {
+            let mut run = AgentRun::new("add").max_turns(2);
+            let (first, _, last) = pending_terminating_batch(&mut run);
+            let mut saved = serde_json::to_value(last).expect("serialize the handle");
+            saved["index"] = json!(index);
+            let invalid: MalformedCall =
+                serde_json::from_value(saved).expect("deserialize the mismatched handle");
+            assert_answer_batch_rejected(
+                &mut run,
+                [
+                    first.answer(Some(action.clone())),
+                    invalid.answer(Some(InvalidToolCallAction::stop("mismatched"))),
+                ],
+                "does not match the pending call",
+            );
+        }
+    }
+}
+
+#[test]
+fn answer_all_keeps_siblings_and_the_first_valid_terminating_action() {
+    for action in terminating_actions() {
+        let stops = matches!(action, InvalidToolCallAction::Stop { .. });
+        let mut run = AgentRun::new("add").max_turns(2);
+        let (first, executed, last) = pending_terminating_batch(&mut run);
+        let error = run
+            .answer_all([
+                first.answer(Some(action)),
+                last.answer(Some(InvalidToolCallAction::stop("later stop"))),
+                executed.answer(success("completed sibling")),
+            ])
+            .expect_err("a valid terminating action ends the run");
+        if stops {
+            assert!(matches!(&error, PromptError::Cancelled { reason, .. } if reason == "stop"));
+        } else {
+            assert!(matches!(error, PromptError::Provider(_)));
+        }
+        let history = run.full_history();
+        let Some(Message::User { content }) = history.last() else {
+            panic!("the batch has a result message");
+        };
+        assert_eq!(content.len(), 3, "all calls are closed");
+        assert_eq!(
+            content.get(1),
+            Some(&tool_result("executed", "completed sibling"))
+        );
+        if let PromptError::Cancelled { chat_history, .. } = error {
+            assert_eq!(*chat_history, history);
+        }
+        assert!(run.next_step().is_err(), "the run has ended");
+    }
+}
+
 /// A malformed call answered with `Stop` cancels the run with the history
 /// before the batch.
 #[test]

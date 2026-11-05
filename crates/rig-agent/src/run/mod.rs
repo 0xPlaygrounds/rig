@@ -30,7 +30,7 @@ pub use patch::RequestPatch;
 pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use spec::RunSpec;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -1379,6 +1379,9 @@ impl AgentRun {
         };
         // The turn stays put until the batch is answered, so it names the batch.
         let (mut batch, policy, turn) = (batch.clone(), policy.clone(), self.current_turn);
+        let mut termination = None;
+        // Terminal answers leave their slots open for closure, but still claim them.
+        let mut answered = BTreeSet::new();
         let mut answers: Vec<ToolAnswer> = answers.into_iter().collect();
         answers.sort_by_key(ToolAnswer::ends_run);
         for ToolAnswer {
@@ -1394,6 +1397,11 @@ impl AgentRun {
                         "answer for tool call id `{call}` of model turn {issued}, but the pending calls are from turn {turn}"
                     )));
                 }
+                _ if !answered.insert(index) => {
+                    return Err(self.protocol_violation(&format!(
+                        "answer for tool call id `{call}` that is already answered"
+                    )));
+                }
                 (Some(ToolSlot::Execute(tool_call)), AnswerKind::Executed(result))
                     if tool_call.id == call =>
                 {
@@ -1405,18 +1413,8 @@ impl AgentRun {
                     match malformed_answer(tool_call, action) {
                         Ok(content) => content,
                         Err(end) => {
-                            // The run ends with the answers so far kept and the
-                            // rest of its batch closed, as the error reports it.
-                            self.state = RunState::ExecutingTools(batch, policy);
-                            return Err(match end {
-                                Ok(reason) => self.fail(reason),
-                                Err(error) => {
-                                    let closure = self.closure();
-                                    self.history.commit(closure);
-                                    self.state = RunState::Failed;
-                                    error
-                                }
-                            });
+                            termination.get_or_insert(end);
+                            continue;
                         }
                     }
                 }
@@ -1434,6 +1432,19 @@ impl AgentRun {
             if let Some(slot) = batch.slots.get_mut(index) {
                 *slot = ToolSlot::Answered(content);
             }
+        }
+        if let Some(end) = termination {
+            // Commit the supplied results only after every answer has passed validation.
+            self.state = RunState::ExecutingTools(batch, policy);
+            return Err(match end {
+                Ok(reason) => self.fail(reason),
+                Err(error) => {
+                    let closure = self.closure();
+                    self.history.commit(closure);
+                    self.state = RunState::Failed;
+                    error
+                }
+            });
         }
         self.state = match batch.complete() {
             Ok(results) => {
