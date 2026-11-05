@@ -1,6 +1,9 @@
 use super::*;
+use crate::driver::{Exchange, Model, Opened, Opening, Transport};
+use crate::embeddings::EmbeddingsBuilder;
 use crate::providers::gemini::{GeminiConfig, PROVIDER_NAME};
 use crate::wire::WireFrame;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn test_embedding_values_deserializes_without_empty_values_field() {
@@ -14,6 +17,89 @@ fn test_default_ndims_lookup() {
     assert_eq!(default_ndims(EMBEDDING_001), 3072);
     assert_eq!(default_ndims(EMBEDDING_004), 768);
     assert_eq!(default_ndims("unknown-model"), 768);
+}
+
+#[derive(Clone, Default)]
+struct CaptureBatches(Arc<Mutex<Vec<Vec<String>>>>);
+
+impl Transport<Embeddings> for CaptureBatches {
+    fn send(&self, payload: Encoded, _exchange: Exchange) -> Opening<WireFrame> {
+        assert_eq!(
+            payload.request.uri().path(),
+            "/v1beta/models/gemini-embedding-001:batchEmbedContents"
+        );
+        let body = crate::test_utils::json_body(&payload.request);
+        let requests = body
+            .get("requests")
+            .and_then(Value::as_array)
+            .expect("batch requests");
+        let documents = requests
+            .iter()
+            .map(|request| {
+                assert_eq!(
+                    request.get("model"),
+                    Some(&json!("models/gemini-embedding-001"))
+                );
+                assert_eq!(request.get("output_dimensionality"), Some(&json!(768)));
+                request
+                    .pointer("/content/parts/0/text")
+                    .and_then(Value::as_str)
+                    .expect("document text")
+                    .to_owned()
+            })
+            .collect();
+        self.0.lock().expect("captured batches").push(documents);
+        let reply = json!({
+            "embeddings": requests.iter()
+                .map(|_| json!({"values": vec![0.5; 768]}))
+                .collect::<Vec<_>>()
+        });
+        Opening::ready(Opened::new(futures::stream::iter([Ok(WireFrame::Text(
+            reply.to_string(),
+        ))])))
+    }
+}
+
+/// Batching is a local builder decision, so a capturing transport checks
+/// the 100-request endpoint limit without recording hundreds of embeddings.
+/// The transport answers every request without imposing a batch limit.
+#[tokio::test]
+async fn builder_respects_the_batch_embed_contents_limit() {
+    for (count, expected_sizes) in [
+        (1, vec![1]),
+        (100, vec![100]),
+        (101, vec![100, 1]),
+        (1025, [vec![100; 10], vec![25]].concat()),
+    ] {
+        let capture = CaptureBatches::default();
+        let wire = GeminiConfig::new("test-key").embedding(EMBEDDING_001, Some(768));
+        let model = Model::new(wire, capture.clone());
+        let documents: Vec<_> = (0..count).map(|i| format!("document {i}")).collect();
+        let result = EmbeddingsBuilder::new(model)
+            .documents(documents.clone())
+            .expect("documents embed")
+            .build()
+            .await
+            .expect("batches embed");
+
+        assert_eq!(result.len(), count);
+        for ((document, embeddings), expected) in result.iter().zip(&documents) {
+            assert_eq!(document, expected);
+            assert_eq!(embeddings.len(), 1);
+            let embedding = embeddings.first().expect("one embedding");
+            assert_eq!(&embedding.document, expected);
+            assert_eq!(embedding.vec, vec![0.5; 768]);
+        }
+        let batches = capture.0.lock().expect("captured batches");
+        assert_eq!(
+            batches.iter().map(Vec::len).collect::<Vec<_>>(),
+            expected_sizes
+        );
+        assert_eq!(
+            batches.iter().flatten().collect::<Vec<_>>(),
+            documents.iter().collect::<Vec<_>>()
+        );
+    }
 }
 
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
