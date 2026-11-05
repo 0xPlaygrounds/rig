@@ -249,6 +249,12 @@ impl ResponsesWebSocketSessionBuilder {
         self.event_timeout = None;
         self
     }
+
+    /// Set the prompt-cache routing key.
+    #[must_use]
+    pub fn cache_key(self, _key: impl Into<String>) -> Self {
+        self
+    }
 }
 
 impl ResponsesWebSocketSessionBuilder {
