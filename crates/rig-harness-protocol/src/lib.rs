@@ -51,8 +51,9 @@ pub const STOP_WINDOW: Duration =
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The one Bevy version of the agent and of every plugin: a Bevy plugin
-/// only works with the exact Bevy version of its app.
-pub const BEVY_VERSION: &str = "0.20.0";
+/// only works with the exact Bevy version of its app. The tooling check
+/// holds the workspace's Bevy requirements to it.
+pub const BEVY_VERSION: &str = "0.20.1";
 
 /// The environment variables of the protocol.
 pub mod env {

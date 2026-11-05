@@ -2670,8 +2670,8 @@ fn take_draft(
 
 `rig_harness::windowed(DefaultPlugins)` is Bevy's `DefaultPlugins` without
 what the agent already has; its winit plugin then runs the app's loop. The
-crate depends on `bevy` at exactly the agent's version (`"=0.20.0"`,
-without default features, with `ui`). A window beside the terminal view
+crate depends on `bevy` at exactly the agent's version (`BEVY_VERSION`
+in rig-harness-protocol, without default features, with `ui`). A window beside the terminal view
 (`Invoked::interactive`) sets `ExitCondition::DontExit`, so closing it
 leaves the agent running, and `WinitSettings` with
 `UpdateMode::reactive_low_power(Duration::from_secs(1))`; in `finish` it
