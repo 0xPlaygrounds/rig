@@ -147,7 +147,8 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
 }
 
 /// A shared-prefix cache that expired is replaced by the next call that
-/// would read it, and that call reads the replacement.
+/// would read it, and that call reads the replacement. A TTL inside the
+/// expiry margin could never be read again, so it makes no cache at all.
 #[tokio::test]
 async fn an_expired_shared_prefix_cache_is_replaced() {
     use crate::completion::CompletionRequest;
@@ -159,11 +160,14 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     let book =
         CacheBook::new(AutoCache::default()).with_clock(move || reading.load(Ordering::SeqCst));
     let server = CacheServer::default();
-    let model = crate::driver::Model::new(
-        GenerateContent::new(GeminiConfig::new("test-key"), "gemini-2.5-flash"),
-        server.clone(),
-    )
-    .caching(&book);
+    let caching = |book: &CacheBook, server: &CacheServer| {
+        crate::driver::Model::new(
+            GenerateContent::new(GeminiConfig::new("test-key"), "gemini-2.5-flash"),
+            server.clone(),
+        )
+        .caching(book)
+    };
+    let model = caching(&book, &server);
     let ask = |n: u64| CompletionRequest::new(format!("question {n}")).preamble("x".repeat(8192));
 
     // The second conversation on the prefix shares it, so it is cached.
@@ -173,15 +177,27 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     clock.store(1000 + 3600, Ordering::SeqCst);
     model.call(ask(2)).await.expect("the call answers");
 
-    let seen = server.0.lock().unwrap_or_else(PoisonError::into_inner);
     assert_eq!(
-        seen.1,
+        server.0.lock().unwrap_or_else(PoisonError::into_inner).1,
         [
             None,
             Some("cachedContents/cache-1".to_owned()),
             Some("cachedContents/cache-2".to_owned())
         ]
     );
+
+    let short = CacheBook::new(AutoCache {
+        ttl: Duration::from_secs(EXPIRY_MARGIN_SECS),
+        ..AutoCache::default()
+    })
+    .with_clock(|| 1000);
+    let server = CacheServer::default();
+    let model = caching(&short, &server);
+    for n in 0..3 {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    let seen = server.0.lock().unwrap_or_else(PoisonError::into_inner);
+    assert_eq!(*seen, (0, vec![None, None, None]));
 }
 
 /// A late 403, retire or extend for an old cache leaves the replacement
