@@ -65,6 +65,17 @@ impl Overlay {
             .map(|(_, bytes)| bytes.clone())
     }
 
+    fn check_parents(&self, path: &Path) -> io::Result<()> {
+        let kept = self.kept();
+        if path.ancestors().skip(1).any(|parent| {
+            kept.iter()
+                .any(|(path, bytes)| path == parent && bytes.is_some())
+        }) {
+            return Err(ErrorKind::NotADirectory.into());
+        }
+        Ok(())
+    }
+
     /// Keeps `bytes` (`None`: removed) for `path`.
     fn keep(&self, path: &Path, bytes: Option<Arc<[u8]>>) {
         let mut kept = self.kept();
@@ -110,6 +121,7 @@ impl Overlay {
 
     /// The bytes of the file `path` as this overlay sees it, whole.
     fn bytes(&self, path: &Path) -> io::Result<Arc<[u8]>> {
+        self.check_parents(path)?;
         match self.held(path) {
             Some(Some(bytes)) => Ok(bytes),
             Some(None) => Err(ErrorKind::NotFound.into()),
@@ -131,6 +143,7 @@ impl Workspace for Overlay {
     }
 
     fn stat(&self, path: &Path) -> io::Result<Stat> {
+        self.check_parents(path)?;
         match self.held(path) {
             Some(Some(bytes)) => Ok(Stat::File {
                 size: bytes.len() as u64,
@@ -153,6 +166,7 @@ impl Workspace for Overlay {
     }
 
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents> {
+        self.check_parents(path)?;
         match self.held(path) {
             Some(Some(bytes)) => Ok(Contents {
                 size: bytes.len() as u64,
@@ -167,6 +181,7 @@ impl Workspace for Overlay {
     }
 
     fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
+        self.check_parents(path)?;
         match self.held(path) {
             None => self.inner.excerpt(path, first, count),
             Some(_) => excerpt_of(self, path, first, count),
@@ -205,6 +220,7 @@ impl Workspace for Overlay {
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
         let bytes = self.bytes(from)?;
+        self.check_parents(to)?;
         self.keep(to, Some(bytes));
         self.keep(from, None);
         Ok(())

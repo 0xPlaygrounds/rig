@@ -6,6 +6,69 @@ use super::Overlay;
 use crate::workspace::{Listing, Local, Workspace};
 use crate::{Edit, EditArgs, Read, ReadArgs, Replacement, Write, WriteArgs};
 
+#[test]
+fn a_file_in_the_overlay_cannot_be_used_as_a_directory() {
+    use std::io::ErrorKind;
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-overlay-parent-{}", std::process::id()));
+    let overlay = Overlay::new(Arc::new(Local));
+    let parent = dir.join("parent");
+    let source = dir.join("source");
+    assert!(overlay.write(&parent, b"a file").is_ok());
+    assert!(overlay.write(&source, b"source").is_ok());
+    for child in [parent.join("child"), parent.join("nested/child")] {
+        assert_eq!(
+            overlay.write(&child, b"child").err().map(|e| e.kind()),
+            Some(ErrorKind::NotADirectory)
+        );
+        assert_eq!(
+            overlay.stat(&child).err().map(|e| e.kind()),
+            Some(ErrorKind::NotADirectory)
+        );
+        assert_eq!(
+            overlay.read(&child, 10).err().map(|e| e.kind()),
+            Some(ErrorKind::NotADirectory)
+        );
+        assert_eq!(
+            overlay.excerpt(&child, 1, 1).err().map(|e| e.kind()),
+            Some(ErrorKind::NotADirectory)
+        );
+        assert_eq!(
+            overlay.rename(&source, &child).err().map(|e| e.kind()),
+            Some(ErrorKind::NotADirectory)
+        );
+    }
+    assert_eq!(overlay.changes().len(), 2);
+    assert_eq!(
+        overlay.read(&parent, 100).ok().map(|c| c.bytes),
+        Some(b"a file".to_vec())
+    );
+    assert_eq!(
+        overlay.read(&source, 100).ok().map(|c| c.bytes),
+        Some(b"source".to_vec())
+    );
+    assert!(!dir.exists());
+}
+
+#[test]
+fn missing_directories_still_allow_nested_writes_and_refuse_becoming_files() {
+    use crate::workspace::Stat;
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-overlay-nested-{}", std::process::id()));
+    let overlay = Overlay::new(Arc::new(Local));
+    let parent = dir.join("new/nested");
+    let child = parent.join("child");
+    assert!(overlay.write(&child, b"child").is_ok());
+    assert!(matches!(overlay.stat(&parent), Ok(Stat::Dir)));
+    assert!(overlay.write(&parent, b"file").is_err());
+    assert_eq!(overlay.changes().len(), 1);
+    assert_eq!(
+        overlay.read(&child, 100).ok().map(|c| c.bytes),
+        Some(b"child".to_vec())
+    );
+    assert!(!dir.exists());
+}
+
 /// What `tool` answers to `args`.
 fn run<T: Tool<Output = String, Error = ToolExecutionError>>(
     tool: &T,
