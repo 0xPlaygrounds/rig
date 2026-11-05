@@ -4,10 +4,9 @@
 //! in the project's [`PluginData`] (outside the repository, kept across
 //! sessions): the session, agent, turn, the prompt the user typed to start
 //! the turn, the tool call and the time, and which lines it wrote. The
-//! file tools publish what they changed (`FilesChanged`), and so does any
-//! call that may write anywhere, such as `shell`, through the harness's
-//! checkpoint around it; each change carries the file's text before and
-//! its hunks.
+//! file tools publish what they changed (`FilesChanged`), each change with
+//! the file's text before and its hunks; a call that may write anywhere,
+//! such as `shell`, publishes none, so its lines count as the user's.
 //!
 //! Each line's origin is carried forward through every later change, by
 //! the change's hunks for an agent's and by a line diff against the text
@@ -28,7 +27,6 @@ use std::io::Write as _;
 use std::path::Path;
 
 use bevy_log::warn;
-use rig_basics::checkpoint::CheckpointPlugin;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::Conversation as Log;
@@ -65,9 +63,6 @@ pub struct LineProvenancePlugin;
 
 impl Plugin for LineProvenancePlugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<CheckpointPlugin>() {
-            app.add_plugins(CheckpointPlugin);
-        }
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
             .add_observer(call_settled)

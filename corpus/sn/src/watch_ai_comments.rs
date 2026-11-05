@@ -8,10 +8,9 @@
 //! a trigger queues its file once (its newest content wins), and the queue
 //! runs one turn per file whenever the agent is idle. A file left as a
 //! file tool wrote it (the [`FilesChanged`] of a call that names its
-//! paths), or as this plugin cleaned it, never triggers. A `shell` call's
-//! [`FilesChanged`] is a checkpoint: what changed while it ran, the user's
-//! saves included, not who changed it. So it is not taken as rig's; the
-//! clean-up at the turn's end, and the queued file read again before its
+//! paths), or as this plugin cleaned it, never triggers. A call that may
+//! write anywhere, such as `shell`, names no files, so nothing it wrote is
+//! taken as rig's; the clean-up at the turn's end, and the queued file read again before its
 //! turn starts, keep the agent's own `shell` writes in a watch turn from
 //! triggering. A question's turn is question only: its calls that may change
 //! anything are refused. When a change's turn ends, or a question's turn

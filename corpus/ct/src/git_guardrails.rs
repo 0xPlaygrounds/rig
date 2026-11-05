@@ -23,7 +23,6 @@ use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_basics::approval::{ApprovalPlugin, ApprovalSystems, NeedsApproval};
-use rig_basics::checkpoint::CheckpointPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_harness::rig_tools::{Shell, ShellArgs};
@@ -183,8 +182,9 @@ fn glob(pattern: &str, name: &str) -> bool {
 }
 
 /// Every file the agent's tool calls changed this session, as absolute
-/// paths: uncommitted changes outside it are the user's. Saved with the
-/// session.
+/// paths: uncommitted changes outside it are the user's. A call that may
+/// write anywhere, such as `shell`, names no files, so what it wrote counts
+/// as the user's. Saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default)]
 #[reflect(Resource, Saved, Default)]
 pub struct AgentChanges(pub Vec<String>);
@@ -202,9 +202,6 @@ impl Plugin for GitGuardPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<ApprovalPlugin>() {
             app.add_plugins(ApprovalPlugin);
-        }
-        if !app.is_plugin_added::<CheckpointPlugin>() {
-            app.add_plugins(CheckpointPlugin);
         }
         if !app.world().contains_resource::<GitGuardConfig>() {
             let (config, problems) = read_config(&RigHome::of(app.world()).root().join(CONFIG));

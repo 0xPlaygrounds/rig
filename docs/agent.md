@@ -306,8 +306,8 @@ models first.
 ## Tools
 
 The default tools are `read`, `edit`, `write` and `shell`, each its own
-plugin. The `rig-tools` library also provides `search`, `list`, `delete` and
-`move`; the stock agent leaves those operations to `shell`.
+plugin. The `rig-tools` library also provides `search`, `list` and
+`delete`; the stock agent leaves those operations to `shell`.
 A `shell` call runs until its command ends, unless the model sets
 `timeout_secs` or you interrupt it; either stops the command, on a remote
 host too. A job the command leaves running on this machine in the
@@ -321,13 +321,6 @@ and no pager: `git commit` without `-m` fails at once, saying to pass `-m`
 or `--no-edit`. The whole output
 of a `shell` call that was cut is kept in `RIG_HOME/sessions/<id>/spill/`,
 and the model reads it by the path the cut output names.
-
-With `rig_basics::checkpoint::CheckpointPlugin` enabled (it is listed
-disabled by default), every `shell` call, and any other call that may write
-anywhere, reports the files it changed, from snapshots of the project before
-and after it kept in the session's scratch directory, never in the
-repository's `.git`. `[checkpoints] enabled = false` in
-`RIG_HOME/settings.toml` turns that off.
 
 With `[remote.hosts]` in `RIG_HOME/settings.toml`, such as
 `bench = ["koh", "exec", "bench", "--sh"]` or `box = ["ssh", "dev@box"]`, a
@@ -554,7 +547,7 @@ processes can share one:
 | Path | What it holds |
 | --- | --- |
 | `names.lock` | Held while a rig checks and writes a session's name, so two never take one. |
-| `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[checkpoints]`, `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
+| `settings.toml` | The one file you edit: which plugins run (`[plugins]`), the model a new session starts with (`[model]`), and settings, such as `[remote.hosts]` and `[traffic]`. A file that cannot be read or is not TOML, or a table that does not read, such as one with a misspelled key, refuses the start and names the key. A table no enabled plugin reads gets a notice at startup, an error when it looks like a misspelling of one (`[trafic]`). |
 | `auth/` | `/login`'s credentials: `chatgpt.json` and the API keys in `keys/`. |
 | `project/`, `target/`, `bin/` | The generated agent project, cargo's build of it (a few gigabytes), and the builds. |
 | `build.log` | The last build's whole output. |

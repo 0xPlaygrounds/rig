@@ -121,23 +121,6 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     })
 }
 
-/// Writes `contents` to the file `path` names in one step, as
-/// [`write_atomic`] does, but without forcing it to disk, and with none of
-/// its checks: for scratch that no run after a crash reads, such as a
-/// checkpoint's kept content. A reader never sees it half written.
-pub(crate) fn write_scratch(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let name = path
-        .file_name()
-        .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
-    let temporary = temporary_beside(path, name);
-    let written = File::create_new(&temporary)
-        .and_then(|mut file| file.write_all(contents))
-        .and_then(|()| fs::rename(&temporary, path));
-    written.inspect_err(|_| {
-        fs::remove_file(&temporary).ok();
-    })
-}
-
 /// A temporary file's path beside `target`, whose file name is `name`:
 /// `.name.<pid>-<n>.tmp`, unique among this process's writes.
 fn temporary_beside(target: &Path, name: &std::ffi::OsStr) -> PathBuf {

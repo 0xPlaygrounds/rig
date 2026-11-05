@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
+use rig_basics::coding_tools::{EditTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
@@ -37,8 +37,7 @@ fn repository(name: &str) -> PathBuf {
     fs::canonicalize(&dir).unwrap_or(dir)
 }
 
-/// A reply that writes `scratch.py`, edits `src/lib.rs` and makes
-/// `out.log` with `shell`.
+/// A reply that writes `scratch.py` and `out.log` and edits `src/lib.rs`.
 fn makes_files() -> Vec<MockStreamEvent> {
     vec![
         MockStreamEvent::tool_call(
@@ -55,9 +54,9 @@ fn makes_files() -> Vec<MockStreamEvent> {
             }),
         ),
         MockStreamEvent::tool_call(
-            "s",
-            "shell",
-            serde_json::json!({ "command": "echo hi > out.log" }),
+            "o",
+            "write",
+            serde_json::json!({ "path": "out.log", "content": "hi\n" }),
         ),
         MockStreamEvent::final_response_with_default_usage(),
     ]
@@ -74,7 +73,7 @@ fn after_a_turn(
     app.insert_resource(scripted_models([(MODEL, model)]))
         .insert_resource(ProjectRoot(dir.to_path_buf()))
         .add_plugins((AgentPlugin, SessionLogPlugin, CommandPlugin, PickPlugin))
-        .add_plugins((WriteTool, EditTool, ShellTool, StrayFilesPlugin))
+        .add_plugins((WriteTool, EditTool, StrayFilesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     if answered {

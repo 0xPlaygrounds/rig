@@ -13,8 +13,8 @@ use rig_core::tool::{
 use super::{Contents, Listed, Listing, Stat, Workspace};
 use crate::process::{Launcher, Process, Spawn};
 use crate::{
-    Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Read, ReadArgs, Replacement, Search,
-    SearchArgs, Write, WriteArgs,
+    Delete, DeleteArgs, Edit, EditArgs, Read, ReadArgs, Replacement, Search, SearchArgs, Write,
+    WriteArgs,
 };
 
 /// Files held in memory, by absolute path: a workspace that is not this
@@ -147,7 +147,7 @@ fn befores(context: &ToolContext) -> Vec<Option<ContentHash>> {
 }
 
 /// Every file tool acts on its workspace, here files in memory: what one
-/// writes the next reads, edits, finds, moves and deletes, each change
+/// writes the next reads, edits, finds and deletes, each change
 /// naming the content it was made to, and nothing reaches this machine's
 /// disk.
 #[test]
@@ -155,7 +155,7 @@ fn every_file_tool_goes_through_its_workspace() {
     let memory = Arc::new(Memory::default());
     let workspace: Arc<dyn Workspace> = memory.clone();
     let base = Some(PathBuf::from("/project"));
-    let (read, write, edit, search, delete, moved) = (
+    let (read, write, edit, search, delete) = (
         Read {
             workspace: workspace.clone(),
             base: base.clone(),
@@ -180,11 +180,6 @@ fn every_file_tool_goes_through_its_workspace() {
             confine: true,
         },
         Delete {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
-        },
-        Move {
             workspace,
             base,
             confine: true,
@@ -213,27 +208,12 @@ fn every_file_tool_goes_through_its_workspace() {
     let (found, _) = call(&search, SearchArgs::new("two").glob("*.rs"));
     assert_eq!(found.ok().as_deref(), Some("src/a.rs:1: fn two() {}"));
 
-    let (refused, _) = call(&moved, MoveArgs::new("src/a.rs", "../b.rs"));
-    assert!(refused.is_err());
-    let (renamed, context) = call(&moved, MoveArgs::new("src/a.rs", "src/b.rs"));
-    assert!(renamed.is_ok(), "{renamed:?}");
-    assert_eq!(
-        changes(&context),
-        [
-            ("/project/src/a.rs".to_owned(), ChangeKind::Deleted),
-            ("/project/src/b.rs".to_owned(), ChangeKind::Created)
-        ]
-    );
-    assert_eq!(
-        befores(&context),
-        [Some(content_hash(b"fn two() {}\n")), None]
-    );
-    let (deleted, context) = call(&delete, DeleteArgs::new("src/b.rs"));
+    let (deleted, context) = call(&delete, DeleteArgs::new("src/a.rs"));
     assert!(deleted.is_ok(), "{deleted:?}");
     assert_eq!(befores(&context), [Some(content_hash(b"fn two() {}\n"))]);
     assert_eq!(
         changes(&context),
-        [("/project/src/b.rs".to_owned(), ChangeKind::Deleted)]
+        [("/project/src/a.rs".to_owned(), ChangeKind::Deleted)]
     );
     assert!(memory.files().is_empty());
 }

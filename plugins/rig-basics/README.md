@@ -39,7 +39,6 @@ rig-harness's public API. Each plugin is its own name in `[plugins]` of
   (`ApprovalPlugin`);
 - `preview`: what a tool call would change on disk, before it runs
   (`PreviewPlugin`);
-- `checkpoint`: what each tool call changed on disk (`CheckpointPlugin`);
 - `reload`: `/reload` (`ReloadPlugin`), and
   `/plugins` (`plugins::PluginsPlugin`);
 - `print`: `--print` and `--json`, the fronts of a run with `-p`, piped
@@ -95,8 +94,7 @@ disable = ["rig_basics::compaction::CompactionPlugin"]
 
 `rig plugin disable rig_basics::compaction::CompactionPlugin` writes that,
 and `rig plugin enable <type>` takes it back out; `/plugins` does the same
-from inside the agent. `ApprovalPlugin`, `PreviewPlugin`,
-`CheckpointPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
+from inside the agent. `ApprovalPlugin`, `PreviewPlugin`, `HelpersPlugin`, `BudgetPlugin`, `SubagentsPlugin`,
 `EffectLogPlugin`, `DiagnosticsPlugin` and `RedactPlugin` are off by
 default. A plugin that needs another adds it when it is missing, as
 `SessionsPlugin` adds `SessionPickerPlugin`, `SubagentsPlugin` adds

@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 //! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`], [`List`],
-//! [`Shell`], [`Delete`] and [`Move`].
+//! [`Shell`] and [`Delete`].
 //!
 //! - Each says in its description when to pick it, and what it may touch
 //!   ([`footprint`](rig_core::tool::Tool::footprint)): `read`, `search` and `list` read the
@@ -25,8 +25,6 @@
 //!   preview them, and [`remote`]: another machine reached through a
 //!   transport such as `ssh`, and paths written `HOST:PATH` that reach it;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
-//! - [`checkpoint`]: the files under a root at one moment, what changed by
-//!   a later one, and a handler that reports what any call changed;
 //! - [`clipboard`]: the system clipboard's text and images;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
 //! - [`show_lines`]: some lines of a text, the way `read` shows a file, and
@@ -48,14 +46,12 @@ use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 pub mod attach;
 mod blocking;
-pub mod checkpoint;
 pub mod clipboard;
 mod delete;
 pub mod edit;
 pub mod fs;
 mod list;
 mod live;
-mod move_file;
 pub mod overlay;
 pub mod process;
 mod read;
@@ -72,7 +68,6 @@ pub use delete::{Delete, DeleteArgs};
 pub use edit::{Edit, EditArgs, Replacement};
 pub use list::{FilesListed, List, ListArgs};
 pub use live::{LineFilter, Live};
-pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, Seen, show_lines};
 pub use search::{
     Found, Hit, MAX_FILES, MAX_MATCHES, Search, SearchArgs, SearchHits, Unread, find, render,

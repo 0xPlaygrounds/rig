@@ -113,9 +113,6 @@ SubagentsPlugin adds it.";
             off rig_basics::preview::PreviewPlugin, "rig-basics", [], None,
                 "What a tool call would change on disk, before it runs, for gates that ask \
 (Preview).";
-            off rig_basics::checkpoint::CheckpointPlugin, "rig-basics", [], None,
-                "What each tool call changed on disk (FilesChanged), with snapshots before and \
-after.";
             on rig_basics::reload::ReloadPlugin, "rig-basics", [],
                 Some("/reload, so a change applies only when rig starts again"),
                 "/reload, which rebuilds the agent when the plugins settings.toml turns on or a \

@@ -110,9 +110,8 @@ each plugin added): ask it before reading rig's source.
   tool's whole output kept when it was cut, and **plugin files** a plugin's
   own files per session, project or user (`PluginFiles`).
 - **Compaction** replaces older entries by a **summary**, split at a **cut**;
-  the **summary state** is what the next one builds on (`SummaryState`). A
-  **checkpoint** or **snapshot** is the files as they were before a call or
-  turn; rig-cassette's replay marker is a **resume point**.
+  the **summary state** is what the next one builds on (`SummaryState`).
+  rig-cassette's replay marker is a **resume point**.
 - **Running.** A **front** is how the user drives the agent: the terminal view,
   `--print`, a window. A **question** is an `Ask` effect, a **picker** a
   filterable list whose items run commands. A **command** is `/name args` or a
@@ -143,8 +142,8 @@ Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`, depending
 on `rig-harness` and the rig plugin crates whose types it uses (`rig-basics`,
 `rig-tui` for a terminal panel) by version, and on `bevy_ecs` and
 `bevy_reflect` (or `bevy`) at the agent's exact version. A plugin that only
-uses rig-basics' services and contract types (`NeedsApproval`, `Preview`,
-`CheckpointAlso`) depends on it with
+uses rig-basics' services and contract types (`NeedsApproval`, `Preview`)
+depends on it with
 `default-features = false`: its default `tui` feature builds rig-tui and
 ratatui. The agent builds from
 a rig checkout (`RIG_SOURCE`), which a `[patch.crates-io]` table points at.
@@ -685,7 +684,7 @@ held `cargo fmt`, a read of `docs/` runs at once (a held write still
 holds back `Reads(Anything)`, which overlaps every path).
 
 A gate that guards files reads a call's `Footprint`, not its tool's name, so
-one rule covers `edit`, `write`, `delete`, `move` and any plugin's tool. Its
+one rule covers `edit`, `write`, `delete` and any plugin's tool. Its
 paths are absolute and normalized as written (`src/../x` is `x`), not
 through links: a strict guard compares `workspace.0.canonical(path)`.
 
@@ -1759,16 +1758,9 @@ tool resolves paths with `workspace.place(base, confine, path)`;
 **What a call changed.** The file tools publish the files they write as
 `FilesChanged`, each change with the `FileState` before and after, its
 `hunks` (`unified()`, `changed_lines()`) and, for a text file read whole,
-`before_text` (`after_text()` applies the hunks to it). With
-`rig_basics::checkpoint::CheckpointPlugin` added, each call that may write
-anywhere (`Writes(Anything)`: `shell`, a tool that does not say) is wrapped
-in rig-tools' `Checkpointed`, which publishes the difference
-between snapshots just before and after it runs; `CallCheckpoint::before()`
-on the call and `TurnCheckpoint::first()` on the turn keep the files before,
-and `CheckpointAlso` names ignored paths to include. It says what changed
-while the call ran, not who changed it. A plugin's own snapshots keep in a
-directory of their own under the scratch: two with one `Taking::keep` of one
-work tree share a git index and race on its lock.
+`before_text` (`after_text()` applies the hunks to it). A call that may
+write anywhere (`Writes(Anything)`: `shell`, a tool that does not say)
+publishes no `FilesChanged`.
 
 **Child processes.** `Processes` is how every child process starts, a
 rig-tools `Launcher` (a wrapper command, a directory, environment): the
@@ -2153,8 +2145,7 @@ of the call's `ToolRequest` in Prepare if the tool would refuse it.
 
 A plugin's test builds a small app: the kernel (`AgentPlugin`,
 `SessionLogPlugin` on a rig-memory `MemoryStore`), the plugin, and the
-`rig_basics` services it needs (`ApprovalPlugin`, `PreviewPlugin`,
-`CheckpointPlugin`), run frame by frame with `app.update()`. An effect spawned
+`rig_basics` services it needs (`ApprovalPlugin`, `PreviewPlugin`), run frame by frame with `app.update()`. An effect spawned
 for an agent stands in for what its model would ask, as below. A whole turn
 runs on rig-core's scripted `MockCompletionModel` (its `test-utils` feature),
 put in `Models` as a provider plugin's models are, and Bevy's

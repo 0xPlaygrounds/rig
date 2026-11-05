@@ -15,7 +15,7 @@ use rig_core::conversation::Conversation;
 use rig_core::message::{AssistantContent, Message, ToolCall, UserContent};
 use rig_core::tool::Tool;
 use rig_memory::{DirStore, Session, title_of};
-use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Move, MoveArgs, Write, WriteArgs};
+use rig_tools::{Delete, DeleteArgs, Edit, EditArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -280,9 +280,6 @@ fn paths_changed(call: &ToolCall) -> Vec<String> {
         }
         <Delete as Tool>::NAME => {
             read(serde_json::from_value::<DeleteArgs>(args).map(|args| vec![args.path]))
-        }
-        <Move as Tool>::NAME => {
-            read(serde_json::from_value::<MoveArgs>(args).map(|args| vec![args.from, args.to]))
         }
         _ => Vec::new(),
     }

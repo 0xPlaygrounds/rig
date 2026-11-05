@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::mpsc::Receiver;
 
 use rig_basics::approval::ALLOW;
-use rig_basics::coding_tools::ShellTool;
+use rig_basics::coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::SessionId;
@@ -64,7 +64,7 @@ fn repo(name: &str) -> (PathBuf, PathBuf) {
     (remote, work)
 }
 
-/// An app on the project `work` with the real `shell` tool, checkpoints,
+/// An app on the project `work` with the real `shell` and `write` tools,
 /// questions and the guard, its agent answered by `model`; `answers`
 /// adds someone who answers questions.
 fn start(
@@ -86,6 +86,7 @@ fn start(
             SessionLogPlugin,
             AskPlugin,
             ShellTool,
+            WriteTool,
             GitGuardPlugin,
         ))
         .init_resource::<Ended>()
@@ -140,9 +141,14 @@ fn unsafe_git_is_refused_and_safe_git_runs() {
         shell("alias", "true; (git -C sub pf origin HEAD:main)"),
         shell("no-verify", "git commit --no-verify -m x"),
         shell("amend-pushed", "git commit --amend -m y"),
+        calls(
+            "notes",
+            "write",
+            json!({ "path": "notes.txt", "content": "n\n" }),
+        ),
         shell(
             "own",
-            "echo n > notes.txt; echo a > agent.txt && git add agent.txt && git commit -q -m mine",
+            "echo a > agent.txt && git add agent.txt && git commit -q -m mine",
         ),
         shell("amend-own", "git commit --amend -q -m mine-amended"),
         shell("reset", "git status --short | cat && git reset --hard"),

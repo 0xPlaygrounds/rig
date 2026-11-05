@@ -32,7 +32,7 @@ use rig_ecs::prelude::{
     ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
 use rig_tools::workspace::Workspace;
-use rig_tools::{Delete, Edit, LineFilter, List, Live, Move, Read, Search, Shell, Spill, Write};
+use rig_tools::{Delete, Edit, LineFilter, List, Live, Read, Search, Shell, Spill, Write};
 
 use crate::host::session::Scratch;
 use crate::progress::CallOutput;
@@ -99,8 +99,7 @@ file_tools_per_call!(
     Write { seen },
     Search {},
     List {},
-    Delete {},
-    Move {}
+    Delete {}
 );
 
 impl PerCallTool for Shell {
@@ -247,8 +246,7 @@ impl<T: PerCallTool> BuildAt for T {
 
 /// The tools registered per call, and where a call of an agent's works:
 /// for a plugin that builds a call somewhere else, as rig-basics' `Preview`
-/// builds it on an overlay of the workspace, or wraps a call where it
-/// works, as its `Checkpoint` does. The plugin inits [`ProjectRoot`], which
+/// builds it on an overlay of the workspace. The plugin inits [`ProjectRoot`], which
 /// this reads: without it the system using this fails. A tool replaced
 /// (its entity `Disabled`) is not seen.
 ///
