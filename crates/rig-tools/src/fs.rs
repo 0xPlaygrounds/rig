@@ -410,7 +410,7 @@ pub(crate) fn diff(path: &str, before: Option<&str>, after: Option<&str>) -> Fil
 }
 
 /// The hunk `ops`, a group of [`similar::TextDiff::grouped_ops`], spans.
-fn hunk(diff: &similar::TextDiff<'_, '_, '_, str>, ops: &[similar::DiffOp]) -> Option<Hunk> {
+fn hunk(diff: &similar::TextDiff<'_, '_, str>, ops: &[similar::DiffOp]) -> Option<Hunk> {
     let (first, last) = (ops.first()?, ops.last()?);
     let span = |start: usize, end: usize| Lines {
         start: start + 1,
