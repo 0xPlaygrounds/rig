@@ -456,19 +456,7 @@ impl Filter<serde_json::Value> {
 
         fn compare_pair(l: &Value, r: &Value) -> Option<Ordering> {
             match (l, r) {
-                // Prefer shared integer representations to avoid losing precision
-                // beyond 2^53; other numeric pairs fall back to f64.
-                (Number(l), Number(r)) => {
-                    if let (Some(l), Some(r)) = (l.as_i64(), r.as_i64()) {
-                        Some(l.cmp(&r))
-                    } else if let (Some(l), Some(r)) = (l.as_u64(), r.as_u64()) {
-                        Some(l.cmp(&r))
-                    } else {
-                        l.as_f64()
-                            .zip(r.as_f64())
-                            .and_then(|(l, r)| l.partial_cmp(&r))
-                    }
-                }
+                (Number(l), Number(r)) => crate::json_utils::compare_numbers(l, r),
                 (String(l), String(r)) => Some(l.cmp(r)),
                 (Null, Null) => Some(Ordering::Equal),
                 (Bool(l), Bool(r)) => Some(l.cmp(r)),

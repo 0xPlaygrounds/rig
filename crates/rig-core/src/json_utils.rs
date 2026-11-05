@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use std::cmp::Ordering;
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -10,6 +11,39 @@ use std::str::FromStr;
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(crate) fn is_false(value: &bool) -> bool {
     !value
+}
+
+/// The numeric order of two JSON numbers, exact for every pair: integers
+/// compare as integers and an integer against a float rounds neither, so
+/// `5` equals `5.0` but `2^53 + 1` does not equal `2^53` as a float.
+pub(crate) fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) -> Option<Ordering> {
+    let integer = |n: &serde_json::Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
+    };
+    match (integer(a), integer(b)) {
+        (Some(a), Some(b)) => Some(a.cmp(&b)),
+        (Some(a), None) => compare_integer_float(a, b.as_f64()?),
+        (None, Some(b)) => compare_integer_float(b, a.as_f64()?).map(Ordering::reverse),
+        (None, None) => a.as_f64()?.partial_cmp(&b.as_f64()?),
+    }
+}
+
+/// `integer` against `float` without rounding. Every JSON integer lies in
+/// [-2^63, 2^64), where a float's whole part converts to `i128` exactly; the
+/// bounds are float literals because `u64::MAX as f64` rounds up to 2^64.
+fn compare_integer_float(integer: i128, float: f64) -> Option<Ordering> {
+    if float < -9_223_372_036_854_775_808.0 {
+        return Some(Ordering::Greater);
+    }
+    if float >= 18_446_744_073_709_551_616.0 {
+        return Some(Ordering::Less);
+    }
+    match integer.cmp(&(float.trunc() as i128)) {
+        Ordering::Equal => 0.0_f64.partial_cmp(&float.fract()),
+        unequal => Some(unequal),
+    }
 }
 
 /// `value` with lexicographically sorted object keys at every depth,
