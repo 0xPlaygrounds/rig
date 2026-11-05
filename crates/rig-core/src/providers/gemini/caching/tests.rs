@@ -109,3 +109,106 @@ fn a_book_shows_its_policy_and_prefix() {
         "{shown}"
     );
 }
+
+/// Answers `cachedContents` creates with `cachedContents/cache-<n>` and every
+/// other request with a short reply, recording the cache each one read.
+#[derive(Clone, Default)]
+struct CacheServer(Arc<Mutex<(usize, Vec<Option<String>>)>>);
+
+impl crate::driver::Transport<super::super::completion::GenerateContent> for CacheServer {
+    fn send(
+        &self,
+        payload: crate::wire::Encoded,
+        _: crate::driver::Exchange,
+    ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        let body = crate::test_utils::json_body(&payload.request);
+        let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let reply = if payload.request.uri().path().ends_with("/cachedContents") {
+            seen.0 += 1;
+            serde_json::json!({
+                "name": format!("cachedContents/cache-{}", seen.0),
+                "usageMetadata": {"totalTokenCount": 2048}
+            })
+        } else {
+            let read = body.get("cachedContent").and_then(|name| name.as_str());
+            seen.1.push(read.map(str::to_owned));
+            serde_json::json!({
+                "candidates": [{
+                    "content": {"role": "model", "parts": [{"text": "ok"}]},
+                    "finishReason": "STOP"
+                }],
+                "usageMetadata": {"promptTokenCount": 2050, "candidatesTokenCount": 1}
+            })
+        };
+        crate::driver::Opening::ready(crate::driver::Opened::new(futures::stream::iter([Ok(
+            crate::wire::WireFrame::Text(reply.to_string()),
+        )])))
+    }
+}
+
+/// A shared-prefix cache that expired is replaced by the next call that
+/// would read it, and that call reads the replacement.
+#[tokio::test]
+async fn an_expired_shared_prefix_cache_is_replaced() {
+    use crate::completion::CompletionRequest;
+    use crate::providers::gemini::{GeminiConfig, completion::GenerateContent};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let clock = Arc::new(AtomicU64::new(1000));
+    let reading = clock.clone();
+    let book =
+        CacheBook::new(AutoCache::default()).with_clock(move || reading.load(Ordering::SeqCst));
+    let server = CacheServer::default();
+    let model = crate::driver::Model::new(
+        GenerateContent::new(GeminiConfig::new("test-key"), "gemini-2.5-flash"),
+        server.clone(),
+    )
+    .caching(&book);
+    let ask = |n: u64| CompletionRequest::new(format!("question {n}")).preamble("x".repeat(8192));
+
+    // The second conversation on the prefix shares it, so it is cached.
+    for n in 0..2 {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    clock.store(1000 + 3600, Ordering::SeqCst);
+    model.call(ask(2)).await.expect("the call answers");
+
+    let seen = server.0.lock().unwrap_or_else(PoisonError::into_inner);
+    assert_eq!(
+        seen.1,
+        [
+            None,
+            Some("cachedContents/cache-1".to_owned()),
+            Some("cachedContents/cache-2".to_owned())
+        ]
+    );
+}
+
+/// A late 403, retire or extend for an old cache leaves the replacement
+/// that took its digest as it is.
+#[test]
+fn a_late_callback_for_an_old_cache_spares_its_replacement() {
+    let old = Lease {
+        name: "cachedContents/old".to_owned(),
+        digest: "prefix".to_owned(),
+        covers: 0,
+        tokens: 2048,
+        expires_at: 999,
+        model: "gemini-2.5-flash".to_owned(),
+    };
+    let replacement = Lease {
+        name: "cachedContents/new".to_owned(),
+        expires_at: 4600,
+        ..old.clone()
+    };
+    let callbacks: [fn(&CacheBook, &Lease); 3] =
+        [CacheBook::lost, CacheBook::retired, |book, lease| {
+            book.extended(lease, 100)
+        }];
+    for callback in callbacks {
+        let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+        book.restore(vec![old.clone(), replacement.clone()]);
+        callback(&book, &old);
+        assert_eq!(book.leases(), std::slice::from_ref(&replacement));
+    }
+}

@@ -83,3 +83,26 @@ fn additional_params_that_are_not_an_object_are_refused() {
         "{error}"
     );
 }
+
+/// The prompt goes beside the audio, and the output language joins the
+/// system instruction.
+#[test]
+fn the_prompt_and_language_reach_the_wire() {
+    let request = transcription::TranscriptionRequest {
+        prompt: Some("Names: \"Rig\", café.".to_owned()),
+        language: Some("fr".to_owned()),
+        ..transcription_request()
+    };
+    let body: Value =
+        serde_json::from_slice(&transcription_body(request).expect("the request encodes"))
+            .expect("the body is JSON");
+
+    assert_eq!(
+        body.pointer("/contents/0/parts/1"),
+        Some(&json!({ "text": "Names: \"Rig\", café.", "thought": false }))
+    );
+    assert_eq!(
+        body.pointer("/systemInstruction/parts/1"),
+        Some(&json!({ "text": "Use fr as the output language.", "thought": false }))
+    );
+}
