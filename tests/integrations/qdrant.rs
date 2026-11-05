@@ -10,7 +10,7 @@ use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
         CreateCollectionBuilder, Distance, PointStruct, QueryPointsBuilder, UpsertPointsBuilder,
-        VectorParamsBuilder,
+        VectorParamsBuilder, VectorsConfigBuilder,
     },
 };
 use rig::qdrant::QdrantVectorStore;
@@ -118,6 +118,80 @@ async fn vector_search_test() {
             "id": "f9e17d59-32e5-440c-be02-b2759a654824"
         })
     );
+
+    insert_documents_uses_the_configured_vector(vector_store.client(), &openai_client).await;
+}
+
+async fn insert_documents_uses_the_configured_vector(
+    client: &Qdrant,
+    openai_client: &rig::providers::openai::OpenAI,
+) {
+    use rig::{embeddings::Embedding, vector_store::InsertDocuments};
+
+    for (collection, named, default) in [
+        ("insert-default", false, true),
+        ("insert-named", true, false),
+        ("insert-mixed", true, true),
+    ] {
+        let mut vectors = VectorsConfigBuilder::default();
+        if default {
+            vectors.add_vector_params(VectorParamsBuilder::new(2, Distance::Cosine));
+        }
+        if named {
+            vectors.add_named_vector_params("text", VectorParamsBuilder::new(2, Distance::Cosine));
+        }
+        client
+            .create_collection(CreateCollectionBuilder::new(collection).vectors_config(vectors))
+            .await
+            .unwrap();
+        let mut query = QueryPointsBuilder::new(collection)
+            .query(vec![1.0_f32, 0.0])
+            .with_payload(true);
+        if named {
+            query = query.using("text");
+        }
+        let store = QdrantVectorStore::new(
+            client.clone(),
+            openai_client.embedding("unused", Some(2)),
+            query.build(),
+        );
+        let document = json!({"text": "hello"});
+        store
+            .insert_documents(vec![(
+                document.clone(),
+                vec![Embedding {
+                    document: "hello".into(),
+                    vec: vec![1.0, 0.0],
+                }],
+            )])
+            .await
+            .unwrap();
+        let request = || {
+            VectorSearchRequest::builder()
+                .query("unused")
+                .samples(10)
+                .build()
+        };
+        let found = store.top_n::<serde_json::Value>(request()).await.unwrap();
+        assert_eq!(found.len(), 1, "{collection}");
+        assert_eq!(found.first().map(|row| &row.document), Some(&document));
+        assert_eq!(store.top_n_ids(request()).await.unwrap().len(), 1);
+        if named && default {
+            let misplaced = client
+                .query(
+                    QueryPointsBuilder::new(collection)
+                        .query(vec![1.0_f32, 0.0])
+                        .limit(10),
+                )
+                .await
+                .unwrap();
+            assert!(
+                misplaced.result.is_empty(),
+                "insert also populated the default vector"
+            );
+        }
+        client.delete_collection(collection).await.unwrap();
+    }
 }
 
 async fn create_points(model: Model<openai::wire::Embeddings>) -> Vec<PointStruct> {
