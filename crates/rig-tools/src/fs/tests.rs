@@ -202,3 +202,41 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
     assert!(resolved.exists());
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// Atomic writes accept the same long basenames as the filesystem, preserve
+/// permissions when replacing them, and leave no temporary files behind.
+#[cfg(unix)]
+#[test]
+fn atomic_writes_accept_long_ascii_and_unicode_names() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = scratch("long-basename");
+    let dir = root.join("real");
+    let names = [
+        "a".repeat(250),
+        "b".repeat(255),
+        format!("{}c", "é".repeat(127)),
+    ];
+    for name in &names {
+        let path = dir.join(name);
+        assert!(std::fs::write(&path, b"before").is_ok());
+        assert!(std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).is_ok());
+        let replaced = super::write_atomic(&path, b"after");
+        assert!(replaced.is_ok(), "{replaced:?}");
+        assert_eq!(std::fs::read(&path).ok(), Some(b"after".to_vec()));
+        assert_eq!(
+            std::fs::metadata(&path)
+                .ok()
+                .map(|it| it.permissions().mode() & 0o777),
+            Some(0o640)
+        );
+        assert!(std::fs::remove_file(&path).is_ok());
+        let created = super::write_atomic(&path, b"new");
+        assert!(created.is_ok(), "{created:?}");
+        assert_eq!(std::fs::read(&path).ok(), Some(b"new".to_vec()));
+    }
+    assert_eq!(
+        std::fs::read_dir(&dir).ok().map(|it| it.count()),
+        Some(names.len())
+    );
+    assert!(std::fs::remove_dir_all(root).is_ok());
+}
