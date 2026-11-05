@@ -36,8 +36,8 @@ use std::{
 };
 
 use rig_core::{
-    completion::FinishReason,
-    message::{AssistantContent, Message},
+    completion::{CompletionRequest, FinishReason},
+    message::{AssistantContent, Message, ToolChoice},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -153,6 +153,9 @@ pub struct HookContext {
     /// skipped tool result reports) from here; a nested stack records into
     /// the same slot, so the salvage survives any nesting depth.
     salvaged_patches: std::sync::Mutex<HashMap<EffectId, EffectKind>>,
+    /// The current turn's output tool in Tool output mode, whose parameters
+    /// a dispatch patch must keep.
+    output_tool: std::sync::Mutex<Option<String>>,
     /// Seeded and newly appended entries, in append order.
     entries: std::sync::Mutex<Vec<Aside>>,
     /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
@@ -170,6 +173,7 @@ impl HookContext {
             agent_name,
             scratchpad: Scratchpad::default(),
             salvaged_patches: std::sync::Mutex::new(HashMap::new()),
+            output_tool: std::sync::Mutex::new(None),
             entries: std::sync::Mutex::new(Vec::new()),
             pending_entries: std::sync::Mutex::new(Vec::new()),
         }
@@ -214,6 +218,20 @@ impl HookContext {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         )
+    }
+
+    pub(crate) fn set_output_tool(&self, name: Option<&str>) {
+        *self
+            .output_tool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = name.map(str::to_owned);
+    }
+
+    fn output_tool(&self) -> Option<String> {
+        self.output_tool
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     pub(crate) fn set_turn(&self, turn: usize) {
@@ -642,7 +660,12 @@ pub enum DispatchAction {
     /// Dispatch this effect instead. A patch must keep the family; the
     /// stack rejects a family change as an internal error before later hooks
     /// observe it. Tool calls must also retain their target name; only their
-    /// arguments may be patched.
+    /// arguments may be patched. Completions must keep the tool choice, the
+    /// tool names, the raw `tools` and `tool_choice` parameters and the output
+    /// schema the turn was prepared with; definitions may be reordered or have
+    /// their descriptions and parameters rewritten, but for the parameters of
+    /// the output tool, which are the output schema. Change the turn's tools through
+    /// [`AgentHook::on_completion_call`] and [`RequestPatch`] instead.
     Patch(EffectKind),
     /// Do not dispatch: the effect resolves failed with this report and
     /// never reaches a handler. For a tool call a report of kind
@@ -651,8 +674,41 @@ pub enum DispatchAction {
     Deny(ErrorReport),
 }
 
+/// What a turn's policy and output check fixed when the request was prepared,
+/// by meaning: an unset choice is `Auto`, and the order of a `Specific` choice
+/// or of the definitions does not count. Providers merge the raw `tools` and
+/// `tool_choice` parameters over the typed fields, so they count too, and in
+/// Tool output mode the output tool's parameters are the output schema.
+fn prepared_policy<'a>(
+    request: &'a CompletionRequest,
+    output_tool: Option<&str>,
+) -> impl PartialEq + use<'a> {
+    let mut choice = request.tool_choice.clone().unwrap_or_default();
+    if let ToolChoice::Specific { function_names } = &mut choice {
+        function_names.sort();
+        function_names.dedup();
+    }
+    let mut names: Vec<_> = request.tools.iter().map(|tool| &tool.name).collect();
+    names.sort();
+    let params = request.additional_params.as_ref();
+    let output_parameters = request
+        .tools
+        .iter()
+        .find(|tool| Some(tool.name.as_str()) == output_tool)
+        .map(|tool| &tool.parameters);
+    (
+        choice,
+        names,
+        output_parameters,
+        params.and_then(|params| params.get("tools")),
+        params.and_then(|params| params.get("tool_choice")),
+        request.output_schema.as_ref(),
+    )
+}
+
 /// Validate before a patch becomes visible to policy or execution.
 pub(crate) fn validate_dispatch_patch(
+    output_tool: Option<&str>,
     current: &EffectKind,
     next: &EffectKind,
 ) -> Result<(), ErrorReport> {
@@ -673,6 +729,20 @@ pub(crate) fn validate_dispatch_patch(
         return Err(ErrorReport::new(
             ErrorKind::Other,
             "a dispatch patch cannot change the tool target",
+        ));
+    }
+    if let (
+        EffectKind::Completion {
+            request: current, ..
+        },
+        EffectKind::Completion { request: next, .. },
+    ) = (current, next)
+        && prepared_policy(current, output_tool) != prepared_policy(next, output_tool)
+    {
+        return Err(ErrorReport::new(
+            ErrorKind::Other,
+            "a completion dispatch patch cannot change the tool choice, the tools or the \
+             output schema; change the tools in on_completion_call with a RequestPatch",
         ));
     }
     Ok(())
@@ -1503,7 +1573,10 @@ impl AgentHook for HookStack {
             match hook.dispatch(ctx, current).await {
                 DispatchAction::Proceed => {}
                 DispatchAction::Patch(next) => {
-                    if let Err(report) = validate_dispatch_patch(current.kind, &next) {
+                    let output_tool = ctx.output_tool();
+                    if let Err(report) =
+                        validate_dispatch_patch(output_tool.as_deref(), current.kind, &next)
+                    {
                         if let Some(kind) = patched {
                             ctx.salvage_patch(event.id, kind);
                         }
