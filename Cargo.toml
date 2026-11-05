@@ -356,9 +356,9 @@ sqlite-vec = "0.1"
 sqlx = "0.9"
 # 0.8.3: `Engine::new_sandboxed` and the thread state controller rig-steel uses.
 steel-core = "0.8.3"
-# 3.2.5: earlier releases no longer build against the newest
+# At least 3.2.5: earlier releases no longer build against the newest
 # `surrealdb-core` their requirement accepts.
-surrealdb = "3.2.5"
+surrealdb = "3.3.5"
 syn = "2"
 term_size = "0.3"
 testcontainers = "0.28.0"
