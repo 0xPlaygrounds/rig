@@ -208,6 +208,7 @@ pub struct ResponsesWebSocketSessionBuilder {
     wire: Responses,
     connect_timeout: Option<Duration>,
     event_timeout: Option<Duration>,
+    cache_key: Option<String>,
 }
 
 impl ResponsesWebSocketSessionBuilder {
@@ -216,6 +217,7 @@ impl ResponsesWebSocketSessionBuilder {
             wire,
             connect_timeout: Some(DEFAULT_CONNECT_TIMEOUT),
             event_timeout: Some(crate::driver::STREAM_IDLE_TIMEOUT),
+            cache_key: None,
         }
     }
 
@@ -249,6 +251,16 @@ impl ResponsesWebSocketSessionBuilder {
         self.event_timeout = None;
         self
     }
+
+    /// Set the prompt-cache routing key, as
+    /// [`GenerationOptions::cache_key`](crate::completion::GenerationOptions::cache_key)
+    /// does on HTTP: a dialect with a session header sends it as the session
+    /// id at the handshake. Without one each connection draws a fresh id.
+    #[must_use]
+    pub fn cache_key(mut self, key: impl Into<String>) -> Self {
+        self.cache_key = Some(key.into());
+        self
+    }
 }
 
 impl ResponsesWebSocketSessionBuilder {
@@ -270,8 +282,10 @@ impl ResponsesWebSocketSessionBuilder {
     where
         W: WebSocketClientExt,
     {
+        let request = websocket_request(&self.wire, self.cache_key.as_deref())?;
         ResponsesWebSocketSession::connect_with_timeouts(
             backend,
+            request,
             self.wire,
             self.connect_timeout,
             self.event_timeout,
@@ -301,6 +315,7 @@ pub struct ResponsesWebSocketSession {
 impl ResponsesWebSocketSession {
     async fn connect_with_timeouts<W>(
         backend: &W,
+        request: http_client::Request<NoBody>,
         wire: Responses,
         connect_timeout: Option<Duration>,
         event_timeout: Option<Duration>,
@@ -308,7 +323,6 @@ impl ResponsesWebSocketSession {
     where
         W: WebSocketClientExt,
     {
-        let request = websocket_request(&wire)?;
         let socket = backend
             .connect(request, ConnectOptions::new().with_timeout(connect_timeout))
             .await
@@ -876,11 +890,15 @@ fn websocket_frame_to_text(frame: Frame) -> Result<Option<String>, ProviderError
 }
 
 /// Build the handshake request: the websocket URL derived from the client's
-/// base URL, carrying the client's own auth headers.
+/// base URL, carrying the client's own auth headers and the session id
+/// `cache_key` gives, or a fresh one.
 ///
 /// The backend supplies the websocket-specific handshake headers; this only
 /// states where to connect and who is connecting.
-fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, EncodeError> {
+fn websocket_request(
+    wire: &Responses,
+    cache_key: Option<&str>,
+) -> Result<http_client::Request<NoBody>, EncodeError> {
     let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
         .map_err(EncodeError::request)?;
 
@@ -888,7 +906,7 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, E
         http_client::Request::builder()
             .method(http::Method::GET)
             .uri(url),
-        None,
+        cache_key,
     );
 
     request.body(NoBody).map_err(|error| {

@@ -115,7 +115,7 @@ fn warmup_options_serialize_generate_false() {
 
 #[test]
 fn websocket_request_rejects_an_unsupported_base_url_scheme() {
-    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"))
+    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"), None)
         .expect_err("ftp is not a websocket base");
     assert!(
         error.to_string().contains("ftp"),
@@ -319,5 +319,43 @@ fn the_default_builder_times_event_waits_as_the_driver_does() {
     assert_eq!(
         builder.event_timeout,
         Some(crate::driver::STREAM_IDLE_TIMEOUT)
+    );
+}
+
+/// A backend that records the handshake it was asked to open and refuses it.
+#[derive(Clone, Default)]
+struct RecordingBackend(std::sync::Arc<std::sync::Mutex<Option<HeaderMap>>>);
+
+impl WebSocketClientExt for RecordingBackend {
+    async fn connect(
+        &self,
+        request: http_client::Request<NoBody>,
+        _options: ConnectOptions,
+    ) -> Result<BoxedWebSocketConnection, http_client::Error> {
+        *self.0.lock().expect("not poisoned") = Some(request.headers().clone());
+        Err(rejection(401, None, None, &[]))
+    }
+}
+
+/// A builder's cache key is the session identity its handshake carries, as
+/// a completion's cache key is on HTTP, so reconnects share one session.
+#[tokio::test]
+async fn the_handshake_session_id_is_the_cache_key() {
+    let wire =
+        OpenAIConfig::with_key(&crate::providers::chatgpt::DIALECT, "tok").responses("gpt-5.4");
+    let backend = RecordingBackend::default();
+    let _refused = ResponsesWebSocketSessionBuilder::new(wire)
+        .cache_key("agent-1")
+        .connect_with(&backend)
+        .await;
+    let headers = backend
+        .0
+        .lock()
+        .expect("not poisoned")
+        .take()
+        .expect("a handshake");
+    assert_eq!(
+        headers.get("session-id").and_then(|v| v.to_str().ok()),
+        Some("agent-1")
     );
 }
