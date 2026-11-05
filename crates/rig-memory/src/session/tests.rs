@@ -586,17 +586,24 @@ fn a_save_cut_short_appends_nothing() {
 }
 
 /// A local store over a [`MemoryStore`] whose log reads wait for each other
-/// in pairs once `armed`, and whose blob reads fail while `unreadable`.
+/// in pairs once `armed`, whose blob reads fail while `unreadable` and
+/// writes while `unwritable`, and whose next append to the log `refused`
+/// fails.
 #[derive(Default)]
 struct Gate {
     store: MemoryStore,
     armed: std::sync::atomic::AtomicBool,
     paired: Option<std::sync::Barrier>,
     unreadable: std::sync::atomic::AtomicBool,
+    unwritable: std::sync::atomic::AtomicBool,
+    refused: std::sync::Mutex<Option<String>>,
 }
 
 impl Files for Gate {
     fn write_file(&self, name: &str, bytes: &[u8]) -> std::io::Result<()> {
+        if self.unwritable.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(std::io::Error::other("the disk is full"));
+        }
         self.store.write_file(name, bytes)
     }
 
@@ -635,6 +642,11 @@ impl Store for Gate {
     }
 
     fn append_log(&self, name: &str, len: u64, bytes: &[u8]) -> Result<(), LogWriteError> {
+        let mut refused = self.refused.lock().expect("the refused log");
+        if refused.as_deref() == Some(name) {
+            *refused = None;
+            return Err(std::io::Error::other("the database is full").into());
+        }
         self.store.append_log(name, len, bytes)
     }
 
@@ -752,6 +764,88 @@ fn a_failed_image_read_fails_the_load() {
     }
     let loaded = load(&gate, "agent").expect("a missing blob is a placeholder");
     assert_eq!(loaded.messages().len(), conversation.messages().len());
+}
+
+/// A missing blob does not hide a later image's failed read: the load
+/// fails, as it does when that read comes first.
+#[test]
+fn a_missing_blob_does_not_hide_a_failed_read() {
+    let mut message = Message::User {
+        content: vec![
+            UserContent::image_url("blob:gone.png", Some(ImageMediaType::PNG), None),
+            UserContent::image_url("blob:unread.png", Some(ImageMediaType::PNG), None),
+        ],
+    };
+    let failed = crate::blobs::load_images_with(&mut message, &|name| {
+        Err(match name {
+            "gone.png" => std::io::ErrorKind::NotFound.into(),
+            _ => std::io::Error::other("the disk is unplugged"),
+        })
+    });
+    let kind = failed.map_err(|failure| failure.kind());
+    assert_eq!(kind, Err(std::io::ErrorKind::Other));
+}
+
+/// A session save that fails keeps the unsaved changes of every agent
+/// whose log was not written, and only those, so the same save tried
+/// again stores each change once: after a blob write fails, after an
+/// append is refused, and after a subagent's log was written and its
+/// parent's append is refused.
+#[test]
+fn a_failed_session_save_can_be_retried() {
+    let gate = Gate::default();
+    let mut session = Session::default();
+    for (id, parent) in [("main", None), ("child", Some("main"))] {
+        session.agents.push(SavedAgent {
+            id: id.into(),
+            parent: parent.map(str::to_owned),
+            conversation: Conversation::from_messages([Message::user("hello")]),
+            ..SavedAgent::default()
+        });
+    }
+    session.save(&gate).expect("saved");
+    let push = |session: &mut Session, id: &str, message: Message| {
+        let agent = session.agent_mut(id).expect("an agent");
+        agent.conversation.push(message);
+    };
+    let stored = |session: &Session| {
+        for agent in &session.agents {
+            assert_eq!(load(&gate, &agent.id).expect("loaded"), agent.conversation);
+        }
+    };
+    let image = Message::User {
+        content: vec![UserContent::image_base64(
+            "cG5n",
+            Some(ImageMediaType::PNG),
+            None,
+        )],
+    };
+
+    push(&mut session, "main", image);
+    gate.unwritable
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(session.save(&gate).is_err());
+    gate.unwritable
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    session
+        .save(&gate)
+        .expect("saved after a failed blob write");
+    stored(&session);
+
+    push(&mut session, "main", Message::assistant("a cat"));
+    *gate.refused.lock().expect("the refused log") = Some("main".into());
+    assert!(session.save(&gate).is_err());
+    session.save(&gate).expect("saved after a refused append");
+    stored(&session);
+
+    push(&mut session, "child", Message::assistant("done"));
+    push(&mut session, "main", Message::user("go on"));
+    *gate.refused.lock().expect("the refused log") = Some("main".into());
+    assert!(session.save(&gate).is_err());
+    session
+        .save(&gate)
+        .expect("saved after the parent's refused append");
+    stored(&session);
 }
 
 /// Every log of `store`, by name, as stored.

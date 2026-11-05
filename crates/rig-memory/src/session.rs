@@ -546,9 +546,11 @@ impl Session {
     /// one): appends each agent's unsaved changes (an agent new to the
     /// store gets a header), its changed and removed saved values, and its
     /// retirement, and the session's changed values. Each agent's
-    /// conversation is left with nothing unsaved. A torn last line of a log
-    /// written to is first set aside, as [`Writer::open`](crate::Writer::open)
-    /// does.
+    /// conversation is left with nothing unsaved once its log is written; a
+    /// save that fails leaves the others with their unsaved changes, so it
+    /// can be tried again, and writes no change twice. A torn last line of
+    /// a log written to is first set aside, as
+    /// [`Writer::open`](crate::Writer::open) does.
     ///
     /// # Errors
     ///
@@ -585,10 +587,11 @@ impl Session {
         let torn = torn_tails(store, &folded)?.into_iter();
         book.set_aside(torn.map(|(log, _, cut)| (log, cut)));
         book.start();
-        for agent in &mut self.agents {
+        let mut staged: Vec<_> = self.agents.iter().map(|a| a.conversation.clone()).collect();
+        for (agent, conversation) in self.agents.iter().zip(&mut staged) {
             let _ = book.opened(&agent.id, agent.parent.as_deref());
             let put = &mut |name: String, bytes: Vec<u8>| put_blob(store, &name, &bytes);
-            book.save(put, &agent.id, &mut agent.conversation);
+            book.save(put, &agent.id, conversation);
             let known = had(&agent.id).map(|log| &log.state);
             book.states(&agent.id, known, &agent.saved);
             if agent.retired && !had(&agent.id).is_some_and(|log| log.retired) {
@@ -598,8 +601,14 @@ impl Session {
         let known = had(SESSION).map(|log| &log.state);
         book.states(SESSION, known, &self.saved);
         let flushed = book.flush(store);
-        self.ends = now;
+        self.ends = now.clone();
         self.ends.extend(book.written());
+        for (agent, conversation) in self.agents.iter_mut().zip(staged) {
+            // A log whose end moved was written, with every change queued for it.
+            if flushed.is_ok() || self.ends.get(&agent.id) != now.get(&agent.id) {
+                agent.conversation = conversation;
+            }
+        }
         flushed
     }
 }

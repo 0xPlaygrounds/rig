@@ -68,6 +68,31 @@ fn a_cut_never_separates_a_call_from_its_result() {
     assert_eq!(cut_at(&messages, 0, usize::MAX, true, &counter), Some(3));
 }
 
+/// A system message between a call and its results, even between two
+/// results of one batch, is no place to cut: the walk keeps going back to
+/// the reply that made the calls.
+#[test]
+fn a_cut_never_lands_inside_a_tool_exchange_at_a_system_message() {
+    let mut batch = AssistantMessage::new(Vec::new());
+    for id in ["1", "2"] {
+        if let Message::Assistant(reply) = call(id, "read", "a.rs") {
+            batch.content.extend(reply.content);
+        }
+    }
+    let messages = [
+        Message::user("start"),
+        Message::Assistant(batch),
+        Message::system("keep going"),
+        result("1", "x"),
+        Message::system("keep going"),
+        result("2", "x"),
+    ]
+    .map(Arc::new);
+    let counter = HeuristicTokenCounter::default();
+    assert_eq!(cut_at(&messages, 0, 0, true, &counter), Some(1));
+    assert_eq!(cut_at(&messages, 0, usize::MAX, true, &counter), Some(1));
+}
+
 fn spec(window: u32) -> Option<ModelSpec> {
     rig_core::providers::registry::ProviderId::catalog("ollama")
         .map(|vendor| ModelSpec::new(vendor, "test").with_context_window(window))

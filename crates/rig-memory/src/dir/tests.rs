@@ -207,6 +207,15 @@ fn a_part_file_is_never_listed_or_named() {
     fs::write(dir.join("plugins/notes/b.json.rig-part"), b"half").expect("a part");
     assert_eq!(files.files().expect("files"), ["notes/a.json"]);
     assert!(files.write_file("c.json.rig-part", b"{}").is_err());
+    // A name that is a part file's on a case-insensitive filesystem is not
+    // made new; one kept already is read, written and removed as any other.
+    assert!(files.write_file("0.RIG-PART", b"{}").is_err());
+    for kept in ["0.RIG-PART", "notes.RIG-PART"] {
+        fs::write(dir.join("plugins").join(kept), b"kept").expect("a file");
+        assert_eq!(files.read_file(kept).expect("read"), b"kept");
+        files.write_file(kept, b"{}").expect("rewritten");
+        files.remove_file(kept).expect("removed");
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -231,5 +240,44 @@ fn a_second_dir_store_on_the_directory_sees_every_write() {
         "{refused:?}"
     );
     assert_eq!(a.read_log("a").expect("read"), b"b\na 2\nb 2\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Writers replacing one file at once, each through its own [`DirFiles`]
+/// as separate processes would, each succeed, and the file holds one of
+/// their writes whole, even under the longest name a folder takes.
+#[test]
+fn concurrent_replacements_of_one_file_never_mix() {
+    let dir = scratch("concurrent-replacements");
+    let shared = "a".repeat(255);
+    let payloads: Vec<Vec<u8>> = (0..8u8).map(|n| vec![n; 64 * 1024]).collect();
+    for _ in 0..10 {
+        std::thread::scope(|scope| {
+            let writes: Vec<_> = payloads
+                .iter()
+                .map(|bytes| scope.spawn(|| DirFiles::new(&dir).write_file(&shared, bytes)))
+                .collect();
+            for write in writes {
+                write.join().expect("a writer").expect("written");
+            }
+        });
+        let held = fs::read(dir.join(&shared)).expect("read");
+        assert!(payloads.contains(&held), "a mix of writes");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A replacement that fails leaves no part file behind.
+#[test]
+fn a_failed_replacement_leaves_no_part_file() {
+    let dir = scratch("failed-replacement");
+    fs::create_dir_all(dir.join("taken").join("inside")).expect("a folder");
+    let files = DirFiles::new(&dir);
+    assert!(files.write_file("taken", b"bytes").is_err());
+    let names: Vec<_> = fs::read_dir(&dir)
+        .expect("listed")
+        .map(|entry| entry.expect("an entry").file_name())
+        .collect();
+    assert_eq!(names, ["taken"]);
     let _ = fs::remove_dir_all(&dir);
 }
