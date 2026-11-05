@@ -141,6 +141,13 @@ fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_pr
         let piped = start(&[])?;
         let ran = fs::read_to_string(home.join("ran")).unwrap_or_default();
         anyhow::ensure!(ran == "good\n", "{piped:?}");
+        // A `-p` that is not the option, such as a word after `--`.
+        let word = start(&["--", "-p"])?;
+        let said = String::from_utf8(word.stderr)?;
+        anyhow::ensure!(
+            said.contains("starting the previous build"),
+            "a word `-p` refused the previous build: {said}"
+        );
         Ok(())
     })();
     assert!(result.is_ok(), "{result:?}");
