@@ -89,10 +89,15 @@ pub enum CacheTtl {
 
 /// The facts of Anthropic's `model`: the spec the wire was connected to,
 /// else its catalog's entry by the one lookup rule (an id as listed, or a
-/// dated snapshot of one). `None` for a model the catalog does not list,
-/// which gets the newest models' behaviour.
+/// dated snapshot of one). A gateway's `anthropic/` spelling of an id names
+/// that id. `None` for a model the catalog does not list, which gets the
+/// newest models' behaviour.
 pub(super) fn spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
-    facts.for_model(super::ANTHROPIC.name, model)
+    let vendor = super::ANTHROPIC.name;
+    facts.for_model(vendor, model).or_else(|| {
+        let id = model.strip_prefix(vendor)?.strip_prefix('/')?;
+        facts.for_model(vendor, id)
+    })
 }
 
 /// The published synchronous output limit of a listed model. A model the

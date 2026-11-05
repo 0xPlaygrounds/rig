@@ -1721,15 +1721,16 @@ fn a_server_tool_result_never_replays_without_its_use() {
     );
 }
 
-/// Anthropic's wire reads its own ids and their dated snapshots. Another
-/// vendor's spelling is that vendor's catalog row, which carries the
-/// Anthropic facts itself.
+/// Anthropic's wire reads its own ids, their dated snapshots and a
+/// gateway's `anthropic/` spelling of them. Another vendor's spelling is that
+/// vendor's catalog row, which carries the Anthropic facts itself.
 #[test]
 fn context_binding_reads_anthropics_ids_and_their_snapshots() {
     for model in [
         "claude-opus-5-5",
         "claude-opus-5-5-20260101",
         "claude-opus-5",
+        "anthropic/claude-opus-5",
         "claude-fable-5-1",
         "claude-sonnet-5-5",
     ] {
