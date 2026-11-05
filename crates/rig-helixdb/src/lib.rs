@@ -281,3 +281,6 @@ impl VectorStoreIndex for HelixDBVectorStore {
         Ok(docs)
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -134,3 +134,24 @@ fn test_multiple_and_filters() {
     assert!(obj.contains_key("score"));
     assert!(obj.contains_key("price"));
 }
+
+#[test]
+fn test_and_keeps_every_predicate_on_one_field() {
+    let range =
+        VectorizeFilter::gt("price", json!(10)).and(VectorizeFilter::lt("price", json!(20)));
+    assert!(range.validate().is_ok());
+    assert_eq!(
+        range.into_inner(),
+        json!({ "price": { "$gt": 10, "$lt": 20 } })
+    );
+
+    let conflict =
+        VectorizeFilter::gt("price", json!(10)).and(VectorizeFilter::gt("price", json!(20)));
+    assert!(
+        matches!(
+            conflict.validate(),
+            Err(VectorizeError::UnsupportedFilterOperation(_))
+        ),
+        "a repeated operator with another value must not replace the first"
+    );
+}

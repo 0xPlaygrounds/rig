@@ -14425,6 +14425,7 @@ name = "rig-helixdb"
 version = "0.46.0"
 dependencies = [
  "anyhow",
+ "httpmock",
  "reqwest 0.13.4",
  "rig-core",
  "serde",

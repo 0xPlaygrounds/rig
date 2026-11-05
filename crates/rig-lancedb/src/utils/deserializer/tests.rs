@@ -5,8 +5,8 @@ use arrow_array::{
     Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray,
     RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
-        FixedSizeListBuilder, ListBuilder, StringBuilder, StringDictionaryBuilder,
-        StringRunBuilder, UnionBuilder,
+        FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
+        StringBuilder, StringDictionaryBuilder, StringRunBuilder, UnionBuilder,
     },
     types::{Float64Type, Int8Type, Int16Type, Int32Type},
 };
@@ -481,5 +481,56 @@ async fn test_recursion() {
                 }
             })
         ]
+    );
+}
+
+#[test]
+fn map_entries_stay_with_their_row() {
+    let mut maps = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    let rows: [&[(&str, i32)]; 4] = [
+        &[("skipped", 0)],
+        &[],
+        &[("owner", 11), ("priority", 7)],
+        &[("owner", 22)],
+    ];
+    for entries in rows {
+        for (key, value) in entries {
+            maps.keys().append_value(key);
+            maps.values().append_value(*value);
+        }
+        maps.append(true).unwrap();
+    }
+    let batch =
+        RecordBatch::try_from_iter(vec![("attributes", Arc::new(maps.finish()) as ArrayRef)])
+            .unwrap()
+            .slice(1, 3);
+
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "attributes": {} }),
+            json!({ "attributes": { "owner": 11, "priority": 7 } }),
+            json!({ "attributes": { "owner": 22 } }),
+        ]
+    );
+}
+
+#[test]
+fn fixed_size_binary_has_one_value_per_row() {
+    let mut fingerprints = FixedSizeBinaryBuilder::new(2);
+    for row in 0..3u8 {
+        fingerprints.append_value([row; 2]).unwrap();
+    }
+    let batch = RecordBatch::try_from_iter(vec![(
+        "fingerprint",
+        Arc::new(fingerprints.finish()) as ArrayRef,
+    )])
+    .unwrap();
+
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        (0..3u8)
+            .map(|row| json!({ "fingerprint": [row, row] }))
+            .collect::<Vec<_>>()
     );
 }
