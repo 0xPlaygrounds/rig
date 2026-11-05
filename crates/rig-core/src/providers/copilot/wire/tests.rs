@@ -190,6 +190,29 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
     assert_eq!(body["model"], super::super::GPT_4O);
 }
 
+/// #2937: a model the catalogue lists on the Responses API routes there
+/// whatever its name, as `gpt-5.5` does, which Copilot serves only on
+/// `/responses`; the name check routes a Codex model the catalogue does
+/// not route, and everything else stays on Chat Completions.
+#[test]
+fn completion_routes_by_the_catalogue_then_by_the_name() {
+    use crate::providers::openai::wire::OpenAiWire;
+    for (model, responses) in [
+        (super::super::GPT_5_5, true),
+        ("gpt-6.1-terra", true),
+        (super::super::GPT_5_1_CODEX, true),
+        (super::super::GPT_4O, false),
+        ("claude-sonnet-4.6", false),
+    ] {
+        let wire = copilot().completion(model);
+        assert_eq!(
+            matches!(wire, OpenAiWire::Responses(_)),
+            responses,
+            "{model}"
+        );
+    }
+}
+
 // ── the two completion routes, folded from recorded replies ─────────────
 
 /// The chat route's recorded turn folds to the normalized response.

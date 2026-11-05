@@ -307,7 +307,8 @@ impl OpenAIConfig {
 /// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
 /// answers any other value with an error rather than truncating, so a
 /// request naming one is refused before it is built. Codestral Embed is
-/// configurable up to 3072 and takes its width as `output_dimension`.
+/// configurable up to 3072, takes its width as `output_dimension`, and
+/// returns 1536-wide vectors when a request names none.
 ///
 /// The dated aliases are listed beside their rolling names because a caller
 /// pinning `mistral-embed-2312` gets the same model, and a model absent from
@@ -325,9 +326,7 @@ pub(super) const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
     },
     ModelWidth {
         model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
-        // Configurable with no documented native width, so a handle that
-        // names none reports 0 rather than inventing one.
-        default: None,
+        default: Some(1_536),
         accepted: AcceptedWidths::Range {
             // Mistral documents only a ceiling. The floor is rig's own
             // "unknown" sentinel, which never reaches the wire.
@@ -338,7 +337,7 @@ pub(super) const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
     },
     ModelWidth {
         model: "codestral-embed-2505",
-        default: None,
+        default: Some(1_536),
         accepted: AcceptedWidths::Range {
             min: 0,
             max: 3_072,
@@ -536,13 +535,13 @@ impl Embeddings {
             0 => return None,
             ndims => ndims,
         };
-        // At a documented model's native width, send nothing: that width is
-        // what the model emits unasked, so the field would only restate the
-        // default and the vector is identical either way.
-        if self
-            .model_width()
-            .is_some_and(|width| width.default == Some(ndims))
-        {
+        // A fixed-width model reads no width field, and a documented model
+        // asked for nothing emits its native width unasked. A width the
+        // caller named goes out as asked.
+        if self.model_width().is_some_and(|width| {
+            width.accepted == AcceptedWidths::Fixed
+                || (self.ndims.is_none() && width.default == Some(ndims))
+        }) {
             return None;
         }
         Some((field, ndims))

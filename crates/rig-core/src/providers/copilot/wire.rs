@@ -1,6 +1,7 @@
-//! Copilot's dialect of the OpenAI wires. Completion selects the
-//! Responses route for Codex model identifiers and Chat Completions
-//! otherwise; every request carries the editor envelope. Credentials must be
+//! Copilot's dialect of the OpenAI wires. Completion takes the route the
+//! model catalog lists for the model, else the Responses route for Codex
+//! model identifiers and Chat Completions otherwise; every request carries
+//! the editor envelope. Credentials must be
 //! exchanged before encoding (see [`auth`](super::auth)).
 //!
 //! ```no_run
@@ -27,7 +28,8 @@ use super::PROVIDER_NAME;
 /// OpenAI's wire on both routes, header included.
 pub(super) const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
 
-/// Copilot dialect with model-based routing and editor-identity headers.
+/// Copilot dialect with catalog- and model-based routing and editor-identity
+/// headers.
 /// Responses requests place system messages in `input`. Verification uses
 /// token exchange rather than a dedicated endpoint.
 pub const DIALECT: Dialect = Dialect {
@@ -42,6 +44,9 @@ pub const DIALECT: Dialect = Dialect {
         // Copilot keeps no files, so no file id resolves there.
         accepts_file_ids: false,
         short_lived_key: true,
+        // Copilot serves some models only on `/responses`, and the catalog
+        // says which.
+        routes_by_catalog: true,
         embedding: EmbeddingQuirks {
             requires_usage: false,
             ..EmbeddingQuirks::openai()
@@ -96,7 +101,8 @@ fn completion_envelope(
     builder
 }
 
-/// Return whether `model` contains `codex`, case-insensitively, selecting `/responses`.
+/// Return whether `model` contains `codex`, case-insensitively, selecting
+/// `/responses` for a model the catalog does not route.
 pub fn routes_through_responses(model: &str) -> bool {
     model.to_ascii_lowercase().contains("codex")
 }

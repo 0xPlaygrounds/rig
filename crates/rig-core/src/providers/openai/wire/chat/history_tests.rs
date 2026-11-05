@@ -765,6 +765,69 @@ fn reasoning_details_fold_alike_whole_and_streamed_wherever_they_arrive() {
     }
 }
 
+/// #2945: a LiteLLM proxy in front of Anthropic returns a thinking model's
+/// signed reasoning as `thinking_blocks`, which Anthropic needs back within
+/// a tool loop. Whole or streamed, where a signature closes the `thinking`
+/// pieces before it and a redacted block comes whole, the blocks are kept
+/// on the reasoning block, whose blob is the signature, and go back on the
+/// assistant message; the stream's rebuilt reply holds them too. Not a
+/// cassette test: rig has no LiteLLM target to record.
+#[test]
+fn litellm_thinking_blocks_are_kept_and_go_back() {
+    let wire = wire(&OPENAI, "claude-sonnet");
+    let thinking = |text: &str| json!({"type": "thinking", "thinking": text});
+    let redacted = json!({"type": "redacted_thinking", "data": "cmVkYWN0ZWQ="});
+    let blocks = json!([{"type": "thinking", "thinking": "Weighing it", "signature": "c2ln"},
+        redacted]);
+    let call = json!({"id": "toolu_01", "type": "function",
+        "function": {"name": "check_answer", "arguments": "{}"}});
+    let message = json!({"role": "assistant", "content": "4", "reasoning_content": "Weighing it",
+        "thinking_blocks": blocks, "tool_calls": [call]});
+    let mut streamed_call = call.clone();
+    streamed_call["index"] = json!(0);
+    let mut frames: Vec<WireFrame> = [
+        json!({"role": "assistant", "reasoning_content": "Weigh",
+            "thinking_blocks": [thinking("Weigh")]}),
+        json!({"reasoning_content": "ing it", "thinking_blocks": [thinking("ing it")]}),
+        json!({"thinking_blocks": [{"type": "thinking", "thinking": "", "signature": "c2ln"}]}),
+        json!({"thinking_blocks": [redacted]}),
+        json!({"content": "4"}),
+        json!({"tool_calls": [streamed_call]}),
+    ]
+    .into_iter()
+    .map(|delta| chunk(delta, None))
+    .collect();
+    frames.push(chunk(json!({}), Some("tool_calls")));
+    frames.push(WireFrame::Text("[DONE]".to_owned()));
+    let document =
+        crate::wire::document::rebuild(&wire.decoder(), wire.reassembler(), frames.clone());
+    assert_eq!(
+        document.pointer("/choices/0/message/thinking_blocks"),
+        Some(&blocks)
+    );
+    let replies = [
+        decode(&wire, Mode::Unary, vec![whole(message, "tool_calls")]),
+        decode(&wire, Mode::Streaming, frames),
+    ];
+    for reply in replies {
+        let reply = reply.expect("the reply decodes");
+        let blob = reply.choice.iter().find_map(|block| match block {
+            AssistantContent::Reasoning(block) => block.native.as_ref()?.reasoning_blob(),
+            _ => None,
+        });
+        assert_eq!(blob.map(|blob| blob.value), Some("c2ln"));
+        let body = sent(
+            &wire,
+            vec![
+                Message::user("q"),
+                Message::Assistant(turn_of(&reply)),
+                Message::tool_result(CallId::from_wire("toolu_01"), name("check_answer"), "ok"),
+            ],
+        );
+        assert_eq!(body["messages"][1]["thinking_blocks"], blocks, "{body}");
+    }
+}
+
 /// A stopped reply goes back as the text it had sent, without its call or
 /// the result answering the call.
 #[test]
