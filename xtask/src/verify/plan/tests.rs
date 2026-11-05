@@ -151,6 +151,18 @@ fn a_core_change_runs_the_isolated_graphs_and_every_store() {
     }
 }
 
+/// Every service suite sits behind a store feature, so a change no store
+/// observes leaves the service check out instead of running zero tests.
+#[test]
+fn a_change_no_store_observes_skips_the_service_suite() {
+    let plan = planned(&["crates/rig-agent/src/lib.rs"]);
+    assert!(
+        !plan.contains_key("service-tests"),
+        "{:?}",
+        plan.get("service-tests")
+    );
+}
+
 #[test]
 fn the_plan_round_trips_through_its_ci_encoding() {
     let plan = planned(&["crates/rig-qdrant/src/lib.rs"]);
