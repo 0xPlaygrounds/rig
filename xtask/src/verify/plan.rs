@@ -288,8 +288,13 @@ fn scoped(
     };
     tests
         .iter()
-        .filter(|(name, _)| match id {
-            "service-tests" => name.as_str() == "rig-service-tests",
+        .filter(|(name, features)| match id {
+            // Every service suite sits behind a store feature: with none the
+            // check would run zero tests.
+            "service-tests" => {
+                name.as_str() == "rig-service-tests"
+                    && **features != Features::Default(BTreeSet::new())
+            }
             "tests" => !OWN_CHECK.contains(&name.as_str()),
             "doctests" | "docs" => lib(name) && name.as_str() != "rig-service-tests",
             _ => true,
