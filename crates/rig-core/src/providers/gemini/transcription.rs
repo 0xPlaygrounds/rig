@@ -36,16 +36,30 @@ fn transcription_body(
     let mime_type = mime_guess::from_path(Path::new(&request.filename))
         .first()
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
+    let mut parts = vec![json!({
+        "inlineData": { "mimeType": mime_type, "data": null },
+        "thought": false,
+    })];
+    if let Some(prompt) = request.prompt {
+        parts.push(json!({ "text": prompt, "thought": false }));
+    }
+    let mut instructions = vec![json!({ "text": TRANSCRIPTION_PREAMBLE, "thought": false })];
+    if let Some(language) = request.language {
+        instructions.push(json!({
+            "text": format!("Use {language} as the output language."),
+            "thought": false,
+        }));
+    }
     let mut body = json!({
         "contents": [{
-            "parts": [{ "inlineData": { "mimeType": mime_type, "data": null }, "thought": false }],
+            "parts": parts,
             "role": "user",
         }],
         "generationConfig": generation_config,
         "safetySettings": null,
         "toolConfig": null,
         "systemInstruction": {
-            "parts": [{ "text": TRANSCRIPTION_PREAMBLE, "thought": false }],
+            "parts": instructions,
             "role": "model",
         },
     });
