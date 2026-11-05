@@ -99,7 +99,8 @@ fn script(path: &Path, body: &str) -> std::io::Result<()> {
 
 /// `rig -p` refuses an agent that does not compile, with the compiler's
 /// errors on stderr, and starts no build. A run without `-p` starts the
-/// previous build, even with stdin off a terminal.
+/// previous build, even with stdin off a terminal. The previous build
+/// takes `--json`, which no report of it says yet.
 #[cfg(unix)]
 #[test]
 fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_previous_one() {
@@ -114,7 +115,8 @@ fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_pr
         )?;
         script(
             &home.join("bin/good"),
-            "[ -z \"$RIG_DESCRIBE\" ] || exit 0\necho good >> \"$RIG_HOME/ran\"",
+            "[ -z \"$RIG_DESCRIBE\" ] || { printf 'rig-describe 1\\nflag\\tjson\\t-\\tJSON\\n' \
+             > \"$RIG_DESCRIBE\"; exit 0; }\necho good >> \"$RIG_HOME/ran\"",
         )?;
         let path = std::env::join_paths(std::iter::once(tools).chain(std::env::split_paths(
             &std::env::var_os("PATH").unwrap_or_default(),
@@ -129,15 +131,17 @@ fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_pr
                 .stdin(Stdio::null())
                 .output()
         };
-        let printed = start(&["-p", "hi"])?;
-        let ran = fs::read_to_string(home.join("ran")).unwrap_or_default();
-        anyhow::ensure!(
-            ran.is_empty(),
-            "a -p run started the previous build: {printed:?}"
-        );
-        anyhow::ensure!(!printed.status.success(), "{printed:?}");
-        let said = String::from_utf8(printed.stderr)?;
-        anyhow::ensure!(said.contains("error[E0425]"), "{said}");
+        for args in [&["-p", "--json", "hi"][..], &["-p", "hi"]] {
+            let printed = start(args)?;
+            let ran = fs::read_to_string(home.join("ran")).unwrap_or_default();
+            anyhow::ensure!(
+                ran.is_empty(),
+                "a -p run started the previous build: {args:?} {printed:?}"
+            );
+            anyhow::ensure!(!printed.status.success(), "{printed:?}");
+            let said = String::from_utf8(printed.stderr)?;
+            anyhow::ensure!(said.contains("error[E0425]"), "{said}");
+        }
         let piped = start(&[])?;
         let ran = fs::read_to_string(home.join("ran")).unwrap_or_default();
         anyhow::ensure!(ran == "good\n", "{piped:?}");
