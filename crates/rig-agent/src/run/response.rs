@@ -297,7 +297,10 @@ pub enum PromptError {
         output: String,
         /// The output tool the model called, or `None` for a text answer.
         output_tool: Option<String>,
-        /// Every problem found, in document order.
+        /// Every problem found. Within an object, the problems of its fields
+        /// come first, in the parsed answer's key order (sorted by key unless
+        /// the build enables serde_json's `preserve_order`), then its missing
+        /// required fields, in the schema's `required` order.
         problems: Vec<Problem>,
         /// Canonical history at failure, without the refused answer.
         chat_history: Vec<Message>,
