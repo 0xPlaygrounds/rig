@@ -24,7 +24,7 @@
 //! that judges calls by their footprint judges these as it judges `edit`.
 //! The write is the workspace's atomic one (a temporary file renamed over
 //! the old), and the change is published as `FilesChanged`, with its diff,
-//! for checkpoints, previews and reviews.
+//! for previews and reviews.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

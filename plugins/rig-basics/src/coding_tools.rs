@@ -1,8 +1,8 @@
 //! The coding tools of [`rig_tools`] the agent ships, one plugin each,
 //! each saying in its description when to pick it: `read`, `edit`, `write`
 //! and `shell`, as pi has. `read`s run beside each other; `edit`, `write` and `shell`
-//! run alone. The library's other tools (`search`, `list`, `delete`,
-//! `move`) are the shell's job here; a plugin that wants one registers it
+//! run alone. The library's other tools (`search`, `list`, `delete`) are
+//! the shell's job here; a plugin that wants one registers it
 //! with [`AppPerCallExt::add_tool_per_call`].
 //!
 //! Each tool is made per call ([`AppPerCallExt`]), so every call works in

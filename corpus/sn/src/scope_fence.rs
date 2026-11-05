@@ -4,7 +4,7 @@
 //!
 //! A Gate system reads each tool call's `Footprint`, the paths the call
 //! writes as its tool resolved them (`..` folded, links followed), so one
-//! rule covers `edit`, `write`, `delete`, `move` and any tool that declares
+//! rule covers `edit`, `write`, `delete` and any tool that declares
 //! the paths it writes. A call that writes outside the fence is refused and
 //! the turn goes on. Calls that only read are never fenced, and neither is
 //! a tool that may change anything (`Writes(Anything)`), such as `shell`:

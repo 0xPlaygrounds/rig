@@ -236,7 +236,7 @@ fn stats(side: &Side) -> Stats {
 }
 
 /// The files the file tools' calls of `conversation` changed: each call of
-/// `write`, `edit`, `delete` or `move` whose result is no failure, by the
+/// `write`, `edit` or `delete` whose result is no failure, by the
 /// paths its arguments name.
 fn changed_files(conversation: &Conversation) -> BTreeSet<String> {
     let failed: BTreeSet<_> = conversation

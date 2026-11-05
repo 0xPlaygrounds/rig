@@ -26,7 +26,6 @@ fn kind(name: &str) -> acp::ToolKind {
         "read" | "list" => acp::ToolKind::Read,
         "edit" | "write" => acp::ToolKind::Edit,
         "delete" => acp::ToolKind::Delete,
-        "move" => acp::ToolKind::Move,
         "search" => acp::ToolKind::Search,
         "shell" => acp::ToolKind::Execute,
         _ => acp::ToolKind::Other,
@@ -50,11 +49,9 @@ fn title(name: &str, args: &Value) -> String {
 /// the home directory (`~`), which rig's tools resolve and ACP has no word
 /// for. A drive letter (`C:`) is no host.
 fn locations(args: &Value, cwd: &Path) -> Vec<acp::ToolCallLocation> {
-    // A file tool's `path`; `move`'s `from` and `to`.
-    let paths = ["path", "from", "to"].map(|key| args.get(key).and_then(Value::as_str));
-    paths
+    args.get("path")
+        .and_then(Value::as_str)
         .into_iter()
-        .flatten()
         .filter(|path| {
             let remote = path.split_once(':').is_some_and(|(host, _)| {
                 let drive = host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic());
