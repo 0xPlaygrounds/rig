@@ -149,7 +149,7 @@ impl<'ast> Visit<'ast> for WireFinder {
     }
 
     fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
-        let Some((_, trait_path, _)) = &item.trait_ else {
+        let Some((trait_path, _)) = &item.trait_ else {
             return;
         };
         match last(trait_path).as_deref() {
