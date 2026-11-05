@@ -102,3 +102,25 @@ fn failed_attempts_cost_at_least_the_floor_and_unrun_ones_nothing() {
     assert_eq!(per_provider["ollama"], 0.0);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_one_hour_cache_write_costs_twice_an_input_token() {
+    // Anthropic's list price: a five-minute write is 1.25 input tokens, a
+    // one-hour write 2.
+    assert_eq!(
+        usage(
+            r#"{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":4,"ephemeral_5m_input_tokens":8},"cache_creation_input_tokens":12,"input_tokens":3,"output_tokens":6}}"#
+        ),
+        Some((3 + 4 * 2 + 10, 6))
+    );
+}
+
+#[test]
+fn a_cache_write_reported_only_in_the_breakdown_is_counted() {
+    assert_eq!(
+        usage(
+            r#"{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":4,"ephemeral_5m_input_tokens":8},"input_tokens":3,"output_tokens":6}}"#
+        ),
+        Some((3 + 4 * 2 + 10, 6))
+    );
+}

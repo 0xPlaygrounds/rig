@@ -3457,3 +3457,52 @@ async fn raw_multipart_header_credentials_withhold_both_sinks_before_normalizati
         );
     }
 }
+
+#[cfg(feature = "http")]
+#[test]
+fn cassettes_scrub_quoted_team_ids_and_refuse_unscrubbed_ones() {
+    let team = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+    let other = "11111111-2222-3333-4444-555555555555";
+    let fixture = |reply: &str| {
+        format!(
+            "when:\n  path: /v1/responses\n  method: POST\n  body: '{{\"metadata\":{{\"run\":\"{other}\"}}}}'\nthen:\n  status: 404\n  body: '{reply}'\n"
+        )
+    };
+    for reply in [
+        format!(r#"{{"error":"your team {team} does not have access to it"}}"#),
+        format!(r#"{{"error":"quote your team ID {team}"}}"#),
+        format!(r#"{{"error":"GET /v1/teams/{team}/usage"}}"#),
+        format!(r#"{{"error":"team-{team}"}}"#),
+        format!(r#"{{"team_id":"{team}"}}"#),
+        format!(r#"{{"error":"Team=(`{}`)"}}"#, team.to_ascii_uppercase()),
+        format!(r#"{{"error":"see /billing?a=1&teamId={team}"}}"#),
+        format!(r#"{{"team_uuid":"{team}"}}"#),
+        format!(r#"{{"error":"team%20{team} and team%3D{team}"}}"#),
+    ] {
+        let raw = fixture(&reply);
+        let scrubbed = crate::http::scrub_cassette_contents(&raw);
+        assert!(
+            !scrubbed.to_ascii_lowercase().contains(team) && scrubbed.contains("team_REDACTED_1"),
+            "{reply}: {scrubbed}"
+        );
+        // A UUID nobody names as a team is provider data.
+        assert!(scrubbed.contains(other), "{scrubbed}");
+        assert_eq!(crate::http::scrub_cassette_contents(&scrubbed), scrubbed);
+        assert!(
+            !crate::http::cassette_safety_failures(std::path::Path::new("x.yaml"), &raw).is_empty(),
+            "a fixture holding a team id passes the safety check: {reply}"
+        );
+    }
+    for kept in [
+        format!("steam {team}"),
+        format!("teammate {team}"),
+        format!("team idea {team}"),
+        format!("myteam/{team}"),
+    ] {
+        let raw = fixture(&kept);
+        assert!(
+            crate::http::scrub_cassette_contents(&raw).contains(team),
+            "{kept}"
+        );
+    }
+}

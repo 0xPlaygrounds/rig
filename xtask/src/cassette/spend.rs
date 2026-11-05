@@ -107,12 +107,23 @@ pub(crate) fn usage(body: &str) -> Option<(u64, u64)> {
             return Some((input, count(usage, "completion_tokens").unwrap_or(0)));
         }
         if let Some(input) = count(usage, "input_tokens") {
-            // Anthropic reports cache reads and writes beside `input_tokens`;
-            // a write costs 1.25 times an input token, a read less than one.
+            // Anthropic reports cache reads and writes beside `input_tokens`,
+            // and splits writes by lifetime under `cache_creation`. A read
+            // costs less than an input token, a five-minute write 1.25 times
+            // one and a one-hour write twice one.
             let cache_read = count(usage, "cache_read_input_tokens").unwrap_or(0);
-            let cache_write = count(usage, "cache_creation_input_tokens").unwrap_or(0);
+            let lifetimes = usage.get("cache_creation");
+            let lifetime = |key| {
+                lifetimes
+                    .and_then(|lifetimes| count(lifetimes, key))
+                    .unwrap_or(0)
+            };
+            let hour_write = lifetime("ephemeral_1h_input_tokens");
+            let cache_write = count(usage, "cache_creation_input_tokens")
+                .unwrap_or(hour_write + lifetime("ephemeral_5m_input_tokens"));
+            let short_write = cache_write.saturating_sub(hour_write);
             return Some((
-                input + cache_read + (cache_write * 5).div_ceil(4),
+                input + cache_read + (short_write * 5).div_ceil(4) + hour_write * 2,
                 count(usage, "output_tokens").unwrap_or(0),
             ));
         }
