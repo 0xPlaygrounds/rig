@@ -445,10 +445,7 @@ The agent is built with exactly the plugins on, which it adds as one Bevy
 
 `$RIG_HOME/settings.toml` is the one file you edit. Its `[plugins]` table holds
 only your changes to rig's built-in list, so a plugin rig adds to its defaults
-later reaches you without a change; a name rig does not know is refused,
-naming it, and `rig` starts no agent until it is taken out (a build from
-before was built from other settings). A build that fails to compile instead
-starts the previous build, whose conversation is told why:
+later reaches you without a change:
 
 ```toml
 [plugins]
@@ -460,6 +457,12 @@ crate = "hello"                   # the package name
 path = "plugins/hello"            # relative to RIG_HOME; or git = "..." (branch, rev), or version = "..."
 plugin = "hello::HelloPlugin"     # implements Plugin + Default
 ```
+
+A mistake in this file (a name rig does not know, an `extra` path that holds
+no crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig
+checkout is refused, naming it, and `rig` starts no agent until it is fixed:
+a build from before was built from other settings. A build that fails to
+compile instead starts the previous build, whose conversation is told why.
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
 at the next start or `/reload`: only the generated crate compiles again, and

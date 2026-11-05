@@ -438,8 +438,12 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
                 path: home.path.clone(),
                 table: "plugins".to_owned(),
                 problem: format!(
-                    "unknown plugin `{plugin}` in `{list}`: take it out, or add a \
-                     [[plugins.extra]] table for its crate"
+                    "unknown plugin `{plugin}` in `{list}`: take it out{}",
+                    if list == "enable" {
+                        ", or add a [[plugins.extra]] table for its crate"
+                    } else {
+                        ""
+                    }
                 ),
             });
         }

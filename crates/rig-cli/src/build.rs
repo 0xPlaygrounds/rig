@@ -138,7 +138,11 @@ pub fn compile(
     output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
     let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
-    let wanted = (|| -> Result<_> { Ok((config::chosen(home)?, RigSource::detect()?)) })();
+    let wanted = (|| -> Result<_> {
+        let plugins = config::chosen(home)?;
+        local_crates(home, &plugins)?;
+        Ok((plugins, RigSource::detect()?))
+    })();
     let (plugins, source) = match wanted {
         Ok(wanted) => wanted,
         Err(failure) => return Err(log.fail(FailedAt::Settings, failure.to_string())),
@@ -192,6 +196,27 @@ fn compile_logged(
         return Err(format!("cargo could not build the agent ({status})").into());
     }
     stage(home, staged, staging)
+}
+
+/// Checks that every `[[plugins.extra]]` crate that is on and comes from a
+/// `path` is there: a path that holds no crate is a mistake in the
+/// settings, not in the plugin's code.
+fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
+    for extra in plugins.extras_on() {
+        if let config::Source::Path(path) = &extra.source
+            && !path.join("Cargo.toml").is_file()
+        {
+            return Err(format!(
+                "{} [[plugins.extra]] `{}`: {} holds no Cargo.toml; fix its `path`, \
+                 or take the table out",
+                home.settings().display(),
+                extra.plugin,
+                path.display()
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// `rig build`, holding the root's build lock. It always stages, so it also
