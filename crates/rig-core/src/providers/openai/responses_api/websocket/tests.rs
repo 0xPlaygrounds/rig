@@ -115,7 +115,7 @@ fn warmup_options_serialize_generate_false() {
 
 #[test]
 fn websocket_request_rejects_an_unsupported_base_url_scheme() {
-    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"))
+    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"), None)
         .expect_err("ftp is not a websocket base");
     assert!(
         error.to_string().contains("ftp"),
