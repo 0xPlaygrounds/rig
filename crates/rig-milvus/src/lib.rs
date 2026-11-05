@@ -57,7 +57,7 @@ struct InsertRequest<'a> {
 struct SearchRequest<'a> {
     collection_name: &'a str,
     db_name: &'a str,
-    data: Vec<f64>,
+    data: Vec<Vec<f64>>,
     #[serde(skip_serializing_if = "String::is_empty")]
     filter: String,
     anns_field: &'a str,
@@ -157,7 +157,7 @@ impl MilvusVectorStore {
         SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
-            data,
+            data: vec![data],
             filter,
             anns_field: "embedding",
             limit: req.samples() as usize,
@@ -199,6 +199,9 @@ impl MilvusVectorStore {
         Ok(res.json().await.map_err(from_reqwest)?)
     }
 }
+
+#[cfg(test)]
+mod query_tests;
 
 impl InsertDocuments for MilvusVectorStore {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
