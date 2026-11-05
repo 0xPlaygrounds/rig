@@ -1,6 +1,6 @@
 //! The Gemini config's own tests: what it reads, and what it never writes.
 
-use super::{API_KEY_ENV, BASE_URL, GeminiConfig};
+use super::{API_KEY_ENV, Auth, BASE_URL, GeminiConfig};
 use crate::wire::Wire;
 
 /// A wire is data a host may serialize into a scene, a component or a config
@@ -49,4 +49,84 @@ fn a_serialized_config_carries_no_key_material() {
 #[test]
 fn from_env_reads_the_documented_variable() {
     assert_eq!(API_KEY_ENV, "GEMINI_API_KEY");
+}
+
+/// The official SDKs put the key in a header. That placement keeps it out of
+/// every URL a proxy or log may retain, and a gateway in front of Gemini may
+/// accept only it.
+#[test]
+fn header_auth_sends_the_key_out_of_the_uri() {
+    let gemini = GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789").with_auth(Auth::Header);
+    let wire = gemini.completion("gemini-2.5-flash");
+    let encoded = wire
+        .encode(
+            crate::completion::CompletionRequest::new("probe"),
+            crate::wire::Mode::Unary,
+        )
+        .expect("the request encodes");
+    let request = &encoded.request;
+
+    assert_eq!(
+        request.uri().path(),
+        "/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    assert_eq!(request.uri().query(), None);
+    assert_eq!(
+        request
+            .headers()
+            .get(GeminiConfig::API_KEY_HEADER)
+            .and_then(|value| value.to_str().ok()),
+        Some("AIzaSyNOTAREALKEY-0123456789"),
+    );
+}
+
+/// A query-auth request carries the key once, in the URI, and never also in
+/// the header.
+#[test]
+fn query_auth_keeps_the_key_out_of_the_header() {
+    let gemini = GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789");
+    assert_eq!(gemini.auth, Auth::Query);
+    let encoded = gemini
+        .completion("gemini-2.5-flash")
+        .encode(
+            crate::completion::CompletionRequest::new("probe"),
+            crate::wire::Mode::Unary,
+        )
+        .expect("the request encodes");
+
+    assert!(
+        encoded
+            .request
+            .uri()
+            .query()
+            .is_some_and(|query| query.contains("key=AIzaSyNOTAREALKEY-0123456789"))
+    );
+    assert!(
+        encoded
+            .request
+            .headers()
+            .get(GeminiConfig::API_KEY_HEADER)
+            .is_none()
+    );
+}
+
+/// The default placement stays absent from serialized configs so existing
+/// configs round-trip byte for byte; a changed placement is named, and still
+/// carries no key.
+#[test]
+fn auth_placement_serializes_without_key_material() {
+    let default_json = serde_json::to_string(&GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789"))
+        .expect("the config serializes");
+    assert!(!default_json.contains("auth"));
+
+    let header_json = serde_json::to_string(
+        &GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789").with_auth(Auth::Header),
+    )
+    .expect("the config serializes");
+    assert!(header_json.contains(r#""auth":"header""#));
+    assert!(!header_json.contains("AIzaSyNOTAREALKEY"));
+
+    let reloaded: GeminiConfig =
+        serde_json::from_str(&header_json).expect("the config deserializes");
+    assert_eq!(reloaded.auth, Auth::Header);
 }

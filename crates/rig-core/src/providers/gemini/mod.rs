@@ -59,6 +59,28 @@ pub const BASE_URL: &str = "https://generativelanguage.googleapis.com";
 /// The environment variable holding the API key.
 pub const API_KEY_ENV: &str = "GEMINI_API_KEY";
 
+/// Where a Gemini request carries its API key.
+///
+/// The REST documentation puts the key in the query string. The official SDKs
+/// send the `x-goog-api-key` header instead, which also keeps the credential
+/// out of URLs that proxies and logs may retain.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Auth {
+    /// As the query string's `key` parameter.
+    #[default]
+    Query,
+    /// As the `x-goog-api-key` request header.
+    Header,
+}
+
+impl Auth {
+    /// Whether this placement is the default one, serialized as absence.
+    fn is_query(&self) -> bool {
+        matches!(self, Self::Query)
+    }
+}
+
 /// The settings of Gemini's GenerateContent and Interactions APIs:
 /// serializable, and the key is never serialized. [`connect`](Self::connect)
 /// puts it on a transport as a [`Gemini`] client.
@@ -69,6 +91,9 @@ pub struct GeminiConfig {
     pub api_key: Secret,
     /// The API root every wire builds its URI from.
     pub base_url: String,
+    /// Where a request carries `api_key`; the query string unless set.
+    #[serde(default, skip_serializing_if = "Auth::is_query")]
+    pub auth: Auth,
 }
 
 impl GeminiConfig {
@@ -77,6 +102,7 @@ impl GeminiConfig {
         Self {
             api_key: api_key.into(),
             base_url: BASE_URL.to_owned(),
+            auth: Auth::default(),
         }
     }
 
@@ -91,13 +117,55 @@ impl GeminiConfig {
         self
     }
 
-    /// Build a GenerateContent URI, appending the API key after any path query.
-    /// The returned URI contains credentials and must not be logged.
-    pub(crate) fn uri(&self, path: &str) -> String {
+    /// Carry the key in `auth`'s place instead of the query string.
+    pub fn with_auth(mut self, auth: Auth) -> Self {
+        self.auth = auth;
+        self
+    }
+
+    /// Build a URI whose credential placement follows `auth`. The returned URI
+    /// may contain credentials and must not be logged.
+    pub(crate) fn uri_with(&self, path: &str, auth: Auth) -> String {
         let trimmed = path.trim_start_matches('/');
-        let separator = if trimmed.contains('?') { "&" } else { "?" };
         let base = self.base_url.trim_end_matches('/');
-        format!("{base}/{trimmed}{separator}key={}", self.api_key.expose())
+        match auth {
+            Auth::Query => {
+                let separator = if trimmed.contains('?') { "&" } else { "?" };
+                format!("{base}/{trimmed}{separator}key={}", self.api_key.expose())
+            }
+            Auth::Header => format!("{base}/{trimmed}"),
+        }
+    }
+
+    /// Build a GenerateContent URI with the configured credential placement.
+    /// The returned URI may contain credentials and must not be logged.
+    pub(crate) fn uri(&self, path: &str) -> String {
+        self.uri_with(path, self.auth)
+    }
+
+    /// Put the key on `request` where `auth` says it goes. A query-auth
+    /// request already carries it in the URI.
+    pub(crate) fn authenticate_with<B>(
+        &self,
+        mut request: http::Request<B>,
+        auth: Auth,
+    ) -> Result<http::Request<B>, crate::error::EncodeError> {
+        if auth == Auth::Header {
+            let value = http::HeaderValue::from_str(self.api_key.expose())
+                .map_err(crate::error::EncodeError::request)?;
+            request
+                .headers_mut()
+                .insert(http::HeaderName::from_static(Self::API_KEY_HEADER), value);
+        }
+        Ok(request)
+    }
+
+    /// Put the key on `request` where the configured [`Auth`] says it goes.
+    pub(crate) fn authenticate<B>(
+        &self,
+        request: http::Request<B>,
+    ) -> Result<http::Request<B>, crate::error::EncodeError> {
+        self.authenticate_with(request, self.auth)
     }
 
     /// The URI for an Interactions-family `path`. No key: that family
@@ -107,8 +175,11 @@ impl GeminiConfig {
         format!("{base}/{}", path.trim_start_matches('/'))
     }
 
+    /// The header that authenticates a header-auth request.
+    pub(crate) const API_KEY_HEADER: &'static str = "x-goog-api-key";
+
     /// The header that authenticates an Interactions-family request.
-    pub(crate) const INTERACTIONS_KEY_HEADER: &'static str = "x-goog-api-key";
+    pub(crate) const INTERACTIONS_KEY_HEADER: &'static str = Self::API_KEY_HEADER;
 
     /// The `generateContent` / `streamGenerateContent` completion wire.
     pub(crate) fn completion(&self, model: impl Into<String>) -> completion::GenerateContent {

@@ -1,5 +1,5 @@
 use super::*;
-use crate::providers::gemini::GeminiConfig;
+use crate::providers::gemini::{Auth, GeminiConfig};
 
 #[test]
 fn parse_models_page_reports_missing_model_id_when_name_is_omitted() {
@@ -63,6 +63,48 @@ fn models_sends_the_credential_as_the_last_query_pair() {
     assert_eq!(request.uri().path(), "/v1beta/models");
     assert_eq!(request.uri().query(), Some("pageSize=1000&key=test-key"));
     assert!(request.headers().get("x-goog-api-key").is_none());
+}
+
+/// A header-auth config moves the listing credential out of the query.
+#[test]
+fn models_follows_the_configured_auth_placement() {
+    let encoded = Models::new(GeminiConfig::new("test-key").with_auth(Auth::Header))
+        .encode(None, Mode::Unary)
+        .expect("the request encodes");
+    let request = &encoded.request;
+
+    assert_eq!(request.uri().query(), Some("pageSize=1000"));
+    assert_eq!(
+        request
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-key"),
+    );
+}
+
+/// The credential check follows the same placement, so a header-only gateway
+/// can still verify its key.
+#[test]
+fn verify_key_follows_the_configured_auth_placement() {
+    let query = VerifyKey::new(GeminiConfig::new("test-key"))
+        .encode((), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(query.request.uri().query(), Some("key=test-key"));
+    assert!(query.request.headers().get("x-goog-api-key").is_none());
+
+    let header = VerifyKey::new(GeminiConfig::new("test-key").with_auth(Auth::Header))
+        .encode((), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(header.request.uri().query(), None);
+    assert_eq!(
+        header
+            .request
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-key"),
+    );
 }
 
 /// The Interactions API reaches the same endpoint with the credential in a

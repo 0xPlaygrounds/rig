@@ -492,6 +492,7 @@ impl Wire for CachedContents {
                     .body(Body::empty())?
             }
         };
+        let request = self.provider.authenticate(request)?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 
