@@ -5,10 +5,12 @@ use std::sync::Arc;
 
 use rig_core::completion::Message;
 use rig_core::conversation::Conversation;
+use rig_core::message::{DocumentSourceKind, ImageMediaType, UserContent};
 
 use super::{DirFiles, DirStore};
 use crate::{
-    FORMAT, Files, LogWriteError, Session, SessionError, Store, Writer, as_of, history, load, save,
+    FORMAT, Files, LogWriteError, Session, SessionError, Store, Writer, as_of, history, load,
+    read_conversation, save,
 };
 
 /// A fresh directory for test `name`.
@@ -240,6 +242,62 @@ fn a_second_dir_store_on_the_directory_sees_every_write() {
         "{refused:?}"
     );
     assert_eq!(a.read_log("a").expect("read"), b"b\na 2\nb 2\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Reading a conversation keeps readable images and tolerates missing blobs,
+/// but returns other blob I/O errors for either way of selecting the agent.
+#[test]
+fn reading_a_conversation_matches_load_for_image_blobs() {
+    let dir = scratch("listing-image-blobs");
+    let store = DirStore::open(&dir).expect("opened");
+    let mut conversation = Conversation::from_messages([Message::User {
+        content: vec![UserContent::image_base64(
+            "cG5n",
+            Some(ImageMediaType::PNG),
+            None,
+        )],
+    }]);
+    save(&store, "main", &mut conversation).expect("saved");
+    let log = store.read_log("main").expect("a log");
+    let blobs = crate::blobs::blob_names(&store).expect("blobs");
+    let [blob] = blobs.as_slice() else {
+        panic!("one image blob: {blobs:?}");
+    };
+    let blob = dir.join("files").join(crate::BLOBS).join(blob);
+
+    let loaded = load(&store, "main").expect("loaded");
+    assert_eq!(loaded, conversation);
+    for agent in [Some("main"), None] {
+        let (id, read) = read_conversation(&store, agent).expect("readable image");
+        assert_eq!(id, "main");
+        assert_eq!(read, loaded);
+    }
+
+    fs::remove_file(&blob).expect("removed the blob");
+    let loaded = load(&store, "main").expect("a missing image is a placeholder");
+    let images: Vec<_> = loaded.messages().iter().flat_map(|m| m.images()).collect();
+    assert!(matches!(images.as_slice(), [image] if image.data == DocumentSourceKind::Unknown));
+    for agent in [Some("main"), None] {
+        let (id, read) = read_conversation(&store, agent).expect("missing image");
+        assert_eq!(id, "main");
+        assert_eq!(read, loaded);
+    }
+
+    fs::create_dir(&blob).expect("a directory cannot be read as an image blob");
+    let failure = load(&store, "main").expect_err("an unreadable image fails the load");
+    let SessionError::Io(failure) = failure else {
+        panic!("the blob I/O error: {failure:?}");
+    };
+    assert_ne!(failure.kind(), std::io::ErrorKind::NotFound);
+    for agent in [Some("main"), None] {
+        let read = read_conversation(&store, agent);
+        assert!(
+            matches!(&read, Err(SessionError::Io(error)) if error.kind() == failure.kind()),
+            "agent {agent:?}: {read:?}"
+        );
+    }
+    assert_eq!(store.read_log("main").expect("the log is unchanged"), log);
     let _ = fs::remove_dir_all(&dir);
 }
 
