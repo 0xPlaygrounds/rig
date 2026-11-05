@@ -64,19 +64,18 @@ pub enum Start {
 pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let terminal = std::io::stdin().is_terminal();
-    // Before the build, only whether `-p` is there, by a plain scan that a
-    // prompt that is just `-p` matches too: the type-ahead guard, the
-    // build's output, which a headless run keeps off its stderr, and whether
-    // a build that fails refuses the run.
-    let print = args.iter().any(|arg| arg == "-p" || arg == "--print");
+    // Before the build, the command line as the last build reads it; the
+    // new build may read it otherwise (below). Its `-p` decides the
+    // type-ahead guard, the build's output, which a headless run keeps off
+    // its stderr, and whether a build that fails refuses the run.
+    let last = last_report(home).unwrap_or_default();
+    let print = (last.invocation(args)).is_ok_and(|invocation| invocation.print.is_some());
     let output = if print || !terminal {
         BuildOutput::LogOnly
     } else {
         BuildOutput::Live
     };
-    // Before the build, `-r` as the last build reads it; the new build may
-    // read it otherwise (below).
-    let asked = last_report(home).unwrap_or_default().resume(args);
+    let asked = last.resume(args);
     let start = match start_of(home, asked.as_deref()) {
         Ok(start) => start,
         Err(why) => return Ok(refused(&why)),
