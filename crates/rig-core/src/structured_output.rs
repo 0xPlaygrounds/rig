@@ -1,6 +1,6 @@
 //! Model-facing structured-output policy shared by the agent runtimes: the
 //! synthetic output tool's name and description, the instructions and reprompts
-//! the model sees, and the required-field check on an answer.
+//! the model sees, and the schema check on an answer.
 //!
 //! ```
 //! use rig_core::structured_output::{output_tool_augmentation, output_tool_name};
@@ -53,6 +53,14 @@ pub fn reprompt_missing_fields(name: &str, missing: &[String]) -> String {
     )
 }
 
+/// The reprompt when the output tool named `name` was called with arguments
+/// that do not fit the output schema, `problems` saying where.
+pub fn reprompt_schema_problems(name: &str, problems: &str) -> String {
+    format!(
+        "The `{name}` arguments do not satisfy the output schema: {problems}. Call `{name}` again with arguments that do."
+    )
+}
+
 /// The output tool's name for a run: the default, numbered from 1 while
 /// `is_taken` reports a collision (`final_result`, `final_result_1`, ...).
 pub fn output_tool_name(is_taken: impl Fn(&str) -> bool) -> String {
@@ -95,13 +103,34 @@ pub fn missing_required_fields(
         .collect()
 }
 
-/// Whether `text` parses as JSON with every top-level required field of
-/// `schema`. Without a schema any JSON passes. Field types and other schema
-/// constraints are not checked.
-pub fn text_satisfies_schema(schema: Option<&serde_json::Value>, text: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(text.trim())
-        .ok()
-        .is_some_and(|value| {
-            schema.is_none_or(|schema| missing_required_fields(schema, &value).is_empty())
-        })
+/// Checks that `text` carries JSON that fits `schema`, as
+/// [`validate`](crate::tool::validate::validate) checks it: the whole text,
+/// else one value starting at its first `{` or `[` (JSON wrapped in prose or
+/// a markdown fence), as typed prompts read it. Without a schema any JSON
+/// passes. `Err` holds every problem; text with no JSON is one problem for
+/// the whole value.
+pub fn validate_text(
+    schema: Option<&serde_json::Value>,
+    text: &str,
+) -> Result<(), Vec<crate::tool::validate::Problem>> {
+    let value = json_in_text(text).ok_or_else(|| {
+        vec![crate::tool::validate::Problem {
+            at: String::new(),
+            what: "no JSON value".to_owned(),
+        }]
+    })?;
+    schema.map_or(Ok(()), |schema| {
+        crate::tool::validate::validate(schema, &value)
+    })
+}
+
+fn json_in_text(text: &str) -> Option<serde_json::Value> {
+    let text = text.trim();
+    serde_json::from_str(text).ok().or_else(|| {
+        let start = text.find(['{', '['])?;
+        serde_json::Deserializer::from_str(text.get(start..)?)
+            .into_iter()
+            .next()?
+            .ok()
+    })
 }

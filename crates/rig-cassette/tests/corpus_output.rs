@@ -26,9 +26,9 @@
 //! cells below. Pruned: `Prompted` under any `tool_choice` (the mode adds
 //! no tool, so the choice binds only the real tools Matrix E's choice
 //! cells already pin); a `Prompted`
-//! answer that violates the schema (the run does not validate a prompted
-//! or native answer, the consumer's deserialization does — only `Tool`
-//! mode reprompts); `Native` cells (Matrix E); the streamed twins of the
+//! answer that violates the schema (the run refuses it in every mode,
+//! which Matrix O's `mock_oracle_prompted_misses_schema` and the runtime
+//! cells pin); `Native` cells (Matrix E); the streamed twins of the
 //! tool-choice and thinking cells (the stream changes the record's events,
 //! not the mode's request shape, which the unary cell pins); openai beside
 //! a real tool and streamed (the dual-id shape is pinned by the unary

@@ -3,6 +3,7 @@ use rig_core::conversation::Author;
 use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
+use rig_core::tool::validate::Problem;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -824,13 +825,18 @@ fn assert_no_orphan_tool_use(messages: &[Message]) {
 
 /// A turn calling the output tool with arguments that are not a JSON object.
 fn malformed_output_tool_turn() -> ModelTurn {
+    output_tool_turn("{\"x\":")
+}
+
+/// A turn calling the output tool with raw `arguments`.
+fn output_tool_turn(arguments: &str) -> ModelTurn {
     ModelTurn::new(
         rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(ToolCall::from_wire(
             "call_1",
             ToolFunction::parse(
                 rig_core::message::ToolName::new("final_result").expect("tool name"),
-                "{\"x\":",
+                arguments,
             ),
         ))],
         Usage::default(),
@@ -2282,4 +2288,128 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
         run.messages()
     );
     assert!(run.next_step().is_err(), "the run has failed");
+}
+
+/// A run that asks for a schema never ends on an answer that misses it.
+/// Without an output tool (Native on a provider that drops the schema, or
+/// Prompted) it reprompts without naming a tool while the budget lasts, then
+/// fails. Field types count, in text and in output-tool arguments alike. The
+/// error carries the whole answer, the problems and the history, so a caller
+/// can log, repair or retry without parsing a message.
+#[test]
+fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
+    let problem = |at: &str, what: &str| Problem {
+        at: at.to_owned(),
+        what: what.to_owned(),
+    };
+    let schema = json!({"type": "object", "required": ["answer"]});
+    let mut run = AgentRun::new("summarize")
+        .max_turns(3)
+        .with_output_validation(Some(schema), 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(text_turn("plain prose"))
+            .expect("model_response should succeed"),
+    );
+    let (prompt, _, turn) = expect_call_model(&mut run);
+    assert_eq!(turn, 2);
+    let prompt = serde_json::to_string(&prompt).expect("prompt should serialize");
+    assert!(prompt.contains("answer"), "{prompt}");
+    assert!(!prompt.contains("tool"), "{prompt}");
+    expect_continue(
+        run.model_response(text_turn(r#"{"other": 1}"#))
+            .expect("model_response should succeed"),
+    );
+    let error = run.next_step().expect_err("the mismatch fails the run");
+    let PromptError::OutputSchemaMismatch {
+        output,
+        output_tool,
+        problems,
+        chat_history,
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(output, r#"{"other": 1}"#);
+    assert_eq!(output_tool, None);
+    assert_eq!(problems, [problem("/answer", "missing")]);
+    let history = serde_json::to_string(&chat_history).expect("history should serialize");
+    assert!(
+        history.contains("plain prose") && !history.contains("other"),
+        "the history keeps the reprompted answer, not the refused one: {history}"
+    );
+
+    let typed = json!({
+        "type": "object",
+        "properties": {"answer": {"type": "integer"}},
+        "required": ["answer"],
+    });
+    let mut run = AgentRun::new("summarize").with_output_validation(Some(typed.clone()), 0);
+    expect_call_model(&mut run);
+    let long_answer = format!(r#"{{"answer": "wrong", "note": "{}"}}"#, "x".repeat(1000));
+    expect_continue(
+        run.model_response(text_turn(&long_answer))
+            .expect("model_response should succeed"),
+    );
+    let error = run.next_step().expect_err("a mistyped field fails the run");
+    let message = error.to_string();
+    assert!(
+        message.ends_with('…') && message.chars().count() < 400,
+        "the message cuts the answer short: {message}"
+    );
+    let PromptError::OutputSchemaMismatch {
+        output,
+        problems,
+        chat_history,
+        ..
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(output, long_answer, "the field keeps the whole answer");
+    assert_eq!(
+        chat_history,
+        [Message::user("summarize")],
+        "without the answer"
+    );
+    assert_eq!(
+        problems,
+        [problem("/answer", "expected an integer, got a string")]
+    );
+
+    let mut run = AgentRun::new("summarize")
+        .with_output_tool_name("final_result")
+        .with_output_validation(Some(typed), 0);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(output_tool_turn(&long_answer))
+            .expect("model_response should succeed"),
+    );
+    let error = run
+        .next_step()
+        .expect_err("mistyped arguments fail the run");
+    let PromptError::OutputSchemaMismatch {
+        output,
+        output_tool,
+        problems,
+        chat_history,
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&output).ok(),
+        serde_json::from_str::<serde_json::Value>(&long_answer).ok(),
+        "the field keeps the whole arguments"
+    );
+    assert_eq!(output_tool.as_deref(), Some("final_result"));
+    assert_eq!(
+        chat_history,
+        [Message::user("summarize")],
+        "without the call"
+    );
+    assert_eq!(
+        problems,
+        [problem("/answer", "expected an integer, got a string")]
+    );
 }

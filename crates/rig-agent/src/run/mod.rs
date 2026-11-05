@@ -58,6 +58,7 @@ pub use policy::{
 pub use response::{CompletionCall, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
 use rig_core::structured_output;
+use rig_core::tool::validate::Problem;
 use transcript::{assistant_message, assistant_turn, choice_text, invalid_tool_retry_user_message};
 
 pub use streamed::{
@@ -315,11 +316,11 @@ pub struct AgentRun {
     /// names one. Its first call finalizes with arguments as output instead
     /// of executing tools.
     output_tool_name: Option<String>,
-    /// Schema whose top-level required fields are checked before finalization.
+    /// Schema every final answer is checked against before finalization.
     output_schema: Option<serde_json::Value>,
-    /// Budget for re-prompting the model in Tool output mode when it finalizes
-    /// without calling the output tool, or calls it with arguments missing
-    /// required fields. Exhausting it finalizes best-effort.
+    /// Budget for re-prompting the model when its answer misses the output
+    /// schema: text or output-tool arguments that do not satisfy it.
+    /// Exhausting it fails the run.
     max_output_retries: usize,
     output_retries: usize,
     chat_history: Option<Vec<Arc<Message>>>,
@@ -500,11 +501,14 @@ impl AgentRun {
         self
     }
 
-    /// Set the output schema and retry budget for missing output-tool calls,
-    /// output-tool arguments that are not a JSON object, or required fields.
-    /// Validation checks only top-level required field presence; exhausting
-    /// either the output or model-call budget finalizes best-effort, except
-    /// that arguments that are not a JSON object fail the run.
+    /// Set the output schema and retry budget for answers that miss it: text
+    /// that does not satisfy it, an output-tool call whose arguments are not
+    /// a JSON object or do not satisfy it. The answer must be JSON (the whole
+    /// text, else one value past leading prose or a fence) that fits the
+    /// schema as [`rig_core::tool::validate::validate`] checks it, which
+    /// covers types, required fields and the other keywords it lists.
+    /// Exhausting either the output or model-call budget on such an answer
+    /// fails the run with [`PromptError::OutputSchemaMismatch`].
     pub fn with_output_validation(
         mut self,
         output_schema: Option<serde_json::Value>,
@@ -522,11 +526,27 @@ impl AgentRun {
         self.chat_history.as_deref().unwrap_or_default()
     }
 
-    /// Whether the run may re-prompt for valid Tool-mode output: both the
-    /// output-retry budget and the total model-call budget must remain.
-    /// Otherwise, finalize best-effort rather than surface a max-turns error.
+    /// Whether the run may re-prompt for output that satisfies the schema:
+    /// both the output-retry budget and the total model-call budget must
+    /// remain. Otherwise the run fails on the mismatch rather than surface a
+    /// max-turns error.
     fn can_reprompt_for_output(&self) -> bool {
         self.output_retries < self.max_output_retries && self.current_turn < self.max_turns
+    }
+
+    /// The run's error for a final answer that misses the output schema.
+    fn schema_mismatch(
+        &self,
+        output: String,
+        output_tool: Option<String>,
+        problems: Vec<Problem>,
+    ) -> PromptError {
+        PromptError::OutputSchemaMismatch {
+            output,
+            output_tool,
+            problems,
+            chat_history: self.full_history(),
+        }
     }
 
     /// Roll the run back to re-prompt for valid output. The caller must
@@ -846,6 +866,9 @@ impl AgentRun {
     ///
     /// # Errors
     /// - [`PromptError::MaxTurns`] when the total model-call budget is exhausted.
+    /// - [`PromptError::OutputSchemaMismatch`] when the final answer misses
+    ///   the output schema and no output retry is left
+    ///   ([`Self::with_output_validation`]).
     /// - [`PromptError::Cancelled`] when the machine is driven out of
     ///   protocol (for example, calling this while an invalid tool-call
     ///   resolution is pending).
@@ -931,22 +954,39 @@ impl AgentRun {
                             }
                             return self.reprompt_for_output();
                         }
-                        return Err(ProviderError::Response(format!(
-                            "the output tool `{output_tool_name}` was called with arguments \
-                             that are not a JSON object: {raw}"
-                        ))
-                        .into());
+                        return Err(self.schema_mismatch(
+                            raw.clone(),
+                            Some(output_tool_name),
+                            vec![Problem {
+                                at: String::new(),
+                                what: "not a JSON object".to_owned(),
+                            }],
+                        ));
                     }
 
-                    let missing = self
-                        .output_schema
-                        .as_ref()
-                        .map(|schema| structured_output::missing_required_fields(schema, &args))
-                        .unwrap_or_default();
-                    if !missing.is_empty() && self.can_reprompt_for_output() {
+                    // Missing fields keep their own, more pointed reprompt.
+                    let refusal = self.output_schema.as_ref().and_then(|schema| {
+                        let problems = rig_core::tool::validate::validate(schema, &args).err()?;
+                        let missing = structured_output::missing_required_fields(schema, &args);
+                        let feedback = if missing.is_empty() {
+                            structured_output::reprompt_schema_problems(
+                                &output_tool_name,
+                                &response::join_problems(&problems),
+                            )
+                        } else {
+                            structured_output::reprompt_missing_fields(&output_tool_name, &missing)
+                        };
+                        Some((feedback, problems))
+                    });
+                    if let Some((feedback, problems)) = refusal {
+                        if !self.can_reprompt_for_output() {
+                            return Err(self.schema_mismatch(
+                                output,
+                                Some(output_tool_name),
+                                problems,
+                            ));
+                        }
                         self.history.commit(assistant_message(head, items.clone()));
-                        let feedback =
-                            structured_output::reprompt_missing_fields(&output_tool_name, &missing);
                         if let Some(user_message) =
                             invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                         {
@@ -988,10 +1028,8 @@ impl AgentRun {
                 if let Some(slots) = &slots {
                     self.count_malformed_tool_calls(slots)?;
                 }
-                // Empty turns may succeed but cannot form provider history entries.
-                self.history.commit(assistant_turn(head, items.clone()));
-
                 if let Some(slots) = slots {
+                    self.history.commit(assistant_turn(head, items.clone()));
                     // Output retries are budgeted per finalization attempt, not per run.
                     self.output_retries = 0;
                     self.state = RunState::ExecutingTools(ToolBatch { slots }, policy);
@@ -1000,22 +1038,38 @@ impl AgentRun {
                     self.answer_all([])?;
                     self.next_step()
                 } else {
-                    // Accept schema-compatible JSON text without requiring a tool call;
-                    // other nonempty answers may consume an output retry.
-                    if let Some(output_tool_name) = policy.output_tool()
-                        && !items.iter().all(AssistantContent::is_blank)
-                        && self.can_reprompt_for_output()
-                        && !structured_output::text_satisfies_schema(
-                            self.output_schema.as_ref(),
-                            &choice_text(&items),
-                        )
-                    {
-                        self.history.commit([Message::user(
-                            structured_output::reprompt_text_answer(output_tool_name),
-                        )]);
+                    // A run that asks for a schema ends only on text that
+                    // satisfies it, whatever enforced it (or did not): the
+                    // model is asked again while the budget lasts, then the
+                    // run fails. The reprompt names the output tool when the
+                    // turn offered one, else carries the schema, which a
+                    // provider that dropped it never showed the model.
+                    let reprompt = policy
+                        .output_tool()
+                        .map(structured_output::reprompt_text_answer)
+                        .or_else(|| {
+                            self.output_schema.as_ref().map(|schema| {
+                                structured_output::prompted_augmentation(
+                                    &rig_core::json_utils::to_canonical_string(schema),
+                                )
+                            })
+                        });
+                    let text = choice_text(&items);
+                    let refusal = reprompt.zip(
+                        structured_output::validate_text(self.output_schema.as_ref(), &text).err(),
+                    );
+                    if let Some((reprompt, problems)) = refusal {
+                        // A refused answer the run fails on stays out of history.
+                        if !self.can_reprompt_for_output() {
+                            return Err(self.schema_mismatch(text, None, problems));
+                        }
+                        self.history.commit(assistant_turn(head, items));
+                        self.history.commit([Message::user(reprompt)]);
                         return self.reprompt_for_output();
                     }
 
+                    // Empty turns may succeed but cannot form provider history entries.
+                    self.history.commit(assistant_turn(head, items.clone()));
                     Ok(self.finish(items, 0))
                 }
             }

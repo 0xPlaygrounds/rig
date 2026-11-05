@@ -1721,15 +1721,16 @@ fn a_server_tool_result_never_replays_without_its_use() {
     );
 }
 
-/// Anthropic's wire reads its own ids and their dated snapshots. Another
-/// vendor's spelling is that vendor's catalog row, which carries the
-/// Anthropic facts itself.
+/// Anthropic's wire reads its own ids, their dated snapshots and a
+/// gateway's `anthropic/` spelling of them. Another vendor's spelling is that
+/// vendor's catalog row, which carries the Anthropic facts itself.
 #[test]
 fn context_binding_reads_anthropics_ids_and_their_snapshots() {
     for model in [
         "claude-opus-5-5",
         "claude-opus-5-5-20260101",
         "claude-opus-5",
+        "anthropic/claude-opus-5",
         "claude-fable-5-1",
         "claude-sonnet-5-5",
     ] {
@@ -2503,5 +2504,21 @@ fn a_cache_point_within_a_message_marks_the_last_block_of_its_items() {
     assert_eq!(
         marks(3, 1),
         [vec![false], vec![false, false], vec![false, false]]
+    );
+}
+
+/// A gateway's `anthropic/` spelling of a listed id takes that id's default
+/// `max_tokens`; an id the catalog does not list still has none.
+#[test]
+fn a_gateways_anthropic_prefixed_id_takes_the_listed_default_max_tokens() {
+    let facts = crate::catalog::ModelFacts::builtin();
+    assert_eq!(
+        default_max_tokens_for_model(facts, "anthropic/claude-opus-5"),
+        Some(128_000)
+    );
+    assert_eq!(default_max_tokens_for_model(facts, "anthropic/gpt-5"), None);
+    assert_eq!(
+        default_max_tokens_for_model(facts, "openai/claude-opus-5"),
+        None
     );
 }

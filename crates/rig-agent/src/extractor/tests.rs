@@ -264,7 +264,16 @@ async fn exhausted_retries_return_last_error() {
         .await
         .expect_err("extraction should fail");
 
-    assert!(matches!(err, StructuredOutputError::EmptyResponse));
+    assert!(
+        matches!(
+            &err,
+            StructuredOutputError::Prompt(PromptError::OutputSchemaMismatch {
+                output,
+                ..
+            }) if output == "no submit call"
+        ),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]

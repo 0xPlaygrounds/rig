@@ -10,7 +10,7 @@
 //! in the header, so two programs differing only in that state are two
 //! headers;
 //! `Rerank` has a golden through a mock reranker on a host's bus; a
-//! `Prompted` answer is returned unvalidated; and the handler table, the
+//! `Prompted` answer that misses the output schema fails the run; and the handler table, the
 //! signature and the required row are three sets with stated inclusions.
 //!
 //! # Dimensions
@@ -18,14 +18,14 @@
 //! | axis | values recorded |
 //! |---|---|
 //! | instrument | id order · concurrent cross-key order · hook identity · the three header sets |
-//! | family | `Rerank` (mock) · `Prompted` unvalidated |
+//! | family | `Rerank` (mock) · `Prompted` missing the schema |
 //!
 //! Recorded: 4 goldens and 4 corpus-wide tests below (the matrix is the
 //! oracle's, so its rows are assertions over the corpus as much as
 //! cells). Pruned: a keyed rerank wire (none has a cassette suite:
 //! voyageai's is keyless here, llamacpp's local); a `Prompted` violation
-//! reprompted (the run does not validate prompted answers: pinned, not
-//! added).
+//! reprompted (the one-turn run has no turn left to reprompt in, and
+//! rig-agent's run tests cover the reprompt).
 //!
 //! # Cells
 //!
@@ -34,7 +34,7 @@
 //! | `anthropic_oracle_concurrent_notes` | anthropic `corpus_oracle.rs` `concurrent_notes_…` | `[Completion, (Tool, Custom) × 2 in dispatch order, Completion]` under `tool_concurrency: 2` |
 //! | `anthropic_oracle_stop_after_turn_two` | `stop_after_turn_two_…` | `[Completion, Tool, Completion]`; hooks `["StopAfterTurn(2)"]` |
 //! | `mock_oracle_rerank` | `tests/core/golden_oracle.rs` `oracle_rerank_…` | `[Rerank, Completion]` over a host's bus |
-//! | `mock_oracle_prompted_unvalidated` | `oracle_prompted_unvalidated_…` | `[Completion]`; the prose answer returned |
+//! | `mock_oracle_prompted_misses_schema` | `oracle_prompted_misses_schema_…` | `[Completion]`; the prose answer refused |
 //!
 //! # What the matrix found
 //!
@@ -109,12 +109,13 @@ const RERANK: Program = Program {
     hooks: &[Hook::RerankDocs],
     ..Program::DEFAULT
 };
-const PROMPTED_UNVALIDATED: Program = Program {
-    fixture: "mock_oracle_prompted_unvalidated",
+const PROMPTED_MISSES_SCHEMA: Program = Program {
+    fixture: "mock_oracle_prompted_misses_schema",
     preamble: Some(BASIC_PREAMBLE),
     prompt: STRUCTURED_OUTPUT_PROMPT,
     output_schema: Some(event_schema),
     output_mode: Some(Output::Prompted),
+    ending: Ending::MissesSchema,
     ..Program::DEFAULT
 };
 
@@ -122,7 +123,7 @@ both_interpreters! {
     concurrent_notes: CONCURRENT_NOTES,
     stop_after_turn_two: STOP_AFTER_TURN_TWO,
     rerank: RERANK,
-    prompted_unvalidated: PROMPTED_UNVALIDATED,
+    prompted_misses_schema: PROMPTED_MISSES_SCHEMA,
 }
 
 fn every_golden() -> Vec<(String, rig_cassette::effect_log::EffectLog)> {
