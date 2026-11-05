@@ -14,8 +14,7 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
-        VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        VectorStoreIndex, request::VectorSearchRequest,
     },
     wasm_compat::WasmCompatSend,
 };
@@ -126,8 +125,7 @@ impl MilvusVectorStore {
         }
     }
 
-    /// Builds the search body. Any request threshold becomes a
-    /// `distance >= threshold` condition combined with the request filter.
+    /// Builds the search body, applying the metadata filter on the server.
     fn create_search_request(
         &self,
         data: Vec<f64>,
@@ -143,16 +141,11 @@ impl MilvusVectorStore {
             OUTPUT_FIELDS.to_vec()
         };
 
-        let threshold = req
-            .threshold()
-            .map(|thresh| Filter::gte("distance", thresh.into()));
-
-        let filter = match (threshold, req.filter()) {
-            (Some(thresh), Some(filter)) => thresh.and(filter.clone()).into_inner(),
-            (Some(thresh), _) => thresh.into_inner(),
-            (_, Some(filter)) => filter.clone().into_inner(),
-            _ => String::new(),
-        };
+        let filter = req
+            .filter()
+            .cloned()
+            .map(Filter::into_inner)
+            .unwrap_or_default();
 
         SearchRequest {
             collection_name: &self.collection_name,
@@ -244,7 +237,8 @@ impl InsertDocuments for MilvusVectorStore {
 impl VectorStoreIndex for MilvusVectorStore {
     type Filter = Filter;
 
-    /// Returns matches scored by distance, in the order Milvus reports.
+    /// Returns matches in Milvus's order, keeping scores at or above the
+    /// request threshold. This can return fewer than the requested samples.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Filter>,
@@ -254,6 +248,10 @@ impl VectorStoreIndex for MilvusVectorStore {
         let res = json
             .data
             .into_iter()
+            .filter(|row| {
+                req.threshold()
+                    .is_none_or(|minimum| row.distance >= minimum)
+            })
             .map(|x| VectorSearchResult {
                 score: x.distance,
                 id: x.id.to_string(),
@@ -274,6 +272,10 @@ impl VectorStoreIndex for MilvusVectorStore {
         let res = json
             .data
             .into_iter()
+            .filter(|row| {
+                req.threshold()
+                    .is_none_or(|minimum| row.distance >= minimum)
+            })
             .map(|x| VectorSearchIdResult {
                 score: x.distance,
                 id: x.id.to_string(),
@@ -283,3 +285,6 @@ impl VectorStoreIndex for MilvusVectorStore {
         Ok(res)
     }
 }
+
+#[cfg(test)]
+mod threshold_tests;

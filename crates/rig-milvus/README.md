@@ -66,6 +66,12 @@ This will create a collection with the following fields:
 
 Once done, you'll now be ready to use!
 
+Search filters are evaluated by Milvus against entity metadata. A request's
+threshold is an inclusive minimum on the returned scores, applied locally after
+search, so fewer than the requested number of hits may remain. Use a metric such
+as `COSINE` or `IP` when higher scores should mean more similar results; scores
+are returned as Milvus reports them, without conversion between metrics.
+
 ## How to run the example
 To run the example, add your OpenAI API key as an environment variable. Don't forget your Milvus username, password, database & collection name and endpoint URL if you're executing this from a new terminal tab/window:
 ```bash
