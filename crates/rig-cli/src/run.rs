@@ -65,8 +65,9 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let terminal = std::io::stdin().is_terminal();
     // Before the build, only whether `-p` is there, by a plain scan that a
-    // prompt that is just `-p` matches too: the type-ahead guard, and the
-    // build's output, which a headless run keeps off its stderr.
+    // prompt that is just `-p` matches too: the type-ahead guard, the
+    // build's output, which a headless run keeps off its stderr, and whether
+    // a build that fails refuses the run.
     let print = args.iter().any(|arg| arg == "-p" || arg == "--print");
     let output = if print || !terminal {
         BuildOutput::LogOnly
@@ -88,7 +89,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
         locks::sweep(home)?;
         let run = locks::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
-        let failure = rebuild(home, &claimed.id, output)?;
+        let failure = rebuild(home, &claimed.id, output, print)?;
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
         });
@@ -786,10 +787,16 @@ fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
 /// `output` says; cargo does no work when nothing changed. With no good
 /// build yet, the build is staged even if it was rejected before, so each
 /// start retries it. A build that failed with an older binary at hand is
-/// returned, for that binary to start with; settings that name no build
-/// ([`FailedAt::Settings`]) refuse the start instead, since that binary
+/// returned, for that binary to start with, unless the run is `print`'s
+/// (`-p`), whose caller asked for this build's answer. Settings that name no
+/// build ([`FailedAt::Settings`]) refuse the start too, since that binary
 /// was built from other settings.
-fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Option<BuildFailure>> {
+fn rebuild(
+    home: &Home,
+    session: &SessionId,
+    output: BuildOutput,
+    print: bool,
+) -> Result<Option<BuildFailure>> {
     let first_run = !home.staged().exists() && !home.good().exists();
     if output == BuildOutput::Live {
         eprintln!(
@@ -805,7 +812,7 @@ fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Opti
     match build::compile(home, &home.staged_for(session), staging, output) {
         Ok(()) => Ok(None),
         Err(failure) if failure.at == FailedAt::Settings => Err(failure.reason.into()),
-        Err(failure) if first_run => Err(failure.told(output).into()),
+        Err(failure) if first_run || print => Err(failure.told(output).into()),
         Err(failure) => {
             let told = failure.told(output);
             eprintln!("error: building the agent failed; starting the previous build: {told}");

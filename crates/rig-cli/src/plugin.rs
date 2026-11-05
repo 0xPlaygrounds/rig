@@ -40,6 +40,7 @@ pub const USAGE: &str = "  rig plugin list        Every plugin, rig's own and th
   rig plugin disable <type>
                          Turn a plugin on or off in RIG_HOME/settings.toml
                          ([plugins] enable and disable), keeping its comments.
+                         `disable` also takes out a name nothing provides.
                          The agent holds only the plugins on, so the next
                          start, or /reload, rebuilds it: only the generated
                          crate compiles again, and a plugin's own crate the
@@ -229,11 +230,26 @@ fn list(home: &Home) -> Result<()> {
 /// `rig plugin enable <type>` and `rig plugin disable <type>`: names
 /// `type_path` in `[plugins] enable` or `disable` of the home's settings,
 /// or takes it out of the other list when that gives rig's default; a
-/// name in this list stays.
+/// name in this list stays. `disable` takes a name that is neither rig's
+/// nor an extra out of both lists, which is how the settings' refusal of
+/// it says to fix it, even while the file holds other mistakes.
 fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
     let path = home.settings();
-    let (changed, ()) = config::edit(&path, |file| -> Result<_> {
-        let before = config::plugins(file)?;
+    let (changed, forgot) = config::edit(&path, |file| -> Result<_> {
+        let before = match config::plugins(file) {
+            Err(failure) if !on && built_in(type_path).is_none() && !extra(file, type_path) => {
+                // Off with an off default, then on with an on default: each
+                // only takes the name out of the other list.
+                let document = &mut file.document;
+                if !(set_on(document, type_path, false, false)
+                    | set_on(document, type_path, true, true))
+                {
+                    return Err(failure.into());
+                }
+                return Ok((true, true));
+            }
+            before => before?,
+        };
         let by_default = match built_in(type_path) {
             Some(built_in) if on && !built_in.available() => {
                 return Err(config::Error::Unavailable {
@@ -254,10 +270,15 @@ fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
         };
         let changed = set_on(&mut file.document, type_path, on, by_default);
         config::plugins(file)?;
-        Ok((changed, ()))
+        Ok((changed, false))
     })?;
     let state = if on { "on" } else { "off" };
-    if !changed {
+    if forgot {
+        println!(
+            "Took the unknown plugin `{type_path}` out of {}.",
+            path.display()
+        );
+    } else if !changed {
         println!("`{type_path}` is {state} already in {}.", path.display());
     } else {
         println!(
@@ -272,6 +293,17 @@ fn enable(home: &Home, type_path: &str, on: bool) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Whether a `[[plugins.extra]]` table of `file` names `plugin`, read
+/// without the checks the rest of the file may fail.
+fn extra(file: &config::SettingsFile, plugin: &str) -> bool {
+    (file.document.get("plugins"))
+        .and_then(|plugins| plugins.get("extra"))
+        .and_then(Item::as_array_of_tables)
+        .is_some_and(|tables| {
+            (tables.iter()).any(|table| table.get("plugin").and_then(Item::as_str) == Some(plugin))
+        })
 }
 
 /// The string at `keys` in `directory`'s `Cargo.toml`, such as its

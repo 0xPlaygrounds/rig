@@ -438,7 +438,8 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
                 path: home.path.clone(),
                 table: "plugins".to_owned(),
                 problem: format!(
-                    "unknown plugin `{plugin}` in `{list}`: take it out{}",
+                    "unknown plugin `{plugin}` in `{list}`: `rig plugin disable {plugin}` \
+                     takes it out{}",
                     if list == "enable" {
                         ", or add a [[plugins.extra]] table for its crate"
                     } else {
