@@ -134,6 +134,7 @@ impl QdrantFilter {
     /// Translates the condition tree into a Qdrant filter, returning `None` when
     /// the filter is null, empty, or contains no conditions. Range bounds are
     /// compared as `f64`, and match values accept strings, booleans, and integers.
+    /// A present range bound that is not a number returns an error.
     pub fn interpret(self) -> Result<Option<Filter>, FilterError> {
         use serde_json::Value::*;
 
@@ -240,20 +241,23 @@ impl QdrantFilter {
                     }
 
                     if let Some(range_obj) = value.get("range") {
-                        let mut range = Range::default();
-
-                        if let Some(gt) = range_obj.get("gt") {
-                            range.gt = gt.as_f64();
-                        }
-                        if let Some(gte) = range_obj.get("gte") {
-                            range.gte = gte.as_f64();
-                        }
-                        if let Some(lt) = range_obj.get("lt") {
-                            range.lt = lt.as_f64();
-                        }
-                        if let Some(lte) = range_obj.get("lte") {
-                            range.lte = lte.as_f64();
-                        }
+                        let bound = |name: &str| {
+                            range_obj
+                                .get(name)
+                                .map(|value| {
+                                    value.as_f64().ok_or_else(|| FilterError::Expected {
+                                        expected: format!("numeric range bound '{name}'"),
+                                        got: value.to_string(),
+                                    })
+                                })
+                                .transpose()
+                        };
+                        let range = Range {
+                            gt: bound("gt")?,
+                            gte: bound("gte")?,
+                            lt: bound("lt")?,
+                            lte: bound("lte")?,
+                        };
 
                         field_condition.range = Some(range);
                     }
@@ -326,3 +330,6 @@ impl QdrantFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
