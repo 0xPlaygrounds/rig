@@ -40,7 +40,7 @@ const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 
 fn request() -> CompletionRequest {
-    CompletionRequest::new(PROMPT)
+    CompletionRequest::new(PROMPT).additional_params(json!({ "store": false }))
 }
 
 /// The `response` object of the single recorded `response.completed` event.

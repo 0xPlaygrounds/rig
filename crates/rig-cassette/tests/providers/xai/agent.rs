@@ -10,6 +10,7 @@ async fn completion_smoke() {
     with_xai_cassette("agent/completion_smoke", |client| async move {
         let agent = rig::AgentBuilder::new(client.completion(xai::GROK_3_MINI))
             .preamble(BASIC_PREAMBLE)
+            .additional_params(serde_json::json!({ "store": false }))
             .build();
 
         let response = agent

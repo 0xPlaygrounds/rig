@@ -516,7 +516,8 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 )
                 .preamble("Use the requested tool call and no prose before it.")
                 .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required);
+                .tool_choice(ToolChoice::Required)
+                .additional_params(json!({ "store": false }));
 
             let observation = collect_raw_stream_observation(model.stream(request)?).await;
 
@@ -600,7 +601,8 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                             "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Required))
+                        .tool_choice(ToolChoice::Required)
+                        .additional_params(json!({ "store": false })))
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -620,7 +622,8 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool(rig::tool::tool_definition(&BetaSignal))
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![rig_core::message::ToolName::new(BetaSignal::NAME).expect("tool name")],
-                        }))
+                        })
+                        .additional_params(json!({ "store": false })))
                 .await?;
             let specific_calls = specific
                 .choice
@@ -640,7 +643,8 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                             "Do not call tools. Reply with exactly this phrase: no-tool-answer",
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::None))
+                        .tool_choice(ToolChoice::None)
+                        .additional_params(json!({ "store": false })))
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -669,7 +673,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 )
                 .preamble("You are a concise reliability engineer.")
                 .reasoning(Effort::Low)
-                .additional_params(json!({ "reasoning": { "summary": "detailed" } }));
+                .additional_params(json!({ "reasoning": { "summary": "detailed" }, "store": false }));
 
             let response = model.call(request).await?;
             let raw = &response.raw;
@@ -720,6 +724,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 )
                 .preamble("Return only JSON matching the supplied schema.")
                 .additional_params(json!({
+                    "store": false,
                     "text": {
                         "format": {
                             "type": "json_schema",
