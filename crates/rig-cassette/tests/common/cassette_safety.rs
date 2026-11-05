@@ -380,7 +380,9 @@ fn account_failures_are_declared_by_their_cells() {
 fn undeclared_account_failures(suite: &ProviderCassetteSuite, failures: &mut Vec<String>) {
     let own = suite.provider;
 
-    let mut declaring = std::collections::BTreeMap::<String, Vec<String>>::new();
+    // Every definition of each helper name: its file and what it declares.
+    let mut definitions =
+        std::collections::BTreeMap::<String, Vec<(PathBuf, BTreeSet<String>)>>::new();
     for dir in [format!("tests/providers/{own}"), "tests/common".to_owned()] {
         let dir = repo_path(&dir);
         if !dir.exists() {
@@ -391,12 +393,10 @@ fn undeclared_account_failures(suite: &ProviderCassetteSuite, failures: &mut Vec
             match rig_test_support::scenario_registry::declaring_functions(&contents) {
                 Ok(functions) => {
                     for (function, kinds) in functions {
-                        let entry = declaring.entry(function).or_default();
-                        for kind in kinds {
-                            if !entry.contains(&kind) {
-                                entry.push(kind);
-                            }
-                        }
+                        definitions
+                            .entry(function)
+                            .or_default()
+                            .push((source.clone(), kinds.into_iter().collect()));
                     }
                 }
                 Err(error) => failures.push(format!("{}: {error}", display_repo_path(&source))),
@@ -418,6 +418,33 @@ fn undeclared_account_failures(suite: &ProviderCassetteSuite, failures: &mut Vec
             }
         };
         for site in sites {
+            // Calls name a helper by its last path segment, so same-named
+            // helpers that disagree cannot be told apart: the call is refused,
+            // never credited with their union.
+            let reached = definitions
+                .get(&site.wrapper)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let wrapper_kinds = match reached.split_first() {
+                None => BTreeSet::new(),
+                Some(((_, first), rest)) if rest.iter().all(|(_, kinds)| kinds == first) => {
+                    first.clone()
+                }
+                Some(_) => {
+                    failures.push(format!(
+                        "{}: `{}` is defined in {} with different account-failure \
+                         declarations; rename one so the call names one helper",
+                        display_repo_path(&source),
+                        site.wrapper,
+                        reached
+                            .iter()
+                            .map(|(file, _)| display_repo_path(file))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                    BTreeSet::new()
+                }
+            };
             let kinds = declared
                 .entry(crate::cassettes::cassette_path(
                     suite.provider,
@@ -425,7 +452,7 @@ fn undeclared_account_failures(suite: &ProviderCassetteSuite, failures: &mut Vec
                 ))
                 .or_default();
             kinds.extend(site.declared);
-            kinds.extend(declaring.get(&site.wrapper).into_iter().flatten().cloned());
+            kinds.extend(wrapper_kinds);
         }
     }
 

@@ -1,7 +1,8 @@
 //! The one scrubber of recorded provider traffic, shared by the cassette
 //! engine and the traffic log. It removes credentials (sensitive headers and
 //! query parameters, and every secret [`rig_core::redact`] finds), AWS account
-//! numbers and home-directory paths, and keeps everything else the provider
+//! numbers, account team ids and home-directory paths, and keeps everything
+//! else the provider
 //! sent verbatim. A [`Purpose`] selects the few behaviours a replayable
 //! fixture needs and a log of live traffic must not have. New captures retain
 //! only size and content type when a complete body cannot be inspected.
@@ -1707,6 +1708,11 @@ impl Scrubber {
                         .is_some_and(|key| VOLATILE_JSON_KEYS.contains(&key))
                 {
                     *text = "1970-01-01T00:00:00Z".to_owned();
+                } else if cassette
+                    && key_lower.as_deref().is_some_and(names_a_team)
+                    && is_uuid(text)
+                {
+                    *text = self.placeholder(text, "team_");
                 } else if let Some(mut json) =
                     canonical_json(text).filter(|json| json.is_object() || json.is_array())
                 {
@@ -1795,6 +1801,7 @@ impl Scrubber {
             Purpose::Cassette => {
                 let scrubbed = self.scrub_aws_account_ids(&scrubbed);
                 let scrubbed = self.scrub_openai_user_ids(&scrubbed);
+                let scrubbed = self.scrub_team_ids(&scrubbed);
                 scrub_local_filesystem_paths(&scrubbed)
             }
             Purpose::Traffic => scrubbed.into_owned(),
@@ -1827,6 +1834,52 @@ impl Scrubber {
             rest = tail;
         }
         output.push_str(rest);
+        output
+    }
+
+    /// Replace each UUID that `text` names as an account's team (see
+    /// [`names_a_team`]): xAI's "your team <uuid>", "team ID <uuid>" and
+    /// `/teams/<uuid>`, and `teamId=<uuid>` or `team%20<uuid>`.
+    fn scrub_team_ids(&mut self, text: &str) -> String {
+        let mut output = String::with_capacity(text.len());
+        let mut kept = 0;
+        let mut start = 0;
+        while let Some(offset) = text.get(start..).and_then(|rest| rest.find(is_hex)) {
+            let at = start + offset;
+            let candidate = text
+                .get(at..at + UUID_LEN)
+                .filter(|candidate| is_uuid(candidate));
+            let before = text.get(..at).unwrap_or_default();
+            let after = text.get(at + UUID_LEN..).unwrap_or_default();
+            match candidate {
+                Some(team)
+                    if !ends_in_word(before)
+                        && !after.starts_with(|ch: char| ch.is_alphanumeric() || ch == '-')
+                        && names_a_team(before) =>
+                {
+                    output.push_str(text.get(kept..at).unwrap_or_default());
+                    output.push_str(&self.placeholder(team, "team_"));
+                    kept = at + UUID_LEN;
+                    start = kept;
+                }
+                // Skip a percent escape's two digits, else the rest of this word.
+                _ if before.ends_with('%')
+                    && text
+                        .get(at..at + 2)
+                        .is_some_and(|digits| digits.chars().all(|ch| ch.is_ascii_hexdigit())) =>
+                {
+                    start = at + 2
+                }
+                _ => {
+                    start = at
+                        + text
+                            .get(at..)
+                            .and_then(|rest| rest.find(|ch: char| !ch.is_alphanumeric()))
+                            .unwrap_or(text.len() - at)
+                }
+            }
+        }
+        output.push_str(text.get(kept..).unwrap_or_default());
         output
     }
 
@@ -1918,6 +1971,75 @@ pub(crate) fn contains_case_insensitive(values: &[&str], needle: &str) -> bool {
 
 pub(crate) fn canonical_json(body: &str) -> Option<Value> {
     decode_json(body).ok().map(rig_core::json_utils::canonical)
+}
+
+const UUID_LEN: usize = 36;
+
+/// Whether `text` is a hyphenated UUID (8-4-4-4-12 hex digits).
+fn is_uuid(text: &str) -> bool {
+    let mut groups = text.split('-');
+    [8, 4, 4, 4, 12].into_iter().all(|len| {
+        groups.next().is_some_and(|group| {
+            group.len() == len && group.chars().all(|ch| ch.is_ascii_hexdigit())
+        })
+    }) && groups.next().is_none()
+}
+
+fn is_hex(ch: char) -> bool {
+    ch.is_ascii_hexdigit()
+}
+
+/// Whether `text` ends inside a word: on a letter or digit that is not part
+/// of a percent escape (`%20`).
+fn ends_in_word(text: &str) -> bool {
+    text.ends_with(char::is_alphanumeric) && strip_escape(text).is_none()
+}
+
+/// `text` without a trailing percent escape, if it ends with one.
+fn strip_escape(text: &str) -> Option<&str> {
+    let at = text.len().checked_sub(3)?;
+    let escape = text.get(at..)?;
+    (escape.starts_with('%') && escape.chars().skip(1).all(|ch| ch.is_ascii_hexdigit()))
+        .then(|| text.get(..at))
+        .flatten()
+}
+
+/// The last word of `text` (a run of letters and digits, lowercased) and
+/// the text before it, skipping trailing punctuation, spaces and percent
+/// escapes.
+fn last_word(text: &str) -> Option<(String, &str)> {
+    let mut rest = text;
+    loop {
+        let trimmed = rest.trim_end_matches(|ch: char| !ch.is_alphanumeric());
+        match strip_escape(trimmed) {
+            Some(shorter) => rest = shorter,
+            None => {
+                rest = trimmed;
+                break;
+            }
+        }
+    }
+    let start = rest
+        .rfind(|ch: char| !ch.is_alphanumeric())
+        .map_or(0, |at| at + 1);
+    let word = rest.get(start..)?;
+    (!word.is_empty()).then(|| (word.to_lowercase(), rest.get(..start).unwrap_or_default()))
+}
+
+/// Whether `text` (a JSON key, or the text before a UUID) ends by naming an
+/// account's team: the word `team`, `teams`, `teamid` or `teamuuid`, or
+/// `id` or `uuid` after the word `team` or `teams`, with only punctuation,
+/// spaces or percent escapes after it. Case and camelCase do not matter
+/// (`teamId`, `team_uuid`, `Team ID`); a longer word (`steam`) is no team.
+fn names_a_team(text: &str) -> bool {
+    let team = |word: &str| matches!(word, "team" | "teams");
+    match last_word(text) {
+        Some((word, _)) if team(&word) || matches!(word.as_str(), "teamid" | "teamuuid") => true,
+        Some((word, before)) if matches!(word.as_str(), "id" | "uuid") => {
+            last_word(before).is_some_and(|(word, _)| team(&word))
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn is_redacted_placeholder(value: &str) -> bool {
