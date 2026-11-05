@@ -346,9 +346,8 @@ fn shape(messages: Vec<Message>, merge_users: bool) -> Shaped {
     shaped
 }
 
-/// Merge every assistant turn directly after another into it, the later
-/// turn's stop standing and the origin kept only when both turns share it,
-/// so no provider replays another's native blocks; whether any was merged.
+/// Merge every assistant turn directly after another into it, as
+/// [`AssistantMessage::absorb`] says; whether any was merged.
 fn merge_turns(shaped: &mut Shaped) -> bool {
     let before = shaped.messages.len();
     let mut messages: Vec<Message> = Vec::with_capacity(before);
@@ -358,11 +357,7 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
         if let Message::Assistant(turn) = &mut message
             && let Some(Message::Assistant(previous)) = messages.last_mut()
         {
-            if previous.origin != turn.origin {
-                previous.origin = None;
-            }
-            previous.content.append(&mut turn.content);
-            previous.stop = turn.stop.take();
+            previous.absorb(std::mem::take(turn));
             if let Some(into) = sources.last_mut() {
                 into.append(&mut from);
             }

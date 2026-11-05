@@ -1067,11 +1067,7 @@ fn alternated(history: Vec<Message>) -> Vec<Message> {
                 previous.extend(content);
             }
             (Message::Assistant(turn), Some(Message::Assistant(previous))) => {
-                if previous.origin != turn.origin {
-                    previous.origin = None;
-                }
-                previous.stop = turn.stop;
-                previous.content.extend(turn.content);
+                previous.absorb(turn);
             }
             (message, _) => {
                 alternated.append(&mut held);

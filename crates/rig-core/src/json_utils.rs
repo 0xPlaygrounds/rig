@@ -13,31 +13,49 @@ pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 
-/// The numeric order of two JSON numbers, exact for every pair: integers
-/// compare as integers and an integer against a float rounds neither, so
-/// `5` equals `5.0` but `2^53 + 1` does not equal `2^53` as a float.
+/// The numeric order of two JSON numbers: integers compare as integers and
+/// an integer against a float rounds neither, so `5` equals `5.0` but
+/// `2^53 + 1` does not equal `2^53` as a float. With serde_json's
+/// `arbitrary_precision`, a number too wide for `i128` or `f64` compares by
+/// its rounded value, and a tie against it is `None`, never equal, unless
+/// the two are the same literal.
 pub(crate) fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) -> Option<Ordering> {
-    let integer = |n: &serde_json::Number| {
-        n.as_i64()
-            .map(i128::from)
-            .or_else(|| n.as_u64().map(i128::from))
-    };
-    match (integer(a), integer(b)) {
-        (Some(a), Some(b)) => Some(a.cmp(&b)),
-        (Some(a), None) => compare_integer_float(a, b.as_f64()?),
-        (None, Some(b)) => compare_integer_float(b, a.as_f64()?).map(Ordering::reverse),
-        (None, None) => a.as_f64()?.partial_cmp(&b.as_f64()?),
+    if a == b {
+        return Some(Ordering::Equal);
     }
+    let ordering = match (exact_integer(a), exact_integer(b)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        (Some(a), None) => compare_integer_float(a, b.as_f64()?)?,
+        (None, Some(b)) => compare_integer_float(b, a.as_f64()?)?.reverse(),
+        (None, None) => a.as_f64()?.partial_cmp(&b.as_f64()?)?,
+    };
+    let exact = |n: &serde_json::Number| n.is_f64() || exact_integer(n).is_some();
+    (ordering.is_ne() || (exact(a) && exact(b))).then_some(ordering)
 }
 
-/// `integer` against `float` without rounding. Every JSON integer lies in
-/// [-2^63, 2^64), where a float's whole part converts to `i128` exactly; the
-/// bounds are float literals because `u64::MAX as f64` rounds up to 2^64.
+/// `number` as an integer, when it is written as one that fits `i128`.
+/// Only `arbitrary_precision` holds one outside `i64` and `u64`.
+fn exact_integer(number: &serde_json::Number) -> Option<i128> {
+    number
+        .as_i64()
+        .map(i128::from)
+        .or_else(|| number.as_u64().map(i128::from))
+        .or_else(|| {
+            (!number.is_f64())
+                .then(|| number.to_string().parse().ok())
+                .flatten()
+        })
+}
+
+/// `integer` against `float` without rounding. Inside `i128`'s range a
+/// float's whole part converts exactly. The bound is a literal because
+/// `i128::MAX as f64` rounds up to it.
 fn compare_integer_float(integer: i128, float: f64) -> Option<Ordering> {
-    if float < -9_223_372_036_854_775_808.0 {
+    const LIMIT: f64 = 170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    if float < -LIMIT {
         return Some(Ordering::Greater);
     }
-    if float >= 18_446_744_073_709_551_616.0 {
+    if float >= LIMIT {
         return Some(Ordering::Less);
     }
     match integer.cmp(&(float.trunc() as i128)) {

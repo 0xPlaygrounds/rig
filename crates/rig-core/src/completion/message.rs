@@ -105,6 +105,31 @@ impl AssistantMessage {
         self
     }
 
+    /// Appends `later`, the turn directly after this one: its blocks follow
+    /// these and its stop stands. The merged turn keeps an origin only while
+    /// replay can trust it for every block: both turns match on what replay
+    /// compares (model and context, not one reply's ids), or the turn with
+    /// no origin holds no provider data. Otherwise it replays canonically.
+    pub(crate) fn absorb(&mut self, mut later: Self) {
+        let provider_data = |turn: &Self| {
+            turn.content.iter().any(|block| {
+                block.native().is_some() || matches!(block, AssistantContent::Opaque(_))
+            })
+        };
+        self.origin = match (self.origin.take(), later.origin.take()) {
+            (Some(first), Some(second)) => {
+                (first.same_model(&second.api, &second.provider, &second.model)
+                    && first.context == second.context)
+                    .then_some(first)
+            }
+            (Some(origin), None) => (!provider_data(&later)).then_some(origin),
+            (None, Some(origin)) => (!provider_data(self)).then_some(origin),
+            (None, None) => None,
+        };
+        self.content.append(&mut later.content);
+        self.stop = later.stop;
+    }
+
     /// The tool calls, in order.
     pub fn tool_calls(&self) -> impl Iterator<Item = &ToolCall> {
         self.content.iter().filter_map(|part| match part {
