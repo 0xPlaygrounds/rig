@@ -72,6 +72,28 @@ fn an_args_schema_accepts_well_typed_arguments() {
     }
 }
 
+#[derive(Deserialize, JsonSchema)]
+#[allow(dead_code)]
+struct Nullable {
+    samples: Vec<Option<u32>>,
+    updates: std::collections::BTreeMap<String, Option<String>>,
+    pair: (Option<bool>, u32),
+    limit: Option<Vec<Option<u32>>>,
+}
+
+#[test]
+fn only_an_omittable_property_loses_its_nullability() {
+    let schema = args_schema::<Nullable>();
+    let value = json!({"samples": [1, null], "updates": {"a": null}, "pair": [null, 2],
+        "limit": [null]});
+    assert_eq!(validate(&schema, &value), Ok(()), "{schema}");
+    assert_eq!(
+        schema["properties"]["limit"]["type"],
+        json!("array"),
+        "{schema}"
+    );
+}
+
 #[test]
 fn problems_are_reported_at_their_pointers() {
     let schema = args_schema::<Args>();
@@ -139,6 +161,24 @@ fn an_integer_is_a_whole_number_a_64_bit_integer_holds() {
         problems(&text, &json!(1e30)),
         ["expected a string, got a number"]
     );
+}
+
+#[test]
+fn bounds_and_const_compare_large_integers_exactly() {
+    let below = json!(9_007_199_254_740_992_u64);
+    let above = json!(9_007_199_254_740_993_u64);
+    let fits = |schema: Value, value: &Value| validate(&schema, value).is_ok();
+    assert!(!fits(json!({"maximum": below}), &above));
+    assert!(fits(json!({"exclusiveMinimum": below}), &above));
+    assert!(!fits(json!({"minimum": above}), &below));
+    assert!(fits(
+        json!({"exclusiveMaximum": 18_446_744_073_709_551_616.0}),
+        &json!(u64::MAX)
+    ));
+    assert!(fits(json!({"exclusiveMinimum": -3.5}), &json!(-3)));
+    assert!(fits(json!({"maximum": 5.0}), &json!(5)));
+    assert!(!fits(json!({"const": 9_007_199_254_740_992.0}), &above));
+    assert!(fits(json!({"enum": [5.0]}), &json!(5)));
 }
 
 #[test]

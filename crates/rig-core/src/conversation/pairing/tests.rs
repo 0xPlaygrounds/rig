@@ -358,6 +358,58 @@ fn a_window_starts_past_results_whose_calls_it_cuts_off() {
     assert_eq!(safe_start(&history, 9), 6);
 }
 
+#[test]
+fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
+    use crate::message::{AssistantMessage, Fingerprint, Origin};
+    let anthropic = Origin::new("messages", "anthropic", "claude");
+    let gemini = Origin::new("generate_content", "gemini", "gemini-pro");
+    let mut next_reply = anthropic.clone();
+    next_reply.response_id = Some("msg_b".to_owned());
+    let mut other_context = anthropic.clone();
+    other_context.context = Some(Fingerprint::of_canonical(&"tools"));
+    let turn = |origin: Option<&Origin>| {
+        let block = AssistantContent::text("a").with_native(serde_json::json!({"text": "a"}));
+        Message::Assistant(AssistantMessage::new(vec![block]).with_origin(origin.cloned()))
+    };
+    let first = Some(&anthropic);
+    for (origins, expected) in [
+        (vec![first, first], vec![first]),
+        (vec![first, Some(&next_reply)], vec![first]),
+        (vec![None, None], vec![None]),
+        (vec![first, Some(&gemini)], vec![first, Some(&gemini)]),
+        (
+            vec![first, Some(&other_context)],
+            vec![first, Some(&other_context)],
+        ),
+        (vec![first, None], vec![first, None]),
+        (vec![None, first], vec![None, first]),
+        (
+            vec![None, first, Some(&gemini)],
+            vec![None, first, Some(&gemini)],
+        ),
+        (
+            vec![first, None, Some(&gemini)],
+            vec![first, None, Some(&gemini)],
+        ),
+        (
+            vec![first, Some(&gemini), first],
+            vec![first, Some(&gemini), first],
+        ),
+    ] {
+        let turns: Vec<Message> = origins.iter().map(|origin| turn(*origin)).collect();
+        let repaired = repair(turns.clone()).messages;
+        let kept: Vec<Option<&Origin>> = repaired
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) => Some(turn.origin.as_ref()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kept, expected, "{turns:?}");
+        assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+    }
+}
+
 /// `normalize` repairs entries as `repair` repairs messages, keeping ids
 /// and leaving user entries apart: adjacent turns merge into the first's
 /// id, author and made-time with the later stop standing, an entry of
