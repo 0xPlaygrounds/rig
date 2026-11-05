@@ -16,6 +16,7 @@ fn index_with_filter_fields_selects_its_vector_field() -> anyhow::Result<()> {
             { "type": "vector", "path": "embedding", "numDimensions": 3, "similarity": "cosine" },
         ] },
     })?;
-    anyhow::ensure!(index.queryable);
+    let path = index.latest_definition.vector_path()?;
+    anyhow::ensure!(path == "embedding", "selected {path}");
     Ok(())
 }
