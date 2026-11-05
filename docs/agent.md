@@ -461,8 +461,10 @@ plugin = "hello::HelloPlugin"     # implements Plugin + Default
 A mistake in this file (a name rig does not know, an `extra` path that holds
 no crate, a file that is not TOML) or a `RIG_SOURCE` that is not a rig
 checkout is refused, naming it, and `rig` starts no agent until it is fixed:
-a build from before was built from other settings. A build that fails to
-compile instead starts the previous build, whose conversation is told why.
+a build from before was built from other settings. `rig plugin disable <name>`
+takes a name rig does not know out of the file. A build that fails to compile
+instead starts the previous build, whose conversation is told why, except
+under `rig -p`, which refuses with the compiler's errors on stderr.
 
 Turning a plugin on or off, or changing an `extra` crate, rebuilds the agent
 at the next start or `/reload`: only the generated crate compiles again, and
