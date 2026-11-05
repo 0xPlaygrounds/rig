@@ -12,7 +12,6 @@ use rig_harness::rig_core::{
 };
 use rig_reqwest::reqwest;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     future::Future,
     io::Write,
@@ -125,7 +124,7 @@ fn device_id(home: &Path) -> Result<String, Error> {
     }
     match options.open(&path) {
         Ok(mut file) => {
-            let id = format!("{:x}", Sha256::digest(uuid::Uuid::new_v4().as_bytes()));
+            let id = profile::sha256_hex(uuid::Uuid::new_v4().as_bytes());
             file.write_all(id.as_bytes())?;
             file.sync_all()?;
             Ok(id)
@@ -809,14 +808,10 @@ fn body(bytes: &[u8], device: &str, session: &str, account: Option<&str>) -> Res
     object.insert("system".into(), Value::Array(system));
     object.entry("tools").or_insert_with(|| json!([]));
     let derived_device = match account.filter(|a| !a.is_empty()) {
-        Some(account) => format!(
-            "{:x}",
-            Sha256::digest(format!("omp-claude-device-id-v2\0{device}\0{account}"))
-        ),
-        None => format!(
-            "{:x}",
-            Sha256::digest(format!("omp-claude-device-id-v1:{device}"))
-        ),
+        Some(account) => {
+            profile::sha256_hex(format!("omp-claude-device-id-v2\0{device}\0{account}"))
+        }
+        None => profile::sha256_hex(format!("omp-claude-device-id-v1:{device}")),
     };
     let mut identity = json!({"device_id":derived_device,"session_id":session});
     if let Some(account) = account.filter(|s| !s.is_empty()) {

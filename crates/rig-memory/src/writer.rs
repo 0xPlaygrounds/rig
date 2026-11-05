@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_core::conversation::{Change, ChangeRecord, Conversation, Lineage, MessageId};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use crate::blobs::{PutBlob, put_blob, read_blob, store_change};
 use crate::fork::turn_cut;
@@ -623,7 +622,7 @@ async fn set_aside_tail_async<S: crate::AsyncStore + ?Sized>(
         let log = log.to_owned();
         return Err(SessionError::Changed { log });
     };
-    let name = format!("recovered/{log}-{:x}.part", Sha256::digest(tail));
+    let name = format!("recovered/{log}-{}.part", crate::blobs::sha256_hex(tail));
     store.write_file_async(&name, tail).await?;
     let replaced = store.replace_log_async(log, kept + cut, prefix).await;
     refused(log, replaced)?;

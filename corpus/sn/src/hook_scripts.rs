@@ -613,7 +613,10 @@ fn load(
                 continue;
             }
         };
-        let digest = format!("{:x}", Sha256::digest(text.as_bytes()));
+        let digest: String = Sha256::digest(text.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
         let known = remembered.get(&path.display().to_string()) == Some(&digest);
         let trust = match (project, flagged || known, answerers.can_answer(None)) {
             (false, ..) | (true, true, _) => Trust::Trusted,

@@ -345,7 +345,7 @@ serde_yaml = "0.9"
 # 1.0.54: the `float_roundtrip` feature.
 serde_json = "1.0.54"
 safetensors = "0.8"
-sha2 = "0.10"
+sha2 = "0.11.1"
 signal-hook = "0.4.6"
 similar = "3.2.1"
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
