@@ -264,7 +264,13 @@ async fn exhausted_retries_return_last_error() {
         .await
         .expect_err("extraction should fail");
 
-    assert!(matches!(err, StructuredOutputError::EmptyResponse));
+    assert!(
+        matches!(&err, StructuredOutputError::Prompt(_))
+            && err
+                .to_string()
+                .contains("does not satisfy the output schema"),
+        "{err}"
+    );
 }
 
 #[tokio::test]

@@ -440,17 +440,25 @@ async fn typed_prompt_response_preserves_completion_calls() {
 
 #[tokio::test]
 async fn typed_prompt_deserialization_error_keeps_the_model_output() {
-    let model = MockCompletionModel::from_turns([MockTurn::text("the answer is ok")]);
+    // The run's schema check ignores `format`, so an address that is not
+    // one passes it; refusing it is the typed read's job.
+    #[derive(Debug, Deserialize, JsonSchema)]
+    struct Address {
+        #[allow(dead_code)]
+        value: std::net::IpAddr,
+    }
+    let output = r#"{"value": "not an address"}"#;
+    let model = MockCompletionModel::from_turns([MockTurn::text(output)]);
     let agent = AgentBuilder::new(model).build();
 
     let error = agent
-        .prompt_typed::<TypedAnswer>("return typed json")
+        .prompt_typed::<Address>("return typed json")
         .await
-        .expect_err("prose is not a TypedAnswer");
+        .expect_err("the text is not an address");
 
     match error {
-        StructuredOutputError::Deserialization { output, .. } => {
-            assert_eq!(output, "the answer is ok");
+        StructuredOutputError::Deserialization { output: got, .. } => {
+            assert_eq!(got, output);
         }
         other => panic!("expected a deserialization error, got {other:?}"),
     }

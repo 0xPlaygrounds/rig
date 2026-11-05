@@ -95,6 +95,11 @@ fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &s
         (Err(RunFailure::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
             String::new()
         }
+        (Err(RunFailure::Report(report)), Ending::MissesSchema)
+            if corpus::misses_schema(&report) =>
+        {
+            String::new()
+        }
         (other, ending) => panic!("{fixture}: ends in {ending:?}, got {other:?}"),
     }
 }

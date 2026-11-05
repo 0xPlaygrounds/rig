@@ -271,6 +271,27 @@ pub enum Ending {
     /// `PromptError::Report` (or a stream's `Report` item) of this kind: a
     /// layer denied or replaced what the run needed (Matrices P and T).
     Failed(ErrorKind),
+    /// The run refused a final answer that misses its output schema, once
+    /// its output-retry budget was spent ([`misses_schema`]).
+    MissesSchema,
+}
+
+/// Whether `report` is a run's refusal of a final answer that misses its
+/// output schema.
+pub fn misses_schema(report: &ErrorReport) -> bool {
+    report.kind == ErrorKind::Response
+        && report
+            .message
+            .contains("does not satisfy the output schema")
+}
+
+/// [`misses_schema`] for a run's error, as the runner returns it.
+fn run_misses_schema(error: &PromptError) -> bool {
+    match error {
+        PromptError::Report(report) => misses_schema(report),
+        PromptError::Provider(error) => misses_schema(&ErrorReport::from(error)),
+        _ => false,
+    }
 }
 
 /// The producer's tool choice, as data.
@@ -2573,6 +2594,11 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     Err(PromptError::Provider(_)) if program.ending == Ending::ProviderError => {
                         failed_as_expected = true;
                     }
+                    Err(error)
+                        if program.ending == Ending::MissesSchema && run_misses_schema(&error) =>
+                    {
+                        failed_as_expected = true;
+                    }
                     Err(error) => {
                         panic!("the replayer answered every request it recognised: {error:?}")
                     }
@@ -2633,6 +2659,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
                 (Err(PromptError::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
                     None
                 }
+                (Err(error), Ending::MissesSchema) if run_misses_schema(&error) => None,
                 (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
                     if reason == expected =>
                 {
@@ -3029,6 +3056,7 @@ async fn resumed_tail(
         (Ok(response), Ending::Answer) => Ok(Some(response)),
         (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns)
         | (Err(PromptError::UnknownToolCall { .. }), Ending::UnknownToolCall) => Ok(None),
+        (Err(error), Ending::MissesSchema) if run_misses_schema(&error) => Ok(None),
         (Err(PromptError::Cancelled { reason, .. }), Ending::Cancelled(expected))
             if reason == expected =>
         {
@@ -3288,6 +3316,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
         let step = match (run.next_step(), program.ending) {
             (Ok(step), _) => step,
             (Err(PromptError::MaxTurns { .. }), Ending::MaxTurns) => break None,
+            (Err(error), Ending::MissesSchema) if run_misses_schema(&error) => break None,
             (Err(error), _) => panic!("a step: {error:?}"),
         };
         match step {

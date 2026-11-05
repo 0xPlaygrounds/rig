@@ -13,7 +13,33 @@
 use rig::http_client::DynHttpClient;
 use rig_test_support::bank;
 
+use crate::corpus::{Ending, Program};
 use crate::corpus_matrix::{Wire, agent::run_agent, cells, cells::Cell};
+
+/// `cell` over replies whose final answer misses its output schema: the run
+/// fails on that answer once its output-retry budget is spent.
+const fn misses_schema(cell: Cell) -> Cell {
+    Cell {
+        program: Program {
+            ending: Ending::MissesSchema,
+            ..cell.program
+        },
+        ..cell
+    }
+}
+
+/// [`misses_schema`] with a turn budget of `max_turns`, which leaves no turn
+/// to reprompt in.
+const fn misses_schema_within(cell: Cell, max_turns: usize) -> Cell {
+    let cell = misses_schema(cell);
+    Cell {
+        program: Program {
+            max_turns: Some(max_turns),
+            ..cell.program
+        },
+        ..cell
+    }
+}
 
 /// Run `cell` on rig-agent over `replies`, with every assertion the
 /// producer makes.
@@ -32,7 +58,7 @@ pub(crate) async fn produce<W, T>(
 /// recorded for the scenario (`bank::script`), or, marked `recorded`, over
 /// that scenario's own pinned replies (`bank::recorded`).
 macro_rules! cells {
-    ($($name:ident: $($pinned:ident)? ($wire:ident, $provider:literal, $scenario:literal, $cell:path);)*) => {
+    ($($name:ident: $($pinned:ident)? ($wire:ident, $provider:literal, $scenario:literal, $cell:expr);)*) => {
         $(
             #[tokio::test]
             async fn $name() {
@@ -93,16 +119,16 @@ cells! {
     layers_host_deny_over_host_bus: (venice, "venice", "corpus_matrix/layers_host_deny_over_host_bus", cells::LAYERS_HOST_DENY_OVER_HOST_BUS);
     layers_patch_beneath_hook_patch: (deepseek, "deepseek", "corpus_matrix/layers_patch_beneath_hook_patch", cells::LAYERS_PATCH_BENEATH_HOOK_PATCH);
     output_tool_unary: (doubleword, "doubleword", "corpus_matrix/output_tool_unary", cells::OUTPUT_TOOL_UNARY);
-    output_tool_streamed: (openai_chat, "openai", "corpus_matrix_chat/output_tool_streamed", cells::OUTPUT_TOOL_STREAMED);
-    output_prompted_unary: (gemini, "gemini", "corpus_matrix/output_prompted_unary", cells::OUTPUT_PROMPTED_UNARY);
-    output_prompted_streamed: (venice, "venice", "corpus_matrix/output_prompted_streamed", cells::OUTPUT_PROMPTED_STREAMED);
+    output_tool_streamed: (openai_chat, "openai", "corpus_matrix_chat/output_tool_streamed", misses_schema(cells::OUTPUT_TOOL_STREAMED));
+    output_prompted_unary: (gemini, "gemini", "corpus_matrix/output_prompted_unary", misses_schema(cells::OUTPUT_PROMPTED_UNARY));
+    output_prompted_streamed: (venice, "venice", "corpus_matrix/output_prompted_streamed", misses_schema(cells::OUTPUT_PROMPTED_STREAMED));
     output_tool_with_real_tool: (openai_responses, "openai", "corpus_matrix_responses/output_tool_with_real_tool", cells::OUTPUT_TOOL_WITH_REAL_TOOL);
-    output_prompted_with_real_tool: (deepseek, "deepseek", "corpus_matrix/output_prompted_with_real_tool", cells::OUTPUT_PROMPTED_WITH_REAL_TOOL);
+    output_prompted_with_real_tool: (deepseek, "deepseek", "corpus_matrix/output_prompted_with_real_tool", misses_schema_within(cells::OUTPUT_PROMPTED_WITH_REAL_TOOL, 2));
     output_tool_choice_specific_output: (doubleword, "doubleword", "corpus_matrix/output_tool_choice_specific_output", cells::OUTPUT_TOOL_CHOICE_SPECIFIC_OUTPUT);
     output_tool_choice_required: (gemini, "gemini", "corpus_matrix/output_tool_choice_required", cells::OUTPUT_TOOL_CHOICE_REQUIRED);
-    output_tool_under_none_degrades: (openai_chat, "openai", "corpus_matrix_chat/output_tool_under_none_degrades", cells::OUTPUT_TOOL_UNDER_NONE_DEGRADES);
+    output_tool_under_none_degrades: (openai_chat, "openai", "corpus_matrix_chat/output_tool_under_none_degrades", misses_schema(cells::OUTPUT_TOOL_UNDER_NONE_DEGRADES));
     shaping_tool_choice_required_first: (openai_responses, "openai", "corpus_matrix_responses/shaping_tool_choice_required_first", cells::SHAPING_TOOL_CHOICE_REQUIRED_FIRST);
-    shaping_tool_choice_none_on_committed_output: (venice, "venice", "corpus_matrix/shaping_tool_choice_none_on_committed_output", cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT);
+    shaping_tool_choice_none_on_committed_output: (venice, "venice", "corpus_matrix/shaping_tool_choice_none_on_committed_output", misses_schema(cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT));
     shaping_extra_context: (deepseek, "deepseek", "corpus_matrix/shaping_extra_context", cells::SHAPING_EXTRA_CONTEXT);
     shaping_extra_context_streamed: (doubleword, "doubleword", "corpus_matrix/shaping_extra_context_streamed", cells::SHAPING_EXTRA_CONTEXT_STREAMED);
     shaping_merged_three: (gemini, "gemini", "corpus_matrix/shaping_merged_three", cells::SHAPING_MERGED_THREE);
@@ -176,8 +202,8 @@ cells! {
 cells! {
     shaping_tool_choice_none_on_committed_output_doubleword: recorded (doubleword, "doubleword", "corpus_matrix/shaping_tool_choice_none_on_committed_output", cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT);
     shaping_tool_choice_none_on_committed_output_openai_chat: recorded (openai_chat, "openai", "corpus_matrix_chat/shaping_tool_choice_none_on_committed_output", cells::SHAPING_TOOL_CHOICE_NONE_ON_COMMITTED_OUTPUT);
-    output_tool_unary_venice: (venice, "venice", "corpus_matrix/output_tool_unary", cells::OUTPUT_TOOL_UNARY);
-    output_tool_streamed_venice: (venice, "venice", "corpus_matrix/output_tool_streamed", cells::OUTPUT_TOOL_STREAMED);
+    output_tool_unary_venice: (venice, "venice", "corpus_matrix/output_tool_unary", misses_schema(cells::OUTPUT_TOOL_UNARY));
+    output_tool_streamed_venice: (venice, "venice", "corpus_matrix/output_tool_streamed", misses_schema(cells::OUTPUT_TOOL_STREAMED));
     host_custom_twice_serial_gemini: (gemini, "gemini", "corpus_matrix/host_custom_twice_serial", cells::HOST_CUSTOM_TWICE_SERIAL);
     endings_text_delta_stop_deepseek: (deepseek, "deepseek", "corpus_matrix/endings_text_delta_stop", cells::ENDINGS_TEXT_DELTA_STOP);
 }
