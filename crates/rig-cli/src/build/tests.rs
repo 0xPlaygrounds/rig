@@ -140,7 +140,10 @@ fn fake_build(
         .args(["-c", "printf \"$0\" >&2", stderr])
         .stderr(Stdio::piped());
     let ran = log.run(cargo).map(|status| status.success());
-    let told = log.fail("cargo could not build the agent".to_owned());
+    let told = log.fail(
+        FailedAt::Build,
+        "cargo could not build the agent".to_owned(),
+    );
     let logged = fs::read_to_string(home.build_log()).unwrap_or_default();
     fs::remove_dir_all(&root).ok();
     assert!(matches!(ran, Ok(true)), "{ran:?}");

@@ -40,7 +40,7 @@ use rig_harness_protocol::{
     RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
 };
 
-use super::build::{self, BuildFailure, BuildOutput, Staging, child};
+use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
 use super::{Result, locks};
 
 mod stop;
@@ -785,8 +785,10 @@ fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
 /// Builds before every start, staging for this launcher, its output as
 /// `output` says; cargo does no work when nothing changed. With no good
 /// build yet, the build is staged even if it was rejected before, so each
-/// start retries it. A failed build with an older binary at hand is
-/// returned, for that binary to start with.
+/// start retries it. A build that failed with an older binary at hand is
+/// returned, for that binary to start with; settings that name no build
+/// ([`FailedAt::Settings`]) refuse the start instead, since that binary
+/// was built from other settings.
 fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Option<BuildFailure>> {
     let first_run = !home.staged().exists() && !home.good().exists();
     if output == BuildOutput::Live {
@@ -802,6 +804,7 @@ fn rebuild(home: &Home, session: &SessionId, output: BuildOutput) -> Result<Opti
     };
     match build::compile(home, &home.staged_for(session), staging, output) {
         Ok(()) => Ok(None),
+        Err(failure) if failure.at == FailedAt::Settings => Err(failure.reason.into()),
         Err(failure) if first_run => Err(failure.told(output).into()),
         Err(failure) => {
             let told = failure.told(output);

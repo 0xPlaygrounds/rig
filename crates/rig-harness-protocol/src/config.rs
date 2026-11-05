@@ -430,12 +430,21 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
     let extras: Vec<&str> = (changes.extra.iter())
         .map(|extra| extra.plugin.as_str())
         .collect();
-    for plugin in changes.enable.iter().chain(&changes.disable) {
-        if built_in(plugin).is_none() && !extras.contains(&plugin.as_str()) {
+    for (list, plugins) in [("enable", &changes.enable), ("disable", &changes.disable)] {
+        if let Some(plugin) = (plugins.iter())
+            .find(|plugin| built_in(plugin).is_none() && !extras.contains(&plugin.as_str()))
+        {
             return Err(Error::Table {
                 path: home.path.clone(),
                 table: "plugins".to_owned(),
-                problem: unknown(plugin),
+                problem: format!(
+                    "unknown plugin `{plugin}` in `{list}`: take it out{}",
+                    if list == "enable" {
+                        ", or add a [[plugins.extra]] table for its crate"
+                    } else {
+                        ""
+                    }
+                ),
             });
         }
     }
@@ -474,11 +483,6 @@ pub fn plugins(home: &SettingsFile) -> Result<Plugins, Error> {
 /// As [`plugins`], and when the file cannot be read or is not TOML.
 pub fn chosen(home: &crate::Home) -> Result<Plugins, Error> {
     plugins(&SettingsFile::read(&home.settings())?)
-}
-
-/// Why `plugin` is refused when nothing provides it.
-fn unknown(plugin: &str) -> String {
-    format!("no plugin `{plugin}`; `rig plugin list` shows them")
 }
 
 /// The `[plugins]` table of `file`.

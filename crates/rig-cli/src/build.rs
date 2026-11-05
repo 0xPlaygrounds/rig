@@ -61,12 +61,24 @@ const BLOCKED_QUIET: Duration = Duration::from_secs(3);
 /// first error on.
 const ERROR_LINES: usize = 40;
 
-/// Why a build failed: the reason, the first compiler errors, and the log
-/// with the whole output. Its [`Display`](fmt::Display) is one line, for
+/// Which step of a build failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailedAt {
+    /// Reading what to build: `settings.toml` or `RIG_SOURCE` is wrong, so
+    /// no build of these settings exists until the user fixes them.
+    Settings,
+    /// Building it, or the new build's start.
+    Build,
+}
+
+/// Why a build failed: the step, the reason, the first compiler errors,
+/// and the log with the whole output. Its [`Display`](fmt::Display) is one line, for
 /// a terminal that showed cargo's output already; [`Self::details`] adds
 /// the errors.
 #[derive(Debug)]
 pub struct BuildFailure {
+    /// The step that failed.
+    pub at: FailedAt,
     /// What failed, such as `cargo could not build the agent (exit
     /// status: 101)` or a `settings.toml` mistake.
     pub reason: String,
@@ -126,19 +138,33 @@ pub fn compile(
     output: BuildOutput,
 ) -> std::result::Result<(), BuildFailure> {
     let mut log = BuildLog::create(home, output, Box::new(std::io::stderr()));
-    match compile_logged(home, staged, staging, &mut log) {
+    let wanted = (|| -> Result<_> {
+        let plugins = config::chosen(home)?;
+        local_crates(home, &plugins)?;
+        Ok((plugins, RigSource::detect()?))
+    })();
+    let (plugins, source) = match wanted {
+        Ok(wanted) => wanted,
+        Err(failure) => return Err(log.fail(FailedAt::Settings, failure.to_string())),
+    };
+    match compile_logged(home, &plugins, &source, staged, staging, &mut log) {
         Ok(()) => {
             log.record("build succeeded");
             Ok(())
         }
-        Err(failure) => Err(log.fail(failure.to_string())),
+        Err(failure) => Err(log.fail(FailedAt::Build, failure.to_string())),
     }
 }
 
-fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildLog) -> Result<()> {
-    let plugins = config::chosen(home)?;
-    let source = RigSource::detect()?;
-    project::generate(home, &plugins, &source)?;
+fn compile_logged(
+    home: &Home,
+    plugins: &config::Plugins,
+    source: &RigSource,
+    staged: &Path,
+    staging: Staging,
+    log: &mut BuildLog,
+) -> Result<()> {
+    project::generate(home, plugins, source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");
     let mut command = cargo(home);
@@ -154,12 +180,12 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     let checked = home.project().join("Cargo.lock.checked");
     if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
         log.say("Resolving dependencies…");
-        let rig_crates = project::rig_crates(&plugins, &source);
+        let rig_crates = project::rig_crates(plugins, source);
         check_bevy(
             home,
-            &plugins,
+            plugins,
             &rig_crates,
-            &project::rig_version(&source),
+            &project::rig_version(source),
             log,
         )?;
         if let Some(lock) = lock {
@@ -170,6 +196,27 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
         return Err(format!("cargo could not build the agent ({status})").into());
     }
     stage(home, staged, staging)
+}
+
+/// Checks that every `[[plugins.extra]]` crate that is on and comes from a
+/// `path` is there: a path that holds no crate is a mistake in the
+/// settings, not in the plugin's code.
+fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
+    for extra in plugins.extras_on() {
+        if let config::Source::Path(path) = &extra.source
+            && !path.join("Cargo.toml").is_file()
+        {
+            return Err(format!(
+                "{} [[plugins.extra]] `{}`: {} holds no Cargo.toml; fix its `path`, \
+                 or take the table out",
+                home.settings().display(),
+                extra.plugin,
+                path.display()
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// `rig build`, holding the root's build lock. It always stages, so it also
@@ -456,13 +503,14 @@ impl BuildLog {
     }
 
     /// Ends the log with `reason` and makes it the [`BuildFailure`].
-    fn fail(mut self, reason: String) -> BuildFailure {
+    fn fail(mut self, at: FailedAt, reason: String) -> BuildFailure {
         let errors = first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
             .into_iter()
             .map(str::to_owned)
             .collect();
         self.record(&format!("build failed: {reason}"));
         BuildFailure {
+            at,
             reason,
             errors,
             log: self.path,

@@ -351,6 +351,40 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
 }
 
+/// A start whose settings name a plugin rig does not know, or a local
+/// crate that is not there, refuses, naming the mistake and the fix, and
+/// runs no build: the previous one was built from other settings.
+#[cfg(unix)]
+#[test]
+fn an_unknown_plugin_refuses_the_start_instead_of_running_the_previous_build() {
+    let plugin = "rig_basics::gone::GonePlugin";
+    for (name, settings, said) in [
+        (
+            "unknown-plugin",
+            format!("[plugins]\nenable = [\"{plugin}\"]\n"),
+            format!("unknown plugin `{plugin}`"),
+        ),
+        (
+            "missing-crate",
+            "[[plugins.extra]]\ncrate = \"gone\"\npath = \"plugins/gone\"\nplugin = \"gone::GonePlugin\"\n"
+                .to_owned(),
+            "holds no Cargo.toml".to_owned(),
+        ),
+    ] {
+        let home = builds(name, "exit 0", "exit 0");
+        fs::write(home.settings(), settings).ok();
+        let started =
+            run(&home, &["-p".to_owned(), "hi".to_owned()]).map_err(|why| why.to_string());
+        let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
+        fs::remove_dir_all(home.root()).ok();
+        assert_eq!(ran, "", "a build ran for {name}");
+        assert!(
+            matches!(&started, Err(why) if why.contains(&said) && why.contains("take")),
+            "{started:?}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_build_without_a_report_is_described_once_and_the_command_line_read_against_it() {
