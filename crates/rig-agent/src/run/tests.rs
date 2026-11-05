@@ -3,6 +3,7 @@ use rig_core::conversation::Author;
 use rig_core::json_utils::remove_preserving_order;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
+use rig_core::tool::validate::Problem;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -2292,9 +2293,15 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
 /// A run that asks for a schema never ends on an answer that misses it.
 /// Without an output tool (Native on a provider that drops the schema, or
 /// Prompted) it reprompts without naming a tool while the budget lasts, then
-/// fails. Field types count, in text and in output-tool arguments alike.
+/// fails. Field types count, in text and in output-tool arguments alike. The
+/// error carries the whole answer, the problems and the history, so a caller
+/// can log, repair or retry without parsing a message.
 #[test]
 fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
+    let problem = |at: &str, what: &str| Problem {
+        at: at.to_owned(),
+        what: what.to_owned(),
+    };
     let schema = json!({"type": "object", "required": ["answer"]});
     let mut run = AgentRun::new("summarize")
         .max_turns(3)
@@ -2314,12 +2321,19 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
             .expect("model_response should succeed"),
     );
     let error = run.next_step().expect_err("the mismatch fails the run");
-    assert!(
-        error
-            .to_string()
-            .contains(r#"does not satisfy the output schema (/answer: missing): {"other": 1}"#),
-        "{error}"
-    );
+    let PromptError::OutputSchemaMismatch {
+        output,
+        output_tool,
+        problems,
+        chat_history,
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(output, r#"{"other": 1}"#);
+    assert_eq!(output_tool, None);
+    assert_eq!(problems, [problem("/answer", "missing")]);
+    assert_eq!(chat_history, run.full_history());
 
     let typed = json!({
         "type": "object",
@@ -2333,19 +2347,22 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
         run.model_response(text_turn(&long_answer))
             .expect("model_response should succeed"),
     );
-    let error = run
-        .next_step()
-        .expect_err("a mistyped field fails the run")
-        .to_string();
+    let error = run.next_step().expect_err("a mistyped field fails the run");
+    let message = error.to_string();
     assert!(
-        error.contains(
-            r#"does not satisfy the output schema (/answer: expected an integer, got a string): {"answer": "wrong""#
-        ),
-        "{error}"
+        message.ends_with('…') && message.chars().count() < 400,
+        "the message cuts the answer short: {message}"
     );
-    assert!(
-        error.ends_with('…') && error.chars().count() < 400,
-        "the echoed answer is cut short: {error}"
+    let PromptError::OutputSchemaMismatch {
+        output, problems, ..
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(output, long_answer, "the field keeps the whole answer");
+    assert_eq!(
+        problems,
+        [problem("/answer", "expected an integer, got a string")]
     );
 
     let mut run = AgentRun::new("summarize")
@@ -2353,16 +2370,29 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
         .with_output_validation(Some(typed), 0);
     expect_call_model(&mut run);
     expect_continue(
-        run.model_response(output_tool_turn(r#"{"answer": "wrong"}"#))
+        run.model_response(output_tool_turn(&long_answer))
             .expect("model_response should succeed"),
     );
     let error = run
         .next_step()
         .expect_err("mistyped arguments fail the run");
-    assert!(
-        error
-            .to_string()
-            .contains("/answer: expected an integer, got a string"),
-        "{error}"
+    let PromptError::OutputSchemaMismatch {
+        output,
+        output_tool,
+        problems,
+        ..
+    } = error
+    else {
+        panic!("expected OutputSchemaMismatch, got {error:?}");
+    };
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&output).ok(),
+        serde_json::from_str::<serde_json::Value>(&long_answer).ok(),
+        "the field keeps the whole arguments"
+    );
+    assert_eq!(output_tool.as_deref(), Some("final_result"));
+    assert_eq!(
+        problems,
+        [problem("/answer", "expected an integer, got a string")]
     );
 }
