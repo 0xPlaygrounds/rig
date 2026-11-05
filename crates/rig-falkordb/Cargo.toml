@@ -1,0 +1,28 @@
+[package]
+name = "rig-falkordb"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "FalkorDB implementation of a Rig vector store."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+falkordb = { workspace = true, features = ["tokio", "serde"] }
+futures = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.46.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.46.0", features = ["reqwest", "derive"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "vector_search_simple"

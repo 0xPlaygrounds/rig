@@ -226,6 +226,7 @@ companion_modules! {
     /// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models,
     /// and YOLOv8 pose estimation.
     candle = rig_candle ["candle"];
+    falkordb = rig_falkordb ["falkordb"];
     fastembed = rig_fastembed [
         "fastembed",
         "fastembed-hf-hub",

@@ -15,6 +15,7 @@ name = "integrations"
 path = "integrations.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 rig = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 futures = { workspace = true }
@@ -36,6 +37,7 @@ tokio-rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [features]
 default = []
+falkordb = ["rig/falkordb", "dep:testcontainers"]
 lancedb = ["rig/lancedb", "dep:lancedb", "dep:arrow-array", "dep:assert_fs"]
 mongodb = ["rig/mongodb", "dep:mongodb", "dep:testcontainers"]
 neo4j = ["rig/neo4j", "dep:neo4rs", "dep:testcontainers"]

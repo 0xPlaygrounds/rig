@@ -790,6 +790,7 @@ configured Bedrock models).
 # all enabled non-ignored integration tests
 cargo test -p rig-service-tests --all-features --test integrations
 # one feature-gated group
+cargo test -p rig-service-tests --features falkordb --test integrations falkordb -- --nocapture
 cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- --nocapture
 cargo test -p rig-service-tests --features mongodb --test integrations mongodb -- --nocapture
 cargo test -p rig-service-tests --features sqlite --test integrations sqlite -- --nocapture

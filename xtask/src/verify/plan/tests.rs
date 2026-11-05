@@ -73,6 +73,18 @@ fn a_store_change_runs_the_store_its_facade_feature_and_its_docker_suite_only() 
 }
 
 #[test]
+fn a_falkordb_change_runs_the_store_facade_and_docker_suite() {
+    let plan = planned(&["crates/rig-falkordb/src/lib.rs"]);
+    let tests = packages(&plan, "tests");
+    assert_eq!(tests.get("rig-falkordb"), Some(&Features::All));
+    assert_eq!(tests.get("rig"), Some(&with(&["falkordb"])));
+    assert_eq!(
+        packages(&plan, "service-tests").get("rig-service-tests"),
+        Some(&with(&["falkordb"]))
+    );
+}
+
+#[test]
 fn a_shared_input_or_a_path_in_no_package_runs_everything() {
     let full = full(&checks::all());
     for path in [
@@ -146,7 +158,9 @@ fn a_core_change_runs_the_isolated_graphs_and_every_store() {
     else {
         panic!("the service suite runs with its store features");
     };
-    for store in ["mongodb", "neo4j", "postgres", "qdrant", "sqlite"] {
+    for store in [
+        "falkordb", "mongodb", "neo4j", "postgres", "qdrant", "sqlite",
+    ] {
         assert!(stores.contains(store), "{store}: {stores:?}");
     }
 }
