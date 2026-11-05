@@ -23,6 +23,9 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchIndex {
@@ -59,14 +62,22 @@ struct LatestDefinition {
     fields: Vec<Field>,
 }
 
+impl LatestDefinition {
+    fn embedded_field(self) -> Result<String, VectorStoreError> {
+        self.fields
+            .into_iter()
+            .find(|field| field.field_type == "vector")
+            .map(|field| field.path)
+            .ok_or_else(|| VectorStoreError::DatastoreError("No vector fields found".into()))
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Field {
     #[serde(rename = "type")]
     field_type: String,
     path: String,
-    num_dimensions: i32,
-    similarity: String,
 }
 
 /// Vector index over a MongoDB collection.
@@ -241,9 +252,9 @@ where
     C: Send + Sync,
 {
     /// Creates an index handle after confirming the named search index exists and
-    /// is queryable. The embedded field is taken from the index's first defined
+    /// is queryable. The embedded field is taken from the index's first vector
     /// field. Errors when the index is missing, not queryable, or defines no
-    /// fields. See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/)
+    /// vector fields. See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/)
     /// on creating vector indexes.
     ///
     /// Appends `rig-mongodb` and its version to the collection's client
@@ -271,15 +282,7 @@ where
             ));
         }
 
-        let embedded_field = search_index
-            .latest_definition
-            .fields
-            .into_iter()
-            .map(|field| field.path)
-            .next()
-            .ok_or(VectorStoreError::DatastoreError(
-                "No embedded fields found".into(),
-            ))?;
+        let embedded_field = search_index.latest_definition.embedded_field()?;
 
         Ok(Self {
             collection,
