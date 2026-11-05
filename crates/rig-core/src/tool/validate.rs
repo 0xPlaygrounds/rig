@@ -45,7 +45,7 @@
 //! `patternProperties` (and so `additionalProperties` beside it, since
 //! which keys a pattern allows is not checked), and any keyword not listed.
 
-use std::fmt;
+use std::{cmp::Ordering, fmt};
 
 use serde_json::{Map, Number, Value};
 
@@ -355,23 +355,50 @@ fn count(
 
 /// The problems of a number against `schema`'s bounds.
 fn bounds(schema: &Map<String, Value>, number: &Number, at: &str) -> Vec<Problem> {
-    let Some(n) = number.as_f64() else {
-        return Vec::new();
-    };
-    let checks: [(&str, &str, fn(f64, f64) -> bool); 4] = [
-        ("minimum", "at least", |n, bound| n >= bound),
-        ("maximum", "at most", |n, bound| n <= bound),
-        ("exclusiveMinimum", "more than", |n, bound| n > bound),
-        ("exclusiveMaximum", "less than", |n, bound| n < bound),
+    let checks: [(&str, &str, fn(Ordering) -> bool); 4] = [
+        ("minimum", "at least", Ordering::is_ge),
+        ("maximum", "at most", Ordering::is_le),
+        ("exclusiveMinimum", "more than", Ordering::is_gt),
+        ("exclusiveMaximum", "less than", Ordering::is_lt),
     ];
     checks
         .into_iter()
         .filter_map(|(key, words, fits)| {
-            let bound = schema.get(key).filter(|bound| bound.is_number())?;
-            let fit = bound.as_f64().is_none_or(|bound| fits(n, bound));
+            let bound = schema.get(key)?.as_number()?;
+            let fit = compare_numbers(number, bound).is_none_or(fits);
             (!fit).then(|| problem(at, format!("expected {words} {bound}, got {number}")))
         })
         .collect()
+}
+
+fn compare_numbers(left: &Number, right: &Number) -> Option<Ordering> {
+    let integer = |number: &Number| {
+        number
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| number.as_u64().map(i128::from))
+    };
+    match (integer(left), integer(right)) {
+        (Some(left), Some(right)) => Some(left.cmp(&right)),
+        (Some(left), None) => compare_integer_float(left, right.as_f64()?),
+        (None, Some(right)) => compare_integer_float(right, left.as_f64()?).map(Ordering::reverse),
+        (None, None) => left.as_f64()?.partial_cmp(&right.as_f64()?),
+    }
+}
+
+fn compare_integer_float(integer: i128, float: f64) -> Option<Ordering> {
+    // JSON integers fit in this range. Check it before truncating so a
+    // rounded float at the unsigned boundary cannot compare equal.
+    if float < i64::MIN as f64 {
+        return Some(Ordering::Greater);
+    }
+    if float >= 18_446_744_073_709_551_616.0 {
+        return Some(Ordering::Less);
+    }
+    match integer.cmp(&(float as i128)) {
+        Ordering::Equal => 0.0_f64.partial_cmp(&float.fract()),
+        ordering => Some(ordering),
+    }
 }
 
 /// Whether `value` is of the type `types` names, or one of those it lists.

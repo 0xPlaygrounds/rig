@@ -141,6 +141,92 @@ fn an_integer_is_a_whole_number_a_64_bit_integer_holds() {
     );
 }
 
+fn check_bounds(number: Value, bound: Value, ordering: std::cmp::Ordering) {
+    use std::cmp::Ordering::{Greater, Less};
+
+    for (number, bound, ordering) in [
+        (&number, &bound, ordering),
+        (&bound, &number, ordering.reverse()),
+    ] {
+        for (keyword, fits) in [
+            ("minimum", ordering != Less),
+            ("maximum", ordering != Greater),
+            ("exclusiveMinimum", ordering == Greater),
+            ("exclusiveMaximum", ordering == Less),
+        ] {
+            let schema = json!({"type": "number", (keyword): bound});
+            assert_eq!(
+                validate(&schema, number).is_ok(),
+                fits,
+                "{number} against {schema} ({ordering:?})"
+            );
+        }
+    }
+}
+
+#[test]
+fn bounds_preserve_exact_signed_and_unsigned_integers() {
+    use std::cmp::Ordering::{Equal, Less};
+
+    for (lower, upper) in [
+        (
+            json!(9_007_199_254_740_992_u64),
+            json!(9_007_199_254_740_993_u64),
+        ),
+        (
+            json!(-9_007_199_254_740_993_i64),
+            json!(-9_007_199_254_740_992_i64),
+        ),
+        (json!(i64::MIN), json!(i64::MIN + 1)),
+        (json!(i64::MAX), json!(i64::MAX as u64 + 1)),
+        (json!(u64::MAX - 1), json!(u64::MAX)),
+        (json!(-1), json!(u64::MAX)),
+    ] {
+        check_bounds(lower.clone(), lower.clone(), Equal);
+        check_bounds(upper.clone(), upper.clone(), Equal);
+        check_bounds(lower, upper, Less);
+    }
+}
+
+#[test]
+fn bounds_compare_integer_and_float_values_without_rounding_integers() {
+    use std::cmp::Ordering::{Equal, Less};
+
+    for (lower, upper) in [
+        (
+            json!(9_007_199_254_740_992.0),
+            json!(9_007_199_254_740_993_u64),
+        ),
+        (
+            json!(-9_007_199_254_740_993_i64),
+            json!(-9_007_199_254_740_992.0),
+        ),
+        (json!(u64::MAX), json!(18_446_744_073_709_551_616.0)),
+        (json!(i64::MAX), json!(9_223_372_036_854_775_808.0)),
+        (json!(-9_223_372_036_854_775_808.0), json!(i64::MIN + 1)),
+        (json!(-1e100), json!(i64::MIN)),
+        (json!(u64::MAX), json!(1e100)),
+        (json!(1), json!(1.5)),
+        (json!(-1.5), json!(-1)),
+        (json!(0), json!(f64::MIN_POSITIVE)),
+        (json!(-f64::MIN_POSITIVE), json!(0)),
+        (json!(1.25), json!(1.5)),
+    ] {
+        check_bounds(lower, upper, Less);
+    }
+    for (number, bound) in [
+        (json!(1), json!(1.0)),
+        (json!(0), json!(-0.0)),
+        (json!(i64::MIN), json!(i64::MIN as f64)),
+        (
+            json!(9_007_199_254_740_992_u64),
+            json!(9_007_199_254_740_992.0),
+        ),
+    ] {
+        check_bounds(number, bound, Equal);
+    }
+}
+
 #[test]
 fn combinators_and_local_refs_are_checked_and_a_remote_ref_accepts() {
     let either = json!({"anyOf": [{"type": "string"}, {"type": "integer"}]});

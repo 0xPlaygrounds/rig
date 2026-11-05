@@ -2,6 +2,26 @@ use super::*;
 use crate::message::ToolFunction;
 
 #[test]
+fn argument_feedback_distinguishes_adjacent_large_integers() {
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {"offset": {"type": "integer", "exclusiveMinimum": 9_007_199_254_740_992_u64}},
+        "required": ["offset"],
+    });
+    let name = ToolName::new("read_after").expect("tool name");
+    for (offset, refused) in [
+        (9_007_199_254_740_992_u64, true),
+        (9_007_199_254_740_993_u64, false),
+    ] {
+        let call = ToolCall::from_wire(
+            "call",
+            ToolFunction::new(name.clone(), serde_json::json!({"offset": offset})),
+        );
+        assert_eq!(arguments_refusal(&schema, &call).is_some(), refused);
+    }
+}
+
+#[test]
 fn argument_feedback_obeys_the_schema_and_reports_bounded_problems() {
     let name = ToolName::new("add");
     assert!(name.is_ok());
