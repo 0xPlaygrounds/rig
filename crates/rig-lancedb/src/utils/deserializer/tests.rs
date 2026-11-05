@@ -6,7 +6,7 @@ use arrow_array::{
     RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
         FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
-        StringBuilder, StringDictionaryBuilder, StringRunBuilder, UnionBuilder,
+        NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, UnionBuilder,
     },
     types::{Float64Type, Int8Type, Int16Type, Int32Type},
 };
@@ -512,6 +512,22 @@ fn map_entries_stay_with_their_row() {
             json!({ "attributes": { "owner": 11, "priority": 7 } }),
             json!({ "attributes": { "owner": 22 } }),
         ]
+    );
+
+    let mut null_values = MapBuilder::new(None, StringBuilder::new(), NullBuilder::new());
+    for key in ["a", "b"] {
+        null_values.keys().append_value(key);
+        null_values.values().append_null();
+    }
+    null_values.append(true).unwrap();
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(null_values.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "attributes": { "a": null, "b": null } })]
     );
 }
 
