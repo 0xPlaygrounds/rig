@@ -5,8 +5,8 @@ use arrow_array::{
     Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray,
     RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
-        FixedSizeListBuilder, ListBuilder, StringBuilder, StringDictionaryBuilder,
-        StringRunBuilder, UnionBuilder,
+        FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
+        StringBuilder, StringDictionaryBuilder, StringRunBuilder, UnionBuilder,
     },
     types::{Float64Type, Int8Type, Int16Type, Int32Type},
 };
@@ -336,6 +336,121 @@ async fn test_map_deserialization() {
             })
         ]
     );
+}
+
+fn map_record_batch(rows: &[(&str, &[(&str, i32)])]) -> RecordBatch {
+    let mut maps = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    let mut ids = Vec::new();
+    for (id, entries) in rows {
+        ids.push(*id);
+        for (key, value) in *entries {
+            maps.keys().append_value(key);
+            maps.values().append_value(*value);
+        }
+        maps.append(true).unwrap();
+    }
+    RecordBatch::try_from_iter(vec![
+        ("id", Arc::new(StringArray::from(ids)) as ArrayRef),
+        ("attributes", Arc::new(maps.finish()) as ArrayRef),
+    ])
+    .unwrap()
+}
+
+#[test]
+fn map_entries_stay_with_their_document() {
+    let batch = map_record_batch(&[
+        ("empty-first", &[]),
+        ("first", &[("owner", 11), ("priority", 7)]),
+        ("empty-middle", &[]),
+        ("second", &[("owner", 22)]),
+        ("empty-last", &[]),
+    ]);
+
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({"id": "empty-first", "attributes": {}}),
+            json!({"id": "first", "attributes": {"owner": 11, "priority": 7}}),
+            json!({"id": "empty-middle", "attributes": {}}),
+            json!({"id": "second", "attributes": {"owner": 22}}),
+            json!({"id": "empty-last", "attributes": {}}),
+        ],
+    );
+}
+
+#[test]
+fn sliced_maps_use_their_entry_offsets() {
+    let batch = map_record_batch(&[
+        ("prefix", &[("owner", 99), ("priority", 8)]),
+        ("empty", &[]),
+        ("selected", &[("owner", 11), ("priority", 7)]),
+        ("suffix", &[("owner", 22)]),
+    ])
+    .slice(1, 2);
+
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({"id": "empty", "attributes": {}}),
+            json!({"id": "selected", "attributes": {"owner": 11, "priority": 7}}),
+        ],
+    );
+}
+
+#[test]
+fn empty_map_batch_has_no_rows() {
+    assert!(
+        record_batch_to_json(&map_record_batch(&[]))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+fn fixed_binary_record_batch(row_count: u8) -> RecordBatch {
+    let mut fingerprints = FixedSizeBinaryBuilder::new(16);
+    for row in 0..row_count {
+        fingerprints.append_value([row; 16]).unwrap();
+    }
+    RecordBatch::try_from_iter(vec![
+        (
+            "id",
+            Arc::new(UInt8Array::from_iter_values(0..row_count)) as ArrayRef,
+        ),
+        ("fingerprint", Arc::new(fingerprints.finish()) as ArrayRef),
+    ])
+    .unwrap()
+}
+
+fn assert_fixed_binary_rows(batch: &RecordBatch, expected_ids: std::ops::Range<u8>) {
+    let expected: Vec<_> = expected_ids
+        .map(|id| json!({"id": id, "fingerprint": vec![id; 16]}))
+        .collect();
+    assert_eq!(record_batch_to_json(batch).unwrap(), expected);
+}
+
+#[test]
+fn fixed_binary_with_fewer_rows_than_byte_width() {
+    assert_fixed_binary_rows(&fixed_binary_record_batch(1), 0..1);
+}
+
+#[test]
+fn fixed_binary_with_more_rows_than_byte_width() {
+    assert_fixed_binary_rows(&fixed_binary_record_batch(17), 0..17);
+}
+
+#[test]
+fn fixed_binary_with_rows_equal_to_byte_width() {
+    assert_fixed_binary_rows(&fixed_binary_record_batch(16), 0..16);
+}
+
+#[test]
+fn sliced_fixed_binary_preserves_every_row() {
+    assert_fixed_binary_rows(&fixed_binary_record_batch(19).slice(1, 17), 1..18);
+}
+
+#[test]
+fn empty_fixed_binary_batch_has_no_rows() {
+    assert_fixed_binary_rows(&fixed_binary_record_batch(0), 0..0);
 }
 
 #[tokio::test]

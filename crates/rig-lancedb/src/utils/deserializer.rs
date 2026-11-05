@@ -131,10 +131,13 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
         DataType::LargeUtf8 => json_arm!(byte_values, LargeUtf8Type),
         DataType::Binary => json_arm!(byte_values, BinaryType),
         DataType::LargeBinary => json_arm!(byte_values, LargeBinaryType),
-        DataType::FixedSizeBinary(n) => (0..*n)
-            .map(|i| serde_json::to_value(column.as_fixed_size_binary().value(i as usize)))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(VectorStoreError::JsonError),
+        DataType::FixedSizeBinary(..) => {
+            let binary_array = column.as_fixed_size_binary();
+            (0..binary_array.len())
+                .map(|i| serde_json::to_value(binary_array.value(i)))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(VectorStoreError::JsonError)
+        }
         DataType::Boolean => {
             let bool_array = column.as_boolean();
             (0..bool_array.len())
@@ -170,15 +173,15 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
             ))
         }
         DataType::Map(..) => {
-            let map_columns = column
-                .as_map()
+            let map_array = column.as_map();
+            let map_columns = map_array
                 .entries()
                 .columns()
                 .iter()
                 .map(type_matcher)
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(build_map(&map_columns))
+            Ok(build_map(&map_columns, map_array.value_offsets()))
         }
         DataType::Dictionary(keys_type, ..) => {
             let (keys, v) = match **keys_type {
@@ -345,25 +348,29 @@ fn build_struct(columns: &[Vec<Value>], num_rows: usize, col_names: &[&str]) -> 
         .collect()
 }
 
-/// Assembles one single-entry JSON object per map entry from its key and value
-/// columns.
-fn build_map(columns: &[Vec<Value>]) -> Vec<Value> {
+/// Assembles one JSON object per map row from its key and value columns and
+/// entry offsets.
+fn build_map(columns: &[Vec<Value>], offsets: &[i32]) -> Vec<Value> {
     let (Some(keys), Some(values)) = (columns.first(), columns.get(1)) else {
         return Vec::new();
     };
 
-    keys.iter()
-        .zip(values)
-        .map(|(k, v)| {
-            let mut map = serde_json::Map::new();
-            map.insert(
-                match k {
-                    serde_json::Value::String(s) => s.clone(),
-                    _ => k.to_string(),
-                },
-                v.clone(),
-            );
-            map
+    offsets
+        .iter()
+        .zip(offsets.iter().skip(1))
+        .map(|(&start, &end)| {
+            keys.iter()
+                .zip(values)
+                .skip(start as usize)
+                .take((end - start) as usize)
+                .map(|(key, value)| {
+                    let key = match key {
+                        Value::String(key) => key.clone(),
+                        _ => key.to_string(),
+                    };
+                    (key, value.clone())
+                })
+                .collect()
         })
         .map(Value::Object)
         .collect()
