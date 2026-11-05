@@ -98,6 +98,35 @@ async fn vector_search_test() {
     .await
     .expect("Failed to create ScyllaDB vector store");
 
+    {
+        use rig::scylladb::ScyllaSearchFilter;
+        use rig::vector_store::VectorStoreError;
+        use rig::vector_store::request::{DynamicSearchFilter, Filter, SearchFilter};
+
+        let atom =
+            || ScyllaSearchFilter::from_dynamic_filter(Filter::gt("created_at", json!(0))).unwrap();
+        for filter in [
+            atom().or(atom()),
+            atom().not(),
+            atom().and(atom().or(atom())),
+        ] {
+            // This query has no embedding mock: invalid filters must fail before embedding.
+            let request = VectorSearchRequest::builder()
+                .query("unsupported filter")
+                .samples(1)
+                .filter(filter)
+                .build();
+            assert!(matches!(
+                vector_store.top_n::<Word>(request.clone()).await,
+                Err(VectorStoreError::FilterError(_))
+            ));
+            assert!(matches!(
+                vector_store.top_n_ids(request).await,
+                Err(VectorStoreError::FilterError(_))
+            ));
+        }
+    }
+
     // Insert documents into vector store
     vector_store
         .insert_documents(documents)

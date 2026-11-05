@@ -95,9 +95,10 @@ fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError
 const PLACEHOLDER: &str = "?";
 
 /// CQL `WHERE` fragment with its bind values. Keys are spliced into the
-/// statement verbatim; only values are bound.
+/// statement verbatim; only values are bound. CQL does not support `OR` or
+/// `NOT`; filters using either return a filter error before search I/O.
 #[derive(Clone, Debug)]
-pub struct ScyllaSearchFilter(SqlCondition<CqlValue>);
+pub struct ScyllaSearchFilter(SqlCondition<CqlValue>, Option<&'static str>);
 
 /// Hashes only the condition text, since bound values do not change the
 /// prepared statement.
@@ -111,27 +112,37 @@ impl SearchFilter for ScyllaSearchFilter {
     type Value = CqlValue;
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(SqlCondition::binary(key, "=", PLACEHOLDER, value))
+        Self(SqlCondition::binary(key, "=", PLACEHOLDER, value), None)
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(SqlCondition::binary(key, ">", PLACEHOLDER, value))
+        Self(SqlCondition::binary(key, ">", PLACEHOLDER, value), None)
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(SqlCondition::binary(key, "<", PLACEHOLDER, value))
+        Self(SqlCondition::binary(key, "<", PLACEHOLDER, value), None)
     }
 
     fn and(self, rhs: Self) -> Self {
-        Self(self.0.and(rhs.0))
+        Self(self.0.and(rhs.0), self.1.or(rhs.1))
     }
 
     fn or(self, rhs: Self) -> Self {
-        Self(self.0.or(rhs.0))
+        Self(self.0.or(rhs.0), Some("OR"))
     }
 }
 
 impl ScyllaSearchFilter {
+    fn validate(&self) -> Result<(), FilterError> {
+        match self.1 {
+            Some(operator) => Err(FilterError::Must(
+                "ScyllaDB filter".into(),
+                format!("not contain {operator}: CQL does not support this operator"),
+            )),
+            None => Ok(()),
+        }
+    }
+
     fn condition(&self) -> &str {
         self.0.condition()
     }
@@ -140,34 +151,38 @@ impl ScyllaSearchFilter {
         self.0.params()
     }
 
+    /// Marks this filter as unsupported: CQL has no `NOT` expression.
+    /// Searches using it return a filter error before embedding or querying.
     pub fn not(self) -> Self {
-        Self(self.0.not())
+        Self(self.0.not(), Some("NOT"))
     }
 
     pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
         let key = key.into();
-        Self(SqlCondition::binary(key, ">=", PLACEHOLDER, value))
+        Self(SqlCondition::binary(key, ">=", PLACEHOLDER, value), None)
     }
 
     pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
         let key = key.into();
-        Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value))
+        Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value), None)
     }
 
     pub fn ne(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
         let key = key.into();
-        Self(SqlCondition::binary(key, "!=", PLACEHOLDER, value))
+        Self(SqlCondition::binary(key, "!=", PLACEHOLDER, value), None)
     }
 
     pub fn member(key: impl Into<String>, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let key = key.into();
-        Self(SqlCondition::list(key, "IN", PLACEHOLDER, values))
+        Self(SqlCondition::list(key, "IN", PLACEHOLDER, values), None)
     }
 }
 
 impl DynamicSearchFilter for ScyllaSearchFilter {
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
-        filter.try_interpret(cql_value_from_json)
+        let filter: Self = filter.try_interpret(cql_value_from_json)?;
+        filter.validate()?;
+        Ok(filter)
     }
 }
 
@@ -364,6 +379,9 @@ impl ScyllaDbVectorStore {
         &self,
         req: &VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String, String)>, VectorStoreError> {
+        if let Some(filter) = req.filter() {
+            filter.validate()?;
+        }
         let query_vector = self.generate_query_vector(req.query()).await?;
 
         let statement = self.get_filter_statement_or_default(req).await?;
