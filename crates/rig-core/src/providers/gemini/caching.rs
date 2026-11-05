@@ -130,7 +130,8 @@ const MIN_IDLE_SECS: u64 = 60;
 /// from its catalog spec. The catalog holds no storage price.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AutoCache {
-    /// The shortest TTL a new cache gets.
+    /// The shortest TTL a new cache gets. No cache is created while its TTL
+    /// would be 5 seconds or less, because none could be read again.
     pub ttl: Duration,
     /// Smallest request implicit caching serves (4,096 tokens on Gemini 3).
     pub implicit_floor: u64,
@@ -851,12 +852,14 @@ impl CacheBook {
             return plan;
         }
 
-        let failed_below = line.failed_at.is_some_and(|at| coverable < at + p.min_gain);
+        // A cache that starts inside the expiry margin could never be read again.
+        let may_create = ttl_secs > EXPIRY_MARGIN_SECS
+            && !line.failed_at.is_some_and(|at| coverable < at + p.min_gain);
         if read.is_none()
             && shared
             && !prefix_leased
             && (prefix_estimate as f64 * calibration) as u64 >= p.min_tokens
-            && !failed_below
+            && may_create
         {
             plan.create = Some(Create {
                 covers: 0,
@@ -866,7 +869,7 @@ impl CacheBook {
                 expected: (prefix_estimate as f64 * calibration) as u64,
                 replaces: None,
             });
-        } else if n >= 2 && roll_allowed && !failed_below {
+        } else if n >= 2 && roll_allowed && may_create {
             let cached = read.as_ref().map_or(0, |lease| lease.tokens);
             let gain = coverable.saturating_sub(cached);
             let held_hours = now.saturating_sub(line.rolled_at).max(60) as f64 / 3600.0;
