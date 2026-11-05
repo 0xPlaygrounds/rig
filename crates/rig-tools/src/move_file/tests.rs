@@ -62,3 +62,37 @@ fn a_move_replaces_an_existing_file_only_when_told_to() {
     assert!(dir.join("deeper").join("c.txt").is_file());
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A move onto another hard link to the same file, told to overwrite,
+/// moves nothing (rename(2) leaves both names), so it is refused, publishes
+/// no deletion and leaves both names in place.
+#[cfg(unix)]
+#[test]
+fn a_move_onto_a_hard_link_of_the_same_file_is_refused() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-move-link-{}", std::process::id()));
+    let dir = {
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::canonicalize(&dir).unwrap_or(dir)
+    };
+    let (from, to) = (dir.join("a.txt"), dir.join("b.txt"));
+    std::fs::write(&from, "same\n").ok();
+    assert!(std::fs::hard_link(&from, &to).is_ok());
+    let tool = Move {
+        base: Some(dir.clone()),
+        ..Move::default()
+    };
+    let mut context = ToolContext::new();
+    let moved = futures::executor::block_on(
+        tool.call(&mut context, MoveArgs::new("a.txt", "b.txt").overwrite()),
+    );
+    let changed: Option<FilesChanged> = context.result().ok().flatten();
+    assert!(moved.is_err(), "the move was not refused: {changed:?}");
+    assert_eq!(changed, None);
+    for name in [&from, &to] {
+        assert_eq!(
+            std::fs::read_to_string(name).ok().as_deref(),
+            Some("same\n")
+        );
+    }
+    std::fs::remove_dir_all(dir).ok();
+}

@@ -609,3 +609,69 @@ fn a_scan_names_a_file_too_large_to_read_once() {
     assert_eq!(unread(first), Some(vec![large]));
     assert_eq!(unread(again), Some(vec![]));
 }
+
+/// A git snapshot keeps a file's bytes as they are on disk, whatever the
+/// repository's attributes would convert: so a line-ending-only edit is a
+/// change, and the earlier snapshot reads back the bytes it saw.
+#[test]
+fn a_git_snapshot_keeps_the_bytes_on_disk() {
+    let repo = scratch("checkpoint-raw");
+    let keep = scratch("checkpoint-raw-keep");
+    assert!(git_in(&repo, &["init", "-q"]));
+    std::fs::write(repo.join(".gitattributes"), "*.txt text eol=crlf ident\n").ok();
+    let file = repo.join("a.txt");
+    std::fs::write(&file, "one\r\n$Id$\r\n").ok();
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first = snapshot(&Local, &repo, &taking, None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    assert!(matches!(first.0, super::Taken::Git { .. }));
+    std::fs::write(&file, "one\n$Id$\n").ok();
+    let second = snapshot(&Local, &repo, &taking, Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    let paths: Vec<_> = changes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| (change.kind, change.path))
+        .collect();
+    assert_eq!(
+        paths,
+        [(ChangeKind::Modified, file.to_string_lossy().into_owned())]
+    );
+    assert_eq!(
+        first.content(&file).and_then(Result::ok),
+        Some(b"one\r\n$Id$\r\n".to_vec())
+    );
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
+}
+
+/// Git snapshots of two sibling roots kept in one place see only their
+/// own root: snapshotting one never makes the other's files appear in it.
+#[test]
+fn sibling_git_roots_see_only_their_own_files() {
+    let repo = scratch("checkpoint-siblings");
+    let keep = scratch("checkpoint-siblings-keep");
+    assert!(git_in(&repo, &["init", "-q"]));
+    let (a, b) = (repo.join("a"), repo.join("b"));
+    for (dir, name) in [(&a, "a.txt"), (&b, "b.txt")] {
+        std::fs::create_dir_all(dir).ok();
+        std::fs::write(dir.join(name), "text\n").ok();
+    }
+    let taking = Taking {
+        keep: Some(keep.clone()),
+        ..Taking::default()
+    };
+    let first = snapshot(&Local, &a, &taking, None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    assert!(snapshot(&Local, &b, &taking, None).is_ok());
+    let second = snapshot(&Local, &a, &taking, Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    assert_eq!(changes.ok(), Some(Vec::new()));
+    std::fs::remove_dir_all(repo).ok();
+    std::fs::remove_dir_all(keep).ok();
+}

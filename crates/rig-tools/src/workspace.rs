@@ -535,6 +535,34 @@ pub(crate) fn home_path(path: &Path) -> Option<PathBuf> {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Local;
 
+/// Whether a rename that succeeded left `from` in its directory still
+/// naming the file at `to`, so it moved nothing. The directory's own entries decide, not a
+/// lookup: after a case-only rename on a case-insensitive filesystem the
+/// old spelling still resolves, but no entry is spelled that way.
+#[cfg(unix)]
+fn left_behind(from: &Path, to: &Path) -> io::Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    let same = match (fs::symlink_metadata(from), fs::symlink_metadata(to)) {
+        (Ok(from), Ok(to)) => from.dev() == to.dev() && from.ino() == to.ino(),
+        _ => false,
+    };
+    let (true, Some(dir), Some(name)) = (same, from.parent(), from.file_name()) else {
+        return Ok(false);
+    };
+    for entry in fs::read_dir(dir)? {
+        if entry?.file_name() == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Only POSIX rename(2) leaves both names of one file in place.
+#[cfg(not(unix))]
+fn left_behind(_from: &Path, _to: &Path) -> io::Result<bool> {
+    Ok(false)
+}
+
 impl Workspace for Local {
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         match fs::metadata(path) {
@@ -581,6 +609,12 @@ impl Workspace for Local {
                 fs::copy(from, to)?;
                 fs::remove_file(from)
             }
+            // Between two names of one file rename(2) succeeds and does
+            // nothing: say so rather than report a move.
+            Ok(()) if from != to && left_behind(from, to)? => Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "both names are links to one file; nothing was moved",
+            )),
             moved => moved,
         }
     }

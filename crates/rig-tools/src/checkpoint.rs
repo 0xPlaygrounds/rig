@@ -99,8 +99,8 @@ impl Seen {
 ///
 /// With [`Taking::keep`], a local `workspace` ([`host`](Workspace::host) is
 /// `None`) and `root` in a git work tree that does not ignore it, it is a
-/// git tree: the private index makes each later snapshot cost what
-/// changed. Otherwise, or when `earlier` was a scan, it scans, hashing
+/// git tree of the bytes on disk, with no attribute or filter converting
+/// them: the private index makes each later snapshot cost what changed. Otherwise, or when `earlier` was a scan, it scans, hashing
 /// only the files whose size or change time differ from `earlier`'s (every
 /// file when there is none, or the workspace cannot tell the time), and
 /// with `keep` writes the content of each file it hashed to `keep`, once
@@ -457,6 +457,10 @@ fn scan_changes(
         .collect()
 }
 
+/// Git's empty tree, in each hash it can use.
+const EMPTY_SHA1: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+const EMPTY_SHA256: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
+
 /// A git work tree, reached with a private index and object directory: the
 /// repository's objects are read as an alternate and never written.
 #[derive(Clone, Debug)]
@@ -471,8 +475,13 @@ struct Git {
     root: PathBuf,
     /// The snapshotted root, below `top` (empty for all of it).
     below: PathBuf,
-    /// The private directory: `index` and `objects` in it.
+    /// The private directory: `raw-index` and `objects` in it.
     keep: PathBuf,
+    /// The empty tree in the repository's hash, read as the attributes'
+    /// source so that none apply.
+    no_attributes: &'static str,
+    /// The repository's `info/attributes`, which no option overrides.
+    attributes: PathBuf,
     /// How `git` starts.
     launcher: Launcher,
 }
@@ -480,8 +489,9 @@ struct Git {
 impl Git {
     /// The git work tree `root` is in, with a private directory under
     /// `keep`; `None` when it is in none, the work tree ignores it (such as
-    /// a project under an enclosing repository's `target`), or git cannot
-    /// be run. `git` starts as `launcher` starts processes.
+    /// a project under an enclosing repository's `target`), the repository
+    /// has `info/attributes` (which no option overrides), or git cannot be
+    /// run or is older than 2.42. `git` starts as `launcher` starts processes.
     fn find(root: &Path, keep: &Path, launcher: &Launcher) -> Option<Self> {
         let git = |args: &[&OsStr]| {
             let mut git = launcher.command("git");
@@ -496,20 +506,37 @@ impl Git {
                 .and_then(|git| git.output(None))
                 .ok()
         };
+        // `--attr-source` is given only so that a git older than 2.42,
+        // which cannot turn attributes off, fails here and the root is
+        // scanned.
         let output = git(&[
+            "--attr-source",
+            EMPTY_SHA1,
             "rev-parse",
+            "--show-object-format",
             "--show-toplevel",
             "--absolute-git-dir",
             "--git-path",
             "objects",
+            "--git-path",
+            "info/attributes",
         ]
         .map(OsStr::new))
         .filter(|output| output.status.success())?;
         let text = String::from_utf8(output.stdout).ok()?;
         let mut lines = text.lines();
+        let no_attributes = match lines.next()? {
+            "sha1" => EMPTY_SHA1,
+            "sha256" => EMPTY_SHA256,
+            _ => return None,
+        };
         let (top, dir, objects) = (lines.next()?, lines.next()?, lines.next()?);
         let top = PathBuf::from(top);
         let canonical = std::fs::canonicalize(root).ok()?;
+        let attributes = canonical.join(lines.next()?);
+        if attributes.exists() {
+            return None;
+        }
         let below = canonical.strip_prefix(&top).ok()?.to_path_buf();
         // `git add` refuses an ignored root, even with `--ignore-errors`.
         let check = ["check-ignore", "-q", "--"].map(OsStr::new);
@@ -519,7 +546,7 @@ impl Git {
         {
             return None;
         }
-        let keep = private(keep, &top);
+        let keep = private(keep, &canonical);
         Some(Self {
             objects: canonical.join(objects),
             root: root.to_path_buf(),
@@ -527,12 +554,15 @@ impl Git {
             dir: PathBuf::from(dir),
             below,
             keep,
+            no_attributes,
+            attributes,
             launcher: launcher.clone(),
         })
     }
 
-    /// A git command on the work tree, with the private index and objects,
-    /// started as the launcher starts processes.
+    /// A git command on the work tree, with the private index and objects
+    /// and no attributes or line-ending conversion, started as the
+    /// launcher starts processes.
     fn command(&self, args: &[&OsStr]) -> Command {
         let mut command = self.launcher.command("git");
         command
@@ -540,18 +570,27 @@ impl Git {
             .arg(&self.dir)
             .arg("--work-tree")
             .arg(&self.top)
+            .arg("--attr-source")
+            .arg(self.no_attributes)
             .args([
                 "-c",
                 "core.fsmonitor=false",
                 "-c",
                 "core.untrackedCache=false",
+                "-c",
+                "core.autocrlf=false",
+                "-c",
+                "core.attributesFile=",
             ])
             .args(args)
             .current_dir(&self.top)
-            .env("GIT_INDEX_FILE", self.keep.join("index"))
+            // Not `index`: one written before attributes were turned off
+            // holds converted blobs its stat cache would keep.
+            .env("GIT_INDEX_FILE", self.keep.join("raw-index"))
             .env("GIT_OBJECT_DIRECTORY", self.keep.join("objects"))
             .env("GIT_ALTERNATE_OBJECT_DIRECTORIES", &self.objects)
             .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_ATTR_NOSYSTEM", "1")
             .env_remove("GIT_DIR")
             .env_remove("GIT_WORK_TREE");
         command
@@ -574,10 +613,16 @@ impl Git {
     /// Adds the root's files, and every file under each of `also` that is
     /// there, to the private index and writes its tree.
     fn write_tree(&self, also: &[PathBuf]) -> io::Result<String> {
-        // Calls checkpointed at once share the private index, whose lock
+        // Calls checkpointing one root at once share its private index, whose lock
         // `git add` takes and fails on when another holds it.
         static INDEX: Mutex<()> = Mutex::new(());
         let _index = INDEX.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.attributes.exists() {
+            return Err(io::Error::other(format!(
+                "{} appeared, and git would convert bytes by it",
+                self.attributes.display()
+            )));
+        }
         std::fs::create_dir_all(self.keep.join("objects"))?;
         let below = match self.below.as_os_str().is_empty() {
             true => OsStr::new("."),
