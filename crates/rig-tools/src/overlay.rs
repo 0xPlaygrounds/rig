@@ -205,8 +205,10 @@ impl Workspace for Overlay {
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
         let bytes = self.bytes(from)?;
-        self.keep(to, Some(bytes));
-        self.keep(from, None);
+        if from != to {
+            self.keep(to, Some(bytes));
+            self.keep(from, None);
+        }
         Ok(())
     }
 

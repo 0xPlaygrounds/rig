@@ -141,3 +141,54 @@ fn an_overlay_tells_where_a_path_is_as_its_workspace_does() {
     let here = overlay.host_for(std::path::Path::new("/project/x"));
     assert_eq!((there, here), (Some("bench"), None));
 }
+
+/// A self-rename keeps both the overlay's contents and its recorded changes;
+/// missing sources still fail, as they do for an ordinary rename.
+#[test]
+fn renaming_a_file_to_itself_keeps_the_overlay_unchanged() {
+    let dir = std::env::temp_dir().join(format!("rig-overlay-self-{}", std::process::id()));
+    assert!(std::fs::create_dir_all(&dir).is_ok());
+    let existing = dir.join("existing");
+    let created = dir.join("created");
+    assert!(std::fs::write(&existing, b"original").is_ok());
+    let overlay = Overlay::new(Arc::new(Local));
+
+    assert!(overlay.rename(&existing, &existing).is_ok());
+    assert_eq!(
+        overlay.read(&existing, 100).ok().map(|it| it.bytes),
+        Some(b"original".to_vec())
+    );
+    assert!(overlay.changes().is_empty());
+
+    assert!(overlay.write(&existing, b"edited").is_ok());
+    assert!(overlay.write(&created, b"new").is_ok());
+    let before = serde_json::to_value(overlay.changes());
+    assert!(before.is_ok());
+    for (path, bytes) in [
+        (&existing, b"edited".as_slice()),
+        (&created, b"new".as_slice()),
+    ] {
+        assert!(overlay.rename(path, path).is_ok());
+        assert_eq!(
+            overlay.read(path, 100).ok().map(|it| it.bytes),
+            Some(bytes.to_vec())
+        );
+    }
+    assert_eq!(serde_json::to_value(overlay.changes()).ok(), before.ok());
+    assert_eq!(std::fs::read(&existing).ok(), Some(b"original".to_vec()));
+    assert!(!created.exists());
+
+    let moved = dir.join("moved");
+    assert!(overlay.rename(&created, &moved).is_ok());
+    assert_eq!(
+        overlay.read(&moved, 100).ok().map(|it| it.bytes),
+        Some(b"new".to_vec())
+    );
+    for path in [&created, &dir.join("missing")] {
+        assert_eq!(
+            overlay.rename(path, path).err().map(|it| it.kind()),
+            Some(std::io::ErrorKind::NotFound)
+        );
+    }
+    assert!(std::fs::remove_dir_all(dir).is_ok());
+}
