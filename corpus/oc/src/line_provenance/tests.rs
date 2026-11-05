@@ -127,11 +127,6 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
     let net = dir.join("net.rs");
     assert!(std::fs::write(&net, NET).is_ok(), "net.rs is written");
     assert!(std::fs::write(dir.join("other.rs"), "untouched\n").is_ok());
-    let git = std::process::Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(&dir)
-        .status();
-    assert!(git.is_ok_and(|status| status.success()), "git init");
 
     // Session 1: "add retry" inserts lines 10-12.
     let model = MockCompletionModel::from_stream_turns([
@@ -217,13 +212,13 @@ fn lines_are_attributed_to_the_prompt_that_wrote_them_after_moving() {
         "{untouched}"
     );
 
+    // `shell` names no files it changed, so its line is no agent's.
     prompt(&mut app, &wakes, agent, "rename");
     let renamed = cli(&home, &data, &dir, &["net.rs:8", "--json"]);
-    let call = renamed.pointer("/spans/0/record/call_id");
-    assert_eq!(call, Some(&json!("s2-3")), "{renamed}");
     assert_eq!(
-        spans(&renamed),
-        vec![by(8, 8, &second, "rename", "shell", false)]
+        renamed.pointer("/spans/0/by_agent"),
+        Some(&json!(false)),
+        "{renamed}"
     );
 
     // `/provenance` offers the turn that wrote a line; choosing it opens
