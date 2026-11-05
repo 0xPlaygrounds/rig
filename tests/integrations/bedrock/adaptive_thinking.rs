@@ -24,11 +24,8 @@ fn adaptive_thinking_params() -> serde_json::Value {
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
     let model = client().completion(anthropic_adaptive_model());
-    // A checkpoint after the reasoning turn is refused by default; this
-    // round trip skips it with a warning and checks the rest still works.
     let agent = AgentBuilder::new(model)
         .cache(rig::completion::CacheRetention::Short)
-        .on_unsupported(rig::completion::OnUnsupported::Ignore)
         .preamble(
             "You must call tools when the user asks for their result. \
              After a tool result is available, answer with the exact result.",
@@ -36,6 +33,7 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
         .max_tokens(2048)
         .additional_params(adaptive_thinking_params())
         .tool(AlphaSignal)
+        .default_max_turns(2)
         .build();
 
     let response = agent

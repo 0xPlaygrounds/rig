@@ -368,8 +368,8 @@ impl BaseInput<'_> {
     /// The cache retention the mapping honoured (`Send` or `Place`), for
     /// markers inside the body's arrays.
     pub fn cache(&self) -> Option<CacheRetention>;
-    /// A marker the base cannot place (Bedrock after a reasoning turn):
-    /// reported through `on_unsupported` under the name `cache`.
+    /// A marker the base cannot place: reported through `on_unsupported`
+    /// under the name `cache`.
     pub fn refuse_cache(&mut self, reason: impl Into<String>) -> Result<(), EncodeError>;
     /// The value top-level `key` gets from the layers above the base (the
     /// mapped options, then the provider options and `additional_params`
@@ -2027,7 +2027,7 @@ Docs: [CV] https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_C
 | `Effort(XHigh/Max)` | adaptive Claude where the catalog lists the level [unverified: [AD] and pi disagree on which models take `xhigh`] | | [AD] |
 | `Budget { tokens }` | Claude with budgets: `{"thinking":{"type":"enabled","budget_tokens":N}}`, N >= 1024 and < `maxTokens`; Opus 4.7, Claude 5, Fable, Mythos, Nova 2: unsupported | | [ET] |
 | `cache None` | omit every `cachePoint` (implicit caching cannot be stopped; "no explicit checkpoints") | | [PC] |
-| `cache Short` | `Mapping::Place`: the base builder appends `{"cachePoint":{"type":"default"}}` after the system blocks and at the end of the last message; models without explicit caching: unsupported | a request with reasoning in history gets no message checkpoint (`crates/rig-bedrock/src/request.rs:106-114`); the mapping answers `Place`; the base builder places the system checkpoint and reports the skipped message checkpoint through `BaseInput::refuse_cache`, never silently | [CP], [PC] |
+| `cache Short` | `Mapping::Place`: the base builder appends `{"cachePoint":{"type":"default"}}` after the system blocks and at the end of the last message; models without explicit caching: unsupported | the message checkpoint is placed also after a reasoning turn, which Claude on Bedrock accepts | [CP], [PC] |
 | `cache Long` | `Mapping::Place`, the same blocks with `"ttl":"1h"`; Claude 3.7 and 3.5 v2: unsupported | 1 h checkpoints precede 5 min ones | [CP], [PC] |
 | `Auto` | omit `serviceTier` | | [ST] |
 | `Default` / `Flex` / `Priority` | `"serviceTier":{"type":"default"\|"flex"\|"priority"}` | per-model tier support (model) | [ST] |

@@ -132,19 +132,11 @@ fn base(
             }
         }
     }
-    // Bedrock rejects a cache point anywhere after a reasoning turn, even on
-    // the user's side, so that checkpoint is refused rather than skipped.
-    if let Some(cache) = cache {
-        let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        if reasoning {
-            input.refuse_cache(
-                "Bedrock rejects a message cache checkpoint after a reasoning turn",
-            )?;
-        } else if let Some(Value::Array(last)) =
+    if let Some(cache) = cache
+        && let Some(Value::Array(last)) =
             messages.last_mut().and_then(|last| last.get_mut("content"))
-        {
-            last.push(checkpoint(cache));
-        }
+    {
+        last.push(checkpoint(cache));
     }
     let output = match &request.output_schema {
         Some(schema) => Some(

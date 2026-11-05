@@ -117,8 +117,7 @@ where
     ///
     /// The request's messages are not read: its system prompt and a
     /// stand-in prompt take their place, so a check costs the same for any
-    /// history. A refusal that depends on what the messages hold, such as
-    /// Bedrock's of a cache checkpoint after a reasoning turn, is reported
+    /// history. A refusal that depends on what the messages hold is reported
     /// when the request is sent.
     ///
     /// # Errors

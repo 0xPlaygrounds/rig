@@ -194,18 +194,14 @@ fn a_later_system_message_stays_in_place() {
     );
 }
 
-/// A short cache marks the system prompt and the last message. Bedrock
-/// rejects a cache point anywhere after a reasoning turn (#1673), so that
-/// one is skipped with a warning under `Ignore` and refused otherwise.
-/// Reasoning another model made goes as text, so it does not.
+/// A short cache marks the system prompt and the last message, also after
+/// a reasoning turn (#1673): Bedrock takes the checkpoint there, and the
+/// default policy places it. Reasoning another model made goes as text.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
-    use rig_core::completion::{CacheRetention, OnUnsupported};
-    let cached = |history: Vec<Message>| {
-        CompletionRequest::from(history)
-            .cache(CacheRetention::Short)
-            .on_unsupported(OnUnsupported::Ignore)
-    };
+    use rig_core::completion::CacheRetention;
+    let cached =
+        |history: Vec<Message>| CompletionRequest::from(history).cache(CacheRetention::Short);
     let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
     let wire = Converse::new(CLAUDE);
     let point = json!({ "cachePoint": { "type": "default" } });
@@ -226,7 +222,14 @@ fn cache_points_follow_what_the_request_sends() {
         Message::user("more"),
     ];
     let body = sent_on(&wire, history.clone());
-    assert_eq!(body["messages"][2]["content"], json!([{ "text": "more" }]));
+    assert_eq!(
+        body["messages"][1]["content"][0],
+        reasoning("hm", Some("sig"))
+    );
+    assert_eq!(
+        body["messages"][2]["content"],
+        json!([{ "text": "more" }, point])
+    );
     let other = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5);
     let body = sent_on(&other, history);
     assert_eq!(body["messages"][1]["content"][0], json!({ "text": "hm" }));
