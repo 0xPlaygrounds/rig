@@ -10,11 +10,11 @@ Coding tools for [Rig](https://github.com/0xPlaygrounds/rig) agents:
 | `search` | A regex over the tree as git ignores it, hidden files too when asked or when the glob names one, or the names of the files with a match (every file for an empty pattern); `find` returns the hits as data, `render` shows them; a hit cut before its match says where the match is, and the paths it could not read are named |
 | `list`   | A directory's files as git ignores them, down to a depth, optionally matching a glob, hidden files as for `search`, and the directories it could not read |
 | `shell`  | `sh -c` in its own process group, as a `Launcher` starts it, run until it ends unless the call sets a timeout, stdout and stderr interleaved line by line without terminal escape codes such as colours, and an optional `OutputLimit` that keeps both ends of a long output and the first and last errors from between, its kept lines then cut at 2000 characters (one cut before its error word says where the word is) and, with a spill directory, all of it in a file |
-| `delete`, `move` | A file removed, or moved or renamed |
+| `delete` | A file removed                                                      |
 
 Tools publish facts beside their text (such as `FilesChanged`), and every tool acts on a
 `Workspace`: this machine (`Local`) or another. The pieces the tools are built from, such as
-checkpoints, the overlay workspace and process groups, are listed in the crate docs.
+the overlay workspace and process groups, are listed in the crate docs.
 
 `remote` reaches other machines through a transport: a command that runs its last argument,
 a shell line, there with the remote user's shell, keeps stdout and stderr apart and ends with
@@ -63,5 +63,5 @@ publish keep the `HOST:` form.
 The tools run on the file system and processes, so the crate is native only.
 The stock coding agent registers `read`, `edit`, `write` and `shell` through
 [`rig-basics`](../../plugins/rig-basics). The library also provides `search`,
-`list`, `delete` and `move`. A custom plugin can register them with
+`list` and `delete`. A custom plugin can register them with
 `AppPerCallExt::add_tool_per_call`.

@@ -50,9 +50,7 @@ pub const ARCHITECT_PROMPT: &str = "Architect mode: you read and plan, and an ed
 pub const REFUSED: &str = "architect mode: only reading tools and `implement` may be used";
 
 /// The tools an editor may get, those the app has.
-const EDITOR_TOOLS: [&str; 8] = [
-    "read", "search", "list", "edit", "write", "delete", "move", "shell",
-];
+const EDITOR_TOOLS: [&str; 7] = ["read", "search", "list", "edit", "write", "delete", "shell"];
 
 /// The most diff lines of one file an `implement` result shows.
 const DIFF_LINES: usize = 200;

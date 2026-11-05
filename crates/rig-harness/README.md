@@ -27,7 +27,7 @@ describes using it.
   on public API, exactly as a third-party plugin is: the compiler holds them
   to it. Most are in [`rig-basics`](https://github.com/0xPlaygrounds/rig/tree/main/plugins/rig-basics), one module
   per group, with the services only some plugins use: approvals, the preview
-  and the checkpoint of tool calls, and the session picker. The launcher's
+  of tool calls, and the session picker. The launcher's
   generated `main.rs` adds the plugins the settings turn on as one
   `PluginGroup`, each wrapped in `Loaded`, which records it as an entity
   (`PluginSource`) and marks what it adds (`ProvidedBy`). Any of them can be
@@ -51,7 +51,7 @@ default:
 | `rig-basics` | `telemetry::usage::UsagePlugin` | what model calls cost, per agent and per tree; `/usage` |
 | `rig-traffic` | `TrafficPlugin` | with `--traffic-log` or `[traffic] log = true`, provider HTTP exchanges in the session's `traffic.jsonl` |
 | `rig-basics` | `activity::ActivityPlugin` | what each agent is doing, for views |
-| `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list`, `delete` and `move` are left to `shell` |
+| `rig-basics` | `coding_tools::ReadTool`, `coding_tools::EditTool`, `coding_tools::WriteTool`, `coding_tools::ShellTool` | the coding tools of [`rig-tools`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-tools), one plugin each, acting in the app's workspace; the library's `search`, `list` and `delete` are left to `shell` |
 | `rig-basics` | `coding_tools::AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-basics` | `coding_tools::remote::RemoteHostsPlugin` | a path written `HOST:PATH` is that host's for every tool, through the transport `[remote.hosts]` in `settings.toml` gives it (such as `ssh` or `koh exec`); nothing without hosts |
 | `rig-basics` | `reload::ReloadPlugin` | `/reload`, which rebuilds the agent when the plugins `settings.toml` turns on or a plugin crate changed, and restarts it in the session |
@@ -67,7 +67,6 @@ Off by default, each turned on by `/plugins`, `rig plugin enable <type>` or
 |---|---|---|
 | `rig-basics` | `approval::ApprovalPlugin` | one question for every effect a plugin wants approved; nothing asks by default, and `SubagentsPlugin` adds it |
 | `rig-basics` | `preview::PreviewPlugin` | what a tool call would change on disk, before it runs, for gates that ask |
-| `rig-basics` | `checkpoint::CheckpointPlugin` | what each tool call changed on disk, from snapshots before and after |
 | `rig-basics` | `redact::RedactPlugin` | API keys, tokens and private keys become placeholders (`‹SECRET_1›`) where they come in (the model's reply as it streams, tool output and results, messages), so the model, the logs, every front, subagents and a resumed session never hold them; a tool call naming one runs with the real value, kept in memory for the run. Without it nothing is redacted |
 | `rig-basics` | `telemetry::effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
 | `rig-basics` | `helpers::HelpersPlugin` | the `helper` tool: tasks for `rig -p --json` child processes, one, side by side or in a chain, as `[helpers]` sets; what they spend is the caller's |

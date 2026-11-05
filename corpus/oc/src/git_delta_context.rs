@@ -3,8 +3,8 @@
 //!
 //! As the app starts, and as each turn of an agent ends, the plugin takes a
 //! snapshot of the agent's directory (its [`WorkDir`], else the
-//! [`ProjectRoot`]): rig-tools' checkpoint [`snapshot`], a git tree written
-//! with a private index, beside the branch and `HEAD`. When a turn the
+//! [`ProjectRoot`]): a git tree written with a private index in the
+//! session's [`Scratch`], beside the branch and `HEAD`. When a turn the
 //! user's own message started sends its first request, a new snapshot is
 //! compared with the last one: a branch switch or a moved `HEAD` and the
 //! files changed since, with their line counts, become a note. Changes the
@@ -19,15 +19,15 @@
 //! nothing changed, or outside a git work tree on this machine.
 //! `/gitdelta off|on` turns it off and on for the session.
 
+use std::ffi::OsStr;
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
-use rig_basics::checkpoint::CheckpointAlso;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::{ChangeKind, FileChange};
-use rig_harness::rig_tools::checkpoint::{Snapshot, Taking, snapshot};
 
 #[cfg(test)]
 mod tests;
@@ -66,8 +66,9 @@ pub struct GitDeltaOff(pub bool);
 pub struct SeenRepository {
     /// The directory the snapshot is of.
     pub root: PathBuf,
-    /// Its files.
-    pub files: Snapshot,
+    /// Its files: the git tree of the work tree, untracked files that are
+    /// not ignored included.
+    pub files: String,
     /// The branch, or `HEAD` when detached.
     pub branch: String,
     /// The commit `HEAD` names; `None` before the first commit.
@@ -111,7 +112,6 @@ struct Repository<'w, 's> {
     workspace: Res<'w, ProjectWorkspace>,
     root: Res<'w, ProjectRoot>,
     scratch: Option<Res<'w, Scratch>>,
-    also: Option<Res<'w, CheckpointAlso>>,
     dirs: Query<'w, 's, &'static WorkDir>,
 }
 
@@ -123,14 +123,18 @@ impl Repository<'_, '_> {
             .map_or_else(|| self.root.0.clone(), |dir| dir.0.clone())
     }
 
-    /// The repository at `root` as it is now, from `earlier` (so only
-    /// what changed is hashed again); `None` outside a git work tree on
-    /// this machine. Taken inline: the workspace is this machine's, and
-    /// git keeps the cost to what changed.
-    fn see(&self, root: &Path, earlier: Option<&SeenRepository>) -> Option<SeenRepository> {
+    /// The repository at `root` as it is now; `None` outside a git work
+    /// tree on this machine or without a session scratch for the index.
+    /// Taken inline: the workspace is this machine's, and the index keeps
+    /// git's cost to what changed.
+    fn see(&self, root: &Path) -> Option<SeenRepository> {
         if self.workspace.0.host().is_some() {
             return None;
         }
+        let scratch = self
+            .scratch
+            .as_ref()
+            .and_then(|scratch| scratch.0.clone())?;
         git(
             &self.processes,
             root,
@@ -146,34 +150,16 @@ impl Repository<'_, '_> {
             root,
             &["symbolic-ref", "-q", "--short", "HEAD"],
         );
-        // A directory of its own, so no checkpoint of the harness's shares
-        // the private index.
-        let keep = self.scratch.as_ref().and_then(|scratch| scratch.0.clone());
-        let taking = Taking {
-            keep: keep.map(|keep| keep.join(NAME)),
-            also: self
-                .also
-                .as_ref()
-                .map(|also| also.0.clone())
-                .unwrap_or_default(),
-            launcher: self.processes.launcher(),
-        };
-        let earlier = earlier.filter(|earlier| earlier.root == root);
-        let files = snapshot(
-            &*self.workspace.0,
-            root,
-            &taking,
-            earlier.map(|it| &it.files),
-        );
+        let files = tree(&self.processes, root, &scratch.join(NAME));
         match files {
-            Ok(files) => Some(SeenRepository {
+            Some(files) => Some(SeenRepository {
                 root: root.to_path_buf(),
                 files,
                 branch: branch.unwrap_or_else(|| "HEAD".to_owned()),
                 head,
             }),
-            Err(error) => {
-                warn!("{NAME}: no snapshot of {}: {error}", root.display());
+            None => {
+                warn!("{NAME}: no snapshot of {}", root.display());
                 None
             }
         }
@@ -183,7 +169,7 @@ impl Repository<'_, '_> {
 /// The project's repository as the app starts.
 fn at_start(repository: Repository, mut start: ResMut<AtStart>) {
     let root = repository.root.0.clone();
-    start.0 = repository.see(&root, None);
+    start.0 = repository.see(&root);
 }
 
 /// Each turn that ends leaves its agent's repository as the baseline of
@@ -191,7 +177,6 @@ fn at_start(repository: Repository, mut start: ResMut<AtStart>) {
 fn remember(
     settled: On<Add<Settled>>,
     turns: Query<&ForAgent, With<Turn>>,
-    seen: Query<&SeenRepository>,
     repository: Repository,
     off: Res<GitDeltaOff>,
     mut commands: Commands,
@@ -203,7 +188,7 @@ fn remember(
         return;
     }
     let root = repository.root_of(Some(agent));
-    if let Some(now) = repository.see(&root, seen.get(agent).ok()) {
+    if let Some(now) = repository.see(&root) {
         commands.entity(agent).try_insert(now);
     }
 }
@@ -234,7 +219,7 @@ fn annotate(
             if users && !restored && !off.0 {
                 let root = repository.root_of(Some(agent));
                 let was = seen.or(start.0.as_ref().filter(|it| it.root == root));
-                let now = repository.see(&root, was);
+                let now = repository.see(&root);
                 if let (Some(was), Some(now)) = (was, &now)
                     && let Some(text) = describe(&repository.processes, was, now)
                 {
@@ -306,13 +291,7 @@ fn describe(processes: &Processes, was: &SeenRepository, now: &SeenRepository) -
             ),
         });
     }
-    let changes = match now.files.changes_since(&was.files) {
-        Ok(changes) => changes,
-        Err(error) => {
-            warn!("{NAME}: cannot compare snapshots: {error}");
-            Vec::new()
-        }
-    };
+    let changes = changes(processes, &now.root, &was.files, &now.files);
     if !changes.is_empty() {
         lines.push("Files changed outside your tool calls:".to_owned());
         lines.extend(
@@ -352,7 +331,6 @@ fn file_line(root: &Path, change: &FileChange) -> String {
 fn toggle(
     In(args): In<CommandArgs>,
     mut off: ResMut<GitDeltaOff>,
-    seen: Query<&SeenRepository>,
     repository: Repository,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
@@ -372,7 +350,7 @@ fn toggle(
     };
     if off.0 && !now_off {
         let root = repository.root_of(Some(args.agent));
-        if let Some(now) = repository.see(&root, seen.get(args.agent).ok()) {
+        if let Some(now) = repository.see(&root) {
             commands.entity(args.agent).try_insert(now);
         }
     }
@@ -381,16 +359,73 @@ fn toggle(
     notices.write(Notice::info(args.agent, format!("/gitdelta is {state}.")));
 }
 
+/// The tree of the work tree at `root`, untracked files that are not
+/// ignored included, written through a private index in `keep` that is
+/// `root`'s alone, never the user's.
+fn tree(processes: &Processes, root: &Path, keep: &Path) -> Option<String> {
+    std::fs::create_dir_all(keep).ok()?;
+    let mut hasher = DefaultHasher::new();
+    root.hash(&mut hasher);
+    let index = keep.join(format!("index-{:016x}", hasher.finish()));
+    let private = Some(index.as_os_str());
+    git_with(processes, root, private, &["add", "-A", "--", "."])?;
+    git_with(processes, root, private, &["write-tree"])
+}
+
+/// The files changed from the tree `was` to the tree `now` of the work
+/// tree at `root`, with their line counts (none for a binary file).
+fn changes(processes: &Processes, root: &Path, was: &str, now: &str) -> Vec<FileChange> {
+    // NUL-separated, so no name is quoted, and relative to `root`, as
+    // `git -C root` runs it.
+    let diff = |format: &str| {
+        let args = [
+            "diff-tree",
+            "-r",
+            "-z",
+            "--no-renames",
+            "--relative",
+            format,
+            was,
+            now,
+        ];
+        git(processes, root, &args).unwrap_or_default()
+    };
+    let (statuses, counts) = (diff("--name-status"), diff("--numstat"));
+    let fields: Vec<&str> = statuses.split('\0').collect();
+    fields
+        .chunks_exact(2)
+        .zip(counts.split('\0'))
+        .filter_map(|(status, count)| {
+            let [status, path] = status else { return None };
+            let mut count = count.splitn(3, '\t').map(|it| it.parse().unwrap_or(0));
+            let (added, removed) = (count.next()?, count.next()?);
+            let path = root.join(path).to_string_lossy().into_owned();
+            Some(match *status {
+                "A" => FileChange::created(path, added),
+                "D" => FileChange::deleted(path, removed),
+                _ => FileChange::modified(path, added, removed),
+            })
+        })
+        .collect()
+}
+
 /// What git prints in `dir` for `args`, trimmed; `None` when it fails.
 fn git(processes: &Processes, dir: &Path, args: &[&str]) -> Option<String> {
-    let output = processes
-        .launcher()
-        .command("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .output()
-        .ok()?;
+    git_with(processes, dir, None, args)
+}
+
+/// [`git`] with `index` as its index file, when given.
+fn git_with(
+    processes: &Processes,
+    dir: &Path,
+    index: Option<&OsStr>,
+    args: &[&str],
+) -> Option<String> {
+    let mut command = processes.launcher().command("git");
+    if let Some(index) = index {
+        command.env("GIT_INDEX_FILE", index);
+    }
+    let output = command.arg("-C").arg(dir).args(args).output().ok()?;
     output
         .status
         .success()

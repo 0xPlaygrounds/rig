@@ -11,7 +11,6 @@ use rig_harness_test_support::{
 use serde_json::json;
 
 use super::*;
-use rig_basics::checkpoint::CheckpointPlugin;
 
 /// How many turns started.
 #[derive(Resource, Default)]
@@ -21,13 +20,13 @@ fn count_turns(_: On<Add<TurnOf>>, mut turns: ResMut<Turns>) {
     turns.0 += 1;
 }
 
-/// An app with the real `edit` and checkpointed `shell` tools and this
+/// An app with the real `edit` and `shell` tools and this
 /// plugin on the project `dir`, answered by `model`, and its agent.
 fn start(model: &MockCompletionModel, dir: &Path) -> (App, Receiver<()>, Entity) {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(ProjectRoot(dir.to_path_buf()))
-        .add_plugins((AgentPlugin, SessionLogPlugin, CheckpointPlugin))
+        .add_plugins((AgentPlugin, SessionLogPlugin))
         .add_plugins((EditTool, ShellTool, WatchAiCommentsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -165,7 +164,7 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     assert_eq!(app.world().resource::<Turns>().0, 2);
 
     // Two saves while a turn's `shell` call runs: one queued turn, with the
-    // newest comment, though the call's checkpoint lists the user's save.
+    // newest comment.
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |_| ready.exists());

@@ -12,8 +12,8 @@
 //! index, and they run while another git process holds `index.lock`. They
 //! say so in their annotations (`read_only_hint`), which makes each call's
 //! footprint `Reads(Anything)`: an approval plugin that lets reads run
-//! without asking lets these run too, and the harness neither checkpoints
-//! nor previews them.
+//! without asking lets these run too, and the harness does not preview
+//! them.
 //!
 //! Output is compact: `git_log` gives one line per commit (20 by default),
 //! `git_blame` groups consecutive lines by commit with each commit's

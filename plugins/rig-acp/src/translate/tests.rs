@@ -273,32 +273,19 @@ fn a_location_is_a_local_file_made_absolute_and_none_for_another_host_or_home() 
 }
 
 #[test]
-fn rigs_file_tools_have_their_acp_kinds_and_a_move_both_its_files() {
+fn rigs_file_tools_have_their_acp_kinds() {
     for (tool, expected) in [
         ("read", acp::ToolKind::Read),
         ("list", acp::ToolKind::Read),
         ("edit", acp::ToolKind::Edit),
         ("write", acp::ToolKind::Edit),
         ("delete", acp::ToolKind::Delete),
-        ("move", acp::ToolKind::Move),
         ("search", acp::ToolKind::Search),
         ("shell", acp::ToolKind::Execute),
         ("files__add", acp::ToolKind::Other),
     ] {
         assert_eq!(kind(tool), expected, "{tool}");
     }
-    let moved = locations(
-        &json!({ "from": "a.txt", "to": "/q/b.txt" }),
-        Path::new("/p"),
-    );
-    let moved: Vec<_> = moved.into_iter().map(|location| location.path).collect();
-    assert_eq!(
-        moved,
-        [
-            absolute(Path::new("/p").join("a.txt")),
-            absolute("/q/b.txt")
-        ]
-    );
 }
 
 /// A saved call of a stopped reply never ran: it is shown failed, not
