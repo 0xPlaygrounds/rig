@@ -290,7 +290,10 @@ pub enum PromptError {
     /// answer's first 200 characters; the fields keep all of them.
     #[error("{}", schema_mismatch_message(.output, .output_tool.as_deref(), .problems))]
     OutputSchemaMismatch {
-        /// The whole answer: the text, or the output tool call's arguments.
+        /// The whole answer: the text, or the output tool call's arguments,
+        /// re-serialized from their parsed JSON (key order and spacing may
+        /// differ from the model's), or their raw text when they are not a
+        /// JSON object.
         output: String,
         /// The output tool the model called, or `None` for a text answer.
         output_tool: Option<String>,

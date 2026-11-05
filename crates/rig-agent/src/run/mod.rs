@@ -1028,10 +1028,8 @@ impl AgentRun {
                 if let Some(slots) = &slots {
                     self.count_malformed_tool_calls(slots)?;
                 }
-                // Empty turns may succeed but cannot form provider history entries.
-                self.history.commit(assistant_turn(head, items.clone()));
-
                 if let Some(slots) = slots {
+                    self.history.commit(assistant_turn(head, items.clone()));
                     // Output retries are budgeted per finalization attempt, not per run.
                     self.output_retries = 0;
                     self.state = RunState::ExecutingTools(ToolBatch { slots }, policy);
@@ -1057,17 +1055,21 @@ impl AgentRun {
                             })
                         });
                     let text = choice_text(&items);
-                    if let Some(reprompt) = reprompt
-                        && let Err(problems) =
-                            structured_output::validate_text(self.output_schema.as_ref(), &text)
-                    {
+                    let refusal = reprompt.zip(
+                        structured_output::validate_text(self.output_schema.as_ref(), &text).err(),
+                    );
+                    if let Some((reprompt, problems)) = refusal {
+                        // A refused answer the run fails on stays out of history.
                         if !self.can_reprompt_for_output() {
                             return Err(self.schema_mismatch(text, None, problems));
                         }
+                        self.history.commit(assistant_turn(head, items));
                         self.history.commit([Message::user(reprompt)]);
                         return self.reprompt_for_output();
                     }
 
+                    // Empty turns may succeed but cannot form provider history entries.
+                    self.history.commit(assistant_turn(head, items.clone()));
                     Ok(self.finish(items, 0))
                 }
             }

@@ -2333,7 +2333,11 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
     assert_eq!(output, r#"{"other": 1}"#);
     assert_eq!(output_tool, None);
     assert_eq!(problems, [problem("/answer", "missing")]);
-    assert_eq!(chat_history, run.full_history());
+    let history = serde_json::to_string(&chat_history).expect("history should serialize");
+    assert!(
+        history.contains("plain prose") && !history.contains("other"),
+        "the history keeps the reprompted answer, not the refused one: {history}"
+    );
 
     let typed = json!({
         "type": "object",
@@ -2354,12 +2358,20 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
         "the message cuts the answer short: {message}"
     );
     let PromptError::OutputSchemaMismatch {
-        output, problems, ..
+        output,
+        problems,
+        chat_history,
+        ..
     } = error
     else {
         panic!("expected OutputSchemaMismatch, got {error:?}");
     };
     assert_eq!(output, long_answer, "the field keeps the whole answer");
+    assert_eq!(
+        chat_history,
+        [Message::user("summarize")],
+        "without the answer"
+    );
     assert_eq!(
         problems,
         [problem("/answer", "expected an integer, got a string")]
@@ -2380,7 +2392,7 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
         output,
         output_tool,
         problems,
-        ..
+        chat_history,
     } = error
     else {
         panic!("expected OutputSchemaMismatch, got {error:?}");
@@ -2391,6 +2403,11 @@ fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
         "the field keeps the whole arguments"
     );
     assert_eq!(output_tool.as_deref(), Some("final_result"));
+    assert_eq!(
+        chat_history,
+        [Message::user("summarize")],
+        "without the call"
+    );
     assert_eq!(
         problems,
         [problem("/answer", "expected an integer, got a string")]
