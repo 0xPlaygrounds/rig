@@ -67,9 +67,14 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // Before the build, the command line as the last build reads it; the
     // new build may read it otherwise (below). Its `-p` decides the
     // type-ahead guard, the build's output, which a headless run keeps off
-    // its stderr, and whether a build that fails refuses the run.
+    // its stderr, and whether a build that fails refuses the run. A line it
+    // cannot read, such as one with an option it does not report, is read
+    // as the agent reads its own, which takes any option, so the previous
+    // build never answers a `-p` the new build failed on.
     let last = last_report(home).unwrap_or_default();
-    let print = (last.invocation(args)).is_ok_and(|invocation| invocation.print.is_some());
+    let print = (last.invocation(args))
+        .or_else(|_| Invocation::parse(args))
+        .is_ok_and(|invocation| invocation.print.is_some());
     let output = if print || !terminal {
         BuildOutput::LogOnly
     } else {
