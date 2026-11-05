@@ -73,6 +73,20 @@ fn a_store_change_runs_the_store_its_facade_feature_and_its_docker_suite_only() 
 }
 
 #[test]
+fn an_agent_change_runs_backend_suites_instead_of_an_empty_service_runner() {
+    let plan = planned(&["crates/rig-agent/src/run/mod.rs"]);
+    assert_eq!(
+        packages(&plan, "service-tests").get("rig-service-tests"),
+        Some(&Features::All)
+    );
+    assert_eq!(
+        packages(&plan, "clippy").get("rig-service-tests"),
+        Some(&with(&[])),
+        "the fallback only expands service-test coverage"
+    );
+}
+
+#[test]
 fn a_shared_input_or_a_path_in_no_package_runs_everything() {
     let full = full(&checks::all());
     for path in [

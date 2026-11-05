@@ -294,7 +294,18 @@ fn scoped(
             "doctests" | "docs" => lib(name) && name.as_str() != "rig-service-tests",
             _ => true,
         })
-        .map(|(name, features)| (name.clone(), features.clone()))
+        .map(|(name, features)| {
+            let features = if id == "service-tests"
+                && matches!(features, Features::Default(extra) if extra.is_empty())
+            {
+                // A default dependency can select the runner without enabling any
+                // suites. Cover every backend when no narrower suite was selected.
+                Features::All
+            } else {
+                features.clone()
+            };
+            (name.clone(), features)
+        })
         .collect()
 }
 
