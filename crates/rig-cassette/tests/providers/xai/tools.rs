@@ -91,6 +91,7 @@ async fn tools_smoke() {
             .tool(Adder)
             .tool(Subtract)
             .default_max_turns(2)
+            .additional_params(serde_json::json!({ "store": false }))
             .build();
 
         let response = agent
