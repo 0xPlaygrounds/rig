@@ -2505,3 +2505,19 @@ fn a_cache_point_within_a_message_marks_the_last_block_of_its_items() {
         [vec![false], vec![false, false], vec![false, false]]
     );
 }
+
+/// A gateway's `anthropic/` spelling of a listed id takes that id's default
+/// `max_tokens`; an id the catalog does not list still has none.
+#[test]
+fn a_gateways_anthropic_prefixed_id_takes_the_listed_default_max_tokens() {
+    let facts = crate::catalog::ModelFacts::builtin();
+    assert_eq!(
+        default_max_tokens_for_model(facts, "anthropic/claude-opus-5"),
+        Some(128_000)
+    );
+    assert_eq!(default_max_tokens_for_model(facts, "anthropic/gpt-5"), None);
+    assert_eq!(
+        default_max_tokens_for_model(facts, "openai/claude-opus-5"),
+        None
+    );
+}

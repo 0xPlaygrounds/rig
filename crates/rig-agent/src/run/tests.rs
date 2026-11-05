@@ -824,13 +824,18 @@ fn assert_no_orphan_tool_use(messages: &[Message]) {
 
 /// A turn calling the output tool with arguments that are not a JSON object.
 fn malformed_output_tool_turn() -> ModelTurn {
+    output_tool_turn("{\"x\":")
+}
+
+/// A turn calling the output tool with raw `arguments`.
+fn output_tool_turn(arguments: &str) -> ModelTurn {
     ModelTurn::new(
         rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::ToolCall(ToolCall::from_wire(
             "call_1",
             ToolFunction::parse(
                 rig_core::message::ToolName::new("final_result").expect("tool name"),
-                "{\"x\":",
+                arguments,
             ),
         ))],
         Usage::default(),
@@ -2282,4 +2287,82 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
         run.messages()
     );
     assert!(run.next_step().is_err(), "the run has failed");
+}
+
+/// A run that asks for a schema never ends on an answer that misses it.
+/// Without an output tool (Native on a provider that drops the schema, or
+/// Prompted) it reprompts without naming a tool while the budget lasts, then
+/// fails. Field types count, in text and in output-tool arguments alike.
+#[test]
+fn a_schema_run_fails_on_an_answer_that_misses_the_schema() {
+    let schema = json!({"type": "object", "required": ["answer"]});
+    let mut run = AgentRun::new("summarize")
+        .max_turns(3)
+        .with_output_validation(Some(schema), 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(text_turn("plain prose"))
+            .expect("model_response should succeed"),
+    );
+    let (prompt, _, turn) = expect_call_model(&mut run);
+    assert_eq!(turn, 2);
+    let prompt = serde_json::to_string(&prompt).expect("prompt should serialize");
+    assert!(prompt.contains("answer"), "{prompt}");
+    assert!(!prompt.contains("tool"), "{prompt}");
+    expect_continue(
+        run.model_response(text_turn(r#"{"other": 1}"#))
+            .expect("model_response should succeed"),
+    );
+    let error = run.next_step().expect_err("the mismatch fails the run");
+    assert!(
+        error
+            .to_string()
+            .contains(r#"does not satisfy the output schema (/answer: missing): {"other": 1}"#),
+        "{error}"
+    );
+
+    let typed = json!({
+        "type": "object",
+        "properties": {"answer": {"type": "integer"}},
+        "required": ["answer"],
+    });
+    let mut run = AgentRun::new("summarize").with_output_validation(Some(typed.clone()), 0);
+    expect_call_model(&mut run);
+    let long_answer = format!(r#"{{"answer": "wrong", "note": "{}"}}"#, "x".repeat(1000));
+    expect_continue(
+        run.model_response(text_turn(&long_answer))
+            .expect("model_response should succeed"),
+    );
+    let error = run
+        .next_step()
+        .expect_err("a mistyped field fails the run")
+        .to_string();
+    assert!(
+        error.contains(
+            r#"does not satisfy the output schema (/answer: expected an integer, got a string): {"answer": "wrong""#
+        ),
+        "{error}"
+    );
+    assert!(
+        error.ends_with('…') && error.chars().count() < 400,
+        "the echoed answer is cut short: {error}"
+    );
+
+    let mut run = AgentRun::new("summarize")
+        .with_output_tool_name("final_result")
+        .with_output_validation(Some(typed), 0);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(output_tool_turn(r#"{"answer": "wrong"}"#))
+            .expect("model_response should succeed"),
+    );
+    let error = run
+        .next_step()
+        .expect_err("mistyped arguments fail the run");
+    assert!(
+        error
+            .to_string()
+            .contains("/answer: expected an integer, got a string"),
+        "{error}"
+    );
 }
