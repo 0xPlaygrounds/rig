@@ -208,7 +208,7 @@ fn shared_prefix_replacement_follows_the_expiry_margin() -> anyhow::Result<()> {
 
             clock.store(4594, Ordering::SeqCst);
             model.call(request(3)).await?;
-            anyhow::ensure!(book.leases() == [old.clone()]);
+            anyhow::ensure!(book.leases().as_slice() == std::slice::from_ref(&old));
 
             clock.store(replacement_time, Ordering::SeqCst);
             model.call(request(4)).await?;
@@ -250,6 +250,59 @@ fn shared_prefix_replacement_follows_the_expiry_margin() -> anyhow::Result<()> {
 }
 
 #[test]
+fn a_waiting_cache_creation_rechecks_a_replacements_expiry() -> anyhow::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use crate::completion::CompletionRequest;
+    use crate::driver::Model;
+    use crate::providers::gemini::{GeminiConfig, completion::GenerateContent};
+
+    futures::executor::block_on(async {
+        let clock = Arc::new(AtomicU64::new(1000));
+        let reading = clock.clone();
+        let book =
+            CacheBook::new(AutoCache::default()).with_clock(move || reading.load(Ordering::SeqCst));
+        let transport = ExpiryTransport::default();
+        let model = Model::new(
+            GenerateContent::new(GeminiConfig::new("test-key"), "gemini-2.5-flash"),
+            transport.clone(),
+        )
+        .caching(&book);
+        let request = |question| {
+            CompletionRequest::new(format!("question {question}")).preamble("x".repeat(8192))
+        };
+        for question in 0..3 {
+            model.call(request(question)).await?;
+        }
+        let old = book
+            .leases()
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("the shared prefix should create a cache"))?;
+
+        clock.store(4595, Ordering::SeqCst);
+        let guard = book.create.lock().await;
+        let mut waiting = Box::pin(model.call(request(3)));
+        anyhow::ensure!(futures::poll!(waiting.as_mut()).is_pending());
+        book.restore(vec![Lease {
+            name: "cachedContents/racing".to_owned(),
+            expires_at: 4601,
+            ..old
+        }]);
+        clock.store(4602, Ordering::SeqCst);
+        drop(guard);
+        waiting.await?;
+
+        let requests = transport.0.lock().unwrap_or_else(PoisonError::into_inner);
+        anyhow::ensure!(requests.creates == 2);
+        anyhow::ensure!(
+            requests.reads.last().and_then(Option::as_deref) == Some("cachedContents/cache-2")
+        );
+        Ok(())
+    })
+}
+
+#[test]
 fn delayed_cache_events_leave_the_replacement_intact() {
     let old = Lease {
         name: "cachedContents/old".to_owned(),
@@ -273,7 +326,11 @@ fn delayed_cache_events_leave_the_replacement_intact() {
             "retired" => book.retired(&old),
             _ => book.extended(&old, 100),
         }
-        assert_eq!(book.leases(), [replacement.clone()], "{action}");
+        assert_eq!(
+            book.leases(),
+            std::slice::from_ref(&replacement),
+            "{action}"
+        );
 
         match action {
             "lost" => book.lost(&replacement),

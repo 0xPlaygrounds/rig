@@ -234,14 +234,9 @@ where
         coverable: u64,
     ) -> Option<Lease> {
         let _single = self.book.create.lock().await;
-        let now = self.book.now();
-        if let Some(existing) = self
-            .book
-            .book()
-            .leases
-            .get(&create.digest)
-            .filter(|lease| lease.usable_at(now))
-            .cloned()
+        let existing = self.book.book().leases.get(&create.digest).cloned();
+        if let Some(existing) = existing
+            && existing.usable_at(self.book.now())
         {
             return Some(existing);
         }
