@@ -229,3 +229,169 @@ fn only_the_arm_pattern_decides_a_replay_arm() {
     "#;
     assert_eq!(findings(source).len(), 2, "{:?}", findings(source));
 }
+
+fn functions(found: &[String]) -> Vec<&str> {
+    found
+        .iter()
+        .map(|finding| finding.split(':').next().unwrap_or_default())
+        .collect()
+}
+
+#[test]
+fn the_else_of_a_branch_that_rules_replay_out_runs_in_replay() {
+    let source = r#"
+        fn ruled_out() {
+            if mode != CassetteMode::Replay {
+                assert!(raw.get("created").is_some());
+            } else {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if !matches!(mode, CassetteMode::Replay) {
+                assert!(raw.get("created_at").is_some());
+            } else {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+        fn replay_first() {
+            // The `else` of a replay branch is the recording pass.
+            if mode == CassetteMode::Replay {
+                assert_eq!(raw["updated"], body["updated"]);
+            } else {
+                assert_eq!(raw["updated_at"], body["updated_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(functions(&found), ["replay_first"], "{found:?}");
+}
+
+#[test]
+fn a_rebound_name_no_longer_holds_a_recorded_document() {
+    let source = r#"
+        fn rebound() {
+            let recorded = recorded_additional_params(&chunks);
+            let recorded = recorded["service_tier"].clone();
+            assert_eq!(observation.raw["service_tier"], recorded);
+        }
+        fn rebound_by_a_tuple() {
+            let body = recorded_json_response("x", "cell");
+            let (body, _other) = (live_document(), 0);
+            assert_eq!(raw["extras"], body);
+        }
+        fn still_recorded() {
+            let recorded = recorded_additional_params(&chunks);
+            assert_eq!(observation.raw["additional_params"], recorded);
+        }
+        // A rebinding inside a block ends with the block.
+        fn shadowed_inside() {
+            let body = recorded_json_response("x", "cell");
+            for item in items { let body = item; let _ = body; }
+            { let body = live_document(); }
+            assert_eq!(raw["extras"], body);
+        }
+        // A loop, `while let`, match arm or closure parameter rebinds the
+        // name within its own scope.
+        fn rebound_by_inner_patterns() {
+            let body = recorded_json_response("x", "cell");
+            for body in items { assert_eq!(raw["extras"], body); }
+            for (body, _) in pairs { assert_eq!(raw["extras"], body); }
+            while let Some(body) = next() { assert_eq!(raw["extras"], body); }
+            match live() { Some(body) => assert_eq!(raw["extras"], body), None => {} }
+            items.iter().for_each(|body| assert_eq!(raw["extras"], body));
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(
+        functions(&found),
+        ["still_recorded", "shadowed_inside"],
+        "{found:?}"
+    );
+}
+
+#[test]
+fn a_pattern_that_also_matches_recording_is_not_replay() {
+    let source = r#"
+        fn either_mode() {
+            if matches!(mode, CassetteMode::Replay | CassetteMode::Record) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if matches!(mode, Some(CassetteMode::Replay | _)) {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+            if let (CassetteMode::Record, CassetteMode::Replay) = (mode, fallback) {
+                assert_eq!(raw["updated"], body["updated"]);
+            }
+        }
+        fn replay_only() {
+            if matches!(mode, Some(CassetteMode::Replay) if strict) {
+                assert_eq!(raw["created"], body["created"]);
+            }
+            if let Some(CassetteMode::Replay) = mode {
+                assert_eq!(raw["created_at"], body["created_at"]);
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(
+        functions(&found),
+        ["either_mode", "either_mode", "either_mode"],
+        "{found:?}"
+    );
+}
+
+#[test]
+fn an_entry_by_entry_loop_over_a_recorded_object_is_flagged() {
+    let source = r#"
+        fn entries() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in body.as_object().unwrap() {
+                assert_eq!(raw.get(key), Some(value), "{key}");
+            }
+        }
+        fn bound_object() {
+            let body = recorded_json_response("x", "cell");
+            let object = body.as_object().expect("an object");
+            for (key, value) in object {
+                assert_eq!(raw.get(key), Some(value));
+            }
+        }
+        fn live_entries_against_a_recording() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in raw.as_object().unwrap() {
+                assert_eq!(body.get(key), Some(value));
+            }
+        }
+        fn entries_through_iter() {
+            for (key, value) in recorded_json_response("x", "cell").as_object().unwrap().iter() {
+                assert!(value == &live[key]);
+            }
+        }
+        fn entries_treated() {
+            let body = recorded_json_response("x", "cell");
+            for (key, value) in body.as_object().unwrap() {
+                if !is_volatile_json_key(key) {
+                    assert_eq!(raw.get(key), Some(value));
+                }
+            }
+        }
+        // A live document against a re-serialization of itself holds in
+        // both modes.
+        fn live_against_itself() {
+            let reserialized = serde_json::to_value(&typed).unwrap();
+            for (field, value) in reserialized.as_object().unwrap() {
+                assert_eq!(raw.get(field), Some(value));
+            }
+        }
+    "#;
+    let found = findings(source);
+    assert_eq!(
+        functions(&found),
+        [
+            "entries",
+            "bound_object",
+            "live_entries_against_a_recording",
+            "entries_through_iter"
+        ],
+        "{found:?}"
+    );
+}

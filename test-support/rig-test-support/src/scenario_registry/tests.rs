@@ -129,6 +129,9 @@ fn a_wrapper_declares_through_its_session() {
             let cassette = ProviderCassette::start(root, "x", spec, url).await;
             let key = cassette.api_key("X_API_KEY");
         }
+        async fn with_x_limited() {
+            ProviderCassette::expect_account_failure(&cassette, AccountFailure::RateLimit);
+        }
     "#;
     let declaring = declaring_functions(source).expect("declarations parse");
     assert_eq!(
@@ -136,6 +139,25 @@ fn a_wrapper_declares_through_its_session() {
         [
             ("with_x_bogus_key".to_owned(), vec!["Auth".to_owned()]),
             ("with_x_rejected_key".to_owned(), vec!["Auth".to_owned()]),
+            ("with_x_cassette".to_owned(), vec![]),
+            ("with_x_limited".to_owned(), vec!["RateLimit".to_owned()]),
         ]
+    );
+}
+
+#[test]
+fn an_impl_method_declares_like_a_function() {
+    let source = r#"
+        struct Harness;
+        impl Harness {
+            async fn with_x_limited(&self) {
+                self.cassette.expect_account_failure(AccountFailure::RateLimit);
+            }
+        }
+    "#;
+    let declaring = declaring_functions(source).expect("declarations parse");
+    assert_eq!(
+        declaring,
+        [("with_x_limited".to_owned(), vec!["RateLimit".to_owned()])]
     );
 }
