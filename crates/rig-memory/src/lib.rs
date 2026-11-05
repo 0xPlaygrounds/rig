@@ -21,8 +21,8 @@
 //! - [`rewrite`] (what it promises is on it): rewriting a saved session.
 //! - [`SessionMeta`], [`read_conversation`]: what a session list shows, read without folding
 //!   every log.
-//! - [`Store`], [`MemoryStore`], [`DirStore`] (feature `fs`): where a session is kept; [`Files`],
-//!   [`DirFiles`] and [`PluginFiles`] for named files on their own. Every [`Store`] is an
+//! - [`Store`], [`MemoryStore`], `DirStore` (feature `fs`): where a session is kept; [`Files`],
+//!   `DirFiles` and [`PluginFiles`] for named files on their own. Every [`Store`] is an
 //!   [`AsyncStore`], its calls done when made. A log write appends only if the log is as long as
 //!   the writer read it, the store checking and writing in one step, so of two saves that read
 //!   one log the second is refused ([`SessionError::Changed`]) and writes nothing to it.
