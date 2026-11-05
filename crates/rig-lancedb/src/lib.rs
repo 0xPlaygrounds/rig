@@ -34,6 +34,9 @@ use utils::{execute_query, filter_embeddings};
 
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 /// Vector index over a LanceDB table.
 ///
 /// Queries are embedded with the same model that populated the table, so
@@ -448,7 +451,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .into_iter()
             .map(|value| {
                 Ok(VectorSearchIdResult {
-                    score: match value.get("distance") {
+                    score: match value.get("_distance") {
                         Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
                         _ => 0.0,
                     },
