@@ -49,7 +49,7 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
     }
 
     match column.data_type() {
-        DataType::Null => Ok(vec![serde_json::Value::Null]),
+        DataType::Null => Ok(vec![Value::Null; column.len()]),
         DataType::Float32 => json_arm!(primitive_values, Float32Type),
         DataType::Float64 => json_arm!(primitive_values, Float64Type),
         DataType::Int8 => json_arm!(primitive_values, Int8Type),
@@ -177,7 +177,7 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
             let keys = type_matcher(map_array.keys())?;
             let values = type_matcher(map_array.values())?;
 
-            Ok(build_map(map_array.value_offsets(), &keys, &values))
+            build_map(map_array.value_offsets(), &keys, &values)
         }
         DataType::Dictionary(keys_type, ..) => {
             let (keys, v) = match **keys_type {
@@ -346,31 +346,41 @@ fn build_struct(columns: &[Vec<Value>], num_rows: usize, col_names: &[&str]) -> 
 
 /// Assembles one JSON object per map row from its key and value entries.
 /// `offsets` are the row boundaries into the unsliced entries, so each window
-/// holds one row's entries.
-fn build_map(offsets: &[i32], keys: &[Value], values: &[Value]) -> Vec<Value> {
+/// holds one row's entries. Errors when a window falls outside the entries.
+fn build_map(
+    offsets: &[i32],
+    keys: &[Value],
+    values: &[Value],
+) -> Result<Vec<Value>, VectorStoreError> {
     offsets
         .windows(2)
         .map(|bounds| {
-            let range = match bounds {
-                [start, end] => {
-                    usize::try_from(*start).unwrap_or(0)..usize::try_from(*end).unwrap_or(0)
-                }
-                _ => 0..0,
+            let entries = match *bounds {
+                [start, end] => usize::try_from(start).ok().zip(usize::try_from(end).ok()),
+                _ => None,
+            }
+            .and_then(|(start, end)| Some((keys.get(start..end)?, values.get(start..end)?)));
+            let Some((row_keys, row_values)) = entries else {
+                return Err(VectorStoreError::datastore(ArrowError::CastError(format!(
+                    "Map offsets {bounds:?} exceed its {} keys and {} values",
+                    keys.len(),
+                    values.len()
+                ))));
             };
-            let row = keys
-                .get(range.clone())
-                .unwrap_or_default()
-                .iter()
-                .zip(values.get(range).unwrap_or_default())
-                .map(|(k, v)| {
-                    let key = match k {
-                        Value::String(s) => s.clone(),
-                        _ => k.to_string(),
-                    };
-                    (key, v.clone())
-                })
-                .collect();
-            Value::Object(row)
+
+            Ok(Value::Object(
+                row_keys
+                    .iter()
+                    .zip(row_values)
+                    .map(|(k, v)| {
+                        let key = match k {
+                            Value::String(s) => s.clone(),
+                            _ => k.to_string(),
+                        };
+                        (key, v.clone())
+                    })
+                    .collect(),
+            ))
         })
         .collect()
 }

@@ -2,7 +2,7 @@
 
 use rig_core::vector_store::request::SearchFilter;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Number, Value, json};
 
 use super::VectorizeError;
 
@@ -58,6 +58,7 @@ impl SearchFilter for VectorizeFilter {
     /// Merges both filters into one object, which Vectorize evaluates as a
     /// conjunction. Operators on the same field are combined; an operator
     /// repeated with a different value produces a filter that fails validation.
+    /// Numbers compare by value, so `5` and `5.0` do not conflict.
     fn and(self, rhs: Self) -> Self {
         let (Some(mut merged), Some(rhs)) = (self.into_object(), rhs.into_object()) else {
             return Self::unsupported("AND operands must be filter objects");
@@ -75,7 +76,10 @@ impl SearchFilter for VectorizeFilter {
                 return Self::unsupported(format!("AND cannot combine conditions on `{field}`"));
             };
             for (op, value) in rhs_ops {
-                if lhs_ops.get(&op).is_some_and(|existing| *existing != value) {
+                if lhs_ops
+                    .get(&op)
+                    .is_some_and(|existing| !same_value(existing, &value))
+                {
                     return Self::unsupported(format!(
                         "AND cannot repeat `{op}` on `{field}` with different values"
                     ));
@@ -143,6 +147,36 @@ impl VectorizeFilter {
             Value::Null => Some(serde_json::Map::new()),
             _ => None,
         }
+    }
+}
+
+/// Whether two operator values are equal, comparing numbers by value.
+fn same_value(lhs: &Value, rhs: &Value) -> bool {
+    match (lhs, rhs) {
+        (Value::Number(lhs), Value::Number(rhs)) => same_number(lhs, rhs),
+        (Value::Array(lhs), Value::Array(rhs)) => {
+            lhs.len() == rhs.len() && lhs.iter().zip(rhs).all(|(l, r)| same_value(l, r))
+        }
+        _ => lhs == rhs,
+    }
+}
+
+/// Compares exactly: integers past 2^53 are not rounded to `f64` first.
+fn same_number(lhs: &Number, rhs: &Number) -> bool {
+    let integer = |n: &Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
+    };
+    let equals_float = |int: i128, float: Option<f64>| {
+        float.is_some_and(|float| float.fract() == 0.0 && float as i128 == int)
+    };
+
+    match (integer(lhs), integer(rhs)) {
+        (Some(lhs), Some(rhs)) => lhs == rhs,
+        (Some(int), None) => equals_float(int, rhs.as_f64()),
+        (None, Some(int)) => equals_float(int, lhs.as_f64()),
+        (None, None) => lhs.as_f64() == rhs.as_f64(),
     }
 }
 
