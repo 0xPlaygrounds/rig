@@ -272,26 +272,14 @@ pub enum Ending {
     /// layer denied or replaced what the run needed (Matrices P and T).
     Failed(ErrorKind),
     /// The run refused a final answer that misses its output schema, once
-    /// its output-retry budget was spent ([`misses_schema`]).
+    /// its output-retry budget was spent ([`run_misses_schema`]).
     MissesSchema,
 }
 
-/// Whether `report` is a run's refusal of a final answer that misses its
+/// Whether `error` is a run's refusal of a final answer that misses its
 /// output schema.
-pub fn misses_schema(report: &ErrorReport) -> bool {
-    report.kind == ErrorKind::Response
-        && report
-            .message
-            .contains("does not satisfy the output schema")
-}
-
-/// [`misses_schema`] for a run's error, as the runner returns it.
 fn run_misses_schema(error: &PromptError) -> bool {
-    match error {
-        PromptError::Report(report) => misses_schema(report),
-        PromptError::Provider(error) => misses_schema(&ErrorReport::from(error)),
-        _ => false,
-    }
+    matches!(error, PromptError::OutputSchemaMismatch { .. })
 }
 
 /// The producer's tool choice, as data.

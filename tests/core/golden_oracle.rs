@@ -85,10 +85,11 @@ async fn oracle_prompted_misses_schema_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("the run refuses a prompted answer that misses the schema");
     assert!(
-        error.to_string().contains(
-            "the answer does not satisfy the output schema (no JSON value): not an object"
+        matches!(
+            &error,
+            rig::completion::PromptError::OutputSchemaMismatch { output, .. } if output == "not an object"
         ),
-        "{error}"
+        "{error:?}"
     );
     let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);

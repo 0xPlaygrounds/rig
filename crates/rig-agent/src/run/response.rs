@@ -9,6 +9,7 @@
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message};
+use rig_core::tool::validate::Problem;
 use serde::{Deserialize, Serialize};
 
 /// One completion call of a run: what was asked and what came back.
@@ -283,6 +284,22 @@ pub enum PromptError {
         reason: String,
     },
 
+    /// The final answer missed the run's output schema, as
+    /// [`rig_core::tool::validate::validate`] checks it, once the
+    /// output-retry budget was spent. The message names the problems and the
+    /// answer's first 200 characters; the fields keep all of them.
+    #[error("{}", schema_mismatch_message(.output, .output_tool.as_deref(), .problems))]
+    OutputSchemaMismatch {
+        /// The whole answer: the text, or the output tool call's arguments.
+        output: String,
+        /// The output tool the model called, or `None` for a text answer.
+        output_tool: Option<String>,
+        /// Every problem found, in document order.
+        problems: Vec<Problem>,
+        /// Canonical history at failure, without the refused answer.
+        chat_history: Vec<Message>,
+    },
+
     /// The model attempted to call a tool unavailable for the current turn.
     #[error(
         "model attempted to call unknown or disallowed tool `{tool_name}`. Available tools: {available_tools:?}. Allowed tools for this turn: {allowed_tools:?}"
@@ -297,6 +314,32 @@ pub enum PromptError {
         /// Canonical history available at failure.
         chat_history: Vec<Message>,
     },
+}
+
+/// The problems as one line, `; `-separated.
+pub(crate) fn join_problems(problems: &[Problem]) -> String {
+    problems
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn schema_mismatch_message(
+    output: &str,
+    output_tool: Option<&str>,
+    problems: &[Problem],
+) -> String {
+    let problems = join_problems(problems);
+    let excerpt = match output.char_indices().nth(200) {
+        Some((end, _)) => format!("{}…", output.get(..end).unwrap_or_default()),
+        None => output.to_owned(),
+    };
+    let answer = match output_tool {
+        Some(name) => format!("the output tool `{name}` call"),
+        None => "the answer".to_owned(),
+    };
+    format!("{answer} does not satisfy the output schema ({problems}): {excerpt}")
 }
 
 /// A relayed failure is the report the origin sent.

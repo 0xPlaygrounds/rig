@@ -48,6 +48,7 @@ pub(crate) fn record_summary(log: &rig_cassette::effect_log::EffectLog) -> Vec<S
 enum RunFailure {
     Cancelled(String),
     MaxTurns,
+    MissesSchema,
     Report(ErrorReport),
 }
 
@@ -55,6 +56,7 @@ fn classify_prompt(error: PromptError) -> RunFailure {
     match error {
         PromptError::Cancelled { reason, .. } => RunFailure::Cancelled(reason),
         PromptError::MaxTurns { .. } => RunFailure::MaxTurns,
+        PromptError::OutputSchemaMismatch { .. } => RunFailure::MissesSchema,
         PromptError::Report(report) => RunFailure::Report(report),
         PromptError::Provider(error) => RunFailure::Report(ErrorReport::from(&error)),
         other => panic!("the run fails as one of the program's endings, not {other:?}"),
@@ -95,11 +97,7 @@ fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &s
         (Err(RunFailure::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
             String::new()
         }
-        (Err(RunFailure::Report(report)), Ending::MissesSchema)
-            if corpus::misses_schema(&report) =>
-        {
-            String::new()
-        }
+        (Err(RunFailure::MissesSchema), Ending::MissesSchema) => String::new(),
         (other, ending) => panic!("{fixture}: ends in {ending:?}, got {other:?}"),
     }
 }

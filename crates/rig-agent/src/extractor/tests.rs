@@ -265,11 +265,14 @@ async fn exhausted_retries_return_last_error() {
         .expect_err("extraction should fail");
 
     assert!(
-        matches!(&err, StructuredOutputError::Prompt(_))
-            && err
-                .to_string()
-                .contains("does not satisfy the output schema"),
-        "{err}"
+        matches!(
+            &err,
+            StructuredOutputError::Prompt(PromptError::OutputSchemaMismatch {
+                output,
+                ..
+            }) if output == "no submit call"
+        ),
+        "{err:?}"
     );
 }
 
