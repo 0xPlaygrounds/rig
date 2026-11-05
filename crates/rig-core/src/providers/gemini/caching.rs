@@ -207,6 +207,13 @@ pub struct Lease {
     pub model: String,
 }
 
+impl Lease {
+    /// Whether a request sent at `now` can still read the cache.
+    pub(crate) fn live_at(&self, now: u64) -> bool {
+        self.expires_at > now + EXPIRY_MARGIN_SECS
+    }
+}
+
 /// Something that happened to a cache.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum CacheEvent {
@@ -453,8 +460,7 @@ impl CacheBook {
     pub(crate) fn retired(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
-        book.leases.remove(&lease.digest);
-        end_life(&mut book, &lease.name, now);
+        book.forget(lease, now);
         book.events.push(CacheEvent::Retired {
             name: lease.name.clone(),
             at: now,
@@ -466,8 +472,7 @@ impl CacheBook {
     pub(crate) fn lost(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
-        book.leases.remove(&lease.digest);
-        end_life(&mut book, &lease.name, now);
+        book.forget(lease, now);
         book.events.push(CacheEvent::Lost {
             name: lease.name.clone(),
             at: now,
@@ -477,11 +482,25 @@ impl CacheBook {
     }
 }
 
-pub(crate) fn end_life(book: &mut Book, name: &str, now: u64) {
-    if let Some(life) = book.lives.get_mut(name)
-        && life.ended.is_none()
-    {
-        life.ended = Some(now);
+impl Book {
+    /// The lease held for `lease`'s digest, when it is still that cache and
+    /// not a replacement.
+    fn held_mut(&mut self, lease: &Lease) -> Option<&mut Lease> {
+        self.leases
+            .get_mut(&lease.digest)
+            .filter(|held| held.name == lease.name)
+    }
+
+    /// Stop holding `lease` and end its life.
+    fn forget(&mut self, lease: &Lease, now: u64) {
+        if self.held_mut(lease).is_some() {
+            self.leases.remove(&lease.digest);
+        }
+        if let Some(life) = self.lives.get_mut(&lease.name)
+            && life.ended.is_none()
+        {
+            life.ended = Some(now);
+        }
     }
 }
 
@@ -777,7 +796,7 @@ impl CacheBook {
                 book.leases
                     .get(at(k))
                     .filter(|lease| lease.model == model)
-                    .filter(|lease| lease.expires_at > now + EXPIRY_MARGIN_SECS)
+                    .filter(|lease| lease.live_at(now))
                     .cloned()
             })
             .filter(|lease| !idle.iter().any(|gone| gone.name == lease.name));
@@ -797,7 +816,10 @@ impl CacheBook {
             .as_ref()
             .filter(|lease| lease.covers > 0)
             .map_or_else(|| at(1.min(n)).to_owned(), |lease| lease.digest.clone());
-        let prefix_leased = book.leases.contains_key(at(0));
+        let prefix_leased = book
+            .leases
+            .get(at(0))
+            .is_some_and(|lease| lease.live_at(now));
         let line = book.lines.entry(line_key.clone()).or_insert_with(|| Line {
             rolled_at: now,
             ..Line::default()
@@ -987,7 +1009,7 @@ impl CacheBook {
         let now = self.now();
         let expires_at = now + ttl_secs;
         let mut book = self.book();
-        if let Some(held) = book.leases.get_mut(&lease.digest) {
+        if let Some(held) = book.held_mut(lease) {
             held.expires_at = expires_at;
         }
         if let Some(life) = book.lives.get_mut(&lease.name) {

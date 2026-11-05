@@ -223,8 +223,8 @@ where
         }
     }
 
-    /// Create the cache `create` describes, unless one already exists for
-    /// its digest. Returns the lease to read.
+    /// Create the cache `create` describes, unless a live one already exists
+    /// for its digest. Returns the lease to read.
     async fn create(
         &self,
         model: &str,
@@ -234,7 +234,12 @@ where
         coverable: u64,
     ) -> Option<Lease> {
         let _single = self.book.create.lock().await;
-        if let Some(existing) = self.book.book().leases.get(&create.digest).cloned() {
+        // Checked again under the lock: another request may have created it,
+        // or the one the plan saw may have expired while this one waited.
+        let existing = self.book.book().leases.get(&create.digest).cloned();
+        if let Some(existing) = existing
+            && existing.live_at(self.book.now())
+        {
             return Some(existing);
         }
         let display_name = format!(

@@ -76,7 +76,8 @@ impl Wire for Embeddings {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
             .model(self.model.as_str())
-            .capabilities(Capabilities::embedding(1024, self.ndims))
+            // `batchEmbedContents` refuses more than 100 requests.
+            .capabilities(Capabilities::embedding(100, self.ndims))
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EncodeError> {

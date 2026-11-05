@@ -13,8 +13,9 @@ use crate::wire::{Body, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wir
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-/// Encode audio as inline base64 with a transcription system instruction.
-/// Reject invalid generation parameters or JSON serialization failures.
+/// Encode audio as inline base64, followed by the request's prompt, with a
+/// transcription system instruction naming the output language when one is
+/// set. Reject invalid generation parameters or JSON serialization failures.
 fn transcription_body(
     request: transcription::TranscriptionRequest,
 ) -> Result<Vec<u8>, EncodeError> {
@@ -36,16 +37,27 @@ fn transcription_body(
     let mime_type = mime_guess::from_path(Path::new(&request.filename))
         .first()
         .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
+    let mut parts =
+        vec![json!({ "inlineData": { "mimeType": mime_type, "data": null }, "thought": false })];
+    parts.extend(
+        request
+            .prompt
+            .map(|prompt| json!({ "text": prompt, "thought": false })),
+    );
+    let mut instruction = vec![json!({ "text": TRANSCRIPTION_PREAMBLE, "thought": false })];
+    instruction.extend(request.language.map(|language| {
+        json!({ "text": format!("Use {language} as the output language."), "thought": false })
+    }));
     let mut body = json!({
         "contents": [{
-            "parts": [{ "inlineData": { "mimeType": mime_type, "data": null }, "thought": false }],
+            "parts": parts,
             "role": "user",
         }],
         "generationConfig": generation_config,
         "safetySettings": null,
         "toolConfig": null,
         "systemInstruction": {
-            "parts": [{ "text": TRANSCRIPTION_PREAMBLE, "thought": false }],
+            "parts": instruction,
             "role": "model",
         },
     });
