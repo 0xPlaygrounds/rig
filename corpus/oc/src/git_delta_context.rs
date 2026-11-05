@@ -375,13 +375,15 @@ fn tree(processes: &Processes, root: &Path, keep: &Path) -> Option<String> {
 /// The files changed from the tree `was` to the tree `now` of the work
 /// tree at `root`, with their line counts (none for a binary file).
 fn changes(processes: &Processes, root: &Path, was: &str, now: &str) -> Vec<FileChange> {
+    // NUL-separated, so no name is quoted, and relative to `root`, as
+    // `git -C root` runs it.
     let diff = |format: &str| {
         let args = [
-            "-c",
-            "core.quotePath=false",
             "diff-tree",
             "-r",
+            "-z",
             "--no-renames",
+            "--relative",
             format,
             was,
             now,
@@ -389,15 +391,16 @@ fn changes(processes: &Processes, root: &Path, was: &str, now: &str) -> Vec<File
         git(processes, root, &args).unwrap_or_default()
     };
     let (statuses, counts) = (diff("--name-status"), diff("--numstat"));
-    statuses
-        .lines()
-        .zip(counts.lines())
+    let fields: Vec<&str> = statuses.split('\0').collect();
+    fields
+        .chunks_exact(2)
+        .zip(counts.split('\0'))
         .filter_map(|(status, count)| {
-            let (status, path) = status.split_once('\t')?;
+            let [status, path] = status else { return None };
             let mut count = count.splitn(3, '\t').map(|it| it.parse().unwrap_or(0));
             let (added, removed) = (count.next()?, count.next()?);
             let path = root.join(path).to_string_lossy().into_owned();
-            Some(match status {
+            Some(match *status {
                 "A" => FileChange::created(path, added),
                 "D" => FileChange::deleted(path, removed),
                 _ => FileChange::modified(path, added, removed),
