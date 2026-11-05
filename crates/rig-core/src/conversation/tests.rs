@@ -1,5 +1,98 @@
 use super::*;
 
+#[test]
+fn normalize_replays_mixed_provider_turns_as_canonical_content() {
+    use crate::{
+        completion::CompletionRequest,
+        operation::Completion,
+        providers::{
+            anthropic::AnthropicConfig,
+            gemini::{GeminiConfig, completion::GenerateContent},
+        },
+        wire::{Body, Mode, Operation, Wire, WireFrame, decode_reply},
+    };
+    use serde_json::{Value, json};
+
+    let anthropic = AnthropicConfig::new("unused").completion("claude-sonnet-4-6");
+    let gemini = GenerateContent::new(GeminiConfig::new("unused"), "gemini-3-flash-preview");
+    let request = CompletionRequest::new("First question");
+    let first = decode_reply(
+        &anthropic,
+        &request,
+        Mode::Unary,
+        [WireFrame::Text(
+            json!({
+                "type": "message", "id": "msg_a", "model": "claude-sonnet-4-6", "role": "assistant",
+                "content": [{"type": "text", "text": "First answer"}], "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            })
+            .to_string(),
+        )],
+    )
+    .expect("Anthropic reply")
+    .message()
+    .expect("assistant message");
+    let request = CompletionRequest::new("Second question")
+        .messages([Message::user("First question"), first.clone()]);
+    let second = decode_reply(
+        &gemini,
+        &request,
+        Mode::Unary,
+        [WireFrame::Text(json!({
+            "candidates": [{"content": {"parts": [{"text": "Second answer", "thoughtSignature": "c2ln"}],
+                "role": "model"}, "finishReason": "STOP", "index": 0}],
+            "modelVersion": "gemini-3-flash-preview", "responseId": "resp_g",
+        }).to_string())],
+    ).expect("Gemini reply").message().expect("assistant message");
+    let mut conversation = Conversation::from_messages([
+        Message::user("First question"),
+        first,
+        Message::user("Second question"),
+        second,
+    ]);
+    conversation.splice(2..3, [], Author::plugin("edit-history"));
+
+    let encode = |conversation: &Conversation| {
+        let request =
+            CompletionRequest::new("Continue").messages(conversation.messages().iter().cloned());
+        let request =
+            Completion::prepare(request, &anthropic.describe()).expect("prepared request");
+        let encoded = anthropic
+            .encode(request, Mode::Unary)
+            .expect("encoded request");
+        let Body::Bytes(bytes) = encoded.request.into_body() else {
+            panic!("JSON body");
+        };
+        serde_json::from_slice::<Value>(&bytes).expect("JSON request")
+    };
+    let assistant_parts = |body: &Value| {
+        body.get("messages")
+            .and_then(Value::as_array)
+            .expect("messages")
+            .iter()
+            .filter(|message| message.get("role") == Some(&json!("assistant")))
+            .flat_map(|message| {
+                message
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .expect("content")
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let before = assistant_parts(&encode(&conversation));
+    assert_eq!(conversation.normalize(Author::rig()).merged.len(), 1);
+    let after = assistant_parts(&encode(&conversation));
+    assert_eq!(after, before);
+    assert_eq!(
+        after,
+        vec![
+            json!({"type": "text", "text": "First answer"}),
+            json!({"type": "text", "text": "Second answer"}),
+        ]
+    );
+}
+
 fn ids(conversation: &Conversation) -> Vec<MessageId> {
     conversation.entries().map(|entry| entry.id).collect()
 }

@@ -428,6 +428,49 @@ fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
     assert!(again.merged.is_empty() && again.dropped.is_empty() && again.repairs.is_empty());
 }
 
+#[test]
+fn merging_turns_keeps_only_a_shared_origin() {
+    use crate::message::{AssistantMessage, Origin};
+
+    let same = Origin::new("api", "provider", "model");
+    let other = Origin::new("other-api", "other-provider", "other-model");
+    let mut another_response = same.clone();
+    another_response.response_id = Some("response-2".into());
+    for (origins, expected) in [
+        (
+            vec![Some(same.clone()), Some(same.clone())],
+            Some(same.clone()),
+        ),
+        (vec![Some(same.clone()), Some(other.clone())], None),
+        (vec![Some(other.clone()), Some(same.clone())], None),
+        (vec![Some(same.clone()), Some(another_response)], None),
+        (vec![Some(same.clone()), None], None),
+        (vec![None, Some(same.clone())], None),
+        (vec![None, None], None),
+        (vec![Some(same.clone()), Some(other), Some(same)], None),
+    ] {
+        let messages: Vec<_> = origins
+            .into_iter()
+            .enumerate()
+            .map(|(index, origin)| {
+                Message::Assistant(
+                    AssistantMessage::new(vec![AssistantContent::text(index.to_string())])
+                        .with_origin(origin),
+                )
+            })
+            .collect();
+        let normalized = normalize(messages.iter().cloned().map(Entry::new).collect());
+        assert_eq!(normalized.entries.len(), 1);
+        let merged = &normalized.entries.first().expect("merged entry").message;
+        let Message::Assistant(turn) = &**merged else {
+            panic!("merged assistant turn");
+        };
+        assert_eq!(turn.origin, expected);
+        assert_eq!(turn.content.len(), messages.len());
+        assert_eq!(repair(messages).messages, vec![(**merged).clone()]);
+    }
+}
+
 /// A system entry that arrives while calls wait goes after the entry that
 /// answers them, keeping its id, as `repair` places a held system message;
 /// the results keep what their calls published.

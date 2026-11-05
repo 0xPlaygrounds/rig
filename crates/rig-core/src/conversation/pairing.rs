@@ -213,8 +213,9 @@ pub struct Paired {
 /// [`validate`] accepts, losing no turn: the lenient load of a
 /// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
-/// turn left directly after another is merged into it; `repairs` reports
-/// the input as [`pair`] read it.
+/// turn left directly after another is merged into it, retaining the
+/// origin only when both agree; `repairs` reports the input as [`pair`]
+/// read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
     let shaped = shape(messages, true);
     Paired {
@@ -357,6 +358,9 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
         if let Message::Assistant(turn) = &mut message
             && let Some(Message::Assistant(previous)) = messages.last_mut()
         {
+            if previous.origin != turn.origin {
+                previous.origin = None;
+            }
             previous.content.append(&mut turn.content);
             previous.stop = turn.stop.take();
             if let Some(into) = sources.last_mut() {
