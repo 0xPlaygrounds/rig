@@ -446,7 +446,9 @@ The agent is built with exactly the plugins on, which it adds as one Bevy
 `$RIG_HOME/settings.toml` is the one file you edit. Its `[plugins]` table holds
 only your changes to rig's built-in list, so a plugin rig adds to its defaults
 later reaches you without a change; a name rig does not know is refused,
-naming it:
+naming it, and `rig` starts no agent until it is taken out (a build from
+before was built from other settings). A build that fails to compile instead
+starts the previous build, whose conversation is told why:
 
 ```toml
 [plugins]
