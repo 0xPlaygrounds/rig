@@ -4,7 +4,6 @@
 //! bytes alone.
 
 use futures::StreamExt;
-use futures::future::{Either, select};
 use serde::Deserialize;
 
 use crate::driver::{Exchange, Model, Opened, Opening, Transport};
@@ -44,15 +43,18 @@ impl CacheBook {
         survived
     }
 
-    /// Delete every cache in [`Self::leases`], keeping any whose delete fails.
-    /// It stops at the first delete with no answer in 10 seconds, and logs
-    /// what is left. A create still in flight deletes its own cache when
-    /// it lands. A cache already gone (403) counts as deleted.
+    /// Delete every cache in [`Self::leases`], keeping any whose delete fails,
+    /// after waiting up to 10 seconds for a create in flight. It stops at the
+    /// first delete with no answer in 10 seconds, and logs what is left. A
+    /// cache already gone (403) counts as deleted.
     pub async fn close<T>(&self, caches: &Model<CachedContents, T>)
     where
         T: Transport<CachedContents>,
     {
         self.book().closes += 1;
+        if timeout(DELETE_TIMEOUT, self.create.lock()).await.is_err() {
+            tracing::warn!(target: "gemini.cache", "close gave up waiting for a cache create");
+        }
         for lease in self.leases() {
             let Ok(result) = timeout(DELETE_TIMEOUT, caches.delete(&lease.name)).await else {
                 let left: Vec<String> = self.leases().into_iter().map(|l| l.name).collect();
@@ -245,14 +247,14 @@ where
 
     /// Create the cache `create` describes, unless a live one already exists
     /// for its digest or the book closed since `plan`. Returns the lease to
-    /// read. One that lands after a close goes in `late`, to delete.
+    /// read. One that lands after a close stays in the book for a close to
+    /// delete, and is not read.
     async fn create(
         &self,
         model: &str,
         parsed: &Parsed,
         create: &Create,
         plan: &Plan,
-        late: &mut Option<Lease>,
     ) -> Option<Lease> {
         let _single = self.book.create.lock().await;
         if self.book.book().closes != plan.closes {
@@ -313,7 +315,7 @@ where
             .book
             .created(&plan.line, create, resource.name, tokens, model);
         if self.book.book().closes != plan.closes {
-            *late = Some(lease);
+            tracing::warn!(target: "gemini.cache", name = %lease.name, "cache created during close");
             return None;
         }
         Some(lease)
@@ -325,16 +327,6 @@ fn known<T>(event: WireEvent<T>) -> Option<T> {
     match event {
         WireEvent::Known(value) => Some(value),
         _ => None,
-    }
-}
-
-/// `send`'s result. `cleanup` starts first, runs beside it and is dropped when
-/// it ends, so cleanup never holds a reply.
-async fn beside<F: Future>(cleanup: impl Future<Output = ()>, send: F) -> F::Output {
-    futures::pin_mut!(cleanup, send);
-    match select(cleanup, send).await {
-        Either::Left(((), send)) => send.await,
-        Either::Right((sent, _)) => sent,
     }
 }
 
@@ -399,9 +391,8 @@ where
             }
             let mut read = plan.read.clone();
             let mut line = plan.line.clone();
-            let mut late = None;
             if let Some(create) = &plan.create
-                && let Some(lease) = this.create(&model, &parsed, create, &plan, &mut late).await
+                && let Some(lease) = this.create(&model, &parsed, create, &plan).await
             {
                 if let Some(replaced) = &create.replaces
                     && replaced.name != lease.name
@@ -429,11 +420,7 @@ where
                     (payload, None)
                 }
             };
-            let send = this.inner.send(sent, exchange.clone());
-            let mut opened: Opened<WireFrame> = match &late {
-                Some(lease) => beside(this.delete(lease), send).await?,
-                None => send.await?,
-            };
+            let mut opened: Opened<WireFrame> = this.inner.send(sent, exchange.clone()).await?;
             if let Some(lease) = read.clone() {
                 let first = opened.frames.next().await;
                 let forbidden = matches!(
