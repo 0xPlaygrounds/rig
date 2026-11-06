@@ -484,3 +484,82 @@ fn a_one_of_beside_an_any_of_goes_without_strict() {
         assert_eq!(function.get("parameters"), Some(&schema));
     }
 }
+
+/// The catalog decides which DeepSeek models read images. A vision model
+/// gets `image_url` parts, as data or by URL, and no other media. The API
+/// answers an image sent to `deepseek-v4-pro` with a 200 and ignores it
+/// (checked live), so a text model and an unlisted id get one placeholder for both images.
+#[test]
+fn image_parts_reach_only_the_models_the_catalog_says_read_them() {
+    use crate::completion::history::IMAGE_OMITTED;
+    use crate::message::{
+        Audio, AudioMediaType, DocumentSourceKind, Image, ImageMediaType, Message, UserContent,
+    };
+    use crate::operation::Completion;
+    use crate::wire::Operation;
+
+    let image = |data| {
+        UserContent::Image(Image {
+            data,
+            media_type: Some(ImageMediaType::PNG),
+            detail: None,
+            native: None,
+        })
+    };
+    let content = vec![
+        UserContent::text("What color?"),
+        image(DocumentSourceKind::Base64("aGk=".to_owned())),
+        image(DocumentSourceKind::Url(
+            "https://example.com/a.png".to_owned(),
+        )),
+        UserContent::Audio(Audio {
+            data: DocumentSourceKind::Base64("aGk=".to_owned()),
+            media_type: Some(AudioMediaType::WAV),
+        }),
+    ];
+    let parts = |model: &str| {
+        let wire = OpenAIConfig::with_key(&DEEPSEEK, "sk-test").chat(model);
+        let mut request = CompletionRequest::new("What color?");
+        request.chat_history = vec![
+            Message::User {
+                content: content.clone(),
+            }
+            .into(),
+        ];
+        let request = Completion::prepare(request, &wire.describe()).expect("prepares");
+        let body = crate::test_utils::json_body(
+            &wire.encode(request, Mode::Unary).expect("encodes").request,
+        );
+        body.pointer("/messages/0/content")
+            .and_then(Value::as_array)
+            .cloned()
+            .expect("content parts")
+    };
+    let kinds = |parts: &[Value]| -> Vec<String> {
+        parts
+            .iter()
+            .filter_map(|part| part.get("type").and_then(Value::as_str).map(str::to_owned))
+            .collect()
+    };
+
+    for model in [
+        super::DEEPSEEK_FLASH,
+        super::DEEPSEEK_V4_FLASH,
+        "deepseek-v4-flash-vision-exp",
+    ] {
+        assert_eq!(
+            kinds(&parts(model)),
+            ["text", "image_url", "image_url", "text"],
+            "{model}"
+        );
+    }
+    for model in [super::DEEPSEEK_V4_PRO, "deepseek-unlisted"] {
+        let parts = parts(model);
+        assert_eq!(kinds(&parts), ["text", "text", "text"], "{model}");
+        assert_eq!(
+            parts.get(1).and_then(|part| part.get("text")),
+            Some(&json!(IMAGE_OMITTED)),
+            "{model}"
+        );
+    }
+}
