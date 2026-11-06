@@ -6,7 +6,7 @@ use std::io;
 use rig_core::conversation::Conversation;
 
 use crate::format::SESSION;
-use crate::session::{Fold, Folded, fold, log_lines, read_header};
+use crate::session::{Fold, Folded, conversation_of, fold, log_lines, read_header};
 use crate::{CURRENT, SessionError, Store};
 
 /// The conversation of `agent` (the main agent when `None`, found from the
@@ -30,7 +30,7 @@ pub fn read_conversation(
         let why = format!("the session has no agent {}", agent.unwrap_or("to talk to"));
         return Err(io::Error::new(io::ErrorKind::NotFound, why).into());
     };
-    Ok((folded.name, folded.conversation))
+    Ok((folded.name.clone(), conversation_of(Some(folded))?))
 }
 
 /// The main agent's log, folded: of the logs whose header names no parent

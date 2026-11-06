@@ -28,6 +28,7 @@ use rig_core::conversation::{
 use rig_core::message::{CallId, StopReason, ToolCall, ToolResult, ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
+use crate::blobs::sha256_hex;
 use crate::session::replay;
 use crate::{HeuristicTokenCounter, SessionError, Store, TokenCounter};
 
@@ -583,11 +584,15 @@ pub fn apply_summary(
         Some(kept) => conversation.index_of(kept)?,
     };
     let summary = Entry::new(Message::user(state.message()?)).by(summary_author());
+    let entries: Vec<Entry> = (0..end).filter_map(|at| conversation.entry(at)).collect();
+    let replaced_hash = serde_json::to_vec(&entries).ok();
     let spliced = conversation.splice(..end, [summary], summary_author());
     if let Some(&summary) = spliced.changed.first() {
         let compacted = Compacted {
             summary,
             replaced: spliced.removed.clone(),
+            replaced_hash: replaced_hash
+                .and_then(|bytes| sha256_hex(&bytes).get(..HASH_LEN).map(str::to_owned)),
             state: state.clone(),
         };
         let value = serde_json::to_value(compacted).unwrap_or_default();
@@ -599,6 +604,10 @@ pub fn apply_summary(
 
 /// The kind of the aside [`apply_summary`] puts after each summary.
 pub const COMPACTED: &str = "rig.compaction";
+
+/// The hex digits of [`Compacted::replaced_hash`]: 128 bits, as every
+/// reset writes it again for each record.
+const HASH_LEN: usize = 32;
 
 /// The summary state the next compaction of `conversation` builds on: the
 /// newest compaction's not undone ([`Compacted`]), or the state before any.
@@ -618,6 +627,12 @@ pub struct Compacted {
     pub summary: MessageId,
     /// The entries it replaced, earlier summaries included, in order.
     pub replaced: Vec<MessageId>,
+    /// The start of the SHA-256 of those entries, ids and made-times
+    /// included, taken when it was made: what tells the same compaction
+    /// from another conversation's with equal ids. `None` in a record saved
+    /// before it was kept, which proves nothing across a reset.
+    #[serde(default, rename = "hash", skip_serializing_if = "Option::is_none")]
+    pub replaced_hash: Option<String>,
     /// The state it put in, which the next compaction builds on.
     pub state: SummaryState,
 }
@@ -626,11 +641,14 @@ impl Compacted {
     /// The record of every compaction of `conversation` not undone, oldest
     /// first, each with its aside.
     pub fn of(conversation: &Conversation) -> impl Iterator<Item = (AsideId, Self)> + '_ {
-        let author = summary_author();
         let records = conversation.asides();
-        let ours =
-            records.filter(move |(_, aside)| aside.kind == COMPACTED && aside.author == author);
-        ours.filter_map(|(id, aside)| Some((id, Self::deserialize(&aside.value).ok()?)))
+        records.filter_map(|(id, aside)| Some((id, Self::read(aside)?)))
+    }
+
+    /// The record `aside` holds, if it is one.
+    fn read(aside: &Aside) -> Option<Self> {
+        let ours = aside.kind == COMPACTED && aside.author == summary_author();
+        ours.then(|| Self::deserialize(&aside.value).ok())?
     }
 }
 
@@ -653,8 +671,9 @@ pub enum UndoError {
     /// The newest compaction's summary is no longer in the conversation.
     #[error("its summary is no longer in the conversation")]
     SummaryGone,
-    /// The session's log does not hold what it replaced, such as before
-    /// the compaction was saved.
+    /// The session's log does not hold what it replaced: the compaction
+    /// was not saved there, or a reset brought its summary in, or brought
+    /// it back with a record that cannot prove it is the same compaction.
     #[error("the session's log does not hold what it replaced")]
     NotInLog,
     /// The session's log could not be read.
@@ -685,9 +704,14 @@ pub fn undo_summary(
     let at = conversation
         .index_of(compacted.summary)
         .ok_or(UndoError::SummaryGone)?;
-    let originals = summarized_in_log(store, log)?
-        .replaced
+    let mut known = provenance(store, log)?;
+    if known.proofs.get(&compacted.summary) != Some(&compacted) {
+        return Err(UndoError::NotInLog);
+    }
+    let originals = known
+        .first
         .remove(&compacted.summary)
+        .flatten()
         .ok_or(UndoError::NotInLog)?;
     let restored = conversation.restore(at..=at, originals, by).restored;
     conversation.remove_aside(aside);
@@ -709,19 +733,80 @@ pub struct Summarized {
     pub records: BTreeMap<MessageId, Compacted>,
 }
 
+/// What a log's compactions replaced, between two resets of it.
+#[derive(Default)]
+struct Provenance {
+    /// What each summary first replaced, `None` for entries the log lacks.
+    first: BTreeMap<MessageId, Option<Vec<Entry>>>,
+    records: BTreeMap<MessageId, Compacted>,
+    /// The record each compaction saved here.
+    proofs: BTreeMap<MessageId, Compacted>,
+}
+
+impl Provenance {
+    /// Copies to `into` what this knows of `summary`, and nothing of the
+    /// summaries it replaced, each of which proves itself.
+    fn carry(&self, summary: MessageId, into: &mut Self) {
+        if let Some(taken) = self.first.get(&summary) {
+            into.first.insert(summary, taken.clone());
+        }
+        if let Some(record) = self.records.get(&summary) {
+            into.records.insert(summary, record.clone());
+        }
+        if let Some(proof) = self.proofs.get(&summary) {
+            into.proofs.insert(summary, proof.clone());
+        }
+    }
+}
+
 /// What the compactions in the log `log` of `store` replaced, read in one
 /// pass over the log. A summary named again, as by an undo that put it
-/// back, keeps what it first replaced. A summary whose entries the log
-/// does not hold is left out.
+/// back, keeps what it first replaced. A reset carries each summary over
+/// on its own, only when the new value holds a record equal to the one its
+/// compaction saved here, [`Compacted::replaced_hash`] included, so a
+/// summary of another conversation that reuses an id takes nothing from
+/// this one. A summary whose entries the log does not hold is left out.
 ///
 /// # Errors
 ///
 /// As [`load`](crate::load).
 pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, SessionError> {
-    let mut first: BTreeMap<MessageId, Option<Vec<Entry>>> = BTreeMap::new();
-    let mut records = BTreeMap::new();
+    let known = provenance(store, log)?;
+    let found = known.first.into_iter();
+    let replaced = found
+        .filter_map(|(summary, taken)| Some((summary, taken?)))
+        .collect();
+    let records = known.records;
+    Ok(Summarized { replaced, records })
+}
+
+/// The [`Provenance`] of the log `log` of `store` as it ends.
+fn provenance(store: &dyn Store, log: &str) -> Result<Provenance, SessionError> {
+    let mut known = Provenance::default();
+    let mut stretches: Vec<Provenance> = Vec::new();
     replay(store, log, |before, recorded| {
         let change = &recorded.change;
+        if let Change::Reset { state } = change {
+            stretches.push(std::mem::take(&mut known));
+            for (_, record) in Compacted::of(state) {
+                let proved = |then: &&Provenance| {
+                    record.replaced_hash.is_some()
+                        && then.proofs.get(&record.summary) == Some(&record)
+                };
+                if let Some(then) = stretches.iter().rev().find(proved) {
+                    then.carry(record.summary, &mut known);
+                }
+            }
+            return;
+        }
+        if let Change::Aside {
+            aside: Some(aside), ..
+        } = change
+            && let Some(record) = Compacted::read(aside)
+        {
+            known.proofs.entry(record.summary).or_insert(record);
+            return;
+        }
         let (Some(summary), Change::Splice { removed, with, .. }) = (summary_in(change), change)
         else {
             return;
@@ -730,21 +815,24 @@ pub fn summarized_in_log(store: &dyn Store, log: &str) -> Result<Summarized, Ses
         let taken: Vec<&MessageId> = removed.iter().filter(|id| !kept(id)).collect();
         for (_, record) in Compacted::of(before) {
             if taken.contains(&&record.summary) {
-                records.entry(record.summary).or_insert(record);
+                known.records.entry(record.summary).or_insert(record);
             }
         }
-        first.entry(summary).or_insert_with(|| {
+        // An entry put back carries its made-time: an undo, which replaced nothing.
+        if with
+            .iter()
+            .any(|entry| entry.id == Some(summary) && entry.made.is_some())
+        {
+            return;
+        }
+        known.first.entry(summary).or_insert_with(|| {
             taken
                 .iter()
                 .map(|id| before.entry(before.index_of(**id)?))
                 .collect()
         });
     })?;
-    let found = first.into_iter();
-    let replaced = found
-        .filter_map(|(summary, taken)| Some((summary, taken?)))
-        .collect();
-    Ok(Summarized { replaced, records })
+    Ok(known)
 }
 
 /// What a [`Summarizer`] asks the model. Each prompt missing from its serde
