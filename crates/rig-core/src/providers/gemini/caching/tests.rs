@@ -307,7 +307,7 @@ async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
     };
     let callbacks: [fn(&CacheBook, &Lease); 3] =
         [CacheBook::lost, CacheBook::retired, |book, lease| {
-            book.extended(lease, 100)
+            book.extended(lease, 100);
         }];
     for callback in callbacks {
         let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);

@@ -42,15 +42,14 @@ impl CacheBook {
         survived
     }
 
-    /// Delete every cache the book still holds, and any a late extend kept
-    /// alive after it was replaced. A cache already gone (403) counts as
-    /// deleted.
+    /// Delete every cache in [`Self::leases`], after any create in flight. A
+    /// cache already gone (403) counts as deleted.
     pub async fn close<T>(&self, caches: &Model<CachedContents, T>)
     where
         T: Transport<CachedContents>,
     {
-        let strays = std::mem::take(&mut self.book().strays);
-        for lease in self.leases().into_iter().chain(strays.into_values()) {
+        drop(self.create.lock().await);
+        for lease in self.leases() {
             let result = caches.delete(&lease.name).await;
             let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
             if !gone {
@@ -211,7 +210,8 @@ where
         self.book.retired(lease);
     }
 
-    async fn extend(&self, lease: &Lease, ttl_secs: u64) {
+    /// Extend `lease`. Returns whether it can still be read.
+    async fn extend(&self, lease: &Lease, ttl_secs: u64) -> bool {
         let body = format!("{{\"ttl\":\"{ttl_secs}s\"}}").into_bytes();
         let reply = self
             .resource(
@@ -220,9 +220,17 @@ where
                 Some(body),
             )
             .await;
-        if reply.error.is_none() {
-            self.book.extended(lease, ttl_secs);
+        if reply.error.is_some() {
+            if matches!(reply.status, Some(403 | 404)) && self.book.owns(lease) {
+                self.book.lost(lease);
+            }
+            return self.book.owns(lease);
         }
+        let owned = self.book.extended(lease, ttl_secs);
+        if !owned {
+            self.delete(lease).await;
+        }
+        owned
     }
 
     /// Create the cache `create` describes, unless a live one already exists
@@ -380,8 +388,9 @@ where
             }
             if let Some((lease, ttl_secs)) = &plan.extend
                 && read.as_ref().is_some_and(|read| read.name == lease.name)
+                && !this.extend(lease, *ttl_secs).await
             {
-                this.extend(lease, *ttl_secs).await;
+                read = None;
             }
 
             // A request that reads a cache keeps the encoded one to resend
