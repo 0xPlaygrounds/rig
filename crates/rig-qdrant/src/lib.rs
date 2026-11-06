@@ -10,7 +10,7 @@ pub use filter::QdrantFilter;
 use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
-        Filter, PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder,
+        Filter, PointId, PointStruct, Query, QueryPoints, UpsertPointsBuilder, Vectors,
         point_id::PointIdOptions,
     },
 };
@@ -24,6 +24,7 @@ use rig_core::{
     wasm_compat::WasmCompatSend,
 };
 use serde::{Serialize, de::DeserializeOwned};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Vector store backed by a Qdrant collection.
@@ -39,6 +40,8 @@ pub struct QdrantVectorStore {
 impl QdrantVectorStore {
     /// Creates a store over the collection named by `query_params`. Each search
     /// clones `query_params` and overrides its query, limit, threshold, and filter.
+    /// Inserts write the vector named by `query_params.using`, or the default vector
+    /// when it names none.
     pub fn new(
         client: Qdrant,
         model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
@@ -125,11 +128,11 @@ impl InsertDocuments for QdrantVectorStore {
                 .map(|embedding| {
                     let embedding_as_f32: Vec<f32> =
                         embedding.vec.into_iter().map(|x| x as f32).collect();
-                    PointStruct::new(
-                        Uuid::new_v4().to_string(),
-                        embedding_as_f32,
-                        doc_as_payload.clone(),
-                    )
+                    let vectors: Vectors = match &self.query_params.using {
+                        Some(name) => HashMap::from([(name.clone(), embedding_as_f32)]).into(),
+                        None => embedding_as_f32.into(),
+                    };
+                    PointStruct::new(Uuid::new_v4().to_string(), vectors, doc_as_payload.clone())
                 })
                 .collect::<Vec<PointStruct>>();
 
