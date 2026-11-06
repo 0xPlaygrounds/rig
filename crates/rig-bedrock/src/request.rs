@@ -138,8 +138,7 @@ fn base(
     // unknown.
     if let Some(cache) = cache {
         let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        let accepted = family == Family::Claude && wire.listed(model);
-        if reasoning && !accepted {
+        if reasoning && !wire.listed_claude(model) {
             input.refuse_cache(
                 "this model is not known to take a message cache checkpoint after a reasoning turn",
             )?;

@@ -195,15 +195,12 @@ fn a_later_system_message_stays_in_place() {
 }
 
 /// A short cache marks the system prompt and the last message, also after
-/// a reasoning turn on a Claude model the catalog lists, or a profile ARN
-/// bound to one's spec (#1673, #3088).
+/// a reasoning turn on a Claude model the catalog lists (#1673, #3088).
 /// Reasoning another model made goes as text, so it is no reasoning turn
 /// for the model it goes to.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
-    use rig_core::catalog::{Catalog, ModelFacts};
     use rig_core::completion::CacheRetention;
-    use rig_core::providers::registry::ProviderId;
     let cached =
         |history: Vec<Message>| CompletionRequest::from(history).cache(CacheRetention::Short);
     let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
@@ -227,23 +224,13 @@ fn cache_points_follow_what_the_request_sends() {
             Message::user("more"),
         ]
     };
-    let bedrock = ProviderId::catalog("aws_bedrock").expect("a known vendor");
-    let sonnet = Catalog::builtin()
-        .get_exact(bedrock, "us.anthropic.claude-sonnet-4-6")
-        .expect("listed")
-        .clone();
-    let wires = [
-        Converse::new(CLAUDE),
-        Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5),
-        Converse::new("eu.anthropic.claude-haiku-5-5"),
-        Converse::new("us.anthropic.claude-opus-5-5"),
-        Converse::new(PROFILE)
-            .with_family(Family::Claude)
-            .with_facts(ModelFacts::new(sonnet)),
-    ];
-    for wire in wires {
-        let model = wire.model.as_str();
-        let body = sent_on(&wire, history(model));
+    for model in [
+        CLAUDE,
+        ANTHROPIC_CLAUDE_HAIKU_4_5,
+        "eu.anthropic.claude-haiku-5-5",
+        "us.anthropic.claude-opus-5-5",
+    ] {
+        let body = sent_on(&Converse::new(model), history(model));
         assert_eq!(
             body["messages"][1]["content"][0],
             reasoning("hm", Some("sig")),
@@ -266,23 +253,33 @@ fn cache_points_follow_what_the_request_sends() {
 
 /// After a reasoning turn, a model not known to take the message checkpoint
 /// never gets it, and never loses it in silence: Nova 2, whose last block
-/// here is a tool result, and Claude models rig's shipped catalog does not
-/// list, even with a spec the caller binds. The default policy refuses;
-/// `Ignore` places the system checkpoint and skips the message one with a
-/// warning.
+/// here is a tool result, also when stated to be Claude; Claude models rig's
+/// shipped catalog does not list, whatever facts the caller binds; and
+/// application inference profile ARNs, which do not say what model they
+/// run. The default policy refuses; `Ignore` places the system checkpoint
+/// and skips the message one with a warning.
 #[test]
 fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
-    use rig_core::catalog::{ModelFacts, ModelSpec, Pricing};
+    use rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Pricing};
     use rig_core::completion::{CacheRetention, OnUnsupported};
     use rig_core::providers::registry::ProviderId;
     let claude_3_7 = "us.anthropic.claude-3-7-sonnet-20250219-v1:0";
     let bedrock = ProviderId::catalog("aws_bedrock").expect("a known vendor");
     let priced = ModelSpec::new(bedrock, claude_3_7).with_pricing(Pricing::new(3.0, 15.0));
+    let opus = Catalog::builtin()
+        .get_exact(bedrock, "us.anthropic.claude-opus-5-5")
+        .expect("listed");
+    let nova_2 = "us.amazon.nova-2-lite-v1:0";
     let wires = [
-        Converse::new("us.amazon.nova-2-lite-v1:0"),
+        Converse::new(nova_2),
+        Converse::new(nova_2).with_family(Family::Claude),
         Converse::new(claude_3_7),
         Converse::new(claude_3_7).with_facts(ModelFacts::new(priced)),
+        Converse::new(claude_3_7).with_facts(ModelFacts::new(opus.clone())),
         Converse::new(PROFILE).with_family(Family::Claude),
+        Converse::new(PROFILE)
+            .with_family(Family::Claude)
+            .with_facts(ModelFacts::new(opus.clone())),
     ];
     for wire in wires {
         let model = wire.model.clone();

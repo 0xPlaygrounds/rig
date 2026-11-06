@@ -263,15 +263,14 @@ impl Converse {
 }
 
 impl Converse {
-    /// Whether rig's shipped catalog lists the model `model` resolves to. For
-    /// this wire's own model, a spec the caller binds decides by its own id,
-    /// which an application inference profile ARN does not carry; it counts
-    /// only as the id of a shipped row.
-    pub(crate) fn listed(&self, model: &str) -> bool {
-        let bound = self.facts.spec().filter(|_| model == self.model);
-        bound
-            .or_else(|| self.spec(model))
-            .is_some_and(|spec| spec_in(&ModelFacts::default(), &spec.id).is_some())
+    /// Whether the spec `model` resolves to is a Claude row of rig's shipped
+    /// catalog, by that spec's own id. A stated family or bound facts cannot
+    /// make it one.
+    pub(crate) fn listed_claude(&self, model: &str) -> bool {
+        self.spec(model).is_some_and(|spec| {
+            Family::of(&spec.id) == Family::Claude
+                && spec_in(&ModelFacts::default(), &spec.id).is_some()
+        })
     }
 }
 
