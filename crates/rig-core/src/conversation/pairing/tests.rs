@@ -443,6 +443,27 @@ fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
         assert_eq!(repaired.len(), expected.len(), "{turns:?}");
         assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
     }
+
+    // Nor does a failure with nothing in it fail its neighbour, whenever
+    // the merge happens.
+    let failed = Message::Assistant(
+        AssistantMessage::new(Vec::new()).with_stop(StopReason::Error("refused".to_owned())),
+    );
+    for turns in [
+        vec![native.clone(), failed.clone()],
+        vec![failed.clone(), native.clone()],
+        vec![native.clone(), failed.clone(), turn(Some(&gemini))],
+        vec![native.clone(), failed.clone(), empty(None)],
+    ] {
+        let repaired = repair(turns.clone()).messages;
+        let Some(Message::Assistant(kept)) = repaired.first() else {
+            panic!("a turn: {repaired:?}");
+        };
+        assert_eq!(kept.stop, None, "{turns:?}");
+        assert_eq!(kept.origin.as_ref(), first, "{turns:?}");
+    }
+    let lone = repair(vec![empty(None), failed.clone()]).messages;
+    assert_eq!(lone, vec![failed]);
 }
 
 /// `normalize` repairs entries as `repair` repairs messages, keeping ids

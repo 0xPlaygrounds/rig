@@ -370,8 +370,10 @@ fn merges(first: (bool, Option<&Origin>), later: &AssistantMessage) -> bool {
 }
 
 /// Merge every assistant turn directly after another that it [`merges`]
-/// into, the later turn's stop standing and an empty first turn giving way
-/// to the later's origin; whether any was merged.
+/// into, the later turn's stop standing; whether any was merged. An empty
+/// turn changes nothing about the turn it merges with: an empty first turn
+/// gives way to the later's origin, and an empty later turn's stop is
+/// dropped, so a failure with nothing in it can't fail the turn before.
 fn merge_turns(shaped: &mut Shaped) -> bool {
     let before = shaped.messages.len();
     let mut messages: Vec<Message> = Vec::with_capacity(before);
@@ -385,11 +387,14 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
                 turn,
             )
         {
-            if previous.content.is_empty() {
+            let first_empty = previous.content.is_empty();
+            if first_empty {
                 previous.origin = turn.origin.take();
             }
+            if first_empty || !turn.content.is_empty() {
+                previous.stop = turn.stop.take();
+            }
             previous.content.append(&mut turn.content);
-            previous.stop = turn.stop.take();
             if let Some(into) = sources.last_mut() {
                 into.append(&mut from);
             }
