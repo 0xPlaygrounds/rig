@@ -206,7 +206,8 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
 /// A name the file system takes can be written, whatever its length,
 /// replacing a file or creating one, and no temporary file stays. A file
 /// named as the next temporary one, in either case, is still replaced through
-/// another.
+/// another. A temporary name is shorter than one holding even a one-byte file
+/// name, so no path too long for it was ever writable.
 #[test]
 fn an_atomic_write_takes_any_name_the_file_system_does() {
     let dir = scratch("long-name").join("real");
@@ -231,7 +232,7 @@ fn an_atomic_write_takes_any_name_the_file_system_does() {
     for upper in [false, true] {
         let (taken, _) = super::temporary_beside(&dir.join("any"));
         let next = number(&taken).map_or(0, |it| it + 1);
-        let name = format!(".rig-write-{}-{next}.tmp", std::process::id());
+        let name = format!(".{}-{next}.tmp", std::process::id());
         let name = if upper {
             name.to_ascii_uppercase()
         } else {
@@ -244,5 +245,9 @@ fn an_atomic_write_takes_any_name_the_file_system_does() {
             "{name}"
         );
     }
+    let (temporary, _) = super::temporary_beside(&dir.join("x"));
+    let made = temporary.file_name().map_or(0, |it| it.len());
+    let n = number(&temporary).unwrap_or(0);
+    assert!(made < format!(".x.{}-{n}.tmp", std::process::id()).len());
     std::fs::remove_dir_all(dir).ok();
 }

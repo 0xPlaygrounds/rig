@@ -78,7 +78,7 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// Unlike writing in place, the rename needs write access to the directory,
 /// gives the file a new inode (a hard link to the old one keeps the old
 /// text) and makes this process the file's owner. A crash between create
-/// and rename can leave a `.rig-write-<pid>-<n>.tmp` beside the file.
+/// and rename can leave a `.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     let target = real_path(path);
     let permissions = match fs::symlink_metadata(&target) {
@@ -122,14 +122,15 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
 }
 
 /// A new temporary file beside `target` and its path, or why it could not
-/// be created. Its name, `.rig-write-<pid>-<n>.tmp`, leaves out `target`'s,
-/// so any name the file system takes can be replaced.
+/// be created. Its name, `.<pid>-<n>.tmp`, leaves out `target`'s, so any
+/// name the file system takes can be replaced, and is short, so any path it
+/// takes can.
 fn temporary_beside(target: &Path) -> (PathBuf, io::Result<File>) {
     /// Tells apart the temporary files of writes running at once.
     static NEXT: AtomicU64 = AtomicU64::new(0);
     loop {
         let temporary = target.with_file_name(format!(
-            ".rig-write-{}-{}.tmp",
+            ".{}-{}.tmp",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
