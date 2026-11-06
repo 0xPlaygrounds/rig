@@ -5,6 +5,8 @@
 //! this crate as `rig::milvus` under the `milvus` feature.
 
 mod filter;
+#[cfg(test)]
+mod tests;
 
 pub use filter::{Filter, MilvusValue};
 
