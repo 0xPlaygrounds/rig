@@ -16,6 +16,16 @@ fn gt_and_lt_compare_the_named_field() {
 }
 
 #[test]
+fn mixed_integer_and_float_operands_compare_exactly() {
+    let big = json!({"n": 9_007_199_254_740_993_u64, "max": u64::MAX, "neg": -3});
+    assert!(!F::eq("n", json!(9_007_199_254_740_992.0)).satisfies(&big));
+    assert!(F::gt("n", json!(9_007_199_254_740_992.0)).satisfies(&big));
+    assert!(F::lt("max", json!(18_446_744_073_709_551_616.0)).satisfies(&big));
+    assert!(F::gt("neg", json!(-3.5)).satisfies(&big));
+    assert!(F::eq("neg", json!(-3.0)).satisfies(&big));
+}
+
+#[test]
 fn and_or_combine_leaf_filters() {
     let doc = json!({ "category": "fruit", "price": 10 });
     let both = F::eq("category", json!("fruit")).and(F::gt("price", json!(5)));

@@ -72,6 +72,28 @@ fn an_args_schema_accepts_well_typed_arguments() {
     }
 }
 
+#[derive(Deserialize, JsonSchema)]
+#[allow(dead_code)]
+struct Nullable {
+    samples: Vec<Option<u32>>,
+    updates: std::collections::BTreeMap<String, Option<String>>,
+    pair: (Option<bool>, u32),
+    limit: Option<Vec<Option<u32>>>,
+}
+
+#[test]
+fn only_an_omittable_property_loses_its_nullability() {
+    let schema = args_schema::<Nullable>();
+    let value = json!({"samples": [1, null], "updates": {"a": null}, "pair": [null, 2],
+        "limit": [null]});
+    assert_eq!(validate(&schema, &value), Ok(()), "{schema}");
+    assert_eq!(
+        schema["properties"]["limit"]["type"],
+        json!("array"),
+        "{schema}"
+    );
+}
+
 #[test]
 fn problems_are_reported_at_their_pointers() {
     let schema = args_schema::<Args>();
@@ -139,6 +161,64 @@ fn an_integer_is_a_whole_number_a_64_bit_integer_holds() {
         problems(&text, &json!(1e30)),
         ["expected a string, got a number"]
     );
+}
+
+#[test]
+fn bounds_and_const_compare_large_integers_exactly() {
+    let below = json!(9_007_199_254_740_992_u64);
+    let above = json!(9_007_199_254_740_993_u64);
+    let fits = |schema: Value, value: &Value| validate(&schema, value).is_ok();
+    assert!(!fits(json!({"maximum": below}), &above));
+    assert!(fits(json!({"exclusiveMinimum": below}), &above));
+    assert!(!fits(json!({"minimum": above}), &below));
+    assert!(fits(
+        json!({"exclusiveMaximum": 18_446_744_073_709_551_616.0}),
+        &json!(u64::MAX)
+    ));
+    assert!(fits(json!({"exclusiveMinimum": -3.5}), &json!(-3)));
+    assert!(fits(json!({"maximum": 5.0}), &json!(5)));
+    assert!(!fits(json!({"const": 9_007_199_254_740_992.0}), &above));
+    assert!(fits(json!({"enum": [5.0]}), &json!(5)));
+
+    // What `arbitrary_precision` compares, reachable in any build.
+    use crate::json_utils::compare_literals;
+    use std::cmp::Ordering::{Equal, Greater, Less};
+    let far = "9".repeat(41);
+    let wide = [
+        (format!("10e{far}"), format!("1e1{}", "0".repeat(41)), Equal),
+        (format!("1e-{far}"), format!("2e-{far}"), Less),
+    ];
+    let literals = [
+        ("9007199254740993", "9007199254740993.0", Equal),
+        (
+            "123456789012345678901234567890",
+            "1.2345678901234567890123456789e29",
+            Equal,
+        ),
+        ("1e400", "1.0E+400", Equal),
+        ("0", "-0.0e5", Equal),
+        ("0", "0e9223372036854775808", Equal),
+        ("18446744073709551617.0", "18446744073709551616", Greater),
+        (
+            "170141183460469231731687303715884105729",
+            "170141183460469231731687303715884105728",
+            Greater,
+        ),
+        ("5", "5.0000000000000000000001", Less),
+        ("0.1", "0.01", Greater),
+        ("-3", "-3.5", Greater),
+        ("-1", "1e-400", Less),
+        ("1e-9223372036854775809", "0", Greater),
+        ("1e99999999999999999999", "5", Greater),
+        ("-1e99999999999999999999", "-5", Less),
+    ];
+    let wide = wide
+        .iter()
+        .map(|(a, b, order)| (a.as_str(), b.as_str(), *order));
+    for (a, b, order) in literals.into_iter().chain(wide) {
+        assert_eq!(compare_literals(a, b), order, "{a} against {b}");
+        assert_eq!(compare_literals(b, a), order.reverse(), "{b} against {a}");
+    }
 }
 
 #[test]

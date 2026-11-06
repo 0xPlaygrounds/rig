@@ -358,6 +358,206 @@ fn a_window_starts_past_results_whose_calls_it_cuts_off() {
     assert_eq!(safe_start(&history, 9), 6);
 }
 
+#[test]
+fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
+    use crate::message::{AssistantMessage, Fingerprint, Origin};
+    let anthropic = Origin::new("messages", "anthropic", "claude");
+    let gemini = Origin::new("generate_content", "gemini", "gemini-pro");
+    let mut next_reply = anthropic.clone();
+    next_reply.response_id = Some("msg_b".to_owned());
+    let mut other_context = anthropic.clone();
+    other_context.context = Some(Fingerprint::of_canonical(&"tools"));
+    let turn = |origin: Option<&Origin>| {
+        let block = AssistantContent::text("a").with_native(serde_json::json!({"text": "a"}));
+        Message::Assistant(AssistantMessage::new(vec![block]).with_origin(origin.cloned()))
+    };
+    let first = Some(&anthropic);
+    for (origins, expected) in [
+        (vec![first, first], vec![first]),
+        (vec![first, Some(&next_reply)], vec![first]),
+        (vec![None, None], vec![None]),
+        (vec![first, Some(&gemini)], vec![first, Some(&gemini)]),
+        (
+            vec![first, Some(&other_context)],
+            vec![first, Some(&other_context)],
+        ),
+        (vec![first, None], vec![first, None]),
+        (vec![None, first], vec![None, first]),
+        (
+            vec![None, first, Some(&gemini)],
+            vec![None, first, Some(&gemini)],
+        ),
+        (
+            vec![first, None, Some(&gemini)],
+            vec![first, None, Some(&gemini)],
+        ),
+        (
+            vec![first, Some(&gemini), first],
+            vec![first, Some(&gemini), first],
+        ),
+    ] {
+        let turns: Vec<Message> = origins.iter().map(|origin| turn(*origin)).collect();
+        let repaired = repair(turns.clone()).messages;
+        let kept: Vec<Option<&Origin>> = repaired
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) => Some(turn.origin.as_ref()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kept, expected, "{turns:?}");
+        assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+    }
+
+    // An empty turn has nothing to protect: it goes into its neighbour,
+    // whose origin stands.
+    let empty = |origin: Option<&Origin>| {
+        Message::Assistant(AssistantMessage::new(Vec::new()).with_origin(origin.cloned()))
+    };
+    let native = turn(first);
+    let foreign = turn(Some(&gemini));
+    for (turns, expected) in [
+        (vec![native.clone(), empty(None)], vec![first]),
+        (vec![empty(None), native.clone()], vec![first]),
+        (vec![native.clone(), empty(Some(&gemini))], vec![first]),
+        (vec![empty(Some(&gemini)), native.clone()], vec![first]),
+        (
+            vec![native.clone(), empty(None), foreign.clone()],
+            vec![first, Some(&gemini)],
+        ),
+        (
+            vec![empty(None), native.clone(), foreign],
+            vec![first, Some(&gemini)],
+        ),
+    ] {
+        assert!(validate(&turns).is_err(), "{turns:?}");
+        let repaired = repair(turns.clone()).messages;
+        let kept: Vec<Option<&Origin>> = repaired
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) if !turn.content.is_empty() => Some(turn.origin.as_ref()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kept, expected, "{turns:?}");
+        assert_eq!(repaired.len(), expected.len(), "{turns:?}");
+        assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+    }
+
+    // Nor does a failure with nothing in it fail its neighbour, whenever
+    // the merge happens.
+    let failed = Message::Assistant(
+        AssistantMessage::new(Vec::new()).with_stop(StopReason::Error("refused".to_owned())),
+    );
+    for turns in [
+        vec![native.clone(), failed.clone()],
+        vec![failed.clone(), native.clone()],
+        vec![native.clone(), failed.clone(), turn(Some(&gemini))],
+        vec![native.clone(), failed.clone(), empty(None)],
+    ] {
+        let repaired = repair(turns.clone()).messages;
+        let Some(Message::Assistant(kept)) = repaired.first() else {
+            panic!("a turn: {repaired:?}");
+        };
+        assert_eq!(kept.stop, None, "{turns:?}");
+        assert_eq!(kept.origin.as_ref(), first, "{turns:?}");
+    }
+    let lone = repair(vec![empty(None), failed.clone()]).messages;
+    assert_eq!(lone, vec![failed.clone()]);
+
+    // An empty turn can't part a call from its result, or a result from
+    // the rest of its batch.
+    let (asked, answer) = (assistant(vec![call("c1")]), results(&["c1"]));
+    let parted = vec![asked.clone(), empty(None), answer.clone()];
+    assert!(validate(&parted).is_err());
+    assert_eq!(repair(parted).messages, vec![asked.clone(), answer.clone()]);
+    for parted in [
+        vec![
+            asked.clone(),
+            Message::user("wait"),
+            empty(None),
+            answer.clone(),
+        ],
+        vec![
+            asked.clone(),
+            empty(None),
+            Message::user("wait"),
+            empty(None),
+            answer.clone(),
+        ],
+    ] {
+        assert!(validate(&parted).is_err(), "{parted:?}");
+        let joined = vec![asked.clone(), Message::user("wait"), answer.clone()];
+        assert_eq!(repair(parted).messages, repair(joined).messages);
+    }
+    // Where it parts nothing it stands, so a valid history stays valid.
+    let standing = vec![Message::user("hi"), failed.clone()];
+    assert_eq!(validate(&standing), Ok(()));
+    assert_eq!(repair(standing.clone()).messages, standing);
+    let batch = assistant(vec![call("c1"), call("c2")]);
+    let (one, two) = (results(&["c1"]), results(&["c2"]));
+    let parted = vec![batch.clone(), one.clone(), empty(None), two.clone()];
+    assert!(validate(&parted).is_err());
+    assert_eq!(
+        repair(parted).messages,
+        repair(vec![batch, one, two]).messages
+    );
+
+    // Turns with different outcomes stay apart, each with its own stop, so
+    // no failure takes a good turn down or comes back as good. Those with
+    // the same outcome merge, the later stop standing.
+    let error = StopReason::Error("refused".to_owned());
+    let aborted = StopReason::Aborted("stopped".to_owned());
+    let stops = [
+        None,
+        Some(StopReason::Stop),
+        Some(StopReason::Length),
+        Some(StopReason::ToolUse),
+        Some(error.clone()),
+        Some(aborted.clone()),
+    ];
+    let ended = |stop: &Option<StopReason>| {
+        Message::Assistant(
+            AssistantMessage::new(vec![AssistantContent::text("a")])
+                .with_origin(anthropic.clone())
+                .with_stop(stop.clone()),
+        )
+    };
+    let outcome = |stop: &Option<StopReason>| match stop {
+        Some(StopReason::Error(_)) => 1,
+        Some(StopReason::Aborted(_)) => 2,
+        _ => 0,
+    };
+    for a in &stops {
+        for b in &stops {
+            let turns = vec![ended(a), ended(b)];
+            let repaired = repair(turns.clone()).messages;
+            let kept: Vec<Option<StopReason>> = repaired
+                .iter()
+                .filter_map(|message| match message {
+                    Message::Assistant(turn) => Some(turn.stop.clone()),
+                    _ => None,
+                })
+                .collect();
+            let expected = if outcome(a) == outcome(b) {
+                vec![b.clone()]
+            } else {
+                vec![a.clone(), b.clone()]
+            };
+            assert_eq!(kept, expected, "{turns:?}");
+            assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+        }
+    }
+    let of = |stop: &StopReason| ended(&Some(stop.clone()));
+    for turns in [
+        vec![of(&aborted), of(&error), native.clone()],
+        vec![of(&error), of(&aborted), turn(Some(&gemini))],
+        vec![native.clone(), of(&error), turn(Some(&gemini))],
+    ] {
+        assert_eq!(repair(turns.clone()).messages.len(), 3, "{turns:?}");
+    }
+}
+
 /// `normalize` repairs entries as `repair` repairs messages, keeping ids
 /// and leaving user entries apart: adjacent turns merge into the first's
 /// id, author and made-time with the later stop standing, an entry of

@@ -45,11 +45,11 @@
 //! `patternProperties` (and so `additionalProperties` beside it, since
 //! which keys a pattern allows is not checked), and any keyword not listed.
 
-use std::fmt;
+use std::{cmp::Ordering, fmt};
 
 use serde_json::{Map, Number, Value};
 
-use crate::tool::decode::whole;
+use crate::{json_utils::compare_numbers, tool::decode::whole};
 
 /// Where a value does not fit a schema, and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -355,20 +355,17 @@ fn count(
 
 /// The problems of a number against `schema`'s bounds.
 fn bounds(schema: &Map<String, Value>, number: &Number, at: &str) -> Vec<Problem> {
-    let Some(n) = number.as_f64() else {
-        return Vec::new();
-    };
-    let checks: [(&str, &str, fn(f64, f64) -> bool); 4] = [
-        ("minimum", "at least", |n, bound| n >= bound),
-        ("maximum", "at most", |n, bound| n <= bound),
-        ("exclusiveMinimum", "more than", |n, bound| n > bound),
-        ("exclusiveMaximum", "less than", |n, bound| n < bound),
+    let checks: [(&str, &str, fn(Ordering) -> bool); 4] = [
+        ("minimum", "at least", Ordering::is_ge),
+        ("maximum", "at most", Ordering::is_le),
+        ("exclusiveMinimum", "more than", Ordering::is_gt),
+        ("exclusiveMaximum", "less than", Ordering::is_lt),
     ];
     checks
         .into_iter()
         .filter_map(|(key, words, fits)| {
-            let bound = schema.get(key).filter(|bound| bound.is_number())?;
-            let fit = bound.as_f64().is_none_or(|bound| fits(n, bound));
+            let bound = schema.get(key)?.as_number()?;
+            let fit = compare_numbers(number, bound).is_none_or(fits);
             (!fit).then(|| problem(at, format!("expected {words} {bound}, got {number}")))
         })
         .collect()
@@ -468,7 +465,7 @@ fn integral(number: &Number) -> bool {
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(a), Value::Number(b)) => {
-            a == b || ((a.is_f64() || b.is_f64()) && a.as_f64() == b.as_f64())
+            a == b || compare_numbers(a, b) == Some(Ordering::Equal)
         }
         (Value::Array(a), Value::Array(b)) => {
             a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same(a, b))
