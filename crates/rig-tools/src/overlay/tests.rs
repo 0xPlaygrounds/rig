@@ -145,7 +145,8 @@ fn an_overlay_tells_where_a_path_is_as_its_workspace_does() {
 
 /// A file held here is no directory: a write or a rename beneath it is
 /// refused as the disk would, and nothing changes. Once it is removed the
-/// same path is a directory to make, which a file then cannot replace.
+/// same path is a directory to make, which a file then cannot replace,
+/// and the same holds for a file on disk removed here.
 #[test]
 fn an_overlay_refuses_a_path_beneath_a_file_it_holds() {
     let dir = std::env::temp_dir().join(format!("rig-overlay-parent-{}", std::process::id()));
@@ -175,6 +176,18 @@ fn an_overlay_refuses_a_path_beneath_a_file_it_holds() {
         Some(ErrorKind::IsADirectory)
     );
     assert!(!dir.exists());
+
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(&parent, "on disk").ok();
+    std::fs::write(&source, "on disk").ok();
+    let overlay = Overlay::new(Arc::new(Local));
+    assert!(overlay.remove(&parent).is_ok());
+    assert!(matches!(overlay.stat(&child), Ok(Stat::Missing)));
+    let renamed = overlay.rename(&source, &child);
+    assert!(renamed.is_ok(), "{renamed:?}");
+    let written = overlay.write(&parent.join("other"), b"other");
+    assert!(written.is_ok(), "{written:?}");
+    std::fs::remove_dir_all(dir).ok();
 }
 
 /// A rename to the same path leaves a file as it is, on disk or held here,

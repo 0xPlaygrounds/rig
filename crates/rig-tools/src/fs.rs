@@ -133,6 +133,9 @@ fn temporary_beside(target: &Path) -> (PathBuf, io::Result<File>) {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
+        if temporary == target {
+            continue;
+        }
         // A name another process holds, or a crash left, is skipped.
         match File::create_new(&temporary) {
             Err(error) if error.kind() == ErrorKind::AlreadyExists => {}

@@ -73,6 +73,14 @@ impl Overlay {
             .any(|(kept, bytes)| bytes.is_some() && test(kept))
     }
 
+    /// Whether `path` or a path above it was removed here, so that what is
+    /// under this overlay says nothing about it.
+    fn removed(&self, path: &Path) -> bool {
+        self.kept()
+            .iter()
+            .any(|(kept, bytes)| bytes.is_none() && path.starts_with(kept))
+    }
+
     /// Keeps `bytes` (`None`: removed) for `path`.
     fn keep(&self, path: &Path, bytes: Option<Arc<[u8]>>) {
         let mut kept = self.kept();
@@ -142,16 +150,16 @@ impl Workspace for Overlay {
         if self.any_written(|kept| kept != path && path.starts_with(kept)) {
             return Err(ErrorKind::NotADirectory.into());
         }
-        let stat = match self.held(path) {
-            Some(Some(bytes)) => {
-                return Ok(Stat::File {
-                    size: bytes.len() as u64,
-                    read_only: false,
-                    modified: None,
-                });
-            }
-            Some(None) => Stat::Missing,
-            None => self.inner.stat(path)?,
+        if let Some(Some(bytes)) = self.held(path) {
+            return Ok(Stat::File {
+                size: bytes.len() as u64,
+                read_only: false,
+                modified: None,
+            });
+        }
+        let stat = match self.removed(path) {
+            true => Stat::Missing,
+            false => self.inner.stat(path)?,
         };
         match stat {
             Stat::Missing if self.any_written(|kept| kept.starts_with(path)) => Ok(Stat::Dir),

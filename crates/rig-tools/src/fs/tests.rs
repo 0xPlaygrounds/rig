@@ -223,3 +223,16 @@ fn an_atomic_write_takes_any_name_the_file_system_does() {
     assert_eq!(left, Some(names.len()));
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A file named as a temporary one is still replaced through another, so a
+/// crash cannot leave it half written.
+#[test]
+fn a_temporary_file_is_never_the_file_it_replaces() {
+    let dir = scratch("temporary-name").join("real");
+    for n in 0..4 {
+        let target = dir.join(format!(".rig-write-{}-{n}.tmp", std::process::id()));
+        let (temporary, _) = super::temporary_beside(&target);
+        assert_ne!(temporary, target);
+    }
+    std::fs::remove_dir_all(dir).ok();
+}
