@@ -21,6 +21,7 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::completion::{Converse, Family};
+use crate::options::checkpoints_after_reasoning;
 
 /// Standard base64, padded or not.
 const BASE64: GeneralPurpose = GeneralPurpose::new(
@@ -132,13 +133,13 @@ fn base(
             }
         }
     }
-    // Bedrock rejects a cache point anywhere after a reasoning turn, even on
-    // the user's side, so that checkpoint is refused rather than skipped.
+    // A model not known to take a cache point after a reasoning turn, even
+    // on the user's side, is refused that checkpoint rather than sent it.
     if let Some(cache) = cache {
         let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        if reasoning {
+        if reasoning && !checkpoints_after_reasoning(family, wire.spec(model)) {
             input.refuse_cache(
-                "Bedrock rejects a message cache checkpoint after a reasoning turn",
+                "this model is not known to take a message cache checkpoint after a reasoning turn",
             )?;
         } else if let Some(Value::Array(last)) =
             messages.last_mut().and_then(|last| last.get_mut("content"))
