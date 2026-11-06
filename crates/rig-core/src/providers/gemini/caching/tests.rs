@@ -146,10 +146,32 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
     }
 }
 
-/// A shared-prefix cache that expired is replaced by the next call that
-/// would read it, and that call reads the replacement, even after a gap no
-/// TTL could span. A cache that would not live to its line's next call is
-/// never made.
+/// Answers every `cachedContents` delete, recording the names.
+#[derive(Clone, Default)]
+struct DeleteServer(Arc<Mutex<Vec<String>>>);
+
+impl crate::driver::Transport<super::super::cached_content::CachedContents> for DeleteServer {
+    fn send(
+        &self,
+        payload: crate::wire::Encoded,
+        _: crate::driver::Exchange,
+    ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        let path = payload.request.uri().path().trim_start_matches("/v1beta/");
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(path.to_owned());
+        crate::driver::Opening::ready(crate::driver::Opened::new(futures::stream::iter([Ok(
+            crate::wire::WireFrame::Text("{}".to_owned()),
+        )])))
+    }
+}
+
+/// A shared-prefix cache that a later call read is replaced by the next call
+/// after it expires, and that call reads the replacement. One nobody read
+/// again is replaced only once calls come close enough to read the next, so
+/// no spacing of calls makes a cache on each. A cache that would not live to
+/// its line's next call is never made.
 #[tokio::test]
 async fn an_expired_shared_prefix_cache_is_replaced() {
     use crate::completion::CompletionRequest;
@@ -174,20 +196,23 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     let ask = |n: u64| CompletionRequest::new(format!("question {n}")).preamble("x".repeat(8192));
 
     // The second conversation on the prefix shares it, so it is cached.
-    for n in 0..2 {
+    for n in 0..3 {
         model.call(ask(n)).await.expect("the call answers");
     }
     clock.store(1000 + 3600, Ordering::SeqCst);
-    model.call(ask(2)).await.expect("the call answers");
+    model.call(ask(3)).await.expect("the call answers");
     clock.fetch_add(2 * MAX_TTL_SECS, Ordering::SeqCst);
-    model.call(ask(2)).await.expect("the call answers");
+    model.call(ask(3)).await.expect("the call answers");
+    model.call(ask(3)).await.expect("the call answers");
 
     assert_eq!(
         server.0.lock().unwrap_or_else(PoisonError::into_inner).1,
         [
             None,
             Some("cachedContents/cache-1".to_owned()),
+            Some("cachedContents/cache-1".to_owned()),
             Some("cachedContents/cache-2".to_owned()),
+            None,
             Some("cachedContents/cache-3".to_owned())
         ]
     );
@@ -204,14 +229,31 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         model.call(ask(n % 2)).await.expect("the call answers");
         clock.fetch_add(2, Ordering::SeqCst);
     }
-    let seen = server.0.lock().unwrap_or_else(PoisonError::into_inner);
-    assert_eq!(*seen, (0, vec![None; 8]));
+    assert_eq!(
+        *server.0.lock().unwrap_or_else(PoisonError::into_inner),
+        (0, vec![None; 8])
+    );
+
+    // A new conversation each TTL: every call is on a line of its own, and
+    // none would read what the one before it made.
+    let hourly = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&hourly, &server);
+    for n in 0..8 {
+        model.call(ask(n)).await.expect("the call answers");
+        clock.fetch_add(3600, Ordering::SeqCst);
+    }
+    assert_eq!(
+        *server.0.lock().unwrap_or_else(PoisonError::into_inner),
+        (0, vec![None; 8])
+    );
 }
 
 /// A late 403, retire or extend for an old cache leaves the replacement
-/// that took its digest as it is.
-#[test]
-fn a_late_callback_for_an_old_cache_spares_its_replacement() {
+/// that took its digest as it is. A late extend kept the old cache alive on
+/// the server, so closing the book deletes it too.
+#[tokio::test]
+async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
     let old = Lease {
         name: "cachedContents/old".to_owned(),
         digest: "prefix".to_owned(),
@@ -235,4 +277,18 @@ fn a_late_callback_for_an_old_cache_spares_its_replacement() {
         callback(&book, &old);
         assert_eq!(book.leases(), std::slice::from_ref(&replacement));
     }
+
+    let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+    book.restore(vec![old.clone(), replacement.clone()]);
+    book.extended(&old, 100);
+    let server = DeleteServer::default();
+    let config = crate::providers::gemini::GeminiConfig::new("test-key");
+    book.close(&crate::driver::Model::new(
+        super::super::cached_content::CachedContents::new(config),
+        server.clone(),
+    ))
+    .await;
+    let mut deleted = server.0.lock().expect("deleted").clone();
+    deleted.sort_unstable();
+    assert_eq!(deleted, [replacement.name, old.name]);
 }
