@@ -4,6 +4,8 @@ use std::sync::Arc;
 use rig_core::tool::{ChangeKind, Tool, ToolContext, ToolExecutionError, ToolOutput, content_hash};
 
 use super::Overlay;
+use crate::process::Launcher;
+use crate::remote::Remote;
 use crate::workspace::{Listing, Local, Stat, Workspace};
 use crate::{Edit, EditArgs, Read, ReadArgs, Replacement, Write, WriteArgs};
 
@@ -143,55 +145,63 @@ fn an_overlay_tells_where_a_path_is_as_its_workspace_does() {
     assert_eq!((there, here), (Some("bench"), None));
 }
 
-/// A file held here is no directory: a write or a rename beneath it is
-/// refused as the disk would, and nothing changes. Once it is removed the
-/// same path is a directory to make, which a file then cannot replace,
-/// and the same holds for a file on disk removed here.
+/// A file is no directory, whether it is held here or under the overlay,
+/// locally or on a remote whose `stat` calls such a path missing: a write
+/// or a rename beneath it is refused and nothing changes. Once it is
+/// removed the path is a directory to make, which a file cannot replace.
 #[test]
 fn an_overlay_refuses_a_path_beneath_a_file_it_holds() {
-    let dir = std::env::temp_dir().join(format!("rig-overlay-parent-{}", std::process::id()));
-    let (parent, source) = (dir.join("parent"), dir.join("source"));
-    let overlay = Overlay::new(Arc::new(Local));
-    assert!(overlay.write(&parent, b"a file").is_ok());
-    assert!(overlay.write(&source, b"source").is_ok());
-    for child in [parent.join("child"), parent.join("deep/child")] {
-        let refused = Some(ErrorKind::NotADirectory);
-        let written = overlay.write(&child, b"child");
-        assert_eq!(written.err().map(|it| it.kind()), refused, "write beneath");
-        let renamed = overlay.rename(&source, &child);
-        assert_eq!(renamed.err().map(|it| it.kind()), refused, "rename beneath");
-        let looked = overlay.stat(&child);
-        assert_eq!(looked.err().map(|it| it.kind()), refused, "stat beneath");
+    let remote = ["sh", "-c", "exec sh -c \"$1\"", "transport"];
+    let remote = Remote::new("bench", remote, Launcher::default);
+    assert!(remote.is_ok());
+    let Ok(remote) = remote else { return };
+    let under: [(&str, Arc<dyn Workspace>); 2] =
+        [("local", Arc::new(Local)), ("remote", Arc::new(remote))];
+    for (name, inner) in under {
+        let dir =
+            std::env::temp_dir().join(format!("rig-overlay-parent-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).ok();
+        let (held, disk, source) = (dir.join("held"), dir.join("disk"), dir.join("source"));
+        std::fs::write(&disk, "on disk").ok();
+        let overlay = Overlay::new(inner);
+        assert!(overlay.write(&held, b"a file").is_ok());
+        assert!(overlay.write(&source, b"source").is_ok());
+        for child in [
+            held.join("child"),
+            held.join("deep/child"),
+            disk.join("child"),
+            disk.join("deep/child"),
+        ] {
+            let refused = Some(ErrorKind::NotADirectory);
+            let written = overlay.write(&child, b"child");
+            assert_eq!(written.err().map(|it| it.kind()), refused, "write beneath");
+            let renamed = overlay.rename(&source, &child);
+            assert_eq!(renamed.err().map(|it| it.kind()), refused, "rename beneath");
+            let looked = overlay.stat(&child);
+            assert_eq!(looked.err().map(|it| it.kind()), refused, "stat beneath");
+        }
+        assert_eq!(overlay.changes().len(), 2, "{name}");
+
+        for parent in [&held, &disk] {
+            let child = parent.join("child");
+            assert!(overlay.remove(parent).is_ok());
+            assert!(matches!(overlay.stat(&child), Ok(Stat::Missing)), "{name}");
+            let written = overlay.write(&child, b"child");
+            assert!(written.is_ok(), "{name}: {written:?}");
+            assert!(matches!(overlay.stat(parent), Ok(Stat::Dir)), "{name}");
+            assert!(overlay.write(parent, b"a file again").is_err());
+            let renamed = overlay.rename(&source, parent);
+            let kind = renamed.err().map(|it| it.kind());
+            assert_eq!(kind, Some(ErrorKind::IsADirectory), "{name}");
+        }
+        std::fs::remove_dir_all(dir).ok();
     }
-    assert_eq!(overlay.changes().len(), 2);
-
-    let child = parent.join("child");
-    assert!(overlay.remove(&parent).is_ok());
-    assert!(overlay.write(&child, b"child").is_ok());
-    assert!(matches!(overlay.stat(&parent), Ok(Stat::Dir)));
-    assert!(overlay.write(&parent, b"a file again").is_err());
-    let renamed = overlay.rename(&source, &parent);
-    assert_eq!(
-        renamed.err().map(|it| it.kind()),
-        Some(ErrorKind::IsADirectory)
-    );
-    assert!(!dir.exists());
-
-    std::fs::create_dir_all(&dir).ok();
-    std::fs::write(&parent, "on disk").ok();
-    std::fs::write(&source, "on disk").ok();
-    let overlay = Overlay::new(Arc::new(Local));
-    assert!(overlay.remove(&parent).is_ok());
-    assert!(matches!(overlay.stat(&child), Ok(Stat::Missing)));
-    let renamed = overlay.rename(&source, &child);
-    assert!(renamed.is_ok(), "{renamed:?}");
-    let written = overlay.write(&parent.join("other"), b"other");
-    assert!(written.is_ok(), "{written:?}");
-    std::fs::remove_dir_all(dir).ok();
 }
 
 /// A rename to the same path leaves a file as it is, on disk or held here,
-/// and of a missing file is still refused.
+/// and of a missing file is still refused. Under two spellings of one file
+/// it is refused as on disk, and a rename onto a link replaces the link.
 #[test]
 fn renaming_a_file_to_itself_changes_nothing() {
     let dir = std::env::temp_dir().join(format!("rig-overlay-self-{}", std::process::id()));
@@ -213,46 +223,24 @@ fn renaming_a_file_to_itself_changes_nothing() {
     let missing = dir.join("missing");
     let renamed = overlay.rename(&missing, &missing);
     assert_eq!(renamed.err().map(|it| it.kind()), Some(ErrorKind::NotFound));
-    std::fs::remove_dir_all(dir).ok();
-}
 
-/// One file under two spellings is one file here, as on disk: a rename
-/// between them moves nothing, a path through `..` is refused beneath a
-/// file, and a listing from a link finds what was created through it. A
-/// rename onto a link replaces the link, not the directory it leads to.
-#[cfg(unix)]
-#[test]
-fn an_overlay_takes_two_spellings_of_a_path_as_one() {
-    let dir = std::env::temp_dir().join(format!("rig-overlay-spell-{}", std::process::id()));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(dir.join("d")).ok();
-    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-    std::fs::write(dir.join("d/x"), "on disk").ok();
-    std::os::unix::fs::symlink(dir.join("d"), dir.join("link")).ok();
-    let overlay = Overlay::new(Arc::new(Local));
+    let renamed = overlay.rename(&existing, &dir.join("sub/../existing"));
+    let kind = renamed.err().map(|it| it.kind());
+    assert_eq!(kind, Some(ErrorKind::InvalidInput));
+    let read = overlay.read(&existing, 100).ok().map(|it| it.bytes);
+    assert_eq!(read.as_deref(), Some(&b"on disk"[..]));
 
-    for other in [dir.join("d/../d/x"), dir.join("link/x")] {
-        let renamed = overlay.rename(&dir.join("d/x"), &other);
-        let kind = renamed.err().map(|it| it.kind());
-        assert_eq!(kind, Some(ErrorKind::InvalidInput), "{}", other.display());
+    #[cfg(unix)]
+    {
+        let (real, link) = (dir.join("real"), dir.join("link"));
+        std::fs::create_dir_all(&real).ok();
+        std::os::unix::fs::symlink(&real, &link).ok();
+        let renamed = overlay.rename(&existing, &link);
+        assert!(renamed.is_ok(), "{renamed:?}");
+        assert!(matches!(overlay.stat(&link), Ok(Stat::File { .. })));
+        let written = overlay.write(&link.join("child"), b"child");
+        let kind = written.err().map(|it| it.kind());
+        assert_eq!(kind, Some(ErrorKind::NotADirectory));
     }
-    assert!(overlay.changes().is_empty());
-
-    assert!(overlay.write(&dir.join("new"), b"a file").is_ok());
-    let beneath = overlay.write(&dir.join("d/../new/child"), b"child");
-    let kind = beneath.err().map(|it| it.kind());
-    assert_eq!(kind, Some(ErrorKind::NotADirectory));
-
-    assert!(overlay.write(&dir.join("link/y"), b"y").is_ok());
-    let listed = overlay.files(&dir.join("link"), None, Listing::Visible);
-    let files = listed.map(|listed| listed.files).unwrap_or_default();
-    assert!(files.contains(&dir.join("link/y")), "{files:?}");
-
-    let renamed = overlay.rename(&dir.join("d/x"), &dir.join("link"));
-    assert!(renamed.is_ok(), "{renamed:?}");
-    assert!(matches!(
-        overlay.stat(&dir.join("link")),
-        Ok(Stat::File { .. })
-    ));
     std::fs::remove_dir_all(dir).ok();
 }

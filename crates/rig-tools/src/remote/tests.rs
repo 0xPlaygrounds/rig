@@ -59,6 +59,25 @@ fn tools_reach_a_host_path_through_its_transport() {
     std::fs::write(dir.join("local/notes.txt"), "here\n").ok();
     let bench = Remote::new("bench", transport(&home), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
+
+    // An overlay keeps a host path as given: `bench:/x` is not `bench:~/x`.
+    let overlay = Overlay::new(workspace.clone());
+    let top = Path::new("bench:/rig-tools-overlay-top");
+    assert!(overlay.write(top, b"top").is_ok());
+    let changes = overlay.changes();
+    let named: Vec<&str> = changes.iter().map(|it| it.path.as_str()).collect();
+    assert_eq!(named, ["bench:/rig-tools-overlay-top"]);
+    let other = Path::new("bench:/a/../rig-tools-overlay-top");
+    let renamed = overlay.rename(top, other);
+    let kind = renamed.err().map(|it| it.kind());
+    assert_eq!(kind, Some(std::io::ErrorKind::InvalidInput));
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(home.join("nowhere"), home.join("dangling")).ok();
+        let renamed = overlay.rename(top, Path::new("bench:~/dangling"));
+        assert!(renamed.is_ok(), "{renamed:?}");
+    }
+
     let base = Some(dir.join("local"));
     let file = "bench:~/strata/src/lib.rs";
 
@@ -1167,31 +1186,4 @@ fn a_glob_keeps_the_same_files_on_every_workspace() {
         );
     }
     std::fs::remove_dir_all(dir).ok();
-}
-
-/// An overlay over a remote refuses a path beneath a file there, which the
-/// remote's own `stat` calls missing, and a rename onto a dangling link
-/// there replaces the link.
-#[cfg(unix)]
-#[test]
-fn an_overlay_over_a_remote_refuses_a_path_beneath_a_file_there() {
-    let dir = scratch("overlay-file");
-    let home = dir.join("home");
-    std::fs::write(home.join("file"), "there").ok();
-    std::fs::write(home.join("source"), "there").ok();
-    std::os::unix::fs::symlink(home.join("nowhere"), home.join("dangling")).ok();
-    let remote = Remote::new("bench", transport(&home), Launcher::default);
-    assert!(remote.is_ok());
-    let Ok(remote) = remote else { return };
-    let overlay = Overlay::new(Arc::new(remote));
-
-    for child in ["file/child", "file/deep/child"] {
-        let written = overlay.write(&home.join(child), b"child");
-        let kind = written.err().map(|it| it.kind());
-        assert_eq!(kind, Some(std::io::ErrorKind::NotADirectory), "{child}");
-    }
-    assert!(overlay.changes().is_empty());
-    let renamed = overlay.rename(&home.join("source"), &home.join("dangling"));
-    std::fs::remove_dir_all(dir).ok();
-    assert!(renamed.is_ok(), "{renamed:?}");
 }

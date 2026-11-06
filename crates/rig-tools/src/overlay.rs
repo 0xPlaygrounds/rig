@@ -18,7 +18,8 @@ use crate::workspace::{
 /// write, removal and rename to itself: run a file tool on it to learn what
 /// the tool would leave on disk ([`changes`](Self::changes)) while the disk
 /// stays as it is. It runs no commands, since what a command changes cannot
-/// be kept from the disk.
+/// be kept from the disk. Paths are kept as given, so a caller folds them
+/// first, as the file tools do.
 ///
 /// ```
 /// use std::sync::Arc;
@@ -66,24 +67,10 @@ impl Overlay {
             .map(|(_, bytes)| bytes.clone())
     }
 
-    /// Whether `path` or a path above it was removed here, so that what is
-    /// under this overlay says nothing about it.
-    fn removed(&self, path: &Path) -> bool {
-        self.kept()
-            .iter()
-            .any(|(kept, bytes)| bytes.is_none() && path.starts_with(kept))
-    }
-
-    /// The one spelling of `path` this overlay keeps and compares: its
-    /// directories [`canonical`](Workspace::canonical), its last name as
-    /// written, since a removal or a rename acts on a link and not on what
-    /// it leads to. A bare name has no directory to fold, so all of it is.
-    fn spot(&self, path: &Path) -> PathBuf {
-        let parent = path.parent().filter(|it| !it.as_os_str().is_empty());
-        match (parent, path.file_name()) {
-            (Some(parent), Some(name)) => self.inner.canonical(parent).join(name),
-            _ => self.inner.canonical(path),
-        }
+    /// Whether `path` or a path above it was written or removed here, so
+    /// that what is under this overlay says nothing about it.
+    fn shadowed(&self, path: &Path) -> bool {
+        self.kept().iter().any(|(kept, _)| path.starts_with(kept))
     }
 
     /// Keeps `bytes` (`None`: removed) for `path`.
@@ -100,8 +87,7 @@ impl Overlay {
     /// modified or deleted, with its hunks, its text before and the
     /// [`FileState`] of each side (the [`FileState::unread`] size of a file
     /// too large to read). A file written back as it was, or created and
-    /// removed again, is no change. Each is named with its directories
-    /// [`canonical`](Workspace::canonical).
+    /// removed again, is no change.
     ///
     /// [`FileState`]: rig_core::tool::FileState
     /// [`FileState::unread`]: rig_core::tool::FileState::unread
@@ -156,7 +142,6 @@ impl Workspace for Overlay {
     /// path beneath a file is [`NotADirectory`](ErrorKind::NotADirectory),
     /// whatever the workspace under it says of such a path.
     fn stat(&self, path: &Path) -> io::Result<Stat> {
-        let path = &self.spot(path);
         if let Some(Some(bytes)) = self.held(path) {
             return Ok(Stat::File {
                 size: bytes.len() as u64,
@@ -164,7 +149,7 @@ impl Workspace for Overlay {
                 modified: None,
             });
         }
-        let stat = match self.removed(path) {
+        let stat = match self.shadowed(path) {
             true => Stat::Missing,
             false => self.inner.stat(path)?,
         };
@@ -185,7 +170,6 @@ impl Workspace for Overlay {
     }
 
     fn read(&self, path: &Path, limit: u64) -> io::Result<Contents> {
-        let path = &self.spot(path);
         match self.held(path) {
             Some(Some(bytes)) => Ok(Contents {
                 size: bytes.len() as u64,
@@ -200,7 +184,6 @@ impl Workspace for Overlay {
     }
 
     fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
-        let path = &self.spot(path);
         match self.held(path) {
             None => self.inner.excerpt(path, first, count),
             Some(_) => excerpt_of(self, path, first, count),
@@ -208,7 +191,6 @@ impl Workspace for Overlay {
     }
 
     fn write(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
-        let path = &self.spot(path);
         match self.stat(path)? {
             Stat::Dir | Stat::Other => Err(io::Error::new(
                 ErrorKind::InvalidInput,
@@ -228,7 +210,6 @@ impl Workspace for Overlay {
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
-        let path = &self.spot(path);
         match self.stat(path)? {
             Stat::Missing => Err(ErrorKind::NotFound.into()),
             Stat::Dir => Err(io::Error::new(ErrorKind::IsADirectory, "is a directory")),
@@ -240,28 +221,29 @@ impl Workspace for Overlay {
     }
 
     /// As the disk does: `to` is replaced, a link there itself, and two
-    /// spellings of one file are refused, which moves nothing.
+    /// spellings of one file are refused, which moves nothing. A failed look
+    /// at `to` does not stop it: a remote fails the same way on a dangling
+    /// link, which a rename replaces.
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
-        let (source, target) = (self.spot(from), self.spot(to));
-        let bytes = self.bytes(&source)?;
-        if source == target {
-            return match from == to {
-                true => Ok(()),
-                false => Err(io::Error::new(
-                    ErrorKind::InvalidInput,
-                    "both names are links to one file; nothing was moved",
-                )),
-            };
+        let bytes = self.bytes(from)?;
+        if from == to {
+            return Ok(());
         }
-        let link = self.inner.canonical(&target) != target;
-        match self.stat(&target) {
-            Ok(Stat::Dir) if !link => {
+        let real = self.inner.canonical(to);
+        if from.file_name() == to.file_name() && self.inner.canonical(from) == real {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "both names are links to one file; nothing was moved",
+            ));
+        }
+        match self.stat(to) {
+            Ok(Stat::Dir) if real == to => {
                 Err(io::Error::new(ErrorKind::IsADirectory, "is a directory"))
             }
             Err(error) if error.kind() == ErrorKind::NotADirectory => Err(error),
             _ => {
-                self.keep(&target, Some(bytes));
-                self.keep(&source, None);
+                self.keep(to, Some(bytes));
+                self.keep(from, None);
                 Ok(())
             }
         }
@@ -285,18 +267,14 @@ impl Workspace for Overlay {
         } = self.inner.files(root, glob, listing)?;
         let rule = glob_rule(root, glob)?;
         let kept = self.kept().clone();
-        let real = self.inner.canonical(root);
         let removed = |path: &PathBuf| {
-            let spot = path.strip_prefix(root).map(|below| real.join(below));
             kept.iter()
-                .any(|(kept, bytes)| spot.as_ref() == Ok(kept) && bytes.is_none())
+                .any(|(kept, bytes)| kept == path && bytes.is_none())
         };
         let created = kept.iter().filter_map(|(path, bytes)| {
-            let below = path.strip_prefix(&real).ok()?;
-            let path: PathBuf = root.join(below).components().collect();
-            let visible = listing.keeps(below);
-            let matches = glob_keeps(&rule, root, &path);
-            (bytes.is_some() && visible && matches && !listed.contains(&path)).then_some(path)
+            let visible = listing.keeps(path.strip_prefix(root).ok()?);
+            let matches = glob_keeps(&rule, root, path);
+            (bytes.is_some() && visible && matches && !listed.contains(path)).then(|| path.clone())
         });
         let mut files: Vec<PathBuf> = listed
             .iter()
