@@ -82,13 +82,13 @@ struct ResponseData<Data> {
     data: Data,
 }
 
-/// Row shape for document searches. Milvus returns a JSON field as a string.
+/// Row shape for document searches.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchResultData {
     id: i64,
     distance: f64,
-    document: String,
+    document: Value,
 }
 
 /// Row shape for the id-only search path.
@@ -108,7 +108,7 @@ fn radius(threshold: f64) -> Result<f32, FilterError> {
     let rounded = threshold as f32;
     if !rounded.is_finite() {
         return Err(FilterError::Must(
-            threshold.to_string(),
+            format!("{threshold:e}"),
             "fit in f32".into(),
         ));
     }
@@ -117,6 +117,19 @@ fn radius(threshold: f64) -> Result<f32, FilterError> {
     } else {
         rounded.next_down()
     })
+}
+
+/// Decodes a returned document as `T`.
+///
+/// Milvus returns a JSON field as a string, so a string is first parsed as JSON.
+/// A string that does not parse into `T`, or any other value, is decoded as is.
+fn decode_document<T: DeserializeOwned>(document: Value) -> Result<T, VectorStoreError> {
+    if let Value::String(text) = &document
+        && let Ok(parsed) = serde_json::from_str(text)
+    {
+        return Ok(parsed);
+    }
+    Ok(serde_json::from_value(document)?)
 }
 
 impl MilvusVectorStore {
@@ -250,6 +263,10 @@ impl InsertDocuments for MilvusVectorStore {
                 })
             })?;
 
+        if data.is_empty() {
+            return Ok(());
+        }
+
         self.post("insert", &self.create_insert_request(data))
             .await?;
 
@@ -273,7 +290,7 @@ impl VectorStoreIndex for MilvusVectorStore {
                 Ok(VectorSearchResult {
                     score: x.distance,
                     id: x.id.to_string(),
-                    document: serde_json::from_str(&x.document)?,
+                    document: decode_document(x.document)?,
                 })
             })
             .collect()

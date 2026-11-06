@@ -119,6 +119,21 @@ async fn insert_succeeds_only_on_application_code_zero() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn insert_without_rows_sends_no_request() -> anyhow::Result<()> {
+    let stub = Stub::start(200, REJECTED)?;
+    let none: Vec<(String, Vec<Embedding>)> = vec![];
+    let result = stub.store.insert_documents(none).await;
+    ensure!(result.is_ok(), "no documents returned {result:?}");
+
+    let result = stub
+        .store
+        .insert_documents(vec![("alpha".to_owned(), vec![])])
+        .await;
+    ensure!(result.is_ok(), "no embeddings returned {result:?}");
+    Ok(())
+}
+
+#[tokio::test]
 async fn searches_send_the_query_as_a_batch_of_one() -> anyhow::Result<()> {
     let stub = Stub::start(200, HIT)?;
     stub.store.top_n::<Word>(request()).await.ok();
@@ -236,6 +251,32 @@ async fn top_n_decodes_the_stored_document() -> anyhow::Result<()> {
         hit.map(|hit| (hit.id.as_str(), &hit.document.word[..])) == Some(("7", "alpha")),
         "{} hits",
         hits.len()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn top_n_decodes_documents_not_written_by_rig() -> anyhow::Result<()> {
+    let text = r#"{"code":0,"data":[{"distance":1,"document":"plain text","id":7}]}"#;
+    let hits = Stub::start(200, text)?
+        .store
+        .top_n::<String>(request())
+        .await?;
+    let document = hits.first().map(|hit| hit.document.as_str());
+    ensure!(document == Some("plain text"), "{document:?}");
+
+    let object = r#"{"code":0,"data":[{"distance":1,"document":{"word":"alpha"},"id":7}]}"#;
+    let hits = Stub::start(200, object)?
+        .store
+        .top_n::<Word>(request())
+        .await?;
+    let document = hits.first().map(|hit| hit.document.word.as_str());
+    ensure!(document == Some("alpha"), "{document:?}");
+
+    let result = Stub::start(200, text)?.store.top_n::<Word>(request()).await;
+    ensure!(
+        matches!(result, Err(VectorStoreError::JsonError(_))),
+        "a document that fits nothing returned {result:?}"
     );
     Ok(())
 }
