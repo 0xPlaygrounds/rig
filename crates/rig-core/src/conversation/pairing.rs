@@ -18,7 +18,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::{Author, Entry, MessageId, ResultFacts};
-use crate::message::{AssistantMessage, CallId, Message, Origin, ToolCall, ToolName, UserContent};
+use crate::message::{
+    AssistantMessage, CallId, Message, Origin, StopReason, ToolCall, ToolName, UserContent,
+};
 use crate::tool::feedback::tool_result_message;
 
 /// Why a history is not a canonical conversation, or what [`pair`] repaired.
@@ -27,7 +29,7 @@ use crate::tool::feedback::tool_result_message;
 pub enum PairingError {
     /// Two assistant messages adjacent in the input that could merge (index
     /// of the second). Two that cannot may stand side by side: a different
-    /// origin, or one failed and one not.
+    /// origin, or a different outcome.
     #[error("consecutive assistant messages at index {index}")]
     ConsecutiveAssistant {
         /// Index of the offending (second) assistant message.
@@ -216,8 +218,9 @@ pub struct Paired {
 /// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
 /// turn left directly after another is merged into it when the two can
-/// share an origin and neither is a failed turn beside a good one; `repairs`
-/// reports the input as [`pair`] read it.
+/// share an origin and ended the same way, and an empty turn after a turn
+/// or among waiting calls is left out; `repairs` reports the input as
+/// [`pair`] read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
     let shaped = shape(messages, true);
     Paired {
@@ -365,10 +368,19 @@ fn share_origin(first: Option<&Origin>, later: Option<&Origin>) -> bool {
     }
 }
 
+/// How a turn ended, as far as merging goes: what a failed or aborted turn
+/// sends is decided for that turn alone.
+#[derive(PartialEq)]
+enum Outcome {
+    Completed,
+    Failed,
+    Aborted,
+}
+
 /// What decides whether two assistant turns in a row merge.
 struct TurnKind {
     empty: bool,
-    failed: bool,
+    outcome: Outcome,
     origin: Option<Origin>,
 }
 
@@ -376,19 +388,23 @@ impl TurnKind {
     fn of(turn: &AssistantMessage) -> Self {
         Self {
             empty: turn.content.is_empty(),
-            failed: turn.stop.as_ref().is_some_and(|stop| stop.is_failure()),
+            outcome: match turn.stop {
+                Some(StopReason::Error(_)) => Outcome::Failed,
+                Some(StopReason::Aborted(_)) => Outcome::Aborted,
+                _ => Outcome::Completed,
+            },
             origin: turn.origin.clone(),
         }
     }
 
     /// Whether `later`, directly after this turn, merges into it. An empty
-    /// turn has nothing to protect, so it always does. A failed turn and a
-    /// good one stay apart: one stop stands for a merged turn, and replay
-    /// leaves out or cuts down a failed one.
+    /// turn has nothing to protect, so it always does. Turns with different
+    /// outcomes stay apart: one stop stands for a merged turn, and it decides
+    /// what the whole turn sends.
     fn merges(&self, later: &Self) -> bool {
         self.empty
             || later.empty
-            || (self.failed == later.failed
+            || (self.outcome == later.outcome
                 && share_origin(self.origin.as_ref(), later.origin.as_ref()))
     }
 }
@@ -469,6 +485,24 @@ fn walk(
     };
     for step in steps(history) {
         match step {
+            // An empty turn can't end waiting calls in a repair, or it would
+            // part them from their results: it is left out, and reported.
+            Step::Turn(index, Some(turn))
+                if sourced
+                    && turn.content.is_empty()
+                    && (walk.after_turn.as_ref().is_some_and(|before| !before.empty)
+                        || !walk.waiting.is_empty()) =>
+            {
+                walk.repairs.push(match walk.waiting.first() {
+                    Some((call_id, _)) if walk.after_turn.is_none() => {
+                        PairingError::UnansweredToolCall {
+                            index: walk.waiting_at,
+                            call_id: call_id.clone(),
+                        }
+                    }
+                    _ => PairingError::ConsecutiveAssistant { index },
+                });
+            }
             Step::Turn(index, turn) => {
                 if let (Some(before), Some(turn)) = (&walk.after_turn, &turn)
                     && before.merges(&TurnKind::of(turn))

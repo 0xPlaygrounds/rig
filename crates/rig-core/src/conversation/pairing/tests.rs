@@ -465,39 +465,73 @@ fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
     let lone = repair(vec![empty(None), failed.clone()]).messages;
     assert_eq!(lone, vec![failed]);
 
-    // A failed turn with text can't take a good one down, or come back as
-    // good: the two stay apart, each with its own stop.
-    let error = StopReason::Error("refused".to_owned());
-    let stopped = Message::Assistant(
-        AssistantMessage::new(vec![AssistantContent::text("half")])
-            .with_origin(anthropic.clone())
-            .with_stop(error.clone()),
+    // An empty turn can't part a call from its result, or a result from
+    // the rest of its batch.
+    let (asked, answer) = (assistant(vec![call("c1")]), results(&["c1"]));
+    let parted = vec![asked.clone(), empty(None), answer.clone()];
+    assert!(validate(&parted).is_err());
+    assert_eq!(repair(parted).messages, vec![asked, answer]);
+    let batch = assistant(vec![call("c1"), call("c2")]);
+    let (one, two) = (results(&["c1"]), results(&["c2"]));
+    let parted = vec![batch.clone(), one.clone(), empty(None), two.clone()];
+    assert!(validate(&parted).is_err());
+    assert_eq!(
+        repair(parted).messages,
+        repair(vec![batch, one, two]).messages
     );
-    for (turns, expected) in [
-        (
-            vec![native.clone(), stopped.clone()],
-            vec![None, Some(&error)],
-        ),
-        (
-            vec![stopped.clone(), native.clone()],
-            vec![Some(&error), None],
-        ),
-        (
-            vec![native.clone(), stopped.clone(), turn(Some(&gemini))],
-            vec![None, Some(&error), None],
-        ),
-        (vec![stopped.clone(), stopped.clone()], vec![Some(&error)]),
+
+    // Turns with different outcomes stay apart, each with its own stop, so
+    // no failure takes a good turn down or comes back as good. Those with
+    // the same outcome merge, the later stop standing.
+    let error = StopReason::Error("refused".to_owned());
+    let aborted = StopReason::Aborted("stopped".to_owned());
+    let stops = [
+        None,
+        Some(StopReason::Stop),
+        Some(StopReason::Length),
+        Some(StopReason::ToolUse),
+        Some(error.clone()),
+        Some(aborted.clone()),
+    ];
+    let ended = |stop: &Option<StopReason>| {
+        Message::Assistant(
+            AssistantMessage::new(vec![AssistantContent::text("a")])
+                .with_origin(anthropic.clone())
+                .with_stop(stop.clone()),
+        )
+    };
+    let outcome = |stop: &Option<StopReason>| match stop {
+        Some(StopReason::Error(_)) => 1,
+        Some(StopReason::Aborted(_)) => 2,
+        _ => 0,
+    };
+    for a in &stops {
+        for b in &stops {
+            let turns = vec![ended(a), ended(b)];
+            let repaired = repair(turns.clone()).messages;
+            let kept: Vec<Option<StopReason>> = repaired
+                .iter()
+                .filter_map(|message| match message {
+                    Message::Assistant(turn) => Some(turn.stop.clone()),
+                    _ => None,
+                })
+                .collect();
+            let expected = if outcome(a) == outcome(b) {
+                vec![b.clone()]
+            } else {
+                vec![a.clone(), b.clone()]
+            };
+            assert_eq!(kept, expected, "{turns:?}");
+            assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+        }
+    }
+    let of = |stop: &StopReason| ended(&Some(stop.clone()));
+    for turns in [
+        vec![of(&aborted), of(&error), native.clone()],
+        vec![of(&error), of(&aborted), turn(Some(&gemini))],
+        vec![native.clone(), of(&error), turn(Some(&gemini))],
     ] {
-        let repaired = repair(turns.clone()).messages;
-        let stops: Vec<Option<&StopReason>> = repaired
-            .iter()
-            .filter_map(|message| match message {
-                Message::Assistant(turn) => Some(turn.stop.as_ref()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(stops, expected, "{turns:?}");
-        assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+        assert_eq!(repair(turns.clone()).messages.len(), 3, "{turns:?}");
     }
 }
 
