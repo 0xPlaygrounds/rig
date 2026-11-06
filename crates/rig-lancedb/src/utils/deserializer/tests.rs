@@ -6,9 +6,9 @@ use arrow_array::{
     Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray, RecordBatch, RunArray,
     StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
-        FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
-        NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, StructBuilder,
-        UnionBuilder,
+        Decimal128Builder, FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder,
+        MapBuilder, NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder,
+        StructBuilder, UnionBuilder,
     },
     types::{Float64Type, Int8Type, Int16Type, Int32Type},
 };
@@ -762,5 +762,52 @@ fn fixed_size_binary_has_one_value_per_row() {
     assert_eq!(
         record_batch_to_json(&batch).unwrap(),
         vec![json!({ "d": null })]
+    );
+
+    // The same value as a valid child of a null parent row.
+    let decimal = DataType::Decimal128(38, 0);
+    let too_large = 10_i128.pow(25);
+    let children: ArrayRef = Arc::new(
+        Decimal128Array::from(vec![too_large, 7, too_large])
+            .with_precision_and_scale(38, 0)
+            .unwrap(),
+    );
+    let nulls = Int32Array::from(vec![None, Some(1), None]).nulls().cloned();
+    let fixed = FixedSizeListArray::new(
+        Arc::new(Field::new("item", decimal.clone(), true)),
+        1,
+        children.clone(),
+        nulls.clone(),
+    );
+    let details = StructArray::new(
+        Fields::from(vec![Field::new("n", decimal.clone(), true)]),
+        vec![children],
+        nulls,
+    );
+    let decimals = || Decimal128Builder::new().with_data_type(decimal.clone());
+    let mut list = ListBuilder::new(decimals());
+    let mut map = MapBuilder::new(None, StringBuilder::new(), decimals());
+    for (value, is_valid) in [(too_large, false), (7, true), (too_large, false)] {
+        list.values().append_value(value);
+        list.append(is_valid);
+        map.keys().append_value("k");
+        map.values().append_value(value);
+        map.append(is_valid).unwrap();
+    }
+    let batch = RecordBatch::try_from_iter(vec![
+        ("fixed", Arc::new(fixed) as ArrayRef),
+        ("details", Arc::new(details) as ArrayRef),
+        ("list", Arc::new(list.finish()) as ArrayRef),
+        ("map", Arc::new(map.finish()) as ArrayRef),
+    ])
+    .unwrap();
+    let null_row = json!({ "fixed": null, "details": null, "list": null, "map": null });
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            null_row.clone(),
+            json!({ "fixed": [7], "details": { "n": 7 }, "list": [7], "map": { "k": 7 } }),
+            null_row,
+        ]
     );
 }
