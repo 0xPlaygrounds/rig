@@ -106,17 +106,18 @@ struct SearchResultDataOnlyId {
 /// distance within one `f32` step under the threshold can be left out.
 fn radius(threshold: f64) -> Result<f32, FilterError> {
     let rounded = threshold as f32;
-    if !rounded.is_finite() {
+    let radius = if f64::from(rounded) < threshold {
+        rounded
+    } else {
+        rounded.next_down()
+    };
+    if !(rounded.is_finite() && radius.is_finite()) {
         return Err(FilterError::Must(
             format!("{threshold:e}"),
             "fit in f32".into(),
         ));
     }
-    Ok(if f64::from(rounded) < threshold {
-        rounded
-    } else {
-        rounded.next_down()
-    })
+    Ok(radius)
 }
 
 /// Decodes a returned document as `T`.
@@ -169,28 +170,25 @@ impl MilvusVectorStore {
         }
     }
 
-    /// Builds the search body. A request threshold becomes a Milvus range search,
-    /// so it applies to the score in the collection's own metric and the limit
-    /// still fills from every match. A threshold `f32` cannot hold is refused.
+    /// Builds the search body. A `radius` from the request threshold makes it a
+    /// Milvus range search, so it applies to the score in the collection's own
+    /// metric and the limit still fills from every match.
     fn create_search_request(
         &self,
         data: Vec<f64>,
         req: &VectorSearchRequest<Filter>,
+        radius: Option<f32>,
         id_only: bool,
-    ) -> Result<SearchRequest<'_>, VectorStoreError> {
+    ) -> SearchRequest<'_> {
         // Milvus always returns the id and distance, and refuses them as output
         // fields unless the collection stores a field of that name.
         let output_fields = if id_only { vec![] } else { vec!["document"] };
 
-        let search_params = req
-            .threshold()
-            .map(radius)
-            .transpose()?
-            .map(|radius| json!({ "params": { "radius": radius } }));
+        let search_params = radius.map(|radius| json!({ "params": { "radius": radius } }));
 
         let filter = req.filter().cloned().map(Filter::into_inner);
 
-        Ok(SearchRequest {
+        SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
             data: [data],
@@ -199,7 +197,7 @@ impl MilvusVectorStore {
             anns_field: "embedding",
             limit: req.samples() as usize,
             output_fields,
-        })
+        }
     }
 
     /// Posts `body` to an entities endpoint and returns the response body.
@@ -235,14 +233,16 @@ impl MilvusVectorStore {
         Ok(text)
     }
 
-    /// Embeds the query and returns the matching rows.
+    /// Embeds the query and returns the matching rows. A threshold `f32` cannot
+    /// hold is refused before the query is embedded.
     async fn search<Row: DeserializeOwned>(
         &self,
         req: &VectorSearchRequest<Filter>,
         id_only: bool,
     ) -> Result<Vec<Row>, VectorStoreError> {
+        let radius = req.threshold().map(radius).transpose()?;
         let embedding = self.model.embed_text(req.query()).await?;
-        let body = self.create_search_request(embedding.vec, req, id_only)?;
+        let body = self.create_search_request(embedding.vec, req, radius, id_only);
         let text = self.post("search", &body).await?;
 
         Ok(serde_json::from_str::<ResponseData<Vec<Row>>>(&text)?.data)

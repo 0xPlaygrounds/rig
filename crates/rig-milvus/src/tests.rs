@@ -210,7 +210,8 @@ fn radius_is_the_largest_f32_below_the_threshold() {
 
 #[tokio::test]
 async fn thresholds_f32_cannot_hold_are_refused() -> anyhow::Result<()> {
-    for threshold in [f64::NAN, f64::INFINITY, -1e300] {
+    // f32::MIN fits, but the radius one step below it does not.
+    for threshold in [f64::NAN, f64::INFINITY, 1e300, -1e300, f64::from(f32::MIN)] {
         let req = VectorSearchRequest::builder()
             .query("alpha")
             .samples(1)
