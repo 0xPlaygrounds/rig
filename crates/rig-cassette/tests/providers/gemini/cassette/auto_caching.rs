@@ -839,8 +839,8 @@ async fn lifecycle() {
         "exactly one 403 on a generate call or an extend: the deleted cache"
     );
 
-    // (c) The 403 is followed at once by the same request inline, which
-    // succeeds, and later by a new cache.
+    // (c) The 403, here on the extend, is followed at once by the request
+    // inline, which succeeds, and later by a new cache.
     let retry = &recording.interactions[forbidden[0] + 1];
     assert!(retry.path.contains(":generateContent") && retry.status == 200);
     assert!(!retry.request.contains("\"cachedContent\""));

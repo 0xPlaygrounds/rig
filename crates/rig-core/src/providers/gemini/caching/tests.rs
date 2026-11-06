@@ -112,11 +112,13 @@ fn a_book_shows_its_policy_and_prefix() {
 
 /// Answers `cachedContents` creates with `cachedContents/cache-<n>`, extends
 /// with a 403 and every other request with a short reply, recording the cache
-/// each one read. The book in `.1` closes while a create is in flight.
+/// each one read. A create waits for `.1`. A cache named in `.2` answers a
+/// read with 403 and a delete with 500.
 #[derive(Clone, Default)]
 struct CacheServer(
     Arc<Mutex<(usize, Vec<Option<String>>)>>,
-    Arc<Mutex<Option<CacheBook>>>,
+    Arc<futures::lock::Mutex<()>>,
+    Arc<Mutex<HashSet<String>>>,
 );
 
 impl crate::driver::Transport<super::super::completion::GenerateContent> for CacheServer {
@@ -125,33 +127,46 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
         payload: crate::wire::Encoded,
         _: crate::driver::Exchange,
     ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        use crate::driver::{Opened, Opening};
+        use crate::error::ProviderError;
+        use crate::wire::WireFrame;
+
+        let refused =
+            |status| Opening::failed(ProviderError::from_http_response(status, "refused"));
+        let reply = |text: String| Opened::new(futures::stream::iter([Ok(WireFrame::Text(text))]));
+        let path = payload.request.uri().path();
+        let name = path.trim_start_matches("/v1beta/");
         if payload.request.method() == http::Method::PATCH {
-            return crate::driver::Opening::failed(
-                crate::error::ProviderError::from_http_response(
-                    http::StatusCode::FORBIDDEN,
-                    "the cache is gone",
-                ),
-            );
+            return refused(http::StatusCode::FORBIDDEN);
         }
         if payload.request.method() == http::Method::DELETE {
-            return crate::driver::Opening::ready(crate::driver::Opened::new(
-                futures::stream::iter([Ok(crate::wire::WireFrame::Text("{}".to_owned()))]),
-            ));
+            if self.2.lock().expect("refused").contains(name) {
+                return refused(http::StatusCode::INTERNAL_SERVER_ERROR);
+            }
+            return Opening::ready(reply("{}".to_owned()));
+        }
+        if path.ends_with("/cachedContents") {
+            let (seen, gate) = (self.0.clone(), self.1.clone());
+            return Opening::new(async move {
+                drop(gate.lock().await);
+                let mut seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+                seen.0 += 1;
+                let cache = serde_json::json!({
+                    "name": format!("cachedContents/cache-{}", seen.0),
+                    "usageMetadata": {"totalTokenCount": 2048}
+                });
+                Ok(reply(cache.to_string()))
+            });
         }
         let body = crate::test_utils::json_body(&payload.request);
+        let read = body.get("cachedContent").and_then(|name| name.as_str());
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        let reply = if payload.request.uri().path().ends_with("/cachedContents") {
-            seen.0 += 1;
-            if let Some(book) = self.1.lock().expect("book").as_ref() {
-                book.book().closes += 1;
-            }
-            serde_json::json!({
-                "name": format!("cachedContents/cache-{}", seen.0),
-                "usageMetadata": {"totalTokenCount": 2048}
-            })
-        } else {
-            let read = body.get("cachedContent").and_then(|name| name.as_str());
-            seen.1.push(read.map(str::to_owned));
+        seen.1.push(read.map(str::to_owned));
+        if read.is_some_and(|name| self.2.lock().expect("refused").contains(name)) {
+            let error = ProviderError::from_http_response(http::StatusCode::FORBIDDEN, "refused");
+            return Opening::ready(Opened::new(futures::stream::iter([Err(error)])));
+        }
+        Opening::ready(reply(
             serde_json::json!({
                 "candidates": [{
                     "content": {"role": "model", "parts": [{"text": "ok"}]},
@@ -159,10 +174,8 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
                 }],
                 "usageMetadata": {"promptTokenCount": 2050, "candidatesTokenCount": 1}
             })
-        };
-        crate::driver::Opening::ready(crate::driver::Opened::new(futures::stream::iter([Ok(
-            crate::wire::WireFrame::Text(reply.to_string()),
-        )])))
+            .to_string(),
+        ))
     }
 }
 
@@ -297,16 +310,58 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     );
     assert!(extending.leases().is_empty());
 
-    // A close during a create never waits for it: the create cleans up.
-    let closing = clocked(AutoCache::default());
+    // A read the server refuses is resent inline, once.
+    let lost = clocked(AutoCache::default());
     let server = CacheServer::default();
-    *server.1.lock().expect("book") = Some(closing.clone());
-    let model = caching(&closing, &server);
+    let model = caching(&lost, &server);
     for n in [0, 1] {
         model.call(ask(n)).await.expect("the call answers");
     }
-    assert_eq!(server.0.lock().expect("seen").1, [None, None]);
+    let name = "cachedContents/cache-1".to_owned();
+    server.2.lock().expect("refused").insert(name.clone());
+    model.call(ask(1)).await.expect("the call answers");
+    assert_eq!(
+        server.0.lock().expect("seen").1,
+        [None, Some(name.clone()), Some(name), None]
+    );
+
+    // A close never waits. The create in flight and the one queued behind it
+    // each delete their cache when they land.
+    let closing = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&closing, &server);
+    model.call(ask(0)).await.expect("the call answers");
+    let held = server.1.lock().await;
+    let (mut first, mut second) = (Box::pin(model.call(ask(1))), Box::pin(model.call(ask(2))));
+    assert!(futures::poll!(first.as_mut()).is_pending());
+    assert!(futures::poll!(second.as_mut()).is_pending());
+    let deletes = crate::driver::Model::new(
+        super::super::cached_content::CachedContents::new(GeminiConfig::new("test-key")),
+        DeleteServer::default(),
+    );
+    closing.close(&deletes).await;
+    drop(held);
+    first.await.expect("the call answers");
+    second.await.expect("the call answers");
+    assert_eq!(server.0.lock().expect("seen").0, 2);
     assert!(closing.leases().is_empty());
+
+    // A cache leaves the book only when its delete is confirmed.
+    let refusing = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&refusing, &server);
+    let name = "cachedContents/cache-1".to_owned();
+    server.2.lock().expect("refused").insert(name.clone());
+    model.call(ask(0)).await.expect("the call answers");
+    let held = server.1.lock().await;
+    let mut landing = Box::pin(model.call(ask(1)));
+    assert!(futures::poll!(landing.as_mut()).is_pending());
+    refusing.close(&deletes).await;
+    drop(held);
+    landing.await.expect("the call answers");
+    assert_eq!(refusing.leases().len(), 1);
+    refusing.close(&deletes).await;
+    assert!(refusing.leases().is_empty());
 }
 
 /// A late 403, retire or extend for an old cache leaves the replacement
