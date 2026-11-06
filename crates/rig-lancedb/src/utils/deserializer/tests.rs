@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, ArrayRef, BinaryArray, DictionaryArray, FixedSizeBinaryArray, FixedSizeListArray,
-    Float32Array, Float64Array, GenericListArray, Int8Array, Int16Array, Int32Array, Int64Array,
-    LargeBinaryArray, LargeStringArray, MapArray, RecordBatch, RunArray, StringArray, StructArray,
-    UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    Array, ArrayRef, BinaryArray, Decimal128Array, DictionaryArray, FixedSizeBinaryArray,
+    FixedSizeListArray, Float32Array, Float64Array, GenericListArray, Int8Array, Int16Array,
+    Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray, RecordBatch, RunArray,
+    StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
         FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
         NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, StructBuilder,
@@ -751,5 +751,16 @@ fn fixed_size_binary_has_one_value_per_row() {
     assert_eq!(
         record_batch_to_json(&batch.slice(1, 2)).unwrap(),
         rows.split_off(1)
+    );
+
+    // JSON can't hold this value, but the cell is null, so it must not be converted.
+    let nulls = Int32Array::from(vec![None]).nulls().cloned();
+    let amounts = Decimal128Array::new(vec![10_i128.pow(25)].into(), nulls)
+        .with_precision_and_scale(38, 0)
+        .unwrap();
+    let batch = RecordBatch::try_from_iter(vec![("d", Arc::new(amounts) as ArrayRef)]).unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "d": null })]
     );
 }
