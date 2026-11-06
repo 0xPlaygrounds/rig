@@ -112,13 +112,14 @@ fn a_book_shows_its_policy_and_prefix() {
 
 /// Answers `cachedContents` creates with `cachedContents/cache-<n>`, extends
 /// with a 403 and every other request with a short reply, recording the cache
-/// each one read. A create waits for `.1`. A cache named in `.2` answers a
-/// read with 403 and a delete with 500.
+/// each one read. A create waits for `.1`, a delete for `.3`. A cache named
+/// in `.2` answers a read with 403 and a delete with 500.
 #[derive(Clone, Default)]
 struct CacheServer(
     Arc<Mutex<(usize, Vec<Option<String>>)>>,
     Arc<futures::lock::Mutex<()>>,
     Arc<Mutex<HashSet<String>>>,
+    Arc<futures::lock::Mutex<()>>,
 );
 
 impl crate::driver::Transport<super::super::completion::GenerateContent> for CacheServer {
@@ -143,7 +144,11 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
             if self.2.lock().expect("refused").contains(name) {
                 return refused(http::StatusCode::INTERNAL_SERVER_ERROR);
             }
-            return Opening::ready(reply("{}".to_owned()));
+            let gate = self.3.clone();
+            return Opening::new(async move {
+                drop(gate.lock().await);
+                Ok(reply("{}".to_owned()))
+            });
         }
         if path.ends_with("/cachedContents") {
             let (seen, gate) = (self.0.clone(), self.1.clone());
@@ -179,9 +184,10 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
     }
 }
 
-/// Answers every `cachedContents` delete, recording the names.
+/// Answers every `cachedContents` delete once `.1` is free, recording the
+/// names.
 #[derive(Clone, Default)]
-struct DeleteServer(Arc<Mutex<Vec<String>>>);
+struct DeleteServer(Arc<Mutex<Vec<String>>>, Arc<futures::lock::Mutex<()>>);
 
 impl crate::driver::Transport<super::super::cached_content::CachedContents> for DeleteServer {
     fn send(
@@ -194,9 +200,13 @@ impl crate::driver::Transport<super::super::cached_content::CachedContents> for 
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(path.to_owned());
-        crate::driver::Opening::ready(crate::driver::Opened::new(futures::stream::iter([Ok(
-            crate::wire::WireFrame::Text("{}".to_owned()),
-        )])))
+        let gate = self.1.clone();
+        crate::driver::Opening::new(async move {
+            drop(gate.lock().await);
+            Ok(crate::driver::Opened::new(futures::stream::iter([Ok(
+                crate::wire::WireFrame::Text("{}".to_owned()),
+            )])))
+        })
     }
 }
 
@@ -325,8 +335,8 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         [None, Some(name.clone()), Some(name), None]
     );
 
-    // A close never waits. The create in flight and the one queued behind it
-    // each delete their cache when they land.
+    // A close never waits for a create. The one in flight deletes its cache
+    // when it lands, and the one queued behind it never makes one.
     let closing = clocked(AutoCache::default());
     let server = CacheServer::default();
     let model = caching(&closing, &server);
@@ -343,7 +353,7 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     drop(held);
     first.await.expect("the call answers");
     second.await.expect("the call answers");
-    assert_eq!(server.0.lock().expect("seen").0, 2);
+    assert_eq!(server.0.lock().expect("seen").0, 1);
     assert!(closing.leases().is_empty());
 
     // A cache leaves the book only when its delete is confirmed.
@@ -362,6 +372,28 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     assert_eq!(refusing.leases().len(), 1);
     refusing.close(&deletes).await;
     assert!(refusing.leases().is_empty());
+
+    // A stuck delete holds no reply, and a close gives up on it in time. The
+    // cache stays the book's for the next close.
+    let stuck = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&stuck, &server);
+    model.call(ask(0)).await.expect("the call answers");
+    let held = server.1.lock().await;
+    let mut landing = Box::pin(model.call(ask(1)));
+    assert!(futures::poll!(landing.as_mut()).is_pending());
+    stuck.close(&deletes).await;
+    let delete_held = server.3.lock().await;
+    drop(held);
+    landing.await.expect("the call answers");
+    drop(delete_held);
+    assert_eq!(stuck.leases().len(), 1);
+    let held = deletes.transport.1.lock().await;
+    stuck.close(&deletes).await;
+    assert_eq!(stuck.leases().len(), 1);
+    drop(held);
+    stuck.close(&deletes).await;
+    assert!(stuck.leases().is_empty());
 }
 
 /// A late 403, retire or extend for an old cache leaves the replacement
