@@ -3221,6 +3221,153 @@ async fn tool_target_patch_is_refused_on_stream() {
     check_tool_target_patch_is_refused(true).await;
 }
 
+/// Rewrites the completion request at dispatch with `patch`.
+struct CompletionDispatchPatch(fn(&mut rig_core::completion::CompletionRequest));
+
+impl AgentHook for CompletionDispatchPatch {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let rig_core::effect::EffectKind::Completion { request, stream } = event.kind else {
+            return DispatchAction::Proceed;
+        };
+        let mut request = (**request).clone();
+        (self.0)(&mut request);
+        DispatchAction::Patch(rig_core::effect::EffectKind::Completion {
+            request: request.into(),
+            stream: *stream,
+        })
+    }
+}
+
+/// The turn's tool policy and output schema are fixed when it is prepared, so
+/// a completion dispatch patch that changes what they mean is refused before
+/// the provider is called, whether through the typed fields, the raw
+/// parameters or the output tool. A patch that only respells them, reorders
+/// the definitions or rewrites an ordinary tool goes through.
+#[tokio::test]
+async fn a_completion_dispatch_patch_cannot_change_the_tool_policy() {
+    type Patch = fn(&mut rig_core::completion::CompletionRequest);
+    const OUTPUT_TOOL: &str = "final_result";
+    let specific = ToolChoice::Specific {
+        function_names: [
+            RenameBoundaryTool::<false>::NAME,
+            RenameBoundaryTool::<true>::NAME,
+            OUTPUT_TOOL,
+        ]
+        .map(|name| rig_core::message::ToolName::new(name).expect("tool name"))
+        .to_vec(),
+    };
+    let cases: [(Option<ToolChoice>, Patch, bool); 9] = [
+        (
+            None,
+            |request| request.tool_choice = Some(ToolChoice::None),
+            false,
+        ),
+        (
+            None,
+            |request| {
+                let mut added = request.tools.first().map(|tool| (**tool).clone());
+                if let Some(added) = &mut added {
+                    added.name = rig_core::message::ToolName::new("unprepared").expect("tool name");
+                }
+                request.tools.extend(added.map(Arc::new));
+            },
+            false,
+        ),
+        (
+            None,
+            |request| request.output_schema = Some(schemars::schema_for!(String)),
+            false,
+        ),
+        (
+            None,
+            |request| request.additional_params = Some(json!({"tool_choice": "none"})),
+            false,
+        ),
+        (
+            None,
+            |request| request.tools.extend(request.tools.first().cloned()),
+            false,
+        ),
+        (
+            None,
+            |request| {
+                for tool in &mut request.tools {
+                    if tool.name.as_str() == OUTPUT_TOOL {
+                        Arc::make_mut(tool).parameters = json!({"required": ["other"]});
+                    }
+                }
+            },
+            false,
+        ),
+        (
+            None,
+            |request| {
+                request.tools.reverse();
+                for tool in &mut request.tools {
+                    let tool = Arc::make_mut(tool);
+                    tool.description = "rewritten at dispatch".into();
+                    if tool.name.as_str() != OUTPUT_TOOL {
+                        tool.parameters = json!({"type": "object", "properties": {}});
+                    }
+                }
+            },
+            true,
+        ),
+        (
+            None,
+            |request| request.tool_choice = Some(ToolChoice::Auto),
+            true,
+        ),
+        (
+            Some(specific),
+            |request| {
+                if let Some(ToolChoice::Specific { function_names }) = &mut request.tool_choice {
+                    function_names.reverse();
+                }
+            },
+            true,
+        ),
+    ];
+    for (index, (choice, patch, allowed)) in cases.into_iter().enumerate() {
+        let executed = Arc::new(AtomicU32::new(0));
+        let model = MockCompletionModel::from_turns(
+            [
+                ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+                    id: "patched-completion",
+                    name: RenameBoundaryTool::<false>::NAME,
+                    args: json!({}),
+                }]),
+                ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+                    id: "output",
+                    name: OUTPUT_TOOL,
+                    args: json!({}),
+                }]),
+            ]
+            .iter()
+            .map(ScriptedTurn::as_blocking_turn),
+        );
+        let probe = model.clone();
+        let builder = AgentBuilder::new(model)
+            .tool(RenameBoundaryTool::<false>(executed.clone()))
+            .tool(RenameBoundaryTool::<true>(Arc::new(AtomicU32::new(0))))
+            .output_schema_raw(schemars::json_schema!({"type": "object"}))
+            .output_mode(OutputMode::Tool)
+            .add_hook(CompletionDispatchPatch(patch));
+        let builder = match choice {
+            Some(choice) => builder.tool_choice(choice),
+            None => builder,
+        };
+        let result = builder.build().prompt("go").max_turns(3).run().await;
+        if allowed {
+            assert!(result.is_ok(), "case {index}: {result:?}");
+            assert_eq!(executed.load(SeqCst), 1, "case {index}");
+        } else {
+            assert!(result.is_err(), "case {index} is refused: {result:?}");
+            assert_eq!(probe.request_count(), 0, "case {index} reaches no provider");
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct FirstGenerationArgs {
     old: String,

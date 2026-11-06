@@ -1421,8 +1421,8 @@ impl AgentRun {
     ///
     /// # Errors
     /// A protocol violation, storing nothing, for an answer whose call is not
-    /// open. A malformed call's `Stop`, `Fail` or `Repair` ends the run; it
-    /// is applied after the other answers, which the run keeps, and the
+    /// open. A malformed call's `Stop`, `Fail` or `Repair` ends the run once
+    /// every answer is checked; the run keeps the other answers, and the
     /// first such answer in call order wins.
     pub fn answer_all(
         &mut self,
@@ -1433,8 +1433,9 @@ impl AgentRun {
         };
         // The turn stays put until the batch is answered, so it names the batch.
         let (mut batch, policy, turn) = (batch.clone(), policy.clone(), self.current_turn);
-        let mut answers: Vec<ToolAnswer> = answers.into_iter().collect();
-        answers.sort_by_key(ToolAnswer::ends_run);
+        // A run-ending answer leaves its slot open for the closure, so it is
+        // held by call index until every answer has been checked.
+        let mut ends = BTreeMap::new();
         for ToolAnswer {
             turn: issued,
             index,
@@ -1448,6 +1449,11 @@ impl AgentRun {
                         "answer for tool call id `{call}` of model turn {issued}, but the pending calls are from turn {turn}"
                     )));
                 }
+                _ if ends.contains_key(&index) => {
+                    return Err(self.protocol_violation(&format!(
+                        "answer for tool call id `{call}` that is already answered"
+                    )));
+                }
                 (Some(ToolSlot::Execute(tool_call)), AnswerKind::Executed(result))
                     if tool_call.id == call =>
                 {
@@ -1459,18 +1465,8 @@ impl AgentRun {
                     match malformed_answer(tool_call, action) {
                         Ok(content) => content,
                         Err(end) => {
-                            // The run ends with the answers so far kept and the
-                            // rest of its batch closed, as the error reports it.
-                            self.state = RunState::ExecutingTools(batch, policy);
-                            return Err(match end {
-                                Ok(reason) => self.fail(reason),
-                                Err(error) => {
-                                    let closure = self.closure();
-                                    self.history.commit(closure);
-                                    self.state = RunState::Failed;
-                                    error
-                                }
-                            });
+                            ends.insert(index, end);
+                            continue;
                         }
                     }
                 }
@@ -1488,6 +1484,20 @@ impl AgentRun {
             if let Some(slot) = batch.slots.get_mut(index) {
                 *slot = ToolSlot::Answered(content);
             }
+        }
+        if let Some((_, end)) = ends.pop_first() {
+            // The run ends with the other answers kept and the rest of its
+            // batch closed, as the error reports it.
+            self.state = RunState::ExecutingTools(batch, policy);
+            return Err(match end {
+                Ok(reason) => self.fail(reason),
+                Err(error) => {
+                    let closure = self.closure();
+                    self.history.commit(closure);
+                    self.state = RunState::Failed;
+                    error
+                }
+            });
         }
         self.state = match batch.complete() {
             Ok(results) => {

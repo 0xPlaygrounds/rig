@@ -189,6 +189,15 @@ the model and result-content telemetry; handler recording retains the original
 answer. Streaming deltas are provisional, and `ModelTurnRetried` tells consumers
 to discard a rejected turn.
 
+A turn's tool policy and output schema are fixed when its request is prepared,
+and the run checks the response against them. Change the tool choice or the
+active tools in `on_completion_call` with a `RequestPatch`; the output schema
+belongs to the agent. An `on_dispatch` completion patch that changes the tool
+choice, the tool names, the provider-hosted tools, the raw `tool_choice`
+parameter or the output schema, including the output tool's parameters, is
+refused before the provider is called. It may still reorder definitions and
+rewrite their descriptions and the parameters of ordinary tools.
+
 Keep hook-private state in the hook, keyed by run ID when shared across runs.
 Use `Scratchpad` for transient cross-hook state and run entries (rig-core
 `conversation::Aside`s) for state that must serialize or follow forks. Full snapshots read through `last_entry` avoid

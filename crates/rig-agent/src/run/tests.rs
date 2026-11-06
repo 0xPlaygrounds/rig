@@ -2290,6 +2290,84 @@ fn a_malformed_stop_keeps_an_answer_applied_with_it() {
     assert!(run.next_step().is_err(), "the run has failed");
 }
 
+/// The first terminating answer in call order ends the run, whatever order
+/// the driver supplies the answers in.
+#[test]
+fn a_batch_ends_on_the_first_terminating_answer_in_call_order() {
+    let mut run = AgentRun::new("add").max_turns(2);
+    expect_call_model(&mut run);
+    let malformed = |id| {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
+            ToolFunction::parse(
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                "{\"x\":",
+            ),
+        ))
+    };
+    expect_continue(
+        run.model_response(ModelTurn::new(
+            AssistantMessage::default(),
+            vec![malformed("c1"), malformed("c2")],
+            Usage::default(),
+            policy(&["add"]),
+            hand_raw(),
+        ))
+        .expect("model_response"),
+    );
+    let calls = expect_call_tools(&mut run);
+    let [
+        PendingToolCall::Malformed(first),
+        PendingToolCall::Malformed(second),
+    ] = calls.as_slice()
+    else {
+        panic!("two malformed calls");
+    };
+    let error = run
+        .answer_all([
+            second.clone().answer(Some(InvalidToolCallAction::Fail)),
+            first
+                .clone()
+                .answer(Some(InvalidToolCallAction::stop("first call"))),
+        ])
+        .expect_err("the batch ends the run");
+    assert!(
+        matches!(&error, PromptError::Cancelled { reason, .. } if reason == "first call"),
+        "the first call's Stop wins: {error:?}"
+    );
+}
+
+/// A terminating answer does not end the run before the rest of its batch is
+/// checked: a duplicate answer refuses the whole batch and stores nothing.
+#[test]
+fn a_terminating_answer_does_not_skip_checking_the_rest_of_its_batch() {
+    let mut run = AgentRun::new("write a.rs").max_turns(2);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(truncated_write_turn("c1"))
+            .expect("model_response should succeed"),
+    );
+    let Some(PendingToolCall::Malformed(call)) = expect_call_tools(&mut run).pop() else {
+        panic!("one malformed call");
+    };
+    let error = run
+        .answer_all([
+            call.clone()
+                .answer(Some(InvalidToolCallAction::stop("stop"))),
+            call.answer(Some(InvalidToolCallAction::stop("again"))),
+        ])
+        .expect_err("a duplicate answer is refused");
+    assert!(
+        matches!(&error, PromptError::Cancelled { reason, .. } if reason.contains("protocol violation")),
+        "a protocol violation: {error:?}"
+    );
+    assert_eq!(
+        expect_call_tools(&mut run).len(),
+        1,
+        "the call is still open"
+    );
+}
+
 /// A run that asks for a schema never ends on an answer that misses it.
 /// Without an output tool (Native on a provider that drops the schema, or
 /// Prompted) it reprompts without naming a tool while the budget lasts, then
