@@ -299,7 +299,7 @@ pub struct CacheReport {
     /// Σ tokens × hours each cache lived, until it was deleted, lost or
     /// expired, or until now for a live one.
     pub token_hours: f64,
-    /// The caches still live.
+    /// The caches requests read.
     pub live: Vec<Lease>,
 }
 
@@ -801,6 +801,7 @@ pub(crate) struct Plan {
     pub(crate) extend: Option<(Lease, u64)>,
     pub(crate) line: String,
     pub(crate) coverable: u64,
+    pub(crate) closes: u64,
 }
 
 pub(crate) struct Create {
@@ -921,6 +922,7 @@ impl CacheBook {
             extend: None,
             line: line_key,
             coverable,
+            closes: book.closes,
         };
 
         // Past the ceiling, implicit caching serves: go inline until it fails.
