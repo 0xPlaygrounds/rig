@@ -110,8 +110,9 @@ fn a_book_shows_its_policy_and_prefix() {
     );
 }
 
-/// Answers `cachedContents` creates with `cachedContents/cache-<n>` and every
-/// other request with a short reply, recording the cache each one read.
+/// Answers `cachedContents` creates with `cachedContents/cache-<n>`, extends
+/// with a 403 and every other request with a short reply, recording the cache
+/// each one read.
 #[derive(Clone, Default)]
 struct CacheServer(Arc<Mutex<(usize, Vec<Option<String>>)>>);
 
@@ -121,6 +122,14 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
         payload: crate::wire::Encoded,
         _: crate::driver::Exchange,
     ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        if payload.request.method() == http::Method::PATCH {
+            return crate::driver::Opening::failed(
+                crate::error::ProviderError::from_http_response(
+                    http::StatusCode::FORBIDDEN,
+                    "the cache is gone",
+                ),
+            );
+        }
         let body = crate::test_utils::json_body(&payload.request);
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let reply = if payload.request.uri().path().ends_with("/cachedContents") {
@@ -169,9 +178,10 @@ impl crate::driver::Transport<super::super::cached_content::CachedContents> for 
 
 /// A shared-prefix cache that a later call read is replaced by the next call
 /// after it expires, and that call reads the replacement. One nobody read
-/// again is replaced only once calls come close enough to read the next, so
-/// no spacing of calls makes a cache on each. A cache that would not live to
-/// its line's next call is never made.
+/// again is replaced only after a run of calls shows a read would pay, so no
+/// spacing of calls keeps making caches nobody reads. A cache that would not
+/// live to its line's next call is never made, and a request whose extend
+/// found its cache gone goes inline.
 #[tokio::test]
 async fn an_expired_shared_prefix_cache_is_replaced() {
     use crate::completion::CompletionRequest;
@@ -202,8 +212,9 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     clock.store(1000 + 3600, Ordering::SeqCst);
     model.call(ask(3)).await.expect("the call answers");
     clock.fetch_add(2 * MAX_TTL_SECS, Ordering::SeqCst);
-    model.call(ask(3)).await.expect("the call answers");
-    model.call(ask(3)).await.expect("the call answers");
+    for _ in 0..3 {
+        model.call(ask(3)).await.expect("the call answers");
+    }
 
     assert_eq!(
         server.0.lock().unwrap_or_else(PoisonError::into_inner).1,
@@ -212,6 +223,7 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
             Some("cachedContents/cache-1".to_owned()),
             Some("cachedContents/cache-1".to_owned()),
             Some("cachedContents/cache-2".to_owned()),
+            None,
             None,
             Some("cachedContents/cache-3".to_owned())
         ]
@@ -247,11 +259,37 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         *server.0.lock().unwrap_or_else(PoisonError::into_inner),
         (0, vec![None; 8])
     );
+
+    // Two questions, then a pause past the TTL: the first pair's cache is
+    // read by no other request, so no later pair replaces it.
+    let bursts = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&bursts, &server);
+    for n in 0..16 {
+        model.call(ask(n)).await.expect("the call answers");
+        clock.fetch_add(if n % 2 == 0 { 1 } else { 3700 }, Ordering::SeqCst);
+    }
+    assert_eq!(server.0.lock().expect("seen").0, 1);
+
+    // Reading a cache close to expiry extends it first; the 403 means gone.
+    let extending = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&extending, &server);
+    for n in [0, 1] {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    clock.fetch_add(3000, Ordering::SeqCst);
+    model.call(ask(1)).await.expect("the call answers");
+    assert_eq!(
+        server.0.lock().expect("seen").1,
+        [None, Some("cachedContents/cache-1".to_owned()), None]
+    );
+    assert!(extending.leases().is_empty());
 }
 
 /// A late 403, retire or extend for an old cache leaves the replacement
-/// that took its digest as it is. A late extend kept the old cache alive on
-/// the server, so closing the book deletes it too.
+/// that took its digest as it is. The old cache stays the book's to delete:
+/// it may still be alive on the server, so closing the book deletes it too.
 #[tokio::test]
 async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
     let old = Lease {
@@ -275,12 +313,11 @@ async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
         let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
         book.restore(vec![old.clone(), replacement.clone()]);
         callback(&book, &old);
-        assert_eq!(book.leases(), std::slice::from_ref(&replacement));
+        assert_eq!(book.report().live, std::slice::from_ref(&replacement));
     }
 
     let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
     book.restore(vec![old.clone(), replacement.clone()]);
-    book.extended(&old, 100);
     let server = DeleteServer::default();
     let config = crate::providers::gemini::GeminiConfig::new("test-key");
     book.close(&crate::driver::Model::new(
