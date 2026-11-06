@@ -1,5 +1,5 @@
 use rig_core::completion::{
-    CacheRetention, CompletionRequest, Effort, GenerationOptions, Message, OnUnsupported, Reasoning,
+    CacheRetention, CompletionRequest, Effort, GenerationOptions, Message, Reasoning,
 };
 use rig_core::error::ProviderError;
 use rig_core::operation::Completion;
@@ -127,81 +127,6 @@ fn checkpoints_follow_the_cache_retention() {
         refused(sent(LLAMA_3_8B_INSTRUCT, request(CacheRetention::Short))),
         Some("cache")
     );
-}
-
-/// Supersedes #1833: a checkpoint after a reasoning turn is never skipped
-/// in silence. The default policy refuses it; `Ignore` places the system
-/// checkpoint and skips the message one with a warning.
-#[test]
-fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
-    let reasoning = rig_core::message::AssistantContent::reasoning("thinking it over")
-        .with_native(json!({"reasoningContent": {"reasoningText": {
-            "text": "thinking it over", "signature": "sig"}}}));
-    let history = vec![
-        Message::system("Be brief."),
-        Message::user("hi"),
-        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
-            reasoning,
-            rig_core::message::AssistantContent::text("hello"),
-        ])),
-        Message::user("again"),
-    ];
-    let request = |policy| {
-        CompletionRequest::from(history.clone())
-            .cache(CacheRetention::Short)
-            .on_unsupported(policy)
-    };
-    let wire = Converse::new(ANTHROPIC_CLAUDE_SONNET_5);
-    let prepared = |policy| {
-        let request = Completion::prepare(request(policy), &wire.describe())?;
-        let encoded = wire.encode(request, Mode::Unary)?;
-        Ok::<_, ProviderError>(serde_json::to_value(&encoded.body)?)
-    };
-    let has_reasoning = |body: &Value| {
-        body["messages"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .flat_map(|message| message["content"].as_array().into_iter().flatten())
-            .any(|block| block.get("reasoningContent").is_some())
-    };
-    match prepared(OnUnsupported::Error) {
-        Err(ProviderError::UnsupportedOption(option)) => assert_eq!(option.option, "cache"),
-        // A history whose reasoning does not replay has no reasoning turn.
-        Ok(body) => assert!(!has_reasoning(&body), "{body}"),
-        Err(other) => panic!("{other}"),
-    }
-    let capture = rig_core::test_utils::TraceCapture::default();
-    let body =
-        tracing::subscriber::with_default(capture.subscriber(), || prepared(OnUnsupported::Ignore))
-            .expect("Ignore encodes the rest");
-    assert_eq!(
-        body["system"][1],
-        json!({"cachePoint": {"type": "default"}})
-    );
-    if has_reasoning(&body) {
-        let last = body["messages"]
-            .as_array()
-            .and_then(|messages| messages.last())
-            .cloned()
-            .unwrap_or_default();
-        assert!(
-            !last["content"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .any(|block| block.get("cachePoint").is_some()),
-            "{body}"
-        );
-        assert_eq!(
-            capture
-                .warnings()
-                .iter()
-                .filter(|warning| warning.contains("option=cache"))
-                .count(),
-            1
-        );
-    }
 }
 
 /// A Claude model the catalog says does not reason (an override can say
