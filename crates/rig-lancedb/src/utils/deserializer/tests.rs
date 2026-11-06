@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    ArrayRef, BinaryArray, FixedSizeListArray, Float32Array, Float64Array, GenericListArray,
-    Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, MapArray,
-    RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    ArrayRef, BinaryArray, DictionaryArray, FixedSizeListArray, Float32Array, Float64Array,
+    GenericListArray, Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray,
+    LargeStringArray, MapArray, RecordBatch, RunArray, StringArray, StructArray, UInt8Array,
+    UInt16Array, UInt32Array, UInt64Array,
     builder::{
         FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
         NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, StructBuilder,
@@ -210,6 +211,19 @@ async fn test_dictionary_deserialization() {
             json!({ "some_dict": null }),
             json!({ "some_dict": "abc" }),
         ]
+    );
+
+    let no_values =
+        RunArray::<Int16Type>::try_new(&Int16Array::from(vec![1]), &StringArray::from(vec!["x"]))
+            .unwrap()
+            .slice(0, 0);
+    let null_key = DictionaryArray::new(Int8Array::from(vec![None]), Arc::new(no_values));
+    let record_batch =
+        RecordBatch::try_from_iter(vec![("d", Arc::new(null_key) as ArrayRef)]).unwrap();
+
+    assert_eq!(
+        record_batch_to_json(&record_batch).unwrap(),
+        vec![json!({ "d": null })]
     );
 }
 
