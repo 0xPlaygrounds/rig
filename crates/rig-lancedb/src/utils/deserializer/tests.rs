@@ -529,6 +529,62 @@ fn map_entries_stay_with_their_row() {
         record_batch_to_json(&batch).unwrap(),
         vec![json!({ "attributes": { "a": null, "b": null } })]
     );
+
+    let mut dictionaries = MapBuilder::new(
+        None,
+        StringDictionaryBuilder::<Int32Type>::new(),
+        StringDictionaryBuilder::<Int32Type>::new(),
+    );
+    let rows: [&[(&str, Option<&str>)]; 5] = [
+        &[("k0", Some("a")), ("k1", Some("b"))],
+        &[],
+        &[("k0", Some("a")), ("k1", None), ("k2", Some("b"))],
+        &[("k1", Some("a"))],
+        &[],
+    ];
+    for entries in rows {
+        for (key, value) in entries {
+            dictionaries.keys().append_value(key);
+            match value {
+                Some(value) => dictionaries.values().append_value(value),
+                None => dictionaries.values().append_null(),
+            }
+        }
+        dictionaries.append(true).unwrap();
+    }
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(dictionaries.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "attributes": { "k0": "a", "k1": "b" } }),
+            json!({ "attributes": {} }),
+            json!({ "attributes": { "k0": "a", "k1": null, "k2": "b" } }),
+            json!({ "attributes": { "k1": "a" } }),
+            json!({ "attributes": {} }),
+        ]
+    );
+
+    let mut all_null = MapBuilder::new(
+        None,
+        StringBuilder::new(),
+        StringDictionaryBuilder::<Int32Type>::new(),
+    );
+    all_null.keys().append_value("a");
+    all_null.values().append_null();
+    all_null.append(true).unwrap();
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(all_null.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "attributes": { "a": null } })]
+    );
 }
 
 #[test]
