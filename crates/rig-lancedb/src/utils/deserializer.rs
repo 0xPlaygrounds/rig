@@ -174,8 +174,8 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
         }
         DataType::Map(..) => {
             let map_array = column.as_map();
-            let keys = type_matcher(map_array.keys())?;
-            let values = type_matcher(map_array.values())?;
+            let keys = map_entries(map_array.keys())?;
+            let values = map_entries(map_array.values())?;
 
             build_map(map_array.value_offsets(), &keys, &values)
         }
@@ -342,6 +342,35 @@ fn build_struct(columns: &[Vec<Value>], num_rows: usize, col_names: &[&str]) -> 
         })
         .map(Value::Object)
         .collect()
+}
+
+/// Converts a map's key or value array to one JSON value per entry. Resolves
+/// dictionary keys to their plain values, because `type_matcher` emits one
+/// `{key: value}` object per dictionary value. Null entries become JSON null.
+fn map_entries(entries: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
+    let Some(dictionary) = entries.as_any_dictionary_opt() else {
+        return type_matcher(entries);
+    };
+    let values = type_matcher(dictionary.values())?;
+    // `normalized_keys` panics on an empty dictionary, whose entries are all null.
+    if values.is_empty() {
+        return Ok(vec![Value::Null; entries.len()]);
+    }
+    let nulls = dictionary.logical_nulls();
+
+    Ok(dictionary
+        .normalized_keys()
+        .into_iter()
+        .enumerate()
+        .map(|(entry, key)| {
+            let is_null = nulls.as_ref().is_some_and(|nulls| nulls.is_null(entry));
+            values
+                .get(key)
+                .filter(|_| !is_null)
+                .cloned()
+                .unwrap_or(Value::Null)
+        })
+        .collect())
 }
 
 /// Assembles one JSON object per map row from its key and value entries.
