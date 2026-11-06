@@ -81,12 +81,20 @@ pub(crate) fn store_images_with<'m>(
         if let Some(bytes) = bytes {
             let extension = image.media_type.as_ref();
             let extension = extension.map_or("bin", ImageMediaType::extension);
-            let name = format!("{:x}.{extension}", Sha256::digest(&bytes));
+            let name = format!("{}.{extension}", sha256_hex(&bytes));
             image.data = Url(format!("{BLOB}{name}"));
             put(name, bytes)?;
         }
     }
     Ok(Cow::Owned(message))
+}
+
+/// The SHA-256 digest of `bytes` in lowercase hex.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 /// Puts the data of each image `message` names in `store` back in place.

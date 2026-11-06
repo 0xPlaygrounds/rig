@@ -16,8 +16,7 @@ fn append(store: &dyn Store, log: &str, bytes: &[u8]) -> Result<(), LogWriteErro
 
 /// The file a torn tail `tail` of the log `log` is set aside in.
 fn part(log: &str, tail: &[u8]) -> String {
-    use sha2::Digest;
-    format!("recovered/{log}-{:x}.part", sha2::Sha256::digest(tail))
+    format!("recovered/{log}-{}.part", crate::blobs::sha256_hex(tail))
 }
 
 /// A conversation with an image, an authored entry, a splice that keeps an

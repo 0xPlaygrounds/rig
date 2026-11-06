@@ -248,24 +248,25 @@ aws-smithy-eventstream = "0.61"
 aws-smithy-http-client = { version = "1", default-features = false }
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
-base64 = "0.22"
+base64 = "0.23.1"
 # Bevy is pinned exactly: a Bevy plugin only links against the one Bevy
 # version of its app, and rig-harness is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
-# git; the tooling check verifies Bevy sources and requirements.
+# git; the tooling check verifies Bevy sources, and that these requirements
+# are `rig_harness_protocol::BEVY_VERSION`, the version the launcher enforces.
 # `bevy` itself only for `MinimalPlugins` (in `bevy_internal`, no feature
 # needed); default features off keeps render, window and audio out.
 # `bevy_remote` without `http`, `bevy_asset` or `bevy_render`: in-process
 # BRP only, never a server. `reflect_documentation` puts doc comments in
 # the type registry.
-bevy = { version = "=0.20.0", default-features = false }
-bevy_app = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
-bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
-bevy_log = "=0.20.0"
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory", "reflect_documentation"] }
-bevy_remote = { version = "=0.20.0", default-features = false }
-bevy_tasks = { version = "=0.20.0", default-features = false, features = ["multi_threaded"] }
-bevy_time = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect"] }
+bevy = { version = "=0.20.1", default-features = false }
+bevy_app = { version = "=0.20.1", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
+bevy_ecs = { version = "=0.20.1", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
+bevy_log = "=0.20.1"
+bevy_reflect = { version = "=0.20.1", default-features = false, features = ["std", "auto_register_inventory", "reflect_documentation"] }
+bevy_remote = { version = "=0.20.1", default-features = false }
+bevy_tasks = { version = "=0.20.1", default-features = false, features = ["multi_threaded"] }
+bevy_time = { version = "=0.20.1", default-features = false, features = ["std", "bevy_reflect"] }
 bytes = "1"
 candle-core = "0.11"
 candle-nn = "0.11"
@@ -334,7 +335,7 @@ regex = "1.12.3"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
-rmcp = "3.5"
+rmcp = "3.9"
 url = "2"
 rusqlite = "0.32"
 scylla = "1"
@@ -344,9 +345,9 @@ serde_yaml = "0.9"
 # 1.0.54: the `float_roundtrip` feature.
 serde_json = "1.0.54"
 safetensors = "0.8"
-sha2 = "0.10"
-signal-hook = "0.3.18"
-similar = "2.7"
+sha2 = "0.11.1"
+signal-hook = "0.4.6"
+similar = "3.2.1"
 syntect = { version = "5.3", default-features = false, features = ["parsing", "regex-fancy"] }
 terminal-colorsaurus = "1.0"
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
@@ -355,12 +356,12 @@ sqlite-vec = "0.1"
 sqlx = "0.9"
 # 0.8.3: `Engine::new_sandboxed` and the thread state controller rig-steel uses.
 steel-core = "0.8.3"
-# 3.2.5: earlier releases no longer build against the newest
+# At least 3.2.5: earlier releases no longer build against the newest
 # `surrealdb-core` their requirement accepts.
-surrealdb = "3.2.5"
-syn = "2"
+surrealdb = "3.3.5"
+syn = "3"
 term_size = "0.3"
-testcontainers = "0.27"
+testcontainers = "0.28.0"
 textwrap = "0.16"
 thiserror = "2"
 tokio = "1"

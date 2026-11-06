@@ -1,9 +1,8 @@
-//! Bevy dependencies use the workspace's exact Bevy pin and crates.io sources.
-//! A Bevy plugin links only against the one Bevy version of its app.
+//! Bevy dependencies use exactly the launcher's [`BEVY_VERSION`] and crates.io
+//! sources. A Bevy plugin links only against the one Bevy version of its app.
 
+use rig_harness_protocol::BEVY_VERSION;
 use serde_json::Value;
-
-const BEVY_REQUIREMENT: &str = "=0.20.0";
 
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
@@ -13,7 +12,7 @@ pub(crate) enum Error {
     Metadata(&'static str),
     #[error("{0} must depend on Bevy from crates.io: {1}")]
     Source(String, String),
-    #[error("{0} must declare {1} with requirement {BEVY_REQUIREMENT}, got {2}")]
+    #[error("{0} must declare {1} with requirement ={BEVY_VERSION}, got {2}")]
     Requirement(String, String, String),
 }
 
@@ -43,13 +42,14 @@ pub(crate) fn check(metadata: &Value) -> Result<(), Error> {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or(Error::Metadata("dependency name"))?;
-            if dependency_name.starts_with("bevy_") {
+            if dependency_name == "bevy" || dependency_name.starts_with("bevy_") {
                 if dependency["source"].as_str() != Some(CRATES_IO) {
                     return Err(Error::Source(name.into(), dependency_name.into()));
                 }
                 // Cargo expands workspace inheritance and normalizes bare
                 // version strings to caret requirements in this field.
-                if is_member && dependency["req"].as_str() != Some(BEVY_REQUIREMENT) {
+                let pin = dependency["req"].as_str().and_then(|r| r.strip_prefix('='));
+                if is_member && pin != Some(BEVY_VERSION) {
                     return Err(Error::Requirement(
                         name.into(),
                         dependency_name.into(),

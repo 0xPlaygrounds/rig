@@ -24,15 +24,20 @@ pub(crate) fn seed(text: &str) -> [u16; 3] {
 }
 
 pub(crate) fn suffix_from_seed(selected: &[u16; 3]) -> String {
-    use sha2::{Digest, Sha256};
-    let hash = format!(
-        "{:x}",
-        Sha256::digest(format!(
-            "{SUFFIX_SALT}{}{VERSION}",
-            String::from_utf16_lossy(selected)
-        ))
-    );
+    let hash = sha256_hex(format!(
+        "{SUFFIX_SALT}{}{VERSION}",
+        String::from_utf16_lossy(selected)
+    ));
     hash.chars().take(3).collect()
+}
+
+/// The SHA-256 digest of `input` in lowercase hex.
+pub(crate) fn sha256_hex(input: impl AsRef<[u8]>) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(input)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub(crate) fn suffix(text: &str) -> String {
