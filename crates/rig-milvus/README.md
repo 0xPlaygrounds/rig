@@ -31,13 +31,19 @@ curl --request POST \
 --url "${MILVUS_BASE_URL}/v2/vectordb/collections/create" \
 --header "Authorization: Bearer ${TOKEN}" \
 --header "Content-Type: application/json" \
--d '{
+-d @- <<EOF
+{
     "collectionName": "${MILVUS_COLLECTION_NAME}",
     "dbName": "${MILVUS_DATABASE_NAME}",
     "schema": {
         "autoId": true,
-        "enabledDynamicField": false,
+        "enableDynamicField": false,
         "fields": [
+            {
+                "fieldName": "id",
+                "dataType": "Int64",
+                "isPrimary": true
+            },
             {
                 "fieldName": "embedding",
                 "dataType": "FloatVector",
@@ -47,22 +53,36 @@ curl --request POST \
             },
             {
                 "fieldName": "document",
-                "dataType": "JSON",
+                "dataType": "JSON"
             },
             {
-                "fieldName": "embeddedText",
-                "dataType": "VarChar"
+                "fieldName": "embedded_text",
+                "dataType": "VarChar",
+                "elementTypeParams": {
+                    "max_length": "65535"
+                }
             }
         ]
-    }
-}'
+    },
+    "indexParams": [
+        {
+            "fieldName": "embedding",
+            "metricType": "COSINE",
+            "indexName": "embedding",
+            "indexType": "AUTOINDEX"
+        }
+    ]
+}
+EOF
 ```
 
-This will create a collection with the following fields:
-- an ID field (auto-generated as i64 but converted to String when using `top_n()`)
+This will create and load a collection with the following fields:
+- an `id` field (auto-generated as i64 but converted to String when using `top_n()`)
 - an `embedding` field for storing vectors
 - a `document` field (for storing metadata)
-- an `embeddedText` field (for the actual item that was embedded)
+- an `embedded_text` field (for the actual item that was embedded)
+
+A search threshold runs as a Milvus range search on the collection's metric. With `COSINE` or `IP` it is the minimum score. With `L2`, where lower is closer, it is an exclusive maximum distance.
 
 Once done, you'll now be ready to use!
 

@@ -16,13 +16,13 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
-        VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        VectorStoreIndex, request::VectorSearchRequest,
     },
     wasm_compat::WasmCompatSend,
 };
 use rig_reqwest::from_reqwest;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned, de::IgnoredAny};
+use serde_json::{Value, json};
 
 /// Vector store backed by a [Milvus](https://milvus.io/) collection.
 ///
@@ -59,28 +59,35 @@ struct InsertRequest<'a> {
 struct SearchRequest<'a> {
     collection_name: &'a str,
     db_name: &'a str,
-    data: Vec<f64>,
+    data: [Vec<f64>; 1],
     #[serde(skip_serializing_if = "String::is_empty")]
     filter: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    search_params: Option<Value>,
     anns_field: &'a str,
     limit: usize,
     output_fields: Vec<&'a str>,
 }
 
-/// Milvus search response envelope, generic over the row shape.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchResult<Row> {
+/// The application status Milvus reports on every response, including HTTP 200.
+#[derive(Deserialize)]
+struct ResponseCode {
     code: i64,
-    data: Vec<Row>,
 }
 
+/// The payload of a response whose application code is zero.
+#[derive(Deserialize)]
+struct ResponseData<Data> {
+    data: Data,
+}
+
+/// Row shape for document searches. Milvus returns a JSON field as a string.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SearchResultData<T> {
+struct SearchResultData {
     id: i64,
     distance: f64,
-    document: T,
+    document: String,
 }
 
 /// Row shape for the id-only search path.
@@ -128,77 +135,81 @@ impl MilvusVectorStore {
         }
     }
 
-    /// Builds the search body. Any request threshold becomes a
-    /// `distance >= threshold` condition combined with the request filter.
+    /// Builds the search body. A request threshold becomes a Milvus range search,
+    /// so it applies to the score in the collection's own metric and the limit
+    /// still fills from every match. Milvus excludes the radius itself, so it sits
+    /// one `f32` step below the threshold to keep a score equal to the threshold.
     fn create_search_request(
         &self,
         data: Vec<f64>,
         req: &VectorSearchRequest<Filter>,
         id_only: bool,
     ) -> SearchRequest<'_> {
-        const OUTPUT_FIELDS: [&str; 4] = ["id", "distance", "document", "embeddedText"];
-        const OUTPUT_FIELDS_ID_ONLY: [&str; 2] = ["id", "distance"];
+        // Milvus always returns the id and distance, and refuses them as output
+        // fields unless the collection stores a field of that name.
+        let output_fields = if id_only { vec![] } else { vec!["document"] };
 
-        let output_fields = if id_only {
-            OUTPUT_FIELDS_ID_ONLY.to_vec()
-        } else {
-            OUTPUT_FIELDS.to_vec()
-        };
-
-        let threshold = req
+        let search_params = req
             .threshold()
-            .map(|thresh| Filter::gte("distance", thresh.into()));
+            .map(|threshold| json!({ "params": { "radius": (threshold as f32).next_down() } }));
 
-        let filter = match (threshold, req.filter()) {
-            (Some(thresh), Some(filter)) => thresh.and(filter.clone()).into_inner(),
-            (Some(thresh), _) => thresh.into_inner(),
-            (_, Some(filter)) => filter.clone().into_inner(),
-            _ => String::new(),
-        };
+        let filter = req.filter().cloned().map(Filter::into_inner);
 
         SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
-            data,
-            filter,
+            data: [data],
+            filter: filter.unwrap_or_default(),
+            search_params,
             anns_field: "embedding",
             limit: req.samples() as usize,
             output_fields,
         }
     }
 
-    /// Embeds the query and posts it to the search endpoint, returning the
-    /// decoded body. Any non-200 status is returned as an error with its body.
-    async fn search<T: for<'a> Deserialize<'a>>(
+    /// Posts `body` to an entities endpoint and decodes the response `data`.
+    ///
+    /// Milvus reports most failures as HTTP 200 with a nonzero `code`. Those and
+    /// any non-200 status return [`VectorStoreError::ExternalAPIError`] with the
+    /// response body.
+    async fn post<Data: DeserializeOwned>(
         &self,
-        req: &VectorSearchRequest<Filter>,
-        id_only: bool,
-    ) -> Result<T, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
+        endpoint: &str,
+        body: &impl Serialize,
+    ) -> Result<Data, VectorStoreError> {
         let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
+            "{base_url}/v2/vectordb/entities/{endpoint}",
             base_url = self.base_url
         );
-
-        let body = self.create_search_request(embedding.vec, req, id_only);
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
             client = client.header("Authorization", format!("Bearer {token}"));
         }
 
-        let body = serde_json::to_string(&body)?;
+        let body = serde_json::to_string(body)?;
 
         let res = client.body(body).send().await.map_err(from_reqwest)?;
+        let status = res.status();
+        let text = res.text().await.map_err(from_reqwest)?;
 
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await.map_err(from_reqwest)?;
-
+        if status != StatusCode::OK || serde_json::from_str::<ResponseCode>(&text)?.code != 0 {
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
-        Ok(res.json().await.map_err(from_reqwest)?)
+        Ok(serde_json::from_str::<ResponseData<Data>>(&text)?.data)
+    }
+
+    /// Embeds the query and returns the matching rows.
+    async fn search<Row: DeserializeOwned>(
+        &self,
+        req: &VectorSearchRequest<Filter>,
+        id_only: bool,
+    ) -> Result<Vec<Row>, VectorStoreError> {
+        let embedding = self.model.embed_text(req.query()).await?;
+        let body = self.create_search_request(embedding.vec, req, id_only);
+
+        self.post("search", &body).await
     }
 }
 
@@ -207,11 +218,6 @@ impl InsertDocuments for MilvusVectorStore {
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/insert",
-            base_url = self.base_url
-        );
-
         let data =
             rig_core::vector_store::flatten_embedded(documents, |json_document, embedding| {
                 Ok(CreateRecord {
@@ -221,23 +227,8 @@ impl InsertDocuments for MilvusVectorStore {
                 })
             })?;
 
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authorization", format!("Bearer {token}"));
-        }
-
-        let insert_request = self.create_insert_request(data);
-
-        let body = serde_json::to_string(&insert_request)?;
-
-        let res = client.body(body).send().await.map_err(from_reqwest)?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await.map_err(from_reqwest)?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
+        self.post::<IgnoredAny>("insert", &self.create_insert_request(data))
+            .await?;
 
         Ok(())
     }
@@ -247,23 +238,22 @@ impl VectorStoreIndex for MilvusVectorStore {
     type Filter = Filter;
 
     /// Returns matches scored by distance, in the order Milvus reports.
+    /// A threshold is a minimum for `COSINE` and `IP`, an exclusive maximum for `L2`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
-        let json: SearchResult<SearchResultData<T>> = self.search(&req, false).await?;
+        let rows: Vec<SearchResultData> = self.search(&req, false).await?;
 
-        let res = json
-            .data
-            .into_iter()
-            .map(|x| VectorSearchResult {
-                score: x.distance,
-                id: x.id.to_string(),
-                document: x.document,
+        rows.into_iter()
+            .map(|x| {
+                Ok(VectorSearchResult {
+                    score: x.distance,
+                    id: x.id.to_string(),
+                    document: serde_json::from_str(&x.document)?,
+                })
             })
-            .collect();
-
-        Ok(res)
+            .collect()
     }
 
     /// Like `top_n` but returns only scores and ids, without requesting documents.
@@ -271,10 +261,9 @@ impl VectorStoreIndex for MilvusVectorStore {
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
-        let json: SearchResult<SearchResultDataOnlyId> = self.search(&req, true).await?;
+        let rows: Vec<SearchResultDataOnlyId> = self.search(&req, true).await?;
 
-        let res = json
-            .data
+        let res = rows
             .into_iter()
             .map(|x| VectorSearchIdResult {
                 score: x.distance,
