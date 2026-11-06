@@ -1,8 +1,8 @@
 use crate::common::{WORD_DEFINITIONS, axis_embedding, mock_embeddings, openai_client};
 use rig::providers::openai;
-use rig::scylladb::{ScyllaDbVectorStore, create_session};
-use rig::vector_store::request::VectorSearchRequest;
-use rig::vector_store::{VectorSearchIdResult, VectorSearchResult};
+use rig::scylladb::{ScyllaDbVectorStore, ScyllaSearchFilter, create_session};
+use rig::vector_store::request::{DynamicSearchFilter, Filter, SearchFilter, VectorSearchRequest};
+use rig::vector_store::{VectorSearchIdResult, VectorSearchResult, VectorStoreError};
 use rig::{
     Embed,
     embeddings::EmbeddingsBuilder,
@@ -154,6 +154,44 @@ async fn vector_search_test() {
     println!("Distance: {id_distance}, id: {result_id}");
 
     assert_eq!(result_id, id);
+
+    // Comparisons joined by one AND still reach the server.
+    let lower = || ScyllaSearchFilter::from_dynamic_filter(Filter::gt("created_at", json!(0)));
+    let upper = ScyllaSearchFilter::from_dynamic_filter(Filter::lt("created_at", json!(i64::MAX)));
+    let filtered = VectorSearchRequest::builder()
+        .query("What is a glarb?")
+        .samples(1)
+        .filter(lower().unwrap().and(upper.unwrap()))
+        .build();
+    let id_results = vector_store
+        .top_n_ids(filtered)
+        .await
+        .expect("A filter joined by AND should search");
+    assert_eq!(id_results.len(), 1);
+
+    // No embedding is mocked for this query, so any other error means the
+    // search got past the filter.
+    for filter in [
+        lower().unwrap().or(lower().unwrap()),
+        lower().unwrap().not(),
+        lower().unwrap().and(lower().unwrap().or(lower().unwrap())),
+    ] {
+        let request = VectorSearchRequest::builder()
+            .query("unsupported filter")
+            .samples(1)
+            .filter(filter)
+            .build();
+        let scored = vector_store.top_n::<Word>(request.clone()).await;
+        assert!(
+            matches!(scored, Err(VectorStoreError::FilterError(_))),
+            "{scored:?}"
+        );
+        let ids = vector_store.top_n_ids(request).await;
+        assert!(
+            matches!(ids, Err(VectorStoreError::FilterError(_))),
+            "{ids:?}"
+        );
+    }
 
     let query = "What is a linglingdong?";
     let req = VectorSearchRequest::builder()
