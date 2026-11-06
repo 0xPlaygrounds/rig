@@ -60,6 +60,9 @@
 //!   twice the longest gap seen, never less than [`AutoCache::ttl`], never more
 //!   than 81 minutes, past which keeping a cache costs more than it saves at
 //!   the default prices), and a cache read close to expiry is extended.
+//! - A shared-prefix cache that expired is replaced by the next call if a call
+//!   other than its creator read it. If none did, the replacement waits for a
+//!   call close enough to the last that the new cache would have been read.
 //! - A replaced cache is deleted when the roll replaces it, and a
 //!   conversation cache nobody has read for a while is deleted too.
 //! - A cache that answers 403 (deleted elsewhere, or expired early) is
@@ -131,7 +134,7 @@ const MIN_IDLE_SECS: u64 = 60;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AutoCache {
     /// The shortest TTL a new cache gets. A cache that would come within 5
-    /// seconds of expiry before its line's next expected call is not created.
+    /// seconds of expiry before its next expected call is not created.
     pub ttl: Duration,
     /// Smallest request implicit caching serves (4,096 tokens on Gemini 3).
     pub implicit_floor: u64,
@@ -334,15 +337,27 @@ struct Life {
     expires_at: u64,
     ended: Option<u64>,
     last_read: u64,
+    /// Requests that read it, the one that created it among them.
+    reads: u64,
     line_gap: u64,
+}
+
+/// The calls seen on one prefix.
+#[derive(Default)]
+struct Lineage {
+    /// The conversations on it, by their first content.
+    firsts: HashSet<String>,
+    last_call: Option<u64>,
 }
 
 #[derive(Default)]
 pub(crate) struct Book {
     pub(crate) leases: HashMap<String, Lease>,
     lives: BTreeMap<String, Life>,
-    /// For each prefix, the conversations seen on it, by their first content.
-    lineages: HashMap<String, HashSet<String>>,
+    lineages: HashMap<String, Lineage>,
+    /// Caches a late extend kept alive after the book replaced them, by name.
+    /// Only [`CacheBook::close`] still deletes them.
+    pub(crate) strays: HashMap<String, Lease>,
     lines: HashMap<String, Line>,
     events: Vec<CacheEvent>,
     report: CacheReport,
@@ -434,6 +449,7 @@ impl CacheBook {
                 expires_at: lease.expires_at,
                 ended: None,
                 last_read: now,
+                reads: 0,
                 line_gap: 0,
             });
             book.leases.insert(lease.digest.clone(), lease);
@@ -767,14 +783,15 @@ impl CacheBook {
 
         // Who shares this prefix: a second conversation on it (sub-agents,
         // concurrent users, or the conversation a compaction started).
+        let lineage = book.lineages.entry(at(0).to_owned()).or_default();
         if n >= 1 {
-            let first = at(1).to_owned();
-            book.lineages
-                .entry(at(0).to_owned())
-                .or_default()
-                .insert(first);
+            lineage.firsts.insert(at(1).to_owned());
         }
-        let shared = book.lineages.get(at(0)).is_some_and(|seen| seen.len() >= 2);
+        let shared = lineage.firsts.len() >= 2;
+        let prefix_gap = lineage
+            .last_call
+            .replace(now)
+            .map_or(0, |last| now.saturating_sub(last));
 
         // Retire conversation caches nobody reads any more.
         let idle: Vec<Lease> = book
@@ -817,10 +834,11 @@ impl CacheBook {
             .as_ref()
             .filter(|lease| lease.covers > 0)
             .map_or_else(|| at(1.min(n)).to_owned(), |lease| lease.digest.clone());
-        let prefix_leased = book
-            .leases
-            .get(at(0))
-            .is_some_and(|lease| lease.live_at(now));
+        let held_prefix = book.leases.get(at(0));
+        let prefix_leased = held_prefix.is_some_and(|lease| lease.live_at(now));
+        let prefix_proven = held_prefix
+            .and_then(|lease| book.lives.get(&lease.name))
+            .is_some_and(|life| life.reads > 1);
         let line = book.lines.entry(line_key.clone()).or_insert_with(|| Line {
             rolled_at: now,
             ..Line::default()
@@ -863,6 +881,10 @@ impl CacheBook {
             && !prefix_leased
             && (prefix_estimate as f64 * calibration) as u64 >= p.min_tokens
             && may_create
+            // Unproven, a cache must look likely to be read: a call this close
+            // to the last one would have read it. So however calls are spaced,
+            // a cache nobody read is not replaced on the very next call.
+            && (prefix_proven || ttl_secs > prefix_gap + EXPIRY_MARGIN_SECS)
         {
             plan.create = Some(Create {
                 covers: 0,
@@ -971,6 +993,7 @@ impl CacheBook {
                 expires_at: lease.expires_at,
                 ended: None,
                 last_read: now,
+                reads: 0,
                 line_gap: previous.longest_gap,
             },
         );
@@ -1017,6 +1040,12 @@ impl CacheBook {
         let mut book = self.book();
         if let Some(held) = book.held_mut(lease) {
             held.expires_at = expires_at;
+        } else if book
+            .lives
+            .get(&lease.name)
+            .is_some_and(|life| life.ended.is_none())
+        {
+            book.strays.insert(lease.name.clone(), lease.clone());
         }
         if let Some(life) = book.lives.get_mut(&lease.name) {
             life.expires_at = expires_at;
@@ -1038,6 +1067,7 @@ impl CacheBook {
             .map_or(0, |line| line.longest_gap);
         if let Some(life) = book.lives.get_mut(&lease.name) {
             life.last_read = now;
+            life.reads += 1;
             life.line_gap = life.line_gap.max(gap);
         }
     }

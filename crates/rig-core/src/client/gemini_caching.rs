@@ -42,13 +42,15 @@ impl CacheBook {
         survived
     }
 
-    /// Delete every cache the book still holds. A cache already gone (403)
-    /// counts as deleted.
+    /// Delete every cache the book still holds, and any a late extend kept
+    /// alive after it was replaced. A cache already gone (403) counts as
+    /// deleted.
     pub async fn close<T>(&self, caches: &Model<CachedContents, T>)
     where
         T: Transport<CachedContents>,
     {
-        for lease in self.leases() {
+        let strays = std::mem::take(&mut self.book().strays);
+        for lease in self.leases().into_iter().chain(strays.into_values()) {
             let result = caches.delete(&lease.name).await;
             let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
             if !gone {
