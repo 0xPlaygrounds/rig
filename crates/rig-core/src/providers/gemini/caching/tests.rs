@@ -290,6 +290,8 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
 /// A late 403, retire or extend for an old cache leaves the replacement
 /// that took its digest as it is. The old cache stays the book's to delete:
 /// it may still be alive on the server, so closing the book deletes it too.
+/// In any restore order the later expiry holds the digest, and a live cache
+/// takes over when the one held is lost.
 #[tokio::test]
 async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
     let old = Lease {
@@ -316,8 +318,24 @@ async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
         assert_eq!(book.report().live, std::slice::from_ref(&replacement));
     }
 
+    let earlier = Lease {
+        name: "cachedContents/earlier".to_owned(),
+        expires_at: 4000,
+        ..old.clone()
+    };
     let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
-    book.restore(vec![old.clone(), replacement.clone()]);
+    book.restore(vec![replacement.clone(), old.clone(), earlier.clone()]);
+    assert_eq!(book.report().live, std::slice::from_ref(&replacement));
+    book.extended(&earlier, 200);
+    book.lost(&replacement);
+    let extended = Lease {
+        expires_at: 1200,
+        ..earlier
+    };
+    assert_eq!(book.report().live, std::slice::from_ref(&extended));
+
+    let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+    book.restore(vec![replacement.clone(), old.clone()]);
     let server = DeleteServer::default();
     let config = crate::providers::gemini::GeminiConfig::new("test-key");
     book.close(&crate::driver::Model::new(
