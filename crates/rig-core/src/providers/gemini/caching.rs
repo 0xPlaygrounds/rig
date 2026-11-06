@@ -367,6 +367,9 @@ pub(crate) struct Book {
     /// Caches a replacement took the digest of, by name. They may still be
     /// alive on the server, so they stay the book's until they are deleted.
     displaced: HashMap<String, Lease>,
+    /// How many times [`CacheBook::close`] ran, so that a create it did not
+    /// see knows to delete its cache.
+    pub(crate) closes: u64,
     lines: HashMap<String, Line>,
     events: Vec<CacheEvent>,
     report: CacheReport,

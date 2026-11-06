@@ -42,13 +42,14 @@ impl CacheBook {
         survived
     }
 
-    /// Delete every cache in [`Self::leases`], after any create in flight. A
-    /// cache already gone (403) counts as deleted.
+    /// Delete every cache in [`Self::leases`]. A create still in flight deletes
+    /// its own cache when it lands. A cache already gone (403) counts as
+    /// deleted.
     pub async fn close<T>(&self, caches: &Model<CachedContents, T>)
     where
         T: Transport<CachedContents>,
     {
-        drop(self.create.lock().await);
+        self.book().closes += 1;
         for lease in self.leases() {
             let result = caches.delete(&lease.name).await;
             let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
@@ -258,6 +259,7 @@ where
             short_digest(&create.digest)
         );
         let body = cache_body(model, parsed, create.covers, &display_name, create.ttl_secs)?;
+        let closes = self.book.book().closes;
         let reply = self
             .resource(http::Method::POST, "/v1beta/cachedContents", Some(body))
             .await;
@@ -295,10 +297,14 @@ where
         let tokens = resource
             .usage_metadata
             .map_or(0, |usage| usage.total_token_count);
-        Some(
-            self.book
-                .created(line, create, resource.name, tokens, model),
-        )
+        let lease = self
+            .book
+            .created(line, create, resource.name, tokens, model);
+        if self.book.book().closes != closes {
+            self.delete(&lease).await;
+            return None;
+        }
+        Some(lease)
     }
 }
 

@@ -112,9 +112,12 @@ fn a_book_shows_its_policy_and_prefix() {
 
 /// Answers `cachedContents` creates with `cachedContents/cache-<n>`, extends
 /// with a 403 and every other request with a short reply, recording the cache
-/// each one read.
+/// each one read. The book in `.1` closes while a create is in flight.
 #[derive(Clone, Default)]
-struct CacheServer(Arc<Mutex<(usize, Vec<Option<String>>)>>);
+struct CacheServer(
+    Arc<Mutex<(usize, Vec<Option<String>>)>>,
+    Arc<Mutex<Option<CacheBook>>>,
+);
 
 impl crate::driver::Transport<super::super::completion::GenerateContent> for CacheServer {
     fn send(
@@ -130,10 +133,18 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
                 ),
             );
         }
+        if payload.request.method() == http::Method::DELETE {
+            return crate::driver::Opening::ready(crate::driver::Opened::new(
+                futures::stream::iter([Ok(crate::wire::WireFrame::Text("{}".to_owned()))]),
+            ));
+        }
         let body = crate::test_utils::json_body(&payload.request);
         let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let reply = if payload.request.uri().path().ends_with("/cachedContents") {
             seen.0 += 1;
+            if let Some(book) = self.1.lock().expect("book").as_ref() {
+                book.book().closes += 1;
+            }
             serde_json::json!({
                 "name": format!("cachedContents/cache-{}", seen.0),
                 "usageMetadata": {"totalTokenCount": 2048}
@@ -285,6 +296,17 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         [None, Some("cachedContents/cache-1".to_owned()), None]
     );
     assert!(extending.leases().is_empty());
+
+    // A close during a create never waits for it: the create cleans up.
+    let closing = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    *server.1.lock().expect("book") = Some(closing.clone());
+    let model = caching(&closing, &server);
+    for n in [0, 1] {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    assert_eq!(server.0.lock().expect("seen").1, [None, None]);
+    assert!(closing.leases().is_empty());
 }
 
 /// A late 403, retire or extend for an old cache leaves the replacement
