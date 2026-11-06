@@ -1,12 +1,149 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use bevy_ecs::system::RunSystemOnce;
+use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use rig_core::completion::Message;
 use rig_ecs::prelude::*;
 
 use super::super::editor::Editor;
 use super::super::history::Sent;
 use super::super::view::{self, TuiView};
 use super::send;
+use crate::pick::PickerInput;
+use crate::tests::{input, main_view, push, type_text, view_app};
+use crate::{KeyInput, TuiTestScreen};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::main_agent::ShownAgent;
+use rig_harness::pick::Picker;
+use rig_harness::prelude::Conversation;
+
+/// A mouse event of `kind` at `column` and `row`, among the frame's input.
+fn mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) {
+    let modifiers = KeyModifiers::NONE;
+    let event = MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers,
+    };
+    push(app, KeyInput::Event(Event::Mouse(event)));
+}
+
+/// An app with a screen and `questions` numbered messages in its
+/// transcript, then three with characters two or three cells wide.
+fn transcript_app(questions: usize) -> App {
+    let (mut app, agent) = view_app();
+    app.insert_resource(TuiTestScreen::new(60, 20));
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        for index in 0..questions {
+            conversation.push(Message::user(format!("question {index}")));
+        }
+        conversation.push(Message::user("界x"));
+        conversation.push(Message::user("ｶﾞx"));
+        conversation.push(Message::user("\u{17D8}x"));
+    }
+    app.update();
+    app
+}
+
+#[test]
+fn the_wheel_scrolls_the_transcript_or_moves_a_lists_choice() {
+    let mut app = transcript_app(30);
+    type_text(&mut app, "unsent draft");
+    for (kind, scrolled) in [
+        (MouseEventKind::ScrollUp, true),
+        (MouseEventKind::ScrollDown, false),
+    ] {
+        mouse(&mut app, kind, 10, 5);
+        app.update();
+        assert_eq!(main_view(&app).top().is_some(), scrolled);
+        assert_eq!(input(&app).text(), "unsent draft");
+    }
+
+    let (mut app, _) = view_app();
+    app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
+    app.add_command("pair", "Two arguments", |_: In<CommandArgs>| {});
+    type_text(&mut app, "/");
+    mouse(&mut app, MouseEventKind::ScrollDown, 10, 5);
+    app.update();
+    let completion = app.world().resource::<TuiView>().completion.as_ref();
+    assert_eq!(completion.map(|completion| completion.selected), Some(1));
+
+    let picker = Picker::new("Size").item("small", "").item("large", "");
+    let picker = app.world_mut().spawn(picker).id();
+    app.update();
+    mouse(&mut app, MouseEventKind::ScrollDown, 10, 5);
+    app.update();
+    let chosen = app.world().get::<PickerInput>(picker);
+    assert_eq!(chosen.map(|choosing| choosing.selected), Some(1));
+}
+
+/// A drag copies the text it showed when the button came up, once, also
+/// when a key comes in the same read, and a character two or three cells
+/// wide it starts inside or crosses; a click copies nothing.
+#[test]
+fn a_drag_copies_the_text_under_it_and_a_click_copies_nothing() {
+    let mut app = transcript_app(3);
+    let rows = app.world().resource::<TuiTestScreen>().rows();
+    let found = rows.iter().enumerate().find_map(|(row, text)| {
+        let (before, _) = text.split_once("question 1")?;
+        Some((
+            u16::try_from(before.chars().count()).ok()?,
+            u16::try_from(row).ok()?,
+        ))
+    });
+    assert!(found.is_some(), "{rows:?}");
+    let (column, row) = found.unwrap_or_default();
+    let written = |app: &App| {
+        let written = app.world().resource::<TuiTestScreen>().written();
+        String::from_utf8_lossy(written).into_owned()
+    };
+    let left = MouseButton::Left;
+
+    mouse(&mut app, MouseEventKind::Down(left), column, row);
+    mouse(&mut app, MouseEventKind::Up(left), column, row);
+    app.update();
+    assert!(!written(&app).contains("\x1b]52;"));
+
+    mouse(&mut app, MouseEventKind::Down(left), column, row);
+    mouse(&mut app, MouseEventKind::Up(left), column + 2, row);
+    app.update();
+    let copies = |app: &App| written(app).matches("\x1b]52;").count();
+    assert_eq!(copies(&app), 1);
+    mouse(&mut app, MouseEventKind::Up(left), column + 4, row);
+    app.update();
+    assert_eq!(copies(&app), 1, "a release with no press copies nothing");
+
+    mouse(&mut app, MouseEventKind::Down(left), column, row);
+    mouse(&mut app, MouseEventKind::Drag(left), column + 4, row);
+    mouse(&mut app, MouseEventKind::Up(left), column + 9, row);
+    push(
+        &mut app,
+        KeyInput::Event(Event::Key(KeyCode::Char('x').into())),
+    );
+    app.update();
+    let copied = format!("\x1b]52;c;{}\x07", STANDARD.encode("question 1"));
+    assert!(written(&app).contains(&copied), "{:?}", written(&app));
+    app.update();
+    assert_eq!(input(&app).text(), "x");
+
+    let wide = [("界", 1, 2), ("ｶﾞ", 0, 2), ("\u{17D8}", 2, 3)];
+    for (symbol, from, to) in wide {
+        let text = format!("{symbol}x");
+        let buffer = app.world().resource::<TuiTestScreen>().buffer();
+        let wide = buffer.area.positions().find(|at| {
+            let cell = buffer.cell(*at);
+            cell.is_some_and(|cell| cell.symbol() == symbol)
+        });
+        assert!(wide.is_some(), "{symbol}");
+        let wide = wide.unwrap_or_default();
+        mouse(&mut app, MouseEventKind::Down(left), wide.x + from, wide.y);
+        mouse(&mut app, MouseEventKind::Up(left), wide.x + to, wide.y);
+        app.update();
+        let copied = format!("\x1b]52;c;{}\x07", STANDARD.encode(text));
+        assert!(written(&app).contains(&copied), "{:?}", written(&app));
+    }
+}
 
 /// The texts agents accepted.
 #[derive(Resource, Default)]
