@@ -130,8 +130,8 @@ const MIN_IDLE_SECS: u64 = 60;
 /// from its catalog spec. The catalog holds no storage price.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AutoCache {
-    /// The shortest TTL a new cache gets. No cache is created while its TTL
-    /// would be 5 seconds or less, because none could be read again.
+    /// The shortest TTL a new cache gets. A cache that would come within 5
+    /// seconds of expiry before its line's next expected call is not created.
     pub ttl: Duration,
     /// Smallest request implicit caching serves (4,096 tokens on Gemini 3).
     pub implicit_floor: u64,
@@ -852,8 +852,11 @@ impl CacheBook {
             return plan;
         }
 
-        // A cache that starts inside the expiry margin could never be read again.
-        let may_create = ttl_secs > EXPIRY_MARGIN_SECS
+        // Create only what lives to the line's next call, or every call would
+        // create one. A gap past what the longest TTL spans is an idle spell,
+        // which must not stop a later cache.
+        let next_call = longest_gap.min(MAX_TTL_SECS / 2);
+        let may_create = ttl_secs > next_call + EXPIRY_MARGIN_SECS
             && !line.failed_at.is_some_and(|at| coverable < at + p.min_gain);
         if read.is_none()
             && shared
