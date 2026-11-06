@@ -18,14 +18,15 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::{Author, Entry, MessageId, ResultFacts};
-use crate::message::{AssistantMessage, CallId, Message, ToolCall, ToolName, UserContent};
+use crate::message::{AssistantMessage, CallId, Message, Origin, ToolCall, ToolName, UserContent};
 use crate::tool::feedback::tool_result_message;
 
 /// Why a history is not a canonical conversation, or what [`pair`] repaired.
 /// See [`validate`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PairingError {
-    /// Two assistant messages in a row (index of the second).
+    /// Two assistant messages in a row that [`repair`] merges (index of the
+    /// second). Two that cannot share an origin may stand side by side.
     #[error("consecutive assistant messages at index {index}")]
     ConsecutiveAssistant {
         /// Index of the offending (second) assistant message.
@@ -213,8 +214,8 @@ pub struct Paired {
 /// [`validate`] accepts, losing no turn: the lenient load of a
 /// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
-/// turn left directly after another is merged into it; `repairs` reports
-/// the input as [`pair`] read it.
+/// turn left directly after another is merged into it when the two can
+/// share an origin; `repairs` reports the input as [`pair`] read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
     let shaped = shape(messages, true);
     Paired {
@@ -245,13 +246,13 @@ pub struct Normalized {
 
 /// `entries` repaired as [`repair`] repairs their messages, but that user
 /// entries side by side stay apart: an assistant entry directly after
-/// another is merged into it (the later stop standing) and keeps the
-/// first's id, author and made-time; a result no call waits for is
-/// dropped, and an entry left empty with it; a made-up result for a call
-/// nothing answered goes into the next user entry, else a new entry by
-/// [`Author::rig`]; a system entry arriving while calls wait moves after
-/// the entries that answer them. A list [`repair`] leaves as it is comes
-/// back unchanged.
+/// another that can share its origin is merged into it (the later stop
+/// standing) and keeps the first's id, author and made-time; a result no
+/// call waits for is dropped, and an entry left empty with it; a made-up
+/// result for a call nothing answered goes into the next user entry, else
+/// a new entry by [`Author::rig`]; a system entry arriving while calls wait
+/// moves after the entries that answer them. A list [`repair`] leaves as it
+/// is comes back unchanged.
 pub fn normalize(entries: Vec<Entry>) -> Normalized {
     let (messages, metas): (Vec<Message>, Vec<Meta>) = entries
         .into_iter()
@@ -346,8 +347,24 @@ fn shape(messages: Vec<Message>, merge_users: bool) -> Shaped {
     shaped
 }
 
-/// Merge every assistant turn directly after another into it, as
-/// [`AssistantMessage::absorb`] says; whether any was merged.
+/// Whether two assistant turns in a row can be one. Replay trusts a turn's
+/// one origin for every block, so the two must match on what replay
+/// compares, not on one reply's ids, or both have none. This is an
+/// equivalence, so the order merges happen in cannot change the result:
+/// a turn with no origin never joins one with, and each replays as it is.
+fn share_origin(first: Option<&Origin>, later: Option<&Origin>) -> bool {
+    match (first, later) {
+        (Some(first), Some(later)) => {
+            first.same_model(&later.api, &later.provider, &later.model)
+                && first.context == later.context
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// Merge every assistant turn directly after another that can share its
+/// origin into it, the later turn's stop standing; whether any was merged.
 fn merge_turns(shaped: &mut Shaped) -> bool {
     let before = shaped.messages.len();
     let mut messages: Vec<Message> = Vec::with_capacity(before);
@@ -356,8 +373,10 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
     for (mut message, mut from) in all {
         if let Message::Assistant(turn) = &mut message
             && let Some(Message::Assistant(previous)) = messages.last_mut()
+            && share_origin(previous.origin.as_ref(), turn.origin.as_ref())
         {
-            previous.absorb(std::mem::take(turn));
+            previous.content.append(&mut turn.content);
+            previous.stop = turn.stop.take();
             if let Some(into) = sources.last_mut() {
                 into.append(&mut from);
             }
@@ -412,14 +431,16 @@ fn walk(
     for step in steps(history) {
         match step {
             Step::Turn(index, turn) => {
-                if walk.after_assistant && turn.is_some() {
+                if let (Some(before), Some(turn)) = (&walk.after_turn, &turn)
+                    && share_origin(before.as_ref(), turn.origin.as_ref())
+                {
                     walk.repairs
                         .push(PairingError::ConsecutiveAssistant { index });
                 }
                 walk.close();
                 stored = None;
                 walk.gap = turn.is_none();
-                walk.after_assistant = turn.is_some();
+                walk.after_turn = turn.as_ref().map(|turn| turn.origin.clone());
                 let Some(turn) = turn else { continue };
                 if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
                     let calls = turn.tool_calls();
@@ -430,7 +451,7 @@ fn walk(
                 walk.put(Message::Assistant(turn), [index]);
             }
             Step::System(index, system) => {
-                walk.after_assistant = false;
+                walk.after_turn = None;
                 if walk.waiting.is_empty() {
                     walk.gap = false;
                     walk.put(system, [index]);
@@ -439,7 +460,7 @@ fn walk(
                 }
             }
             Step::User(first, parts) => {
-                walk.after_assistant = false;
+                walk.after_turn = None;
                 if parts.is_empty() {
                     walk.close();
                     let empty = Message::User {
@@ -627,7 +648,8 @@ struct Walk {
     /// content after them, each with its index (none for one made up).
     pending: Vec<(Option<usize>, UserContent)>,
     pending_gap: bool,
-    after_assistant: bool,
+    /// The origin of the turn just walked, when the last step was a turn.
+    after_turn: Option<Option<Origin>>,
 }
 
 impl Walk {

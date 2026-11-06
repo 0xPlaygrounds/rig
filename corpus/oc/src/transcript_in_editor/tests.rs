@@ -499,9 +499,11 @@ fence { if (/^```$/) fence = 0; next }
 
 /// Answers the first model call with a reply asking for `asked`, each a
 /// `shell` call's arguments, under one id: a live stream renames a
-/// repeated id, an answer decided for the call does not.
+/// repeated id, an answer decided for the call does not. `origin` is the
+/// model the reply is from.
 fn answer_once(
     asked: Vec<(&'static str, serde_json::Value)>,
+    origin: Origin,
 ) -> impl FnMut(Query<&mut Decision, (With<TurnCall>, ReadyToStart)>, Local<bool>) {
     move |mut calls, mut answered| {
         for mut decision in &mut calls {
@@ -512,8 +514,8 @@ fn answer_once(
                 )))
             };
             let choice: Option<Vec<_>> = asked.iter().map(call).collect();
-            let origin = Origin::new("test.api", "test", "model");
             let reply = choice.map(|choice| {
+                let origin = origin.clone();
                 let reply = CompletionResponse::new(choice, Usage::default(), origin, Value::Null);
                 Ok(Answered::Completion(Arc::new(
                     reply.with_finish_reason(FinishReason::ToolCalls),
@@ -549,7 +551,18 @@ fn an_edit_is_refused_when_it_moves_merges_or_takes_out_calls_sharing_an_id() {
         ("c10", serde_json::json!({ "command": "three", "exit": 5 })),
     ];
     ask(&mut app, &wakes, agent, "Hi.");
-    app.add_systems(AgentPass, answer_once(asked).in_set(Stage::Gate));
+    // From the model of the answer before, so that the two can merge.
+    let conversation = app.world().get::<Conversation>(agent);
+    let answers = conversation.into_iter().flat_map(|it| it.entries());
+    let origin = answers.rev().find_map(|entry| match entry.message {
+        Message::Assistant(turn) => turn.origin.clone(),
+        _ => None,
+    });
+    assert!(origin.is_some(), "the answer came from a model");
+    let Some(origin) = origin else {
+        return;
+    };
+    app.add_systems(AgentPass, answer_once(asked, origin).in_set(Stage::Gate));
     ask(&mut app, &wakes, agent, "Run both.");
     // The id of each reply with calls, and the exit status each call
     // published.

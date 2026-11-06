@@ -179,6 +179,46 @@ fn bounds_and_const_compare_large_integers_exactly() {
     assert!(fits(json!({"maximum": 5.0}), &json!(5)));
     assert!(!fits(json!({"const": 9_007_199_254_740_992.0}), &above));
     assert!(fits(json!({"enum": [5.0]}), &json!(5)));
+
+    // What `arbitrary_precision` compares, reachable in any build.
+    use crate::json_utils::compare_literals;
+    use std::cmp::Ordering::{Equal, Greater, Less};
+    let far = "9".repeat(41);
+    let wide = [
+        (format!("10e{far}"), format!("1e1{}", "0".repeat(41)), Equal),
+        (format!("1e-{far}"), format!("2e-{far}"), Less),
+    ];
+    let literals = [
+        ("9007199254740993", "9007199254740993.0", Equal),
+        (
+            "123456789012345678901234567890",
+            "1.2345678901234567890123456789e29",
+            Equal,
+        ),
+        ("1e400", "1.0E+400", Equal),
+        ("0", "-0.0e5", Equal),
+        ("0", "0e9223372036854775808", Equal),
+        ("18446744073709551617.0", "18446744073709551616", Greater),
+        (
+            "170141183460469231731687303715884105729",
+            "170141183460469231731687303715884105728",
+            Greater,
+        ),
+        ("5", "5.0000000000000000000001", Less),
+        ("0.1", "0.01", Greater),
+        ("-3", "-3.5", Greater),
+        ("-1", "1e-400", Less),
+        ("1e-9223372036854775809", "0", Greater),
+        ("1e99999999999999999999", "5", Greater),
+        ("-1e99999999999999999999", "-5", Less),
+    ];
+    let wide = wide
+        .iter()
+        .map(|(a, b, order)| (a.as_str(), b.as_str(), *order));
+    for (a, b, order) in literals.into_iter().chain(wide) {
+        assert_eq!(compare_literals(a, b), order, "{a} against {b}");
+        assert_eq!(compare_literals(b, a), order.reverse(), "{b} against {a}");
+    }
 }
 
 #[test]

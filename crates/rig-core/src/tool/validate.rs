@@ -464,7 +464,9 @@ fn integral(number: &Number) -> bool {
 /// number.
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::Number(a), Value::Number(b)) => compare_numbers(a, b) == Some(Ordering::Equal),
+        (Value::Number(a), Value::Number(b)) => {
+            a == b || compare_numbers(a, b) == Some(Ordering::Equal)
+        }
         (Value::Array(a), Value::Array(b)) => {
             a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same(a, b))
         }

@@ -5,6 +5,7 @@ use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 /// `skip_serializing_if` helper: serde requires a `fn(&bool) -> bool`, so the
 /// trivially-copy lint does not apply here.
@@ -13,38 +14,109 @@ pub(crate) fn is_false(value: &bool) -> bool {
     !value
 }
 
-/// The numeric order of two JSON numbers: integers compare as integers and
-/// an integer against a float rounds neither, so `5` equals `5.0` but
-/// `2^53 + 1` does not equal `2^53` as a float. With serde_json's
-/// `arbitrary_precision`, a number too wide for `i128` or `f64` compares by
-/// its rounded value, and a tie against it is `None`, never equal, unless
-/// the two are the same literal.
+/// The numeric order of two JSON numbers, exact: integers compare as
+/// integers and an integer against a float rounds neither, so `5` equals
+/// `5.0` but `2^53 + 1` does not equal `2^53` as a float. With serde_json's
+/// `arbitrary_precision`, numbers compare by their literal's decimal value.
 pub(crate) fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) -> Option<Ordering> {
-    if a == b {
-        return Some(Ordering::Equal);
+    if holds_literals() {
+        return Some(compare_literals(&a.to_string(), &b.to_string()));
     }
-    let ordering = match (exact_integer(a), exact_integer(b)) {
-        (Some(a), Some(b)) => a.cmp(&b),
-        (Some(a), None) => compare_integer_float(a, b.as_f64()?)?,
-        (None, Some(b)) => compare_integer_float(b, a.as_f64()?)?.reverse(),
-        (None, None) => a.as_f64()?.partial_cmp(&b.as_f64()?)?,
+    let integer = |n: &serde_json::Number| {
+        n.as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from))
     };
-    let exact = |n: &serde_json::Number| n.is_f64() || exact_integer(n).is_some();
-    (ordering.is_ne() || (exact(a) && exact(b))).then_some(ordering)
+    match (integer(a), integer(b)) {
+        (Some(a), Some(b)) => Some(a.cmp(&b)),
+        (Some(a), None) => compare_integer_float(a, b.as_f64()?),
+        (None, Some(b)) => compare_integer_float(b, a.as_f64()?).map(Ordering::reverse),
+        (None, None) => a.as_f64()?.partial_cmp(&b.as_f64()?),
+    }
 }
 
-/// `number` as an integer, when it is written as one that fits `i128`.
-/// Only `arbitrary_precision` holds one outside `i64` and `u64`.
-fn exact_integer(number: &serde_json::Number) -> Option<i128> {
-    number
-        .as_i64()
-        .map(i128::from)
-        .or_else(|| number.as_u64().map(i128::from))
-        .or_else(|| {
-            (!number.is_f64())
-                .then(|| number.to_string().parse().ok())
-                .flatten()
-        })
+/// Whether a [`serde_json::Number`] keeps the literal it was read from, as
+/// it does with `arbitrary_precision`, which a dependent crate can turn on.
+fn holds_literals() -> bool {
+    static HOLDS: LazyLock<bool> = LazyLock::new(|| {
+        serde_json::from_str::<serde_json::Number>("1.50").is_ok_and(|n| n.to_string() == "1.50")
+    });
+    *HOLDS
+}
+
+/// A JSON number literal as `sign * 0.digits * 10^(exponent + shift)`.
+/// `digits` has no leading or trailing zero, so one value has one form. The
+/// exponent stays text, since a literal's can be any length.
+struct Literal<'a> {
+    sign: i8,
+    exponent_sign: i128,
+    exponent: &'a str,
+    shift: i128,
+    digits: String,
+}
+
+impl<'a> Literal<'a> {
+    fn new(text: &'a str) -> Self {
+        let (sign, text) = text.strip_prefix('-').map_or((1, text), |text| (-1, text));
+        let (mantissa, exponent) = text.split_once(['e', 'E']).unwrap_or((text, ""));
+        let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+        let digits = format!("{whole}{fraction}");
+        let digits = digits.trim_start_matches('0');
+        let (exponent_sign, exponent) = match exponent.strip_prefix('-') {
+            Some(exponent) => (-1, exponent),
+            None => (1, exponent.trim_start_matches('+')),
+        };
+        if digits.is_empty() {
+            return Self {
+                sign: 0,
+                exponent_sign: 1,
+                exponent: "",
+                shift: 0,
+                digits: String::new(),
+            };
+        }
+        Self {
+            sign,
+            exponent_sign,
+            exponent,
+            shift: digits.len() as i128 - fraction.len() as i128,
+            digits: digits.trim_end_matches('0').to_owned(),
+        }
+    }
+
+    /// This exponent's signed decimal digits, left-padded to `width`.
+    fn exponent_digits(&self, width: usize) -> impl Iterator<Item = i128> {
+        let padding = std::iter::repeat_n(0, width.saturating_sub(self.exponent.len()));
+        let digits = self.exponent.chars().filter_map(|digit| digit.to_digit(10));
+        padding
+            .chain(digits)
+            .map(|digit| i128::from(digit) * self.exponent_sign)
+    }
+
+    /// This exponent minus `other`'s, held at a size no `shift` can reach
+    /// once past it: each further digit only moves it further away.
+    fn exponent_gap(&self, other: &Self) -> i128 {
+        const FAR: i128 = 1_000_000_000_000_000_000_000_000_000_000_000_000;
+        let width = self.exponent.len().max(other.exponent.len());
+        let digits = self
+            .exponent_digits(width)
+            .zip(other.exponent_digits(width));
+        digits.fold(0, |gap, (a, b)| (gap * 10 + a - b).clamp(-FAR, FAR))
+    }
+}
+
+/// Two JSON number literals in the order of their exact decimal values.
+pub(crate) fn compare_literals(a: &str, b: &str) -> Ordering {
+    let (a, b) = (Literal::new(a), Literal::new(b));
+    a.sign.cmp(&b.sign).then_with(|| {
+        let power = a.exponent_gap(&b) + a.shift - b.shift;
+        let magnitude = power.cmp(&0).then_with(|| a.digits.cmp(&b.digits));
+        if a.sign < 0 {
+            magnitude.reverse()
+        } else {
+            magnitude
+        }
+    })
 }
 
 /// `integer` against `float` without rounding. Inside `i128`'s range a
