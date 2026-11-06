@@ -1,15 +1,15 @@
 use arrow_array::{
-    Array, ArrayRef, ArrowPrimitiveType, RecordBatch, RunArray, UnionArray,
+    Array, ArrayRef, ArrowPrimitiveType, MapArray, RecordBatch, RunArray, UnionArray,
     cast::AsArray,
     types::{
-        ArrowDictionaryKeyType, BinaryType, ByteArrayType, Date32Type, Date64Type, Decimal128Type,
-        DurationMicrosecondType, DurationMillisecondType, DurationNanosecondType,
-        DurationSecondType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
-        IntervalDayTime, IntervalDayTimeType, IntervalMonthDayNano, IntervalMonthDayNanoType,
-        IntervalYearMonthType, LargeBinaryType, LargeUtf8Type, RunEndIndexType,
-        Time32MillisecondType, Time32SecondType, Time64MicrosecondType, Time64NanosecondType,
-        TimestampMicrosecondType, TimestampMillisecondType, TimestampNanosecondType,
-        TimestampSecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type, Utf8Type,
+        BinaryType, ByteArrayType, Date32Type, Date64Type, Decimal128Type, DurationMicrosecondType,
+        DurationMillisecondType, DurationNanosecondType, DurationSecondType, Float32Type,
+        Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, IntervalDayTime,
+        IntervalDayTimeType, IntervalMonthDayNano, IntervalMonthDayNanoType, IntervalYearMonthType,
+        LargeBinaryType, LargeUtf8Type, RunEndIndexType, Time32MillisecondType, Time32SecondType,
+        Time64MicrosecondType, Time64NanosecondType, TimestampMicrosecondType,
+        TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt8Type,
+        UInt16Type, UInt32Type, UInt64Type, Utf8Type,
     },
 };
 use lancedb::arrow::arrow_schema::{ArrowError, DataType, IntervalUnit, TimeUnit};
@@ -131,13 +131,10 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
         DataType::LargeUtf8 => json_arm!(byte_values, LargeUtf8Type),
         DataType::Binary => json_arm!(byte_values, BinaryType),
         DataType::LargeBinary => json_arm!(byte_values, LargeBinaryType),
-        DataType::FixedSizeBinary(_) => {
-            let binary_array = column.as_fixed_size_binary();
-            (0..binary_array.len())
-                .map(|i| serde_json::to_value(binary_array.value(i)))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(VectorStoreError::JsonError)
-        }
+        DataType::FixedSizeBinary(_) => (0..column.len())
+            .map(|i| serde_json::to_value(column.as_fixed_size_binary().value(i)))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(VectorStoreError::JsonError),
         DataType::Boolean => {
             let bool_array = column.as_boolean();
             (0..bool_array.len())
@@ -174,41 +171,12 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
         }
         DataType::Map(..) => {
             let map_array = column.as_map();
-            let keys = map_entries(map_array.keys())?;
-            let values = map_entries(map_array.values())?;
+            let keys = type_matcher(map_array.keys())?;
+            let values = type_matcher(map_array.values())?;
 
-            build_map(map_array.value_offsets(), &keys, &values)
+            build_map(map_array, &keys, &values)
         }
-        DataType::Dictionary(keys_type, ..) => {
-            let (keys, v) = match **keys_type {
-                DataType::Int8 => dictionary_keys::<Int8Type>(column)?,
-                DataType::Int16 => dictionary_keys::<Int16Type>(column)?,
-                DataType::Int32 => dictionary_keys::<Int32Type>(column)?,
-                DataType::Int64 => dictionary_keys::<Int64Type>(column)?,
-                DataType::UInt8 => dictionary_keys::<UInt8Type>(column)?,
-                DataType::UInt16 => dictionary_keys::<UInt16Type>(column)?,
-                DataType::UInt32 => dictionary_keys::<UInt32Type>(column)?,
-                DataType::UInt64 => dictionary_keys::<UInt64Type>(column)?,
-                _ => {
-                    return Err(VectorStoreError::datastore(ArrowError::CastError(format!(
-                        "Dictionary keys type is not accepted: {keys_type:?}"
-                    ))));
-                }
-            };
-
-            let values = type_matcher(v)?;
-
-            Ok(keys
-                .iter()
-                .zip(values)
-                .map(|(k, v)| {
-                    let mut map = serde_json::Map::new();
-                    map.insert(k.clone(), v);
-                    map
-                })
-                .map(Value::Object)
-                .collect())
-        }
+        DataType::Dictionary(..) => dictionary_values(column),
         DataType::Union(..) => match column.as_any().downcast_ref::<UnionArray>() {
             Some(union_array) => {
                 nested_values((0..union_array.len()).map(|i| union_array.value(i)))
@@ -299,22 +267,25 @@ where
         .collect()
 }
 
-/// Returns a dictionary-encoded column's keys, serialized as strings, alongside
-/// its value array.
-fn dictionary_keys<T: ArrowDictionaryKeyType>(
-    column: &ArrayRef,
-) -> Result<(Vec<String>, &ArrayRef), serde_json::Error>
-where
-    T::Native: Serialize,
-{
-    let dict_array = column.as_dictionary::<T>();
-    let keys = dict_array
-        .keys()
-        .values()
-        .iter()
-        .map(serde_json::to_string)
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok((keys, dict_array.values()))
+/// Resolves a dictionary column to one JSON value per row. Null entries become JSON null.
+fn dictionary_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
+    let dictionary = column.as_any_dictionary();
+    let values = type_matcher(dictionary.values())?;
+    // `normalized_keys` panics on an empty dictionary, whose rows are all null.
+    if values.is_empty() {
+        return Ok(vec![Value::Null; column.len()]);
+    }
+    let nulls = dictionary.logical_nulls();
+
+    Ok(dictionary
+        .normalized_keys()
+        .into_iter()
+        .enumerate()
+        .map(|(row, key)| match &nulls {
+            Some(nulls) if nulls.is_null(row) => Value::Null,
+            _ => values.get(key).cloned().unwrap_or_default(),
+        })
+        .collect())
 }
 
 /// Converts each nested array to one JSON array value.
@@ -344,46 +315,22 @@ fn build_struct(columns: &[Vec<Value>], num_rows: usize, col_names: &[&str]) -> 
         .collect()
 }
 
-/// Converts a map's key or value array to one JSON value per entry. Resolves
-/// dictionary keys to their plain values, because `type_matcher` emits one
-/// `{key: value}` object per dictionary value. Null entries become JSON null.
-fn map_entries(entries: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
-    let Some(dictionary) = entries.as_any_dictionary_opt() else {
-        return type_matcher(entries);
-    };
-    let values = type_matcher(dictionary.values())?;
-    // `normalized_keys` panics on an empty dictionary, whose entries are all null.
-    if values.is_empty() {
-        return Ok(vec![Value::Null; entries.len()]);
-    }
-    let nulls = dictionary.logical_nulls();
-
-    Ok(dictionary
-        .normalized_keys()
-        .into_iter()
-        .enumerate()
-        .map(|(entry, key)| {
-            let is_null = nulls.as_ref().is_some_and(|nulls| nulls.is_null(entry));
-            values
-                .get(key)
-                .filter(|_| !is_null)
-                .cloned()
-                .unwrap_or(Value::Null)
-        })
-        .collect())
-}
-
 /// Assembles one JSON object per map row from its key and value entries.
-/// `offsets` are the row boundaries into the unsliced entries, so each window
-/// holds one row's entries. Errors when a window falls outside the entries.
+/// Offsets index the unsliced entries. A null row becomes JSON null. Errors
+/// when a row's offsets fall outside the entries.
 fn build_map(
-    offsets: &[i32],
+    map_array: &MapArray,
     keys: &[Value],
     values: &[Value],
 ) -> Result<Vec<Value>, VectorStoreError> {
-    offsets
+    map_array
+        .value_offsets()
         .windows(2)
-        .map(|bounds| {
+        .enumerate()
+        .map(|(row, bounds)| {
+            if map_array.is_null(row) {
+                return Ok(Value::Null);
+            }
             let entries = match *bounds {
                 [start, end] => usize::try_from(start).ok().zip(usize::try_from(end).ok()),
                 _ => None,
@@ -402,10 +349,7 @@ fn build_map(
                     .iter()
                     .zip(row_values)
                     .map(|(k, v)| {
-                        let key = match k {
-                            Value::String(s) => s.clone(),
-                            _ => k.to_string(),
-                        };
+                        let key = k.as_str().map_or_else(|| k.to_string(), str::to_owned);
                         (key, v.clone())
                     })
                     .collect(),
