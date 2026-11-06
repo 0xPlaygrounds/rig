@@ -202,3 +202,24 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
     assert!(resolved.exists());
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A name the file system takes can be written, whatever its length,
+/// replacing a file or creating one, and no temporary file stays.
+#[test]
+fn an_atomic_write_takes_any_name_the_file_system_does() {
+    let dir = scratch("long-name").join("real");
+    let names = ["a".repeat(250), "b".repeat(255), "é".repeat(127)];
+    for name in &names {
+        let path = dir.join(name);
+        std::fs::write(&path, "before").ok();
+        let replaced = super::write_atomic(&path, b"after");
+        assert!(replaced.is_ok(), "replacing: {replaced:?}");
+        assert_eq!(std::fs::read(&path).ok().as_deref(), Some(&b"after"[..]));
+        std::fs::remove_file(&path).ok();
+        let created = super::write_atomic(&path, b"new");
+        assert!(created.is_ok(), "creating: {created:?}");
+    }
+    let left = std::fs::read_dir(&dir).map(Iterator::count).ok();
+    assert_eq!(left, Some(names.len()));
+    std::fs::remove_dir_all(dir).ok();
+}

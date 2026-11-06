@@ -6,8 +6,9 @@ use std::sync::Arc;
 use rig_core::tool::{FilesChanged, FilesRead, Scope, Tool, ToolContext, ToolOutput, Touches};
 
 use super::{Hosts, Remote};
+use crate::overlay::Overlay;
 use crate::process::Launcher;
-use crate::workspace::{Local, Workspace};
+use crate::workspace::{Listing, Local, Workspace};
 use crate::{
     Edit, EditArgs, List, ListArgs, Read, ReadArgs, Replacement, Search, SearchArgs, Shell,
     ShellArgs, split_status,
@@ -1104,4 +1105,66 @@ fn a_git_listing_there_holds_only_files_there() {
     assert!(indexed);
     assert_eq!(listed.ok(), Some(vec![root.join("kept.rs")]));
     assert!(broken.is_err(), "{broken:?}");
+}
+
+/// The files `workspace` lists under `root` with `glob`, as sorted names
+/// below it.
+fn listed(workspace: &dyn Workspace, root: &Path, glob: &str) -> Vec<String> {
+    let listed = workspace.files(root, Some(glob), Listing::Hidden);
+    let mut names: Vec<String> = (listed.map(|listed| listed.files).unwrap_or_default().iter())
+        .filter_map(|file| file.strip_prefix(root).ok())
+        .map(|file| file.display().to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+/// A glob keeps the same files on every workspace: what a local walk
+/// keeps is what a remote listing and an overlay's new files keep, an
+/// exclusion takes everything below a directory it names, and only a
+/// directory when it says so.
+#[test]
+fn a_glob_keeps_the_same_files_on_every_workspace() {
+    let dir = scratch("globs");
+    let home = dir.join("home");
+    let tree = [
+        "a.rs",
+        "b.txt",
+        "build/c.rs",
+        "src/build/d.rs",
+        "lib/build",
+        "target/e.rs",
+    ];
+    let (disk, staged) = (home.join("disk"), home.join("staged"));
+    std::fs::create_dir_all(&staged).ok();
+    let overlay = Overlay::new(Arc::new(Local));
+    for name in tree {
+        std::fs::create_dir_all(disk.join(name).with_file_name("")).ok();
+        std::fs::write(disk.join(name), "").ok();
+        assert!(overlay.write(&staged.join(name), b"").is_ok());
+    }
+    let remote = Remote::new("bench", transport(&home), Launcher::default);
+    assert!(remote.is_ok());
+    let Ok(remote) = remote else { return };
+
+    let excluded = listed(&Local, &disk, "!build/");
+    assert_eq!(excluded, ["a.rs", "b.txt", "lib/build", "target/e.rs"]);
+    for glob in [
+        "!*.txt",
+        "!build/",
+        "!target/",
+        "!build",
+        "*.rs",
+        "src/**",
+        "# a comment",
+    ] {
+        let local = listed(&Local, &disk, glob);
+        assert_eq!(listed(&remote, &disk, glob), local, "remote with {glob}");
+        assert_eq!(
+            listed(&overlay, &staged, glob),
+            local,
+            "overlay with {glob}"
+        );
+    }
+    std::fs::remove_dir_all(dir).ok();
 }
