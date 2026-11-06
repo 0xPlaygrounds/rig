@@ -19,6 +19,8 @@ use crossterm::event::{
     DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
+#[cfg(not(windows))]
+use crossterm::style::Print;
 use crossterm::terminal::{
     BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate, EnterAlternateScreen,
     LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -134,6 +136,17 @@ pub(crate) struct Tui {
 /// Where stray output goes when the session keeps no text log.
 const NOWHERE: &str = "/dev/null";
 
+/// Asks the terminal to report buttons, drags and the wheel, which would
+/// otherwise arrive as arrow keys, but not a mouse that only moves.
+#[cfg(not(windows))]
+const MOUSE_ON: Print<&str> = Print("\x1b[?1002h\x1b[?1006h");
+#[cfg(not(windows))]
+const MOUSE_OFF: Print<&str> = Print("\x1b[?1006l\x1b[?1002l");
+#[cfg(windows)]
+const MOUSE_ON: crossterm::event::EnableMouseCapture = crossterm::event::EnableMouseCapture;
+#[cfg(windows)]
+const MOUSE_OFF: crossterm::event::DisableMouseCapture = crossterm::event::DisableMouseCapture;
+
 /// What the terminal is always asked: keys sent as escape codes, so a
 /// modifier it would drop, such as Shift on Enter, comes through.
 const KEYS: KeyboardEnhancementFlags = KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES;
@@ -178,6 +191,7 @@ impl Tui {
         }
         execute!(backend, PopKeyboardEnhancementFlags).ok();
         // Every step is tried, so a failed one leaves no other undone.
+        execute!(backend, MOUSE_OFF).ok();
         let pastes = execute!(backend, DisableBracketedPaste, DisableFocusChange);
         let alternate = match keep_screen {
             true => Ok(()),
@@ -221,7 +235,7 @@ impl Tui {
 }
 
 /// The alternate screen cleared (after a reload it still shows the previous
-/// build's frame), pastes reported whole, focus changes reported, keys sent
+/// build's frame), pastes whole, focus changes and the mouse reported, keys sent
 /// as escape codes, no cursor, and a whole frame drawn next. The terminal is asked nothing: its answer
 /// would come on stdin, but stdout may be the session's log by now
 /// (`Terminal::clear` asks for the cursor position).
@@ -239,6 +253,7 @@ where
     )?;
     // A terminal without the keyboard protocol ignores these.
     execute!(backend, PushKeyboardEnhancementFlags(KEYS)).ok();
+    execute!(backend, MOUSE_ON).ok();
     if releases {
         execute!(backend, PushKeyboardEnhancementFlags(RELEASES)).ok();
     }

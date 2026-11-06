@@ -54,6 +54,7 @@ mod pick;
 mod render;
 mod renderers;
 mod screen;
+mod selection;
 pub mod status;
 mod terminal;
 mod theme;

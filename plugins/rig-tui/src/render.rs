@@ -34,7 +34,7 @@ use super::renderers::{
     CallState, LookLine, MessageView, Place, Renderers, Role, ToolCallView, UNNAMED_HOLD,
 };
 use super::status::{AppStatus, StatusItems, StatusLine};
-use super::terminal::{Tui, TuiTestScreen};
+use super::terminal::{CopyToClipboard, Tui, TuiTestScreen};
 use super::theme::Theme;
 use super::transcript::{
     CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, Replaced, ShownAside, ShownEntries,
@@ -1069,13 +1069,13 @@ fn light_match(
 pub(crate) fn render(
     (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut drew: ResMut<TuiFrame>,
-    view: Res<TuiView>,
+    mut view: ResMut<TuiView>,
     (state, focus, choices): (Res<InputContext>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     (panels, carets): (Query<(Entity, &TuiPanel, &PanelCanvas)>, Query<&Caret>),
     (spawns, ticks): (PanelSpawns, SystemChangeTick),
     mut showing: Query<(Entity, &mut PickerInput, Option<&PickPreview>)>,
-    mut repaints: MessageReader<RedrawArea>,
+    (mut repaints, mut copies): (MessageReader<RedrawArea>, MessageWriter<CopyToClipboard>),
     theme: Res<Theme>,
 ) -> Result {
     if !std::mem::take(&mut frame_layout.due) {
@@ -1106,6 +1106,10 @@ pub(crate) fn render(
     let edit = edit.and_then(|(entity, ..)| choices.shown(entity));
     let cursor = carets.iter().find_map(|caret| caret.0);
     let cursor = cursor.map(|at| MoveTo(at.x, at.y));
+    // Copying it once is drawing's own bookkeeping, not a change to redraw for.
+    let selection = view.bypass_change_detection().selection.as_mut();
+    let released = selection.is_some_and(|selection| std::mem::take(&mut selection.up));
+    let mut copied = None;
     let mut areas = TuiFrame::default();
     let draw_frame = |frame: &mut Frame| {
         let screen = frame.area();
@@ -1149,6 +1153,10 @@ pub(crate) fn render(
         if theme.plain {
             strip_colors(frame.buffer_mut());
         }
+        if let Some(selection) = view.selection.filter(|drag| drag.from != drag.to) {
+            let text = selection.mark(frame.buffer_mut());
+            copied = released.then_some(text);
+        }
         areas = TuiFrame {
             screen,
             areas: drawn,
@@ -1175,6 +1183,7 @@ pub(crate) fn render(
         (None, None) => Ok(()),
     };
     drew.set_if_neq(areas);
+    copies.write_batch(copied.filter(|text| !text.is_empty()).map(CopyToClipboard));
     drawn?;
     Ok(())
 }

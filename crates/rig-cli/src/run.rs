@@ -694,9 +694,9 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
 }
 
 /// Puts the terminal back after an agent that could not restore it: leaves
-/// the alternate screen and, on a terminal, raw mode.
+/// the alternate screen, mouse reports and, on a terminal, raw mode.
 fn restore_terminal() {
-    eprint!("\x1b[?1049l\x1b[?25h");
+    eprint!("\x1b[?1049l\x1b[?25h\x1b[?1006l\x1b[?1002l");
     if std::io::stdin().is_terminal() {
         child("stty").arg("sane").status().ok();
     }
