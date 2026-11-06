@@ -120,6 +120,11 @@ fn system_now() -> u64 {
 /// reads, storage costs more than a cached read saves at the default prices.
 const MAX_TTL_SECS: u64 = 81 * 60;
 
+/// How long a cache delete may go unanswered. A cache whose delete runs out
+/// of time stays in the book.
+pub(crate) const DELETE_TIMEOUT: Duration =
+    Duration::from_millis(if cfg!(test) { 100 } else { 10_000 });
+
 /// A cache is used only with more than this many seconds left.
 const EXPIRY_MARGIN_SECS: u64 = 5;
 

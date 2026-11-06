@@ -4,17 +4,19 @@
 //! bytes alone.
 
 use futures::StreamExt;
+use futures::future::{Either, select};
 use serde::Deserialize;
 
 use crate::driver::{Exchange, Model, Opened, Opening, Transport};
 use crate::error::ProviderError;
 use crate::providers::gemini::cached_content::CachedContents;
 use crate::providers::gemini::caching::{
-    CacheBook, Create, Lease, Parsed, Plan, cache_body, digests, is_user_text, parse, short_digest,
-    stripped,
+    CacheBook, Create, DELETE_TIMEOUT, Lease, Parsed, Plan, cache_body, digests, is_user_text,
+    parse, short_digest, stripped,
 };
 use crate::providers::gemini::completion::{GenerateContent, ThoughtReplay};
 use crate::providers::internal::wire::classify_untyped_line;
+use crate::wasm_compat::timeout;
 use crate::wire::{Body, Encoded, Framing, Mode, WireEvent, WireFrame};
 
 impl CacheBook {
@@ -43,15 +45,21 @@ impl CacheBook {
     }
 
     /// Delete every cache in [`Self::leases`], keeping any whose delete fails.
-    /// A create still in flight deletes its own cache when it lands. A cache
-    /// already gone (403) counts as deleted.
+    /// It stops at the first delete with no answer in 10 seconds, and logs
+    /// what is left. A create still in flight deletes its own cache when
+    /// it lands. A cache already gone (403) counts as deleted.
     pub async fn close<T>(&self, caches: &Model<CachedContents, T>)
     where
         T: Transport<CachedContents>,
     {
         self.book().closes += 1;
         for lease in self.leases() {
-            let result = caches.delete(&lease.name).await;
+            let Ok(result) = timeout(DELETE_TIMEOUT, caches.delete(&lease.name)).await else {
+                let left: Vec<String> = self.leases().into_iter().map(|l| l.name).collect();
+                let left = left.join(", ");
+                tracing::warn!(target: "gemini.cache", %left, "cache delete timed out");
+                return;
+            };
             let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
             if !gone {
                 tracing::warn!(target: "gemini.cache", name = %lease.name, "cache delete failed");
@@ -198,13 +206,12 @@ where
     }
 
     async fn delete(&self, lease: &Lease) {
-        let reply = self
-            .resource(
-                http::Method::DELETE,
-                &format!("/v1beta/{}", lease.name),
-                None,
-            )
-            .await;
+        let path = format!("/v1beta/{}", lease.name);
+        let request = self.resource(http::Method::DELETE, &path, None);
+        let Ok(reply) = timeout(DELETE_TIMEOUT, request).await else {
+            tracing::warn!(target: "gemini.cache", name = %lease.name, "cache delete timed out");
+            return;
+        };
         if reply.error.is_some() && reply.status != Some(403) && reply.status != Some(404) {
             let status = reply.status.unwrap_or_default();
             tracing::warn!(target: "gemini.cache", name = %lease.name, status, "cache delete failed");
@@ -237,15 +244,20 @@ where
     }
 
     /// Create the cache `create` describes, unless a live one already exists
-    /// for its digest. Returns the lease to read.
+    /// for its digest or the book closed since `plan`. Returns the lease to
+    /// read. One that lands after a close goes in `late`, to delete.
     async fn create(
         &self,
         model: &str,
         parsed: &Parsed,
         create: &Create,
         plan: &Plan,
+        late: &mut Option<Lease>,
     ) -> Option<Lease> {
         let _single = self.book.create.lock().await;
+        if self.book.book().closes != plan.closes {
+            return None;
+        }
         // Checked again under the lock: another request may have created it,
         // or the one the plan saw may have expired while this one waited.
         let existing = self.book.book().leases.get(&create.digest).cloned();
@@ -301,7 +313,7 @@ where
             .book
             .created(&plan.line, create, resource.name, tokens, model);
         if self.book.book().closes != plan.closes {
-            self.delete(&lease).await;
+            *late = Some(lease);
             return None;
         }
         Some(lease)
@@ -313,6 +325,16 @@ fn known<T>(event: WireEvent<T>) -> Option<T> {
     match event {
         WireEvent::Known(value) => Some(value),
         _ => None,
+    }
+}
+
+/// `send`'s result. `cleanup` starts first, runs beside it and is dropped when
+/// it ends, so cleanup never holds a reply.
+async fn beside<F: Future>(cleanup: impl Future<Output = ()>, send: F) -> F::Output {
+    futures::pin_mut!(cleanup, send);
+    match select(cleanup, send).await {
+        Either::Left(((), send)) => send.await,
+        Either::Right((sent, _)) => sent,
     }
 }
 
@@ -377,8 +399,9 @@ where
             }
             let mut read = plan.read.clone();
             let mut line = plan.line.clone();
+            let mut late = None;
             if let Some(create) = &plan.create
-                && let Some(lease) = this.create(&model, &parsed, create, &plan).await
+                && let Some(lease) = this.create(&model, &parsed, create, &plan, &mut late).await
             {
                 if let Some(replaced) = &create.replaces
                     && replaced.name != lease.name
@@ -406,7 +429,11 @@ where
                     (payload, None)
                 }
             };
-            let mut opened: Opened<WireFrame> = this.inner.send(sent, exchange.clone()).await?;
+            let send = this.inner.send(sent, exchange.clone());
+            let mut opened: Opened<WireFrame> = match &late {
+                Some(lease) => beside(this.delete(lease), send).await?,
+                None => send.await?,
+            };
             if let Some(lease) = read.clone() {
                 let first = opened.frames.next().await;
                 let forbidden = matches!(
