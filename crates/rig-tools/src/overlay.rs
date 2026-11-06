@@ -6,12 +6,13 @@ use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use ignore::overrides::OverrideBuilder;
 use rig_core::tool::{FileChange, content_hash};
 
 use crate::fs::Previous;
 use crate::process::{Launcher, Process, Spawn};
-use crate::workspace::{Contents, Excerpt, Listed, Listing, Stat, Workspace, excerpt_of};
+use crate::workspace::{
+    Contents, Excerpt, Listed, Listing, Stat, Workspace, excerpt_of, glob_keeps, glob_rule,
+};
 
 /// A [`Workspace`] over another that reads through to it and keeps every
 /// write, removal and rename to itself: run a file tool on it to learn what
@@ -63,6 +64,13 @@ impl Overlay {
             .iter()
             .find(|(kept, _)| kept == path)
             .map(|(_, bytes)| bytes.clone())
+    }
+
+    /// Whether `test` holds for the path of a file written here.
+    fn any_written(&self, test: impl Fn(&Path) -> bool) -> bool {
+        self.kept()
+            .iter()
+            .any(|(kept, bytes)| bytes.is_some() && test(kept))
     }
 
     /// Keeps `bytes` (`None`: removed) for `path`.
@@ -131,24 +139,23 @@ impl Workspace for Overlay {
     }
 
     fn stat(&self, path: &Path) -> io::Result<Stat> {
-        match self.held(path) {
-            Some(Some(bytes)) => Ok(Stat::File {
-                size: bytes.len() as u64,
-                read_only: false,
-                modified: None,
-            }),
-            Some(None) => Ok(Stat::Missing),
-            None => match self.inner.stat(path)? {
-                Stat::Missing
-                    if self
-                        .kept()
-                        .iter()
-                        .any(|(kept, bytes)| bytes.is_some() && kept.starts_with(path)) =>
-                {
-                    Ok(Stat::Dir)
-                }
-                stat => Ok(stat),
-            },
+        if self.any_written(|kept| kept != path && path.starts_with(kept)) {
+            return Err(ErrorKind::NotADirectory.into());
+        }
+        let stat = match self.held(path) {
+            Some(Some(bytes)) => {
+                return Ok(Stat::File {
+                    size: bytes.len() as u64,
+                    read_only: false,
+                    modified: None,
+                });
+            }
+            Some(None) => Stat::Missing,
+            None => self.inner.stat(path)?,
+        };
+        match stat {
+            Stat::Missing if self.any_written(|kept| kept.starts_with(path)) => Ok(Stat::Dir),
+            stat => Ok(stat),
         }
     }
 
@@ -205,6 +212,12 @@ impl Workspace for Overlay {
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
         let bytes = self.bytes(from)?;
+        if from == to {
+            return Ok(());
+        }
+        if let Stat::Dir = self.stat(to)? {
+            return Err(io::Error::new(ErrorKind::IsADirectory, "is a directory"));
+        }
         self.keep(to, Some(bytes));
         self.keep(from, None);
         Ok(())
@@ -226,12 +239,7 @@ impl Workspace for Overlay {
             files: listed,
             failed,
         } = self.inner.files(root, glob, listing)?;
-        let matcher = glob
-            .map(|glob| OverrideBuilder::new(root).add(glob)?.build())
-            .transpose()
-            .map_err(|error| {
-                io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-            })?;
+        let rule = glob_rule(root, glob)?;
         let kept = self.kept().clone();
         let removed = |path: &PathBuf| {
             kept.iter()
@@ -239,9 +247,7 @@ impl Workspace for Overlay {
         };
         let created = kept.iter().filter_map(|(path, bytes)| {
             let visible = listing.keeps(path.strip_prefix(root).ok()?);
-            let matches = matcher
-                .as_ref()
-                .is_none_or(|matcher| matcher.matched(path, false).is_whitelist());
+            let matches = glob_keeps(&rule, root, path);
             (bytes.is_some() && visible && matches && !listed.contains(path)).then(|| path.clone())
         });
         let mut files: Vec<PathBuf> = listed

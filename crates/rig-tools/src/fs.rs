@@ -78,7 +78,7 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// Unlike writing in place, the rename needs write access to the directory,
 /// gives the file a new inode (a hard link to the old one keeps the old
 /// text) and makes this process the file's owner. A crash between create
-/// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
+/// and rename can leave a `.rig-write-<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     let target = real_path(path);
     let permissions = match fs::symlink_metadata(&target) {
@@ -104,11 +104,11 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     {
         fs::create_dir_all(parent)?;
     }
-    let name = target
-        .file_name()
-        .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
-    let temporary = temporary_beside(&target, name);
-    let written = File::create_new(&temporary).and_then(|mut file| {
+    if target.file_name().is_none() {
+        return Err(io::Error::new(ErrorKind::InvalidInput, "names no file"));
+    }
+    let (temporary, created) = temporary_beside(&target);
+    let written = created.and_then(|mut file| {
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
         }
@@ -121,17 +121,24 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     })
 }
 
-/// A temporary file's path beside `target`, whose file name is `name`:
-/// `.name.<pid>-<n>.tmp`, unique among this process's writes.
-fn temporary_beside(target: &Path, name: &std::ffi::OsStr) -> PathBuf {
+/// A new temporary file beside `target` and its path, or why it could not
+/// be created. Its name, `.rig-write-<pid>-<n>.tmp`, leaves out `target`'s,
+/// so any name the file system takes can be replaced.
+fn temporary_beside(target: &Path) -> (PathBuf, io::Result<File>) {
     /// Tells apart the temporary files of writes running at once.
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    target.with_file_name(format!(
-        ".{}.{}-{}.tmp",
-        name.to_string_lossy(),
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ))
+    loop {
+        let temporary = target.with_file_name(format!(
+            ".rig-write-{}-{}.tmp",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        // A name another process holds, or a crash left, is skipped.
+        match File::create_new(&temporary) {
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+            created => return (temporary, created),
+        }
+    }
 }
 
 /// The JSON file at `path` as a `T`, or `None` when it is missing or is

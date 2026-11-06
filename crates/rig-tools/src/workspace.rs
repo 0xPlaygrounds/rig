@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use ignore::WalkBuilder;
-use ignore::overrides::OverrideBuilder;
+use ignore::overrides::{Override, OverrideBuilder};
 use rig_core::tool::{ContentHash, ToolExecutionError, content_hash};
 
 use crate::fs::{Previous, io_error, real_path, write_atomic};
@@ -157,9 +157,10 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     /// The regular files under `root` (or `root` itself when it is a file),
     /// in walk order, as `root` joined with their path below it: those
     /// `listing` keeps ([`Listing`]), and only those matching `glob`, such
-    /// as `*.rs`, when it is given; and the paths under `root` it could not
-    /// look into, such as a directory it may not read. A malformed glob is
-    /// an [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
+    /// as `*.rs`, or not excluded by it, such as `!target/`, when it is
+    /// given; and the paths under `root` it could not look into, such as a
+    /// directory it may not read. A malformed glob is an
+    /// [`InvalidInput`](ErrorKind::InvalidInput) error that says so.
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed>;
 
     /// Starts `program` with `args` in `dir` (`None`: the launcher's own
@@ -240,6 +241,26 @@ impl Listing {
             Self::All => true,
         }
     }
+}
+
+/// The rule `glob` makes for the files under `root`, which keeps every file
+/// when there is no glob.
+pub(crate) fn glob_rule(root: &Path, glob: Option<&str>) -> io::Result<Override> {
+    let bad = |error| io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"));
+    let mut rule = OverrideBuilder::new(root);
+    if let Some(glob) = glob {
+        rule.add(glob).map_err(bad)?;
+    }
+    rule.build().map_err(bad)
+}
+
+/// Whether `rule` keeps the file `path` under `root`, as a walk from `root`
+/// does: the file and no directory on the way to it is excluded, so a
+/// workspace that has its files without walking lists what a walk would.
+pub(crate) fn glob_keeps(rule: &Override, root: &Path, path: &Path) -> bool {
+    path.ancestors()
+        .take_while(|part| *part != root)
+        .all(|part| !rule.matched(part, part != path).is_ignore())
 }
 
 /// What looking at one path found. Only [`Missing`](Self::Missing) says
@@ -636,15 +657,7 @@ impl Workspace for Local {
                 entry.depth() == 0 || listing.keeps(Path::new(entry.file_name()))
             }),
         };
-        if let Some(glob) = glob {
-            let overrides = OverrideBuilder::new(root)
-                .add(glob)
-                .and_then(|builder| builder.build())
-                .map_err(|error| {
-                    io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-                })?;
-            walk.overrides(overrides);
-        }
+        walk.overrides(glob_rule(root, glob)?);
         // Only regular files: symbolic links are not followed.
         let mut listed = Listed::default();
         for entry in walk.build() {

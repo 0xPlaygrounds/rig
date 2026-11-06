@@ -40,14 +40,12 @@ use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
-use ignore::overrides::OverrideBuilder;
-
 use rig_core::tool::{ContentHash, content_hash};
 
 use crate::process::{Launcher, NON_INTERACTIVE, Process, STOP_GRACE, Spawn};
 use crate::workspace::{
-    Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, not_text,
-    read_file, too_large,
+    Contents, Excerpt, Listed, Listing, Observation, Stat, Workspace, excerpt_of, glob_keeps,
+    glob_rule, not_text, read_file, too_large,
 };
 use crate::{MAX_BYTES, MAX_FILE_BYTES, quote};
 
@@ -709,16 +707,7 @@ impl Workspace for Remote {
     /// deleted since it was added, nor a link. Then filtered by
     /// [`Listing::keeps`] and `glob`.
     fn files(&self, root: &Path, glob: Option<&str>, listing: Listing) -> io::Result<Listed> {
-        let globs = glob
-            .map(|glob| {
-                OverrideBuilder::new(root)
-                    .add(glob)
-                    .and_then(|builder| builder.build())
-                    .map_err(|error| {
-                        io::Error::new(ErrorKind::InvalidInput, format!("bad glob: {error}"))
-                    })
-            })
-            .transpose()?;
+        let rule = glob_rule(root, glob)?;
         let git = match listing {
             Listing::All => "false",
             Listing::Visible | Listing::Hidden => {
@@ -753,11 +742,7 @@ impl Workspace for Remote {
             .map(|name| Path::new(name.trim_start_matches("./")))
             .filter(|name| !name.as_os_str().is_empty() && listing.keeps(name))
             .map(|name| root.join(name))
-            .filter(|path| {
-                globs
-                    .as_ref()
-                    .is_none_or(|globs| globs.matched(path, false).is_whitelist())
-            })
+            .filter(|path| glob_keeps(&rule, root, path))
             .collect();
         files.sort();
         Ok(Listed {
