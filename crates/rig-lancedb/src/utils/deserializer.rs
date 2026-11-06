@@ -238,9 +238,8 @@ where
     };
     let indexes = run_array
         .run_ends()
-        .values()
-        .iter()
-        .map(|&index| index.into())
+        .sliced_values()
+        .map(Into::into)
         .collect::<Vec<i64>>();
 
     let mut prev = vec![0];
@@ -250,10 +249,8 @@ where
         .iter()
         .zip(indexes)
         .map(|(prev, cur)| cur - prev)
-        .zip(type_matcher(run_array.values())?)
+        .zip(type_matcher(&run_array.values_slice())?)
         .flat_map(|(n, value)| vec![value; n as usize])
-        .skip(run_array.run_ends().offset())
-        .take(run_array.len())
         .collect())
 }
 
@@ -283,19 +280,19 @@ where
         .collect()
 }
 
-/// Resolves a dictionary column to one JSON value per row.
+/// Resolves a dictionary column to one JSON value per row, converting only the
+/// values its rows select.
 fn dictionary_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
     let dictionary = column.as_any_dictionary();
     // `normalized_keys` panics on an empty dictionary, whose rows are all null.
     if dictionary.values().is_empty() {
         return Ok(vec![Value::Null; column.len()]);
     }
-    let values = type_matcher(dictionary.values())?;
-    Ok(dictionary
-        .normalized_keys()
-        .into_iter()
-        .map(|key| values.get(key).cloned().unwrap_or_default())
-        .collect())
+    let mut values = Vec::with_capacity(column.len());
+    for key in dictionary.normalized_keys() {
+        values.extend(type_matcher(&dictionary.values().slice(key, 1))?);
+    }
+    Ok(values)
 }
 
 /// Converts each nested array to one JSON array value.
