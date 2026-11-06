@@ -59,7 +59,6 @@ fn tools_reach_a_host_path_through_its_transport() {
     std::fs::write(dir.join("local/notes.txt"), "here\n").ok();
     let bench = Remote::new("bench", transport(&home), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
-
     let base = Some(dir.join("local"));
     let file = "bench:~/strata/src/lib.rs";
 

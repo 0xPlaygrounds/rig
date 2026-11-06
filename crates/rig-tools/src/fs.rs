@@ -133,7 +133,10 @@ fn temporary_beside(target: &Path) -> (PathBuf, io::Result<File>) {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        if temporary == target {
+        // Ignoring case, as a case-insensitive disk such as macOS's does.
+        let clash = (temporary.file_name().zip(target.file_name()))
+            .is_some_and(|(temporary, target)| temporary.eq_ignore_ascii_case(target));
+        if clash {
             continue;
         }
         // A name another process holds, or a crash left, is skipped.

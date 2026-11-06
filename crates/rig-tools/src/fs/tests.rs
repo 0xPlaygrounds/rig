@@ -205,7 +205,8 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
 
 /// A name the file system takes can be written, whatever its length,
 /// replacing a file or creating one, and no temporary file stays. A file
-/// named as the next temporary one is still replaced through another.
+/// named as the next temporary one, in either case, is still replaced through
+/// another.
 #[test]
 fn an_atomic_write_takes_any_name_the_file_system_does() {
     let dir = scratch("long-name").join("real");
@@ -227,10 +228,21 @@ fn an_atomic_write_takes_any_name_the_file_system_does() {
         let name = path.file_stem()?.to_str()?;
         name.rsplit('-').next()?.parse::<u64>().ok()
     };
-    let (taken, _) = super::temporary_beside(&dir.join("any"));
-    let next = number(&taken).map_or(0, |it| it + 1);
-    let target = dir.join(format!(".rig-write-{}-{next}.tmp", std::process::id()));
-    let (temporary, _) = super::temporary_beside(&target);
-    assert_ne!(temporary, target);
+    for upper in [false, true] {
+        let (taken, _) = super::temporary_beside(&dir.join("any"));
+        let next = number(&taken).map_or(0, |it| it + 1);
+        let name = format!(".rig-write-{}-{next}.tmp", std::process::id());
+        let name = if upper {
+            name.to_ascii_uppercase()
+        } else {
+            name
+        };
+        let (temporary, _) = super::temporary_beside(&dir.join(&name));
+        let made = temporary.file_name().and_then(|it| it.to_str());
+        assert!(
+            made.is_some_and(|made| !made.eq_ignore_ascii_case(&name)),
+            "{name}"
+        );
+    }
     std::fs::remove_dir_all(dir).ok();
 }
