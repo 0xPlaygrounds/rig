@@ -12,8 +12,9 @@ use bevy_ecs::schedule::ScheduleLabel;
 use bevy_ecs::system::SystemParam;
 use bevy_log::error;
 use crossbeam_channel::Receiver;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::Rect;
+use crossterm::event::MouseEventKind::{self, ScrollDown, ScrollUp};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent};
+use ratatui::layout::{Position, Rect};
 
 use super::clipboard;
 use super::complete::{self, Completion, CompletionKind, CompletionSource};
@@ -24,6 +25,7 @@ use super::pane::{MainPane, PaneState};
 use super::panel::{TerminalSize, TuiPanel};
 use super::pick::{self, Choices, PickerInput, Showing};
 use super::render::selectable;
+use super::selection::Selection;
 use super::terminal::TerminalFocus;
 use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Notice, StopTurn};
@@ -254,7 +256,8 @@ pub(crate) fn clear_events(mut events: ResMut<PendingInput>) {
 /// Runs [`TuiKeys`] for each item of the frame's [`PendingInput`], in
 /// order, with that item alone in them; what a run leaves goes next. A run
 /// that changed the input's text ends the reading of the transcript: the
-/// selection goes. Past [`KEYS_PER_FRAME`] the rest waits for the next
+/// selection goes. Past [`KEYS_PER_FRAME`], or after a drag's release but a
+/// frame's first item (so the frame copies the drag), the rest waits for the next
 /// frame, which it wakes.
 pub(crate) fn run_keys(world: &mut World) {
     if world
@@ -267,7 +270,9 @@ pub(crate) fn run_keys(world: &mut World) {
     let mut queue: VecDeque<KeyInput> = std::mem::take(&mut events.0).into();
     let mut done = 0;
     while let Some(item) = queue.pop_front() {
-        if done == KEYS_PER_FRAME {
+        let view = world.get_resource::<TuiView>();
+        let copying = matches!(view.and_then(|view| view.selection), Some(drag) if drag.up);
+        if done == KEYS_PER_FRAME || (done > 0 && copying) {
             queue.push_front(item);
             world.resource_mut::<PendingInput>().0 = queue.into();
             if let Some(wake) = world.get_resource::<Wake>() {
@@ -506,11 +511,22 @@ pub(crate) fn read_input(
                 continue;
             }
         };
+        // A picker shown, or the completion list, takes the wheel as the arrow keys.
+        let picking = view.completion.is_some()
+            || showing.iter().any(|(_, choosing)| choosing.draft.is_none());
+        let event = match event {
+            Event::Mouse(m) if picking && m.kind == ScrollUp => Event::Key(KeyCode::Up.into()),
+            Event::Mouse(m) if picking && m.kind == ScrollDown => Event::Key(KeyCode::Down.into()),
+            event => event,
+        };
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Release => {
                 released(key, (shown.0, reading), &mut keymap, &mut commands);
             }
             Event::Key(key) => {
+                if view.selection.is_some() {
+                    view.selection = None;
+                }
                 // A question answered in the input leaves the keys to it.
                 let picking = showing.iter_mut().find(|(_, c)| c.draft.is_none());
                 if let Some((entity, mut choosing)) = picking {
@@ -558,6 +574,7 @@ pub(crate) fn read_input(
                 },
             },
             Event::Resize(width, height) => {
+                view.selection = None;
                 screen.set_if_neq(TerminalSize(Rect::new(0, 0, width, height)));
             }
             Event::FocusGained => {
@@ -566,8 +583,39 @@ pub(crate) fn read_input(
             Event::FocusLost => {
                 focus.set_if_neq(TerminalFocus(Some(false)));
             }
-            Event::Mouse(_) => {}
+            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Moved => {} // Windows sends these.
+            Event::Mouse(mouse) => {
+                let pane = pane.and_then(|pane| panes.get_mut(pane).ok());
+                moused(mouse, &mut view, pane.map(|(_, _, state, _)| state));
+            }
         }
+    }
+}
+
+/// Scrolls `pane` on the wheel, and follows a drag of the left button.
+fn moused(mouse: MouseEvent, view: &mut TuiView, pane: Option<Mut<PaneState>>) {
+    let at = Position::new(mouse.column, mouse.row);
+    match mouse.kind {
+        ScrollUp | ScrollDown => {
+            view.selection = None;
+            let Some(mut pane) = pane else { return };
+            match mouse.kind {
+                ScrollUp => pane.scroll.up(3), // Rows a notch of the wheel.
+                _ => pane.scroll.down(3),
+            }
+        }
+        MouseEventKind::Down(MouseButton::Left) => {
+            let (from, to, up, held) = (at, at, false, true);
+            view.selection = Some(Selection { from, to, up, held });
+        }
+        MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left) => {
+            if let Some(selection) = view.selection.as_mut().filter(|drag| drag.held) {
+                selection.to = at;
+                selection.held = matches!(mouse.kind, MouseEventKind::Drag(_));
+                selection.up = !selection.held;
+            }
+        }
+        _ => {}
     }
 }
 

@@ -23,6 +23,7 @@ use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::pane::{PaneState, TranscriptPane, TranscriptSource};
 use super::pick::PickerInput;
+use super::selection::Selection;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
@@ -67,6 +68,8 @@ pub(crate) struct TuiView {
     /// The open questions shown beside the work, oldest first; the first
     /// is shown.
     pub(crate) inline: Vec<Entity>,
+    /// What the mouse dragged over, until the next click, key or scroll.
+    pub(crate) selection: Option<Selection>,
 }
 
 /// An item of a transcript, as plugins name it.
