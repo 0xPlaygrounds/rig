@@ -810,4 +810,33 @@ fn fixed_size_binary_has_one_value_per_row() {
             null_row,
         ]
     );
+
+    // Encoded children share their values, so a null parent row must also skip those.
+    let shared = Decimal128Array::from(vec![too_large, 7])
+        .with_precision_and_scale(38, 0)
+        .unwrap();
+    let runs = RunArray::<Int16Type>::try_new(&Int16Array::from(vec![1, 2]), &shared).unwrap();
+    let keys = DictionaryArray::new(Int8Array::from(vec![0, 1]), Arc::new(shared));
+    let nulls = Int32Array::from(vec![None, Some(1)]).nulls().cloned();
+    let parent = |child: ArrayRef| -> ArrayRef {
+        let item = Field::new("item", child.data_type().clone(), true);
+        Arc::new(FixedSizeListArray::new(
+            Arc::new(item),
+            1,
+            child,
+            nulls.clone(),
+        ))
+    };
+    let batch = RecordBatch::try_from_iter(vec![
+        ("runs", parent(Arc::new(runs))),
+        ("keys", parent(Arc::new(keys))),
+    ])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "runs": null, "keys": null }),
+            json!({ "runs": [7], "keys": [7] }),
+        ]
+    );
 }
