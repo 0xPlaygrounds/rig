@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    ArrayRef, BinaryArray, DictionaryArray, FixedSizeListArray, Float32Array, Float64Array,
-    GenericListArray, Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray,
-    LargeStringArray, MapArray, RecordBatch, RunArray, StringArray, StructArray, UInt8Array,
-    UInt16Array, UInt32Array, UInt64Array,
+    Array, ArrayRef, BinaryArray, DictionaryArray, FixedSizeBinaryArray, FixedSizeListArray,
+    Float32Array, Float64Array, GenericListArray, Int8Array, Int16Array, Int32Array, Int64Array,
+    LargeBinaryArray, LargeStringArray, MapArray, RecordBatch, RunArray, StringArray, StructArray,
+    UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
         FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
         NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, StructBuilder,
@@ -280,7 +280,7 @@ async fn test_run_end_deserialization() {
                 "some_run_end": "abc"
             }),
             json!({
-                "some_run_end": ""
+                "some_run_end": null
             }),
             json!({
                 "some_run_end": "def"
@@ -291,6 +291,14 @@ async fn test_run_end_deserialization() {
             json!({
                 "some_run_end": "abc"
             })
+        ]
+    );
+
+    assert_eq!(
+        record_batch_to_json(&record_batch.slice(1, 2)).unwrap(),
+        vec![
+            json!({ "some_run_end": null }),
+            json!({ "some_run_end": "def" }),
         ]
     );
 }
@@ -517,6 +525,22 @@ fn map_entries_stay_with_their_row() {
         ]
     );
 
+    let mut null_cells = MapBuilder::new(None, StringBuilder::new(), Int32Builder::new());
+    for (key, value) in [("k0", None), ("k1", Some(4)), ("k2", None)] {
+        null_cells.keys().append_value(key);
+        null_cells.values().append_option(value);
+    }
+    null_cells.append(true).unwrap();
+    let batch = RecordBatch::try_from_iter(vec![(
+        "attributes",
+        Arc::new(null_cells.finish()) as ArrayRef,
+    )])
+    .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({ "attributes": { "k0": null, "k1": 4, "k2": null } })]
+    );
+
     let mut null_values = MapBuilder::new(None, StringBuilder::new(), NullBuilder::new());
     for key in ["a", "b"] {
         null_values.keys().append_value(key);
@@ -674,5 +698,58 @@ fn fixed_size_binary_has_one_value_per_row() {
         (0..3u8)
             .map(|row| json!({ "fingerprint": [row, row] }))
             .collect::<Vec<_>>()
+    );
+
+    // The slots under these nulls hold another row's value, as Lance can write them.
+    let nulls = Int32Array::from(vec![Some(1), None, Some(1)])
+        .nulls()
+        .cloned();
+    let mut tags = ListBuilder::new(Int32Builder::new());
+    tags.append_value([Some(1), None]);
+    tags.append_null();
+    tags.append_value([]);
+    let details = StructArray::new(
+        Fields::from(vec![Field::new("n", DataType::Int32, true)]),
+        vec![Arc::new(Int32Array::from(vec![1, 1, 1]))],
+        nulls.clone(),
+    );
+    let batch = RecordBatch::try_from_iter(vec![
+        (
+            "fingerprint",
+            Arc::new(FixedSizeBinaryArray::new(
+                2,
+                vec![4u8, 5, 4, 5, 4, 5].into(),
+                nulls.clone(),
+            )) as ArrayRef,
+        ),
+        (
+            "count",
+            Arc::new(Int32Array::new(vec![7, 7, 7].into(), nulls)) as ArrayRef,
+        ),
+        (
+            "name",
+            Arc::new(StringArray::from(vec![Some("a"), None, Some("a")])) as ArrayRef,
+        ),
+        ("tags", Arc::new(tags.finish()) as ArrayRef),
+        ("details", Arc::new(details) as ArrayRef),
+    ])
+    .unwrap();
+
+    let mut rows = vec![
+        json!({
+            "fingerprint": [4, 5], "count": 7, "name": "a",
+            "tags": [1, null], "details": { "n": 1 },
+        }),
+        json!({
+            "fingerprint": null, "count": null, "name": null, "tags": null, "details": null,
+        }),
+        json!({
+            "fingerprint": [4, 5], "count": 7, "name": "a", "tags": [], "details": { "n": 1 },
+        }),
+    ];
+    assert_eq!(record_batch_to_json(&batch).unwrap(), rows);
+    assert_eq!(
+        record_batch_to_json(&batch.slice(1, 2)).unwrap(),
+        rows.split_off(1)
     );
 }
