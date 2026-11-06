@@ -18,8 +18,9 @@ use crate::workspace::{
 /// write, removal and rename to itself: run a file tool on it to learn what
 /// the tool would leave on disk ([`changes`](Self::changes)) while the disk
 /// stays as it is. It runs no commands, since what a command changes cannot
-/// be kept from the disk. Paths are kept as given, so a caller folds them
-/// first, as the file tools do.
+/// be kept from the disk. It takes paths as the file tools pass them:
+/// folded, with no `..`, and links on the way already followed. It follows
+/// none itself, so another spelling of a file is another path here.
 ///
 /// ```
 /// use std::sync::Arc;
@@ -153,11 +154,11 @@ impl Workspace for Overlay {
             true => Stat::Missing,
             false => self.inner.stat(path)?,
         };
-        let written_below = |(kept, bytes): &(PathBuf, Option<Arc<[u8]>>)| {
-            bytes.is_some() && kept.starts_with(path)
-        };
+        // A file written below makes a directory, which stays when that
+        // file is removed again.
+        let below = |(kept, _): &(PathBuf, _)| kept != path && kept.starts_with(path);
         match stat {
-            Stat::Missing if self.kept().iter().any(written_below) => Ok(Stat::Dir),
+            Stat::Missing if self.kept().iter().any(below) => Ok(Stat::Dir),
             Stat::Missing => {
                 let parent = path.parent().filter(|it| !it.as_os_str().is_empty());
                 match parent.map(|parent| self.stat(parent)).transpose()? {
@@ -179,14 +180,15 @@ impl Workspace for Overlay {
                     .to_vec(),
             }),
             Some(None) => Err(ErrorKind::NotFound.into()),
+            None if self.shadowed(path) => Err(ErrorKind::NotFound.into()),
             None => self.inner.read(path, limit),
         }
     }
 
     fn excerpt(&self, path: &Path, first: usize, count: usize) -> io::Result<Excerpt> {
         match self.held(path) {
-            None => self.inner.excerpt(path, first, count),
-            Some(_) => excerpt_of(self, path, first, count),
+            None if !self.shadowed(path) => self.inner.excerpt(path, first, count),
+            _ => excerpt_of(self, path, first, count),
         }
     }
 

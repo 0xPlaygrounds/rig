@@ -148,7 +148,8 @@ fn an_overlay_tells_where_a_path_is_as_its_workspace_does() {
 /// A file is no directory, whether it is held here or under the overlay,
 /// locally or on a remote whose `stat` calls such a path missing: a write
 /// or a rename beneath it is refused and nothing changes. Once it is
-/// removed the path is a directory to make, which a write cannot replace.
+/// removed nothing is beneath it to read, and the path is a directory to
+/// make, which a write cannot replace even once the file below is gone.
 #[test]
 fn an_overlay_refuses_a_path_beneath_a_file_it_holds() {
     let remote = ["sh", "-c", "exec sh -c \"$1\"", "transport"];
@@ -187,8 +188,13 @@ fn an_overlay_refuses_a_path_beneath_a_file_it_holds() {
             let child = parent.join("child");
             assert!(overlay.remove(parent).is_ok());
             assert!(matches!(overlay.stat(&child), Ok(Stat::Missing)), "{name}");
+            let read = overlay.read(&child, 10).err().map(|it| it.kind());
+            assert_eq!(read, Some(ErrorKind::NotFound), "{name}");
             let written = overlay.write(&child, b"child");
             assert!(written.is_ok(), "{name}: {written:?}");
+            assert!(matches!(overlay.stat(parent), Ok(Stat::Dir)), "{name}");
+            assert!(overlay.write(parent, b"a file again").is_err());
+            assert!(overlay.remove(&child).is_ok());
             assert!(matches!(overlay.stat(parent), Ok(Stat::Dir)), "{name}");
             assert!(overlay.write(parent, b"a file again").is_err());
         }
