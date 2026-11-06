@@ -263,10 +263,14 @@ impl Converse {
 }
 
 impl Converse {
-    /// Whether rig's shipped catalog lists the model `model` resolves to. A
-    /// spec the caller binds counts only under the id of a shipped row.
+    /// Whether rig's shipped catalog lists the model `model` resolves to. For
+    /// this wire's own model, a spec the caller binds decides by its own id,
+    /// which an application inference profile ARN does not carry; it counts
+    /// only as the id of a shipped row.
     pub(crate) fn listed(&self, model: &str) -> bool {
-        self.spec(model)
+        let bound = self.facts.spec().filter(|_| model == self.model);
+        bound
+            .or_else(|| self.spec(model))
             .is_some_and(|spec| spec_in(&ModelFacts::default(), &spec.id).is_some())
     }
 }

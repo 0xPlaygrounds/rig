@@ -195,12 +195,15 @@ fn a_later_system_message_stays_in_place() {
 }
 
 /// A short cache marks the system prompt and the last message, also after
-/// a reasoning turn on a Claude model the catalog lists (#1673, #3088).
+/// a reasoning turn on a Claude model the catalog lists, or a profile ARN
+/// bound to one's spec (#1673, #3088).
 /// Reasoning another model made goes as text, so it is no reasoning turn
 /// for the model it goes to.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
+    use rig_core::catalog::{Catalog, ModelFacts};
     use rig_core::completion::CacheRetention;
+    use rig_core::providers::registry::ProviderId;
     let cached =
         |history: Vec<Message>| CompletionRequest::from(history).cache(CacheRetention::Short);
     let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
@@ -224,13 +227,23 @@ fn cache_points_follow_what_the_request_sends() {
             Message::user("more"),
         ]
     };
-    for model in [
-        CLAUDE,
-        ANTHROPIC_CLAUDE_HAIKU_4_5,
-        "eu.anthropic.claude-haiku-5-5",
-        "us.anthropic.claude-opus-5-5",
-    ] {
-        let body = sent_on(&Converse::new(model), history(model));
+    let bedrock = ProviderId::catalog("aws_bedrock").expect("a known vendor");
+    let sonnet = Catalog::builtin()
+        .get_exact(bedrock, "us.anthropic.claude-sonnet-4-6")
+        .expect("listed")
+        .clone();
+    let wires = [
+        Converse::new(CLAUDE),
+        Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5),
+        Converse::new("eu.anthropic.claude-haiku-5-5"),
+        Converse::new("us.anthropic.claude-opus-5-5"),
+        Converse::new(PROFILE)
+            .with_family(Family::Claude)
+            .with_facts(ModelFacts::new(sonnet)),
+    ];
+    for wire in wires {
+        let model = wire.model.as_str();
+        let body = sent_on(&wire, history(model));
         assert_eq!(
             body["messages"][1]["content"][0],
             reasoning("hm", Some("sig")),
