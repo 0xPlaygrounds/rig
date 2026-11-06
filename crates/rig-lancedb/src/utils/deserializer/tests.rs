@@ -6,7 +6,8 @@ use arrow_array::{
     RecordBatch, StringArray, StructArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     builder::{
         FixedSizeBinaryBuilder, FixedSizeListBuilder, Int32Builder, ListBuilder, MapBuilder,
-        NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, UnionBuilder,
+        NullBuilder, StringBuilder, StringDictionaryBuilder, StringRunBuilder, StructBuilder,
+        UnionBuilder,
     },
     types::{Float64Type, Int8Type, Int16Type, Int32Type},
 };
@@ -205,21 +206,9 @@ async fn test_dictionary_deserialization() {
     assert_eq!(
         record_batch_to_json(&record_batch).unwrap(),
         vec![
-            json!({
-                "some_dict": {
-                    "2": ""
-                }
-            }),
-            json!({
-                "some_dict": {
-                    "0": "abc"
-                }
-            }),
-            json!({
-                "some_dict": {
-                    "1": "def"
-                }
-            })
+            json!({ "some_dict": "def" }),
+            json!({ "some_dict": null }),
+            json!({ "some_dict": "abc" }),
         ]
     );
 }
@@ -584,6 +573,73 @@ fn map_entries_stay_with_their_row() {
     assert_eq!(
         record_batch_to_json(&batch).unwrap(),
         vec![json!({ "attributes": { "a": null } })]
+    );
+
+    let mut lists = MapBuilder::new(
+        None,
+        StringBuilder::new(),
+        ListBuilder::new(StringDictionaryBuilder::<Int32Type>::new()),
+    );
+    let rows: [&[(&str, &[&str])]; 3] = [
+        &[("k0", &["a", "b"]), ("k1", &["a"])],
+        &[],
+        &[("k2", &[]), ("k3", &["b", "a", "b"]), ("k4", &[])],
+    ];
+    for entries in rows {
+        for (key, items) in entries {
+            lists.keys().append_value(key);
+            for item in *items {
+                lists.values().values().append_value(item);
+            }
+            lists.values().append(true);
+        }
+        lists.append(true).unwrap();
+    }
+    lists.append(false).unwrap();
+    let batch =
+        RecordBatch::try_from_iter(vec![("attributes", Arc::new(lists.finish()) as ArrayRef)])
+            .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![
+            json!({ "attributes": { "k0": ["a", "b"], "k1": ["a"] } }),
+            json!({ "attributes": {} }),
+            json!({ "attributes": { "k2": [], "k3": ["b", "a", "b"], "k4": [] } }),
+            json!({ "attributes": null }),
+        ]
+    );
+
+    let mut structs = MapBuilder::new(
+        None,
+        StringBuilder::new(),
+        StructBuilder::new(
+            vec![Field::new_dictionary(
+                "d",
+                DataType::Int32,
+                DataType::Utf8,
+                true,
+            )],
+            vec![Box::new(StringDictionaryBuilder::<Int32Type>::new())],
+        ),
+    );
+    for (key, value) in [("k0", "a"), ("k1", "b"), ("k2", "a")] {
+        structs.keys().append_value(key);
+        structs
+            .values()
+            .field_builder::<StringDictionaryBuilder<Int32Type>>(0)
+            .unwrap()
+            .append_value(value);
+        structs.values().append(true);
+    }
+    structs.append(true).unwrap();
+    let batch =
+        RecordBatch::try_from_iter(vec![("attributes", Arc::new(structs.finish()) as ArrayRef)])
+            .unwrap();
+    assert_eq!(
+        record_batch_to_json(&batch).unwrap(),
+        vec![json!({
+            "attributes": { "k0": { "d": "a" }, "k1": { "d": "b" }, "k2": { "d": "a" } }
+        })]
     );
 }
 
