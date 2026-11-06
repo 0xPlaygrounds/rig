@@ -16,12 +16,13 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
-        VectorStoreIndex, request::VectorSearchRequest,
+        VectorStoreIndex,
+        request::{FilterError, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
 };
 use rig_reqwest::from_reqwest;
-use serde::{Deserialize, Serialize, de::DeserializeOwned, de::IgnoredAny};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 /// Vector store backed by a [Milvus](https://milvus.io/) collection.
@@ -98,6 +99,26 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
+/// The largest `f32` below `threshold`, refusing one `f32` cannot hold.
+///
+/// Milvus compares `f32` scores and excludes the radius, so a `COSINE` or `IP`
+/// score equal to the threshold stays. On `L2` the radius is a maximum, so a
+/// distance within one `f32` step under the threshold can be left out.
+fn radius(threshold: f64) -> Result<f32, FilterError> {
+    let rounded = threshold as f32;
+    if !rounded.is_finite() {
+        return Err(FilterError::Must(
+            threshold.to_string(),
+            "fit in f32".into(),
+        ));
+    }
+    Ok(if f64::from(rounded) < threshold {
+        rounded
+    } else {
+        rounded.next_down()
+    })
+}
+
 impl MilvusVectorStore {
     /// Creates a store over a collection reached at `base_url`, which is the
     /// Milvus instance or Zilliz cluster endpoint. Requests are unauthenticated
@@ -137,25 +158,26 @@ impl MilvusVectorStore {
 
     /// Builds the search body. A request threshold becomes a Milvus range search,
     /// so it applies to the score in the collection's own metric and the limit
-    /// still fills from every match. Milvus excludes the radius itself, so it sits
-    /// one `f32` step below the threshold to keep a score equal to the threshold.
+    /// still fills from every match. A threshold `f32` cannot hold is refused.
     fn create_search_request(
         &self,
         data: Vec<f64>,
         req: &VectorSearchRequest<Filter>,
         id_only: bool,
-    ) -> SearchRequest<'_> {
+    ) -> Result<SearchRequest<'_>, VectorStoreError> {
         // Milvus always returns the id and distance, and refuses them as output
         // fields unless the collection stores a field of that name.
         let output_fields = if id_only { vec![] } else { vec!["document"] };
 
         let search_params = req
             .threshold()
-            .map(|threshold| json!({ "params": { "radius": (threshold as f32).next_down() } }));
+            .map(radius)
+            .transpose()?
+            .map(|radius| json!({ "params": { "radius": radius } }));
 
         let filter = req.filter().cloned().map(Filter::into_inner);
 
-        SearchRequest {
+        Ok(SearchRequest {
             collection_name: &self.collection_name,
             db_name: &self.database_name,
             data: [data],
@@ -164,19 +186,19 @@ impl MilvusVectorStore {
             anns_field: "embedding",
             limit: req.samples() as usize,
             output_fields,
-        }
+        })
     }
 
-    /// Posts `body` to an entities endpoint and decodes the response `data`.
+    /// Posts `body` to an entities endpoint and returns the response body.
     ///
     /// Milvus reports most failures as HTTP 200 with a nonzero `code`. Those and
     /// any non-200 status return [`VectorStoreError::ExternalAPIError`] with the
     /// response body.
-    async fn post<Data: DeserializeOwned>(
+    async fn post(
         &self,
         endpoint: &str,
         body: &impl Serialize,
-    ) -> Result<Data, VectorStoreError> {
+    ) -> Result<String, VectorStoreError> {
         let url = format!(
             "{base_url}/v2/vectordb/entities/{endpoint}",
             base_url = self.base_url
@@ -197,7 +219,7 @@ impl MilvusVectorStore {
             return Err(VectorStoreError::ExternalAPIError(status, text));
         }
 
-        Ok(serde_json::from_str::<ResponseData<Data>>(&text)?.data)
+        Ok(text)
     }
 
     /// Embeds the query and returns the matching rows.
@@ -207,9 +229,10 @@ impl MilvusVectorStore {
         id_only: bool,
     ) -> Result<Vec<Row>, VectorStoreError> {
         let embedding = self.model.embed_text(req.query()).await?;
-        let body = self.create_search_request(embedding.vec, req, id_only);
+        let body = self.create_search_request(embedding.vec, req, id_only)?;
+        let text = self.post("search", &body).await?;
 
-        self.post("search", &body).await
+        Ok(serde_json::from_str::<ResponseData<Vec<Row>>>(&text)?.data)
     }
 }
 
@@ -227,7 +250,7 @@ impl InsertDocuments for MilvusVectorStore {
                 })
             })?;
 
-        self.post::<IgnoredAny>("insert", &self.create_insert_request(data))
+        self.post("insert", &self.create_insert_request(data))
             .await?;
 
         Ok(())

@@ -76,13 +76,13 @@ curl --request POST \
 EOF
 ```
 
-This will create and load a collection with the following fields:
+This will create a collection with the following fields:
 - an `id` field (auto-generated as i64 but converted to String when using `top_n()`)
 - an `embedding` field for storing vectors
 - a `document` field (for storing metadata)
 - an `embedded_text` field (for the actual item that was embedded)
 
-A search threshold runs as a Milvus range search on the collection's metric. With `COSINE` or `IP` it is the minimum score. With `L2`, where lower is closer, it is an exclusive maximum distance.
+A search threshold runs as a Milvus range search on the collection's metric. With `COSINE` or `IP` it is the minimum score. With `L2`, where lower is closer, it is an exclusive maximum distance, exact to one `f32` step.
 
 Once done, you'll now be ready to use!
 

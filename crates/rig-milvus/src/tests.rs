@@ -93,10 +93,14 @@ async fn insert(stub: &Stub) -> Result<(), VectorStoreError> {
 
 #[tokio::test]
 async fn insert_succeeds_only_on_application_code_zero() -> anyhow::Result<()> {
-    let accepted = r#"{"code":0,"cost":0,"data":{"insertCount":1,"insertIds":[7]}}"#;
-    let stub = Stub::start(200, accepted)?;
-    let result = insert(&stub).await;
-    ensure!(result.is_ok(), "accepted insert failed: {result:?}");
+    for accepted in [
+        r#"{"code":0,"cost":0,"data":{"insertCount":1,"insertIds":[7]}}"#,
+        r#"{"code":0}"#,
+    ] {
+        let stub = Stub::start(200, accepted)?;
+        let result = insert(&stub).await;
+        ensure!(result.is_ok(), "accepted insert failed: {result:?}");
+    }
 
     let stub = Stub::start(200, REJECTED)?;
     let result = insert(&stub).await;
@@ -178,6 +182,31 @@ async fn thresholds_become_a_range_search_beside_the_caller_filter() -> anyhow::
         radius.is_some_and(|radius| radius < 0.5 && radius as f32 == 0.5_f32.next_down()),
         "no radius just below the threshold: {body}"
     );
+    Ok(())
+}
+
+#[test]
+fn radius_is_the_largest_f32_below_the_threshold() {
+    // 0.7 rounds down to an f32 already below it; 0.5 is exact; 0.6 rounds up.
+    assert_eq!(crate::radius(0.7).ok(), Some(0.7_f32));
+    assert_eq!(crate::radius(0.5).ok(), Some(0.5_f32.next_down()));
+    assert_eq!(crate::radius(0.6).ok(), Some(0.6_f32.next_down()));
+}
+
+#[tokio::test]
+async fn thresholds_f32_cannot_hold_are_refused() -> anyhow::Result<()> {
+    for threshold in [f64::NAN, f64::INFINITY, -1e300] {
+        let req = VectorSearchRequest::builder()
+            .query("alpha")
+            .samples(1)
+            .threshold(threshold)
+            .build();
+        let result = Stub::start(200, HIT)?.store.top_n_ids(req).await;
+        ensure!(
+            matches!(result, Err(VectorStoreError::FilterError(_))),
+            "threshold {threshold} returned {result:?}"
+        );
+    }
     Ok(())
 }
 
