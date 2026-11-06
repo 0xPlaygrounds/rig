@@ -218,9 +218,8 @@ pub struct Paired {
 /// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
 /// turn left directly after another is merged into it when the two can
-/// share an origin and ended the same way, and an empty turn after a turn
-/// or among waiting calls is left out; `repairs` reports the input as
-/// [`pair`] read it.
+/// share an origin and ended the same way, and an empty turn before a tool
+/// result is left out; `repairs` reports the input as [`pair`] read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
     let shaped = shape(messages, true);
     Paired {
@@ -368,19 +367,11 @@ fn share_origin(first: Option<&Origin>, later: Option<&Origin>) -> bool {
     }
 }
 
-/// How a turn ended, as far as merging goes: what a failed or aborted turn
-/// sends is decided for that turn alone.
-#[derive(PartialEq)]
-enum Outcome {
-    Completed,
-    Failed,
-    Aborted,
-}
-
 /// What decides whether two assistant turns in a row merge.
 struct TurnKind {
     empty: bool,
-    outcome: Outcome,
+    failed: bool,
+    aborted: bool,
     origin: Option<Origin>,
 }
 
@@ -388,11 +379,8 @@ impl TurnKind {
     fn of(turn: &AssistantMessage) -> Self {
         Self {
             empty: turn.content.is_empty(),
-            outcome: match turn.stop {
-                Some(StopReason::Error(_)) => Outcome::Failed,
-                Some(StopReason::Aborted(_)) => Outcome::Aborted,
-                _ => Outcome::Completed,
-            },
+            failed: matches!(turn.stop, Some(StopReason::Error(_))),
+            aborted: matches!(turn.stop, Some(StopReason::Aborted(_))),
             origin: turn.origin.clone(),
         }
     }
@@ -404,7 +392,8 @@ impl TurnKind {
     fn merges(&self, later: &Self) -> bool {
         self.empty
             || later.empty
-            || (self.outcome == later.outcome
+            || (self.failed == later.failed
+                && self.aborted == later.aborted
                 && share_origin(self.origin.as_ref(), later.origin.as_ref()))
     }
 }
@@ -483,26 +472,15 @@ fn walk(
         sourced,
         ..Walk::default()
     };
-    for step in steps(history) {
+    let parting = if sourced {
+        parting_turns(&history)
+    } else {
+        Vec::new()
+    };
+    walk.repairs
+        .extend(parting.iter().map(|(_, why)| why.clone()));
+    for step in steps(history, &parting) {
         match step {
-            // An empty turn can't end waiting calls in a repair, or it would
-            // part them from their results: it is left out, and reported.
-            Step::Turn(index, Some(turn))
-                if sourced
-                    && turn.content.is_empty()
-                    && (walk.after_turn.as_ref().is_some_and(|before| !before.empty)
-                        || !walk.waiting.is_empty()) =>
-            {
-                walk.repairs.push(match walk.waiting.first() {
-                    Some((call_id, _)) if walk.after_turn.is_none() => {
-                        PairingError::UnansweredToolCall {
-                            index: walk.waiting_at,
-                            call_id: call_id.clone(),
-                        }
-                    }
-                    _ => PairingError::ConsecutiveAssistant { index },
-                });
-            }
             Step::Turn(index, turn) => {
                 if let (Some(before), Some(turn)) = (&walk.after_turn, &turn)
                     && before.merges(&TurnKind::of(turn))
@@ -677,11 +655,46 @@ enum Step {
     User(usize, Vec<(usize, UserContent)>),
 }
 
+/// The empty turns before a tool result, with no other turn between, and
+/// why each is left out of a repair. A result answers only a turn before
+/// it, so such a turn can only part it from its call; a result after it is
+/// an orphan as the input reads, so the history was never valid.
+fn parting_turns(history: &[Option<Message>]) -> Vec<(usize, PairingError)> {
+    let mut parting = Vec::new();
+    let mut result = None;
+    for (index, message) in history.iter().enumerate().rev() {
+        match message {
+            Some(Message::System { .. }) => {}
+            Some(Message::User { content }) => {
+                let found = content.iter().find_map(|part| match part {
+                    UserContent::ToolResult(found) => Some((index, found.call.clone())),
+                    _ => None,
+                });
+                result = found.or(result);
+            }
+            Some(Message::Assistant(turn)) if turn.content.is_empty() => {
+                if let Some((at, call_id)) = &result {
+                    let why = PairingError::OrphanToolResult {
+                        index: *at,
+                        call_id: call_id.clone(),
+                    };
+                    parting.push((index, why));
+                }
+            }
+            _ => result = None,
+        }
+    }
+    parting
+}
+
 /// `history` as steps, each run of adjacent non-empty user messages made
 /// one, so results split over several messages answer the turn before them.
-fn steps(history: Vec<Option<Message>>) -> Vec<Step> {
+fn steps(history: Vec<Option<Message>>, left_out: &[(usize, PairingError)]) -> Vec<Step> {
     let mut steps: Vec<Step> = Vec::with_capacity(history.len());
     for (index, message) in history.into_iter().enumerate() {
+        if left_out.iter().any(|(at, _)| *at == index) {
+            continue;
+        }
         match message {
             None => steps.push(Step::Turn(index, None)),
             Some(Message::Assistant(turn)) => steps.push(Step::Turn(index, Some(turn))),

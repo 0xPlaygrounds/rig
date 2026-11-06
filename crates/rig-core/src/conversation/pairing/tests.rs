@@ -463,14 +463,37 @@ fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
         assert_eq!(kept.origin.as_ref(), first, "{turns:?}");
     }
     let lone = repair(vec![empty(None), failed.clone()]).messages;
-    assert_eq!(lone, vec![failed]);
+    assert_eq!(lone, vec![failed.clone()]);
 
     // An empty turn can't part a call from its result, or a result from
     // the rest of its batch.
     let (asked, answer) = (assistant(vec![call("c1")]), results(&["c1"]));
     let parted = vec![asked.clone(), empty(None), answer.clone()];
     assert!(validate(&parted).is_err());
-    assert_eq!(repair(parted).messages, vec![asked, answer]);
+    assert_eq!(repair(parted).messages, vec![asked.clone(), answer.clone()]);
+    for parted in [
+        vec![
+            asked.clone(),
+            Message::user("wait"),
+            empty(None),
+            answer.clone(),
+        ],
+        vec![
+            asked.clone(),
+            empty(None),
+            Message::user("wait"),
+            empty(None),
+            answer.clone(),
+        ],
+    ] {
+        assert!(validate(&parted).is_err(), "{parted:?}");
+        let joined = vec![asked.clone(), Message::user("wait"), answer.clone()];
+        assert_eq!(repair(parted).messages, repair(joined).messages);
+    }
+    // Where it parts nothing it stands, so a valid history stays valid.
+    let standing = vec![Message::user("hi"), failed.clone()];
+    assert_eq!(validate(&standing), Ok(()));
+    assert_eq!(repair(standing.clone()).messages, standing);
     let batch = assistant(vec![call("c1"), call("c2")]);
     let (one, two) = (results(&["c1"]), results(&["c2"]));
     let parted = vec![batch.clone(), one.clone(), empty(None), two.clone()];

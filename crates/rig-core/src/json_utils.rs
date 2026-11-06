@@ -66,20 +66,16 @@ impl<'a> Literal<'a> {
             Some(exponent) => (-1, exponent),
             None => (1, exponent.trim_start_matches('+')),
         };
-        if digits.is_empty() {
-            return Self {
-                sign: 0,
-                exponent_sign: 1,
-                exponent: "",
-                shift: 0,
-                digits: String::new(),
-            };
-        }
+        let zero = digits.is_empty();
         Self {
-            sign,
+            sign: if zero { 0 } else { sign },
             exponent_sign,
-            exponent,
-            shift: digits.len() as i128 - fraction.len() as i128,
+            exponent: if zero { "" } else { exponent },
+            shift: if zero {
+                0
+            } else {
+                digits.len() as i128 - fraction.len() as i128
+            },
             digits: digits.trim_end_matches('0').to_owned(),
         }
     }
