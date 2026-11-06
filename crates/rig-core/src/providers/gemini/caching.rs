@@ -60,6 +60,10 @@
 //!   twice the longest gap seen, never less than [`AutoCache::ttl`], never more
 //!   than 81 minutes, past which keeping a cache costs more than it saves at
 //!   the default prices), and a cache read close to expiry is extended.
+//! - A shared-prefix cache that expired is replaced by the next call if a call
+//!   other than its creator read it. If none did, the replacement waits for a
+//!   run of calls one cache could have served, twice as long each time.
+//! - A replaced cache stays in [`CacheBook::leases`] until it is deleted.
 //! - A replaced cache is deleted when the roll replaces it, and a
 //!   conversation cache nobody has read for a while is deleted too.
 //! - A cache that answers 403 (deleted elsewhere, or expired early) is
@@ -116,6 +120,11 @@ fn system_now() -> u64 {
 /// reads, storage costs more than a cached read saves at the default prices.
 const MAX_TTL_SECS: u64 = 81 * 60;
 
+/// How long a cache delete may go unanswered. A cache whose delete runs out
+/// of time stays in the book.
+pub(crate) const DELETE_TIMEOUT: Duration =
+    Duration::from_millis(if cfg!(test) { 500 } else { 10_000 });
+
 /// A cache is used only with more than this many seconds left.
 const EXPIRY_MARGIN_SECS: u64 = 5;
 
@@ -130,7 +139,8 @@ const MIN_IDLE_SECS: u64 = 60;
 /// from its catalog spec. The catalog holds no storage price.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AutoCache {
-    /// The shortest TTL a new cache gets.
+    /// The shortest TTL a new cache gets. A cache that would come within 5
+    /// seconds of expiry before its next expected call is not created.
     pub ttl: Duration,
     /// Smallest request implicit caching serves (4,096 tokens on Gemini 3).
     pub implicit_floor: u64,
@@ -205,6 +215,13 @@ pub struct Lease {
     pub expires_at: u64,
     /// The model the cache belongs to.
     pub model: String,
+}
+
+impl Lease {
+    /// Whether a request sent at `now` can still read the cache.
+    pub(crate) fn live_at(&self, now: u64) -> bool {
+        self.expires_at > now + EXPIRY_MARGIN_SECS
+    }
 }
 
 /// Something that happened to a cache.
@@ -287,7 +304,7 @@ pub struct CacheReport {
     /// Σ tokens × hours each cache lived, until it was deleted, lost or
     /// expired, or until now for a live one.
     pub token_hours: f64,
-    /// The caches still live.
+    /// The caches requests read.
     pub live: Vec<Lease>,
 }
 
@@ -326,15 +343,38 @@ struct Life {
     expires_at: u64,
     ended: Option<u64>,
     last_read: u64,
+    /// Requests that read it, the one that created it among them.
+    reads: u64,
     line_gap: u64,
+}
+
+/// The calls seen on one prefix.
+#[derive(Default)]
+struct Lineage {
+    /// The conversations on it, by their first content.
+    firsts: HashSet<String>,
+    /// When the current run of calls began: the calls one cache made then
+    /// would have served.
+    run_start: Option<u64>,
+    /// The calls in the run after its first, which that cache would have
+    /// read.
+    run_reads: u64,
+    /// The reads a run must show before an unproven cache is created. It
+    /// doubles with each cache that expired with no reader but its creator.
+    owed: u64,
 }
 
 #[derive(Default)]
 pub(crate) struct Book {
     pub(crate) leases: HashMap<String, Lease>,
     lives: BTreeMap<String, Life>,
-    /// For each prefix, the conversations seen on it, by their first content.
-    lineages: HashMap<String, HashSet<String>>,
+    lineages: HashMap<String, Lineage>,
+    /// Caches a replacement took the digest of, by name. They may still be
+    /// alive on the server, so they stay the book's until they are deleted.
+    displaced: HashMap<String, Lease>,
+    /// How many times [`CacheBook::close`] ran, so that a create it did not
+    /// see knows to delete its cache.
+    pub(crate) closes: u64,
     lines: HashMap<String, Line>,
     events: Vec<CacheEvent>,
     report: CacheReport,
@@ -408,9 +448,12 @@ impl CacheBook {
         self.book().events.clone()
     }
 
-    /// The caches the book holds, for a checkpoint.
+    /// Every cache the book has not seen deleted, for a checkpoint: those it
+    /// reads and those a replacement displaced.
     pub fn leases(&self) -> Vec<Lease> {
-        let mut leases: Vec<Lease> = self.book().leases.values().cloned().collect();
+        let book = self.book();
+        let held = book.leases.values().chain(book.displaced.values());
+        let mut leases: Vec<Lease> = held.cloned().collect();
         leases.sort_by(|a, b| a.name.cmp(&b.name));
         leases
     }
@@ -426,9 +469,11 @@ impl CacheBook {
                 expires_at: lease.expires_at,
                 ended: None,
                 last_read: now,
+                // Whoever created it read it once.
+                reads: 1,
                 line_gap: 0,
             });
-            book.leases.insert(lease.digest.clone(), lease);
+            book.hold(lease);
         }
     }
 
@@ -453,8 +498,7 @@ impl CacheBook {
     pub(crate) fn retired(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
-        book.leases.remove(&lease.digest);
-        end_life(&mut book, &lease.name, now);
+        book.forget(lease, now);
         book.events.push(CacheEvent::Retired {
             name: lease.name.clone(),
             at: now,
@@ -466,8 +510,7 @@ impl CacheBook {
     pub(crate) fn lost(&self, lease: &Lease) {
         let now = self.now();
         let mut book = self.book();
-        book.leases.remove(&lease.digest);
-        end_life(&mut book, &lease.name, now);
+        book.forget(lease, now);
         book.events.push(CacheEvent::Lost {
             name: lease.name.clone(),
             at: now,
@@ -477,11 +520,53 @@ impl CacheBook {
     }
 }
 
-pub(crate) fn end_life(book: &mut Book, name: &str, now: u64) {
-    if let Some(life) = book.lives.get_mut(name)
-        && life.ended.is_none()
-    {
-        life.ended = Some(now);
+impl Book {
+    /// Whether `lease` is the cache requests on its digest read.
+    fn holds(&self, lease: &Lease) -> bool {
+        self.leases
+            .get(&lease.digest)
+            .is_some_and(|held| held.name == lease.name)
+    }
+
+    /// Whether `lease` is not yet deleted, as far as the book knows.
+    fn owns(&self, lease: &Lease) -> bool {
+        self.holds(lease) || self.displaced.contains_key(&lease.name)
+    }
+
+    /// Take `lease` in. The later expiry holds its digest, so a restore needs
+    /// no order, and the other cache is displaced, never dropped.
+    fn hold(&mut self, lease: Lease) {
+        let (held, other) = match self.leases.remove(&lease.digest) {
+            Some(old) if old.expires_at > lease.expires_at => (old, Some(lease)),
+            old => (lease, old),
+        };
+        if let Some(other) = other.filter(|other| other.name != held.name) {
+            self.displaced.insert(other.name.clone(), other);
+        }
+        self.leases.insert(held.digest.clone(), held);
+    }
+
+    /// Stop holding `lease`, now it is gone, and end its life. A live cache
+    /// displaced from its digest takes over.
+    fn forget(&mut self, lease: &Lease, now: u64) {
+        self.displaced.remove(&lease.name);
+        if self.holds(lease) {
+            self.leases.remove(&lease.digest);
+            let next = self
+                .displaced
+                .values()
+                .filter(|other| other.digest == lease.digest && other.live_at(now))
+                .max_by_key(|other| other.expires_at)
+                .map(|other| other.name.clone());
+            if let Some(next) = next.and_then(|name| self.displaced.remove(&name)) {
+                self.hold(next);
+            }
+        }
+        if let Some(life) = self.lives.get_mut(&lease.name)
+            && life.ended.is_none()
+        {
+            life.ended = Some(now);
+        }
     }
 }
 
@@ -721,6 +806,7 @@ pub(crate) struct Plan {
     pub(crate) extend: Option<(Lease, u64)>,
     pub(crate) line: String,
     pub(crate) coverable: u64,
+    pub(crate) closes: u64,
 }
 
 pub(crate) struct Create {
@@ -742,19 +828,17 @@ impl CacheBook {
         // `d` holds one digest per content boundary, `0..=n`.
         let at = |k: usize| digested.d.get(k).map_or("", String::as_str);
         let (prefix_estimate, content_estimates) = (digested.prefix, &digested.contents);
-        let mut book = self.book();
+        let mut guard = self.book();
+        let book = &mut *guard;
         let calibration = book.calibration.unwrap_or(1.0);
 
         // Who shares this prefix: a second conversation on it (sub-agents,
         // concurrent users, or the conversation a compaction started).
+        let lineage = book.lineages.entry(at(0).to_owned()).or_default();
         if n >= 1 {
-            let first = at(1).to_owned();
-            book.lineages
-                .entry(at(0).to_owned())
-                .or_default()
-                .insert(first);
+            lineage.firsts.insert(at(1).to_owned());
         }
-        let shared = book.lineages.get(at(0)).is_some_and(|seen| seen.len() >= 2);
+        let shared = lineage.firsts.len() >= 2;
 
         // Retire conversation caches nobody reads any more.
         let idle: Vec<Lease> = book
@@ -777,7 +861,7 @@ impl CacheBook {
                 book.leases
                     .get(at(k))
                     .filter(|lease| lease.model == model)
-                    .filter(|lease| lease.expires_at > now + EXPIRY_MARGIN_SECS)
+                    .filter(|lease| lease.live_at(now))
                     .cloned()
             })
             .filter(|lease| !idle.iter().any(|gone| gone.name == lease.name));
@@ -797,7 +881,12 @@ impl CacheBook {
             .as_ref()
             .filter(|lease| lease.covers > 0)
             .map_or_else(|| at(1.min(n)).to_owned(), |lease| lease.digest.clone());
-        let prefix_leased = book.leases.contains_key(at(0));
+        let held_prefix = book.leases.get(at(0));
+        let prefix_leased = held_prefix.is_some_and(|lease| lease.live_at(now));
+        let prefix_proven = held_prefix
+            .and_then(|lease| book.lives.get(&lease.name))
+            .is_some_and(|life| life.reads > 1);
+        let prefix_unread = held_prefix.is_some() && !prefix_proven;
         let line = book.lines.entry(line_key.clone()).or_insert_with(|| Line {
             rolled_at: now,
             ..Line::default()
@@ -813,6 +902,24 @@ impl CacheBook {
             .max(longest_gap.saturating_mul(2).min(MAX_TTL_SECS))
             .max(1);
 
+        // A proven cache earns its replacement. Without one, a cache must look
+        // likely to be read: this run of calls has to have shown enough reads.
+        let lineage = book.lineages.entry(at(0).to_owned()).or_default();
+        let in_run = |start: &u64| ttl_secs > now.saturating_sub(*start) + EXPIRY_MARGIN_SECS;
+        if lineage.run_start.as_ref().is_some_and(in_run) {
+            lineage.run_reads += 1;
+        } else {
+            lineage.run_start = Some(now);
+            lineage.run_reads = 0;
+        }
+        if prefix_proven {
+            lineage.owed = 0;
+        }
+        let owed = lineage
+            .owed
+            .max(1)
+            .saturating_mul(1 + u64::from(prefix_unread));
+
         let mut plan = Plan {
             read: read.clone(),
             create: None,
@@ -820,6 +927,7 @@ impl CacheBook {
             extend: None,
             line: line_key,
             coverable,
+            closes: book.closes,
         };
 
         // Past the ceiling, implicit caching serves: go inline until it fails.
@@ -829,13 +937,20 @@ impl CacheBook {
             return plan;
         }
 
-        let failed_below = line.failed_at.is_some_and(|at| coverable < at + p.min_gain);
+        // Create only what lives to the line's next call, or every call would
+        // create one. A gap past what the longest TTL spans is an idle spell,
+        // which must not stop a later cache.
+        let next_call = longest_gap.min(MAX_TTL_SECS / 2);
+        let may_create = ttl_secs > next_call + EXPIRY_MARGIN_SECS
+            && !line.failed_at.is_some_and(|at| coverable < at + p.min_gain);
         if read.is_none()
             && shared
             && !prefix_leased
             && (prefix_estimate as f64 * calibration) as u64 >= p.min_tokens
-            && !failed_below
+            && may_create
+            && (prefix_proven || lineage.run_reads >= owed)
         {
+            lineage.owed = owed;
             plan.create = Some(Create {
                 covers: 0,
                 digest: at(0).to_owned(),
@@ -844,7 +959,7 @@ impl CacheBook {
                 expected: (prefix_estimate as f64 * calibration) as u64,
                 replaces: None,
             });
-        } else if n >= 2 && roll_allowed && !failed_below {
+        } else if n >= 2 && roll_allowed && may_create {
             let cached = read.as_ref().map_or(0, |lease| lease.tokens);
             let gain = coverable.saturating_sub(cached);
             let held_hours = now.saturating_sub(line.rolled_at).max(60) as f64 / 3600.0;
@@ -943,6 +1058,7 @@ impl CacheBook {
                 expires_at: lease.expires_at,
                 ended: None,
                 last_read: now,
+                reads: 0,
                 line_gap: previous.longest_gap,
             },
         );
@@ -959,7 +1075,7 @@ impl CacheBook {
             tokens,
             at: now,
         });
-        book.leases.insert(lease.digest.clone(), lease.clone());
+        book.hold(lease.clone());
         tracing::info!(target: "gemini.cache.created", name = %lease.name, tokens, covers = create.covers);
         lease
     }
@@ -983,12 +1099,23 @@ impl CacheBook {
         });
     }
 
-    pub(crate) fn extended(&self, lease: &Lease, ttl_secs: u64) {
+    /// Whether the book still owns `lease`.
+    pub(crate) fn owns(&self, lease: &Lease) -> bool {
+        self.book().owns(lease)
+    }
+
+    /// Record a successful extend. Returns whether the book still owns the
+    /// cache; if not, the extend kept a retired cache alive.
+    pub(crate) fn extended(&self, lease: &Lease, ttl_secs: u64) -> bool {
         let now = self.now();
         let expires_at = now + ttl_secs;
-        let mut book = self.book();
-        if let Some(held) = book.leases.get_mut(&lease.digest) {
-            held.expires_at = expires_at;
+        let mut guard = self.book();
+        let book = &mut *guard;
+        let owned = book.owns(lease);
+        let held = book.leases.get_mut(&lease.digest);
+        let held = held.filter(|held| held.name == lease.name);
+        if let Some(owned) = held.or(book.displaced.get_mut(&lease.name)) {
+            owned.expires_at = expires_at;
         }
         if let Some(life) = book.lives.get_mut(&lease.name) {
             life.expires_at = expires_at;
@@ -999,6 +1126,7 @@ impl CacheBook {
             at: now,
         });
         tracing::info!(target: "gemini.cache.extended", name = %lease.name, expires_at);
+        owned
     }
 
     pub(crate) fn touched(&self, lease: &Lease) {
@@ -1010,6 +1138,7 @@ impl CacheBook {
             .map_or(0, |line| line.longest_gap);
         if let Some(life) = book.lives.get_mut(&lease.name) {
             life.last_read = now;
+            life.reads += 1;
             life.line_gap = life.line_gap.max(gap);
         }
     }

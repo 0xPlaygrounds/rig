@@ -822,24 +822,25 @@ async fn lifecycle() {
     );
 
     // (b) No request ever named a cache that had expired: the only 403 on a
-    // generate call is (c)'s.
+    // generate call or an extend is (c)'s.
     let forbidden: Vec<usize> = recording
         .interactions
         .iter()
         .enumerate()
         .filter(|(_, interaction)| {
-            interaction.path.contains(":generateContent") && interaction.status == 403
+            (interaction.path.contains(":generateContent") || interaction.method == "PATCH")
+                && interaction.status == 403
         })
         .map(|(index, _)| index)
         .collect();
     assert_eq!(
         forbidden.len(),
         1,
-        "exactly one 403 on a generate call: the deleted cache"
+        "exactly one 403 on a generate call or an extend: the deleted cache"
     );
 
-    // (c) The 403 is followed at once by the same request inline, which
-    // succeeds, and later by a new cache.
+    // (c) The 403, here on the extend, is followed at once by the request
+    // inline, which succeeds, and later by a new cache.
     let retry = &recording.interactions[forbidden[0] + 1];
     assert!(retry.path.contains(":generateContent") && retry.status == 200);
     assert!(!retry.request.contains("\"cachedContent\""));

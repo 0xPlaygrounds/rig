@@ -109,3 +109,339 @@ fn a_book_shows_its_policy_and_prefix() {
         "{shown}"
     );
 }
+
+/// Answers `cachedContents` creates with `cachedContents/cache-<n>`, extends
+/// with a 403 and every other request with a short reply, recording the cache
+/// each one read. A create waits for `.1`. A cache named in `.2` answers a
+/// read with 403.
+#[derive(Clone, Default)]
+struct CacheServer(
+    Arc<Mutex<(usize, Vec<Option<String>>)>>,
+    Arc<futures::lock::Mutex<()>>,
+    Arc<Mutex<HashSet<String>>>,
+);
+
+impl crate::driver::Transport<super::super::completion::GenerateContent> for CacheServer {
+    fn send(
+        &self,
+        payload: crate::wire::Encoded,
+        _: crate::driver::Exchange,
+    ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        use crate::driver::{Opened, Opening};
+        use crate::error::ProviderError;
+        use crate::wire::WireFrame;
+
+        let refused =
+            |status| Opening::failed(ProviderError::from_http_response(status, "refused"));
+        let reply = |text: String| Opened::new(futures::stream::iter([Ok(WireFrame::Text(text))]));
+        let path = payload.request.uri().path();
+        if payload.request.method() == http::Method::PATCH {
+            return refused(http::StatusCode::FORBIDDEN);
+        }
+        if path.ends_with("/cachedContents") {
+            let (seen, gate) = (self.0.clone(), self.1.clone());
+            return Opening::new(async move {
+                drop(gate.lock().await);
+                let mut seen = seen.lock().unwrap_or_else(PoisonError::into_inner);
+                seen.0 += 1;
+                let cache = serde_json::json!({
+                    "name": format!("cachedContents/cache-{}", seen.0),
+                    "usageMetadata": {"totalTokenCount": 2048}
+                });
+                Ok(reply(cache.to_string()))
+            });
+        }
+        let body = crate::test_utils::json_body(&payload.request);
+        let read = body.get("cachedContent").and_then(|name| name.as_str());
+        let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.1.push(read.map(str::to_owned));
+        if read.is_some_and(|name| self.2.lock().expect("refused").contains(name)) {
+            let error = ProviderError::from_http_response(http::StatusCode::FORBIDDEN, "refused");
+            return Opening::ready(Opened::new(futures::stream::iter([Err(error)])));
+        }
+        Opening::ready(reply(
+            serde_json::json!({
+                "candidates": [{
+                    "content": {"role": "model", "parts": [{"text": "ok"}]},
+                    "finishReason": "STOP"
+                }],
+                "usageMetadata": {"promptTokenCount": 2050, "candidatesTokenCount": 1}
+            })
+            .to_string(),
+        ))
+    }
+}
+
+/// Answers every `cachedContents` delete once `.1` is free, recording the
+/// names. While `.2` is set it answers 500.
+#[derive(Clone, Default)]
+struct DeleteServer(
+    Arc<Mutex<Vec<String>>>,
+    Arc<futures::lock::Mutex<()>>,
+    Arc<std::sync::atomic::AtomicBool>,
+);
+
+impl crate::driver::Transport<super::super::cached_content::CachedContents> for DeleteServer {
+    fn send(
+        &self,
+        payload: crate::wire::Encoded,
+        _: crate::driver::Exchange,
+    ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        let path = payload.request.uri().path().trim_start_matches("/v1beta/");
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(path.to_owned());
+        let (gate, refused) = (self.1.clone(), self.2.clone());
+        crate::driver::Opening::new(async move {
+            drop(gate.lock().await);
+            if refused.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(crate::error::ProviderError::from_http_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "refused",
+                ));
+            }
+            Ok(crate::driver::Opened::new(futures::stream::iter([Ok(
+                crate::wire::WireFrame::Text("{}".to_owned()),
+            )])))
+        })
+    }
+}
+
+/// A shared-prefix cache that a later call read is replaced by the next call
+/// after it expires, and that call reads the replacement. One nobody read
+/// again is replaced only after a run of calls shows a read would pay, so no
+/// spacing of calls keeps making caches nobody reads. A cache that would not
+/// live to its line's next call is never made, and a request whose extend
+/// found its cache gone goes inline.
+#[tokio::test]
+async fn an_expired_shared_prefix_cache_is_replaced() {
+    use crate::completion::CompletionRequest;
+    use crate::providers::gemini::{GeminiConfig, completion::GenerateContent};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    let clock = Arc::new(AtomicU64::new(1000));
+    let clocked = |policy| {
+        let reading = clock.clone();
+        CacheBook::new(policy).with_clock(move || reading.load(Ordering::SeqCst))
+    };
+    let book = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let caching = |book: &CacheBook, server: &CacheServer| {
+        crate::driver::Model::new(
+            GenerateContent::new(GeminiConfig::new("test-key"), "gemini-2.5-flash"),
+            server.clone(),
+        )
+        .caching(book)
+    };
+    let model = caching(&book, &server);
+    let ask = |n: u64| CompletionRequest::new(format!("question {n}")).preamble("x".repeat(8192));
+
+    // The second conversation on the prefix shares it, so it is cached.
+    for n in 0..3 {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    clock.store(1000 + 3600, Ordering::SeqCst);
+    model.call(ask(3)).await.expect("the call answers");
+    clock.fetch_add(2 * MAX_TTL_SECS, Ordering::SeqCst);
+    for _ in 0..3 {
+        model.call(ask(3)).await.expect("the call answers");
+    }
+
+    assert_eq!(
+        server.0.lock().unwrap_or_else(PoisonError::into_inner).1,
+        [
+            None,
+            Some("cachedContents/cache-1".to_owned()),
+            Some("cachedContents/cache-1".to_owned()),
+            Some("cachedContents/cache-2".to_owned()),
+            None,
+            None,
+            Some("cachedContents/cache-3".to_owned())
+        ]
+    );
+
+    // Two questions taking turns raise a 5 second TTL to twice their gap,
+    // which still ends before each one's next call.
+    let short = clocked(AutoCache {
+        ttl: Duration::from_secs(EXPIRY_MARGIN_SECS),
+        ..AutoCache::default()
+    });
+    let server = CacheServer::default();
+    let model = caching(&short, &server);
+    for n in 0..8 {
+        model.call(ask(n % 2)).await.expect("the call answers");
+        clock.fetch_add(2, Ordering::SeqCst);
+    }
+    assert_eq!(
+        *server.0.lock().unwrap_or_else(PoisonError::into_inner),
+        (0, vec![None; 8])
+    );
+
+    // A new conversation each TTL: every call is on a line of its own, and
+    // none would read what the one before it made.
+    let hourly = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&hourly, &server);
+    for n in 0..8 {
+        model.call(ask(n)).await.expect("the call answers");
+        clock.fetch_add(3600, Ordering::SeqCst);
+    }
+    assert_eq!(
+        *server.0.lock().unwrap_or_else(PoisonError::into_inner),
+        (0, vec![None; 8])
+    );
+
+    // Two questions, then a pause past the TTL: the first pair's cache is
+    // read by no other request, so no later pair replaces it.
+    let bursts = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&bursts, &server);
+    for n in 0..16 {
+        model.call(ask(n)).await.expect("the call answers");
+        clock.fetch_add(if n % 2 == 0 { 1 } else { 3700 }, Ordering::SeqCst);
+    }
+    assert_eq!(server.0.lock().expect("seen").0, 1);
+
+    // Reading a cache close to expiry extends it first; the 403 means gone.
+    let extending = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&extending, &server);
+    for n in [0, 1] {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    clock.fetch_add(3000, Ordering::SeqCst);
+    model.call(ask(1)).await.expect("the call answers");
+    assert_eq!(
+        server.0.lock().expect("seen").1,
+        [None, Some("cachedContents/cache-1".to_owned()), None]
+    );
+    assert!(extending.leases().is_empty());
+
+    // A read the server refuses is resent inline, once.
+    let lost = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&lost, &server);
+    for n in [0, 1] {
+        model.call(ask(n)).await.expect("the call answers");
+    }
+    let name = "cachedContents/cache-1".to_owned();
+    server.2.lock().expect("refused").insert(name.clone());
+    model.call(ask(1)).await.expect("the call answers");
+    assert_eq!(
+        server.0.lock().expect("seen").1,
+        [None, Some(name.clone()), Some(name), None]
+    );
+
+    // A close waits for the create in flight and deletes its cache; the one
+    // queued behind it never makes one.
+    let closing = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&closing, &server);
+    model.call(ask(0)).await.expect("the call answers");
+    let held = server.1.lock().await;
+    let (mut first, mut second) = (Box::pin(model.call(ask(1))), Box::pin(model.call(ask(2))));
+    assert!(futures::poll!(first.as_mut()).is_pending());
+    assert!(futures::poll!(second.as_mut()).is_pending());
+    let deletes = crate::driver::Model::new(
+        super::super::cached_content::CachedContents::new(GeminiConfig::new("test-key")),
+        DeleteServer::default(),
+    );
+    let mut closed = Box::pin(closing.close(&deletes));
+    assert!(futures::poll!(closed.as_mut()).is_pending());
+    drop(held);
+    first.await.expect("the call answers");
+    second.await.expect("the call answers");
+    closed.await;
+    assert_eq!(server.0.lock().expect("seen").0, 1);
+    assert_eq!(
+        *deletes.transport.0.lock().expect("deleted"),
+        ["cachedContents/cache-1"]
+    );
+    assert!(closing.leases().is_empty());
+
+    // A close gives up on a stuck create in time, and on a stuck or refused
+    // delete. Each cache stays the book's until a close confirms its delete.
+    let stuck = clocked(AutoCache::default());
+    let server = CacheServer::default();
+    let model = caching(&stuck, &server);
+    model.call(ask(0)).await.expect("the call answers");
+    let held = server.1.lock().await;
+    let mut landing = Box::pin(model.call(ask(1)));
+    assert!(futures::poll!(landing.as_mut()).is_pending());
+    stuck.close(&deletes).await;
+    drop(held);
+    landing.await.expect("the call answers");
+    assert_eq!(stuck.leases().len(), 1);
+    let held = deletes.transport.1.lock().await;
+    stuck.close(&deletes).await;
+    assert_eq!(stuck.leases().len(), 1);
+    drop(held);
+    deletes.transport.2.store(true, Ordering::SeqCst);
+    stuck.close(&deletes).await;
+    assert_eq!(stuck.leases().len(), 1);
+    deletes.transport.2.store(false, Ordering::SeqCst);
+    stuck.close(&deletes).await;
+    assert!(stuck.leases().is_empty());
+}
+
+/// A late 403, retire or extend for an old cache leaves the replacement
+/// that took its digest as it is. The old cache stays the book's to delete:
+/// it may still be alive on the server, so closing the book deletes it too.
+/// In any restore order the later expiry holds the digest, and a live cache
+/// takes over when the one held is lost.
+#[tokio::test]
+async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
+    let old = Lease {
+        name: "cachedContents/old".to_owned(),
+        digest: "prefix".to_owned(),
+        covers: 0,
+        tokens: 2048,
+        expires_at: 999,
+        model: "gemini-2.5-flash".to_owned(),
+    };
+    let replacement = Lease {
+        name: "cachedContents/new".to_owned(),
+        expires_at: 4600,
+        ..old.clone()
+    };
+    let callbacks: [fn(&CacheBook, &Lease); 3] =
+        [CacheBook::lost, CacheBook::retired, |book, lease| {
+            book.extended(lease, 100);
+        }];
+    for callback in callbacks {
+        let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+        book.restore(vec![old.clone(), replacement.clone()]);
+        callback(&book, &old);
+        assert_eq!(book.report().live, std::slice::from_ref(&replacement));
+    }
+
+    let earlier = Lease {
+        name: "cachedContents/earlier".to_owned(),
+        expires_at: 4000,
+        ..old.clone()
+    };
+    let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+    book.restore(vec![replacement.clone(), old.clone(), earlier.clone()]);
+    assert_eq!(book.report().live, std::slice::from_ref(&replacement));
+    book.extended(&earlier, 200);
+    book.lost(&replacement);
+    let extended = Lease {
+        expires_at: 1200,
+        ..earlier
+    };
+    assert_eq!(book.report().live, std::slice::from_ref(&extended));
+
+    let book = CacheBook::new(AutoCache::default()).with_clock(|| 1000);
+    book.restore(vec![replacement.clone(), old.clone()]);
+    let server = DeleteServer::default();
+    let config = crate::providers::gemini::GeminiConfig::new("test-key");
+    book.close(&crate::driver::Model::new(
+        super::super::cached_content::CachedContents::new(config),
+        server.clone(),
+    ))
+    .await;
+    let mut deleted = server.0.lock().expect("deleted").clone();
+    deleted.sort_unstable();
+    assert_eq!(deleted, [replacement.name, old.name]);
+}

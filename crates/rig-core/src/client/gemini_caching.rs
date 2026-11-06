@@ -10,11 +10,12 @@ use crate::driver::{Exchange, Model, Opened, Opening, Transport};
 use crate::error::ProviderError;
 use crate::providers::gemini::cached_content::CachedContents;
 use crate::providers::gemini::caching::{
-    CacheBook, Create, Lease, Parsed, cache_body, digests, is_user_text, parse, short_digest,
-    stripped,
+    CacheBook, Create, DELETE_TIMEOUT, Lease, Parsed, Plan, cache_body, digests, is_user_text,
+    parse, short_digest, stripped,
 };
 use crate::providers::gemini::completion::{GenerateContent, ThoughtReplay};
 use crate::providers::internal::wire::classify_untyped_line;
+use crate::wasm_compat::timeout;
 use crate::wire::{Body, Encoded, Framing, Mode, WireEvent, WireFrame};
 
 impl CacheBook {
@@ -42,17 +43,29 @@ impl CacheBook {
         survived
     }
 
-    /// Delete every cache the book still holds. A cache already gone (403)
-    /// counts as deleted.
+    /// Delete every cache in [`Self::leases`], keeping any whose delete fails,
+    /// after waiting up to 10 seconds for a create in flight. It stops at the
+    /// first delete with no answer in 10 seconds, and logs what is left. A
+    /// cache already gone (403) counts as deleted.
     pub async fn close<T>(&self, caches: &Model<CachedContents, T>)
     where
         T: Transport<CachedContents>,
     {
+        self.book().closes += 1;
+        if timeout(DELETE_TIMEOUT, self.create.lock()).await.is_err() {
+            tracing::warn!(target: "gemini.cache", "close gave up waiting for a cache create");
+        }
         for lease in self.leases() {
-            let result = caches.delete(&lease.name).await;
+            let Ok(result) = timeout(DELETE_TIMEOUT, caches.delete(&lease.name)).await else {
+                let left: Vec<String> = self.leases().into_iter().map(|l| l.name).collect();
+                let left = left.join(", ");
+                tracing::warn!(target: "gemini.cache", %left, "cache delete timed out");
+                return;
+            };
             let gone = matches!(result, Ok(()) | Err(ProviderError::CacheExpired { .. }));
             if !gone {
                 tracing::warn!(target: "gemini.cache", name = %lease.name, "cache delete failed");
+                continue;
             }
             self.retired(&lease);
         }
@@ -195,21 +208,22 @@ where
     }
 
     async fn delete(&self, lease: &Lease) {
-        let reply = self
-            .resource(
-                http::Method::DELETE,
-                &format!("/v1beta/{}", lease.name),
-                None,
-            )
-            .await;
+        let path = format!("/v1beta/{}", lease.name);
+        let request = self.resource(http::Method::DELETE, &path, None);
+        let Ok(reply) = timeout(DELETE_TIMEOUT, request).await else {
+            tracing::warn!(target: "gemini.cache", name = %lease.name, "cache delete timed out");
+            return;
+        };
         if reply.error.is_some() && reply.status != Some(403) && reply.status != Some(404) {
             let status = reply.status.unwrap_or_default();
             tracing::warn!(target: "gemini.cache", name = %lease.name, status, "cache delete failed");
+            return;
         }
         self.book.retired(lease);
     }
 
-    async fn extend(&self, lease: &Lease, ttl_secs: u64) {
+    /// Extend `lease`. Returns whether it can still be read.
+    async fn extend(&self, lease: &Lease, ttl_secs: u64) -> bool {
         let body = format!("{{\"ttl\":\"{ttl_secs}s\"}}").into_bytes();
         let reply = self
             .resource(
@@ -218,23 +232,40 @@ where
                 Some(body),
             )
             .await;
-        if reply.error.is_none() {
-            self.book.extended(lease, ttl_secs);
+        if reply.error.is_some() {
+            if matches!(reply.status, Some(403 | 404)) && self.book.owns(lease) {
+                self.book.lost(lease);
+            }
+            return self.book.owns(lease);
         }
+        let owned = self.book.extended(lease, ttl_secs);
+        if !owned {
+            self.delete(lease).await;
+        }
+        owned
     }
 
-    /// Create the cache `create` describes, unless one already exists for
-    /// its digest. Returns the lease to read.
+    /// Create the cache `create` describes, unless a live one already exists
+    /// for its digest or the book closed since `plan`. Returns the lease to
+    /// read. One that lands after a close stays in the book for a close to
+    /// delete, and is not read.
     async fn create(
         &self,
         model: &str,
         parsed: &Parsed,
         create: &Create,
-        line: &str,
-        coverable: u64,
+        plan: &Plan,
     ) -> Option<Lease> {
         let _single = self.book.create.lock().await;
-        if let Some(existing) = self.book.book().leases.get(&create.digest).cloned() {
+        if self.book.book().closes != plan.closes {
+            return None;
+        }
+        // Checked again under the lock: another request may have created it,
+        // or the one the plan saw may have expired while this one waited.
+        let existing = self.book.book().leases.get(&create.digest).cloned();
+        if let Some(existing) = existing
+            && existing.live_at(self.book.now())
+        {
             return Some(existing);
         }
         let display_name = format!(
@@ -260,7 +291,7 @@ where
                 .or(reply.error)
                 .unwrap_or_default();
             self.book
-                .create_failed(line, coverable, reply.status, message);
+                .create_failed(&plan.line, plan.coverable, reply.status, message);
             return None;
         }
         #[derive(Deserialize)]
@@ -280,10 +311,14 @@ where
         let tokens = resource
             .usage_metadata
             .map_or(0, |usage| usage.total_token_count);
-        Some(
-            self.book
-                .created(line, create, resource.name, tokens, model),
-        )
+        let lease = self
+            .book
+            .created(&plan.line, create, resource.name, tokens, model);
+        if self.book.book().closes != plan.closes {
+            tracing::warn!(target: "gemini.cache", name = %lease.name, "cache created during close");
+            return None;
+        }
+        Some(lease)
     }
 }
 
@@ -357,9 +392,7 @@ where
             let mut read = plan.read.clone();
             let mut line = plan.line.clone();
             if let Some(create) = &plan.create
-                && let Some(lease) = this
-                    .create(&model, &parsed, create, &plan.line, plan.coverable)
-                    .await
+                && let Some(lease) = this.create(&model, &parsed, create, &plan).await
             {
                 if let Some(replaced) = &create.replaces
                     && replaced.name != lease.name
@@ -373,8 +406,9 @@ where
             }
             if let Some((lease, ttl_secs)) = &plan.extend
                 && read.as_ref().is_some_and(|read| read.name == lease.name)
+                && !this.extend(lease, *ttl_secs).await
             {
-                this.extend(lease, *ttl_secs).await;
+                read = None;
             }
 
             // A request that reads a cache keeps the encoded one to resend
