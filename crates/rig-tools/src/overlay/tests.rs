@@ -215,3 +215,44 @@ fn renaming_a_file_to_itself_changes_nothing() {
     assert_eq!(renamed.err().map(|it| it.kind()), Some(ErrorKind::NotFound));
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// One file under two spellings is one file here, as on disk: a rename
+/// between them moves nothing, a path through `..` is refused beneath a
+/// file, and a listing from a link finds what was created through it. A
+/// rename onto a link replaces the link, not the directory it leads to.
+#[cfg(unix)]
+#[test]
+fn an_overlay_takes_two_spellings_of_a_path_as_one() {
+    let dir = std::env::temp_dir().join(format!("rig-overlay-spell-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(dir.join("d")).ok();
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    std::fs::write(dir.join("d/x"), "on disk").ok();
+    std::os::unix::fs::symlink(dir.join("d"), dir.join("link")).ok();
+    let overlay = Overlay::new(Arc::new(Local));
+
+    for other in [dir.join("d/../d/x"), dir.join("link/x")] {
+        let renamed = overlay.rename(&dir.join("d/x"), &other);
+        let kind = renamed.err().map(|it| it.kind());
+        assert_eq!(kind, Some(ErrorKind::InvalidInput), "{}", other.display());
+    }
+    assert!(overlay.changes().is_empty());
+
+    assert!(overlay.write(&dir.join("new"), b"a file").is_ok());
+    let beneath = overlay.write(&dir.join("d/../new/child"), b"child");
+    let kind = beneath.err().map(|it| it.kind());
+    assert_eq!(kind, Some(ErrorKind::NotADirectory));
+
+    assert!(overlay.write(&dir.join("link/y"), b"y").is_ok());
+    let listed = overlay.files(&dir.join("link"), None, Listing::Visible);
+    let files = listed.map(|listed| listed.files).unwrap_or_default();
+    assert!(files.contains(&dir.join("link/y")), "{files:?}");
+
+    let renamed = overlay.rename(&dir.join("d/x"), &dir.join("link"));
+    assert!(renamed.is_ok(), "{renamed:?}");
+    assert!(matches!(
+        overlay.stat(&dir.join("link")),
+        Ok(Stat::File { .. })
+    ));
+    std::fs::remove_dir_all(dir).ok();
+}

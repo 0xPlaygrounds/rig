@@ -1168,3 +1168,30 @@ fn a_glob_keeps_the_same_files_on_every_workspace() {
     }
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// An overlay over a remote refuses a path beneath a file there, which the
+/// remote's own `stat` calls missing, and a rename onto a dangling link
+/// there replaces the link.
+#[cfg(unix)]
+#[test]
+fn an_overlay_over_a_remote_refuses_a_path_beneath_a_file_there() {
+    let dir = scratch("overlay-file");
+    let home = dir.join("home");
+    std::fs::write(home.join("file"), "there").ok();
+    std::fs::write(home.join("source"), "there").ok();
+    std::os::unix::fs::symlink(home.join("nowhere"), home.join("dangling")).ok();
+    let remote = Remote::new("bench", transport(&home), Launcher::default);
+    assert!(remote.is_ok());
+    let Ok(remote) = remote else { return };
+    let overlay = Overlay::new(Arc::new(remote));
+
+    for child in ["file/child", "file/deep/child"] {
+        let written = overlay.write(&home.join(child), b"child");
+        let kind = written.err().map(|it| it.kind());
+        assert_eq!(kind, Some(std::io::ErrorKind::NotADirectory), "{child}");
+    }
+    assert!(overlay.changes().is_empty());
+    let renamed = overlay.rename(&home.join("source"), &home.join("dangling"));
+    std::fs::remove_dir_all(dir).ok();
+    assert!(renamed.is_ok(), "{renamed:?}");
+}
