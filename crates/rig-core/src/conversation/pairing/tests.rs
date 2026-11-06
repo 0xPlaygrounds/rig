@@ -408,6 +408,41 @@ fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
         assert_eq!(kept, expected, "{turns:?}");
         assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
     }
+
+    // An empty turn has nothing to protect: it goes into its neighbour,
+    // whose origin stands.
+    let empty = |origin: Option<&Origin>| {
+        Message::Assistant(AssistantMessage::new(Vec::new()).with_origin(origin.cloned()))
+    };
+    let native = turn(first);
+    let foreign = turn(Some(&gemini));
+    for (turns, expected) in [
+        (vec![native.clone(), empty(None)], vec![first]),
+        (vec![empty(None), native.clone()], vec![first]),
+        (vec![native.clone(), empty(Some(&gemini))], vec![first]),
+        (vec![empty(Some(&gemini)), native.clone()], vec![first]),
+        (
+            vec![native.clone(), empty(None), foreign.clone()],
+            vec![first, Some(&gemini)],
+        ),
+        (
+            vec![empty(None), native.clone(), foreign],
+            vec![first, Some(&gemini)],
+        ),
+    ] {
+        assert!(validate(&turns).is_err(), "{turns:?}");
+        let repaired = repair(turns.clone()).messages;
+        let kept: Vec<Option<&Origin>> = repaired
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) if !turn.content.is_empty() => Some(turn.origin.as_ref()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kept, expected, "{turns:?}");
+        assert_eq!(repaired.len(), expected.len(), "{turns:?}");
+        assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+    }
 }
 
 /// `normalize` repairs entries as `repair` repairs messages, keeping ids

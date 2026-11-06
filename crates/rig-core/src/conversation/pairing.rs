@@ -363,8 +363,15 @@ fn share_origin(first: Option<&Origin>, later: Option<&Origin>) -> bool {
     }
 }
 
-/// Merge every assistant turn directly after another that can share its
-/// origin into it, the later turn's stop standing; whether any was merged.
+/// Whether `later`, directly after a turn with `first`'s origin, merges into
+/// it. An empty turn has nothing an origin vouches for, so it always merges.
+fn merges(first: (bool, Option<&Origin>), later: &AssistantMessage) -> bool {
+    first.0 || later.content.is_empty() || share_origin(first.1, later.origin.as_ref())
+}
+
+/// Merge every assistant turn directly after another that it [`merges`]
+/// into, the later turn's stop standing and an empty first turn giving way
+/// to the later's origin; whether any was merged.
 fn merge_turns(shaped: &mut Shaped) -> bool {
     let before = shaped.messages.len();
     let mut messages: Vec<Message> = Vec::with_capacity(before);
@@ -373,8 +380,14 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
     for (mut message, mut from) in all {
         if let Message::Assistant(turn) = &mut message
             && let Some(Message::Assistant(previous)) = messages.last_mut()
-            && share_origin(previous.origin.as_ref(), turn.origin.as_ref())
+            && merges(
+                (previous.content.is_empty(), previous.origin.as_ref()),
+                turn,
+            )
         {
+            if previous.content.is_empty() {
+                previous.origin = turn.origin.take();
+            }
             previous.content.append(&mut turn.content);
             previous.stop = turn.stop.take();
             if let Some(into) = sources.last_mut() {
@@ -431,8 +444,8 @@ fn walk(
     for step in steps(history) {
         match step {
             Step::Turn(index, turn) => {
-                if let (Some(before), Some(turn)) = (&walk.after_turn, &turn)
-                    && share_origin(before.as_ref(), turn.origin.as_ref())
+                if let (Some((empty, origin)), Some(turn)) = (&walk.after_turn, &turn)
+                    && merges((*empty, origin.as_ref()), turn)
                 {
                     walk.repairs
                         .push(PairingError::ConsecutiveAssistant { index });
@@ -440,7 +453,14 @@ fn walk(
                 walk.close();
                 stored = None;
                 walk.gap = turn.is_none();
-                walk.after_turn = turn.as_ref().map(|turn| turn.origin.clone());
+                walk.after_turn = match &turn {
+                    Some(turn) if turn.content.is_empty() && walk.after_turn.is_some() => {
+                        walk.after_turn.take()
+                    }
+                    turn => turn
+                        .as_ref()
+                        .map(|turn| (turn.content.is_empty(), turn.origin.clone())),
+                };
                 let Some(turn) = turn else { continue };
                 if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
                     let calls = turn.tool_calls();
@@ -648,8 +668,9 @@ struct Walk {
     /// content after them, each with its index (none for one made up).
     pending: Vec<(Option<usize>, UserContent)>,
     pending_gap: bool,
-    /// The origin of the turn just walked, when the last step was a turn.
-    after_turn: Option<Option<Origin>>,
+    /// Whether the turn just walked is empty, and its origin, when the last
+    /// step was a turn. An empty turn after another leaves that one here.
+    after_turn: Option<(bool, Option<Origin>)>,
 }
 
 impl Walk {
