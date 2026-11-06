@@ -7,7 +7,10 @@ fn after_zero() -> ScyllaSearchFilter {
 
 /// The refusal message, or as an error the CQL the filter would send to the server.
 fn refusal(filter: &ScyllaSearchFilter) -> Result<String, String> {
-    Err(filter.condition().to_string())
+    match filter.condition() {
+        Ok(condition) => Err(condition.condition().to_string()),
+        Err(error) => Ok(error.to_string()),
+    }
 }
 
 /// CQL binds positionally, so the rendered condition must carry exactly one
@@ -18,9 +21,14 @@ fn every_parameterised_operator_uses_question_mark_placeholders() {
         ScyllaSearchFilter::member("id", vec![CqlValue::BigInt(1), CqlValue::BigInt(2)]),
     );
 
-    assert_eq!(filter.condition(), "(price >= ?) AND (id IN (?, ?))");
-    assert_eq!(filter.condition().matches('?').count(), 3);
-    assert_eq!(filter.params().len(), 3);
+    assert_eq!(
+        refusal(&filter),
+        Err("(price >= ?) AND (id IN (?, ?))".to_string())
+    );
+    assert_eq!(
+        filter.0.map(|condition| condition.params().len()).ok(),
+        Some(3)
+    );
 }
 
 #[test]

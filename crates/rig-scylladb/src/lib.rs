@@ -94,16 +94,23 @@ fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError
 /// Bind placeholder token CQL expects.
 const PLACEHOLDER: &str = "?";
 
-/// CQL `WHERE` fragment with its bind values. Keys are spliced into the
-/// statement verbatim; only values are bound.
+/// CQL `WHERE` fragment with its bind values, or the refusal of an expression
+/// CQL cannot state. Keys are spliced into the statement verbatim; only values
+/// are bound.
+///
+/// CQL has no `OR` or `NOT`. A filter using either holds no CQL at all, and a
+/// search with it returns [`VectorStoreError::FilterError`] before embedding
+/// the query or contacting the database.
 #[derive(Clone, Debug)]
-pub struct ScyllaSearchFilter(SqlCondition<CqlValue>);
+pub struct ScyllaSearchFilter(Result<SqlCondition<CqlValue>, FilterError>);
 
 /// Hashes only the condition text, since bound values do not change the
 /// prepared statement.
 impl std::hash::Hash for ScyllaSearchFilter {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.condition().hash(state);
+        if let Ok(condition) = &self.0 {
+            condition.condition().hash(state);
+        }
     }
 }
 
@@ -111,63 +118,64 @@ impl SearchFilter for ScyllaSearchFilter {
     type Value = CqlValue;
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(SqlCondition::binary(key, "=", PLACEHOLDER, value))
+        Self(Ok(SqlCondition::binary(key, "=", PLACEHOLDER, value)))
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(SqlCondition::binary(key, ">", PLACEHOLDER, value))
+        Self(Ok(SqlCondition::binary(key, ">", PLACEHOLDER, value)))
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self(SqlCondition::binary(key, "<", PLACEHOLDER, value))
+        Self(Ok(SqlCondition::binary(key, "<", PLACEHOLDER, value)))
     }
 
     fn and(self, rhs: Self) -> Self {
-        Self(self.0.and(rhs.0))
+        Self(self.0.and_then(|lhs| rhs.0.map(|rhs| lhs.and(rhs))))
     }
 
-    fn or(self, rhs: Self) -> Self {
-        Self(self.0.or(rhs.0))
+    /// Refused: CQL has no `OR`. See [`ScyllaSearchFilter`].
+    fn or(self, _rhs: Self) -> Self {
+        Self(Err(FilterError::TypeError("OR".into())))
     }
 }
 
 impl ScyllaSearchFilter {
-    fn condition(&self) -> &str {
-        self.0.condition()
+    fn condition(&self) -> Result<&SqlCondition<CqlValue>, FilterError> {
+        self.0.as_ref().map_err(Clone::clone)
     }
 
-    fn params(&self) -> &[CqlValue] {
-        self.0.params()
-    }
-
+    /// Refused: CQL has no `NOT`. See [`ScyllaSearchFilter`].
     pub fn not(self) -> Self {
-        Self(self.0.not())
+        Self(Err(FilterError::TypeError("NOT".into())))
     }
 
     pub fn gte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
         let key = key.into();
-        Self(SqlCondition::binary(key, ">=", PLACEHOLDER, value))
+        Self(Ok(SqlCondition::binary(key, ">=", PLACEHOLDER, value)))
     }
 
     pub fn lte(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
         let key = key.into();
-        Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value))
+        Self(Ok(SqlCondition::binary(key, "<=", PLACEHOLDER, value)))
     }
 
     pub fn ne(key: impl Into<String>, value: <Self as SearchFilter>::Value) -> Self {
         let key = key.into();
-        Self(SqlCondition::binary(key, "!=", PLACEHOLDER, value))
+        Self(Ok(SqlCondition::binary(key, "!=", PLACEHOLDER, value)))
     }
 
     pub fn member(key: impl Into<String>, values: Vec<<Self as SearchFilter>::Value>) -> Self {
         let key = key.into();
-        Self(SqlCondition::list(key, "IN", PLACEHOLDER, values))
+        Self(Ok(SqlCondition::list(key, "IN", PLACEHOLDER, values)))
     }
 }
 
 impl DynamicSearchFilter for ScyllaSearchFilter {
+    /// Fails when `filter` contains an `Or`, which CQL cannot state.
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
-        filter.try_interpret(cql_value_from_json)
+        let filter: Self = filter.try_interpret(cql_value_from_json)?;
+        filter.condition()?;
+        Ok(filter)
     }
 }
 
@@ -333,7 +341,7 @@ impl ScyllaDbVectorStore {
                     "SELECT id, vector, metadata, created_at FROM {}.{} WHERE {} ALLOW FILTERING",
                     self.keyspace,
                     self.table,
-                    filter.condition()
+                    filter.condition()?.condition()
                 );
 
                 let prepared = self
@@ -359,18 +367,20 @@ impl ScyllaDbVectorStore {
 
     /// Reads every matching row, scores it against the embedded query, and
     /// returns the thresholded rows sorted by descending similarity and
-    /// truncated to the requested sample count.
+    /// truncated to the requested sample count. Errors before any other work
+    /// when the filter is refused.
     async fn search_candidates(
         &self,
         req: &VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String, String)>, VectorStoreError> {
+        let condition = req
+            .filter()
+            .map(ScyllaSearchFilter::condition)
+            .transpose()?;
         let query_vector = self.generate_query_vector(req.query()).await?;
 
         let statement = self.get_filter_statement_or_default(req).await?;
-        let params = req
-            .filter()
-            .map(ScyllaSearchFilter::params)
-            .unwrap_or_default();
+        let params = condition.map(SqlCondition::params).unwrap_or_default();
 
         let results = self
             .session

@@ -58,6 +58,7 @@ See the [`/examples`](./examples) folder for usage examples.
 
 ## Notes
 
+- CQL has no `OR` or `NOT`. A search using `or` or `not` returns a filter error before embedding the query or contacting the database, and converting a dynamic filter containing `Or` fails. Join comparisons with one `and`. ScyllaDB itself rejects `ne` (`!=`) and more than one `and` in a filter, with a database error.
 - Uses application-level cosine similarity search (similar to SQLite and SurrealDB implementations)
 - Suitable for small to medium datasets (< 100k vectors)
 - Provides ScyllaDB's operational benefits: high availability, horizontal scaling, low latency
