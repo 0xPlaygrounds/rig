@@ -270,11 +270,11 @@ where
 /// Resolves a dictionary column to one JSON value per row. Null entries become JSON null.
 fn dictionary_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
     let dictionary = column.as_any_dictionary();
-    let values = type_matcher(dictionary.values())?;
     // `normalized_keys` panics on an empty dictionary, whose rows are all null.
-    if values.is_empty() {
+    if dictionary.values().is_empty() {
         return Ok(vec![Value::Null; column.len()]);
     }
+    let values = type_matcher(dictionary.values())?;
     let nulls = dictionary.logical_nulls();
 
     Ok(dictionary
