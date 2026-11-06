@@ -127,6 +127,26 @@ struct QueryResult {
     json_payload: String,
 }
 
+impl QueryResult {
+    /// Cosine similarity, from HelixDB's cosine distance.
+    fn similarity(&self) -> f64 {
+        1. - self.score
+    }
+
+    fn matches(
+        &self,
+        req: &rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
+    ) -> Result<bool, VectorStoreError> {
+        if req.threshold().is_some_and(|t| self.similarity() < t) {
+            return Ok(false);
+        }
+        match req.filter() {
+            Some(filter) => Ok(filter.satisfies(&serde_json::from_str(&self.json_payload)?)),
+            None => Ok(true),
+        }
+    }
+}
+
 /// `VectorSearch` request body.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 struct QueryInput {
@@ -158,8 +178,10 @@ impl HelixDBVectorStore {
         &self.client
     }
 
-    /// Embeds the query and runs `VectorSearch`. An absent request threshold is
-    /// sent as zero.
+    /// Embeds the query, runs `VectorSearch` and keeps the hits that meet the
+    /// request's threshold and metadata filter, which is evaluated client-side
+    /// against each stored JSON payload. An absent request threshold is sent as
+    /// zero. Errors when a filter needs a payload that is not valid JSON.
     async fn vector_search(
         &self,
         req: &rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
@@ -178,7 +200,15 @@ impl HelixDBVectorStore {
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        Ok(result.vec_docs)
+        result
+            .vec_docs
+            .into_iter()
+            .filter_map(|hit| match hit.matches(req) {
+                Ok(true) => Some(Ok(hit)),
+                Ok(false) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect()
     }
 }
 
@@ -221,63 +251,42 @@ impl InsertDocuments for HelixDBVectorStore {
 impl VectorStoreIndex for HelixDBVectorStore {
     type Filter = HelixDBFilter;
 
-    // HelixDB reports cosine distance; `-(score - 1)` converts it to similarity.
-
-    /// Returns matches scored by cosine similarity, discarding hits
-    /// below the threshold or rejected by the request filter, which is evaluated
-    /// client-side against each stored JSON payload.
+    /// Returns matches scored by cosine similarity, discarding hits below the
+    /// threshold or rejected by the request filter. Filtering runs after
+    /// HelixDB's limit, so it can return fewer than `samples` results.
     async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
         &self,
         req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
     ) -> Result<Vec<VectorSearchResult<T>>, VectorStoreError> {
-        let docs = self
-            .vector_search(&req)
+        self.vector_search(&req)
             .await?
             .into_iter()
-            .filter(|x| {
-                let is_threshold = req.threshold().is_none_or(|t| -(x.score - 1.) >= t);
-
-                is_threshold
-                    && req
-                        .filter()
-                        .zip(serde_json::from_str(&x.json_payload).ok())
-                        .is_none_or(
-                            |(filter, payload): (&Filter<serde_json::Value>, serde_json::Value)| {
-                                filter.satisfies(&payload)
-                            },
-                        )
-            })
             .map(|x| {
-                let doc: T = serde_json::from_str(&x.json_payload)?;
-
                 Ok(VectorSearchResult {
-                    score: -(x.score - 1.),
+                    score: x.similarity(),
+                    document: serde_json::from_str(&x.json_payload)?,
                     id: x.id,
-                    document: doc,
                 })
             })
-            .collect::<Result<Vec<_>, VectorStoreError>>()?;
-
-        Ok(docs)
+            .collect()
     }
 
-    /// Like `top_n` but returns only scores and ids, and ignores the
-    /// request filter.
+    /// Like `top_n` but returns only scores and ids.
     async fn top_n_ids(
         &self,
         req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
     ) -> Result<Vec<VectorSearchIdResult>, VectorStoreError> {
-        let docs = self
+        Ok(self
             .vector_search(&req)
             .await?
             .into_iter()
-            .filter(|x| -(x.score - 1.) >= req.threshold().unwrap_or_default())
             .map(|x| VectorSearchIdResult {
-                score: -(x.score - 1.),
+                score: x.similarity(),
                 id: x.id,
             })
-            .collect();
-
-        Ok(docs)
+            .collect())
     }
 }
+
+#[cfg(test)]
+mod tests;

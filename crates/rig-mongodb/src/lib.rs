@@ -59,14 +59,33 @@ struct LatestDefinition {
     fields: Vec<Field>,
 }
 
+impl LatestDefinition {
+    /// The path of the first `vector` field; other fields, such as `filter`
+    /// fields, are skipped.
+    fn vector_path(self) -> Result<String, VectorStoreError> {
+        self.fields
+            .into_iter()
+            .find(|field| field.field_type == FieldType::Vector)
+            .map(|field| field.path)
+            .ok_or_else(|| VectorStoreError::DatastoreError("No vector fields found".into()))
+    }
+}
+
+/// One indexed field. Only the type and path are read, so `filter` fields,
+/// which have no vector options, decode too.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct Field {
     #[serde(rename = "type")]
-    field_type: String,
+    field_type: FieldType,
     path: String,
-    num_dimensions: i32,
-    similarity: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum FieldType {
+    Vector,
+    #[serde(other)]
+    Other,
 }
 
 /// Vector index over a MongoDB collection.
@@ -241,9 +260,9 @@ where
     C: Send + Sync,
 {
     /// Creates an index handle after confirming the named search index exists and
-    /// is queryable. The embedded field is taken from the index's first defined
+    /// is queryable. The embedded field is taken from the index's first `vector`
     /// field. Errors when the index is missing, not queryable, or defines no
-    /// fields. See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/)
+    /// `vector` field. See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/)
     /// on creating vector indexes.
     ///
     /// Appends `rig-mongodb` and its version to the collection's client
@@ -271,15 +290,7 @@ where
             ));
         }
 
-        let embedded_field = search_index
-            .latest_definition
-            .fields
-            .into_iter()
-            .map(|field| field.path)
-            .next()
-            .ok_or(VectorStoreError::DatastoreError(
-                "No embedded fields found".into(),
-            ))?;
+        let embedded_field = search_index.latest_definition.vector_path()?;
 
         Ok(Self {
             collection,
@@ -484,3 +495,6 @@ where
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

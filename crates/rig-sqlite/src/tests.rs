@@ -932,6 +932,56 @@ async fn live_search_orders_by_similarity_and_applies_threshold() -> anyhow::Res
     Ok(())
 }
 
+/// An upsert landing between candidate sizing and the KNN query must not
+/// starve an unchanged document. The tokio-rusqlite worker runs calls in
+/// order, so a blocked call lets the test queue the search before the write.
+#[tokio::test]
+async fn live_concurrent_upsert_keeps_unchanged_documents() -> anyhow::Result<()> {
+    register_sqlite_vec_extension();
+    let conn = Connection::open_in_memory().await?;
+    let store: SqliteVectorStore<TestDocument> = SqliteVectorStore::new(conn.clone(), 2).await?;
+    store
+        .add_rows(vec![
+            row("A", "docs", "other", vec![1.0, 0.0]),
+            row("B", "docs", "target", vec![-1.0, 0.0]),
+        ])
+        .await?;
+    let index = store.clone().index(TestEmbeddingModel::model());
+    let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
+        .query("needle")
+        .samples(1)
+        .filter(SqliteSearchFilter::eq("title", serde_json::json!("target")))
+        .build();
+
+    let (release, blocked) = std::sync::mpsc::channel::<()>();
+    let mut barrier = Box::pin(conn.call(move |_| {
+        blocked
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .map_err(|error| tokio_rusqlite::Error::Other(Box::new(error)))
+    }));
+    anyhow::ensure!(futures::poll!(barrier.as_mut()).is_pending());
+    let mut search = Box::pin(index.top_n_ids(req));
+    anyhow::ensure!(futures::poll!(search.as_mut()).is_pending());
+    let (document, mut embeddings) = row("A", "docs", "other", vec![1.0, 0.0]);
+    embeddings.push(Embedding {
+        document: "another close chunk".to_owned(),
+        vec: vec![0.9, 0.1],
+    });
+    let mut write = Box::pin(store.add_rows(vec![(document, embeddings)]));
+    anyhow::ensure!(futures::poll!(write.as_mut()).is_pending());
+    release.send(())?;
+
+    let (released, found, written) = futures::join!(barrier, search, write);
+    released?;
+    written?;
+    let ids = found?
+        .into_iter()
+        .map(|result| result.id)
+        .collect::<Vec<_>>();
+    anyhow::ensure!(ids == ["B"], "upserting A hid unchanged B: {ids:?}");
+    Ok(())
+}
+
 #[tokio::test]
 async fn live_reinsert_same_document_id_removes_stale_vec0_candidates() -> anyhow::Result<()> {
     register_sqlite_vec_extension();

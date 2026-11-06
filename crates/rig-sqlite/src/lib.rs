@@ -376,29 +376,26 @@ impl<T> SqliteVectorStore<T>
 where
     T: SqliteVectorStoreTable,
 {
-    async fn candidate_limit(
-        &self,
+    /// Sizes the KNN candidate set from the embedding counts `conn` sees. The
+    /// search must run on the same snapshot, or a concurrent write makes the
+    /// size stale.
+    fn candidate_limit(
+        conn: &rusqlite::Connection,
         samples: u64,
         exhaustive: bool,
-    ) -> Result<u64, VectorStoreError> {
+    ) -> rusqlite::Result<u64> {
         if samples == 0 {
             return Ok(0);
         }
 
         let embedding_map_table_name = format!("{}_embedding_map", T::name());
-        let (embedding_count, document_count) = self
-            .conn
-            .call(move |conn| {
-                Ok(conn.query_row(
-                    &format!(
-                        "SELECT COUNT(*), COUNT(DISTINCT document_rowid) FROM {embedding_map_table_name}"
-                    ),
-                    [],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
-                )?)
-            })
-            .await
-            .map_err(VectorStoreError::datastore)?;
+        let (embedding_count, document_count) = conn.query_row(
+            &format!(
+                "SELECT COUNT(*), COUNT(DISTINCT document_rowid) FROM {embedding_map_table_name}"
+            ),
+            [],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )?;
 
         let embedding_count = u64::try_from(embedding_count).unwrap_or(0);
         let document_count = u64::try_from(document_count).unwrap_or(0);
@@ -1658,20 +1655,29 @@ where
         let distance_metric = self.store.distance_metric;
         let score_expression = distance_metric.score_expression("?1", "e.embedding");
         let filters = render_search_filters(req, distance_metric, &self.store.metadata_columns)?;
-        let candidate_limit = self
-            .store
-            .candidate_limit(req.samples(), filters.has_post_filters())
-            .await?;
-        let search_query = build_search_query(query_vec, filters, candidate_limit)?;
-        let where_clause = search_query.vector_where_clause;
-        let document_filter_clause = search_query.document_filter_clause;
-        let mut params = search_query.params;
-        params.push(sqlite_limit_param(req.samples(), "result limit")?);
+        let samples = req.samples();
+        let result_limit = sqlite_limit_param(samples, "result limit")?;
 
         self.store
             .conn
             .call(move |conn| {
-                let mut stmt = conn.prepare(&format!(
+                // The savepoint holds one read snapshot across the count and
+                // the search, and nests inside a caller's open transaction.
+                let snapshot = conn.savepoint()?;
+                let candidate_limit = SqliteVectorStore::<T>::candidate_limit(
+                    &snapshot,
+                    samples,
+                    filters.has_post_filters(),
+                )?;
+                let search_query = match build_search_query(query_vec, filters, candidate_limit) {
+                    Ok(query) => query,
+                    Err(error) => return Ok(Err(error)),
+                };
+                let where_clause = search_query.vector_where_clause;
+                let document_filter_clause = search_query.document_filter_clause;
+                let mut params = search_query.params;
+                params.push(result_limit);
+                let mut stmt = snapshot.prepare(&format!(
                     "WITH scored AS (
                         SELECT m.document_rowid AS __rig_document_rowid,
                             {score_expression} AS __rig_score,
@@ -1695,10 +1701,13 @@ where
                 let rows = stmt
                     .query_map(rusqlite::params_from_iter(params), |row| map_row(row))?
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(rows)
+                drop(stmt);
+                snapshot.commit()?;
+                Ok(Ok(rows))
             })
             .await
-            .map_err(VectorStoreError::datastore)
+            .map_err(VectorStoreError::datastore)?
+            .map_err(VectorStoreError::from)
     }
 }
 
