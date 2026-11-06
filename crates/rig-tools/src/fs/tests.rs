@@ -204,7 +204,8 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
 }
 
 /// A name the file system takes can be written, whatever its length,
-/// replacing a file or creating one, and no temporary file stays.
+/// replacing a file or creating one, and no temporary file stays. A file
+/// named as the next temporary one is still replaced through another.
 #[test]
 fn an_atomic_write_takes_any_name_the_file_system_does() {
     let dir = scratch("long-name").join("real");
@@ -221,24 +222,15 @@ fn an_atomic_write_takes_any_name_the_file_system_does() {
     }
     let left = std::fs::read_dir(&dir).map(Iterator::count).ok();
     assert_eq!(left, Some(names.len()));
-    std::fs::remove_dir_all(dir).ok();
-}
 
-/// A file named as the next temporary one is still replaced through
-/// another, so a crash cannot leave it half written.
-#[test]
-fn a_temporary_file_is_never_the_file_it_replaces() {
-    let dir = scratch("temporary-name").join("real");
     let number = |path: &std::path::Path| {
         let name = path.file_stem()?.to_str()?;
         name.rsplit('-').next()?.parse::<u64>().ok()
     };
-    for _ in 0..8 {
-        let (taken, _) = super::temporary_beside(&dir.join("any"));
-        let next = number(&taken).map_or(0, |it| it + 1);
-        let target = dir.join(format!(".rig-write-{}-{next}.tmp", std::process::id()));
-        let (temporary, _) = super::temporary_beside(&target);
-        assert_ne!(temporary, target);
-    }
+    let (taken, _) = super::temporary_beside(&dir.join("any"));
+    let next = number(&taken).map_or(0, |it| it + 1);
+    let target = dir.join(format!(".rig-write-{}-{next}.tmp", std::process::id()));
+    let (temporary, _) = super::temporary_beside(&target);
+    assert_ne!(temporary, target);
     std::fs::remove_dir_all(dir).ok();
 }

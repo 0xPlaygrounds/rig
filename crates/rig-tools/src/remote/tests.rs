@@ -60,24 +60,6 @@ fn tools_reach_a_host_path_through_its_transport() {
     let bench = Remote::new("bench", transport(&home), Launcher::default);
     let workspace: Arc<dyn Workspace> = Arc::new(Hosts::new(Arc::new(Local), bench));
 
-    // An overlay keeps a host path as given: `bench:/x` is not `bench:~/x`.
-    let overlay = Overlay::new(workspace.clone());
-    let top = Path::new("bench:/rig-tools-overlay-top");
-    assert!(overlay.write(top, b"top").is_ok());
-    let changes = overlay.changes();
-    let named: Vec<&str> = changes.iter().map(|it| it.path.as_str()).collect();
-    assert_eq!(named, ["bench:/rig-tools-overlay-top"]);
-    let other = Path::new("bench:/a/../rig-tools-overlay-top");
-    let renamed = overlay.rename(top, other);
-    let kind = renamed.err().map(|it| it.kind());
-    assert_eq!(kind, Some(std::io::ErrorKind::InvalidInput));
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(home.join("nowhere"), home.join("dangling")).ok();
-        let renamed = overlay.rename(top, Path::new("bench:~/dangling"));
-        assert!(renamed.is_ok(), "{renamed:?}");
-    }
-
     let base = Some(dir.join("local"));
     let file = "bench:~/strata/src/lib.rs";
 

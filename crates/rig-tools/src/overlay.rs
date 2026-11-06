@@ -220,33 +220,21 @@ impl Workspace for Overlay {
         }
     }
 
-    /// As the disk does: `to` is replaced, a link there itself, and two
-    /// spellings of one file are refused, which moves nothing. A failed look
-    /// at `to` does not stop it: a remote fails the same way on a dangling
-    /// link, which a rename replaces.
+    /// Moves what `from` holds here to `to`, refused beneath a file as on
+    /// disk. A rename to the same path, as given, changes nothing.
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
         let bytes = self.bytes(from)?;
         if from == to {
             return Ok(());
         }
-        let real = self.inner.canonical(to);
-        if from.file_name() == to.file_name() && self.inner.canonical(from) == real {
-            return Err(io::Error::new(
-                ErrorKind::InvalidInput,
-                "both names are links to one file; nothing was moved",
-            ));
+        if let Err(error) = self.stat(to)
+            && error.kind() == ErrorKind::NotADirectory
+        {
+            return Err(error);
         }
-        match self.stat(to) {
-            Ok(Stat::Dir) if real == to => {
-                Err(io::Error::new(ErrorKind::IsADirectory, "is a directory"))
-            }
-            Err(error) if error.kind() == ErrorKind::NotADirectory => Err(error),
-            _ => {
-                self.keep(to, Some(bytes));
-                self.keep(from, None);
-                Ok(())
-            }
-        }
+        self.keep(to, Some(bytes));
+        self.keep(from, None);
+        Ok(())
     }
 
     fn canonical(&self, path: &Path) -> PathBuf {
