@@ -25,8 +25,9 @@ use crate::tool::feedback::tool_result_message;
 /// See [`validate`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PairingError {
-    /// Two assistant messages in a row that [`repair`] merges (index of the
-    /// second). Two that cannot share an origin may stand side by side.
+    /// Two assistant messages adjacent in the input that could merge (index
+    /// of the second). Two that cannot may stand side by side: a different
+    /// origin, or one failed and one not.
     #[error("consecutive assistant messages at index {index}")]
     ConsecutiveAssistant {
         /// Index of the offending (second) assistant message.
@@ -215,7 +216,8 @@ pub struct Paired {
 /// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
 /// turn left directly after another is merged into it when the two can
-/// share an origin; `repairs` reports the input as [`pair`] read it.
+/// share an origin and neither is a failed turn beside a good one; `repairs`
+/// reports the input as [`pair`] read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
     let shaped = shape(messages, true);
     Paired {
@@ -246,7 +248,7 @@ pub struct Normalized {
 
 /// `entries` repaired as [`repair`] repairs their messages, but that user
 /// entries side by side stay apart: an assistant entry directly after
-/// another that can share its origin is merged into it (the later stop
+/// another is merged into it as [`repair`] says (the later stop
 /// standing) and keeps the first's id, author and made-time; a result no
 /// call waits for is dropped, and an entry left empty with it; a made-up
 /// result for a call nothing answered goes into the next user entry, else
@@ -363,17 +365,39 @@ fn share_origin(first: Option<&Origin>, later: Option<&Origin>) -> bool {
     }
 }
 
-/// Whether `later`, directly after a turn with `first`'s origin, merges into
-/// it. An empty turn has nothing an origin vouches for, so it always merges.
-fn merges(first: (bool, Option<&Origin>), later: &AssistantMessage) -> bool {
-    first.0 || later.content.is_empty() || share_origin(first.1, later.origin.as_ref())
+/// What decides whether two assistant turns in a row merge.
+struct TurnKind {
+    empty: bool,
+    failed: bool,
+    origin: Option<Origin>,
 }
 
-/// Merge every assistant turn directly after another that it [`merges`]
-/// into, the later turn's stop standing; whether any was merged. An empty
-/// turn changes nothing about the turn it merges with: an empty first turn
-/// gives way to the later's origin, and an empty later turn's stop is
-/// dropped, so a failure with nothing in it can't fail the turn before.
+impl TurnKind {
+    fn of(turn: &AssistantMessage) -> Self {
+        Self {
+            empty: turn.content.is_empty(),
+            failed: turn.stop.as_ref().is_some_and(|stop| stop.is_failure()),
+            origin: turn.origin.clone(),
+        }
+    }
+
+    /// Whether `later`, directly after this turn, merges into it. An empty
+    /// turn has nothing to protect, so it always does. A failed turn and a
+    /// good one stay apart: one stop stands for a merged turn, and replay
+    /// leaves out or cuts down a failed one.
+    fn merges(&self, later: &Self) -> bool {
+        self.empty
+            || later.empty
+            || (self.failed == later.failed
+                && share_origin(self.origin.as_ref(), later.origin.as_ref()))
+    }
+}
+
+/// Merge every assistant turn directly after another that
+/// [merges](TurnKind::merges) into it, the later turn's stop standing;
+/// whether any was merged. An empty turn changes nothing about the turn it
+/// merges with: an empty first turn gives way to the later's origin, and an
+/// empty later turn's stop is dropped.
 fn merge_turns(shaped: &mut Shaped) -> bool {
     let before = shaped.messages.len();
     let mut messages: Vec<Message> = Vec::with_capacity(before);
@@ -382,10 +406,7 @@ fn merge_turns(shaped: &mut Shaped) -> bool {
     for (mut message, mut from) in all {
         if let Message::Assistant(turn) = &mut message
             && let Some(Message::Assistant(previous)) = messages.last_mut()
-            && merges(
-                (previous.content.is_empty(), previous.origin.as_ref()),
-                turn,
-            )
+            && TurnKind::of(previous).merges(&TurnKind::of(turn))
         {
             let first_empty = previous.content.is_empty();
             if first_empty {
@@ -449,8 +470,8 @@ fn walk(
     for step in steps(history) {
         match step {
             Step::Turn(index, turn) => {
-                if let (Some((empty, origin)), Some(turn)) = (&walk.after_turn, &turn)
-                    && merges((*empty, origin.as_ref()), turn)
+                if let (Some(before), Some(turn)) = (&walk.after_turn, &turn)
+                    && before.merges(&TurnKind::of(turn))
                 {
                     walk.repairs
                         .push(PairingError::ConsecutiveAssistant { index });
@@ -462,9 +483,7 @@ fn walk(
                     Some(turn) if turn.content.is_empty() && walk.after_turn.is_some() => {
                         walk.after_turn.take()
                     }
-                    turn => turn
-                        .as_ref()
-                        .map(|turn| (turn.content.is_empty(), turn.origin.clone())),
+                    turn => turn.as_ref().map(TurnKind::of),
                 };
                 let Some(turn) = turn else { continue };
                 if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
@@ -673,9 +692,9 @@ struct Walk {
     /// content after them, each with its index (none for one made up).
     pending: Vec<(Option<usize>, UserContent)>,
     pending_gap: bool,
-    /// Whether the turn just walked is empty, and its origin, when the last
-    /// step was a turn. An empty turn after another leaves that one here.
-    after_turn: Option<(bool, Option<Origin>)>,
+    /// The turn just walked, when the last step was a turn. An empty turn
+    /// after another leaves that one here.
+    after_turn: Option<TurnKind>,
 }
 
 impl Walk {

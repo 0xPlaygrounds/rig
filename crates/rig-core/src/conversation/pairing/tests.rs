@@ -464,6 +464,41 @@ fn a_merged_turn_keeps_its_origin_only_when_both_turns_share_it() {
     }
     let lone = repair(vec![empty(None), failed.clone()]).messages;
     assert_eq!(lone, vec![failed]);
+
+    // A failed turn with text can't take a good one down, or come back as
+    // good: the two stay apart, each with its own stop.
+    let error = StopReason::Error("refused".to_owned());
+    let stopped = Message::Assistant(
+        AssistantMessage::new(vec![AssistantContent::text("half")])
+            .with_origin(anthropic.clone())
+            .with_stop(error.clone()),
+    );
+    for (turns, expected) in [
+        (
+            vec![native.clone(), stopped.clone()],
+            vec![None, Some(&error)],
+        ),
+        (
+            vec![stopped.clone(), native.clone()],
+            vec![Some(&error), None],
+        ),
+        (
+            vec![native.clone(), stopped.clone(), turn(Some(&gemini))],
+            vec![None, Some(&error), None],
+        ),
+        (vec![stopped.clone(), stopped.clone()], vec![Some(&error)]),
+    ] {
+        let repaired = repair(turns.clone()).messages;
+        let stops: Vec<Option<&StopReason>> = repaired
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant(turn) => Some(turn.stop.as_ref()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(stops, expected, "{turns:?}");
+        assert_eq!(validate(&repaired), Ok(()), "{turns:?}");
+    }
 }
 
 /// `normalize` repairs entries as `repair` repairs messages, keeping ids
