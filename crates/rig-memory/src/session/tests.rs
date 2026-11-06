@@ -741,8 +741,8 @@ fn a_failed_save_can_be_retried() {
 }
 
 /// An image whose blob cannot be read for any reason but its absence fails
-/// the load, synchronous or not; a blob that is gone loads as a
-/// placeholder.
+/// the load, synchronous or not, and the read of that agent's conversation
+/// however it is chosen; a blob that is gone loads as a placeholder.
 #[test]
 fn a_failed_image_read_fails_the_load() {
     let gate = Gate::default();
@@ -753,6 +753,10 @@ fn a_failed_image_read_fails_the_load() {
     assert!(matches!(load(&gate, "agent"), Err(SessionError::Io(_))));
     let loaded = poll(super::load_async(&gate, "agent"), 1).expect("finished");
     assert!(matches!(loaded, Err(SessionError::Io(_))), "{loaded:?}");
+    for agent in [Some("agent"), None] {
+        let read = crate::read_conversation(&gate, agent);
+        assert!(matches!(read, Err(SessionError::Io(_))), "{read:?}");
+    }
 
     gate.unreadable
         .store(false, std::sync::atomic::Ordering::SeqCst);

@@ -654,7 +654,7 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, SessionError> 
 /// The conversation of `folded`, an empty one for no log; refused when an
 /// image of it could not be read for a reason other than that its blob is
 /// gone.
-fn conversation_of(folded: Option<Folded>) -> Result<Conversation, SessionError> {
+pub(crate) fn conversation_of(folded: Option<Folded>) -> Result<Conversation, SessionError> {
     let Some(folded) = folded else {
         return Ok(Conversation::new());
     };
