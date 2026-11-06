@@ -1,5 +1,5 @@
 use arrow_array::{
-    Array, ArrayRef, ArrowPrimitiveType, MapArray, RecordBatch, RunArray, UnionArray,
+    Array, ArrayRef, ArrowPrimitiveType, RecordBatch, RunArray, UnionArray,
     cast::AsArray,
     types::{
         BinaryType, ByteArrayType, Date32Type, Date64Type, Decimal128Type, DurationMicrosecondType,
@@ -39,8 +39,21 @@ pub(super) fn record_batch_to_json(batch: &RecordBatch) -> Result<Vec<Value>, Ve
 
 /// Converts one Arrow column into a JSON value per row, recursing through nested
 /// types. Unsupported types are rejected.
+/// Null rows become JSON null.
 fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
-    /// Expands to a `type_matcher` arm body converting `column` to JSON values
+    let mut values = slot_values(column)?;
+    if let Some(nulls) = column.logical_nulls() {
+        let rows = values.iter_mut().zip(nulls.iter());
+        for (value, _) in rows.filter(|(_, is_valid)| !is_valid) {
+            *value = Value::Null;
+        }
+    }
+    Ok(values)
+}
+
+/// Converts each row's slot, ignoring nulls. Only `type_matcher` should call this.
+fn slot_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
+    /// Expands to a `slot_values` arm body converting `column` to JSON values
     /// via the given helper function (e.g. `primitive_values::<Float32Type>`).
     macro_rules! json_arm {
         ($function:ident, $t:ty) => {
@@ -174,7 +187,7 @@ fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
             let keys = type_matcher(map_array.keys())?;
             let values = type_matcher(map_array.values())?;
 
-            build_map(map_array, &keys, &values)
+            build_map(map_array.value_offsets(), &keys, &values)
         }
         DataType::Dictionary(..) => dictionary_values(column),
         DataType::Union(..) => match column.as_any().downcast_ref::<UnionArray>() {
@@ -238,6 +251,8 @@ where
         .map(|(prev, cur)| cur - prev)
         .zip(type_matcher(run_array.values())?)
         .flat_map(|(n, value)| vec![value; n as usize])
+        .skip(run_array.run_ends().offset())
+        .take(run_array.len())
         .collect())
 }
 
@@ -267,7 +282,7 @@ where
         .collect()
 }
 
-/// Resolves a dictionary column to one JSON value per row. Null entries become JSON null.
+/// Resolves a dictionary column to one JSON value per row.
 fn dictionary_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
     let dictionary = column.as_any_dictionary();
     // `normalized_keys` panics on an empty dictionary, whose rows are all null.
@@ -275,16 +290,10 @@ fn dictionary_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> 
         return Ok(vec![Value::Null; column.len()]);
     }
     let values = type_matcher(dictionary.values())?;
-    let nulls = dictionary.logical_nulls();
-
     Ok(dictionary
         .normalized_keys()
         .into_iter()
-        .enumerate()
-        .map(|(row, key)| match &nulls {
-            Some(nulls) if nulls.is_null(row) => Value::Null,
-            _ => values.get(key).cloned().unwrap_or_default(),
-        })
+        .map(|key| values.get(key).cloned().unwrap_or_default())
         .collect())
 }
 
@@ -315,22 +324,16 @@ fn build_struct(columns: &[Vec<Value>], num_rows: usize, col_names: &[&str]) -> 
         .collect()
 }
 
-/// Assembles one JSON object per map row from its key and value entries.
-/// Offsets index the unsliced entries. A null row becomes JSON null. Errors
-/// when a row's offsets fall outside the entries.
+/// Assembles one JSON object per map row from its unsliced key and value entries.
+/// Errors when a row's offsets fall outside them.
 fn build_map(
-    map_array: &MapArray,
+    offsets: &[i32],
     keys: &[Value],
     values: &[Value],
 ) -> Result<Vec<Value>, VectorStoreError> {
-    map_array
-        .value_offsets()
+    offsets
         .windows(2)
-        .enumerate()
-        .map(|(row, bounds)| {
-            if map_array.is_null(row) {
-                return Ok(Value::Null);
-            }
+        .map(|bounds| {
             let entries = match *bounds {
                 [start, end] => usize::try_from(start).ok().zip(usize::try_from(end).ok()),
                 _ => None,
@@ -338,9 +341,7 @@ fn build_map(
             .and_then(|(start, end)| Some((keys.get(start..end)?, values.get(start..end)?)));
             let Some((row_keys, row_values)) = entries else {
                 return Err(VectorStoreError::datastore(ArrowError::CastError(format!(
-                    "Map offsets {bounds:?} exceed its {} keys and {} values",
-                    keys.len(),
-                    values.len()
+                    "Map offsets {bounds:?} exceed its entries"
                 ))));
             };
 
