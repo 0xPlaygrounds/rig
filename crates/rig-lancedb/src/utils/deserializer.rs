@@ -1,5 +1,5 @@
 use arrow_array::{
-    Array, ArrayRef, ArrowPrimitiveType, RecordBatch, RunArray, UnionArray,
+    Array, ArrayRef, ArrowPrimitiveType, RecordBatch, RunArray, StructArray, UnionArray,
     cast::AsArray,
     types::{
         BinaryType, ByteArrayType, Date32Type, Date64Type, Decimal128Type, DurationMicrosecondType,
@@ -39,20 +39,23 @@ pub(super) fn record_batch_to_json(batch: &RecordBatch) -> Result<Vec<Value>, Ve
 
 /// Converts one Arrow column into a JSON value per row, recursing through nested
 /// types. Unsupported types are rejected.
-/// Null rows become JSON null.
+/// Null rows become JSON null, and nothing under them is converted.
 fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
-    let mut values = slot_values(column)?;
-    if let Some(nulls) = column.logical_nulls() {
-        for (value, _) in values.iter_mut().zip(nulls.iter()).filter(|row| !row.1) {
-            *value = Value::Null;
-        }
+    let Some(nulls) = column.logical_nulls() else {
+        return valid_values(column);
+    };
+    let mut values = Vec::with_capacity(column.len());
+    for (start, end) in nulls.valid_slices() {
+        values.resize(start, Value::Null);
+        values.extend(valid_values(&column.slice(start, end - start))?);
     }
+    values.resize(column.len(), Value::Null);
     Ok(values)
 }
 
-/// Converts each row's slot, which may be stale under a null. Call `type_matcher` instead.
-fn slot_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
-    /// Expands to a `slot_values` arm body converting `column` to JSON values
+/// Converts a column with no null rows. Call `type_matcher` instead.
+fn valid_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
+    /// Expands to a `valid_values` arm body converting `column` to JSON values
     /// via the given helper function (e.g. `primitive_values::<Float32Type>`).
     macro_rules! json_arm {
         ($function:ident, $t:ty) => {
@@ -183,10 +186,9 @@ fn slot_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
         }
         DataType::Map(..) => {
             let map_array = column.as_map();
-            let keys = type_matcher(map_array.keys())?;
-            let values = type_matcher(map_array.values())?;
-
-            build_map(map_array.value_offsets(), &keys, &values)
+            (0..map_array.len())
+                .map(|row| build_map(&map_array.value(row)))
+                .collect()
         }
         DataType::Dictionary(..) => dictionary_values(column),
         DataType::Union(..) => match column.as_any().downcast_ref::<UnionArray>() {
@@ -264,6 +266,7 @@ where
 {
     column
         .as_primitive::<T>()
+        .values()
         .iter()
         .map(serde_json::to_value)
         .collect()
@@ -322,39 +325,25 @@ fn build_struct(columns: &[Vec<Value>], num_rows: usize, col_names: &[&str]) -> 
         .collect()
 }
 
-/// Assembles one JSON object per map row from its unsliced key and value entries.
-/// Errors when a row's offsets fall outside them.
-fn build_map(
-    offsets: &[i32],
-    keys: &[Value],
-    values: &[Value],
-) -> Result<Vec<Value>, VectorStoreError> {
-    offsets
-        .windows(2)
-        .map(|bounds| {
-            let entries = match *bounds {
-                [start, end] => usize::try_from(start).ok().zip(usize::try_from(end).ok()),
-                _ => None,
-            }
-            .and_then(|(start, end)| Some((keys.get(start..end)?, values.get(start..end)?)));
-            let Some((row_keys, row_values)) = entries else {
-                return Err(VectorStoreError::datastore(ArrowError::CastError(format!(
-                    "Map offsets {bounds:?} exceed its entries"
-                ))));
-            };
+/// Assembles one map row's JSON object from its key and value entries.
+fn build_map(entries: &StructArray) -> Result<Value, VectorStoreError> {
+    let [keys, values] = entries.columns() else {
+        return Err(VectorStoreError::datastore(ArrowError::CastError(format!(
+            "Map entries need a key and a value column: {entries:?}"
+        ))));
+    };
+    let keys = type_matcher(keys)?;
+    let values = type_matcher(values)?;
 
-            Ok(Value::Object(
-                row_keys
-                    .iter()
-                    .zip(row_values)
-                    .map(|(k, v)| {
-                        let key = k.as_str().map_or_else(|| k.to_string(), str::to_owned);
-                        (key, v.clone())
-                    })
-                    .collect(),
-            ))
-        })
-        .collect()
+    Ok(Value::Object(
+        keys.iter()
+            .zip(values)
+            .map(|(k, v)| {
+                let key = k.as_str().map_or_else(|| k.to_string(), str::to_owned);
+                (key, v)
+            })
+            .collect(),
+    ))
 }
 
 #[cfg(test)]
