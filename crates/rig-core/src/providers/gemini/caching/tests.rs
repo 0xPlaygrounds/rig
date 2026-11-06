@@ -112,14 +112,13 @@ fn a_book_shows_its_policy_and_prefix() {
 
 /// Answers `cachedContents` creates with `cachedContents/cache-<n>`, extends
 /// with a 403 and every other request with a short reply, recording the cache
-/// each one read. A create waits for `.1`, a delete for `.3`. A cache named
-/// in `.2` answers a read with 403 and a delete with 500.
+/// each one read. A create waits for `.1`. A cache named in `.2` answers a
+/// read with 403.
 #[derive(Clone, Default)]
 struct CacheServer(
     Arc<Mutex<(usize, Vec<Option<String>>)>>,
     Arc<futures::lock::Mutex<()>>,
     Arc<Mutex<HashSet<String>>>,
-    Arc<futures::lock::Mutex<()>>,
 );
 
 impl crate::driver::Transport<super::super::completion::GenerateContent> for CacheServer {
@@ -136,19 +135,8 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
             |status| Opening::failed(ProviderError::from_http_response(status, "refused"));
         let reply = |text: String| Opened::new(futures::stream::iter([Ok(WireFrame::Text(text))]));
         let path = payload.request.uri().path();
-        let name = path.trim_start_matches("/v1beta/");
         if payload.request.method() == http::Method::PATCH {
             return refused(http::StatusCode::FORBIDDEN);
-        }
-        if payload.request.method() == http::Method::DELETE {
-            if self.2.lock().expect("refused").contains(name) {
-                return refused(http::StatusCode::INTERNAL_SERVER_ERROR);
-            }
-            let gate = self.3.clone();
-            return Opening::new(async move {
-                drop(gate.lock().await);
-                Ok(reply("{}".to_owned()))
-            });
         }
         if path.ends_with("/cachedContents") {
             let (seen, gate) = (self.0.clone(), self.1.clone());
@@ -185,9 +173,13 @@ impl crate::driver::Transport<super::super::completion::GenerateContent> for Cac
 }
 
 /// Answers every `cachedContents` delete once `.1` is free, recording the
-/// names.
+/// names. While `.2` is set it answers 500.
 #[derive(Clone, Default)]
-struct DeleteServer(Arc<Mutex<Vec<String>>>, Arc<futures::lock::Mutex<()>>);
+struct DeleteServer(
+    Arc<Mutex<Vec<String>>>,
+    Arc<futures::lock::Mutex<()>>,
+    Arc<std::sync::atomic::AtomicBool>,
+);
 
 impl crate::driver::Transport<super::super::cached_content::CachedContents> for DeleteServer {
     fn send(
@@ -200,9 +192,15 @@ impl crate::driver::Transport<super::super::cached_content::CachedContents> for 
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(path.to_owned());
-        let gate = self.1.clone();
+        let (gate, refused) = (self.1.clone(), self.2.clone());
         crate::driver::Opening::new(async move {
             drop(gate.lock().await);
+            if refused.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(crate::error::ProviderError::from_http_response(
+                    http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "refused",
+                ));
+            }
             Ok(crate::driver::Opened::new(futures::stream::iter([Ok(
                 crate::wire::WireFrame::Text("{}".to_owned()),
             )])))
@@ -335,8 +333,8 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         [None, Some(name.clone()), Some(name), None]
     );
 
-    // A close never waits for a create. The one in flight deletes its cache
-    // when it lands, and the one queued behind it never makes one.
+    // A close waits for the create in flight and deletes its cache; the one
+    // queued behind it never makes one.
     let closing = clocked(AutoCache::default());
     let server = CacheServer::default();
     let model = caching(&closing, &server);
@@ -349,32 +347,21 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
         super::super::cached_content::CachedContents::new(GeminiConfig::new("test-key")),
         DeleteServer::default(),
     );
-    closing.close(&deletes).await;
+    let mut closed = Box::pin(closing.close(&deletes));
+    assert!(futures::poll!(closed.as_mut()).is_pending());
     drop(held);
     first.await.expect("the call answers");
     second.await.expect("the call answers");
+    closed.await;
     assert_eq!(server.0.lock().expect("seen").0, 1);
+    assert_eq!(
+        *deletes.transport.0.lock().expect("deleted"),
+        ["cachedContents/cache-1"]
+    );
     assert!(closing.leases().is_empty());
 
-    // A cache leaves the book only when its delete is confirmed.
-    let refusing = clocked(AutoCache::default());
-    let server = CacheServer::default();
-    let model = caching(&refusing, &server);
-    let name = "cachedContents/cache-1".to_owned();
-    server.2.lock().expect("refused").insert(name.clone());
-    model.call(ask(0)).await.expect("the call answers");
-    let held = server.1.lock().await;
-    let mut landing = Box::pin(model.call(ask(1)));
-    assert!(futures::poll!(landing.as_mut()).is_pending());
-    refusing.close(&deletes).await;
-    drop(held);
-    landing.await.expect("the call answers");
-    assert_eq!(refusing.leases().len(), 1);
-    refusing.close(&deletes).await;
-    assert!(refusing.leases().is_empty());
-
-    // A stuck delete holds no reply, and a close gives up on it in time. The
-    // cache stays the book's for the next close.
+    // A close gives up on a stuck create in time, and on a stuck or refused
+    // delete. Each cache stays the book's until a close confirms its delete.
     let stuck = clocked(AutoCache::default());
     let server = CacheServer::default();
     let model = caching(&stuck, &server);
@@ -383,15 +370,17 @@ async fn an_expired_shared_prefix_cache_is_replaced() {
     let mut landing = Box::pin(model.call(ask(1)));
     assert!(futures::poll!(landing.as_mut()).is_pending());
     stuck.close(&deletes).await;
-    let delete_held = server.3.lock().await;
     drop(held);
     landing.await.expect("the call answers");
-    drop(delete_held);
     assert_eq!(stuck.leases().len(), 1);
     let held = deletes.transport.1.lock().await;
     stuck.close(&deletes).await;
     assert_eq!(stuck.leases().len(), 1);
     drop(held);
+    deletes.transport.2.store(true, Ordering::SeqCst);
+    stuck.close(&deletes).await;
+    assert_eq!(stuck.leases().len(), 1);
+    deletes.transport.2.store(false, Ordering::SeqCst);
     stuck.close(&deletes).await;
     assert!(stuck.leases().is_empty());
 }
