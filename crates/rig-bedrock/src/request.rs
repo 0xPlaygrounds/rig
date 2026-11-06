@@ -21,7 +21,6 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::completion::{Converse, Family};
-use crate::options::checkpoints_after_reasoning;
 
 /// Standard base64, padded or not.
 const BASE64: GeneralPurpose = GeneralPurpose::new(
@@ -133,11 +132,13 @@ fn base(
             }
         }
     }
-    // A model not known to take a cache point after a reasoning turn, even
-    // on the user's side, is refused that checkpoint rather than sent it.
+    // A cache point after a reasoning turn, even on the user's side, goes
+    // only to a Claude model the catalog lists. Any other model is refused
+    // it: Nova rejects one after a tool result, and the rest are unknown.
     if let Some(cache) = cache {
         let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        if reasoning && !checkpoints_after_reasoning(family, wire.spec(model)) {
+        let accepted = family == Family::Claude && wire.spec(model).is_some();
+        if reasoning && !accepted {
             input.refuse_cache(
                 "this model is not known to take a message cache checkpoint after a reasoning turn",
             )?;

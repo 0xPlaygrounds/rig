@@ -100,16 +100,6 @@ fn takes_effort(spec: &ModelSpec) -> bool {
         .is_some_and(|levels| !levels.is_empty())
 }
 
-/// Whether Bedrock takes a message cache checkpoint after a reasoning turn
-/// from a model of `family` that `spec` describes. The catalog states no such
-/// fact. Taking an effort level is the nearest one it holds: it marks the
-/// newer Claude models and leaves out older ones and unlisted ones, which
-/// keep the refusal. Nova 2 lists effort levels too, but it rejects a
-/// checkpoint after a tool result, so only Claude qualifies.
-pub(crate) fn checkpoints_after_reasoning(family: Family, spec: Option<&ModelSpec>) -> bool {
-    family == Family::Claude && spec.is_some_and(takes_effort)
-}
-
 /// The answer for a setting a later rig adds that this crate has no form
 /// for: refused, never dropped.
 const NO_FORM: &str = "this setting has no Converse form";

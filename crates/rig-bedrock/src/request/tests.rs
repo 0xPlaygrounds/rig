@@ -195,9 +195,9 @@ fn a_later_system_message_stays_in_place() {
 }
 
 /// A short cache marks the system prompt and the last message, also after
-/// a reasoning turn on a Claude model that takes an effort level (#1673,
-/// #3088). Reasoning another model made goes as text, so it is no reasoning
-/// turn for the model it goes to.
+/// a reasoning turn on a Claude model the catalog lists (#1673, #3088).
+/// Reasoning another model made goes as text, so it is no reasoning turn
+/// for the model it goes to.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
     use rig_core::completion::CacheRetention;
@@ -226,6 +226,7 @@ fn cache_points_follow_what_the_request_sends() {
     };
     for model in [
         CLAUDE,
+        ANTHROPIC_CLAUDE_HAIKU_4_5,
         "eu.anthropic.claude-haiku-5-5",
         "us.anthropic.claude-opus-5-5",
     ] {
@@ -252,15 +253,14 @@ fn cache_points_follow_what_the_request_sends() {
 
 /// After a reasoning turn, a model not known to take the message checkpoint
 /// never gets it, and never loses it in silence: Nova 2, whose last block
-/// here is a tool result, a Claude model with no effort levels, and Claude
-/// models the catalog does not list. The default policy refuses; `Ignore`
-/// places the system checkpoint and skips the message one with a warning.
+/// here is a tool result, and Claude models the catalog does not list. The
+/// default policy refuses; `Ignore` places the system checkpoint and skips
+/// the message one with a warning.
 #[test]
 fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
     use rig_core::completion::{CacheRetention, OnUnsupported};
     let wires = [
         Converse::new("us.amazon.nova-2-lite-v1:0"),
-        Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5),
         Converse::new("us.anthropic.claude-3-7-sonnet-20250219-v1:0"),
         Converse::new(PROFILE).with_family(Family::Claude),
     ];
