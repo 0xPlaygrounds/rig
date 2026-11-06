@@ -82,7 +82,7 @@ This will create a collection with the following fields:
 - a `document` field (for storing metadata)
 - an `embedded_text` field (for the actual item that was embedded)
 
-A search threshold runs as a Milvus range search on the collection's metric. With `COSINE` or `IP` it is the minimum score. With `L2`, where lower is closer, it is an exclusive maximum distance, exact to one `f32` step.
+A search threshold runs as a Milvus range search on the collection's metric. With `COSINE` or `IP` it is the minimum score. With `L2`, where lower is closer, it is an exclusive maximum distance, exact to one `f32` step. Scores are compared at `f32` precision, the precision Milvus scores in.
 
 Once done, you'll now be ready to use!
 

@@ -99,19 +99,16 @@ struct SearchResultDataOnlyId {
     distance: f64,
 }
 
-/// The largest `f32` below `threshold`, refusing one `f32` cannot hold.
+/// The largest `f32` below `threshold` rounded to `f32`, refusing a threshold
+/// outside the `f32` range or whose radius is not finite.
 ///
-/// Milvus compares `f32` scores and excludes the radius, so a `COSINE` or `IP`
-/// score equal to the threshold stays. On `L2` the radius is a maximum, so a
-/// distance within one `f32` step under the threshold can be left out.
+/// Scores are compared at `f32` precision, the precision Milvus scores in. Milvus
+/// excludes the radius, so a `COSINE` or `IP` score equal to the rounded threshold
+/// stays. On `L2` the radius is a maximum, so a distance within one `f32` step
+/// under the threshold can be left out.
 fn radius(threshold: f64) -> Result<f32, FilterError> {
-    let rounded = threshold as f32;
-    let radius = if f64::from(rounded) < threshold {
-        rounded
-    } else {
-        rounded.next_down()
-    };
-    if !(rounded.is_finite() && radius.is_finite()) {
+    let radius = (threshold as f32).next_down();
+    if threshold.abs() > f64::from(f32::MAX) || !radius.is_finite() {
         return Err(FilterError::Must(
             format!("{threshold:e}"),
             "have a radius that fits in f32".into(),

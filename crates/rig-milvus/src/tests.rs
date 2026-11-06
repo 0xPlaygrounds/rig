@@ -208,17 +208,24 @@ async fn thresholds_become_a_range_search_beside_the_caller_filter() -> anyhow::
 }
 
 #[test]
-fn radius_is_the_largest_f32_below_the_threshold() {
-    // 0.7 rounds down to an f32 already below it; 0.5 is exact; 0.6 rounds up.
-    assert_eq!(crate::radius(0.7).ok(), Some(0.7_f32));
-    assert_eq!(crate::radius(0.5).ok(), Some(0.5_f32.next_down()));
-    assert_eq!(crate::radius(0.6).ok(), Some(0.6_f32.next_down()));
+fn radius_is_the_largest_f32_below_the_rounded_threshold() {
+    // 0.7 rounds down as f32, 0.5 is exact and 0.6 rounds up: each keeps its own score.
+    for (threshold, score) in [(0.7, 0.7_f32), (0.5, 0.5_f32), (0.6, 0.6_f32)] {
+        assert_eq!(crate::radius(threshold).ok(), Some(score.next_down()));
+    }
 }
 
 #[tokio::test]
 async fn thresholds_f32_cannot_hold_are_refused() -> anyhow::Result<()> {
     // f32::MIN fits, but the radius one step below it does not.
-    for threshold in [f64::NAN, f64::INFINITY, 1e300, -1e300, f64::from(f32::MIN)] {
+    for threshold in [
+        f64::NAN,
+        f64::INFINITY,
+        1e300,
+        -1e300,
+        f64::from(f32::MIN),
+        f64::from(f32::MAX).next_up(),
+    ] {
         let req = VectorSearchRequest::builder()
             .query("alpha")
             .samples(1)
