@@ -253,15 +253,22 @@ fn cache_points_follow_what_the_request_sends() {
 
 /// After a reasoning turn, a model not known to take the message checkpoint
 /// never gets it, and never loses it in silence: Nova 2, whose last block
-/// here is a tool result, and Claude models the catalog does not list. The
-/// default policy refuses; `Ignore` places the system checkpoint and skips
-/// the message one with a warning.
+/// here is a tool result, and Claude models rig's shipped catalog does not
+/// list, even with a spec the caller binds. The default policy refuses;
+/// `Ignore` places the system checkpoint and skips the message one with a
+/// warning.
 #[test]
 fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
+    use rig_core::catalog::{ModelFacts, ModelSpec, Pricing};
     use rig_core::completion::{CacheRetention, OnUnsupported};
+    use rig_core::providers::registry::ProviderId;
+    let claude_3_7 = "us.anthropic.claude-3-7-sonnet-20250219-v1:0";
+    let bedrock = ProviderId::catalog("aws_bedrock").expect("a known vendor");
+    let priced = ModelSpec::new(bedrock, claude_3_7).with_pricing(Pricing::new(3.0, 15.0));
     let wires = [
         Converse::new("us.amazon.nova-2-lite-v1:0"),
-        Converse::new("us.anthropic.claude-3-7-sonnet-20250219-v1:0"),
+        Converse::new(claude_3_7),
+        Converse::new(claude_3_7).with_facts(ModelFacts::new(priced)),
         Converse::new(PROFILE).with_family(Family::Claude),
     ];
     for wire in wires {

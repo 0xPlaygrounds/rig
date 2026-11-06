@@ -133,11 +133,12 @@ fn base(
         }
     }
     // A cache point after a reasoning turn, even on the user's side, goes
-    // only to a Claude model the catalog lists. Any other model is refused
-    // it: Nova rejects one after a tool result, and the rest are unknown.
+    // only to a Claude model rig's shipped catalog lists. Any other model is
+    // refused it: Nova rejects one after a tool result, and the rest are
+    // unknown.
     if let Some(cache) = cache {
         let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        let accepted = family == Family::Claude && wire.spec(model).is_some();
+        let accepted = family == Family::Claude && wire.listed(model);
         if reasoning && !accepted {
             input.refuse_cache(
                 "this model is not known to take a message cache checkpoint after a reasoning turn",

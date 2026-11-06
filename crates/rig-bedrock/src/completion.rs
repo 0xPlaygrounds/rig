@@ -262,6 +262,15 @@ impl Converse {
     }
 }
 
+impl Converse {
+    /// Whether rig's shipped catalog lists the model `model` resolves to. A
+    /// spec the caller binds counts only under the id of a shipped row.
+    pub(crate) fn listed(&self, model: &str) -> bool {
+        self.spec(model)
+            .is_some_and(|spec| spec_in(&ModelFacts::default(), &spec.id).is_some())
+    }
+}
+
 /// [`Converse::spec`] in `facts`.
 fn spec_in<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);
