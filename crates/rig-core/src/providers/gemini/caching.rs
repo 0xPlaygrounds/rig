@@ -513,37 +513,47 @@ impl CacheBook {
 }
 
 impl Book {
-    /// The lease held for `lease`'s digest, when it is still that cache and
-    /// not a replacement.
-    fn held_mut(&mut self, lease: &Lease) -> Option<&mut Lease> {
+    /// Whether `lease` is the cache requests on its digest read.
+    fn holds(&self, lease: &Lease) -> bool {
         self.leases
-            .get_mut(&lease.digest)
-            .filter(|held| held.name == lease.name)
+            .get(&lease.digest)
+            .is_some_and(|held| held.name == lease.name)
     }
 
     /// Whether `lease` is not yet deleted, as far as the book knows.
     fn owns(&self, lease: &Lease) -> bool {
-        let held = self.leases.get(&lease.digest);
-        held.is_some_and(|held| held.name == lease.name) || self.displaced.contains_key(&lease.name)
+        self.holds(lease) || self.displaced.contains_key(&lease.name)
     }
 
-    /// Read `lease` from now on. A different cache on its digest is displaced,
-    /// never dropped.
+    /// Take `lease` in. The later expiry holds its digest, so a restore needs
+    /// no order, and the other cache is displaced, never dropped.
     fn hold(&mut self, lease: Lease) {
-        let name = lease.name.clone();
-        if let Some(old) = self.leases.insert(lease.digest.clone(), lease)
-            && old.name != name
-        {
-            self.displaced.insert(old.name.clone(), old);
+        let (held, other) = match self.leases.remove(&lease.digest) {
+            Some(old) if old.expires_at > lease.expires_at => (old, Some(lease)),
+            old => (lease, old),
+        };
+        if let Some(other) = other.filter(|other| other.name != held.name) {
+            self.displaced.insert(other.name.clone(), other);
         }
+        self.leases.insert(held.digest.clone(), held);
     }
 
-    /// Stop holding `lease`, now it is gone, and end its life.
+    /// Stop holding `lease`, now it is gone, and end its life. A live cache
+    /// displaced from its digest takes over.
     fn forget(&mut self, lease: &Lease, now: u64) {
-        if self.held_mut(lease).is_some() {
-            self.leases.remove(&lease.digest);
-        }
         self.displaced.remove(&lease.name);
+        if self.holds(lease) {
+            self.leases.remove(&lease.digest);
+            let next = self
+                .displaced
+                .values()
+                .filter(|other| other.digest == lease.digest && other.live_at(now))
+                .max_by_key(|other| other.expires_at)
+                .map(|other| other.name.clone());
+            if let Some(next) = next.and_then(|name| self.displaced.remove(&name)) {
+                self.hold(next);
+            }
+        }
         if let Some(life) = self.lives.get_mut(&lease.name)
             && life.ended.is_none()
         {
@@ -1089,11 +1099,14 @@ impl CacheBook {
     pub(crate) fn extended(&self, lease: &Lease, ttl_secs: u64) -> bool {
         let now = self.now();
         let expires_at = now + ttl_secs;
-        let mut book = self.book();
-        if let Some(held) = book.held_mut(lease) {
-            held.expires_at = expires_at;
-        }
+        let mut guard = self.book();
+        let book = &mut *guard;
         let owned = book.owns(lease);
+        let held = book.leases.get_mut(&lease.digest);
+        let held = held.filter(|held| held.name == lease.name);
+        if let Some(owned) = held.or(book.displaced.get_mut(&lease.name)) {
+            owned.expires_at = expires_at;
+        }
         if let Some(life) = book.lives.get_mut(&lease.name) {
             life.expires_at = expires_at;
         }
