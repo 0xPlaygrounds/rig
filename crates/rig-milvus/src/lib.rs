@@ -114,7 +114,7 @@ fn radius(threshold: f64) -> Result<f32, FilterError> {
     if !(rounded.is_finite() && radius.is_finite()) {
         return Err(FilterError::Must(
             format!("{threshold:e}"),
-            "fit in f32".into(),
+            "have a radius that fits in f32".into(),
         ));
     }
     Ok(radius)
@@ -122,15 +122,14 @@ fn radius(threshold: f64) -> Result<f32, FilterError> {
 
 /// Decodes a returned document as `T`.
 ///
-/// Milvus returns a JSON field as a string, so a string is first parsed as JSON.
-/// A string that does not parse into `T`, or any other value, is decoded as is.
+/// A string is the JSON text insert writes, so it is parsed as JSON and plain
+/// text is an error. Any other value, such as an object in a dynamic field, is
+/// decoded as it stands.
 fn decode_document<T: DeserializeOwned>(document: Value) -> Result<T, VectorStoreError> {
-    if let Value::String(text) = &document
-        && let Ok(parsed) = serde_json::from_str(text)
-    {
-        return Ok(parsed);
-    }
-    Ok(serde_json::from_value(document)?)
+    Ok(match document {
+        Value::String(text) => serde_json::from_str(&text)?,
+        value => serde_json::from_value(value)?,
+    })
 }
 
 impl MilvusVectorStore {

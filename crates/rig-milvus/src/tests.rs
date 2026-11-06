@@ -130,13 +130,20 @@ async fn insert_without_rows_sends_no_request() -> anyhow::Result<()> {
         .insert_documents(vec![("alpha".to_owned(), vec![])])
         .await;
     ensure!(result.is_ok(), "no embeddings returned {result:?}");
+
+    // The stub keeps the first request it gets, so this probe shows none came before.
+    let probe = json!({ "probe": true });
+    let url = stub.store.base_url.clone();
+    stub.store.client.post(url).json(&probe).send().await?;
+    let first = stub.request()?;
+    ensure!(first == probe, "insert sent {first}");
     Ok(())
 }
 
 #[tokio::test]
 async fn searches_send_the_query_as_a_batch_of_one() -> anyhow::Result<()> {
     let stub = Stub::start(200, HIT)?;
-    stub.store.top_n::<Word>(request()).await.ok();
+    stub.store.top_n::<Word>(request()).await?;
     let documents = stub.request()?;
 
     let stub = Stub::start(200, HIT)?;
@@ -229,7 +236,7 @@ async fn thresholds_f32_cannot_hold_are_refused() -> anyhow::Result<()> {
 #[tokio::test]
 async fn searches_request_only_stored_fields() -> anyhow::Result<()> {
     let stub = Stub::start(200, HIT)?;
-    stub.store.top_n::<Word>(request()).await.ok();
+    stub.store.top_n::<Word>(request()).await?;
     let documents = stub.request()?;
     ensure!(
         documents.get("outputFields") == Some(&json!(["document"])),
@@ -257,14 +264,14 @@ async fn top_n_decodes_the_stored_document() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn top_n_decodes_documents_not_written_by_rig() -> anyhow::Result<()> {
-    let text = r#"{"code":0,"data":[{"distance":1,"document":"plain text","id":7}]}"#;
-    let hits = Stub::start(200, text)?
+async fn top_n_decodes_json_values_and_refuses_plain_text() -> anyhow::Result<()> {
+    let quoted = r#"{"code":0,"data":[{"distance":1,"document":"\"x\"","id":7}]}"#;
+    let hits = Stub::start(200, quoted)?
         .store
         .top_n::<String>(request())
         .await?;
     let document = hits.first().map(|hit| hit.document.as_str());
-    ensure!(document == Some("plain text"), "{document:?}");
+    ensure!(document == Some("x"), "{document:?}");
 
     let object = r#"{"code":0,"data":[{"distance":1,"document":{"word":"alpha"},"id":7}]}"#;
     let hits = Stub::start(200, object)?
@@ -274,10 +281,14 @@ async fn top_n_decodes_documents_not_written_by_rig() -> anyhow::Result<()> {
     let document = hits.first().map(|hit| hit.document.word.as_str());
     ensure!(document == Some("alpha"), "{document:?}");
 
-    let result = Stub::start(200, text)?.store.top_n::<Word>(request()).await;
+    let text = r#"{"code":0,"data":[{"distance":1,"document":"plain text","id":7}]}"#;
+    let result = Stub::start(200, text)?
+        .store
+        .top_n::<String>(request())
+        .await;
     ensure!(
         matches!(result, Err(VectorStoreError::JsonError(_))),
-        "a document that fits nothing returned {result:?}"
+        "plain text returned {result:?}"
     );
     Ok(())
 }
