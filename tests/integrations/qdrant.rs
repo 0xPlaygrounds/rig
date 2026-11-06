@@ -1,6 +1,6 @@
 use serde_json::json;
 use testcontainers::{
-    GenericImage,
+    ContainerAsync, GenericImage,
     core::{IntoContainerPort, WaitFor},
     runners::AsyncRunner,
 };
@@ -10,14 +10,17 @@ use qdrant_client::{
     Payload, Qdrant,
     qdrant::{
         CreateCollectionBuilder, Distance, PointStruct, QueryPointsBuilder, UpsertPointsBuilder,
-        VectorParamsBuilder,
+        VectorParamsBuilder, VectorsConfigBuilder,
     },
 };
 use rig::qdrant::QdrantVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed, driver::Model, embeddings::EmbeddingsBuilder, providers::openai,
-    vector_store::VectorStoreIndex,
+    Embed,
+    driver::Model,
+    embeddings::{Embedding, EmbeddingsBuilder},
+    providers::openai,
+    vector_store::{InsertDocuments, VectorStoreIndex},
 };
 
 const QDRANT_PORT: u16 = 6333;
@@ -31,9 +34,8 @@ struct Word {
     definition: String,
 }
 
-#[tokio::test]
-async fn vector_search_test() {
-    // Setup a local qdrant container for testing. NOTE: docker service must be running.
+/// Starts a local qdrant container and connects to it. NOTE: docker service must be running.
+async fn start_qdrant() -> (ContainerAsync<GenericImage>, Qdrant) {
     // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
     // layer caching and lets a rerun silently test a different database version.
     let container = GenericImage::new("qdrant/qdrant", "v1.19.0")
@@ -55,6 +57,13 @@ async fn vector_search_test() {
     let client = Qdrant::from_url(&format!("http://{host}:{port}"))
         .build()
         .unwrap();
+
+    (container, client)
+}
+
+#[tokio::test]
+async fn vector_search_test() {
+    let (_container, client) = start_qdrant().await;
 
     // Create a collection with 1536 dimensions if it doesn't exist
     // Note: Make sure the dimensions match the size of the embeddings returned by the
@@ -118,6 +127,80 @@ async fn vector_search_test() {
             "id": "f9e17d59-32e5-440c-be02-b2759a654824"
         })
     );
+}
+
+/// A store's inserts land in the vector its searches read: the named one when
+/// `using` names it, the default one otherwise.
+#[tokio::test]
+async fn inserted_documents_are_found_through_the_configured_vector() {
+    let (_container, client) = start_qdrant().await;
+    let server = httpmock::MockServer::start();
+    let model = openai_client(&server).embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+
+    for (collection, default, named) in [
+        ("default-only", true, false),
+        ("default-and-named", true, true),
+        ("named-only", false, true),
+    ] {
+        let mut vectors = VectorsConfigBuilder::default();
+        if default {
+            vectors.add_vector_params(VectorParamsBuilder::new(2, Distance::Cosine));
+        }
+        if named {
+            vectors.add_named_vector_params("text", VectorParamsBuilder::new(2, Distance::Cosine));
+        }
+        client
+            .create_collection(CreateCollectionBuilder::new(collection).vectors_config(vectors))
+            .await
+            .unwrap();
+
+        // The preset query means no search here reaches the embedding model.
+        let mut query = QueryPointsBuilder::new(collection)
+            .query(vec![1.0_f32, 0.0])
+            .with_payload(true);
+        if named {
+            query = query.using("text");
+        }
+        let store = QdrantVectorStore::new(client.clone(), model.clone(), query.build());
+
+        let document = json!({ "text": "hello" });
+        store
+            .insert_documents(vec![(
+                document.clone(),
+                vec![Embedding {
+                    document: "hello".into(),
+                    vec: vec![1.0, 0.0],
+                }],
+            )])
+            .await
+            .unwrap();
+
+        let request = VectorSearchRequest::builder()
+            .query("unused")
+            .samples(10)
+            .build();
+        let found = store.top_n::<serde_json::Value>(request).await.unwrap();
+        assert_eq!(
+            found.first().map(|row| &row.document),
+            Some(&document),
+            "inserted document not found through the store in {collection}"
+        );
+
+        if default && named {
+            let misplaced = client
+                .query(
+                    QueryPointsBuilder::new(collection)
+                        .query(vec![1.0_f32, 0.0])
+                        .limit(10),
+                )
+                .await
+                .unwrap();
+            assert!(
+                misplaced.result.is_empty(),
+                "insert also wrote the default vector"
+            );
+        }
+    }
 }
 
 async fn create_points(model: Model<openai::wire::Embeddings>) -> Vec<PointStruct> {

@@ -326,3 +326,6 @@ impl QdrantFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
