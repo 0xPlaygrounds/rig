@@ -43,15 +43,14 @@ pub(super) fn record_batch_to_json(batch: &RecordBatch) -> Result<Vec<Value>, Ve
 fn type_matcher(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
     let mut values = slot_values(column)?;
     if let Some(nulls) = column.logical_nulls() {
-        let rows = values.iter_mut().zip(nulls.iter());
-        for (value, _) in rows.filter(|(_, is_valid)| !is_valid) {
+        for (value, _) in values.iter_mut().zip(nulls.iter()).filter(|row| !row.1) {
             *value = Value::Null;
         }
     }
     Ok(values)
 }
 
-/// Converts each row's slot, ignoring nulls. Only `type_matcher` should call this.
+/// Converts each row's slot, which may be stale under a null. Call `type_matcher` instead.
 fn slot_values(column: &ArrayRef) -> Result<Vec<Value>, VectorStoreError> {
     /// Expands to a `slot_values` arm body converting `column` to JSON values
     /// via the given helper function (e.g. `primitive_values::<Float32Type>`).
@@ -265,7 +264,6 @@ where
 {
     column
         .as_primitive::<T>()
-        .values()
         .iter()
         .map(serde_json::to_value)
         .collect()
