@@ -54,6 +54,36 @@ fn a_local_watch_reports_what_files_would_list() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// A recursive watch reports the files a directory brings when it is moved
+/// in, nested ones too, as it does for a directory created there.
+#[test]
+fn a_recursive_watch_reports_the_files_of_a_directory_moved_in() {
+    let base = std::env::temp_dir().join(format!("rig-tools-watch-moved-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    let (root, staging) = (base.join("watched"), base.join("staging"));
+    std::fs::create_dir_all(&root).ok();
+    std::fs::create_dir_all(staging.join("nested")).ok();
+    std::fs::write(staging.join("existing.rs"), "x").ok();
+    std::fs::write(staging.join("nested/deep.rs"), "x").ok();
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let watch = Arc::new(Local).watch(&root, true, Listing::All);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let batches = batches(watch);
+    std::fs::rename(&staging, root.join("imported")).ok();
+    let mut seen = seen(&batches, Duration::from_secs(2));
+    seen.sort();
+    seen.dedup();
+    std::fs::remove_dir_all(&base).ok();
+    assert_eq!(
+        seen,
+        [
+            root.join("imported/existing.rs"),
+            root.join("imported/nested/deep.rs")
+        ]
+    );
+}
+
 /// A watch of a relative directory and one of a relative file each hear of a
 /// change. The fixture is below the current directory, which the test leaves
 /// alone because tests may share a process.

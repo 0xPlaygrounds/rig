@@ -19,6 +19,7 @@ use futures::Stream;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use ignore::Match;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use notify::event::ModifyKind;
 use notify::{EventKind, RecursiveMode, Watcher as _};
 use rig_core::tool::{ContentHash, content_hash};
 
@@ -161,7 +162,12 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
         if matches!(event.kind, EventKind::Access(_)) {
             return;
         }
-        let created = matches!(event.kind, EventKind::Create(_));
+        // A path renamed into place is new to the watch too: a directory
+        // moved in brings files that get no events of their own.
+        let created = matches!(
+            event.kind,
+            EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
+        );
         for path in event.paths {
             events.send(Raw { path, created }).ok();
         }
@@ -188,7 +194,8 @@ pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Re
     Ok(Watch::new(batches, watcher))
 }
 
-/// A path the system's watcher named, and whether it was created.
+/// A path the system's watcher named, and whether it was created or
+/// renamed into place.
 pub(crate) struct Raw {
     pub(crate) path: PathBuf,
     pub(crate) created: bool,
