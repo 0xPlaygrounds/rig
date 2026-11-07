@@ -19,20 +19,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct HelixDB {
     port: Option<u16>,
-    /// `None` when [`same_origin_client`] failed: each query builds it again
-    /// and returns that error.
+    /// `None` when [`default_client`] failed: each query builds it again and
+    /// returns that error.
     client: Option<Client>,
     endpoint: String,
     api_key: Option<String>,
 }
 
 impl HelixDB {
-    /// Creates a client, defaulting the endpoint to `http://localhost`. On
-    /// native targets it follows redirects only within the endpoint's origin,
-    /// so the API key never reaches another one: a redirect elsewhere fails the
-    /// query. When reqwest cannot build the client, every query returns why.
+    /// Creates a client, defaulting the endpoint to `http://localhost`. With
+    /// an API key, on native targets, it follows redirects only within the
+    /// endpoint's origin, so the key never reaches another one: a redirect
+    /// elsewhere fails the query. When reqwest cannot build the client, every
+    /// query returns why.
     pub fn new(endpoint: Option<&str>, port: Option<u16>, api_key: Option<&str>) -> Self {
-        Self::build(endpoint, port, api_key, same_origin_client().ok())
+        let client = default_client(api_key.is_some()).ok();
+        Self::build(endpoint, port, api_key, client)
     }
 
     /// Creates a HelixDB client using a caller-provided reqwest client.
@@ -60,12 +62,17 @@ impl HelixDB {
     }
 }
 
-/// The client [`HelixDB::new`] uses. On native targets it refuses a redirect to
-/// another origin; in a browser, the browser follows redirects.
-fn same_origin_client() -> reqwest::Result<Client> {
+/// The client [`HelixDB::new`] uses. With an API key (`keyed`), on native
+/// targets, it refuses a redirect to another origin; in a browser, the browser
+/// follows redirects.
+fn default_client(keyed: bool) -> reqwest::Result<Client> {
     let builder = Client::builder();
+    #[cfg(target_family = "wasm")]
+    let _ = keyed;
     #[cfg(not(target_family = "wasm"))]
-    let builder = {
+    let builder = if !keyed {
+        builder
+    } else {
         use reqwest::redirect::Policy;
         let default = Policy::default();
         builder.redirect(Policy::custom(move |attempt| {
@@ -111,7 +118,7 @@ impl HelixDB {
         let client = match &self.client {
             Some(client) => client,
             None => {
-                rebuilt = same_origin_client()?;
+                rebuilt = default_client(self.api_key.is_some())?;
                 &rebuilt
             }
         };
