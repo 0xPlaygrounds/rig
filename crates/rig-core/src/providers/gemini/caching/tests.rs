@@ -445,3 +445,150 @@ async fn a_late_callback_for_an_old_cache_spares_its_replacement() {
     deleted.sort_unstable();
     assert_eq!(deleted, [replacement.name, old.name]);
 }
+
+/// A transport that keeps each request's URL and key header, then lets
+/// [`CacheServer`] answer it.
+#[derive(Clone, Default)]
+struct KeySpy(Arc<Mutex<Vec<(http::Uri, Option<String>)>>>, CacheServer);
+
+impl crate::driver::Transport<super::super::completion::GenerateContent> for KeySpy {
+    fn send(
+        &self,
+        payload: crate::wire::Encoded,
+        exchange: crate::driver::Exchange,
+    ) -> crate::driver::Opening<crate::wire::WireFrame> {
+        let header = payload
+            .request
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((payload.request.uri().clone(), header));
+        self.1.send(payload, exchange)
+    }
+}
+
+/// A URL ends up in proxy and server logs, traces and error messages, so the
+/// key travels only in the header: on every wire, and on the requests the
+/// caching transport builds itself.
+#[tokio::test]
+async fn no_gemini_wire_puts_the_key_in_its_url() {
+    use crate::completion::CompletionRequest;
+    use crate::providers::gemini::cached_content::{
+        CacheExpiry, CachedContentRequest, NewCachedContent,
+    };
+    use crate::providers::gemini::model_listing::{InteractionsModels, Models};
+    use crate::providers::gemini::{GeminiConfig, completion::GenerateContent};
+    use crate::transcription::TranscriptionRequestBuilder;
+    use crate::wire::{Mode, Wire};
+
+    const KEY: &str = "not-a-real-gemini-key";
+    const MODEL: &str = "gemini-2.5-flash";
+    let check = |wire: &str, uri: &http::Uri, header: Option<&str>| {
+        assert!(
+            !uri.to_string().contains(KEY),
+            "{wire} put the key in its URL"
+        );
+        assert_eq!(header, Some(KEY), "{wire} sent no key header");
+    };
+    let gemini = GeminiConfig::new(KEY);
+    let completion = || CompletionRequest::new("probe");
+    let cached = gemini.cached_contents();
+    let cache = |request| cached.encode(request, Mode::Unary);
+    let name = || "cachedContents/abc".to_owned();
+    let mut encoded = vec![
+        (
+            "completion",
+            gemini.completion(MODEL).encode(completion(), Mode::Unary),
+        ),
+        (
+            "streaming completion",
+            gemini
+                .completion(MODEL)
+                .encode(completion(), Mode::Streaming),
+        ),
+        (
+            "interactions",
+            gemini.interactions(MODEL).encode(completion(), Mode::Unary),
+        ),
+        (
+            "embedding",
+            gemini
+                .embedding("gemini-embedding-001", None)
+                .encode(vec!["probe".to_owned()], Mode::Unary),
+        ),
+        (
+            "transcription",
+            gemini.transcription(MODEL).encode(
+                TranscriptionRequestBuilder::new(b"audio".to_vec()).build(),
+                Mode::Unary,
+            ),
+        ),
+        (
+            "cache create",
+            cache(CachedContentRequest::Create(
+                NewCachedContent::new(MODEL).content("corpus"),
+            )),
+        ),
+        ("cache get", cache(CachedContentRequest::Get(name()))),
+        (
+            "cache list",
+            cache(CachedContentRequest::List { page_token: None }),
+        ),
+        (
+            "cache update",
+            cache(CachedContentRequest::UpdateExpiry {
+                name: name(),
+                expiry: CacheExpiry::ttl(Duration::from_secs(60)),
+            }),
+        ),
+        ("cache delete", cache(CachedContentRequest::Delete(name()))),
+        (
+            "model listing",
+            Models::new(gemini.clone()).encode(None, Mode::Unary),
+        ),
+        (
+            "interactions model listing",
+            InteractionsModels::new(gemini.clone()).encode(None, Mode::Unary),
+        ),
+    ];
+    #[cfg(feature = "image")]
+    encoded.push((
+        "image generation",
+        gemini.image_generation(MODEL).encode(
+            crate::image_generation::ImageGenerationRequestBuilder::new("probe").build(),
+            Mode::Unary,
+        ),
+    ));
+    encoded.push(("credential check", gemini.verify().encode((), Mode::Unary)));
+    for (wire, encoded) in encoded {
+        let request = encoded.expect("the request encodes").request;
+        let header = request
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok());
+        check(wire, request.uri(), header);
+    }
+
+    // The second conversation on a prefix makes a cache, on a request the
+    // caching transport builds without a wire.
+    let spy = KeySpy::default();
+    let model = crate::driver::Model::new(GenerateContent::new(gemini, MODEL), spy.clone())
+        .caching(&CacheBook::new(AutoCache::default()));
+    for n in 0..2 {
+        let request = CompletionRequest::new(format!("question {n}")).preamble("x".repeat(8192));
+        model.call(request).await.expect("the call answers");
+    }
+    let sent = std::mem::take(&mut *spy.0.lock().unwrap_or_else(PoisonError::into_inner));
+    assert!(
+        sent.iter()
+            .any(|(uri, _)| uri.path().ends_with("/cachedContents")),
+        "no cache was made: {sent:?}"
+    );
+    for (uri, header) in &sent {
+        check("caching transport", uri, header.as_deref());
+    }
+}
