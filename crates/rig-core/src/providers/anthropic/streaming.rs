@@ -702,6 +702,17 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                 let details = delta.and_then(|delta| delta.get("stop_details"));
                 return self.end(&usage, Some(reason), details, out);
             }
+            // The protocol's terminal event: the reply is over. A gateway may
+            // relay a complete reply whose last `message_delta` states no stop
+            // reason (`stop_reason: null`, or no terminal `message_delta` at
+            // all) and still close with `message_stop`; the content is whole,
+            // so the reply ends with no reason recorded instead of being
+            // reported as a truncation. A stream that stops without this
+            // event is still truncated (`Decoder::finish`).
+            "message_stop" => {
+                let usage = self.terminal(None);
+                return self.end(&usage, None, None, out);
+            }
             // Preserve the complete error envelope rather than re-encode
             // modeled fields.
             "error" => {
@@ -709,8 +720,8 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                     event.raw.unwrap_or_default(),
                 ));
             }
-            // `message_stop`, `ping`, and nothing else: the classifier
-            // passes only the listed tags.
+            // `ping`, and nothing else: the classifier passes only the
+            // listed tags.
             _ => {}
         }
         Ok(Flow::More)

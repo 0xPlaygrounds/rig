@@ -361,10 +361,12 @@ fn a_call_assembles_its_input_into_its_item() {
     assert_eq!(response.stop(), StopReason::ToolUse);
 }
 
-/// A stream that never states its stop reason is truncated, whatever else
-/// it ended with: a `message_delta` without one, or `message_stop` alone.
+/// `message_stop` is the protocol's terminal event: a reply whose last
+/// `message_delta` states no stop reason is complete, not truncated.
+/// Gateways relay a complete reply as `stop_reason: null` (or with no
+/// terminal `message_delta` at all) and close with this event.
 #[test]
-fn a_stream_without_its_stop_reason_never_ends_successfully() {
+fn message_stop_ends_a_stream_without_a_stop_reason() {
     let mut frames = reply(
         vec![block(0, json!({"type": "text", "text": "partial"}), &[])],
         "end_turn",
@@ -373,6 +375,24 @@ fn a_stream_without_its_stop_reason_never_ends_successfully() {
         delta["delta"]["stop_reason"] = Value::Null;
     }
     frames.push(json!({"type": "message_stop"}));
+    let response = streamed(&frames).expect("message_stop ends the reply");
+    assert_eq!(response.choice.len(), 1, "the streamed block is kept");
+    match &response.choice[0] {
+        crate::completion::AssistantContent::Text(text) => assert_eq!(text.text, "partial"),
+        other => panic!("expected the text block, got {other:?}"),
+    }
+}
+
+/// A stream that states no stop reason and never reaches `message_stop` is
+/// still truncated: only the protocol's terminal event ends a reply.
+#[test]
+fn a_stream_without_a_reason_or_message_stop_is_truncated() {
+    let mut frames = reply(
+        vec![block(0, json!({"type": "text", "text": "partial"}), &[])],
+        "end_turn",
+    );
+    frames.pop();
+    frames.push(json!({"type": "message_delta", "delta": {"stop_reason": null}}));
     assert!(matches!(streamed(&frames), Err(ProviderError::Truncated)));
 }
 
