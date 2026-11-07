@@ -194,46 +194,151 @@ fn a_later_system_message_stays_in_place() {
     );
 }
 
-/// A short cache marks the system prompt and the last message. Bedrock
-/// rejects a cache point anywhere after a reasoning turn (#1673), so that
-/// one is skipped with a warning under `Ignore` and refused otherwise.
-/// Reasoning another model made goes as text, so it does not.
+/// A short cache marks the system prompt and the last message, also after
+/// a reasoning turn on a Claude model the catalog lists (#1673, #3088).
+/// Reasoning another model made goes as text, so it is no reasoning turn
+/// for the model it goes to.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
-    use rig_core::completion::{CacheRetention, OnUnsupported};
-    let cached = |history: Vec<Message>| {
-        CompletionRequest::from(history)
-            .cache(CacheRetention::Short)
-            .on_unsupported(OnUnsupported::Ignore)
-    };
+    use rig_core::completion::CacheRetention;
+    let cached =
+        |history: Vec<Message>| CompletionRequest::from(history).cache(CacheRetention::Short);
     let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
-    let wire = Converse::new(CLAUDE);
     let point = json!({ "cachePoint": { "type": "default" } });
+    let wire = Converse::new(CLAUDE);
     let body = sent_on(&wire, vec![Message::system("s"), Message::user("q")]);
     assert_eq!(body["system"], json!([{ "text": "s" }, point]));
     assert_eq!(
         body["messages"][0]["content"],
         json!([{ "text": "q" }, point])
     );
-    let signed = whole(
+    let history = |model: &str| {
+        let signed = whole(
+            model,
+            vec![reasoning("hm", Some("sig")), json!({ "text": "a" })],
+            "end_turn",
+        );
+        vec![
+            Message::user("q"),
+            signed.message().expect("a turn"),
+            Message::user("more"),
+        ]
+    };
+    for model in [
         CLAUDE,
-        vec![reasoning("hm", Some("sig")), json!({ "text": "a" })],
-        "end_turn",
-    );
-    let history = vec![
-        Message::user("q"),
-        signed.message().expect("a turn"),
-        Message::user("more"),
-    ];
-    let body = sent_on(&wire, history.clone());
-    assert_eq!(body["messages"][2]["content"], json!([{ "text": "more" }]));
+        ANTHROPIC_CLAUDE_HAIKU_4_5,
+        "eu.anthropic.claude-haiku-5-5",
+        "us.anthropic.claude-opus-5-5",
+    ] {
+        let body = sent_on(&Converse::new(model), history(model));
+        assert_eq!(
+            body["messages"][1]["content"][0],
+            reasoning("hm", Some("sig")),
+            "{model}"
+        );
+        assert_eq!(
+            body["messages"][2]["content"],
+            json!([{ "text": "more" }, point]),
+            "{model}"
+        );
+    }
     let other = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5);
-    let body = sent_on(&other, history);
+    let body = sent_on(&other, history(CLAUDE));
     assert_eq!(body["messages"][1]["content"][0], json!({ "text": "hm" }));
     assert_eq!(
         body["messages"][2]["content"],
         json!([{ "text": "more" }, point])
     );
+}
+
+/// After a reasoning turn, a model not known to take the message checkpoint
+/// never gets it, and never loses it in silence: Nova 2, whose last block
+/// here is a tool result, also when stated to be Claude; Claude models rig's
+/// shipped catalog does not list, whatever facts the caller binds; and
+/// application inference profile ARNs, which do not say what model they
+/// run. The default policy refuses; `Ignore` places the system checkpoint
+/// and skips the message one with a warning.
+#[test]
+fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
+    use rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Pricing};
+    use rig_core::completion::{CacheRetention, OnUnsupported};
+    use rig_core::providers::registry::ProviderId;
+    let claude_3_7 = "us.anthropic.claude-3-7-sonnet-20250219-v1:0";
+    let bedrock = ProviderId::catalog("aws_bedrock").expect("a known vendor");
+    let priced = ModelSpec::new(bedrock, claude_3_7).with_pricing(Pricing::new(3.0, 15.0));
+    let opus = Catalog::builtin()
+        .get_exact(bedrock, "us.anthropic.claude-opus-5-5")
+        .expect("listed");
+    let nova_2 = "us.amazon.nova-2-lite-v1:0";
+    let wires = [
+        Converse::new(nova_2),
+        Converse::new(nova_2).with_family(Family::Claude),
+        Converse::new(claude_3_7),
+        Converse::new(claude_3_7).with_facts(ModelFacts::new(priced)),
+        Converse::new(claude_3_7).with_facts(ModelFacts::new(opus.clone())),
+        Converse::new(PROFILE).with_family(Family::Claude),
+        Converse::new(PROFILE)
+            .with_family(Family::Claude)
+            .with_facts(ModelFacts::new(opus.clone())),
+    ];
+    for wire in wires {
+        let model = wire.model.clone();
+        let turn = whole(
+            &model,
+            vec![
+                reasoning("hm", Some("sig")),
+                tool_use("tooluse_1", "lookup", json!({})),
+            ],
+            "tool_use",
+        );
+        let result =
+            call("tooluse_1", "lookup", json!({})).result(vec![ToolResultContent::text("ok")]);
+        let history = vec![
+            Message::system("s"),
+            Message::user("q"),
+            turn.message().expect("a turn"),
+            Message::tool_results(vec![result]),
+        ];
+        let request = |policy| {
+            let mut request = CompletionRequest::from(history.clone())
+                .cache(CacheRetention::Short)
+                .on_unsupported(policy);
+            request.tools = rig_history_conformance::tools_of(&history);
+            request
+        };
+        let prepared =
+            Completion::prepare(request(OnUnsupported::Error), &wire.describe()).expect("prepares");
+        let error = wire.encode(prepared, Mode::Unary).expect_err(&model);
+        assert!(
+            error.to_string().contains("reasoning turn"),
+            "{model}: {error}"
+        );
+        let capture = rig_core::test_utils::TraceCapture::default();
+        let body = tracing::subscriber::with_default(capture.subscriber(), || {
+            encoded(&wire, request(OnUnsupported::Ignore), Mode::Unary)
+        });
+        assert_eq!(
+            body["system"][1],
+            json!({ "cachePoint": { "type": "default" } }),
+            "{model}"
+        );
+        assert_eq!(
+            body["messages"][1]["content"][0],
+            reasoning("hm", Some("sig")),
+            "{model}"
+        );
+        let last = body["messages"].as_array().and_then(|turns| turns.last());
+        assert!(
+            last.is_some_and(|turn| !turn.to_string().contains("cachePoint")),
+            "{model}: {body}"
+        );
+        let warned = capture
+            .warnings()
+            .iter()
+            .filter(|warning| warning.contains("option=cache"))
+            .count();
+        assert_eq!(warned, 1, "{model}");
+    }
 }
 
 /// #43, #652: request documents reach the first user message through the

@@ -262,6 +262,18 @@ impl Converse {
     }
 }
 
+impl Converse {
+    /// Whether the spec `model` resolves to is a Claude row of rig's shipped
+    /// catalog, by that spec's own id. A stated family or bound facts cannot
+    /// make it one.
+    pub(crate) fn listed_claude(&self, model: &str) -> bool {
+        self.spec(model).is_some_and(|spec| {
+            Family::of(&spec.id) == Family::Claude
+                && spec_in(&ModelFacts::default(), &spec.id).is_some()
+        })
+    }
+}
+
 /// [`Converse::spec`] in `facts`.
 fn spec_in<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);

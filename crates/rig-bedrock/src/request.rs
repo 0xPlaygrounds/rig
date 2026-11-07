@@ -132,13 +132,15 @@ fn base(
             }
         }
     }
-    // Bedrock rejects a cache point anywhere after a reasoning turn, even on
-    // the user's side, so that checkpoint is refused rather than skipped.
+    // A cache point after a reasoning turn, even on the user's side, goes
+    // only to a Claude model rig's shipped catalog lists. Any other model is
+    // refused it: Nova rejects one after a tool result, and the rest are
+    // unknown.
     if let Some(cache) = cache {
         let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-        if reasoning {
+        if reasoning && !wire.listed_claude(model) {
             input.refuse_cache(
-                "Bedrock rejects a message cache checkpoint after a reasoning turn",
+                "this model is not known to take a message cache checkpoint after a reasoning turn",
             )?;
         } else if let Some(Value::Array(last)) =
             messages.last_mut().and_then(|last| last.get_mut("content"))
