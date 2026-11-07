@@ -41,6 +41,12 @@ pub use reqwest;
 /// connection pool. Non-success responses retain at most 64 KiB of body bytes,
 /// with a truncation marker only after observing excess data. Partial diagnostic
 /// text survives body read failures; the client's timeout policy governs reads.
+///
+/// On native targets, [`Default`]'s client follows a redirect to another origin
+/// (scheme, host or port) with only harmless headers, so no credential reaches
+/// it. A browser follows redirects itself, so wasm lacks this protection, as do
+/// a client from `From<reqwest::Client>` and a `ReqwestMiddlewareClient`, which
+/// keep their own policy.
 #[derive(Clone, Debug)]
 pub struct ReqwestClient(Built);
 
@@ -52,6 +58,10 @@ pub fn shared() -> DynHttpClient {
 /// What building the client produced: the client, or why reqwest refused.
 #[derive(Clone, Debug)]
 enum Built {
+    /// The process-wide client: on native targets, its policy stops at
+    /// another origin and [`follow_other_origins`] sends that redirect.
+    Shared(Arc<reqwest::Client>),
+    /// A caller's client, which keeps its own redirect policy.
     Client(Arc<reqwest::Client>),
     /// The shared client could not be built: every send reports this, so
     /// the failure surfaces where the first request is made rather than
@@ -64,11 +74,11 @@ impl Default for ReqwestClient {
     /// client reqwest cannot build reports the build error on every send.
     fn default() -> Self {
         fn build() -> ReqwestClient {
-            let built = reqwest::Client::builder().build();
+            let built = shared_builder().build();
             #[cfg(all(feature = "rustls", not(target_family = "wasm")))]
             let built = built.or_else(with_bundled_roots);
             ReqwestClient(match built {
-                Ok(client) => Built::Client(Arc::new(client)),
+                Ok(client) => Built::Shared(Arc::new(client)),
                 Err(error) => Built::Failed(Arc::new(error)),
             })
         }
@@ -89,10 +99,11 @@ impl Default for ReqwestClient {
 
 impl ReqwestClient {
     /// The reqwest client, or `None` for the shared client when reqwest
-    /// could not build it.
+    /// could not build it. On native targets, the shared client's redirect
+    /// policy hands back a redirect to another origin instead of following it.
     pub fn inner(&self) -> Option<&reqwest::Client> {
         match &self.0 {
-            Built::Client(client) => Some(client),
+            Built::Shared(client) | Built::Client(client) => Some(client),
             Built::Failed(_) => None,
         }
     }
@@ -101,10 +112,35 @@ impl ReqwestClient {
     #[cfg(test)]
     fn same(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
-            (Built::Client(a), Built::Client(b)) => Arc::ptr_eq(a, b),
+            (Built::Shared(a), Built::Shared(b)) | (Built::Client(a), Built::Client(b)) => {
+                Arc::ptr_eq(a, b)
+            }
             (Built::Failed(a), Built::Failed(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
+    }
+}
+
+/// The builder of the shared client, with its redirect policy on native targets.
+fn shared_builder() -> reqwest::ClientBuilder {
+    let builder = reqwest::Client::builder();
+    #[cfg(not(target_family = "wasm"))]
+    let builder = builder.redirect(reqwest::redirect::Policy::custom(stop_at_other_origin));
+    builder
+}
+
+/// Hands back a redirect to another origin, for [`follow_other_origins`] to
+/// send, and leaves the rest to reqwest's default policy.
+#[cfg(not(target_family = "wasm"))]
+fn stop_at_other_origin(attempt: reqwest::redirect::Attempt) -> reqwest::redirect::Action {
+    let other_origin = attempt
+        .previous()
+        .last()
+        .is_some_and(|previous| previous.origin() != attempt.url().origin());
+    if other_origin {
+        attempt.stop()
+    } else {
+        reqwest::redirect::Policy::default().redirect(attempt)
     }
 }
 
@@ -117,7 +153,7 @@ fn with_bundled_roots(error: reqwest::Error) -> reqwest::Result<reqwest::Client>
     let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
         .iter()
         .filter_map(|der| reqwest::Certificate::from_der(der).ok());
-    let Ok(client) = reqwest::Client::builder().tls_certs_only(roots).build() else {
+    let Ok(client) = shared_builder().tls_certs_only(roots).build() else {
         return Err(error);
     };
     tracing::warn!(
@@ -419,9 +455,18 @@ impl Execute for ReqwestClient {
         payload: Result<Payload>,
     ) -> Result<impl Future<Output = Result<reqwest::Response>> + WasmCompatSend + 'static> {
         let client = match &self.0 {
-            Built::Client(client) => client,
+            Built::Shared(client) | Built::Client(client) => client,
             Built::Failed(error) => return Err(unbuilt(error)),
         };
+        #[cfg(not(target_family = "wasm"))]
+        let hops = matches!(self.0, Built::Shared(_)).then(|| {
+            let body = match &payload {
+                Ok(Payload::Bytes(bytes)) => Some(bytes.clone()),
+                _ => None,
+            };
+            let (method, headers) = (parts.method.clone(), parts.headers.clone());
+            (Arc::clone(client), method, headers, body)
+        });
         let request = client
             .request(parts.method, parts.uri.to_string())
             .headers(parts.headers);
@@ -429,8 +474,73 @@ impl Execute for ReqwestClient {
             Payload::Bytes(bytes) => request.body(bytes),
             Payload::Form(form) => request.multipart(form),
         };
-        Ok(async move { request.send().await.map_err(from_reqwest) })
+        Ok(async move {
+            let response = request.send().await.map_err(from_reqwest)?;
+            #[cfg(not(target_family = "wasm"))]
+            if let Some((client, method, headers, body)) = hops {
+                return follow_other_origins(client, method, headers, body, response).await;
+            }
+            Ok(response)
+        })
     }
+}
+
+/// The most redirects to another origin one request follows, reqwest's own
+/// limit. Each may add that many on its own origin.
+#[cfg(not(target_family = "wasm"))]
+const MAX_OTHER_ORIGIN_HOPS: usize = 10;
+
+/// Sends each redirect the shared client handed back, rewritten as reqwest
+/// rewrites one, and returns the first response it cannot follow: no redirect,
+/// no usable `Location`, a body it cannot replay (`body` is `None` for a
+/// multipart form), or the limit reached.
+///
+/// Only allow-listed headers go on, so a key header rig has never heard of
+/// stays behind, and stays behind for the rest of the chain.
+#[cfg(not(target_family = "wasm"))]
+async fn follow_other_origins(
+    client: Arc<reqwest::Client>,
+    mut method: http::Method,
+    all_headers: http::HeaderMap,
+    mut body: Option<Bytes>,
+    mut response: reqwest::Response,
+) -> Result<reqwest::Response> {
+    use http::header::{ACCEPT, CONTENT_ENCODING, CONTENT_TYPE, LOCATION, RANGE, USER_AGENT};
+    use http::{Method, StatusCode};
+
+    let mut headers = http::HeaderMap::new();
+    for name in [ACCEPT, CONTENT_ENCODING, CONTENT_TYPE, RANGE, USER_AGENT] {
+        for value in all_headers.get_all(&name) {
+            headers.append(&name, value.clone());
+        }
+    }
+    for _ in 0..MAX_OTHER_ORIGIN_HOPS {
+        let drop_body = match response.status() {
+            StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND => method == Method::POST,
+            StatusCode::SEE_OTHER => true,
+            StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => false,
+            _ => return Ok(response),
+        };
+        let location = response.headers().get(LOCATION);
+        let location = location.and_then(|location| location.to_str().ok());
+        let Some(url) = location.and_then(|location| response.url().join(location).ok()) else {
+            return Ok(response);
+        };
+        if drop_body {
+            if method != Method::HEAD {
+                method = Method::GET;
+            }
+            body = Some(Bytes::new());
+            headers.remove(CONTENT_ENCODING);
+            headers.remove(CONTENT_TYPE);
+        }
+        let Some(replay) = body.clone() else {
+            return Ok(response);
+        };
+        let request = client.request(method.clone(), url).headers(headers.clone());
+        response = request.body(replay).send().await.map_err(from_reqwest)?;
+    }
+    Ok(response)
 }
 
 /// Sends `parts` with `payload` through `client` and reads the reply with
