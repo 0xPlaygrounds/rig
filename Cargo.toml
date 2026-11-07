@@ -235,6 +235,8 @@ rig-core = { path = "crates/rig-core", version = "0.46.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.46.0", default-features = false }
 anyhow = "1"
 arrow-array = "58"
+# 58.2: decodes `FixedSizeList` columns, which rig-lancedb inserts embeddings through.
+arrow-json = "58.2"
 assert_fs = "1"
 # 2.3: `force_send`, which Bevy Remote answers an in-process request with
 # (`BrpMessage::sender`).
