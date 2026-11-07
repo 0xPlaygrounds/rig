@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.46.0...rig-lancedb-v0.47.0) - 2026-11-07
+
+### Fixed
+
+- *(stores)* SQLite search snapshots, Vectorize same-field AND, HelixDB id filters, MongoDB filter fields, LanceDB map and binary rows ([#3093](https://github.com/0xPlaygrounds/rig/pull/3093)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(sqlite,lancedb)* collated filters, rolled-back init, vectors of every replaced document, and id-only LanceDB distances ([#3042](https://github.com/0xPlaygrounds/rig/pull/3042)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-lancedb-v0.43.0...rig-lancedb-v0.44.0) - 2026-10-07
 
 ### Other

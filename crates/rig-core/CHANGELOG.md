@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.46.0...rig-core-v0.47.0) - 2026-11-07
+
+### Added
+
+- *(openai)* a Responses WebSocket session takes a cache key for its handshake session id ([#3049](https://github.com/0xPlaygrounds/rig/pull/3049)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(gemini)* mark the API key header sensitive and move the example to it ([#3112](https://github.com/0xPlaygrounds/rig/pull/3112)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* send the API key in the x-goog-api-key header, never in the URL ([#3111](https://github.com/0xPlaygrounds/rig/pull/3111)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage)* mark a summed counter that misses a figure from any call ([#3110](https://github.com/0xPlaygrounds/rig/pull/3110)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(deepseek)* send image parts to the models the catalog says read them ([#3107](https://github.com/0xPlaygrounds/rig/pull/3107)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(bedrock)* place the message cache checkpoint after a reasoning turn on Claude models the catalog lists ([#3103](https://github.com/0xPlaygrounds/rig/pull/3103)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* replace expired shared-prefix caches, spare replacements from late cache callbacks, batch embeddings by 100, send transcription prompt and language ([#3096](https://github.com/0xPlaygrounds/rig/pull/3096)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* exact mixed-number comparison, nullable collection elements, origin on merged turns ([#3092](https://github.com/0xPlaygrounds/rig/pull/3092)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cassette)* xAI recordings send `store: false` on Responses requests ([#3090](https://github.com/0xPlaygrounds/rig/pull/3090)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] schema runs fail on answers that miss the schema, and gateway Claude ids take the model's facts ([#3050](https://github.com/0xPlaygrounds/rig/pull/3050)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3050
+- *(bedrock,copilot,openai,mistral)* typed Bedrock calls, catalogue routing on Copilot, LiteLLM thinking_blocks, Codestral's width ([#3047](https://github.com/0xPlaygrounds/rig/pull/3047)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage,budget)* [**breaking**] model calls ended by a stop count toward spend and the budget ([#3003](https://github.com/0xPlaygrounds/rig/pull/3003)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] every limit on asked work is a settings.toml key with a sensible default, and rig says what it changes ([#2995](https://github.com/0xPlaygrounds/rig/pull/2995)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2995
+- *(print,acp)* [**breaking**] --json names a call by its place (protocol v 2); ACP shows a result the same live and loaded ([#2988](https://github.com/0xPlaygrounds/rig/pull/2988)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a call is known by its reply and place; every stop goes through one owner ([#2985](https://github.com/0xPlaygrounds/rig/pull/2985)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] /model lists only models you can use now; a model that doesn't connect is refused and the current one stays ([#2983](https://github.com/0xPlaygrounds/rig/pull/2983)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(driver)* [**breaking**] a streamed reply that sends only keep-alive bytes stalls ([#2982](https://github.com/0xPlaygrounds/rig/pull/2982)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(io)* [**breaking**] input and output are bounded; a stop is never blocked by output ([#2974](https://github.com/0xPlaygrounds/rig/pull/2974)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] only an explicit choice becomes the default; /model offers only models that answer ([#2973](https://github.com/0xPlaygrounds/rig/pull/2973)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(harness)* [**breaking**] one run contract for every front; unknown input is refused out loud ([#2972](https://github.com/0xPlaygrounds/rig/pull/2972)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(session)* [**breaking**] resume draws what live drew; an empty session is not kept ([#2964](https://github.com/0xPlaygrounds/rig/pull/2964)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tools)* [**breaking**] tool results show what they found ([#2965](https://github.com/0xPlaygrounds/rig/pull/2965)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] a stopped turn keeps what streamed, and a stop is never an error ([#2966](https://github.com/0xPlaygrounds/rig/pull/2966)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(copilot)* pin gpt-6-luna to the Responses route ([#3108](https://github.com/0xPlaygrounds/rig/pull/3108)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+- *(redact)* [**breaking**] redaction is one optional plugin; secrets become placeholders a tool call can still use ([#2990](https://github.com/0xPlaygrounds/rig/pull/2990)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added

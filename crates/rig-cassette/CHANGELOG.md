@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-cassette-v0.46.0...rig-cassette-v0.47.0) - 2026-11-07
+
+### Fixed
+
+- *(gemini)* send the API key in the x-goog-api-key header, never in the URL ([#3111](https://github.com/0xPlaygrounds/rig/pull/3111)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* replace expired shared-prefix caches, spare replacements from late cache callbacks, batch embeddings by 100, send transcription prompt and language ([#3096](https://github.com/0xPlaygrounds/rig/pull/3096)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cassette)* xAI recordings send `store: false` on Responses requests ([#3090](https://github.com/0xPlaygrounds/rig/pull/3090)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] schema runs fail on answers that miss the schema, and gateway Claude ids take the model's facts ([#3050](https://github.com/0xPlaygrounds/rig/pull/3050)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3050
+- *(cassette,xtask,test-support)* scrub team ids, price one-hour cache writes, close the guard's and registry's gaps ([#3045](https://github.com/0xPlaygrounds/rig/pull/3045)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ci)* main builds again after #3005 and #3014 crossed ([#3040](https://github.com/0xPlaygrounds/rig/pull/3040)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(usage,budget)* [**breaking**] model calls ended by a stop count toward spend and the budget ([#3003](https://github.com/0xPlaygrounds/rig/pull/3003)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(io)* [**breaking**] input and output are bounded; a stop is never blocked by output ([#2974](https://github.com/0xPlaygrounds/rig/pull/2974)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(models)* [**breaking**] only an explicit choice becomes the default; /model offers only models that answer ([#2973](https://github.com/0xPlaygrounds/rig/pull/2973)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+- *(redact)* [**breaking**] redaction is one optional plugin; secrets become placeholders a tool call can still use ([#2990](https://github.com/0xPlaygrounds/rig/pull/2990)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added
