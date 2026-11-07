@@ -8,7 +8,10 @@
 //! # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let config = OpenAIConfig::with_key(&DIALECT, "tid=session-token");
 //! let models = Model::new(Models::new(config), http).list().await?;
-//! # let _ = models;
+//! let tool_models: Vec<_> = models.iter()
+//!     .filter(|model| model.supports_tool_calls == Some(true))
+//!     .collect();
+//! # let _ = tool_models;
 //! # Ok(())
 //! # }
 //! ```
@@ -59,6 +62,9 @@ fn page(event: Value) -> Result<ModelPage, ProviderError> {
             model.name = text(entry, "/name");
             model.owned_by = text(entry, "/vendor");
             model.r#type = text(entry, "/capabilities/type");
+            model.supports_tool_calls = entry
+                .at("/capabilities/supports/tool_calls")
+                .and_then(Value::as_bool);
             Some(model)
         })
         .collect();
@@ -96,3 +102,6 @@ impl Wire for Models {
         DocumentDecoder::new(|body| classify_untyped_line(body.as_bytes()), page)
     }
 }
+
+#[cfg(test)]
+mod tests;
