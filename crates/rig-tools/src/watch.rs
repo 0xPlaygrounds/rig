@@ -144,11 +144,15 @@ fn differences(before: &BTreeMap<PathBuf, Mark>, after: &BTreeMap<PathBuf, Mark>
 /// under `root`, filtered as [`Workspace::files`] lists with `listing`,
 /// and sent in batches. A `root` that is a file is watched through its
 /// directory, so a write that replaces it is seen; one that does not exist
-/// yet is looked at every second instead.
+/// yet is looked at every second instead. A relative `root` that exists is
+/// resolved against the current directory once, so the paths sent are absolute.
 pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
     let Ok(meta) = fs::metadata(root) else {
         return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
     };
+    // The system's events name absolute paths, which a relative root never matches.
+    let root = std::path::absolute(root)?;
+    let root = root.as_path();
     let (events, raw) = std::sync::mpsc::channel::<Raw>();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         let Ok(event) = event else {
