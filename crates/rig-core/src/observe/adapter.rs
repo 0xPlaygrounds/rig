@@ -207,6 +207,7 @@ impl From<&crate::completion::Usage> for AdapterUsage {
             tool_use_prompt_tokens,
             reasoning_tokens,
             cost: _,
+            incomplete_tokens: _,
         } = *usage;
         Self {
             input_tokens,

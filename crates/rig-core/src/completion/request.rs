@@ -711,6 +711,9 @@ pub struct Usage {
     /// search, code execution), so it can be lower than the bill.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
+    /// Whether this sum misses a figure, as [`Self::tokens_complete`] reads it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) incomplete_tokens: bool,
 }
 
 impl Usage {
@@ -725,12 +728,26 @@ impl Usage {
             tool_use_prompt_tokens: None,
             reasoning_tokens: None,
             cost: None,
+            incomplete_tokens: false,
         }
     }
 
     /// Whether the provider reported any counter or a cost.
     pub fn is_reported(&self) -> bool {
-        *self != Self::default()
+        Self {
+            incomplete_tokens: false,
+            ..*self
+        } != Self::default()
+    }
+
+    /// Whether this sum has a figure from every call for each of input,
+    /// output and total. `false` means a summed counter can be lower than
+    /// what the calls used. A counter no call reported stays `None`, which
+    /// does not make the sum incomplete, and the detail counters such as
+    /// [`Self::reasoning_tokens`](field@Self::reasoning_tokens) are not
+    /// considered.
+    pub fn tokens_complete(&self) -> bool {
+        !self.incomplete_tokens
     }
 
     /// The tokens the call read and wrote, what a conversation's next
@@ -968,10 +985,32 @@ impl Add for Usage {
 /// Token counters add where an unreported side adds nothing. Cost sums only
 /// when both sides have one: a turn whose cost is unknown makes the sum
 /// unknown, rather than too low. A side that reports nothing at all
-/// ([`Usage::is_reported`] is `false`) is the identity, so a fold from
+/// ([`Usage::is_reported`] is `false`) adds nothing, so a fold from
 /// [`Usage::default`] keeps its first turn's cost.
+///
+/// The sum is no longer [complete](Usage::tokens_complete) when either side
+/// is not, when only one side has input, output or total, or when the right
+/// side reports nothing, which counts as a call that reported nothing. An
+/// empty left side counts as the start of a fold, so fold calls from
+/// [`Usage::default`]: `empty_call + call` leaves no mark.
 impl AddAssign for Usage {
     fn add_assign(&mut self, other: Self) {
+        let gap = |lhs: Option<u64>, rhs: Option<u64>| lhs.is_some() != rhs.is_some();
+        let incomplete_tokens = self.incomplete_tokens
+            || other.incomplete_tokens
+            || !other.is_reported()
+            || (self.is_reported()
+                && (gap(self.input_tokens, other.input_tokens)
+                    || gap(self.output_tokens, other.output_tokens)
+                    || gap(self.total_tokens, other.total_tokens)));
+        self.add_figures(other);
+        self.incomplete_tokens = incomplete_tokens;
+    }
+}
+
+impl Usage {
+    /// Sums the counters and cost of `other` into this one.
+    fn add_figures(&mut self, other: Self) {
         if !other.is_reported() {
             return;
         }
@@ -1011,7 +1050,8 @@ impl AddAssign for Usage {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UsageTotals {
     /// The token counters summed, with no cost: a call that did not
-    /// report a counter adds nothing to it.
+    /// report a counter adds nothing to it, and
+    /// [`Usage::tokens_complete`] is then `false`.
     pub tokens: Usage,
     /// The known costs summed, in USD.
     pub cost: f64,
@@ -1040,7 +1080,9 @@ impl UsageTotals {
 
     /// Adds what `other` summed.
     pub fn add(&mut self, other: &UsageTotals) {
-        self.tokens += other.tokens;
+        if other.calls > 0 {
+            self.tokens += other.tokens;
+        }
         self.cost += other.cost;
         self.unpriced += other.unpriced;
         self.calls += other.calls;

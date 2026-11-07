@@ -69,7 +69,7 @@ fn normalized_response_round_trips_through_serde() {
                 cache_creation_input_tokens: Some(0),
                 tool_use_prompt_tokens: Some(0),
                 reasoning_tokens: Some(1),
-                cost: None,
+                ..Usage::default()
             },
             crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
@@ -633,7 +633,7 @@ mod empty_new_fields_are_not_serialized {
         assert_eq!(sum.cached_input_tokens, Some(1));
         assert_eq!(sum.output_tokens, Some(2));
         assert_eq!(sum.cost, None);
-        assert_eq!(Usage::default() + Usage::default(), Usage::default());
+        assert!(!(Usage::default() + Usage::default()).is_reported());
     }
 }
 
@@ -751,8 +751,66 @@ mod usage_totals {
 
     /// Whether a sum says it misses a figure.
     fn marked(usage: &Usage) -> bool {
-        let value = serde_json::to_value(usage).expect("serializes");
-        value.get("incomplete_tokens") == Some(&serde_json::json!(true))
+        !usage.tokens_complete()
+    }
+
+    /// Calls that all report the same counters leave no mark, whichever
+    /// optional details come and go, and neither do empty totals.
+    #[test]
+    fn a_sum_with_every_figure_it_can_have_is_not_marked() {
+        let full = Usage::new()
+            .input_tokens(10)
+            .output_tokens(5)
+            .total_tokens(15);
+        let no_total = Usage::new().input_tokens(10).output_tokens(5);
+        for (name, calls) in [
+            ("full calls", vec![full, full]),
+            ("one call", vec![Usage::new().input_tokens(10)]),
+            ("calls with no total", vec![no_total, no_total]),
+            (
+                "details on one call",
+                vec![full.cached_input_tokens(3).reasoning_tokens(1), full],
+            ),
+        ] {
+            let mut sum = Usage::default();
+            let mut totals = UsageTotals::default();
+            for call in &calls {
+                sum += *call;
+                totals.record(call);
+            }
+            assert!(!marked(&sum), "the sum of {name} is marked");
+            totals.add(&UsageTotals::default());
+            assert!(!marked(&totals.tokens), "the totals of {name} are marked");
+        }
+    }
+
+    /// The mark outlives later sums and a round trip, is absent from an
+    /// unmarked form, and is not a report of its own.
+    #[test]
+    fn the_mark_is_kept_and_serialized_only_when_set() {
+        let full = Usage::new()
+            .input_tokens(10)
+            .output_tokens(5)
+            .total_tokens(15);
+        let empty = Usage::default() + Usage::default();
+        assert!(marked(&empty) && !empty.is_reported());
+        assert!(marked(&(empty + full)));
+
+        let mut totals = UsageTotals::default();
+        totals.record(&Usage::new());
+        let mut sum = UsageTotals::default();
+        sum.add(&totals);
+        assert!(marked(&sum.tokens));
+
+        let value = serde_json::to_value(empty + full).expect("serializes");
+        assert_eq!(
+            value.get("incomplete_tokens"),
+            Some(&serde_json::json!(true))
+        );
+        let read: Usage = serde_json::from_value(value).expect("deserializes");
+        assert!(marked(&read));
+        let value = serde_json::to_value(full + full).expect("serializes");
+        assert_eq!(value.get("incomplete_tokens"), None);
     }
 
     /// A sum missing a figure from any call says so, whichever call it was.

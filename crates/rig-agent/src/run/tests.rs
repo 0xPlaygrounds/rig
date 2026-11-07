@@ -279,12 +279,7 @@ fn a_run_with_a_call_missing_a_figure_is_marked() {
     let response = expect_done(&mut run);
     assert_eq!(response.usage.input_tokens, Some(22));
     assert_eq!(response.usage.output_tokens, Some(5));
-    let value = serde_json::to_value(response.usage).expect("serializes");
-    assert_eq!(
-        value.get("incomplete_tokens"),
-        Some(&json!(true)),
-        "the run's usage is not marked"
-    );
+    assert!(!response.usage.tokens_complete());
 }
 
 #[test]

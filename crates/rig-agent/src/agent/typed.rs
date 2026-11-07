@@ -168,10 +168,14 @@ where
                     retries - attempt
                 );
             }
-            let (result, error_usage) = runner.clone().run_with_error_usage(ambient.clone()).await;
+            let (result, attempt_usage) =
+                runner.clone().run_with_error_usage(ambient.clone()).await;
+            // An attempt that finished no call is not a call that reported nothing.
+            if attempt_usage != Usage::default() {
+                usage += attempt_usage;
+            }
             let outcome = match result {
                 Ok(response) => {
-                    usage += response.usage;
                     recover_output(&response, source).map(|output| TypedPromptResponse {
                         output,
                         usage,
@@ -179,10 +183,7 @@ where
                         messages: response.messages,
                     })
                 }
-                Err(err) => {
-                    usage += error_usage;
-                    Err(StructuredOutputError::Prompt(err))
-                }
+                Err(err) => Err(StructuredOutputError::Prompt(err)),
             };
             match outcome {
                 Ok(response) => return Ok(response),

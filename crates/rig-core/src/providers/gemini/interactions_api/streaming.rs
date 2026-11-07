@@ -176,7 +176,7 @@ pub fn usage_of(usage: &Value) -> Result<Usage, ProviderError> {
         tool_use_prompt_tokens: tool_use,
         total_tokens,
         cache_creation_input_tokens: None,
-        cost: None,
+        ..Usage::default()
     })
 }
 

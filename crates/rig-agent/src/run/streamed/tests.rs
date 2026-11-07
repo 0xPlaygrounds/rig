@@ -367,7 +367,8 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected Done");
     };
     assert_eq!(response.output(), "done");
-    assert_eq!(response.usage, usage);
+    assert_eq!(response.usage, usage + Usage::default());
+    assert!(!response.usage.tokens_complete());
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(response.completion_calls[0].usage, usage);
     assert_eq!(response.completion_calls[1].usage, Usage::default());
