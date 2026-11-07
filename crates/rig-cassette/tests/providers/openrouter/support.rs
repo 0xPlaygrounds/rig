@@ -97,10 +97,11 @@ where
     cassette.finish_after_test_result(result).await
 }
 
-/// A TypeSafe Jev client on OpenRouter's `/systemone`, replaying or
-/// recording `spec`.
+/// A TypeSafe Jev client on OpenRouter's `/systemone`, with `configure`
+/// applied to its settings, replaying or recording `spec`.
 pub(super) async fn with_openrouter_jev_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
+    configure: impl FnOnce(JevConfig) -> JevConfig,
     test_body: F,
 ) -> Result<(), E>
 where
@@ -114,10 +115,12 @@ where
         OPENROUTER_BASE_URL,
     )
     .await;
-    let jev = JevConfig::new(cassette.api_key("OPENROUTER_API_KEY"))
-        .model("typesafe/jev-1.13")
-        .with_endpoint(format!("{}/systemone", cassette.base_url()))
-        .connect(rig_test_support::cassettes::local_http());
+    let jev = configure(
+        JevConfig::new(cassette.api_key("OPENROUTER_API_KEY"))
+            .model("typesafe/jev-1.13")
+            .with_endpoint(format!("{}/systemone", cassette.base_url())),
+    )
+    .connect(rig_test_support::cassettes::local_http());
     let result = AssertUnwindSafe(test_body(jev)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }

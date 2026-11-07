@@ -1,7 +1,9 @@
 //! Cassette-backed TypeSafe Jev evaluation routed through OpenRouter's
-//! `/systemone`, whose `usage` adds the charge as a bare number of USD.
+//! `/systemone`, whose `usage` adds the charge as a bare number of USD and
+//! whose request can carry `provider` preferences.
 
 use rig::completion::Cost;
+use rig::providers::openrouter::extension::{DataCollection, ProviderPreferences};
 use rig::typesafeai::{Evaluate, Noul, Query};
 
 use super::super::support::with_openrouter_jev_cassette_result;
@@ -14,6 +16,7 @@ use crate::cassettes::CassetteMode;
 async fn evaluation_reads_the_reported_cost() -> anyhow::Result<()> {
     with_openrouter_jev_cassette_result(
         "jev/evaluation_reads_the_reported_cost",
+        |config| config,
         |jev| async move {
             let question =
                 Noul::new("Does the customer report a billing problem?")?.named("billing")?;
@@ -38,6 +41,31 @@ async fn evaluation_reads_the_reported_cost() -> anyhow::Result<()> {
                 let recorded = body["usage"]["cost"].as_f64().map(Cost::from_total);
                 anyhow::ensure!(cost == recorded, "the cost is the recorded figure");
             }
+            Ok(())
+        },
+    )
+    .await
+}
+
+/// The request body carries zero-data-retention preferences beside the model,
+/// and the recorded reply decodes into an answer.
+#[tokio::test]
+async fn evaluation_sends_provider_preferences() -> anyhow::Result<()> {
+    with_openrouter_jev_cassette_result(
+        "jev/evaluation_sends_provider_preferences",
+        |config| {
+            config.provider(
+                ProviderPreferences::new()
+                    .zdr(true)
+                    .data_collection(DataCollection::Deny),
+            )
+        },
+        |jev| async move {
+            let question =
+                Noul::new("Does the customer report a billing problem?")?.named("billing")?;
+            let state = serde_json::json!({"message": "I was charged twice for one order."});
+            let result = jev.evaluation().evaluate(&state, question).await?;
+            anyhow::ensure!((0.0..=1.0).contains(&result.answers.noul));
             Ok(())
         },
     )

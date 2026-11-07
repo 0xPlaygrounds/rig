@@ -91,6 +91,11 @@ model is `jev-latest`; `JevConfig::model(...)` selects another provider model
 identifier. Configure timeouts and retry middleware on the Rig transport and
 pass it with `JevConfig::connect`.
 
+To reach Jev through OpenRouter, pass an OpenRouter key and set the endpoint
+to `https://openrouter.ai/api/v1/systemone`. `JevConfig::provider(...)` then
+sends OpenRouter's routing preferences, such as zero data retention, beside
+the model.
+
 Questions share state but cannot consume each other's answers in one request.
 Confidence measures concentration, not correctness. Keep distributions and put
 threshold policy in application code. Validation preserves the provider's values,
