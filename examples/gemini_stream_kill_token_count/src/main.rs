@@ -294,14 +294,14 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
     if text.is_empty() {
         return Ok(0);
     }
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:countTokens?key={api_key}"
-    );
+    let url =
+        format!("https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:countTokens");
     let body = serde_json::json!({
         "contents": [{ "parts": [{ "text": text }] }]
     });
     let resp = http
         .post(url)
+        .header("x-goog-api-key", api_key)
         .json(&body)
         .send()
         .await?
