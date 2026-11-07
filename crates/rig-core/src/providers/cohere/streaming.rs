@@ -492,7 +492,7 @@ fn usage_of(usage: Option<&Value>) -> Result<Usage, ProviderError> {
         reasoning_tokens: count("/tokens/reasoning_tokens"),
         total_tokens: total,
         tool_use_prompt_tokens: None,
-        cost: None,
+        ..Usage::default()
     })
 }
 

@@ -135,7 +135,7 @@ impl Counts {
             reasoning_tokens: self.thinking,
             total_tokens: total,
             tool_use_prompt_tokens: None,
-            cost: None,
+            ..Default::default()
         })
     }
 

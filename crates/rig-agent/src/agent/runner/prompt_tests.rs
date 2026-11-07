@@ -411,11 +411,13 @@ async fn typed_prompt_response_preserves_completion_calls() {
         .total_tokens(10);
     let turn = MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage);
     let raw = turn.raw().expect("a scripted turn has a document");
-    let model = MockCompletionModel::from_turns([turn]);
+    // The failed attempt finished no call, so it leaves no mark on the usage.
+    let model = MockCompletionModel::from_turns([MockTurn::error("down"), turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent
         .prompt_typed::<TypedAnswer>("return typed json")
+        .retries(1)
         .await
         .expect("typed prompt should succeed");
 

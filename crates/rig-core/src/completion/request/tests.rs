@@ -69,7 +69,7 @@ fn normalized_response_round_trips_through_serde() {
                 cache_creation_input_tokens: Some(0),
                 tool_use_prompt_tokens: Some(0),
                 reasoning_tokens: Some(1),
-                cost: None,
+                ..Usage::default()
             },
             crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
@@ -633,7 +633,7 @@ mod empty_new_fields_are_not_serialized {
         assert_eq!(sum.cached_input_tokens, Some(1));
         assert_eq!(sum.output_tokens, Some(2));
         assert_eq!(sum.cost, None);
-        assert_eq!(Usage::default() + Usage::default(), Usage::default());
+        assert!(!(Usage::default() + Usage::default()).is_reported());
     }
 }
 
@@ -748,6 +748,70 @@ mod generation_option_shortcuts {
 mod usage_totals {
     use super::super::dollars_label;
     use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
+
+    /// A sum missing a figure from any call says so, whichever call it was,
+    /// through later sums and a round trip. Calls that all report the same
+    /// counters leave no mark, whichever optional details come and go.
+    #[test]
+    fn a_sum_missing_a_figure_from_any_call_is_marked() {
+        let full = Usage::new()
+            .input_tokens(10)
+            .output_tokens(5)
+            .total_tokens(15);
+        let input_only = Usage::new().input_tokens(10);
+        let no_total = Usage::new().input_tokens(10).output_tokens(5);
+        let only_a_cost = Usage::new().cost(Cost::from_total(1.0));
+        let details = full.cached_input_tokens(3).reasoning_tokens(1);
+        for (name, calls, expected) in [
+            ("a later call without output", vec![full, input_only], true),
+            (
+                "an earlier call without output",
+                vec![input_only, full],
+                true,
+            ),
+            (
+                "a first call with nothing",
+                vec![Usage::new(), full, full],
+                true,
+            ),
+            ("a last call with nothing", vec![full, Usage::new()], true),
+            ("only calls with nothing", vec![Usage::new(); 2], true),
+            ("a call with only a cost", vec![full, only_a_cost], true),
+            ("full calls", vec![full, full], false),
+            ("one call", vec![input_only], false),
+            ("calls with no total", vec![no_total, no_total], false),
+            ("details on one call", vec![details, full], false),
+        ] {
+            let mut sum = Usage::default();
+            let mut totals = UsageTotals::default();
+            for call in &calls {
+                sum += *call;
+                totals.record(call);
+            }
+            let mut merged = UsageTotals::default();
+            merged.add(&totals);
+            merged.add(&UsageTotals::default());
+            for (place, usage) in [
+                ("sum", sum),
+                ("totals", totals.tokens),
+                ("merged totals", merged.tokens),
+            ] {
+                assert_eq!(
+                    !usage.tokens_complete(),
+                    expected,
+                    "the {place} with {name}"
+                );
+            }
+            let value = serde_json::to_value(sum).expect("serializes");
+            assert_eq!(
+                value.get("incomplete_tokens"),
+                expected.then_some(&serde_json::Value::Bool(true)),
+                "the serialized sum with {name}"
+            );
+            let read: Usage = serde_json::from_value(value).expect("deserializes");
+            assert_eq!(read, sum, "the sum read back with {name}");
+        }
+    }
 
     /// A running account stops at `u64::MAX` rather than panic or wrap.
     #[test]
