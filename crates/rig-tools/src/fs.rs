@@ -28,14 +28,17 @@ pub struct Prefix {
     /// At most the asked number of bytes, as text, without a byte-order
     /// mark.
     pub text: String,
-    /// The file's size, more than `text` holds when it was cut.
+    /// The file's size in bytes.
     pub size: u64,
+    /// Whether bytes of the file were left unread.
+    cut: bool,
 }
 
 impl Prefix {
-    /// Whether the file is longer than [`text`](Self::text).
+    /// Whether the read stopped before the file's end, so
+    /// [`text`](Self::text) misses its rest.
     pub fn cut(&self) -> bool {
-        self.size > self.text.len() as u64
+        self.cut
     }
 
     /// `contents`, read with a limit of `cap` bytes, as text without a
@@ -43,6 +46,7 @@ impl Prefix {
     /// inside are replaced.
     pub fn of(contents: Contents, cap: usize) -> Self {
         let Contents { bytes, size } = contents;
+        let cut = size > bytes.len() as u64;
         let mut text = match String::from_utf8(bytes) {
             Ok(text) => text,
             Err(error) => {
@@ -57,7 +61,7 @@ impl Prefix {
         if let Some(rest) = text.strip_prefix('\u{feff}') {
             text = rest.to_owned();
         }
-        Self { text, size }
+        Self { text, size, cut }
     }
 }
 
