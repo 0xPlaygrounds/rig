@@ -74,10 +74,7 @@ impl Default for ReqwestClient {
     /// client reqwest cannot build reports the build error on every send.
     fn default() -> Self {
         fn build() -> ReqwestClient {
-            let built = shared_builder().build();
-            #[cfg(all(feature = "rustls", not(target_family = "wasm")))]
-            let built = built.or_else(with_bundled_roots);
-            ReqwestClient(match built {
+            ReqwestClient(match build_shared(shared_builder) {
                 Ok(client) => Built::Shared(Arc::new(client)),
                 Err(error) => Built::Failed(Arc::new(error)),
             })
@@ -99,11 +96,20 @@ impl Default for ReqwestClient {
 
 impl ReqwestClient {
     /// The reqwest client, or `None` for the shared client when reqwest
-    /// could not build it. On native targets, this client hands back every
-    /// redirect instead of following it: [`HttpClientExt`] sends follow them.
+    /// could not build it. On native targets, the shared client's is a second
+    /// one: its redirects are reqwest's own, so it lacks this type's protection
+    /// and does not share the pool.
     pub fn inner(&self) -> Option<&reqwest::Client> {
         match &self.0 {
-            Built::Shared(client) | Built::Client(client) => Some(client),
+            #[cfg(not(target_family = "wasm"))]
+            Built::Shared(_) => {
+                static FOLLOWING: std::sync::LazyLock<Option<reqwest::Client>> =
+                    std::sync::LazyLock::new(|| build_shared(reqwest::Client::builder).ok());
+                FOLLOWING.as_ref()
+            }
+            #[cfg(target_family = "wasm")]
+            Built::Shared(client) => Some(client),
+            Built::Client(client) => Some(client),
             Built::Failed(_) => None,
         }
     }
@@ -130,16 +136,28 @@ fn shared_builder() -> reqwest::ClientBuilder {
     builder
 }
 
-/// The shared client trusting only the bundled Mozilla roots, after the
+/// A client from `builder`, falling back to the bundled roots when the system's
+/// cannot be loaded.
+fn build_shared(builder: fn() -> reqwest::ClientBuilder) -> reqwest::Result<reqwest::Client> {
+    let built = builder().build();
+    #[cfg(all(feature = "rustls", not(target_family = "wasm")))]
+    let built = built.or_else(|error| with_bundled_roots(builder(), error));
+    built
+}
+
+/// `builder` trusting only the bundled Mozilla roots, after the
 /// default build failed with `error`. That build differs only in reading
 /// the system's root store, which a host without CA certificates lacks.
 /// Returns `error` when this build fails too.
 #[cfg(all(feature = "rustls", not(target_family = "wasm")))]
-fn with_bundled_roots(error: reqwest::Error) -> reqwest::Result<reqwest::Client> {
+fn with_bundled_roots(
+    builder: reqwest::ClientBuilder,
+    error: reqwest::Error,
+) -> reqwest::Result<reqwest::Client> {
     let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
         .iter()
         .filter_map(|der| reqwest::Certificate::from_der(der).ok());
-    let Ok(client) = shared_builder().tls_certs_only(roots).build() else {
+    let Ok(client) = builder.tls_certs_only(roots).build() else {
         return Err(error);
     };
     tracing::warn!(
@@ -488,7 +506,7 @@ async fn follow_redirects(
         ACCEPT, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, LOCATION, RANGE, REFERER,
         TRANSFER_ENCODING, USER_AGENT,
     };
-    use http::{HeaderMap, HeaderValue, Method, StatusCode};
+    use http::{HeaderValue, Method, StatusCode};
 
     let mut method = request.method().clone();
     let mut headers = request.headers().clone();
@@ -505,14 +523,10 @@ async fn follow_redirects(
                 method = Method::GET;
             }
             body = Some(Bytes::new());
-            for name in [
-                CONTENT_TYPE,
-                CONTENT_LENGTH,
-                CONTENT_ENCODING,
-                TRANSFER_ENCODING,
-            ] {
-                headers.remove(name);
-            }
+            headers.remove(CONTENT_TYPE);
+            headers.remove(CONTENT_LENGTH);
+            headers.remove(CONTENT_ENCODING);
+            headers.remove(TRANSFER_ENCODING);
         }
         let location = response.headers().get(LOCATION);
         let location = location.and_then(|location| location.to_str().ok());
@@ -528,13 +542,12 @@ async fn follow_redirects(
                 headers.insert(REFERER, referer);
             }
         } else {
-            let mut kept = HeaderMap::new();
-            for name in [ACCEPT, CONTENT_ENCODING, CONTENT_TYPE, RANGE, USER_AGENT] {
-                for value in headers.get_all(&name) {
-                    kept.append(&name, value.clone());
-                }
-            }
-            headers = kept;
+            let kept = [ACCEPT, CONTENT_ENCODING, CONTENT_TYPE, RANGE, USER_AGENT];
+            headers = headers
+                .iter()
+                .filter(|(name, _)| kept.contains(*name))
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect();
         }
         // reqwest's builder would turn these into an `Authorization` header.
         let _ = url.set_username("");
