@@ -4,9 +4,8 @@ use super::{API_KEY_ENV, BASE_URL, GeminiConfig};
 use crate::wire::Wire;
 
 /// A wire is data a host may serialize into a scene, a component or a config
-/// file, and Gemini's key is the one credential in it — including on the
-/// GenerateContent family, whose `encode` puts the key in the request URI.
-/// Nothing serialized may carry it.
+/// file, and Gemini's key is the one credential in it. Nothing serialized may
+/// carry it.
 #[test]
 fn a_serialized_config_carries_no_key_material() {
     let gemini = GeminiConfig::new("AIzaSyNOTAREALKEY-0123456789");
@@ -36,11 +35,10 @@ fn a_serialized_config_carries_no_key_material() {
     let encoded = wire
         .encode(request, crate::wire::Mode::Unary)
         .expect("the request encodes");
-    let uri = encoded.request.uri().clone();
-    assert!(
-        uri.query()
-            .is_some_and(|query| query.contains("key=AIzaSyNOTAREALKEY-0123456789")),
-        "the encoded request lost the key: {uri}"
+    assert_eq!(
+        encoded.request.headers()[GeminiConfig::API_KEY_HEADER],
+        "AIzaSyNOTAREALKEY-0123456789",
+        "the encoded request lost the key"
     );
 }
 

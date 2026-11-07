@@ -51,8 +51,8 @@ fn the_redaction_sentinel_reloads_as_no_credential() {
 
 /// The one property behind every provider's redaction test: whatever a
 /// reloaded wire puts in its request envelope, it is never the sentinel
-/// wearing a credential's clothes — as a bearer token, as `x-api-key`, or
-/// in a `?key=` query.
+/// wearing a credential's clothes: as a bearer token, as `x-api-key`, or as
+/// `x-goog-api-key`.
 #[test]
 fn a_reloaded_wire_sends_no_credential_sentinel() {
     sends_no_sentinel(
@@ -181,17 +181,21 @@ fn auth_context_debug_redacts_retained_credential() {
 
 /// Encoding and diagnostics are local boundaries; no response needs recording.
 #[test]
-fn gemini_encoded_debug_redacts_query_without_removing_authentication() -> anyhow::Result<()> {
-    let key = "synthetic-gemini-query-key";
+fn gemini_encoded_debug_redacts_key_without_removing_authentication() -> anyhow::Result<()> {
+    let key = "synthetic-gemini-header-key";
     let encoded = GeminiConfig::new(key)
         .completion("gemini-2.5-flash")
         .encode(probe_request(), Mode::Unary)?;
     anyhow::ensure!(
-        encoded.request.uri().query() == Some("key=synthetic-gemini-query-key"),
-        "Gemini query credential changed"
+        encoded
+            .request
+            .headers()
+            .get("x-goog-api-key")
+            .is_some_and(|value| value == key),
+        "Gemini header credential changed"
     );
     for debug in [format!("{encoded:?}"), format!("{encoded:#?}")] {
-        anyhow::ensure!(!debug.contains(key), "Encoded leaked its query credential");
+        anyhow::ensure!(!debug.contains(key), "Encoded leaked its credential");
         anyhow::ensure!(debug.contains("POST"), "Encoded omitted the method");
         anyhow::ensure!(
             debug.contains("/v1beta/models/gemini-2.5-flash:generateContent"),

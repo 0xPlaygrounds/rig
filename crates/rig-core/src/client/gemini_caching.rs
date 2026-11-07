@@ -147,9 +147,9 @@ where
 {
     /// Send one `cachedContents` request through the inner transport.
     async fn resource(&self, method: http::Method, path: &str, body: Option<Vec<u8>>) -> Reply {
-        let request = http::Request::builder()
-            .method(method)
-            .uri(self.config.uri(path))
+        let request = self
+            .config
+            .request(method, path)
             .header("Content-Type", "application/json")
             .body(Body::Bytes(body.unwrap_or_default()));
         let request = match request {

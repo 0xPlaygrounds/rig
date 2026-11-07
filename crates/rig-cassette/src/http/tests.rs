@@ -130,6 +130,14 @@ fn query_matches_counts_duplicate_pairs() {
 }
 
 #[test]
+fn query_matches_expects_no_recorded_key_and_refuses_one_sent() {
+    let expected = [query_pair("key", REDACTED), query_pair("alt", "sse")];
+
+    assert!(query_matches_query(Some("alt=sse"), &expected));
+    assert!(!query_matches_query(Some("alt=sse&key=abc123"), &expected));
+}
+
+#[test]
 fn query_matches_rejects_extra_actual_params() {
     let expected = [query_pair("a", "1")];
 

@@ -104,14 +104,12 @@ impl Wire for Embeddings {
             );
         }
 
-        let request = http::Request::post(format!(
-            "{}/v1beta/models/{}:batchEmbedContents?key={}",
-            self.provider.base_url,
-            self.model,
-            self.provider.api_key.expose()
-        ))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+        let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);
+        let request = self
+            .provider
+            .request(http::Method::POST, &path)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
         // `batchEmbedContents` has no streaming variant, so a streamed call
         // sends the same bytes and reads the same whole reply.
         Ok(Encoded::new(request, Framing::Whole))

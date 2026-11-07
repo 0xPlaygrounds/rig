@@ -161,14 +161,11 @@ struct CassettePolicy {
 
 impl CassettePolicy {
     fn for_scenario(provider: &str, spec: CassetteSpec) -> Self {
-        let scenario = spec.scenario;
         let required_request_headers = match provider {
             "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
-            "gemini" if scenario.starts_with("interactions_api/") => {
-                GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
-            }
+            "gemini" => GEMINI_REQUIRED_REQUEST_HEADERS,
             _ => NO_REQUIRED_REQUEST_HEADERS,
         };
 
@@ -1032,7 +1029,7 @@ impl ProviderCassette {
     }
 
     /// Return an invalid key for recording auth failures, or the scrubbed dummy
-    /// key for replay so matched query credentials agree with the fixture.
+    /// key for replay.
     pub fn bogus_api_key(&self) -> String {
         // Handing out a rejected credential makes the rejection the subject.
         self.expect_account_failure(AccountFailure::Auth);
@@ -2124,6 +2121,9 @@ fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
     let mut expected = expected.to_vec();
     scrub_query_params(&mut scrubber, &mut actual);
     scrub_query_params(&mut scrubber, &mut expected);
+    // Older recordings keep a credential the client now sends as a header.
+    // Only the expected side drops it, so a key still in a URL fails replay.
+    expected.retain(|pair| !(pair.name == "key" && pair.value == REDACTED));
     query_pair_counts(actual.into_iter().map(|pair| (pair.name, pair.value)))
         == query_pair_counts(expected.into_iter().map(|pair| (pair.name, pair.value)))
 }
@@ -3052,7 +3052,7 @@ const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
 const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
 const CHATGPT_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
 const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
-const GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
+const GEMINI_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
 
 const RECORDED_REQUEST_HEADERS: &[&str] = &[
     "accept",

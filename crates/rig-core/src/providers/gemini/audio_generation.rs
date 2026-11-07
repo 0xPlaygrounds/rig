@@ -382,12 +382,10 @@ impl Wire for Speech {
             ));
         }
         let body = serde_json::to_vec(&create_request_body(&self.model, request))?;
-        let request = http::Request::post(self.provider.interactions_uri("/v1beta/interactions"))
+        let request = self
+            .provider
+            .request(http::Method::POST, "/v1beta/interactions")
             .header(http::header::CONTENT_TYPE, "application/json")
-            .header(
-                super::GeminiConfig::INTERACTIONS_KEY_HEADER,
-                self.provider.api_key.expose(),
-            )
             .body(crate::wire::Body::Bytes(body))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))

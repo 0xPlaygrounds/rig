@@ -37,9 +37,8 @@ async fn per_part_media_resolution() {
         let client = rig_test_support::cassettes::local_reqwest();
         let http = client.inner().expect("the session's reqwest client");
         let url = format!(
-            "{}/v1beta/models/{GEMINI_3_FLASH_PREVIEW}:generateContent?key={}",
+            "{}/v1beta/models/{GEMINI_3_FLASH_PREVIEW}:generateContent",
             models.config.base_url.trim_end_matches('/'),
-            models.config.api_key.expose()
         );
         let mut tokens = Vec::new();
         for resolution in [None, Some("MEDIA_RESOLUTION_LOW")] {
@@ -54,6 +53,7 @@ async fn per_part_media_resolution() {
             let response = http
                 .post(&url)
                 .header("content-type", "application/json")
+                .header("x-goog-api-key", models.config.api_key.expose())
                 .body(body.to_string())
                 .send()
                 .await
