@@ -79,6 +79,101 @@ async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
     }
 }
 
+/// A redirect to another origin (here, another port) arrives without any key
+/// header, whatever its name, and keeps the method, body and content type; a
+/// redirect on the same origin arrives with the keys.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test]
+async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
+
+    /// Answers `/to/<port>` with a 307 to that port, and records any other
+    /// request, in lower case, before answering it with a 200.
+    async fn serve(listener: TcpListener, landed: mpsc::UnboundedSender<String>) {
+        while let Ok((socket, _)) = listener.accept().await {
+            let mut socket = BufReader::new(socket);
+            let mut request = String::new();
+            while !request.ends_with("\r\n\r\n") {
+                socket.read_line(&mut request).await.expect("a request");
+            }
+            request.make_ascii_lowercase();
+            let length = request
+                .split_once("content-length: ")
+                .and_then(|(_, rest)| rest.split_once("\r\n"))
+                .map_or(0, |(length, _)| length.parse().expect("a length"));
+            let mut body = vec![0; length];
+            socket.read_exact(&mut body).await.expect("a body");
+            let path = request.split_whitespace().nth(1).expect("a path");
+            let head = match path.strip_prefix("/to/") {
+                Some(port) => {
+                    format!("307 Temporary Redirect\r\nlocation: http://127.0.0.1:{port}/end")
+                }
+                None => {
+                    request.push_str(&String::from_utf8_lossy(&body));
+                    landed.send(request).expect("the test is waiting");
+                    "200 OK".to_string()
+                }
+            };
+            let reply =
+                format!("HTTP/1.1 {head}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+            socket.write_all(reply.as_bytes()).await.expect("a reply");
+        }
+    }
+
+    async fn server() -> (u16, mpsc::UnboundedReceiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("an address").port();
+        let (sender, receiver) = mpsc::unbounded_channel();
+        tokio::spawn(serve(listener, sender));
+        (port, receiver)
+    }
+
+    const KEY_HEADERS: [&str; 4] = ["x-api-key", "api-key", "x-goog-api-key", "x-unheard-of-key"];
+
+    /// What landed after a POST from the first server to `/to/<port>`.
+    async fn post(first: u16, port: u16, landed: &mut mpsc::UnboundedReceiver<String>) -> String {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(format!("http://127.0.0.1:{first}/to/{port}"))
+            .header("content-type", "application/json");
+        for name in KEY_HEADERS {
+            request = request.header(name, "secret-key");
+        }
+        let request = request.body(Bytes::from("the-body")).expect("a request");
+        ReqwestClient::default()
+            .send::<_, Bytes>(request)
+            .await
+            .expect("the redirect is followed");
+        landed.recv().await.expect("a request landed")
+    }
+
+    let (first, mut landed_on_first) = server().await;
+    let (second, mut landed_on_second) = server().await;
+
+    let other_origin = post(first, second, &mut landed_on_second).await;
+    assert!(
+        !other_origin.contains("secret-key"),
+        "the other origin got a key: {other_origin}"
+    );
+    assert!(other_origin.starts_with("post /end "), "{other_origin}");
+    assert!(
+        other_origin.contains("content-type: application/json"),
+        "{other_origin}"
+    );
+    assert!(other_origin.ends_with("the-body"), "{other_origin}");
+
+    let same_origin = post(first, first, &mut landed_on_first).await;
+    for name in KEY_HEADERS {
+        assert!(
+            same_origin.contains(&format!("{name}: secret-key")),
+            "{same_origin}"
+        );
+    }
+    assert!(same_origin.ends_with("the-body"), "{same_origin}");
+}
+
 /// A status error, as a middleware's `error_for_status` makes one, keeps
 /// reqwest's error and is retried only for a status the table retries.
 #[test]
