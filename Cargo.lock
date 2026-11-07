@@ -14232,6 +14232,7 @@ dependencies = [
  "async-stream",
  "base64 0.23.1",
  "bytes",
+ "csv",
  "divan",
  "epub",
  "fastrand",

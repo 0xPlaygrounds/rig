@@ -176,6 +176,13 @@ pub mod pdf;
 #[cfg(feature = "pdf")]
 pub use pdf::PdfFileLoader;
 
+#[cfg(feature = "csv")]
+#[cfg_attr(docsrs, doc(cfg(feature = "csv")))]
+pub mod csv;
+
+#[cfg(feature = "csv")]
+pub use csv::CsvFileLoader;
+
 #[cfg(feature = "epub")]
 #[cfg_attr(docsrs, doc(cfg(feature = "epub")))]
 pub mod epub;
