@@ -657,3 +657,22 @@ fn a_misspelled_provider_preference_fails_to_load() {
         "{error:?}"
     );
 }
+
+/// A stored configuration with a misspelled top-level key fails to load,
+/// naming the key, instead of loading without the restrictions it meant.
+#[test]
+fn a_misspelled_configuration_key_fails_to_load() {
+    let stored = serde_json::json!({
+        "token": "[redacted]",
+        "model": "jev-latest",
+        "endpoint": "https://api.typesafe.ai/v1/systemone",
+        "provder": { "data_collection": "deny" },
+    });
+    let error = serde_json::from_value::<JevConfig>(stored).map(|_| ());
+    assert!(
+        error
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("provder")),
+        "{error:?}"
+    );
+}
