@@ -54,6 +54,37 @@ fn a_local_watch_reports_what_files_would_list() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// A watch of a relative directory and one of a relative file each hear of a
+/// change. The fixture is below the current directory, which the test leaves
+/// alone because tests may share a process.
+#[test]
+fn a_relative_watch_sees_a_change() {
+    let root = Path::new("target").join(format!("rig-tools-watch-relative-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(&root).ok();
+    let made = root.join("made.rs");
+    let file = root.join("watched.txt");
+    std::fs::write(&file, "before").ok();
+    let directory_watch = Arc::new(Local).watch(&root, true, Listing::Visible);
+    let file_watch = Arc::new(Local).watch(&file, true, Listing::Visible);
+    assert!(directory_watch.is_ok(), "{directory_watch:?}");
+    assert!(file_watch.is_ok(), "{file_watch:?}");
+    let (Ok(directory_watch), Ok(file_watch)) = (directory_watch, file_watch) else {
+        return;
+    };
+    let (directory_batches, file_batches) = (batches(directory_watch), batches(file_watch));
+    std::fs::write(&made, "x").ok();
+    std::fs::write(&file, "after").ok();
+    let directory_saw = seen(&directory_batches, Duration::from_secs(2));
+    let file_saw = seen(&file_batches, Duration::from_secs(2));
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        directory_saw.iter().any(|path| path.ends_with(&made))
+            && file_saw.iter().any(|path| path.ends_with(&file)),
+        "a relative directory watch saw {directory_saw:?}, a relative file watch saw {file_saw:?}"
+    );
+}
+
 /// The default watch looks again every second, and sees an edit that keeps
 /// the size even when the workspace cannot tell a file's change time.
 #[test]
