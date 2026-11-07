@@ -146,6 +146,11 @@ fn differences(before: &BTreeMap<PathBuf, Mark>, after: &BTreeMap<PathBuf, Mark>
 /// directory, so a write that replaces it is seen; one that does not exist
 /// yet is looked at every second instead.
 pub(crate) fn notified(root: &Path, recursive: bool, listing: Listing) -> io::Result<Watch> {
+    // Canonicalize so the stored root matches the absolute paths the OS
+    // watcher delivers in its events. Without this, a relative root never
+    // matches and every event is silently dropped.
+    let root = crate::fs::real_path(root);
+    let root = root.as_path();
     let Ok(meta) = fs::metadata(root) else {
         return poll(Arc::new(crate::workspace::Local), root, recursive, listing);
     };
