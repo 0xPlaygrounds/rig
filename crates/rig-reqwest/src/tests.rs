@@ -194,6 +194,20 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
     let with_creds = post(first, format!("/creds/{second}"), &mut landed_on_second).await;
     assert!(!with_creds.contains("authorization"), "{with_creds}");
 
+    // reqwest leaves credentials it cannot decode in the URL.
+    let undecodable = Request::builder()
+        .uri(format!(
+            "http://%FF:url-secret@127.0.0.1:{first}/to/{first}"
+        ))
+        .body(Bytes::new())
+        .expect("a request");
+    ReqwestClient::default()
+        .send::<_, Bytes>(undecodable)
+        .await
+        .expect("the redirect is followed");
+    let landed = landed_on_first.recv().await.expect("a request landed");
+    assert!(!landed.contains("url-secret"), "{landed}");
+
     // `inner` is reqwest's own following client, not this protection.
     let followed = ReqwestClient::default()
         .inner()
