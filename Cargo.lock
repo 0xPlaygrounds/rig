@@ -14407,6 +14407,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "arrow-array",
+ "assert_fs",
  "futures",
  "httpmock",
  "lancedb",

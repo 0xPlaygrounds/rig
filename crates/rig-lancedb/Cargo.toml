@@ -24,6 +24,7 @@ rig-core = { path = "../rig-core", version = "0.46.0", features = ["reqwest"] }
 rig-agent.workspace = true
 tokio = { workspace = true }
 anyhow = { workspace = true }
+assert_fs = { workspace = true }
 httpmock = { workspace = true }
 
 [features]
