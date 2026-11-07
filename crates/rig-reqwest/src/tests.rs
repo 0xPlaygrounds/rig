@@ -79,6 +79,146 @@ async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
     }
 }
 
+/// A redirect to another origin (here, another port) arrives without any key
+/// header, whatever its name, and keeps the method, body and content type; a
+/// redirect on the same origin arrives with the keys. Credentials in a
+/// redirect's URL become no header, and a body a same-origin hop dropped stays
+/// dropped.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test]
+async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
+
+    /// Answers `/to/<port>` with a 307 to that port, `/creds/<port>` likewise
+    /// with credentials in the URL, and `/see/<port>` with a 303 to its own
+    /// `/to/<port>`. Records any other request, in lower case, and answers it
+    /// with a 200.
+    async fn serve(listener: TcpListener, landed: mpsc::UnboundedSender<String>) {
+        'connections: while let Ok((socket, _)) = listener.accept().await {
+            let mut socket = BufReader::new(socket);
+            let mut request = String::new();
+            while !request.ends_with("\r\n\r\n") {
+                if socket.read_line(&mut request).await.expect("a request") == 0 {
+                    continue 'connections;
+                }
+            }
+            request.make_ascii_lowercase();
+            let length = request
+                .split_once("content-length: ")
+                .and_then(|(_, rest)| rest.split_once("\r\n"))
+                .map_or(0, |(length, _)| length.parse().expect("a length"));
+            let mut body = vec![0; length];
+            socket.read_exact(&mut body).await.expect("a body");
+            let path = request.split_whitespace().nth(1).expect("a path");
+            let redirect = |status, location| format!("{status} Redirect\r\nlocation: {location}");
+            let head = if let Some(port) = path.strip_prefix("/to/") {
+                redirect(307, format!("http://127.0.0.1:{port}/end"))
+            } else if let Some(port) = path.strip_prefix("/creds/") {
+                redirect(307, format!("http://user:pass@127.0.0.1:{port}/end"))
+            } else if let Some(port) = path.strip_prefix("/see/") {
+                redirect(303, format!("/to/{port}"))
+            } else {
+                request.push_str(&String::from_utf8_lossy(&body));
+                landed.send(request).expect("the test is waiting");
+                "200 OK".to_string()
+            };
+            let reply =
+                format!("HTTP/1.1 {head}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+            socket.write_all(reply.as_bytes()).await.expect("a reply");
+        }
+    }
+
+    async fn server() -> (u16, mpsc::UnboundedReceiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("an address").port();
+        let (sender, receiver) = mpsc::unbounded_channel();
+        tokio::spawn(serve(listener, sender));
+        (port, receiver)
+    }
+
+    const KEY_HEADERS: [&str; 4] = ["x-api-key", "api-key", "x-goog-api-key", "x-unheard-of-key"];
+
+    /// What landed after a POST to `path` on the first server.
+    async fn post(
+        first: u16,
+        path: String,
+        landed: &mut mpsc::UnboundedReceiver<String>,
+    ) -> String {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(format!("http://127.0.0.1:{first}{path}"))
+            .header("content-type", "application/json");
+        for name in KEY_HEADERS {
+            request = request.header(name, "secret-key");
+        }
+        let request = request.body(Bytes::from("the-body")).expect("a request");
+        ReqwestClient::default()
+            .send::<_, Bytes>(request)
+            .await
+            .expect("the redirect is followed");
+        landed.recv().await.expect("a request landed")
+    }
+
+    let (first, mut landed_on_first) = server().await;
+    let (second, mut landed_on_second) = server().await;
+
+    let other_origin = post(first, format!("/to/{second}"), &mut landed_on_second).await;
+    assert!(
+        !other_origin.contains("secret-key"),
+        "the other origin got a key: {other_origin}"
+    );
+    assert!(other_origin.starts_with("post /end "), "{other_origin}");
+    assert!(
+        other_origin.contains("content-type: application/json"),
+        "{other_origin}"
+    );
+    assert!(other_origin.ends_with("the-body"), "{other_origin}");
+
+    let same_origin = post(first, format!("/to/{first}"), &mut landed_on_first).await;
+    for name in KEY_HEADERS {
+        assert!(
+            same_origin.contains(&format!("{name}: secret-key")),
+            "{same_origin}"
+        );
+    }
+    assert!(same_origin.ends_with("the-body"), "{same_origin}");
+
+    let rewritten = post(first, format!("/see/{second}"), &mut landed_on_second).await;
+    assert!(rewritten.starts_with("get /end "), "{rewritten}");
+    assert!(!rewritten.contains("the-body"), "{rewritten}");
+    assert!(!rewritten.contains("content-type"), "{rewritten}");
+    assert!(!rewritten.contains("secret-key"), "{rewritten}");
+
+    let with_creds = post(first, format!("/creds/{second}"), &mut landed_on_second).await;
+    assert!(!with_creds.contains("authorization"), "{with_creds}");
+
+    // reqwest leaves credentials it cannot decode in the URL.
+    let undecodable = Request::builder()
+        .uri(format!(
+            "http://%FF:url-secret@127.0.0.1:{first}/to/{first}"
+        ))
+        .body(Bytes::new())
+        .expect("a request");
+    ReqwestClient::default()
+        .send::<_, Bytes>(undecodable)
+        .await
+        .expect("the redirect is followed");
+    let landed = landed_on_first.recv().await.expect("a request landed");
+    assert!(!landed.contains("url-secret"), "{landed}");
+
+    // `inner` is reqwest's own following client, not this protection.
+    let followed = ReqwestClient::default()
+        .inner()
+        .expect("a client")
+        .get(format!("http://127.0.0.1:{first}/to/{second}"))
+        .send()
+        .await
+        .expect("a response");
+    assert_eq!(followed.status(), StatusCode::OK);
+}
+
 /// A status error, as a middleware's `error_for_status` makes one, keeps
 /// reqwest's error and is retried only for a status the table retries.
 #[test]
