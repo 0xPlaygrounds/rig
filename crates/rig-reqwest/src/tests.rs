@@ -193,6 +193,16 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
 
     let with_creds = post(first, format!("/creds/{second}"), &mut landed_on_second).await;
     assert!(!with_creds.contains("authorization"), "{with_creds}");
+
+    // `inner` is reqwest's own following client, not this protection.
+    let followed = ReqwestClient::default()
+        .inner()
+        .expect("a client")
+        .get(format!("http://127.0.0.1:{first}/to/{second}"))
+        .send()
+        .await
+        .expect("a response");
+    assert_eq!(followed.status(), StatusCode::OK);
 }
 
 /// A status error, as a middleware's `error_for_status` makes one, keeps
