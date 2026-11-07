@@ -749,6 +749,43 @@ mod usage_totals {
     use super::super::dollars_label;
     use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
 
+    /// Whether a sum says it misses a figure.
+    fn marked(usage: &Usage) -> bool {
+        let value = serde_json::to_value(usage).expect("serializes");
+        value.get("incomplete_tokens") == Some(&serde_json::json!(true))
+    }
+
+    /// A sum missing a figure from any call says so, whichever call it was.
+    #[test]
+    fn a_sum_missing_a_figure_from_any_call_is_marked() {
+        let full = Usage::new()
+            .input_tokens(10)
+            .output_tokens(5)
+            .total_tokens(15);
+        let input_only = Usage::new().input_tokens(10);
+        let only_a_cost = Usage::new().cost(Cost::from_total(1.0));
+        for (name, calls) in [
+            ("a later call without output", [full, input_only]),
+            ("an earlier call without output", [input_only, full]),
+            ("a first call that reported nothing", [Usage::new(), full]),
+            ("a last call that reported nothing", [full, Usage::new()]),
+            ("only calls that reported nothing", [Usage::new(); 2]),
+            ("a call with only a cost", [full, only_a_cost]),
+        ] {
+            let mut sum = Usage::default();
+            let mut totals = UsageTotals::default();
+            for call in &calls {
+                sum += *call;
+                totals.record(call);
+            }
+            assert!(marked(&sum), "the sum with {name} is not marked");
+            assert!(
+                marked(&totals.tokens),
+                "the totals with {name} are not marked"
+            );
+        }
+    }
+
     /// A running account stops at `u64::MAX` rather than panic or wrap.
     #[test]
     fn a_running_total_saturates() {
