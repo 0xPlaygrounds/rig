@@ -538,7 +538,11 @@ async fn follow_redirects(
             return Ok(response);
         };
         if url.origin() == previous.origin() {
-            if let Ok(referer) = HeaderValue::from_str(previous.as_str()) {
+            let mut referer = previous.clone();
+            let _ = referer.set_username("");
+            let _ = referer.set_password(None);
+            referer.set_fragment(None);
+            if let Ok(referer) = HeaderValue::from_str(referer.as_str()) {
                 headers.insert(REFERER, referer);
             }
         } else {
