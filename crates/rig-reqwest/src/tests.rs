@@ -81,7 +81,9 @@ async fn an_unbuilt_client_reports_its_build_error_on_every_send() {
 
 /// A redirect to another origin (here, another port) arrives without any key
 /// header, whatever its name, and keeps the method, body and content type; a
-/// redirect on the same origin arrives with the keys.
+/// redirect on the same origin arrives with the keys. Credentials in a
+/// redirect's URL become no header, and a body a same-origin hop dropped stays
+/// dropped.
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test]
 async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
@@ -89,14 +91,18 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
 
-    /// Answers `/to/<port>` with a 307 to that port, and records any other
-    /// request, in lower case, before answering it with a 200.
+    /// Answers `/to/<port>` with a 307 to that port, `/creds/<port>` likewise
+    /// with credentials in the URL, and `/see/<port>` with a 303 to its own
+    /// `/to/<port>`. Records any other request, in lower case, and answers it
+    /// with a 200.
     async fn serve(listener: TcpListener, landed: mpsc::UnboundedSender<String>) {
-        while let Ok((socket, _)) = listener.accept().await {
+        'connections: while let Ok((socket, _)) = listener.accept().await {
             let mut socket = BufReader::new(socket);
             let mut request = String::new();
             while !request.ends_with("\r\n\r\n") {
-                socket.read_line(&mut request).await.expect("a request");
+                if socket.read_line(&mut request).await.expect("a request") == 0 {
+                    continue 'connections;
+                }
             }
             request.make_ascii_lowercase();
             let length = request
@@ -106,15 +112,17 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
             let mut body = vec![0; length];
             socket.read_exact(&mut body).await.expect("a body");
             let path = request.split_whitespace().nth(1).expect("a path");
-            let head = match path.strip_prefix("/to/") {
-                Some(port) => {
-                    format!("307 Temporary Redirect\r\nlocation: http://127.0.0.1:{port}/end")
-                }
-                None => {
-                    request.push_str(&String::from_utf8_lossy(&body));
-                    landed.send(request).expect("the test is waiting");
-                    "200 OK".to_string()
-                }
+            let redirect = |status, location| format!("{status} Redirect\r\nlocation: {location}");
+            let head = if let Some(port) = path.strip_prefix("/to/") {
+                redirect(307, format!("http://127.0.0.1:{port}/end"))
+            } else if let Some(port) = path.strip_prefix("/creds/") {
+                redirect(307, format!("http://user:pass@127.0.0.1:{port}/end"))
+            } else if let Some(port) = path.strip_prefix("/see/") {
+                redirect(303, format!("/to/{port}"))
+            } else {
+                request.push_str(&String::from_utf8_lossy(&body));
+                landed.send(request).expect("the test is waiting");
+                "200 OK".to_string()
             };
             let reply =
                 format!("HTTP/1.1 {head}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
@@ -132,11 +140,15 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
 
     const KEY_HEADERS: [&str; 4] = ["x-api-key", "api-key", "x-goog-api-key", "x-unheard-of-key"];
 
-    /// What landed after a POST from the first server to `/to/<port>`.
-    async fn post(first: u16, port: u16, landed: &mut mpsc::UnboundedReceiver<String>) -> String {
+    /// What landed after a POST to `path` on the first server.
+    async fn post(
+        first: u16,
+        path: String,
+        landed: &mut mpsc::UnboundedReceiver<String>,
+    ) -> String {
         let mut request = Request::builder()
             .method("POST")
-            .uri(format!("http://127.0.0.1:{first}/to/{port}"))
+            .uri(format!("http://127.0.0.1:{first}{path}"))
             .header("content-type", "application/json");
         for name in KEY_HEADERS {
             request = request.header(name, "secret-key");
@@ -152,7 +164,7 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
     let (first, mut landed_on_first) = server().await;
     let (second, mut landed_on_second) = server().await;
 
-    let other_origin = post(first, second, &mut landed_on_second).await;
+    let other_origin = post(first, format!("/to/{second}"), &mut landed_on_second).await;
     assert!(
         !other_origin.contains("secret-key"),
         "the other origin got a key: {other_origin}"
@@ -164,7 +176,7 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
     );
     assert!(other_origin.ends_with("the-body"), "{other_origin}");
 
-    let same_origin = post(first, first, &mut landed_on_first).await;
+    let same_origin = post(first, format!("/to/{first}"), &mut landed_on_first).await;
     for name in KEY_HEADERS {
         assert!(
             same_origin.contains(&format!("{name}: secret-key")),
@@ -172,6 +184,15 @@ async fn only_a_redirect_on_the_same_origin_keeps_the_keys() {
         );
     }
     assert!(same_origin.ends_with("the-body"), "{same_origin}");
+
+    let rewritten = post(first, format!("/see/{second}"), &mut landed_on_second).await;
+    assert!(rewritten.starts_with("get /end "), "{rewritten}");
+    assert!(!rewritten.contains("the-body"), "{rewritten}");
+    assert!(!rewritten.contains("content-type"), "{rewritten}");
+    assert!(!rewritten.contains("secret-key"), "{rewritten}");
+
+    let with_creds = post(first, format!("/creds/{second}"), &mut landed_on_second).await;
+    assert!(!with_creds.contains("authorization"), "{with_creds}");
 }
 
 /// A status error, as a middleware's `error_for_status` makes one, keeps
