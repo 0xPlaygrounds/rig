@@ -415,6 +415,7 @@ impl PercentileThresholds {
 /// eligible provider can serve under them fails.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MaxPrice {
     /// Per million prompt tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -466,6 +467,7 @@ impl MaxPrice {
 /// fields keep OpenRouter's defaults. Slugs and limits are sent as given.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderPreferences {
     /// Provider slugs tried first, in order.
     #[serde(skip_serializing_if = "Option::is_none")]

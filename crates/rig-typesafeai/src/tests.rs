@@ -638,3 +638,22 @@ fn provider_preferences_survive_reloading_the_configuration() -> anyhow::Result<
     ensure!(reload(&JevConfig::new("token"))? == JevConfig::new(""));
     Ok(())
 }
+
+/// A stored routing preference with a misspelled key fails to load, naming
+/// the key, instead of loading without that restriction.
+#[test]
+fn a_misspelled_provider_preference_fails_to_load() {
+    let stored = serde_json::json!({
+        "token": "",
+        "model": "jev-latest",
+        "endpoint": "https://api.typesafe.ai/v1/systemone",
+        "provider": { "data_colection": "deny" },
+    });
+    let error = serde_json::from_value::<JevConfig>(stored).map(|_| ());
+    assert!(
+        error
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("data_colection")),
+        "{error:?}"
+    );
+}
