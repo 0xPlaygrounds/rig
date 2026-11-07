@@ -12,7 +12,7 @@
 //!
 //! [`LanceDbVectorIndex`] searches an existing LanceDB table, exactly or
 //! approximately according to [`SearchParams`], narrowed by [`LanceDBFilter`]
-//! SQL predicates. The `rig` facade re-exports this crate as `rig::lancedb`
+//! SQL predicates, and inserts documents into it. The `rig` facade re-exports this crate as `rig::lancedb`
 //! under the `lancedb` feature.
 
 use std::ops::Range;
@@ -22,15 +22,20 @@ use lancedb::{
     query::{QueryBase, VectorQuery},
 };
 use rig_core::{
+    Embed,
+    embeddings::Embedding,
     vector_store::{
-        VectorSearchIdResult, VectorSearchResult, VectorStoreError, VectorStoreIndex,
+        InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
+        VectorStoreIndex, flatten_embedded,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
     wasm_compat::WasmCompatSend,
 };
-use serde::de::DeserializeOwned;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use utils::{execute_query, filter_embeddings};
+use utils::{
+    embedding_column, execute_query, filter_embeddings, fits_column, invalid_input, rows_to_batch,
+};
 
 mod utils;
 
@@ -345,11 +350,81 @@ impl SearchParams {
         self
     }
 
-    /// Names the embedding column to search. Needed only when the table has more
-    /// than one float-list column.
+    /// Names the embedding column to search and insert into. Needed only when the
+    /// table has more than one float-list column.
     pub fn column(mut self, column: impl Into<String>) -> Self {
         self.column = Some(column.into());
         self
+    }
+}
+
+impl InsertDocuments for LanceDbVectorIndex {
+    /// Appends one row per embedding, holding the document's fields and that
+    /// embedding, in a single write: on an error nothing is inserted.
+    ///
+    /// The embedding goes in [`SearchParams::column`], or else in the table's only
+    /// float-list column. Errors when a document is not a JSON object, has no id,
+    /// has no embeddings, has a field with no column or one named like the
+    /// embedding column, leaves out a non-nullable column, or has a value its
+    /// column would store differently, or when an embedding's length differs
+    /// from the column's or a value of it is not finite in the column's float
+    /// type. Values stored differently are a number with a fraction for an
+    /// integer column, such as `1.5`, a number too large for a Float16 or
+    /// Float32 column, such as `1e300`, and a binary value that is not an
+    /// even-length hex string, such as `abc` or a `Vec<u8>`.
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+        &self,
+        documents: Vec<(Doc, Vec<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        if documents.iter().any(|(_, vecs)| vecs.is_empty()) {
+            return Err(invalid_input(
+                "a document has no embeddings, so it would not be stored".to_string(),
+            ));
+        }
+
+        let schema = self
+            .table
+            .schema()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        let column = embedding_column(&schema, self.search_params.column.as_deref())?;
+
+        let rows = flatten_embedded(documents, |document, embedding| {
+            let Value::Object(mut row) = document.clone() else {
+                return Err(invalid_input(format!(
+                    "document is not a JSON object: {document}"
+                )));
+            };
+            if row.get(&self.id_field).is_none_or(Value::is_null) {
+                return Err(VectorStoreError::MissingIdError(format!(
+                    "document has no `{}` field: {document}",
+                    self.id_field
+                )));
+            }
+            let name = column.name();
+            if !fits_column(column, &embedding.vec) {
+                return Err(invalid_input(format!(
+                    "embedding of document {} has a value that is not finite in column `{name}`",
+                    row.get(&self.id_field).unwrap_or(&Value::Null)
+                )));
+            }
+            if row.insert(name.clone(), embedding.vec.into()).is_some() {
+                return Err(invalid_input(format!(
+                    "document field `{name}` would be overwritten by its embedding"
+                )));
+            }
+            Ok(Value::Object(row))
+        })?;
+
+        let Some(batch) = rows_to_batch(schema, &rows, &self.id_field)? else {
+            return Ok(());
+        };
+        self.table
+            .add(batch)
+            .execute()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        Ok(())
     }
 }
 
