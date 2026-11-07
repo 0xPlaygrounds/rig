@@ -75,7 +75,7 @@ async fn top_n_ids_returns_the_same_distance_as_top_n() -> anyhow::Result<()> {
 }
 
 /// An index over an empty on-disk table whose `embedding` column holds two `item`
-/// floats, with optional binary columns that documents may leave out.
+/// floats, with optional number and binary columns that documents may leave out.
 async fn index_on_disk(
     dir: &TempDir,
     item: DataType,
@@ -88,6 +88,8 @@ async fn index_on_disk(
         Field::new("id", DataType::Utf8, true),
         Field::new("definition", DataType::Utf8, true),
         Field::new("embedding", DataType::FixedSizeList(list, 2), false),
+        Field::new("count", DataType::Int64, true),
+        Field::new("score", DataType::Float32, true),
         Field::new("blob", DataType::FixedSizeBinary(2), true),
         Field::new_list("blobs", Field::new_list_field(DataType::Binary, true), true),
     ]));
@@ -158,6 +160,26 @@ async fn insert_refuses_documents_the_table_cannot_hold() -> anyhow::Result<()> 
         (json!({"id": "a"}), vec![], "no embeddings"),
         (json!({"id": "a", "blob": [1, 2]}), fits(), "`blob`"),
         (json!({"id": "a", "blobs": [[1]]}), fits(), "`blobs`"),
+        (
+            json!({"id": "a", "count": 1.5}),
+            fits(),
+            "\"a\" field `count`",
+        ),
+        (
+            json!({"id": "a", "score": 1e300}),
+            fits(),
+            "\"a\" field `score`",
+        ),
+        (
+            json!({"id": "a", "blob": "abc"}),
+            fits(),
+            "\"a\" field `blob`",
+        ),
+        (
+            json!({"id": "a", "blobs": ["abc"]}),
+            fits(),
+            "\"a\" field `blobs`",
+        ),
         (
             json!({"id": "a"}),
             vec![embedding(&[f64::NAN, 0.0])],
