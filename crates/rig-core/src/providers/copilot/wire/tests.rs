@@ -374,6 +374,29 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
         .expect("the recorded catalogue names claude-opus-4.7");
     assert_eq!(opus.name.as_deref(), Some("Claude Opus 4.7"));
     assert_eq!(opus.r#type.as_deref(), Some("chat"));
+    assert_eq!(opus.supports_tool_calls, Some(true));
+}
+
+/// The recording reports only `true`, so this catalogue covers the other cases.
+#[tokio::test]
+async fn the_model_listing_keeps_tool_call_support_distinct() {
+    let body = r#"{"data": [
+        {"id": "tools", "capabilities": {"supports": {"tool_calls": true}}},
+        {"id": "no-tools", "capabilities": {"supports": {"tool_calls": false}}},
+        {"id": "unreported", "capabilities": {"supports": {}}},
+        {"id": "no-capabilities"},
+        {"id": "malformed", "capabilities": {"supports": {"tool_calls": "true"}}}
+    ]}"#;
+    let models = crate::driver::Model::new(
+        super::super::model_listing::Models::new(copilot()),
+        RecordingHttpClient::new(Bytes::from(body)),
+    )
+    .list()
+    .await
+    .expect("the catalogue folds");
+
+    let support: Vec<_> = models.iter().map(|m| m.supports_tool_calls).collect();
+    assert_eq!(support, [Some(true), Some(false), None, None, None]);
 }
 
 // ── the configuration is storable data ──────────────────────────────────
