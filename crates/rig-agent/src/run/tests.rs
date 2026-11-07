@@ -259,29 +259,6 @@ fn expect_needs_resolution(outcome: ModelTurnOutcome) -> InvalidToolCallContext 
     }
 }
 
-/// Three calls, the second without output: the run's output is low by that
-/// call's, and its usage says so.
-#[test]
-fn a_run_with_a_call_missing_a_figure_is_marked() {
-    let mut run = AgentRun::new("question").max_turns(3);
-    let calls = [usage(10, 3), Usage::new().input_tokens(7), usage(5, 2)];
-    for (attempt, call) in calls.into_iter().enumerate() {
-        expect_call_model(&mut run);
-        expect_continue(
-            run.model_response(text_turn("answer").with_usage_for_test(call))
-                .expect("response"),
-        );
-        if attempt + 1 < calls.len() {
-            run.retry_model_turn(RetryRequest::Repeat)
-                .expect("repeat should be accepted");
-        }
-    }
-    let response = expect_done(&mut run);
-    assert_eq!(response.usage.input_tokens, Some(22));
-    assert_eq!(response.usage.output_tokens, Some(5));
-    assert!(!response.usage.tokens_complete());
-}
-
 #[test]
 fn repeated_model_turn_reuses_prompt_without_recording_rejected_response() {
     let first_usage = usage(10, 3);

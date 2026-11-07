@@ -749,71 +749,9 @@ mod usage_totals {
     use super::super::dollars_label;
     use crate::completion::{ContextUse, Cost, Usage, UsageTotals, tokens_label};
 
-    /// Whether a sum says it misses a figure.
-    fn marked(usage: &Usage) -> bool {
-        !usage.tokens_complete()
-    }
-
-    /// Calls that all report the same counters leave no mark, whichever
-    /// optional details come and go, and neither do empty totals.
-    #[test]
-    fn a_sum_with_every_figure_it_can_have_is_not_marked() {
-        let full = Usage::new()
-            .input_tokens(10)
-            .output_tokens(5)
-            .total_tokens(15);
-        let no_total = Usage::new().input_tokens(10).output_tokens(5);
-        for (name, calls) in [
-            ("full calls", vec![full, full]),
-            ("one call", vec![Usage::new().input_tokens(10)]),
-            ("calls with no total", vec![no_total, no_total]),
-            (
-                "details on one call",
-                vec![full.cached_input_tokens(3).reasoning_tokens(1), full],
-            ),
-        ] {
-            let mut sum = Usage::default();
-            let mut totals = UsageTotals::default();
-            for call in &calls {
-                sum += *call;
-                totals.record(call);
-            }
-            assert!(!marked(&sum), "the sum of {name} is marked");
-            totals.add(&UsageTotals::default());
-            assert!(!marked(&totals.tokens), "the totals of {name} are marked");
-        }
-    }
-
-    /// The mark outlives later sums and a round trip, is absent from an
-    /// unmarked form, and is not a report of its own.
-    #[test]
-    fn the_mark_is_kept_and_serialized_only_when_set() {
-        let full = Usage::new()
-            .input_tokens(10)
-            .output_tokens(5)
-            .total_tokens(15);
-        let empty = Usage::default() + Usage::default();
-        assert!(marked(&empty) && !empty.is_reported());
-        assert!(marked(&(empty + full)));
-
-        let mut totals = UsageTotals::default();
-        totals.record(&Usage::new());
-        let mut sum = UsageTotals::default();
-        sum.add(&totals);
-        assert!(marked(&sum.tokens));
-
-        let value = serde_json::to_value(empty + full).expect("serializes");
-        assert_eq!(
-            value.get("incomplete_tokens"),
-            Some(&serde_json::json!(true))
-        );
-        let read: Usage = serde_json::from_value(value).expect("deserializes");
-        assert!(marked(&read));
-        let value = serde_json::to_value(full + full).expect("serializes");
-        assert_eq!(value.get("incomplete_tokens"), None);
-    }
-
-    /// A sum missing a figure from any call says so, whichever call it was.
+    /// A sum missing a figure from any call says so, whichever call it was,
+    /// through later sums and a round trip. Calls that all report the same
+    /// counters leave no mark, whichever optional details come and go.
     #[test]
     fn a_sum_missing_a_figure_from_any_call_is_marked() {
         let full = Usage::new()
@@ -821,14 +759,28 @@ mod usage_totals {
             .output_tokens(5)
             .total_tokens(15);
         let input_only = Usage::new().input_tokens(10);
+        let no_total = Usage::new().input_tokens(10).output_tokens(5);
         let only_a_cost = Usage::new().cost(Cost::from_total(1.0));
-        for (name, calls) in [
-            ("a later call without output", [full, input_only]),
-            ("an earlier call without output", [input_only, full]),
-            ("a first call that reported nothing", [Usage::new(), full]),
-            ("a last call that reported nothing", [full, Usage::new()]),
-            ("only calls that reported nothing", [Usage::new(); 2]),
-            ("a call with only a cost", [full, only_a_cost]),
+        let details = full.cached_input_tokens(3).reasoning_tokens(1);
+        for (name, calls, expected) in [
+            ("a later call without output", vec![full, input_only], true),
+            (
+                "an earlier call without output",
+                vec![input_only, full],
+                true,
+            ),
+            (
+                "a first call with nothing",
+                vec![Usage::new(), full, full],
+                true,
+            ),
+            ("a last call with nothing", vec![full, Usage::new()], true),
+            ("only calls with nothing", vec![Usage::new(); 2], true),
+            ("a call with only a cost", vec![full, only_a_cost], true),
+            ("full calls", vec![full, full], false),
+            ("one call", vec![input_only], false),
+            ("calls with no total", vec![no_total, no_total], false),
+            ("details on one call", vec![details, full], false),
         ] {
             let mut sum = Usage::default();
             let mut totals = UsageTotals::default();
@@ -836,11 +788,28 @@ mod usage_totals {
                 sum += *call;
                 totals.record(call);
             }
-            assert!(marked(&sum), "the sum with {name} is not marked");
-            assert!(
-                marked(&totals.tokens),
-                "the totals with {name} are not marked"
+            let mut merged = UsageTotals::default();
+            merged.add(&totals);
+            merged.add(&UsageTotals::default());
+            for (place, usage) in [
+                ("sum", sum),
+                ("totals", totals.tokens),
+                ("merged totals", merged.tokens),
+            ] {
+                assert_eq!(
+                    !usage.tokens_complete(),
+                    expected,
+                    "the {place} with {name}"
+                );
+            }
+            let value = serde_json::to_value(sum).expect("serializes");
+            assert_eq!(
+                value.get("incomplete_tokens"),
+                expected.then_some(&serde_json::Value::Bool(true)),
+                "the serialized sum with {name}"
             );
+            let read: Usage = serde_json::from_value(value).expect("deserializes");
+            assert_eq!(read, sum, "the sum read back with {name}");
         }
     }
 

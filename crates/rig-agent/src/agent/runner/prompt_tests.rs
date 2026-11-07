@@ -411,11 +411,13 @@ async fn typed_prompt_response_preserves_completion_calls() {
         .total_tokens(10);
     let turn = MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage);
     let raw = turn.raw().expect("a scripted turn has a document");
-    let model = MockCompletionModel::from_turns([turn]);
+    // The failed attempt finished no call, so it leaves no mark on the usage.
+    let model = MockCompletionModel::from_turns([MockTurn::error("down"), turn]);
     let agent = AgentBuilder::new(model).build();
 
     let response = agent
         .prompt_typed::<TypedAnswer>("return typed json")
+        .retries(1)
         .await
         .expect("typed prompt should succeed");
 
@@ -436,28 +438,6 @@ async fn typed_prompt_response_preserves_completion_calls() {
         "the accepted attempt's prompt and answer: {:?}",
         response.messages
     );
-}
-
-/// A retried attempt that finished no call is not a call that reported nothing.
-#[tokio::test]
-async fn a_typed_retry_after_no_finished_call_is_not_marked() {
-    let call_usage = Usage::new()
-        .input_tokens(4)
-        .output_tokens(6)
-        .total_tokens(10);
-    let model = MockCompletionModel::from_turns([
-        MockTurn::error("down"),
-        MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage),
-    ]);
-    let agent = AgentBuilder::new(model).build();
-
-    let response = agent
-        .prompt_typed::<TypedAnswer>("return typed json")
-        .retries(1)
-        .await
-        .expect("the retry should succeed");
-
-    assert_eq!(response.usage, call_usage);
 }
 
 #[tokio::test]
