@@ -76,7 +76,11 @@ fn incoming_request(path: &str, body: impl Into<Bytes>) -> IncomingRequest {
 
 fn query_matches_query(query: Option<&str>, expected: &[NameValue]) -> bool {
     let uri = query.map_or_else(|| "/items".to_owned(), |query| format!("/items?{query}"));
-    super::query_matches(&incoming_request(&uri, Bytes::new()), expected)
+    super::query_matches(
+        CassettePolicy::default(),
+        &incoming_request(&uri, Bytes::new()),
+        expected,
+    )
 }
 
 #[test]
@@ -127,14 +131,6 @@ fn query_matches_counts_duplicate_pairs() {
     assert!(query_matches_query(Some("a=1&a=1"), &expected));
     assert!(!query_matches_query(Some("a=1"), &expected));
     assert!(!query_matches_query(Some("a=1&a=2"), &expected));
-}
-
-#[test]
-fn query_matches_expects_no_recorded_key_and_refuses_one_sent() {
-    let expected = [query_pair("key", REDACTED), query_pair("alt", "sse")];
-
-    assert!(query_matches_query(Some("alt=sse"), &expected));
-    assert!(!query_matches_query(Some("alt=sse&key=abc123"), &expected));
 }
 
 #[test]
@@ -1352,9 +1348,17 @@ fn query_matching_normalizes_legacy_echoes_using_incoming_credentials() {
         .insert("x-api-key", secret.parse().expect("header"));
     for echo in [secret, REDACTED] {
         let expected = [query_pair("echo", echo), query_pair("page_token", "p2")];
-        assert!(super::query_matches(&request, &expected));
+        assert!(super::query_matches(
+            CassettePolicy::default(),
+            &request,
+            &expected
+        ));
         let wrong = [query_pair("echo", echo), query_pair("page_token", "p1")];
-        assert!(!super::query_matches(&request, &wrong));
+        assert!(!super::query_matches(
+            CassettePolicy::default(),
+            &request,
+            &wrong
+        ));
     }
 }
 

@@ -207,7 +207,7 @@ fn models_decoder() -> DocumentDecoder<ModelListing, String> {
     )
 }
 
-/// Check credentials with `GET /v1beta/models`, authenticating through the query.
+/// Check credentials with `GET /v1beta/models`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VerifyKey {
     /// The provider this wire speaks to.

@@ -35,8 +35,7 @@ pub fn default_ndims(model: &str) -> usize {
 
 /// Gemini's batch embedding endpoint.
 ///
-/// `POST /v1beta/models/{model}:batchEmbedContents`, authenticated by the
-/// `key` query parameter the GenerateContent family uses.
+/// `POST /v1beta/models/{model}:batchEmbedContents`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embeddings {
     /// The provider this wire speaks to.
