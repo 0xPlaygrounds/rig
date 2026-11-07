@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/systemone
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"typesafe/jev-1.13","provider":{"allow_fallbacks":false,"only":["openai"]},"questions":{"billing":{"instructions":"Does the customer report a billing problem?","type":"noul"}},"state":{"message":"I was charged twice for one order."}}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":404,"message":"No allowed providers are available for the selected model. Providers serving typesafe/jev-1.13-20260917: typesafe, but your request''s provider.only preference permits only: openai.","metadata":{"available_providers":["typesafe"],"failed_routing_step":"Filter by Allowed Providers","requested_providers":["openai"],"routing_funnel":[{"endpoint_count":1,"step":"Initial Endpoints"}]}}}'

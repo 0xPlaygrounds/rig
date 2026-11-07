@@ -28,9 +28,8 @@ fn fallbacks(models: &[&str]) -> ModelFallbacks {
     ModelFallbacks::new(models.iter().copied()).unwrap_or_else(|error| panic!("{error}"))
 }
 
-#[test]
-fn provider_preferences_land_under_provider() {
-    let preferences = ProviderPreferences::new()
+fn every_preference() -> ProviderPreferences {
+    ProviderPreferences::new()
         .order(["anthropic", "openai"])
         .only(["anthropic"])
         .ignore(["deepinfra"])
@@ -57,8 +56,12 @@ fn provider_preferences_land_under_provider() {
                 .request(0.5)
                 .image(0.25),
         )
-        .quantizations([Quantization::Int4, Quantization::Fp8]);
-    let body = body(&OpenRouterOptions::new().provider(preferences));
+        .quantizations([Quantization::Int4, Quantization::Fp8])
+}
+
+#[test]
+fn provider_preferences_land_under_provider() {
+    let body = body(&OpenRouterOptions::new().provider(every_preference()));
     assert_eq!(
         body["provider"],
         json!({
@@ -82,6 +85,19 @@ fn provider_preferences_land_under_provider() {
 fn a_simple_sort_is_its_strategy() {
     let body = body(&OpenRouterOptions::new().provider(ProviderPreferences::new().cheapest()));
     assert_eq!(body["provider"], json!({"sort": "price"}));
+}
+
+#[test]
+fn provider_preferences_read_back_as_written() {
+    let simple = ProviderPreferences::new()
+        .cheapest()
+        .preferred_min_throughput(ThroughputThreshold::Simple(5.0));
+    for preferences in [every_preference(), simple, ProviderPreferences::new()] {
+        let written = serde_json::to_value(&preferences).unwrap_or_else(|error| panic!("{error}"));
+        let read: ProviderPreferences =
+            serde_json::from_value(written).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(read, preferences);
+    }
 }
 
 #[test]

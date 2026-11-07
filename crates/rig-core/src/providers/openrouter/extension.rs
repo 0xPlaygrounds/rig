@@ -20,7 +20,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::completion::provider_options::reply_field;
@@ -234,7 +234,7 @@ impl ModelFallbacks {
 
 /// Whether providers that may store request data are eligible.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DataCollection {
     /// Any provider.
@@ -245,7 +245,7 @@ pub enum DataCollection {
 
 /// A quantization an upstream provider serves a model at.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Quantization {
     /// 4-bit integers.
@@ -266,7 +266,7 @@ pub enum Quantization {
 
 /// What providers are ordered by.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderSortStrategy {
     /// Cheapest first.
@@ -279,7 +279,7 @@ pub enum ProviderSortStrategy {
 
 /// How a request with fallback models sorts its providers.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortPartition {
     /// Within each model.
@@ -290,7 +290,7 @@ pub enum SortPartition {
 
 /// A sort with a partition.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProviderSortConfig {
     /// What providers are ordered by.
     pub by: ProviderSortStrategy,
@@ -317,7 +317,7 @@ impl ProviderSortConfig {
 
 /// A provider sort: a strategy, or a strategy with a partition.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ProviderSort {
     /// A strategy alone.
@@ -341,7 +341,7 @@ impl From<ProviderSortConfig> for ProviderSort {
 /// A throughput floor in tokens per second, alone or per percentile.
 /// Providers below it are tried later, not excluded.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ThroughputThreshold {
     /// One floor.
@@ -353,7 +353,7 @@ pub enum ThroughputThreshold {
 /// A latency ceiling in seconds, alone or per percentile. Providers above
 /// it are tried later, not excluded.
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum LatencyThreshold {
     /// One ceiling.
@@ -364,7 +364,7 @@ pub enum LatencyThreshold {
 
 /// A threshold per percentile.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PercentileThresholds {
     /// The median.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -414,7 +414,7 @@ impl PercentileThresholds {
 /// Price ceilings, in USD per million tokens or per item. A request no
 /// eligible provider can serve under them fails.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MaxPrice {
     /// Per million prompt tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -465,7 +465,7 @@ impl MaxPrice {
 /// (<https://openrouter.ai/docs/guides/routing/provider-selection>). Unset
 /// fields keep OpenRouter's defaults. Slugs and limits are sent as given.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProviderPreferences {
     /// Provider slugs tried first, in order.
     #[serde(skip_serializing_if = "Option::is_none")]

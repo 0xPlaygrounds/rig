@@ -5,6 +5,7 @@ use rig_core::driver::Model;
 use rig_core::error::EncodeError;
 use rig_core::http_client::{DynHttpClient, HttpClientExt};
 use rig_core::operation::Whole;
+use rig_core::providers::openrouter::extension::ProviderPreferences;
 use rig_core::wire::{
     Body, Call, Descriptor, Encoded, Framing, Free, Json, Mode, Operation, Secret, Wire,
 };
@@ -45,6 +46,8 @@ pub struct JevConfig {
     token: Secret,
     model: String,
     endpoint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider: Option<ProviderPreferences>,
 }
 
 impl JevConfig {
@@ -54,6 +57,7 @@ impl JevConfig {
             token: token.into().into(),
             model: "jev-latest".into(),
             endpoint: "https://api.typesafe.ai/v1/systemone".into(),
+            provider: None,
         }
     }
 
@@ -78,6 +82,14 @@ impl JevConfig {
     /// Set the complete endpoint URL, including `/v1/systemone`.
     pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
         self.endpoint = endpoint.into();
+        self
+    }
+
+    /// Send `preferences` as the request's `provider` object, which
+    /// OpenRouter's `/systemone` routes by. Set it only with an OpenRouter
+    /// endpoint.
+    pub fn provider(mut self, preferences: ProviderPreferences) -> Self {
+        self.provider = Some(preferences);
         self
     }
 
@@ -152,11 +164,14 @@ impl Wire for JevConfig {
         #[derive(Serialize)]
         struct Payload<'a> {
             model: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            provider: Option<&'a ProviderPreferences>,
             #[serde(flatten)]
             request: Request,
         }
         let body = Payload {
             model: &self.model,
+            provider: self.provider.as_ref(),
             request,
         };
         let mut authorization =
