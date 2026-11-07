@@ -437,13 +437,18 @@ mod browser_sign_in {
         response
     }
 
-    /// A listener for state `s1` on a free port, and its port.
-    fn listen() -> (u16, oneshot::Receiver<Result<Received, AuthError>>) {
+    /// A listener for state `s1` on a free port, sending the user back to
+    /// `app`, and its port.
+    fn listen_for(app: &str) -> (u16, oneshot::Receiver<Result<Received, AuthError>>) {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
         let port = listener.local_addr().expect("addr").port();
         let deadline = Instant::now() + Duration::from_secs(30);
-        let callback = spawn_listener(listener, "s1".into(), deadline).expect("spawn");
+        let callback = spawn_listener(listener, "s1".into(), deadline, app.into()).expect("spawn");
         (port, callback)
+    }
+
+    fn listen() -> (u16, oneshot::Receiver<Result<Received, AuthError>>) {
+        listen_for("rig")
     }
 
     #[tokio::test]
@@ -461,6 +466,28 @@ mod browser_sign_in {
         let page = browser.join().expect("browser thread");
         assert!(page.starts_with("HTTP/1.1 200"), "{page}");
         assert!(page.contains("Signed in to ChatGPT"), "{page}");
+        assert!(page.contains("return to rig."), "{page}");
+    }
+
+    #[tokio::test]
+    async fn every_page_names_the_app_it_was_given() {
+        let (port, callback) = listen_for("Acme & Co");
+
+        let stale = get(port, &format!("{CALLBACK_PATH}?code=c&state=stale"));
+        assert!(
+            stale.contains("Start it again from Acme &amp; Co."),
+            "{stale}"
+        );
+
+        let browser = std::thread::spawn(move || get(port, "/auth/callback?code=c1&state=s1"));
+        let received = callback.await.expect("listener alive").expect("code");
+        received.finish(Err("the code expired".into()));
+        let page = browser.join().expect("browser thread");
+        assert!(
+            page.contains("Sign-in failed: the code expired. Return to Acme &amp; Co."),
+            "{page}"
+        );
+        assert!(!page.contains("rig"), "{page}");
     }
 
     #[test]

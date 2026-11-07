@@ -172,17 +172,18 @@ impl Received {
 /// Serves `listener` on a thread of its own until a callback with `state`
 /// arrives, `deadline` passes, or the returned receiver is dropped, which
 /// the thread notices within [`ACCEPT_POLL`]. The listener closes when the
-/// thread ends.
+/// thread ends. Its pages send the user back to `app`.
 pub(super) fn spawn_listener(
     listener: TcpListener,
     state: String,
     deadline: Instant,
+    app: String,
 ) -> Result<oneshot::Receiver<Result<Received, AuthError>>, AuthError> {
     listener.set_nonblocking(true)?;
     let (sender, receiver) = oneshot::channel();
     std::thread::Builder::new()
         .name("chatgpt-sign-in".into())
-        .spawn(move || serve(listener, &state, deadline, sender))?;
+        .spawn(move || serve(listener, &state, deadline, &app, sender))?;
     Ok(receiver)
 }
 
@@ -190,6 +191,7 @@ fn serve(
     listener: TcpListener,
     state: &str,
     deadline: Instant,
+    app: &str,
     sender: oneshot::Sender<Result<Received, AuthError>>,
 ) {
     let result = loop {
@@ -221,7 +223,10 @@ fn serve(
                 "400 Bad Request",
                 &page(
                     "Sign-in not recognised",
-                    "This sign-in link is not the one rig is waiting for. Start it again from rig.",
+                    &format!(
+                        "This sign-in link is not the one {app} is waiting for. \
+                         Start it again from {app}."
+                    ),
                 ),
             ),
             Callback::Failed(message) => {
@@ -230,7 +235,7 @@ fn serve(
                     "200 OK",
                     &page(
                         "Sign-in failed",
-                        &format!("Sign-in failed: {message}. Return to rig."),
+                        &format!("Sign-in failed: {message}. Return to {app}."),
                     ),
                 );
                 break Err(AuthError::Message(message));
@@ -238,19 +243,19 @@ fn serve(
             Callback::Code(code) => {
                 let (outcome, wait) = mpsc::channel();
                 if sender.send(Ok(Received { code, outcome })).is_err() {
-                    respond(&mut stream, "200 OK", &cancelled_page());
+                    respond(&mut stream, "200 OK", &cancelled_page(app));
                     return;
                 }
                 let body = match wait.recv_timeout(EXCHANGE_WAIT) {
                     Ok(Ok(())) => page(
                         "Signed in to ChatGPT",
-                        "You can close this tab and return to rig.",
+                        &format!("You can close this tab and return to {app}."),
                     ),
                     Ok(Err(message)) => page(
                         "Sign-in failed",
-                        &format!("Sign-in failed: {message}. Return to rig."),
+                        &format!("Sign-in failed: {message}. Return to {app}."),
                     ),
-                    Err(_) => cancelled_page(),
+                    Err(_) => cancelled_page(app),
                 };
                 respond(&mut stream, "200 OK", &body);
                 return;
@@ -296,10 +301,10 @@ fn respond(stream: &mut TcpStream, status: &str, body: &str) {
     stream.flush().ok();
 }
 
-fn cancelled_page() -> String {
+fn cancelled_page(app: &str) -> String {
     page(
         "Sign-in cancelled",
-        "rig stopped waiting for this sign-in. Start it again from rig.",
+        &format!("{app} stopped waiting for this sign-in. Start it again from {app}."),
     )
 }
 
