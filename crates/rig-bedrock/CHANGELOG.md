@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.46.0...rig-bedrock-v0.47.0) - 2026-11-07
+
+### Fixed
+
+- *(bedrock)* place the message cache checkpoint after a reasoning turn on Claude models the catalog lists ([#3103](https://github.com/0xPlaygrounds/rig/pull/3103)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(bedrock,copilot,openai,mistral)* typed Bedrock calls, catalogue routing on Copilot, LiteLLM thinking_blocks, Codestral's width ([#3047](https://github.com/0xPlaygrounds/rig/pull/3047)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(http)* [**breaking**] an error keeps its retry class from where it was made ([#2969](https://github.com/0xPlaygrounds/rig/pull/2969)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Fixed

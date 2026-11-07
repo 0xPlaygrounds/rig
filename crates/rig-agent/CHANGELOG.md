@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.47.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.46.0...rig-agent-v0.47.0) - 2026-11-07
+
+### Fixed
+
+- *(usage)* mark a summed counter that misses a figure from any call ([#3110](https://github.com/0xPlaygrounds/rig/pull/3110)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent,xtask)* [**breaking**] answer batches are checked whole, dispatch patches keep the tool policy, the planner skips an empty service suite ([#3097](https://github.com/0xPlaygrounds/rig/pull/3097)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] schema runs fail on answers that miss the schema, and gateway Claude ids take the model's facts ([#3050](https://github.com/0xPlaygrounds/rig/pull/3050)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3050
+
+### Other
+
+- [**breaking**] PRs run what the change can break, one test binary per crate, one required check ([#3014](https://github.com/0xPlaygrounds/rig/pull/3014)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #3014
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.46.0](https://github.com/0xPlaygrounds/rig/compare/v0.45.0...v0.46.0) - 2026-10-31
 
 ### Added
