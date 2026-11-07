@@ -870,16 +870,16 @@ impl crate::completion::ReplayTarget for Chat {
     /// typed data; audio as data; video as a URL or typed data, except to
     /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
     /// Mistral fetches; a file id where the dialect takes one; and a text
-    /// document as text. DeepSeek and Mira take text only; Perplexity and
+    /// document as text. Mira takes text only; DeepSeek, Perplexity and
     /// Cohere take no media but images, and Ollama only images as data.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::Media;
         let dialect = &self.provider.dialect;
         let rewrite = dialect.quirks.rewrite;
-        let parts = !matches!(rewrite, BodyRewrite::DeepSeek | BodyRewrite::Mira);
-        // Cohere and Ollama read images and text, and no other media.
+        let parts = rewrite != BodyRewrite::Mira;
+        // DeepSeek, Cohere and Ollama read images and text, and no other media.
         let files = parts
-            && rewrite != BodyRewrite::Perplexity
+            && !matches!(rewrite, BodyRewrite::Perplexity | BodyRewrite::DeepSeek)
             && ![super::dialects::COHERE.name, super::dialects::OLLAMA.name]
                 .contains(&dialect.name);
         let linked = |source: &Source, typed: bool| match source {
@@ -1020,14 +1020,15 @@ impl crate::completion::ReplayTarget for Chat {
 /// `vendor` is a dialect's name or the vendor an OpenRouter model id starts
 /// with. Groq reads images on its Llama 4 models; Mistral's Codestral and
 /// Devstral are text models; OpenAI (on Azure too), xAI, Cohere, Z.AI,
-/// Moonshot, MiniMax and MiMo apply the rules their other wires share; any
-/// other vendor's unlisted model reads them. `None` for DeepSeek's API,
-/// which takes text content only (it answers an image part with a 400), and
-/// Mira's gateway, which takes text, whatever the model.
+/// Moonshot, MiniMax and MiMo apply the rules their other wires share;
+/// DeepSeek's unlisted models do not read them, since its text models take
+/// an image part and ignore it; any other vendor's unlisted model reads
+/// them. `None` for Mira's gateway, which takes text, whatever the model.
 fn image_rule(vendor: &str) -> Option<(&str, fn(&str) -> bool)> {
     use crate::providers::{minimax, moonshot, xiaomimimo, zai};
     Some(match vendor {
-        "deepseek" | "mira" => return None,
+        "mira" => return None,
+        "deepseek" => ("deepseek", |_| false),
         "groq" => ("groq", |model| model.contains("llama-4")),
         "mistral" | "mistralai" => ("mistral", |model| {
             !(model.starts_with("codestral") || model.starts_with("devstral"))
