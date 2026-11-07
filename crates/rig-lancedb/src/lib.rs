@@ -365,13 +365,13 @@ impl InsertDocuments for LanceDbVectorIndex {
     /// The embedding goes in [`SearchParams::column`], or else in the table's only
     /// float-list column. Errors when a document is not a JSON object, has no id,
     /// has no embeddings, has a field with no column or one named like the
-    /// embedding column, leaves out a non-nullable column, or has a binary value
-    /// that is not a hex string, or when an embedding's length differs from the
-    /// column's or a value of it is not finite in the column's float type.
-    ///
-    /// Document fields convert as the JSON decoder chooses: `1.5` in an integer
-    /// column stores `1`, `1e300` in a Float32 column stores infinity, and the
-    /// odd-length hex string `abc` stores the bytes `ab0c`.
+    /// embedding column, leaves out a non-nullable column, or has a value its
+    /// column would store differently, or when an embedding's length differs
+    /// from the column's or a value of it is not finite in the column's float
+    /// type. Values stored differently are a number with a fraction for an
+    /// integer column, such as `1.5`, a number too large for a Float16 or
+    /// Float32 column, such as `1e300`, and a binary value that is not an
+    /// even-length hex string, such as `abc` or a `Vec<u8>`.
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -416,7 +416,7 @@ impl InsertDocuments for LanceDbVectorIndex {
             Ok(Value::Object(row))
         })?;
 
-        let Some(batch) = rows_to_batch(schema, &rows).map_err(VectorStoreError::datastore)? else {
+        let Some(batch) = rows_to_batch(schema, &rows, &self.id_field)? else {
             return Ok(());
         };
         self.table

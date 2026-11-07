@@ -1,18 +1,17 @@
 mod deserializer;
 
-use arrow_array::RecordBatch;
+use arrow_array::{ArrowPrimitiveType, RecordBatch, types::Float16Type};
 use arrow_json::ReaderBuilder;
 use futures::TryStreamExt;
 use lancedb::{
-    arrow::arrow_schema::{ArrowError, DataType, Field, Schema, SchemaRef},
+    arrow::arrow_schema::{DataType, Field, Schema, SchemaRef},
     query::{ExecutableQuery, VectorQuery},
 };
 use rig_core::vector_store::VectorStoreError;
+use serde_json::Value;
 
 /// Runs a LanceDB query and converts its columnar result into JSON rows.
-pub(crate) async fn execute_query(
-    query: &VectorQuery,
-) -> Result<Vec<serde_json::Value>, VectorStoreError> {
+pub(crate) async fn execute_query(query: &VectorQuery) -> Result<Vec<Value>, VectorStoreError> {
     let record_batches = query
         .execute()
         .await
@@ -100,21 +99,57 @@ pub(crate) fn fits_column(column: &Field, embedding: &[f64]) -> bool {
     })
 }
 
-/// Whether `value` holds a non-string where `data_type` expects binary. The JSON
-/// decoder panics on this for `FixedSizeBinary` and errors for the other binary
-/// types, so refusing all of them here gives one error and no panic.
-fn has_non_string_binary(data_type: &DataType, value: &serde_json::Value) -> bool {
-    use serde_json::Value;
-
+/// Why the JSON decoder cannot store `value` in a `data_type` column unchanged,
+/// or `None` when it can or will refuse it itself.
+///
+/// The decoder panics on a non-string for `FixedSizeBinary`, truncates a
+/// fraction for integer types, rounds to Float32 or, through Float32, to
+/// Float16 with overflow to infinity, and reads an odd-length hex string as
+/// if its last digit had a leading zero.
+fn changed_value(data_type: &DataType, value: &Value) -> Option<String> {
     match (data_type, value) {
-        (_, Value::Null) => false,
+        (_, Value::Null) => None,
         (
             DataType::Binary
             | DataType::LargeBinary
             | DataType::FixedSizeBinary(_)
             | DataType::BinaryView,
             value,
-        ) => !value.is_string(),
+        ) => match value.as_str() {
+            None => Some("binary values are hex strings".to_string()),
+            Some(hex) if hex.len() % 2 == 1 => {
+                Some(format!("hex string `{hex}` has an odd length"))
+            }
+            Some(_) => None,
+        },
+        (
+            DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt8
+            | DataType::UInt16
+            | DataType::UInt32
+            | DataType::UInt64
+            | DataType::Date32
+            | DataType::Date64
+            | DataType::Time32(_)
+            | DataType::Time64(_)
+            | DataType::Duration(_),
+            Value::Number(number),
+        ) => number
+            .as_f64()
+            .filter(|n| number.is_f64() && n.fract() != 0.0)
+            .map(|n| format!("{n} is not an integer")),
+        (DataType::Float16 | DataType::Float32, Value::Number(number)) => {
+            let n = number.as_f64()?;
+            let narrowed = if *data_type == DataType::Float16 {
+                <Float16Type as ArrowPrimitiveType>::Native::from_f32(n as f32).is_infinite()
+            } else {
+                (n as f32).is_infinite()
+            };
+            narrowed.then(|| format!("{n} is not finite in {data_type}"))
+        }
         (
             DataType::List(item)
             | DataType::LargeList(item)
@@ -124,56 +159,63 @@ fn has_non_string_binary(data_type: &DataType, value: &serde_json::Value) -> boo
             Value::Array(items),
         ) => items
             .iter()
-            .any(|value| has_non_string_binary(item.data_type(), value)),
-        (DataType::Struct(fields), Value::Object(object)) => fields.iter().any(|field| {
+            .find_map(|value| changed_value(item.data_type(), value)),
+        (DataType::Struct(fields), Value::Object(object)) => fields.iter().find_map(|field| {
             object
                 .get(field.name())
-                .is_some_and(|value| has_non_string_binary(field.data_type(), value))
+                .and_then(|value| changed_value(field.data_type(), value))
         }),
         (DataType::Map(entries, _), Value::Object(object)) => match entries.data_type() {
-            DataType::Struct(fields) => fields.last().is_some_and(|field| {
+            DataType::Struct(fields) => fields.last().and_then(|field| {
                 object
                     .values()
-                    .any(|value| has_non_string_binary(field.data_type(), value))
+                    .find_map(|value| changed_value(field.data_type(), value))
             }),
-            _ => false,
+            _ => None,
         },
-        (DataType::RunEndEncoded(_, values), value) => {
-            has_non_string_binary(values.data_type(), value)
-        }
-        _ => false,
+        (DataType::RunEndEncoded(_, values), value) => changed_value(values.data_type(), value),
+        _ => None,
     }
 }
 
-/// Decodes JSON rows against `schema`. Returns `None` when there are no rows.
+/// Decodes JSON rows against `schema`. Returns `Ok(None)` when there are no rows.
 ///
-/// Errors on a field the schema lacks, a missing non-nullable column, a list of
-/// the wrong length, a binary value that is not a hex string, and a JSON type
-/// its column does not accept. Other values convert as the decoder chooses: `1.5`
-/// in an integer column stores `1`, `1e300` in a Float32 column stores infinity,
-/// and the odd-length hex string `abc` stores the bytes `ab0c`.
+/// Errors, naming the row's `id_field` value and the column, on a value the
+/// decoder would store as a different value: a number with a fraction for an
+/// integer column, a finite number that overflows a Float16 or Float32 column,
+/// and a binary value that is not an even-length hex string. Also errors on a
+/// field the schema lacks, a missing non-nullable column, a list of the wrong
+/// length, an integer out of its column's range, and a JSON type its column
+/// does not accept.
 pub(crate) fn rows_to_batch(
     schema: SchemaRef,
-    rows: &[serde_json::Value],
-) -> Result<Option<RecordBatch>, ArrowError> {
-    for field in schema.fields() {
-        let refused = rows.iter().any(|row| {
-            row.get(field.name())
-                .is_some_and(|value| has_non_string_binary(field.data_type(), value))
-        });
-        if refused {
-            return Err(ArrowError::JsonError(format!(
-                "column `{}` takes binary values as hex strings",
+    rows: &[Value],
+    id_field: &str,
+) -> Result<Option<RecordBatch>, VectorStoreError> {
+    for row in rows {
+        for field in schema.fields() {
+            let Some(reason) = row
+                .get(field.name())
+                .and_then(|value| changed_value(field.data_type(), value))
+            else {
+                continue;
+            };
+            let id = row.get(id_field).unwrap_or(&Value::Null);
+            return Err(invalid_input(format!(
+                "document {id} field `{}` would not be stored as given: {reason}",
                 field.name()
             )));
         }
     }
 
-    let mut decoder = ReaderBuilder::new(schema)
-        .with_strict_mode(true)
-        .build_decoder()?;
-    decoder.serialize(rows)?;
-    decoder.flush()
+    let decode = || {
+        let mut decoder = ReaderBuilder::new(schema)
+            .with_strict_mode(true)
+            .build_decoder()?;
+        decoder.serialize(rows)?;
+        decoder.flush()
+    };
+    decode().map_err(VectorStoreError::datastore)
 }
 
 #[cfg(test)]
