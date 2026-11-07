@@ -92,13 +92,21 @@ impl GeminiConfig {
     }
 
     /// A request to `path` under the API root, with the key in its header.
-    /// The key stays out of the URI, which proxies, traces and errors keep.
+    /// The key stays out of the URI, which proxies, traces and errors keep,
+    /// and out of the request's `Debug`. An unusable key fails at `body`.
     pub(crate) fn request(&self, method: http::Method, path: &str) -> http::request::Builder {
         let base = self.base_url.trim_end_matches('/');
-        http::Request::builder()
+        let mut builder = http::Request::builder()
             .method(method)
             .uri(format!("{base}/{}", path.trim_start_matches('/')))
-            .header(Self::API_KEY_HEADER, self.api_key.expose())
+            .header(Self::API_KEY_HEADER, self.api_key.expose());
+        if let Some(key) = builder
+            .headers_mut()
+            .and_then(|headers| headers.get_mut(Self::API_KEY_HEADER))
+        {
+            key.set_sensitive(true);
+        }
+        builder
     }
 
     /// The header that authenticates every request.
