@@ -67,6 +67,20 @@ pub(crate) fn session_id(cache_key: Option<&str>) -> String {
     cache_key.map_or_else(crate::id::generate, str::to_owned)
 }
 
+/// `builder` with the credential header `name: value`, marked sensitive so
+/// the request's `Debug` hides it. An unusable value stays the builder's error.
+pub(crate) fn credential_header(
+    builder: http::request::Builder,
+    name: &str,
+    value: &str,
+) -> http::request::Builder {
+    let mut builder = builder.header(name, value);
+    if let Some(header) = builder.headers_mut().and_then(|h| h.get_mut(name)) {
+        header.set_sensitive(true);
+    }
+    builder
+}
+
 /// [`session_id`] for `request`. The cache key is a routing hint, which a
 /// header carries outside the option mapping.
 pub(crate) fn request_session_id(request: &crate::completion::CompletionRequest) -> String {

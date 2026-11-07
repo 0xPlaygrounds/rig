@@ -10,6 +10,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
+use crate::providers::internal::credential_header;
 use crate::wire::Secret;
 
 use super::{Dialect, OpenAIConfig};
@@ -124,14 +125,13 @@ impl OpenAIConfig {
     /// Apply the dialect's authentication to a request builder.
     pub(crate) fn authenticate(&self, builder: http::request::Builder) -> http::request::Builder {
         match self.auth {
-            Auth::Bearer => {
-                builder.header("Authorization", format!("Bearer {}", self.api_key.expose()))
-            }
             Auth::OptionalBearer if self.api_key.is_empty() => builder,
-            Auth::OptionalBearer => {
-                builder.header("Authorization", format!("Bearer {}", self.api_key.expose()))
-            }
-            Auth::ApiKeyHeader => builder.header("api-key", self.api_key.expose()),
+            Auth::Bearer | Auth::OptionalBearer => credential_header(
+                builder,
+                "authorization",
+                &format!("Bearer {}", self.api_key.expose()),
+            ),
+            Auth::ApiKeyHeader => credential_header(builder, "api-key", self.api_key.expose()),
         }
     }
 
