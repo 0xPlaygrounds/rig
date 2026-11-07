@@ -31,6 +31,9 @@ const CHATGPT_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const TOKEN_EXPIRY_SKEW_SECONDS: i64 = 60;
 const DEVICE_CODE_TIMEOUT_SECONDS: i64 = 15 * 60;
 const BROWSER_SIGN_IN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+/// Names the app the browser sign-in pages send the user back to.
+const SIGN_IN_APP_NAME_ENV: &str = "CHATGPT_SIGN_IN_APP_NAME";
+const DEFAULT_SIGN_IN_APP_NAME: &str = "rig";
 const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -198,6 +201,8 @@ impl Authenticator {
     /// 1455, or 1457 when that is taken. The default browser is opened on
     /// the sign-in page and `prompt` receives its URL, for the user to open
     /// when the browser did not. The credential is kept in the token store.
+    /// The page the browser lands on tells the user to return to the app
+    /// named by `CHATGPT_SIGN_IN_APP_NAME`, or to `rig` when it is unset.
     /// Native only.
     ///
     /// When both ports are taken, fails with [`AuthError::Io`] of kind
@@ -224,6 +229,7 @@ impl Authenticator {
             listener,
             state,
             std::time::Instant::now() + BROWSER_SIGN_IN_TIMEOUT,
+            sign_in_app_name(),
         )?;
         let browser_launched = browser::open_browser(&authorize_url);
         prompt(BrowserSignInPrompt {
@@ -521,6 +527,15 @@ fn originator() -> String {
                 })
                 .to_owned()
         })
+}
+
+/// The app the browser sign-in pages send the user back to:
+/// [`SIGN_IN_APP_NAME_ENV`] when set and not empty, else `rig`.
+fn sign_in_app_name() -> String {
+    std::env::var(SIGN_IN_APP_NAME_ENV)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_SIGN_IN_APP_NAME.to_owned())
 }
 
 fn build_auth_record(
