@@ -600,3 +600,41 @@ fn reads_openrouter_usage_cost() -> anyhow::Result<()> {
     ensure!(again.usage == response.usage);
     Ok(())
 }
+
+/// A reloaded configuration keeps its routing preferences, in both forms of
+/// each untagged setting, and one stored without them still loads. Only the
+/// credential must be supplied again.
+#[test]
+fn provider_preferences_survive_reloading_the_configuration() -> anyhow::Result<()> {
+    use rig_core::providers::openrouter::extension::{
+        DataCollection, LatencyThreshold, MaxPrice, PercentileThresholds, ProviderPreferences,
+        ProviderSortConfig, ProviderSortStrategy, Quantization, SortPartition, ThroughputThreshold,
+    };
+
+    let reload = |config: &JevConfig| -> anyhow::Result<JevConfig> {
+        Ok(serde_json::from_value(serde_json::to_value(config)?)?)
+    };
+    let simple = ProviderPreferences::new()
+        .cheapest()
+        .preferred_min_throughput(ThroughputThreshold::Simple(5.0))
+        .preferred_max_latency(LatencyThreshold::Simple(2.0));
+    let detailed = ProviderPreferences::new()
+        .zdr(true)
+        .data_collection(DataCollection::Deny)
+        .only(["typesafe"])
+        .sort(ProviderSortConfig::new(ProviderSortStrategy::Latency).partition(SortPartition::None))
+        .preferred_min_throughput(ThroughputThreshold::Percentile(
+            PercentileThresholds::new().p50(5.0),
+        ))
+        .preferred_max_latency(LatencyThreshold::Percentile(
+            PercentileThresholds::new().p99(2.0),
+        ))
+        .max_price(MaxPrice::new().prompt(1.0))
+        .quantizations([Quantization::Fp8]);
+    for preferences in [simple, detailed] {
+        let config = JevConfig::new("token").provider(preferences.clone());
+        ensure!(reload(&config)? == JevConfig::new("").provider(preferences));
+    }
+    ensure!(reload(&JevConfig::new("token"))? == JevConfig::new(""));
+    Ok(())
+}
