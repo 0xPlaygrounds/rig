@@ -99,9 +99,11 @@ fn a_gateway_defaults_max_tokens_to_its_one_documented_ceiling() {
         ANTHROPIC.default_max_tokens(crate::catalog::ModelFacts::builtin(), "claude-haiku-4-5"),
         Some(64_000)
     );
+    // An id the catalog does not list takes the largest documented limit:
+    // the API requires the field, and a newer model is unlikely to allow less.
     assert_eq!(
         ANTHROPIC.default_max_tokens(crate::catalog::ModelFacts::builtin(), "some-unknown-model"),
-        None
+        Some(128_000)
     );
     // A gateway documents one ceiling rather than per-model limits, so an
     // unrecognized model still gets a usable default.

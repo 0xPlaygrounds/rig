@@ -155,21 +155,47 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         Some(32_000),
         "the Models API's limit for Claude Opus 4.1"
     );
+    // An id the catalog does not list, with no known family prefix, takes the
+    // limit of the row its bare id names on any vendor, else the largest any
+    // listed model documents.
     assert_eq!(
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-3-opus"),
-        None
+        Some(128_000)
     );
-    // An id the catalog does not list takes its family's default.
+    // Clouds and relays rename the same model; the vendored prefix and version
+    // suffix are not part of the id the catalog lists.
+    assert_eq!(
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "global.anthropic.claude-sonnet-5-5"
+        ),
+        Some(128_000),
+        "a cloud alias keeps the model's own limit"
+    );
+    assert_eq!(
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        ),
+        Some(64_000)
+    );
+    // A model of another vendor served under this wire keeps its own limit
+    // rather than Anthropic's: DeepSeek documents 384K output.
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "deepseek-flash"),
+        Some(393_216)
+    );
+    // A registry tag or a dotted id still names the catalog's row.
     assert_eq!(
         default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-opus-4.6"),
-        Some(64_000)
+        Some(128_000)
     );
     assert_eq!(
         default_max_tokens_for_model(
             crate::catalog::ModelFacts::builtin(),
             "claude-sonnet-4-6@20260101"
         ),
-        Some(64_000)
+        Some(128_000)
     );
 }
 

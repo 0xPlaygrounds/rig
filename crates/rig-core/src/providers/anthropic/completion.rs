@@ -95,18 +95,97 @@ pub(super) fn spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSp
     facts.for_model(super::ANTHROPIC.name, model)
 }
 
-/// The published synchronous output limit of a listed model. A model the
-/// catalog does not list under the `claude-opus-4`, `claude-sonnet-4` or
-/// `claude-haiku-4-5` prefixes takes 64000; any other requires an explicit
-/// `max_tokens` value.
-pub(super) fn default_max_tokens_for_model(facts: &ModelFacts, model: &str) -> Option<u64> {
-    match spec(facts, model) {
-        Some(spec) => spec.max_output_tokens.map(u64::from),
-        None => ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"]
-            .iter()
-            .any(|prefix| model.starts_with(prefix))
-            .then_some(64_000),
+/// The largest synchronous output limit any listed model documents. A model the
+/// catalog does not list under any id takes it: a newer model is unlikely to
+/// allow less, and the Messages API requires the field — so a guess the
+/// provider accepts beats a request that cannot be sent.
+const UNKNOWN_MODEL_OUTPUT_LIMIT: u64 = 128_000;
+
+/// An id a cloud or a relay renames: clouds and gateways prefix the vendor
+/// (`global.anthropic.`, `us.`, `anthropic/`) and suffix a version
+/// (`-v1:0`, `:0`). The catalog lists the model under its bare id.
+pub(super) fn bare_model_id(model: &str) -> String {
+    let mut id = model.trim().to_ascii_lowercase();
+    if let Some(rest) = id.rsplit('/').next() {
+        id = rest.to_string();
     }
+    // A registry tag (`claude-sonnet-4-6@20260101`) names the row before it.
+    if let Some((bare, _tag)) = id.split_once('@') {
+        id = bare.to_string();
+    }
+    for prefix in [
+        "global.",
+        "us.",
+        "eu.",
+        "apac.",
+        "jp.",
+        "au.",
+        "ca.",
+        "amazon.",
+        "aws.",
+        "anthropic.",
+        "bedrock.",
+        "openai.",
+        "google.",
+    ] {
+        if let Some(rest) = id.strip_prefix(prefix) {
+            id = rest.to_string();
+        }
+    }
+    for suffix in ["-v1:0", ":0", "-v1"] {
+        if let Some(rest) = id.strip_suffix(suffix) {
+            id = rest.to_string();
+        }
+    }
+    id
+}
+
+/// The published synchronous output limit of a listed model.
+///
+/// A model the catalog does not list under this wire's vendor is matched by its
+/// bare id against every vendor's row first — a gateway fronting DeepSeek or
+/// Kimi under Anthropic's protocol keeps that model's documented limit rather
+/// than Anthropic's. Then the known Claude families apply, and only an id
+/// nothing recognizes takes [`UNKNOWN_MODEL_OUTPUT_LIMIT`].
+pub(super) fn default_max_tokens_for_model(facts: &ModelFacts, model: &str) -> Option<u64> {
+    // A listed row without a documented limit falls through like an unlisted
+    // one: the wire still has to send a value.
+    if let Some(tokens) = spec(facts, model).and_then(|spec| spec.max_output_tokens) {
+        return Some(u64::from(tokens));
+    }
+    let bare = bare_model_id(model);
+    if !bare.is_empty() {
+        let mut prefix_hit: Option<u64> = None;
+        for spec in facts.catalog().iter() {
+            if spec.deprecated {
+                continue;
+            }
+            let id = bare_model_id(&spec.id);
+            if id == bare {
+                // A row without a documented limit keeps the search going: a
+                // dated row of the same model may carry one.
+                if let Some(tokens) = spec.max_output_tokens {
+                    return Some(u64::from(tokens));
+                }
+                continue;
+            }
+            // A short id names a dated row (`claude-sonnet-5-5` ↔
+            // `…-20250929`); take the first, newest listed first.
+            if prefix_hit.is_none() && id.starts_with(&bare) {
+                prefix_hit = spec.max_output_tokens.map(u64::from);
+            }
+        }
+        if let Some(tokens) = prefix_hit {
+            return Some(tokens);
+        }
+    }
+    if ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"]
+        .iter()
+        .any(|prefix| bare.starts_with(prefix))
+    {
+        return Some(64_000);
+    }
+    Some(UNKNOWN_MODEL_OUTPUT_LIMIT)
 }
 
 /// Whether `model` rejects a forced tool choice.
