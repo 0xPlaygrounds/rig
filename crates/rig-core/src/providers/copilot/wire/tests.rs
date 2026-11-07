@@ -198,6 +198,7 @@ async fn registry_copilot_preserves_explicit_configuration_after_reload() {
 fn completion_routes_by_the_catalogue_then_by_the_name() {
     use crate::providers::openai::wire::OpenAiWire;
     for (model, responses) in [
+        ("gpt-6-luna", true),
         (super::super::GPT_5_5, true),
         ("gpt-6.1-terra", true),
         (super::super::GPT_5_1_CODEX, true),
