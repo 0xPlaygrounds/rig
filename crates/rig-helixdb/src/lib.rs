@@ -4,7 +4,7 @@
 //! queries through the [`HelixDB`] HTTP client. The `rig` facade re-exports
 //! this crate as `rig::helixdb` under the `helixdb` feature.
 
-use reqwest::{Client, StatusCode};
+use reqwest::{Client, StatusCode, redirect::Policy};
 use rig_core::{
     vector_store::{
         InsertDocuments, VectorSearchIdResult, VectorSearchResult, VectorStoreError,
@@ -25,9 +25,25 @@ pub struct HelixDB {
 }
 
 impl HelixDB {
-    /// Creates a client, defaulting the endpoint to `http://localhost`.
+    /// Creates a client, defaulting the endpoint to `http://localhost`. It
+    /// follows redirects only within the endpoint's origin, so the API key
+    /// never reaches another one: a redirect elsewhere fails the query.
     pub fn new(endpoint: Option<&str>, port: Option<u16>, api_key: Option<&str>) -> Self {
-        Self::with_client(endpoint, port, api_key, Client::new())
+        let default = Policy::default();
+        let policy = Policy::custom(move |attempt| {
+            let next = attempt.url().origin();
+            match attempt.previous().last() {
+                Some(previous) if previous.origin() != next => attempt.error(format!(
+                    "refused a redirect to another origin, {}",
+                    next.ascii_serialization()
+                )),
+                _ => default.redirect(attempt),
+            }
+        });
+        // This build differs from `Client::new()` only in its redirect policy,
+        // so it fails only where `Client::new()` would panic.
+        let client = Client::builder().redirect(policy).build();
+        Self::with_client(endpoint, port, api_key, client.unwrap_or_default())
     }
 
     /// Creates a HelixDB client using a caller-provided reqwest client.
