@@ -8,7 +8,8 @@
 //! # async fn run(http: rig_core::http_client::DynHttpClient) -> Result<(), Box<dyn std::error::Error>> {
 //! let config = OpenAIConfig::with_key(&DIALECT, "tid=session-token");
 //! let models = Model::new(Models::new(config), http).list().await?;
-//! # let _ = models;
+//! let takes_tools = models.iter().filter(|m| m.supports_tool_calls == Some(true));
+//! # let _ = takes_tools.count();
 //! # Ok(())
 //! # }
 //! ```
@@ -46,8 +47,9 @@ impl Models {
     }
 }
 
-/// The catalogue's `data`, each entry naming its id, its name, its vendor
-/// and its modality under `capabilities.type`.
+/// The catalogue's `data`, each entry naming its id, its name, its vendor,
+/// its modality under `capabilities.type` and its tool-call support under
+/// `capabilities.supports.tool_calls`.
 fn page(event: Value) -> Result<ModelPage, ProviderError> {
     let text =
         |entry: &Value, pointer: &str| entry.at(pointer).and_then(Value::as_str).map(str::to_owned);
@@ -59,6 +61,9 @@ fn page(event: Value) -> Result<ModelPage, ProviderError> {
             model.name = text(entry, "/name");
             model.owned_by = text(entry, "/vendor");
             model.r#type = text(entry, "/capabilities/type");
+            model.supports_tool_calls = entry
+                .at("/capabilities/supports/tool_calls")
+                .and_then(Value::as_bool);
             Some(model)
         })
         .collect();
