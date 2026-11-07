@@ -2505,3 +2505,33 @@ fn a_cache_point_within_a_message_marks_the_last_block_of_its_items() {
         [vec![false], vec![false, false], vec![false, false]]
     );
 }
+
+/// A wire with no `max_tokens` default sends no such field at all. The
+/// Messages protocol makes it optional, and a gateway that caps output
+/// itself is better left to do so than handed an invented value.
+#[test]
+fn a_request_without_max_tokens_omits_the_field() {
+    use crate::providers::anthropic::wire::ANTHROPIC;
+    use crate::wire::{Mode, Wire};
+
+    let request = CompletionRequest::new(crate::completion::message::Message::user("Hi"));
+    let encoded = AnthropicConfig::with_key(&ANTHROPIC, "k")
+        .completion("some-unknown-model")
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let value = json_body(&encoded.request);
+    assert!(
+        value.get("max_tokens").is_none(),
+        "no max_tokens is invented: {value}"
+    );
+
+    // A caller that asks for a cap still gets one.
+    let request =
+        CompletionRequest::new(crate::completion::message::Message::user("Hi")).max_tokens(512);
+    let encoded = AnthropicConfig::with_key(&ANTHROPIC, "k")
+        .completion("some-unknown-model")
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let value = json_body(&encoded.request);
+    assert_eq!(value["max_tokens"], 512);
+}

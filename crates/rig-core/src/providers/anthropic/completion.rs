@@ -175,12 +175,15 @@ pub(crate) fn drop_unbound_thinking(body: &mut Map<String, Value>) {
 /// the wire's encoding of the request, then the mapped options, then
 /// `additional_params`, merged by [`request_params`].
 ///
+/// A request with no `max_tokens` of its own and no wire default is sent
+/// without one: the field is the caller's to set, and a gateway that caps
+/// output itself can be left to do so.
+///
 /// # Errors
 ///
-/// When no `max_tokens` applies, an option is refused, `additional_params`
-/// is not an object or carries malformed `tools` or `cache_control`, the
-/// caching settings conflict, or a part has a form the wire's `encodes`
-/// refuses.
+/// When an option is refused, `additional_params` is not an object or
+/// carries malformed `tools` or `cache_control`, the caching settings
+/// conflict, or a part has a form the wire's `encodes` refuses.
 pub(super) fn body(
     wire: &Messages,
     request: &CompletionRequest,
@@ -188,7 +191,10 @@ pub(super) fn body(
 ) -> Result<FinalBody, EncodeError> {
     let model = request.model.clone().unwrap_or_else(|| wire.model.clone());
     // A request that addresses another model gets that model's default; the
-    // wire's own model keeps the one it was built with.
+    // wire's own model keeps the one it was built with. A wire that has no
+    // default omits the field: a Messages-format gateway may cap output
+    // itself, and inventing a value it does not document can be worse than
+    // leaving it out.
     let max_tokens = match request.max_tokens {
         Some(tokens) => Some(tokens),
         None if model == wire.model => wire.default_max_tokens,
@@ -197,8 +203,7 @@ pub(super) fn body(
             .dialect
             .default_max_tokens(&wire.facts, &model)
             .or(wire.default_max_tokens),
-    }
-    .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
+    };
     let mut rewrites = Vec::new();
     if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&wire.facts, &model) {
         rewrites.push(Rewrite::DropUnboundThinking);
@@ -230,7 +235,7 @@ fn base(
     wire: &Messages,
     request: &CompletionRequest,
     model: &str,
-    max_tokens: u64,
+    max_tokens: Option<u64>,
     input: &mut BaseInput<'_>,
 ) -> Result<Map<String, Value>, EncodeError> {
     let top = top_level_cache_control(input.param("cache_control"))?;
@@ -334,7 +339,7 @@ fn base(
     Ok(set_fields([
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
-        ("max_tokens", Some(json!(max_tokens))),
+        ("max_tokens", max_tokens.map(|tokens| json!(tokens))),
         (
             "system",
             (!system.is_empty()).then_some(Value::Array(system)),
