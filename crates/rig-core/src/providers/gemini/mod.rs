@@ -91,24 +91,18 @@ impl GeminiConfig {
         self
     }
 
-    /// Build a GenerateContent URI, appending the API key after any path query.
-    /// The returned URI contains credentials and must not be logged.
-    pub(crate) fn uri(&self, path: &str) -> String {
-        let trimmed = path.trim_start_matches('/');
-        let separator = if trimmed.contains('?') { "&" } else { "?" };
+    /// A request to `path` under the API root, with the key in its header.
+    /// The key stays out of the URI, which proxies, traces and errors keep.
+    pub(crate) fn request(&self, method: http::Method, path: &str) -> http::request::Builder {
         let base = self.base_url.trim_end_matches('/');
-        format!("{base}/{trimmed}{separator}key={}", self.api_key.expose())
+        http::Request::builder()
+            .method(method)
+            .uri(format!("{base}/{}", path.trim_start_matches('/')))
+            .header(Self::API_KEY_HEADER, self.api_key.expose())
     }
 
-    /// The URI for an Interactions-family `path`. No key: that family
-    /// authenticates by the `x-goog-api-key` header instead.
-    pub(crate) fn interactions_uri(&self, path: &str) -> String {
-        let base = self.base_url.trim_end_matches('/');
-        format!("{base}/{}", path.trim_start_matches('/'))
-    }
-
-    /// The header that authenticates an Interactions-family request.
-    pub(crate) const INTERACTIONS_KEY_HEADER: &'static str = "x-goog-api-key";
+    /// The header that authenticates every request.
+    pub(crate) const API_KEY_HEADER: &'static str = "x-goog-api-key";
 
     /// The `generateContent` / `streamGenerateContent` completion wire.
     pub(crate) fn completion(&self, model: impl Into<String>) -> completion::GenerateContent {

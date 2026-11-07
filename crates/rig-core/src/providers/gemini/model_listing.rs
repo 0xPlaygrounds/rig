@@ -99,36 +99,19 @@ mod tests;
 /// neither is some other endpoint's reply rather than a page of this one.
 const MODEL_PAGE_MARKERS: &[&str] = &["models", "nextPageToken"];
 
-/// API-key placement for a model-listing request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Auth {
-    Query,
-    Header,
-}
-
 /// One page's request, after `page_token` when a page named one.
 fn list_models_request(
     provider: &super::GeminiConfig,
-    auth: Auth,
     page_token: Option<&str>,
 ) -> Result<http::Request<Body>, EncodeError> {
-    let path = list_models_path(page_token);
-    let trimmed = path.trim_start_matches('/');
-    let base_url = &provider.base_url;
-    // The page-size parameter guarantees an existing query string.
-    let request = match auth {
-        Auth::Query => http::Request::get(format!(
-            "{base_url}/{trimmed}&key={}",
-            provider.api_key.expose()
-        )),
-        Auth::Header => http::Request::get(format!("{base_url}/{trimmed}"))
-            .header("x-goog-api-key", provider.api_key.expose()),
-    };
-    request.body(Body::empty()).map_err(EncodeError::from)
+    provider
+        .request(http::Method::GET, &list_models_path(page_token))
+        .body(Body::empty())
+        .map_err(EncodeError::from)
 }
 
 /// The GenerateContent model-listing wire: `GET /v1beta/models`, paged on
-/// `nextPageToken`, credential in the query.
+/// `nextPageToken`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Models {
     /// The provider this wire speaks to.
@@ -157,7 +140,7 @@ impl Wire for Models {
     /// A listing never streams, so both modes send the one request.
     fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
-            list_models_request(&self.provider, Auth::Query, cursor.as_deref())?,
+            list_models_request(&self.provider, cursor.as_deref())?,
             Framing::Whole,
         ))
     }
@@ -167,8 +150,7 @@ impl Wire for Models {
     }
 }
 
-/// The Interactions API model-listing wire: the same `GET /v1beta/models`,
-/// authenticated with `x-goog-api-key`.
+/// The Interactions API model-listing wire: the same `GET /v1beta/models`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InteractionsModels {
     /// The provider this wire speaks to.
@@ -197,7 +179,7 @@ impl Wire for InteractionsModels {
     /// A listing never streams, so both modes send the one request.
     fn encode(&self, cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
         Ok(Encoded::new(
-            list_models_request(&self.provider, Auth::Header, cursor.as_deref())?,
+            list_models_request(&self.provider, cursor.as_deref())?,
             Framing::Whole,
         ))
     }
@@ -225,7 +207,7 @@ fn models_decoder() -> DocumentDecoder<ModelListing, String> {
     )
 }
 
-/// Check credentials with `GET /v1beta/models`, authenticating through the query.
+/// Check credentials with `GET /v1beta/models`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VerifyKey {
     /// The provider this wire speaks to.
@@ -252,12 +234,10 @@ impl Wire for VerifyKey {
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, EncodeError> {
-        let request = http::Request::get(format!(
-            "{}/v1beta/models?key={}",
-            self.provider.base_url,
-            self.provider.api_key.expose()
-        ))
-        .body(Body::empty())?;
+        let request = self
+            .provider
+            .request(http::Method::GET, "/v1beta/models")
+            .body(Body::empty())?;
         Ok(Encoded::new(request, Framing::Whole))
     }
 

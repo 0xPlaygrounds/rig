@@ -454,9 +454,12 @@ async fn assert_request_body_rejected(
             "only the real local replay server receives the probe"
         );
         url.set_path(request["path"].as_str().expect("recorded request path"));
+        // A recording's `key` is a credential the client now sends as a header.
         for query in request["query_param"]
             .as_array()
             .expect("recorded query parameters")
+            .iter()
+            .filter(|query| query["name"] != "key")
         {
             url.query_pairs_mut().append_pair(
                 query["name"].as_str().expect("query name"),
@@ -472,7 +475,9 @@ async fn assert_request_body_rejected(
             "openai" | "deepseek" => client
                 .post(url)
                 .header("authorization", "Bearer checkpoint-replay-only"),
-            "gemini" => client.post(url),
+            "gemini" => client
+                .post(url)
+                .header("x-goog-api-key", "checkpoint-replay-only"),
             other => panic!("not a checkpoint provider: {other}"),
         };
         for header in request["header"].as_array().expect("recorded headers") {

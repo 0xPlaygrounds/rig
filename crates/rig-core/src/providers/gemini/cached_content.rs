@@ -375,7 +375,9 @@ impl CachedContents {
             pairs.push(("pageToken", token));
         }
         let path = with_query_pairs(CACHED_CONTENTS_PATH, &pairs);
-        http::Request::get(self.provider.uri(&path)).body(Body::empty())
+        self.provider
+            .request(http::Method::GET, &path)
+            .body(Body::empty())
     }
 }
 
@@ -472,12 +474,14 @@ impl Wire for CachedContents {
         let request = match request {
             CachedContentRequest::Create(new) => {
                 new.validate()?;
-                http::Request::post(self.provider.uri(CACHED_CONTENTS_PATH))
+                self.provider
+                    .request(http::Method::POST, CACHED_CONTENTS_PATH)
                     .body(Body::Bytes(serde_json::to_vec(&new)?))?
             }
-            CachedContentRequest::Get(name) => {
-                http::Request::get(self.provider.uri(&resource_path(&name)?)).body(Body::empty())?
-            }
+            CachedContentRequest::Get(name) => self
+                .provider
+                .request(http::Method::GET, &resource_path(&name)?)
+                .body(Body::empty())?,
             CachedContentRequest::List { page_token } => {
                 self.list_request(page_token.as_deref())?
             }
@@ -485,12 +489,14 @@ impl Wire for CachedContents {
                 let (patch, mask) = expiry_patch(expiry)?;
                 // Handle validation prevents query injection and retargeting the patch.
                 let path = format!("{}?updateMask={mask}", resource_path(&name)?);
-                http::Request::patch(self.provider.uri(&path)).body(Body::Bytes(patch))?
+                self.provider
+                    .request(http::Method::PATCH, &path)
+                    .body(Body::Bytes(patch))?
             }
-            CachedContentRequest::Delete(name) => {
-                http::Request::delete(self.provider.uri(&resource_path(&name)?))
-                    .body(Body::empty())?
-            }
+            CachedContentRequest::Delete(name) => self
+                .provider
+                .request(http::Method::DELETE, &resource_path(&name)?)
+                .body(Body::empty())?,
         };
         Ok(Encoded::new(request, Framing::Whole))
     }

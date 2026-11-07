@@ -97,8 +97,7 @@ fn the_batch_request_is_the_recorded_one() {
         request.uri().path(),
         "/v1beta/models/gemini-embedding-001:batchEmbedContents"
     );
-    // The GenerateContent family authenticates by query parameter.
-    assert_eq!(request.uri().query(), Some("key=test-key"));
+    assert_eq!(request.uri().query(), None);
     // Compared as documents, not as strings: a workspace build that enables
     // `serde_json/preserve_order` serializes the object in insertion order
     // rather than sorted, and the recording is a document either way.

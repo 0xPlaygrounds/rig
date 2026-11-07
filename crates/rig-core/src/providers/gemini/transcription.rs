@@ -113,14 +113,12 @@ impl Wire for Transcriptions {
         _mode: Mode,
     ) -> Result<Encoded, EncodeError> {
         let body = transcription_body(request)?;
-        let request = http::Request::post(format!(
-            "{}/v1beta/models/{}:generateContent?key={}",
-            self.provider.base_url,
-            self.model,
-            self.provider.api_key.expose()
-        ))
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::Bytes(body))?;
+        let path = format!("/v1beta/models/{}:generateContent", self.model);
+        let request = self
+            .provider
+            .request(http::Method::POST, &path)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(Body::Bytes(body))?;
         // Gemini reports no transport request-id header.
         Ok(Encoded::new(request, Framing::Whole))
     }

@@ -6,10 +6,9 @@ use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 ///
 /// `resource_path`'s unit tests prove the string is refused; this proves the
 /// refusal happens *before* the request is built. It matters because the
-/// URL these handles produce is not malformed — `Gemini::uri`
-/// appends the API key with `&` once the path contains a `?`, so
-/// `DELETE /v1beta/cachedContents/abc?stale&key=…` is a well-formed request
-/// that deletes cache `abc` and returns 200.
+/// URL these handles produce is not malformed: `DELETE
+/// /v1beta/cachedContents/abc?stale` is a well-formed request that deletes
+/// cache `abc` and returns 200.
 #[tokio::test]
 async fn a_mis_targeting_handle_never_reaches_the_socket() {
     for smuggled in ["abc?stale", "abc#frag", "abc/def", ""] {
@@ -98,8 +97,7 @@ fn caches(
 
 /// A cursor carrying URL-significant characters is percent-encoded rather
 /// than interpolated, so it cannot truncate the path or inject a query
-/// parameter — Gemini appends `key=` to every URI, so a raw `&` in the
-/// cursor would sit next to the credential.
+/// parameter.
 #[tokio::test]
 async fn pagination_percent_encodes_the_cursor() {
     let (caches, http_client) = caches(vec![
@@ -121,7 +119,7 @@ async fn pagination_percent_encodes_the_cursor() {
         .map(|request| request.uri)
         .collect();
     assert!(
-        uris[1].contains("pageSize=1&pageToken=weird+token%26x%3D1&key="),
+        uris[1].ends_with("pageSize=1&pageToken=weird+token%26x%3D1"),
         "the cursor must be percent-encoded: {uris:?}",
     );
 }
@@ -145,7 +143,7 @@ fn bound_caches(
 }
 
 #[tokio::test]
-async fn the_bound_cache_sends_each_recorded_path_with_the_key_in_the_query() {
+async fn the_bound_cache_sends_each_recorded_path() {
     const HANDLE: &str = r#"{"name":"cachedContents/leaky","model":"models/gemini-2.5-flash"}"#;
     let http = SequencedHttpClient::new([
         MockHttpResponse::success(HANDLE),
@@ -176,10 +174,10 @@ async fn the_bound_cache_sends_each_recorded_path_with_the_key_in_the_query() {
     assert_eq!(
         uris,
         vec![
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents?key=test-key",
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?updateMask=ttl&key=test-key",
-            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?updateMask=ttl",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky",
         ]
     );
 }

@@ -155,25 +155,26 @@ impl From<&'static str> for CassetteSpec {
 #[derive(Clone, Copy, Debug)]
 struct CassettePolicy {
     required_request_headers: &'static [&'static str],
+    /// Older Gemini recordings keep a credential the client now sends as a
+    /// header. Only the expected side drops it, so a key in a URL fails replay.
+    drops_recorded_key: bool,
     replay_matching: ReplayMatching,
     body_matching: BodyMatching,
 }
 
 impl CassettePolicy {
     fn for_scenario(provider: &str, spec: CassetteSpec) -> Self {
-        let scenario = spec.scenario;
         let required_request_headers = match provider {
             "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
-            "gemini" if scenario.starts_with("interactions_api/") => {
-                GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
-            }
+            "gemini" => GEMINI_REQUIRED_REQUEST_HEADERS,
             _ => NO_REQUIRED_REQUEST_HEADERS,
         };
 
         Self {
             required_request_headers,
+            drops_recorded_key: provider == "gemini",
             replay_matching: spec.replay_matching,
             body_matching: spec.body_matching.unwrap_or(BodyMatching::Exact),
         }
@@ -184,6 +185,7 @@ impl Default for CassettePolicy {
     fn default() -> Self {
         Self {
             required_request_headers: NO_REQUIRED_REQUEST_HEADERS,
+            drops_recorded_key: false,
             replay_matching: ReplayMatching::Ordered,
             body_matching: BodyMatching::Exact,
         }
@@ -1032,7 +1034,7 @@ impl ProviderCassette {
     }
 
     /// Return an invalid key for recording auth failures, or the scrubbed dummy
-    /// key for replay so matched query credentials agree with the fixture.
+    /// key for replay.
     pub fn bogus_api_key(&self) -> String {
         // Handing out a rejected credential makes the rejection the subject.
         self.expect_account_failure(AccountFailure::Auth);
@@ -1884,7 +1886,7 @@ fn replay_miss_message(
                 .as_str()
                 .eq_ignore_ascii_case(&interaction.when.method);
             let path_matches = paths_match(request, &interaction.when.path);
-            let query_matches = query_matches(request, &interaction.when.query_param);
+            let query_matches = query_matches(policy, request, &interaction.when.query_param);
             let headers_match = headers_match(request, &interaction.when.header);
             let required_headers_match = required_headers_present(policy, &request.headers);
             let body_matches = body_matches(
@@ -1965,7 +1967,7 @@ fn request_line_matches(
         .as_str()
         .eq_ignore_ascii_case(&expected.method)
         && paths_match(request, &expected.path)
-        && query_matches(request, &expected.query_param)
+        && query_matches(policy, request, &expected.query_param)
         && headers_match(request, &expected.header)
         && required_headers_present(policy, &request.headers)
 }
@@ -2115,7 +2117,11 @@ fn recorded_body(body: &[u8]) -> RecordedBody {
     }
 }
 
-fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
+fn query_matches(
+    policy: CassettePolicy,
+    request: &IncomingRequest,
+    expected: &[NameValue],
+) -> bool {
     let mut scrubber = request.context().clone();
     let mut actual: Vec<_> = parsed_query_pairs(request.uri.query())
         .into_iter()
@@ -2124,6 +2130,9 @@ fn query_matches(request: &IncomingRequest, expected: &[NameValue]) -> bool {
     let mut expected = expected.to_vec();
     scrub_query_params(&mut scrubber, &mut actual);
     scrub_query_params(&mut scrubber, &mut expected);
+    expected.retain(|pair| {
+        !(policy.drops_recorded_key && pair.name == "key" && pair.value == REDACTED)
+    });
     query_pair_counts(actual.into_iter().map(|pair| (pair.name, pair.value)))
         == query_pair_counts(expected.into_iter().map(|pair| (pair.name, pair.value)))
 }
@@ -3052,7 +3061,7 @@ const NO_REQUIRED_REQUEST_HEADERS: &[&str] = &[];
 const OPENAI_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
 const CHATGPT_REQUIRED_REQUEST_HEADERS: &[&str] = &["authorization"];
 const ANTHROPIC_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-api-key"];
-const GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
+const GEMINI_REQUIRED_REQUEST_HEADERS: &[&str] = &["x-goog-api-key"];
 
 const RECORDED_REQUEST_HEADERS: &[&str] = &[
     "accept",

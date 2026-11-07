@@ -14,7 +14,7 @@ fn body(request: AudioGenerationRequest) -> Value {
         .expect("the request encodes");
     assert_eq!(encoded.request.uri().path(), "/v1beta/interactions");
     assert_eq!(
-        encoded.request.headers()[super::super::GeminiConfig::INTERACTIONS_KEY_HEADER],
+        encoded.request.headers()[super::super::GeminiConfig::API_KEY_HEADER],
         "test-key"
     );
     crate::test_utils::json_body(&encoded.request)
