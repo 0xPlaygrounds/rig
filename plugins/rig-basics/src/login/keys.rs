@@ -3,9 +3,11 @@
 //! replaced whole. A saved key connects its provider's models before the
 //! environment's: the provider is reached through [`SavedKey`], which reads
 //! the file each time a model connects, and with no file any more connects
-//! as the environment says. Saving or removing a key reconnects the idle
-//! agents on that provider's models.
+//! as the environment says; a file that cannot be read refuses the connect.
+//! Saving or removing a key reconnects the idle agents on that provider's
+//! models.
 
+use std::io::ErrorKind;
 use std::path::PathBuf;
 
 use bevy_app::prelude::*;
@@ -31,7 +33,10 @@ pub(super) const NOTHING_STORED: &str = "Nothing stored to remove. /logout remov
 pub(super) fn add(app: &mut App) {
     let keys = Keys::at(&RigHome::of(app.world()));
     let models = &mut app.world_mut().get_resource_or_init::<Models>().0;
-    for vendor in keys.vendors() {
+    // An unlistable directory may still hold keys: each provider reads its own.
+    let listed = keys.vendors().map_err(|_| key_vendors(models));
+    let vendors = listed.unwrap_or_else(|all| all.into_iter().map(str::to_owned).collect());
+    for vendor in vendors {
         provide(models, &vendor, &keys);
     }
     app.insert_resource(keys)
@@ -68,11 +73,20 @@ impl Keys {
         self.store.path(vendor)
     }
 
-    /// `vendor`'s saved key, if any.
-    pub(crate) fn load(&self, vendor: &str) -> Option<String> {
-        let record = std::fs::read_to_string(self.path(vendor)).ok()?;
-        let saved: Saved = serde_json::from_str(&record).ok()?;
-        Some(saved.key)
+    /// `vendor`'s saved key, `None` with no file; an error naming the file
+    /// when it exists but cannot be read or parsed.
+    pub(crate) fn load(&self, vendor: &str) -> Result<Option<String>, ConnectError> {
+        let path = self.path(vendor);
+        let unreadable = |why: &dyn std::fmt::Display| {
+            let path = path.display();
+            ConnectError::Provider(format!("cannot read the saved API key {path}: {why}"))
+        };
+        let record = match std::fs::read_to_string(&path) {
+            Err(why) if why.kind() == ErrorKind::NotFound => return Ok(None),
+            record => record.map_err(|why| unreadable(&why))?,
+        };
+        let saved: Saved = serde_json::from_str(&record).map_err(|why| unreadable(&why))?;
+        Ok(Some(saved.key))
     }
 
     /// Saves `key` as `vendor`'s, replacing the file whole. One file holds
@@ -91,10 +105,12 @@ impl Keys {
         Ok(had)
     }
 
-    /// The vendors with a saved key, sorted.
-    pub(crate) fn vendors(&self) -> Vec<String> {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else {
-            return Vec::new();
+    /// The vendors with a saved key, sorted; an error when the directory
+    /// exists but cannot be listed.
+    pub(crate) fn vendors(&self) -> std::io::Result<Vec<String>> {
+        let entries = match std::fs::read_dir(&self.dir) {
+            Err(why) if why.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            entries => entries?,
         };
         let mut vendors: Vec<String> = entries
             .filter_map(|entry| {
@@ -107,7 +123,7 @@ impl Keys {
             })
             .collect();
         vendors.sort();
-        vendors
+        Ok(vendors)
     }
 }
 
@@ -122,7 +138,7 @@ impl Provide for SavedKey {
         catalog: &Catalog,
         transport: &Transport,
     ) -> Result<ErasedHandler, ConnectError> {
-        let options = match self.0.load(spec.provider.vendor()) {
+        let options = match self.0.load(spec.provider.vendor())? {
             Some(key) => ConnectOptions::new().api_key(key),
             None => ConnectOptions::new(),
         };
@@ -386,7 +402,8 @@ pub(super) fn logout_picker(
         more: None,
         checked: false,
     });
-    let saved = keys.vendors().into_iter().map(|vendor| PickItem {
+    let saved = keys.vendors().unwrap_or_default();
+    let saved = saved.into_iter().map(|vendor| PickItem {
         label: format!("API key for {vendor}"),
         command: format!("logout {vendor}"),
         detail: Some(keys.path(&vendor).display().to_string()),

@@ -74,7 +74,10 @@ fn a_typed_key_is_saved_privately_and_connects_until_logout() {
     app.update();
 
     let keys = Keys::at(&home);
-    assert_eq!(keys.load(vendor).as_deref(), Some("sk-rig-test"));
+    assert_eq!(
+        keys.load(vendor).ok().flatten().as_deref(),
+        Some("sk-rig-test")
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
