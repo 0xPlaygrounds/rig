@@ -17,7 +17,7 @@ use rig_tools::process::{Launcher, Process, Spawn};
 use rig_tools::workspace::{Contents, Listed, Listing, Stat, Workspace};
 
 use super::*;
-use crate::telemetry::usage::{AgentUsage, UsagePlugin};
+use crate::telemetry::usage::{AgentUsage, SessionUsage, StoppedUsage, UsagePlugin};
 use rig_ecs::spawn::spawn;
 use rig_harness_test_support::{
     Collected, Ended, MemoryStore, advance, app_on, collect, commit_message, connect, log_ended,
@@ -3610,4 +3610,55 @@ fn the_kept_reply_is_described_only_when_the_kept_part_begins_with_one() {
     });
     let said = kept_reply(&conversation, Some(cut));
     assert!(said.is_some_and(|it| it.contains("continues") && !it.contains("user stopped")));
+}
+
+/// The app once a turn whose automatic summary call stalled after relaying
+/// `items` was stopped with `R` on that sent call, and the turn ended.
+fn stop_the_summary<R: Component>(items: Vec<rig_core::streaming::Relayed>) -> Option<App> {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let mut connection = crate::telemetry::usage::tests::stalling(items)?;
+    connection.spec = Arc::new(connection.spec.as_ref().clone().with_context_window(40_000));
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()?;
+    world.entity_mut(agent).insert(connection);
+    for message in long_conversation(6) {
+        commit_message(world, agent, message).ok()?;
+    }
+    world.trigger(Deliver::new(agent, "And next?", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world
+            .try_query_filtered::<(), (With<Summarizing>, With<HoldOf>, With<SentTo>, With<R>)>()
+            .is_some_and(|mut calls| calls.iter(world).next().is_some())
+    });
+    app.world_mut().trigger(StopTurn::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    app.update();
+    Some(app)
+}
+
+#[test]
+fn a_summary_a_stop_removes_counts_what_its_provider_reported() {
+    let items = vec![crate::telemetry::usage::tests::reported(50_000, 10)];
+    let app = stop_the_summary::<ReportedUsage>(items);
+    let total = app.map(|app| app.world().resource::<SessionUsage>().0.total);
+    let counted = total.map(|total| (total.calls, total.tokens.input_tokens));
+    assert_eq!(counted, Some((1, Some(50_000))));
+}
+
+#[test]
+fn a_summary_a_stop_removes_with_nothing_reported_is_counted_unknown() {
+    let app = stop_the_summary::<SentTo>(Vec::new());
+    let counted = app.map(|app| {
+        let world = app.world();
+        (
+            world.resource::<StoppedUsage>().unknown,
+            world.resource::<SessionUsage>().0.total.calls,
+        )
+    });
+    assert_eq!(counted, Some((1, 0)));
 }
