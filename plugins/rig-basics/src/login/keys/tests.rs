@@ -118,7 +118,8 @@ fn login_app(home: &rig_harness::harness_protocol::Home) -> App {
 }
 
 /// A saved key file that exists but does not parse refuses the provider's
-/// models, naming the file, instead of connecting with the environment.
+/// models, naming the file but not what it holds, instead of connecting
+/// with the environment.
 #[test]
 fn a_saved_key_that_does_not_parse_refuses_the_connect() {
     let home = scratch_home("rig-login-keys-corrupt");
@@ -126,15 +127,16 @@ fn a_saved_key_that_does_not_parse_refuses_the_connect() {
         return;
     };
     let path = Keys::at(&home).path(vendor);
-    let written = path
-        .parent()
-        .map(|dir| std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, "{")));
+    let written = path.parent().map(|dir| {
+        std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, "\"sk-private\""))
+    });
     assert!(matches!(written, Some(Ok(()))));
     let app = login_app(&home);
     let status = status(&app, vendor);
     let shown = path.display().to_string();
     assert!(
-        matches!(&status, Some(ModelStatus::Unavailable(why)) if why.contains(&shown)),
+        matches!(&status, Some(ModelStatus::Unavailable(why))
+            if why.contains(&shown) && !why.contains("sk-private")),
         "{status:?}"
     );
     std::fs::remove_dir_all(home.root()).ok();

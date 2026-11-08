@@ -85,7 +85,14 @@ impl Keys {
             Err(why) if why.kind() == ErrorKind::NotFound => return Ok(None),
             record => record.map_err(|why| unreadable(&why))?,
         };
-        let saved: Saved = serde_json::from_str(&record).map_err(|why| unreadable(&why))?;
+        // serde's message may quote the file, which holds the key.
+        let saved: Saved = serde_json::from_str(&record).map_err(|why| {
+            unreadable(&format!(
+                "no key at line {}, column {}",
+                why.line(),
+                why.column()
+            ))
+        })?;
         Ok(Some(saved.key))
     }
 
