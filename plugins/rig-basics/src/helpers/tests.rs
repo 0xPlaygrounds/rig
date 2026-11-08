@@ -580,18 +580,18 @@ fn the_helpers_table_reads_its_keys_and_refuses_zero() {
 #[test]
 fn a_timeout_too_long_for_a_deadline_is_refused() {
     let default = HelperSettings::default().timeout_secs;
-    let asked = timeout(Some(u64::MAX), default);
+    let most = u64::from(u32::MAX);
+    assert_eq!(timeout(Some(most), default), Ok(Duration::from_secs(most)));
+    let past = most.saturating_add(1).to_string();
+    let asked = timeout(Some(most.saturating_add(1)), default);
     assert!(
-        asked
-            .as_ref()
-            .is_err_and(|why| why.contains(&u64::MAX.to_string())),
+        asked.as_ref().is_err_and(|why| why.contains(&past)),
         "a call's timeout too long for a deadline: {asked:?}"
     );
-    let most = i64::MAX.to_string();
-    let read = Settings::from_toml(&format!("[helpers]\ntimeout_secs = {most}\n"))
+    let read = Settings::from_toml(&format!("[helpers]\ntimeout_secs = {past}\n"))
         .get::<HelperSettings>("helpers");
     assert!(
-        read.as_ref().is_err_and(|why| why.contains(&most)),
+        read.as_ref().is_err_and(|why| why.contains(&past)),
         "a timeout_secs too long for a deadline: {read:?}"
     );
 }
