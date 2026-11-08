@@ -416,12 +416,13 @@ impl Home {
     ///
     /// # Errors
     ///
-    /// When the directory cannot be created, or, on unix, `sessions/` not
-    /// made the user's alone.
+    /// When the directory cannot be created.
     pub fn new_session(&self) -> std::io::Result<(SessionId, SessionDir)> {
         std::fs::create_dir_all(self.sessions())?;
+        // A `sessions/` whose owner or filesystem refuses the mode keeps it,
+        // as before; each new session's own directory is still 0700.
         #[cfg(unix)]
-        std::fs::set_permissions(self.sessions(), PermissionsExt::from_mode(0o700))?;
+        std::fs::set_permissions(self.sessions(), PermissionsExt::from_mode(0o700)).ok();
         let base = SessionId::generate();
         let mut id = base.clone();
         let mut taken = 0u64;
