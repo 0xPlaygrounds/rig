@@ -181,6 +181,35 @@ fn previews_applies_all_or_nothing_and_undoes() {
     assert_eq!(read(&root, "src/b.rs"), "use crate::new_name;\n");
 }
 
+/// Stopping a call does not cut its apply short: every file is written, so
+/// it stays all or none.
+#[test]
+fn a_stopped_call_still_writes_every_file() {
+    let root = scratch_home("oc-project-replace-stopped").root().to_owned();
+    write(&root, "a.rs", b"old\n");
+    write(&root, "b.rs", b"old\n");
+    let planned = ["a.rs", "b.rs"].map(|shown| Planned {
+        path: root.join(shown).display().to_string(),
+        shown: shown.to_owned(),
+        before: "old\n".to_owned(),
+        after: "new\n".to_owned(),
+        matches: 1,
+        examples: Vec::new(),
+    });
+    let writes: Vec<_> = planned
+        .iter()
+        .map(|file| (file, file.after.as_bytes()))
+        .collect();
+    let scope = rig_harness::rig_tools::process::Scope::default();
+    scope.stop();
+
+    let written = scope.enter(|| write_all(&Local, &writes));
+
+    assert!(written.is_ok(), "{written:?}");
+    assert_eq!(read(&root, "a.rs"), "new\n");
+    assert_eq!(read(&root, "b.rs"), "new\n");
+}
+
 #[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(ProjectReplacePlugin);

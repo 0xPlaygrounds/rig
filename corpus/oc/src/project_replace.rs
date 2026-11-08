@@ -423,20 +423,24 @@ fn write_all(
     workspace: &dyn Workspace,
     writes: &[(&Planned, &[u8])],
 ) -> Result<(), ToolExecutionError> {
-    for (done, (file, bytes)) in writes.iter().enumerate() {
-        if let Err(error) = workspace.write(Path::new(&file.path), bytes) {
-            for (written, _) in writes.iter().take(done) {
-                workspace
-                    .write(Path::new(&written.path), written.before.as_bytes())
-                    .ok();
+    // A scope of its own: stopping the call must not refuse the writes
+    // after the first, or the rollback, and leave some files replaced.
+    rig_harness::rig_tools::process::Scope::default().enter(|| {
+        for (done, (file, bytes)) in writes.iter().enumerate() {
+            if let Err(error) = workspace.write(Path::new(&file.path), bytes) {
+                for (written, _) in writes.iter().take(done) {
+                    workspace
+                        .write(Path::new(&written.path), written.before.as_bytes())
+                        .ok();
+                }
+                return Err(ToolExecutionError::other(format!(
+                    "{}: {error}; nothing was written.",
+                    file.shown
+                )));
             }
-            return Err(ToolExecutionError::other(format!(
-                "{}: {error}; nothing was written.",
-                file.shown
-            )));
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// A preview's text: per file its matches and changed lines, then the total.
