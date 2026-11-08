@@ -2,8 +2,8 @@
 //! a recording carries them (Perplexity, Venice, OpenRouter) and from
 //! hand-built frames for the shapes no recording carries yet: OpenAI,
 //! OpenRouter and MiMo `url_citation` annotations, Mistral `reference`
-//! chunks, Z.AI `web_search`, xAI's `cost_in_usd_ticks` and a gateway's
-//! top-level `cost`. A streamed reply and the unary document it rebuilds
+//! chunks, Z.AI `web_search`, xAI's `cost_in_usd_ticks`, DeepInfra's
+//! `estimated_cost` and a gateway's top-level `cost`. A streamed reply and the unary document it rebuilds
 //! give the same citations and cost.
 
 use serde_json::{Value, json};
@@ -319,6 +319,21 @@ async fn xai_cost_ticks_are_dollars() {
     .await;
     assert_eq!(response.usage.cost, Some(Cost::from_total(0.01585)));
     assert_eq!(response.usage.input_tokens, Some(1));
+}
+
+/// Hand-built: DeepInfra's OpenAI-compatible Chat usage states the call's
+/// price in USD as `estimated_cost`, beside the token counters; its route
+/// has no recording.
+#[tokio::test]
+async fn deepinfra_estimated_cost_is_the_turns_cost() {
+    let response = reply_of(
+        wire(&OPENAI, "deepseek-ai/DeepSeek-V4.1-Flash-1017"),
+        chat_reply(json!({"usage": {"prompt_tokens": 5, "completion_tokens": 1,
+            "total_tokens": 6, "estimated_cost": 7.84e-7}})),
+    )
+    .await;
+    assert_eq!(response.usage.cost, Some(Cost::from_total(7.84e-7)));
+    assert_eq!(response.usage.input_tokens, Some(5));
 }
 
 /// Ported from #2243: a gateway (OpenCode Go) states the cost in a chunk of

@@ -122,8 +122,9 @@ pub(super) fn listed(fields: &Map<String, Value>) -> Vec<WireCitation> {
 
 /// The cost a reply reports, in USD: OpenRouter's `usage.cost`,
 /// Perplexity's `usage.cost` parts, xAI's `usage.cost_in_usd_ticks`,
-/// Venice's top-level `cost.usd`, or a gateway's top-level `cost` as a
-/// number or a numeric string. `None` when it reports none.
+/// DeepInfra's `usage.estimated_cost`, Venice's top-level `cost.usd`, or a
+/// gateway's top-level `cost` as a number or a numeric string. `None` when
+/// it reports none.
 pub(super) fn cost(usage: Option<&Value>, fields: &Map<String, Value>) -> Option<Cost> {
     let finite = |value: f64| value.is_finite().then_some(value);
     let reported = usage.and_then(|usage| match usage.get("cost") {
@@ -143,6 +144,12 @@ pub(super) fn cost(usage: Option<&Value>, fields: &Map<String, Value>) -> Option
             .and_then(finite)
             .map(|ticks| Cost::from_total(ticks / TICKS_PER_USD))
     };
+    let estimated = || {
+        usage
+            .and_then(|usage| usage.f64("estimated_cost"))
+            .and_then(finite)
+            .map(Cost::from_total)
+    };
     let top = || match fields.get("cost") {
         Some(cost @ Value::Object(_)) => cost.f64("usd"),
         Some(Value::Number(cost)) => cost.as_f64(),
@@ -151,6 +158,7 @@ pub(super) fn cost(usage: Option<&Value>, fields: &Map<String, Value>) -> Option
     };
     reported
         .or_else(ticks)
+        .or_else(estimated)
         .or_else(|| top().and_then(finite).map(Cost::from_total))
 }
 
