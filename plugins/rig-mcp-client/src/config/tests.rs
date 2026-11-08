@@ -236,3 +236,16 @@ fn a_write_keeps_the_files_group() {
     assert_eq!(gid.ok(), Some(other));
     fs::remove_dir_all(dir).ok();
 }
+
+#[test]
+fn a_secret_variable_is_refused_by_name_and_never_expanded() {
+    let header = json!({ "url": "https://h", "headers": { "X": "${RIG_SECRET_CRYPT}" } });
+    let env = json!({ "command": "x", "env": { "K": "${RIG_SECRET_CRYPT:-none}" } });
+    let refusal = |field: &str| {
+        Err(format!(
+            "`{field}`: ${{RIG_SECRET_CRYPT}} is a secret of rig's, which no server is given"
+        ))
+    };
+    assert_eq!(ServerSpec::parse(&header), refusal("headers.X"));
+    assert_eq!(ServerSpec::parse(&env), refusal("env.K"));
+}
