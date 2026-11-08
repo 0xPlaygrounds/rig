@@ -19,7 +19,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 
 pub use toml_edit;
@@ -769,12 +769,27 @@ pub fn edit<T, E: From<Error>>(
     let (changed, value) = change(&mut file)?;
     if changed {
         let staged = directory.join(format!(".{name}.{}", std::process::id()));
-        std::fs::write(&staged, file.document.to_string()).map_err(named)?;
-        // A file the user made private stays so.
-        if let Ok(was) = std::fs::metadata(&target) {
-            std::fs::set_permissions(&staged, was.permissions()).map_err(named)?;
+        let was = std::fs::metadata(&target)
+            .ok()
+            .map(|meta| meta.permissions());
+        // A crash's leftover, or a link planted here, must not become this copy.
+        std::fs::remove_file(&staged).ok();
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Only a file that exists has a mode to protect; a new one gets the default.
+        #[cfg(unix)]
+        if was.is_some() {
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         }
-        std::fs::rename(&staged, &target).map_err(|failure| {
+        let replaced = options
+            .open(&staged)
+            .and_then(|mut opened| {
+                opened.write_all(file.document.to_string().as_bytes())?;
+                // A file the user made private stays so.
+                was.map_or(Ok(()), |was| opened.set_permissions(was))
+            })
+            .and_then(|()| std::fs::rename(&staged, &target));
+        replaced.map_err(|failure| {
             std::fs::remove_file(&staged).ok();
             named(failure)
         })?;

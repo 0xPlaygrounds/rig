@@ -223,3 +223,79 @@ fn a_file_that_is_not_toml_is_refused_at_its_line() {
         "{refused}"
     );
 }
+
+/// A private file's staged copy is never readable by others, watched while
+/// edits run; a link planted at the staged name is not followed; a new file
+/// gets the default mode, not a private one.
+#[cfg(unix)]
+#[test]
+fn a_private_settings_file_is_never_staged_readable() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let mode =
+        |path: &Path| std::fs::symlink_metadata(path).map(|meta| meta.permissions().mode() & 0o777);
+    let set_key = |path: &Path, value: i64| {
+        edit::<_, Error>(path, |file| {
+            file.document.insert("key", toml_edit::value(value));
+            Ok((true, ()))
+        })
+    };
+    let dir = std::env::temp_dir().join(format!("rig-config-staged-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(std::fs::create_dir_all(&dir).is_ok());
+    let path = dir.join("settings.toml");
+    // Long enough that writing it outlasts one look at the directory.
+    let padded = format!("# {}\nkey = 0\n", "x".repeat(1 << 20));
+    assert!(std::fs::write(&path, padded).is_ok());
+    assert!(std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).is_ok());
+
+    let done = AtomicBool::new(false);
+    let (open, edits) = std::thread::scope(|scope| {
+        let watcher = scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    if !name.starts_with(".settings.toml.") || name.ends_with(".lock") {
+                        continue;
+                    }
+                    let seen = entry
+                        .metadata()
+                        .map(|meta| meta.permissions().mode() & 0o777);
+                    if let Some(open) = seen.ok().filter(|seen| seen & 0o077 != 0) {
+                        return Some(open);
+                    }
+                }
+            }
+            None
+        });
+        let edits: Vec<_> = (0..40)
+            .take_while(|_| !watcher.is_finished())
+            .map(|at| set_key(&path, at))
+            .collect();
+        done.store(true, Ordering::Relaxed);
+        (watcher.join().ok().flatten(), edits)
+    });
+    assert!(
+        edits.iter().all(|edit| *edit == Ok((true, ()))),
+        "{edits:?}"
+    );
+    assert_eq!(open, None, "staged readable by others");
+    assert_eq!(mode(&path).ok(), Some(0o600));
+
+    let staged = dir.join(format!(".settings.toml.{}", std::process::id()));
+    let outside = dir.join("outside");
+    assert!(std::fs::write(&outside, "").is_ok() && symlink(&outside, &staged).is_ok());
+    assert_eq!(set_key(&path, -1), Ok((true, ())));
+    assert_eq!(std::fs::read_to_string(&outside).ok().as_deref(), Some(""));
+    assert_eq!(mode(&path).ok(), Some(0o600));
+    assert!(
+        std::fs::symlink_metadata(&staged).is_err(),
+        "staged copy left"
+    );
+
+    let fresh = dir.join("fresh.toml");
+    assert_eq!(set_key(&fresh, 1), Ok((true, ())));
+    assert_eq!(mode(&fresh).ok(), mode(&outside).ok());
+    std::fs::remove_dir_all(&dir).ok();
+}
