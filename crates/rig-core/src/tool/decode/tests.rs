@@ -105,3 +105,34 @@ fn a_whole_number_is_one_a_64_bit_integer_holds() {
     assert_eq!(number(json!(1e30)), None);
     assert_eq!(number(json!(1.5)), None);
 }
+
+#[test]
+fn a_whole_literal_is_read_from_its_digits_not_its_float() {
+    // What `whole` reads with `arbitrary_precision`, reachable in any build.
+    let far = "9".repeat(41);
+    let cases = [
+        (
+            "9007199254740993.0",
+            Some(Whole::Unsigned(9_007_199_254_740_993)),
+        ),
+        ("1.0000000000000001", None),
+        ("30.0", Some(Whole::Unsigned(30))),
+        ("3e1", Some(Whole::Unsigned(30))),
+        ("300e-1", Some(Whole::Unsigned(30))),
+        ("-2.0", Some(Whole::Signed(-2))),
+        ("-0.0", Some(Whole::Unsigned(0))),
+        ("18446744073709551615.0", Some(Whole::Unsigned(u64::MAX))),
+        ("18446744073709551616.0", None),
+        ("-9223372036854775808.0", Some(Whole::Signed(i64::MIN))),
+        ("-9223372036854775809.0", None),
+        ("1.5", None),
+        ("1e400", None),
+        ("1e-400", None),
+        (&*format!("1e{far}"), None),
+        (&*format!("1e-{far}"), None),
+        (&*format!("0e{far}"), Some(Whole::Unsigned(0))),
+    ];
+    for (literal, expected) in cases {
+        assert_eq!(whole_literal(literal), expected, "{literal}");
+    }
+}

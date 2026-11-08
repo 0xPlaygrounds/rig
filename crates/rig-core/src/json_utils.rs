@@ -37,7 +37,7 @@ pub(crate) fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) ->
 
 /// Whether a [`serde_json::Number`] keeps the literal it was read from, as
 /// it does with `arbitrary_precision`, which a dependent crate can turn on.
-fn holds_literals() -> bool {
+pub(crate) fn holds_literals() -> bool {
     static HOLDS: LazyLock<bool> = LazyLock::new(|| {
         serde_json::from_str::<serde_json::Number>("1.50").is_ok_and(|n| n.to_string() == "1.50")
     });
@@ -99,6 +99,30 @@ impl<'a> Literal<'a> {
             .zip(other.exponent_digits(width));
         digits.fold(0, |gap, (a, b)| (gap * 10 + a - b).clamp(-FAR, FAR))
     }
+}
+
+/// The integer a JSON number literal is exactly, such as `30`, `30.0` or
+/// `3e1`; `None` for a literal with a fraction, such as
+/// `1.0000000000000001`, or one past `i128`'s range.
+pub(crate) fn literal_integer(text: &str) -> Option<i128> {
+    let literal = Literal::new(text);
+    if literal.sign == 0 {
+        return Some(0);
+    }
+    // Past 39 digits the value is out of range, or (negative) a fraction.
+    let exponent = match literal.exponent {
+        "" => 0,
+        text if text.len() <= 39 => text.parse::<i128>().ok()?,
+        _ => i128::MAX,
+    };
+    let power = (exponent * literal.exponent_sign).checked_add(literal.shift)?;
+    let zeros = power.checked_sub(literal.digits.len() as i128)?;
+    if !(0..=39).contains(&zeros) {
+        return None;
+    }
+    let digits = format!("{}{}", literal.digits, "0".repeat(zeros as usize));
+    let magnitude = digits.parse::<i128>().ok()?;
+    Some(magnitude * i128::from(literal.sign))
 }
 
 /// Two JSON number literals in the order of their exact decimal values.
