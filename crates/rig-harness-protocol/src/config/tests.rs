@@ -251,7 +251,7 @@ fn a_private_settings_file_is_never_staged_readable() {
     assert!(std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).is_ok());
 
     let done = AtomicBool::new(false);
-    let open = std::thread::scope(|scope| {
+    let (open, edits) = std::thread::scope(|scope| {
         let watcher = scope.spawn(|| {
             while !done.load(Ordering::Relaxed) {
                 for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
@@ -269,15 +269,17 @@ fn a_private_settings_file_is_never_staged_readable() {
             }
             None
         });
-        for at in 0..40 {
-            if watcher.is_finished() {
-                break;
-            }
-            assert_eq!(set_key(&path, at), Ok((true, ())));
-        }
+        let edits: Vec<_> = (0..40)
+            .take_while(|_| !watcher.is_finished())
+            .map(|at| set_key(&path, at))
+            .collect();
         done.store(true, Ordering::Relaxed);
-        watcher.join().ok().flatten()
+        (watcher.join().ok().flatten(), edits)
     });
+    assert!(
+        edits.iter().all(|edit| *edit == Ok((true, ()))),
+        "{edits:?}"
+    );
     assert_eq!(open, None, "staged readable by others");
     assert_eq!(mode(&path).ok(), Some(0o600));
 
