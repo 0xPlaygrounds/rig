@@ -1829,15 +1829,13 @@ fn carry_out(requested: &mut Requested, request: Request) -> Result<Option<Value
                 .asks
                 .get_mut(entity)
                 .map_err(|_| "no open question with that id")?;
-            let offered = |choice: &&String| question.choices.iter().any(|c| &c.id == *choice);
-            if let Some(choice) = choices.iter().find(|choice| !offered(choice)) {
-                return Err(format!("the question offers no choice `{choice}`"));
-            }
-            if choices.is_empty() && !(text.is_some() && question.free_text) {
-                return Err("the answer needs a choice".to_owned());
-            }
             let answer = Answer { choices, text };
-            decision.decide(Decider::Person, answer.outcome());
+            question
+                .check(&answer)
+                .map_err(|refused| refused.to_string())?;
+            if !decision.decide(Decider::Person, answer.outcome()) {
+                return Err("the question was already answered".to_owned());
+            }
         }
         Request::State => return Ok(Some(requested.state())),
     }

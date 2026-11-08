@@ -110,7 +110,7 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::agent_title::AgentTitle;
-    pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
+    pub use crate::ask::{Answer, AnswerRefused, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::commands::{
         AppCommandsExt, Args, CommandArgs, CommandSystems, NoArgs, RunCommand, SlashCommand,

@@ -380,15 +380,13 @@ fn pick(
                 .into_iter()
                 .map(|index| ask.choices.get(index));
             let ids: Option<Vec<String>> = ids.map(|c| c.map(|c| c.id.clone())).collect();
-            let typed = chosen.text.is_some();
-            ids.filter(|ids| ask.multiple || ids.len() == 1 || (ids.is_empty() && typed))
-                .map(|choices| {
-                    let answer = Answer {
-                        choices,
-                        text: chosen.text,
-                    };
-                    answer.outcome()
-                })
+            let answer = ids.map(|choices| Answer {
+                choices,
+                text: chosen.text,
+            });
+            answer
+                .filter(|answer| ask.check(answer).is_ok())
+                .map(|answer| answer.outcome())
         }
         None => Some(Outcome::refused("The user closed the question.")),
     };
