@@ -237,6 +237,31 @@ fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone_nor_while_deletin
     assert!(!before && after && hidden);
 }
 
+/// A session holds logs once a log in `logs` is not empty, and counts as
+/// holding them when `logs` cannot be read, so no deleter removes it then.
+#[test]
+fn a_session_holds_logs_once_one_is_not_empty_or_when_they_cannot_be_read() {
+    let root = std::env::temp_dir().join(format!("rig-holds-logs-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let dir = super::SessionDir::at(&root);
+    let logs = root.join("logs");
+    let none = dir.holds_logs();
+    std::fs::create_dir_all(&logs).ok();
+    std::fs::write(logs.join("a1.jsonl"), "").ok();
+    let empty = dir.holds_logs();
+    std::fs::write(logs.join("a1.jsonl"), "{}\n").ok();
+    let written = dir.holds_logs();
+    std::fs::remove_dir_all(&logs).ok();
+    std::fs::write(&logs, "").ok();
+    let unreadable = dir.holds_logs();
+    std::fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        (none, empty, written, unreadable),
+        (false, false, true, true),
+        "(no logs, an empty log, a written log, logs unreadable)"
+    );
+}
+
 #[test]
 fn help_lists_the_secrets_a_build_asks_for_by_their_variable() {
     let usage = described().usage();

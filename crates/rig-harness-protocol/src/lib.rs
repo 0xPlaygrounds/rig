@@ -755,16 +755,21 @@ impl SessionDir {
     /// `logs/<name>.jsonl`, where the default store keeps them. The
     /// harness and the launcher never discard such a session as unsaved,
     /// so a [`Self::mark_saved`] that failed loses no conversation. A
-    /// store kept elsewhere leaves nothing there.
+    /// store kept elsewhere leaves nothing there. Only a missing `logs`
+    /// counts as holding nothing: a read that fails counts as a log, so a
+    /// deleter keeps the session.
     pub fn holds_logs(&self) -> bool {
-        let Ok(entries) = std::fs::read_dir(self.0.join("logs")) else {
-            return false;
+        let entries = match std::fs::read_dir(self.0.join("logs")) {
+            Err(failure) => return failure.kind() != std::io::ErrorKind::NotFound,
+            Ok(entries) => entries,
         };
-        entries.filter_map(Result::ok).any(|entry| {
-            entry.path().extension().is_some_and(|ext| ext == "jsonl")
-                && entry
-                    .metadata()
-                    .is_ok_and(|meta| meta.is_file() && meta.len() > 0)
+        entries.into_iter().any(|entry| {
+            let Ok(entry) = entry else { return true };
+            let log = entry.path().extension().is_some_and(|ext| ext == "jsonl");
+            log && match entry.metadata() {
+                Ok(meta) => meta.is_file() && meta.len() > 0,
+                Err(_) => true,
+            }
         })
     }
 
