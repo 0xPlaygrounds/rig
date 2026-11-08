@@ -345,6 +345,7 @@ pub(crate) fn install(app: &mut App) {
     .add_observer(output::call_asked)
     .add_observer(output::started)
     .add_observer(output::settled)
+    .add_observer(output::replied)
     .add_observer(ended)
     .add_systems(
         Last,

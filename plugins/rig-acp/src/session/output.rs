@@ -1,18 +1,22 @@
 //! What the main agent does, as session updates: its streamed text and
 //! reasoning, its tool calls, and what rig says to the user meanwhile.
 
+use std::collections::HashSet;
+
 use agent_client_protocol::schema::v1 as acp;
 use bevy_ecs::message::{MessageCursor, Messages};
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::effect::Answered;
 use rig_harness::services::WorkDir;
 
 use super::{Session, questions};
 use crate::translate;
 
-/// Where reading the streamed deltas got to.
+/// Where reading the streamed deltas got to, and the main agent's model
+/// calls that streamed text, until they settle.
 #[derive(Resource, Default)]
-pub(super) struct Read(MessageCursor<StreamDelta>);
+pub(super) struct Read(MessageCursor<StreamDelta>, HashSet<Entity>);
 
 /// The session's output: each update goes after the text streamed before
 /// it, so the client sees them in the order they happened.
@@ -31,12 +35,16 @@ impl Out<'_, '_> {
     pub(super) fn stream(&mut self) {
         let agent = main_agent(&self.primary);
         let mut runs: Vec<(bool, String)> = Vec::new();
-        for delta in self.read.0.read(&self.deltas) {
+        let Read(cursor, streamed) = &mut *self.read;
+        for delta in cursor.read(&self.deltas) {
             if delta.agent != agent || !self.calls.contains(delta.effect) {
                 continue;
             }
             let (thought, text) = match &delta.event {
-                StreamEvent::Text { text, .. } => (false, text),
+                StreamEvent::Text { text, .. } => {
+                    streamed.insert(delta.effect);
+                    (false, text)
+                }
                 StreamEvent::Reasoning { text, .. } => (true, text),
                 _ => continue,
             };
@@ -129,6 +137,31 @@ pub(super) fn settled(
         let output = translate::tool_output(result.output().as_content());
         let done = translate::tool_done(&id, !result.is_success(), output);
         out.send(acp::SessionUpdate::ToolCallUpdate(done));
+    }
+}
+
+/// A model call of the main agent settles: its reply's text, unless it
+/// streamed it, as when a plugin answered the call in place.
+pub(super) fn replied(
+    settled: On<Add<Settled>>,
+    calls: Query<(&Outcome, &ForAgent), With<TurnCall>>,
+    mut out: Out,
+) {
+    let Ok((Outcome(outcome), &ForAgent(agent))) = calls.get(settled.entity) else {
+        return;
+    };
+    out.stream();
+    let streamed = out.read.1.remove(&settled.entity);
+    if let Ok(Answered::Completion(reply)) = outcome
+        && out.main(agent)
+        && !streamed
+    {
+        let text = reply.text();
+        if !text.is_empty() {
+            let chunk = acp::ContentChunk::new(acp::ContentBlock::from(text));
+            out.session
+                .send(acp::SessionUpdate::AgentMessageChunk(chunk));
+        }
     }
 }
 
