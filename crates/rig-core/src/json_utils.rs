@@ -37,11 +37,27 @@ pub(crate) fn compare_numbers(a: &serde_json::Number, b: &serde_json::Number) ->
 
 /// Whether a [`serde_json::Number`] keeps the literal it was read from, as
 /// it does with `arbitrary_precision`, which a dependent crate can turn on.
-fn holds_literals() -> bool {
+pub(crate) fn holds_literals() -> bool {
     static HOLDS: LazyLock<bool> = LazyLock::new(|| {
         serde_json::from_str::<serde_json::Number>("1.50").is_ok_and(|n| n.to_string() == "1.50")
     });
     *HOLDS
+}
+
+/// The exact integer represented by a JSON number literal with magnitude
+/// below `2^127`.
+pub(crate) fn integer_literal(text: &str) -> Option<i128> {
+    let literal = Literal::new(text);
+    if literal.sign == 0 {
+        return Some(0);
+    }
+    let power = literal.exponent_gap(&Literal::new("0")) + literal.shift;
+    let zeros = power.checked_sub(literal.digits.len() as i128)?;
+    let zeros = u32::try_from(zeros).ok()?;
+    let magnitude = literal.digits.parse::<i128>().ok()?;
+    magnitude
+        .checked_mul(i128::from(literal.sign))?
+        .checked_mul(10_i128.checked_pow(zeros)?)
 }
 
 /// A JSON number literal as `sign * 0.digits * 10^(exponent + shift)`.

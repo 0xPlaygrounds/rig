@@ -62,7 +62,7 @@ fn as_integers<A: DeserializeOwned>(args: &Value) -> Option<Result<A, serde_json
 /// whether it made any.
 fn integers(value: &mut Value) -> bool {
     match value {
-        Value::Number(number) if number.is_f64() => match whole(number) {
+        Value::Number(number) if !number.is_u64() && !number.is_i64() => match whole(number) {
             Some(Whole::Unsigned(unsigned)) => {
                 *number = unsigned.into();
                 true
@@ -107,6 +107,13 @@ pub(crate) fn whole(number: &Number) -> Option<Whole> {
     }
     if let Some(signed) = number.as_i64() {
         return Some(Whole::Signed(signed));
+    }
+    if crate::json_utils::holds_literals() {
+        let integer = crate::json_utils::integer_literal(&number.to_string())?;
+        return u64::try_from(integer)
+            .map(Whole::Unsigned)
+            .ok()
+            .or_else(|| i64::try_from(integer).ok().map(Whole::Signed));
     }
     let float = number.as_f64().filter(|float| float.fract() == 0.0)?;
     // Both bounds are powers of two, exact in an `f64`, so each cast below

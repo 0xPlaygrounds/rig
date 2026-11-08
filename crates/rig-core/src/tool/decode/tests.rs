@@ -105,3 +105,53 @@ fn a_whole_number_is_one_a_64_bit_integer_holds() {
     assert_eq!(number(json!(1e30)), None);
     assert_eq!(number(json!(1.5)), None);
 }
+
+#[test]
+fn decimal_literals_keep_their_exact_integer_value() {
+    use crate::json_utils::integer_literal;
+
+    for (literal, expected) in [
+        ("9007199254740993.0", 9_007_199_254_740_993),
+        ("90071992547409930e-1", 9_007_199_254_740_993),
+        ("-9007199254740993.0", -9_007_199_254_740_993),
+        ("18446744073709551615.0", i128::from(u64::MAX)),
+        ("-9223372036854775808.0", i128::from(i64::MIN)),
+        ("30.0", 30),
+        ("-0.0e999999999999999999999", 0),
+    ] {
+        assert_eq!(integer_literal(literal), Some(expected), "{literal}");
+        if crate::json_utils::holds_literals() {
+            let value: Value = serde_json::from_str(literal).unwrap();
+            let normalized = value.as_number().and_then(whole).map(|whole| match whole {
+                Whole::Signed(value) => i128::from(value),
+                Whole::Unsigned(value) => i128::from(value),
+            });
+            assert_eq!(normalized, Some(expected), "{literal}");
+            assert_eq!(
+                decode_args::<i128>(&value).ok(),
+                Some(expected),
+                "{literal}"
+            );
+            assert_eq!(
+                decode_text::<i128>(literal).ok(),
+                Some(expected),
+                "{literal}"
+            );
+            assert!(crate::tool::validate::validate(&json!({"type": "integer"}), &value).is_ok());
+        }
+    }
+    for literal in [
+        "1.0000000000000001",
+        "1e-999999999999999999999",
+        "1e999999999999999999999",
+    ] {
+        assert_eq!(integer_literal(literal), None, "{literal}");
+        if crate::json_utils::holds_literals() {
+            let value: Value = serde_json::from_str(literal).unwrap();
+            assert_eq!(value.as_number().and_then(whole), None, "{literal}");
+            assert!(decode_args::<u64>(&value).is_err(), "{literal}");
+            assert!(decode_text::<u64>(literal).is_err(), "{literal}");
+            assert!(crate::tool::validate::validate(&json!({"type": "integer"}), &value).is_err());
+        }
+    }
+}
