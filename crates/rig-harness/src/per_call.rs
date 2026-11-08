@@ -300,7 +300,8 @@ impl PerCallTools<'_, '_> {
     /// `live` and no `spill`, so a call built on an overlay writes nowhere
     /// else; a call that runs for real elsewhere sets `spill` itself
     /// ([`Scratch::spill`]). `confine` limits the file tools' paths; it is
-    /// no process sandbox.
+    /// no process sandbox. On another machine it compares path text and
+    /// does not see links there.
     pub fn place(&self, agent: Option<Entity>, workspace: Arc<dyn Workspace>) -> CallPlace {
         let dir = agent.and_then(|agent| self.dirs.get(agent).ok());
         CallPlace {

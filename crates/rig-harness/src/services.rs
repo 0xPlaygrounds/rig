@@ -150,6 +150,8 @@ impl FromWorld for Project {
 /// in place of the [`ProjectRoot`]. Its file tools resolve relative paths
 /// from it and refuse a path outside it, and its commands start in it
 /// (`rig_basics::coding_tools`); what a command does once started is not confined.
+/// On another machine the refusal compares path text: a link already there
+/// can lead out.
 /// Saved with the agent. An agent it spawns works there too, unless given
 /// one of its own.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
