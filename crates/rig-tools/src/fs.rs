@@ -3,7 +3,7 @@
 //! the path rules here are this machine's ([`Local`]); a tool reads through
 //! its [`Workspace`].
 
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -108,12 +108,19 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         .file_name()
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
     let temporary = temporary_beside(&target, name);
-    let written = File::create_new(&temporary).and_then(|mut file| {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    // Only a file that exists has a mode to protect; a new one gets the default.
+    #[cfg(unix)]
+    if permissions.is_some() {
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    }
+    let written = options.open(&temporary).and_then(|mut file| {
+        file.write_all(contents)?;
+        file.sync_all()?;
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
         }
-        file.write_all(contents)?;
-        file.sync_all()?;
         fs::rename(&temporary, &target)
     });
     written.inspect_err(|_| {
