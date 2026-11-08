@@ -20,6 +20,35 @@ fn browser_opener_receives_the_authorization_url_as_one_argument() -> anyhow::Re
     Ok(())
 }
 
+/// The secret this test runs a copy of itself with.
+const PROBE: &str = "RIG_SECRET_PROBE";
+
+/// The browser outlives rig, so it starts without any secret.
+#[test]
+#[allow(clippy::disallowed_methods, reason = "test fixtures")]
+fn the_browser_gets_no_secret() -> anyhow::Result<()> {
+    if std::env::var_os(PROBE).is_none() {
+        let name = "auth::tests::the_browser_gets_no_secret";
+        let output = std::process::Command::new(std::env::current_exe()?)
+            .args(["--exact", name, "--test-threads", "1"])
+            .env(PROBE, "hunter2")
+            .output()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        anyhow::ensure!(
+            output.status.success() && stdout.contains("1 passed"),
+            "the run with a secret failed: {stdout}"
+        );
+        return Ok(());
+    }
+    let url = authorization_url("http://localhost:54545/callback", "state", "challenge")?;
+    let command = browser_command(&url);
+    let removed = command
+        .get_envs()
+        .any(|(name, value)| name == PROBE && value.is_none());
+    anyhow::ensure!(removed, "{command:?}");
+    Ok(())
+}
+
 /// An opener that waits for the browser it started past its time fails
 /// the login, and the browser stays.
 #[cfg(target_os = "linux")]
