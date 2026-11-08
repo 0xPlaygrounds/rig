@@ -13,10 +13,11 @@ the kernel's components and stages, the harness's services) or from the crate
 an example names: `rig_basics` (the default plugins, and the services some
 plugins add, a module each) or `rig_tui` (with `rig_tui::ratatui` and
 `rig_tui::crossterm`); `rig_harness::{rig_core, rig_memory, rig_tools}` are
-re-exported. These types are reflected, except `Ask`, `ToolRequest` and
-`Flag`, so the optional `rig-inspect` plugin's `inspect` tool lists them in
-the running agent (`registry.schema` gives a type's fields, `world.query` with
-`ProvidedBy` what each plugin added): ask it before reading rig's source.
+re-exported. Most of these types are reflected, so the optional
+`rig-inspect` plugin's `inspect` tool lists them in the running agent
+(`registry.schema` gives a type's fields, `world.query` with `ProvidedBy` what
+each plugin added): ask it before reading rig's source. Some are not, such as
+`Ask`, `ToolRequest` and `Flag`; the tool does not list those.
 
 | To | Read |
 |---|---|
