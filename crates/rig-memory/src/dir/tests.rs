@@ -219,6 +219,24 @@ fn a_part_file_is_never_listed_or_named() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A folder named like a part file is a folder: the files kept in it are
+/// listed like any others.
+#[test]
+fn files_in_a_folder_named_like_a_part_file_are_listed() {
+    let dir = scratch("part-folder");
+    let files = DirFiles::new(dir.join("plugins"));
+    files
+        .write_file("cache.rig-part/state.txt", b"kept")
+        .expect("written");
+    files
+        .write_file("cache/state.txt", b"kept")
+        .expect("written");
+    let mut listed = files.files().expect("files");
+    listed.sort();
+    assert_eq!(listed, ["cache.rig-part/state.txt", "cache/state.txt"]);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// Two stores open on one directory, as two processes are: each sees what
 /// the other wrote, a replace included.
 #[test]

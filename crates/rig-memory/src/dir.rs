@@ -241,15 +241,13 @@ impl Files for DirFiles {
         let mut dirs = vec![(self.0.clone(), String::new())];
         while let Some((dir, prefix)) = dirs.pop() {
             for name in names(&dir)? {
-                if name.ends_with(PART) {
-                    continue;
-                }
                 let path = dir.join(&name);
-                let name = format!("{prefix}{name}");
+                let listed = format!("{prefix}{name}");
+                // Part files are files; a folder named like one holds kept files.
                 if path.is_dir() {
-                    dirs.push((path, format!("{name}/")));
-                } else {
-                    files.push(name);
+                    dirs.push((path, format!("{listed}/")));
+                } else if !name.ends_with(PART) {
+                    files.push(listed);
                 }
             }
         }
