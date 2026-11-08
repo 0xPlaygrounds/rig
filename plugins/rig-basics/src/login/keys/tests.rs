@@ -1,6 +1,6 @@
 use rig_core::catalog::ModelStatus;
 use rig_core::providers::registry::ProviderId;
-use rig_ecs::model::{ChoiceKind, SetModel};
+use rig_ecs::model::{ChoiceKind, ModelChoice, SetModel};
 use rig_ecs::prelude::*;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::{Chosen, Pick, PickPlugin, Picker};
@@ -242,6 +242,23 @@ fn a_first_pick_past_an_unreadable_saved_key_says_so_once() {
         // A key in this machine's environment reaches an earlier model.
         _ => return,
     };
+    // An agent already on a model was not moved there by the first pick.
+    let on_it = spawn_root(app.world_mut())
+        .insert(ModelChoice(model.clone()))
+        .id();
+    let world = app.world_mut();
+    world.trigger(SetModel {
+        entity: on_it,
+        model: model.clone(),
+        kind: ChoiceKind::ForThisRun,
+    });
+    world.flush();
+    app.update();
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    assert!(
+        notices.iter().all(|notice| !notice.text.contains(&shown)),
+        "an explicit choice was told about {shown}: {notices:?}"
+    );
     for _ in 0..2 {
         let entity = spawn_root(app.world_mut()).id();
         let world = app.world_mut();

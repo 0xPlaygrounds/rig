@@ -177,11 +177,12 @@ pub(crate) fn unreadable_key(status: &ModelStatus) -> Option<String> {
 fn say_key_passed_over(
     set: On<SetModel>,
     (models, invoked): (Res<Models>, Option<Res<Invoked>>),
+    unchosen: Query<(), (With<Agent>, Without<ModelChoice>)>,
     mut said: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
     let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
-    let auto = !named && set.kind == ChoiceKind::ForThisRun;
+    let auto = !named && set.kind == ChoiceKind::ForThisRun && unchosen.contains(set.entity);
     if *said || !auto || FirstPick::of(&models) != FirstPick::Model(set.model.clone()) {
         return;
     }
