@@ -685,6 +685,18 @@ pub fn reject(home: &Home, trial: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Whether the last build is the one [`reject`] recorded and neither
+/// `staged` nor the build staged for any launcher replaces it, so a start
+/// runs the previous build instead.
+pub fn passed_over(home: &Home, staged: &Path) -> bool {
+    home.good().exists()
+        && !staged.exists()
+        && !home.staged().exists()
+        && stamp(&artifact(home)).is_ok_and(|built| {
+            fs::read_to_string(home.rejected()).is_ok_and(|rejected| rejected == built)
+        })
+}
+
 /// What tells builds apart: the binary's modification time and size.
 fn stamp(binary: &Path) -> Result<String> {
     let metadata = fs::metadata(binary)?;

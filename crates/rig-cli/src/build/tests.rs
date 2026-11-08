@@ -50,6 +50,27 @@ fn a_build_is_staged_with_its_report_and_one_that_cannot_describe_itself_is_reje
     assert_eq!(rejected, stamp);
 }
 
+/// A start that builds the build a trial was rejected for stages nothing,
+/// and is said to run the previous build, until a build replaces it.
+#[test]
+fn a_rebuilt_rejected_build_is_passed_over_out_loud() {
+    let report = "printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' \
+                  > \"$RIG_DESCRIBE\"";
+    let home = built("passed-over", report);
+    let staged = home.bin().join("staged-for-session");
+    let before = passed_over(&home, &staged);
+    let recorded = stamp(&artifact(&home)).map(|stamp| fs::write(home.rejected(), stamp));
+    let restaged = stage(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
+    let after = passed_over(&home, &staged);
+    let retried = stage(&home, &staged, Staging::Always).is_ok() && !passed_over(&home, &staged);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(matches!(recorded, Ok(Ok(()))), "{recorded:?}");
+    assert_eq!(
+        (before, restaged, after, retried),
+        (false, Ok(()), true, true)
+    );
+}
+
 #[test]
 fn a_build_that_does_not_describe_itself_in_time_is_stopped() {
     let home = built("slow", "exec sleep 5");
