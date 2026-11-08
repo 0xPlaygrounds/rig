@@ -3662,3 +3662,49 @@ fn a_summary_a_stop_removes_with_nothing_reported_is_counted_unknown() {
     });
     assert_eq!(counted, Some((1, 0)));
 }
+
+/// Notes written beside cleared tool outputs stay with them when a later
+/// turn fails, and only the user's own messages come back.
+#[test]
+fn notes_on_cleared_outputs_stay_when_a_turn_fails() {
+    const NOTES: &str = "what the read found";
+    let (mut app, wakes) = start(&MemoryStore::default());
+    rig_harness_test_support::collect::<rig_ecs::inbox::Recalled>(&mut app);
+    let mut messages = vec![Message::user("read it")];
+    messages.extend(read("1", "a.rs", &"0123456789".repeat(2_000)));
+    messages.push(Message::user("now explain it"));
+    let refused =
+        ProviderResponseError::without_status("insufficient credit").with_transient(Some(false));
+    let model = MockCompletionModel::from_stream_turns([vec![MockStreamEvent::Error(
+        MockError::ProviderResponse(refused),
+    )]]);
+    let agent = agent(&mut app, &model, 1_000_000, messages);
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) else {
+        return;
+    };
+    let clearing = rig_memory::ClearToolOutputs {
+        keep_tokens: 0,
+        keep_under: 0,
+    };
+    let plan = clearing.plan(&conversation);
+    let cleared = plan.apply(
+        &mut conversation,
+        Some(NOTES),
+        rig_core::conversation::Author::rig(),
+    );
+    assert_eq!(cleared.results, 1);
+    ask(&mut app, &wakes, agent);
+    app.update();
+    let recalled = &app
+        .world()
+        .resource::<rig_harness_test_support::Collected<rig_ecs::inbox::Recalled>>()
+        .0;
+    let texts: Vec<&str> = recalled.iter().map(|it| it.text.as_str()).collect();
+    assert_eq!(texts, ["now explain it\n\nAnd the next question?"]);
+    let kept = serde_json::to_string(&entries(app.world(), agent)).unwrap_or_default();
+    assert!(kept.contains(NOTES), "{kept}");
+}
