@@ -198,7 +198,7 @@ fn agent() {
     .add_observer(release)
     .add_systems(
         AgentPass,
-        (guard.before(ApprovalSystems), twice).in_set(Stage::Gate),
+        (guard.before(ApprovalSystems), twice, in_place).in_set(Stage::Gate),
     );
     let limit = std::env::var(LINE_LIMIT_BYTES).ok();
     if let Some(limit) = limit.and_then(|limit| limit.parse().ok()) {
@@ -356,6 +356,37 @@ fn twice(mut calls: Query<(&ModelRequest, &mut Decision), (With<TurnCall>, Ready
             Value::Null,
         );
         let reply = reply.with_finish_reason(FinishReason::ToolCalls);
+        let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
+        decision.decide(Decider::plugin("test"), Ok(answer));
+    }
+}
+
+/// A prompt a plugin answers in place of the model.
+const IN_PLACE: &str = "Answer this in place.";
+
+/// Answers each model call of a prompt asked [`IN_PLACE`] with "hello in
+/// place", as a plugin standing in for the model does: nothing streams.
+fn in_place(mut calls: Query<(&ModelRequest, &mut Decision), (With<TurnCall>, ReadyToStart)>) {
+    use rig_harness::rig_core::completion::message::{
+        AssistantContent, Message, Origin, Text, UserContent,
+    };
+    use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+
+    for (request, mut decision) in &mut calls {
+        let mut history = request
+            .history
+            .iter()
+            .flat_map(|history| history.messages());
+        let asked = history.any(|message| {
+            matches!(&**message, Message::User { content } if content.iter().any(|part|
+                matches!(part, UserContent::Text(text) if text.text.contains(IN_PLACE))))
+        });
+        if !asked {
+            continue;
+        }
+        let text = AssistantContent::Text(Text::new("hello in place".to_owned()));
+        let origin = Origin::new("test.api", "test", "model");
+        let reply = CompletionResponse::new(vec![text], Usage::default(), origin, Value::Null);
         let answer = rig_harness::rig_core::effect::Answered::Completion(Arc::new(reply));
         decision.decide(Decider::plugin("test"), Ok(answer));
     }
