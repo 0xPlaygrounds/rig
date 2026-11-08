@@ -769,6 +769,16 @@ struct Served {
 /// Makes this app the router: serves the client from the first frame and
 /// exits when the client closes the connection or the app is asked to.
 pub(crate) fn install(app: &mut App) {
+    // A word after `acp`, such as an option, is no option of the run.
+    let invoked = app.world().get_resource::<Invoked>();
+    let after = invoked.map(|invoked| invoked.args.arguments.join(" "));
+    if let Some(after) = after.filter(|after| !after.is_empty()) {
+        app.refuse_run(format!(
+            "rig acp takes nothing after `acp`, so `{after}` would be ignored; put options \
+             before `acp`, as in `rig --{TOOLS}=read acp`"
+        ));
+        return;
+    }
     let world = app.world();
     let (Some(home), Some(stores), Some(runtime), Some(wake)) = (
         world.get_resource::<RigHome>(),
