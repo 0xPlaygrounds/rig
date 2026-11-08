@@ -681,10 +681,11 @@ fn change_a_setting(app: &mut App) -> bool {
         .is_some_and(SessionLog::has_written)
 }
 
-/// A session that only changed a setting is logged but not saved, and is
-/// gone after its exit.
+/// A session that only changed a setting is logged but not saved: its
+/// exit keeps it, as it keeps whatever its agent logs hold, but it is not
+/// listed to resume.
 #[test]
-fn a_session_that_only_changed_a_setting_is_removed_on_exit() {
+fn a_session_that_only_changed_a_setting_is_kept_unlisted() {
     let home = scratch_home("rig-session-settings-only");
     let Some((mut app, session)) = new_session(&home, "1700000000-20") else {
         return;
@@ -694,8 +695,9 @@ fn a_session_that_only_changed_a_setting_is_removed_on_exit() {
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
-    assert!(!session.path().exists());
+    let kept = (session.path().exists(), home.saved_sessions().is_empty());
     std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept, (true, true), "(kept on disk, listed nowhere)");
 }
 
 /// The running session's store comes from the app's stores; the session
@@ -733,9 +735,9 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_message() {
 
 /// A session whose only message is taken out again, as a failed first
 /// turn gives it back, is no longer saved: the launcher offers no resume
-/// for it, and its exit removes it.
+/// for it, and its exit keeps it unlisted, as its agent log holds it.
 #[test]
-fn a_session_whose_only_message_is_taken_out_is_not_kept() {
+fn a_session_whose_only_message_is_taken_out_is_not_listed() {
     let home = scratch_home("rig-session-emptied");
     let Some((mut app, session)) = new_session(&home, "1700000000-6") else {
         return;
@@ -754,8 +756,9 @@ fn a_session_whose_only_message_is_taken_out_is_not_kept() {
     app.world_mut().write_message(AppExit::Success);
     app.update();
     drop(app);
-    assert!(!session.path().exists());
+    let kept = (session.path().exists(), home.saved_sessions().is_empty());
     std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept, (true, true), "(kept on disk, listed nowhere)");
 }
 
 /// The text log moves where a plugin puts the scratch place, and is gone

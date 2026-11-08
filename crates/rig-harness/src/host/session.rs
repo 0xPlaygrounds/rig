@@ -410,12 +410,13 @@ pub(crate) fn leave_session(world: &mut World) {
 /// no longer does. Once a log write failed, the log on disk may hold more
 /// than the agents do, so the marker stays as it is. `marked` is the
 /// marker as last set, read from the session the first time, so the
-/// marker is touched only on a change.
+/// marker is touched only on a change; a change that failed is tried
+/// again each frame, and said once until one succeeds.
 fn track_saved(
     log: Option<Res<SessionLog>>,
     conversations: Query<&Conversation, With<Agent>>,
     paths: Res<SessionPaths>,
-    mut marked: Local<Option<bool>>,
+    (mut marked, mut failing): (Local<Option<bool>>, Local<bool>),
 ) {
     let Some(log) = log.filter(|log| log.failure().is_none()) else {
         return;
@@ -429,11 +430,13 @@ fn track_saved(
         (true, false) => paths.unmark_saved(),
         _ => return,
     };
-    // A failed change is not tried every frame again: the next change of
-    // what the session holds tries it.
-    *marked = holds;
-    if let Err(failure) = change {
-        warn!("could not mark whether the session is saved: {failure}");
+    match change {
+        Ok(()) => (*marked, *failing) = (holds, false),
+        Err(failure) if !*failing => {
+            *failing = true;
+            warn!("could not mark whether the session is saved: {failure}");
+        }
+        Err(_) => {}
     }
 }
 
@@ -488,7 +491,7 @@ fn discard_unsaved(
     let discard = if cli.is_some_and(|cli| cli.sessionless()) {
         start.is_none_or(|start| start.0 != StartReason::Resumed)
     } else {
-        !reload && !paths.is_saved() && !paths.switch().exists()
+        !reload && !paths.is_saved() && !paths.holds_logs() && !paths.switch().exists()
     };
     if !discard {
         return;
