@@ -19,15 +19,22 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 pub struct HelixDB {
     port: Option<u16>,
-    client: Client,
+    /// `None` when [`default_client`] failed: each query builds it again and
+    /// returns that error.
+    client: Option<Client>,
     endpoint: String,
     api_key: Option<String>,
 }
 
 impl HelixDB {
-    /// Creates a client, defaulting the endpoint to `http://localhost`.
+    /// Creates a client, defaulting the endpoint to `http://localhost`. With
+    /// an API key, on native targets, it follows redirects only within the
+    /// endpoint's origin, so the key never reaches another one: a redirect
+    /// elsewhere fails the query. When reqwest cannot build the client, every
+    /// query returns why.
     pub fn new(endpoint: Option<&str>, port: Option<u16>, api_key: Option<&str>) -> Self {
-        Self::with_client(endpoint, port, api_key, Client::new())
+        let client = default_client(api_key.is_some()).ok();
+        Self::build(endpoint, port, api_key, client)
     }
 
     /// Creates a HelixDB client using a caller-provided reqwest client.
@@ -37,6 +44,15 @@ impl HelixDB {
         api_key: Option<&str>,
         client: Client,
     ) -> Self {
+        Self::build(endpoint, port, api_key, Some(client))
+    }
+
+    fn build(
+        endpoint: Option<&str>,
+        port: Option<u16>,
+        api_key: Option<&str>,
+        client: Option<Client>,
+    ) -> Self {
         Self {
             port,
             client,
@@ -44,6 +60,33 @@ impl HelixDB {
             api_key: api_key.map(ToString::to_string),
         }
     }
+}
+
+/// The client [`HelixDB::new`] uses. With an API key (`keyed`), on native
+/// targets, it refuses a redirect to another origin; in a browser, the browser
+/// follows redirects.
+fn default_client(keyed: bool) -> reqwest::Result<Client> {
+    let builder = Client::builder();
+    #[cfg(target_family = "wasm")]
+    let _ = keyed;
+    #[cfg(not(target_family = "wasm"))]
+    let builder = if !keyed {
+        builder
+    } else {
+        use reqwest::redirect::Policy;
+        let default = Policy::default();
+        builder.redirect(Policy::custom(move |attempt| {
+            let next = attempt.url().origin();
+            match attempt.previous().last() {
+                Some(previous) if previous.origin() != next => attempt.error(format!(
+                    "refused a redirect to another origin, {}",
+                    next.ascii_serialization()
+                )),
+                _ => default.redirect(attempt),
+            }
+        }))
+    };
+    builder.build()
 }
 
 /// Errors returned by the HelixDB HTTP client.
@@ -71,7 +114,15 @@ impl HelixDB {
         let port = self.port.map(|port| format!(":{port}")).unwrap_or_default();
         let url = format!("{}{}/{}", self.endpoint, port, endpoint);
 
-        let mut request = self.client.post(&url).json(data);
+        let rebuilt;
+        let client = match &self.client {
+            Some(client) => client,
+            None => {
+                rebuilt = default_client(self.api_key.is_some())?;
+                &rebuilt
+            }
+        };
+        let mut request = client.post(&url).json(data);
         if let Some(api_key) = &self.api_key {
             request = request.header("x-api-key", api_key);
         }
