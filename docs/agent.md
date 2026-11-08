@@ -183,10 +183,11 @@ nothing is drawn in color. A plugin draws its tools' calls with ordinary systems
 ## Sessions
 
 Each `rig` starts a new session. `/quit` ends it, `/new` starts a new one and
-`/name` names it. A session is kept while it has a user or assistant message;
-one that only changed settings, or whose only message failed and came back to
-the input (a model that refuses it, say), is removed when it ends, offers no
-`rig --resume`, and `/resume` never lists it. `/resume` lists the earlier
+`/name` names it. A session is listed while it has a user or assistant
+message. One that logged nothing is removed when it ends. One that only
+changed settings, or whose only message failed and came back to the input (a
+model that refuses it, say), stays on disk when it ends, but offers no `rig
+--resume`, and `/resume` never lists it. `/resume` lists the earlier
 sessions (name or first message, what it spent, its main agent's context, the
 end of its directory and its age; → shows the whole directory) and resumes
 the one picked, in its own directory; `rig --resume <id or name>` (or
