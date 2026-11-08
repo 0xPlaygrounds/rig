@@ -49,7 +49,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 | Field | Meaning |
 | --- | --- |
 | `command`, `args` | A stdio server: the program rig starts, speaking MCP on its stdin and stdout, in a process group of its own that is killed when the server is stopped, removed or replaced, or rig exits (on Linux and macOS). Its stderr is dropped. A message of more than 64 MiB ends the connection, which says so. |
-| `env` | Variables added to its environment. The server gets rig's environment without rig's secrets (API keys); name a key here to give it one. |
+| `env` | Variables added to its environment. The server gets rig's environment except its `RIG_SECRET_*` and agent-only variables, so provider API keys from the shell reach it. |
 | `cwd` | Its working directory, relative to the project. |
 | `url`, `headers` | A streamable HTTP server, and headers sent with each request. |
 | `type` | Optional: `"stdio"`, or `"http"` (also `"streamable-http"`, `"streamableHttp"`). Without it, `url` means HTTP and `command` stdio. |
@@ -58,7 +58,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 `${VAR}` in `command`, `args`, `env`, `cwd`, `url` and `headers` is the
 environment variable `VAR`, and `${VAR:-default}` is `default` when `VAR` is
 unset or empty. A server that uses an unset `${VAR}` with no default does not
-start, and says which field.
+start, and says which field. Nor does one that names a `${RIG_SECRET_*}`, in any letter case.
 
 A server's name is letters, digits, `_` and `-`, starting with a letter or
 `_` (as Gemini requires of tool names), without `__` and not ending in `_`, so

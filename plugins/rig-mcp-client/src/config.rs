@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_core::json_utils::remove_preserving_order;
+use rig_harness::harness_protocol::env::SECRET_PREFIX;
 use serde::{Deserialize, Serialize};
 use serde_json::ser::PrettyFormatter;
 use serde_json::{Map, Value};
@@ -207,7 +208,9 @@ fn refuse_fields(fields: &[(&str, bool)], whose: &str) -> Result<(), String> {
 
 /// `text` with each `${VAR}` replaced by the variable, and each
 /// `${VAR:-default}` by the variable unless it is unset or empty, else
-/// by `default`. Errors name `field`.
+/// by `default`. Errors name `field`; a secret variable
+/// ([`SECRET_PREFIX`], in any case, as Windows reads names) is refused,
+/// set or not.
 fn expand(text: &str, field: &str) -> Result<String, String> {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -222,6 +225,12 @@ fn expand(text: &str, field: &str) -> Result<String, String> {
             Some((name, default)) => (name, Some(default)),
             None => (inner, None),
         };
+        let prefix = name.get(..SECRET_PREFIX.len()).unwrap_or_default();
+        if prefix.eq_ignore_ascii_case(SECRET_PREFIX) {
+            return Err(format!(
+                "`{field}`: ${{{name}}} is a secret of rig's, which no server is given"
+            ));
+        }
         let value = std::env::var(name).ok();
         match (value, default) {
             (Some(value), Some(_)) if !value.is_empty() => out.push_str(&value),
