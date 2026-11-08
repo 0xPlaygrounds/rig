@@ -549,8 +549,8 @@ fn a_helper_in_tilde_is_in_the_home_directory() {
     );
 }
 
-/// A call's `timeout` is each helper's deadline as given, however long; a
-/// call without one gets `[helpers] timeout_secs`, 600 s by default.
+/// A call's `timeout` is each helper's deadline as given; a call without
+/// one gets `[helpers] timeout_secs`, 600 s by default.
 #[test]
 fn a_helpers_deadline_is_the_calls_timeout_or_the_setting() {
     let default = HelperSettings::default().timeout_secs;

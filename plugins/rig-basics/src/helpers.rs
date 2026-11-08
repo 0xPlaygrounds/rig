@@ -83,6 +83,7 @@ pub struct HelpersPlugin;
 #[serde(default, deny_unknown_fields)]
 struct HelperSettings {
     /// Seconds, 600 by default.
+    #[serde(deserialize_with = "deadline_secs")]
     timeout_secs: NonZeroU64,
     /// Tasks at once, 4 by default.
     at_once: NonZeroUsize,
@@ -410,15 +411,33 @@ fn start(
 }
 
 /// How long each helper of a call may take: the call's `timeout`, at least
-/// 1 second and as long as it says, else `default`.
+/// 1 second and short enough for a deadline, else `default`.
 fn timeout(asked: Option<u64>, default: NonZeroU64) -> Result<Duration, String> {
     match asked {
         Some(0) => Err(format!(
             "`timeout` must be at least 1 second; leave it out for {default} s (`[helpers] \
              timeout_secs`)"
         )),
-        asked => Ok(Duration::from_secs(asked.unwrap_or(default.get()))),
+        asked => deadline(asked.unwrap_or(default.get())),
     }
+}
+
+/// `secs` as a helper's time limit, refused when a deadline that far from
+/// now does not fit the clock, which would read as no deadline.
+fn deadline(secs: u64) -> Result<Duration, String> {
+    let limit = Duration::from_secs(secs);
+    match Instant::now().checked_add(limit) {
+        Some(_) => Ok(limit),
+        None => Err(format!("a timeout of {secs} s is too long for a deadline")),
+    }
+}
+
+/// A `timeout_secs` that [`deadline`] takes.
+fn deadline_secs<'de, D: serde::Deserializer<'de>>(read: D) -> Result<NonZeroU64, D::Error> {
+    let secs = NonZeroU64::deserialize(read)?;
+    deadline(secs.get())
+        .map(|_| secs)
+        .map_err(serde::de::Error::custom)
 }
 
 /// Runs a call's children, on a thread of its own.
