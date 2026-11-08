@@ -21,10 +21,12 @@ impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
         else {
             return Err(wrong_kind());
         };
+        // Through a JSON string, as `Choice` checked each label round-trips, so
+        // a string newtype such as `struct Route(String)` decodes too.
         let label = |label: &str| -> Result<T, ProviderError> {
-            Ok(T::deserialize(serde::de::value::StrDeserializer::<
-                serde_json::Error,
-            >::new(label))?)
+            Ok(serde_json::from_value(serde_json::Value::String(
+                label.to_owned(),
+            ))?)
         };
         Ok(Self {
             choice: label(choice)?,

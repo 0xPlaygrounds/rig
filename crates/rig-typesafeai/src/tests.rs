@@ -388,6 +388,23 @@ fn rejects_non_string_choice_serialization() {
     ));
 }
 
+#[test]
+fn a_string_newtype_choice_decodes() -> anyhow::Result<()> {
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+    struct Team(String);
+    let team = |name: &str| Team(name.to_owned());
+    let choice = Choice::new("Choose", [(team("billing"), "One"), (team("other"), "Two")])?;
+    let answer = choice.decode(serde_json::from_value(json!({
+        "type": "choice",
+        "choice": "billing",
+        "probabilities": {"billing": 0.75, "other": 0.25},
+        "confidence": 0.5
+    }))?)?;
+    ensure!(answer.choice == team("billing"));
+    ensure!(answer.probabilities.get(&team("other")) == Some(&0.25));
+    Ok(())
+}
+
 #[tokio::test]
 async fn preserves_http_error_metadata() -> anyhow::Result<()> {
     for status in [429, 529] {
