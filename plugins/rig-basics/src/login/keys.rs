@@ -113,15 +113,18 @@ impl Keys {
     }
 
     /// The vendors with a saved key, sorted; an error when the directory
-    /// exists but cannot be listed.
+    /// exists but cannot be listed, or reading one of its entries fails.
     pub(crate) fn vendors(&self) -> std::io::Result<Vec<String>> {
         let entries = match std::fs::read_dir(&self.dir) {
             Err(why) if why.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
             entries => entries?,
         };
-        let mut vendors: Vec<String> = entries
-            .filter_map(|entry| {
-                let path = entry.ok()?.path();
+        let paths = entries
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        let mut vendors: Vec<String> = paths
+            .iter()
+            .filter_map(|path| {
                 let vendor = path.file_stem()?.to_str()?;
                 let json = path
                     .extension()
