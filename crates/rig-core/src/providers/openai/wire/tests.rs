@@ -503,3 +503,62 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
         }
     }
 }
+
+/// A built request is what a host logs when it debugs a call, so its `Debug`
+/// must hide the key each credential header still sends. Anthropic's wire
+/// builds its own key headers and is checked alongside OpenAI's dialects.
+#[test]
+fn a_debug_printed_request_hides_the_key_it_sends() {
+    use crate::completion::CompletionRequest;
+    use crate::providers::anthropic::wire::{AnthropicConfig, OLLAMA as ANTHROPIC_OLLAMA};
+    use crate::wire::{Mode, Wire};
+
+    const KEY: &str = "sk-NOTAREALKEY-0123456789";
+    let bearer = format!("Bearer {KEY}");
+    let probe = || CompletionRequest::new("probe").max_tokens(16);
+    let openai = |config: OpenAIConfig| config.completion("gpt-5").encode(probe(), Mode::Unary);
+    let anthropic = |config: AnthropicConfig| {
+        config
+            .completion("claude-haiku-4-5")
+            .encode(probe(), Mode::Unary)
+    };
+    let built = [
+        (
+            openai(OpenAIConfig::new(KEY)).map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            openai(OpenAIConfig::with_key(&AZURE, KEY)).map(|e| e.request),
+            "api-key",
+            KEY,
+        ),
+        (
+            openai(OpenAIConfig::with_key(&LLAMACPP, KEY)).map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            anthropic(AnthropicConfig::new(KEY)).map(|e| e.request),
+            "x-api-key",
+            KEY,
+        ),
+        (
+            anthropic(AnthropicConfig::with_key(&ANTHROPIC_OLLAMA, KEY)).map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+    ];
+    for (request, header, value) in built {
+        let request = request.unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            request.headers().get(header).map(|v| v.as_bytes()),
+            Some(value.as_bytes()),
+            "{header} lost the key"
+        );
+        assert!(
+            !format!("{request:?}").contains(KEY),
+            "the debug-printed request leaked the key in {header}"
+        );
+    }
+}

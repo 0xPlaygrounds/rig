@@ -16,7 +16,7 @@ use crate::completion::options::FinalBody;
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::operation::Completion;
-use crate::providers::internal::named_dialect;
+use crate::providers::internal::{credential_header, named_dialect};
 use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
 use serde::{Deserialize, Serialize};
 
@@ -461,11 +461,12 @@ impl AnthropicConfig {
         betas: &[String],
     ) -> http::request::Builder {
         let builder = match self.dialect.quirks.auth {
-            Auth::ApiKey => builder.header("x-api-key", self.api_key.expose()),
+            Auth::ApiKey => credential_header(builder, "x-api-key", self.api_key.expose()),
             Auth::OptionalBearer if self.api_key.is_empty() => builder,
-            Auth::OptionalBearer => builder.header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
+            Auth::OptionalBearer => credential_header(
+                builder,
+                "authorization",
+                &format!("Bearer {}", self.api_key.expose()),
             ),
         };
         let builder = builder.header("anthropic-version", &self.version);
