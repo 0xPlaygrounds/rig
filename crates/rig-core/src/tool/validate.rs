@@ -328,7 +328,13 @@ fn count(
     length: usize,
     at: &str,
 ) -> Vec<Problem> {
-    let limit = |key| schema.get(key).and_then(Value::as_u64);
+    let limit = |key| {
+        let number = schema.get(key)?.as_number()?;
+        match whole(number)? {
+            super::decode::Whole::Unsigned(value) => Some(value),
+            super::decode::Whole::Signed(_) => None,
+        }
+    };
     let plural = |n: u64| {
         if n == 1 {
             format!("{n} {unit}")

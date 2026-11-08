@@ -5,6 +5,42 @@ use serde_json::json;
 use super::*;
 use crate::tool::args_schema;
 
+#[test]
+fn whole_decimal_count_limits_are_enforced_and_reported() {
+    use crate::message::{ToolCall, ToolFunction, ToolName};
+    use crate::tool::feedback::arguments_refusal;
+
+    for bound in [json!(1), json!(1.0), json!(1e0)] {
+        for (keyword, invalid, valid) in [
+            ("minLength", json!(""), json!("é")),
+            ("maxLength", json!("éé"), json!("é")),
+            ("minItems", json!([]), json!([1])),
+            ("maxItems", json!([1, 2]), json!([1])),
+        ] {
+            let schema = json!({
+                "type": "object",
+                "properties": {"value": {(keyword): bound}}
+            });
+            let args = json!({"value": invalid});
+            let call = ToolCall::from_wire(
+                "call-1",
+                ToolFunction::new(ToolName::new("check").unwrap(), args.clone()),
+            );
+            assert!(validate(&schema, &args).is_err(), "{keyword}={bound}");
+            assert!(
+                arguments_refusal(&schema, &call).is_some(),
+                "{keyword}={bound}"
+            );
+            assert!(validate(&schema, &json!({"value": valid})).is_ok());
+        }
+    }
+    assert!(validate(&json!({"maxItems": 0.0}), &json!([1])).is_err());
+    assert!(validate(&json!({"maxLength": -0.0}), &json!("a")).is_err());
+    for invalid_bound in [json!(-1.0), json!(1.5)] {
+        assert!(validate(&json!({"minItems": invalid_bound}), &json!([])).is_ok());
+    }
+}
+
 /// Each problem as `at: what`.
 fn problems(schema: &Value, value: &Value) -> Vec<String> {
     validate(schema, value)
