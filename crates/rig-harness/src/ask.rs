@@ -228,6 +228,7 @@ impl Ask {
 
 /// Why an [`Answer`] does not answer an [`Ask`] ([`Ask::check`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AnswerRefused {
     /// It takes a choice, by this id, that the question does not offer.
     NotOffered(String),
