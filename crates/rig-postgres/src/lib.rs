@@ -188,12 +188,10 @@ fn bind_value<S>(
         Value::Null => builder.bind(Option::<String>::None),
         Value::Bool(b) => builder.bind(b),
         Value::Number(num) => {
-            if let Some(n) = num.as_f64() {
+            if let Some(n) = num.as_i64() {
                 builder.bind(n)
-            } else if let Some(n) = num.as_i64() {
+            } else if let Some(n) = num.as_f64() {
                 builder.bind(n)
-            } else if let Some(n) = num.as_u64() {
-                builder.bind(n as i64)
             } else {
                 builder.bind(num.to_string())
             }

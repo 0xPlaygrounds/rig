@@ -291,6 +291,87 @@ async fn vector_search_test() {
     assert_eq!(matched, ["flurbo", "linglingdong"]);
 }
 
+#[tokio::test]
+async fn bigint_filters_preserve_exact_matches_and_ranges() {
+    let container = start_container().await;
+    let pool = connect_to_postgres(
+        container.get_host().await.unwrap().to_string(),
+        container.get_host_port_ipv4(POSTGRES_PORT).await.unwrap(),
+    )
+    .await;
+    sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("CREATE TABLE documents (id uuid PRIMARY KEY, tenant_id bigint, document jsonb, embedding vector(3))")
+        .execute(&pool).await.unwrap();
+    let ids = [
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000002",
+    ];
+    let mock = httpmock::MockServer::start_async().await;
+    mock_embeddings(
+        &mock,
+        json!({"dimensions": 3, "input": ["q"], "model": "text-embedding-3-small"}),
+        [vec![0.1, 0.2, 0.3]],
+    );
+    let model = openai_client(&mock).embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(3));
+    let store = PostgresVectorStore::with_defaults(model, pool.clone());
+    for first in [
+        42_i64,
+        9_007_199_254_740_992,
+        -9_007_199_254_740_993,
+        i64::MAX - 1,
+        i64::MIN,
+    ] {
+        sqlx::query("TRUNCATE documents")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for (id, tenant) in ids.into_iter().zip([first, first + 1]) {
+            sqlx::query(
+                "INSERT INTO documents VALUES ($1::text::uuid, $2, $3, '[0.1,0.2,0.3]'::vector)",
+            )
+            .bind(id)
+            .bind(tenant)
+            .bind(json!({"tenant_id": tenant}))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        for filter in [
+            PgSearchFilter::eq("tenant_id", json!(first + 1)),
+            PgSearchFilter::gt("tenant_id", json!(first)),
+            PgSearchFilter::between("tenant_id", (first + 1)..=(first + 1)),
+            PgSearchFilter::member("tenant_id", vec![json!(first + 1)]),
+        ] {
+            let request = VectorSearchRequest::builder()
+                .query("q")
+                .samples(10)
+                .filter(filter)
+                .build();
+            let matches = store.top_n_ids(request.clone()).await.unwrap();
+            assert_eq!(
+                matches
+                    .iter()
+                    .map(|row| row.id.as_str())
+                    .collect::<Vec<_>>(),
+                [ids[1]],
+                "first={first}"
+            );
+            let matches = store.top_n::<serde_json::Value>(request).await.unwrap();
+            assert_eq!(
+                matches
+                    .iter()
+                    .map(|row| row.id.as_str())
+                    .collect::<Vec<_>>(),
+                [ids[1]],
+                "first={first}"
+            );
+        }
+    }
+}
+
 async fn start_container() -> ContainerAsync<GenericImage> {
     // Setup a local postgres container for testing. NOTE: docker service must be running.
     GenericImage::new("pgvector/pgvector", "pg17")
