@@ -560,3 +560,59 @@ async fn a_refused_revocation_still_deletes_the_record() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// Runs itself again with a dummy secret and a fake desktop opener on
+/// `PATH`, so this process's environment stays as it was.
+#[cfg(unix)]
+#[test]
+fn browser_opener_gets_no_secret() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    const PROBE: &str = "RIG_SECRET_PROBE";
+    const NAME: &str = "providers::chatgpt::auth::native::tests::browser_opener_gets_no_secret";
+    if std::env::var_os(PROBE).is_some() {
+        anyhow::ensure!(
+            super::browser::open_browser("http://127.0.0.1:1/"),
+            "the opener did not start"
+        );
+        return Ok(());
+    }
+    let dir = assert_fs::TempDir::new()?;
+    let name = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let opener = dir.path().join(name);
+    std::fs::write(
+        &opener,
+        "#!/bin/sh\nenv > \"$OPENER_ENV.part\"\nmv \"$OPENER_ENV.part\" \"$OPENER_ENV\"\n",
+    )?;
+    std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755))?;
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let path = std::env::join_paths(
+        std::iter::once(dir.path().to_owned()).chain(std::env::split_paths(&path)),
+    )?;
+    let recorded = dir.path().join("env");
+    let output = std::process::Command::new(std::env::current_exe()?)
+        .args(["--exact", NAME, "--test-threads", "1"])
+        .env(PROBE, "hunter2")
+        .env("PATH", path)
+        .env("OPENER_ENV", &recorded)
+        .output()?;
+    anyhow::ensure!(
+        output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+        "the run with a secret failed: {output:?}"
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !recorded.exists() {
+        anyhow::ensure!(
+            std::time::Instant::now() < deadline,
+            "the fake opener recorded nothing"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let environment = std::fs::read_to_string(&recorded)?;
+    anyhow::ensure!(!environment.contains(PROBE), "the opener inherited {PROBE}");
+    Ok(())
+}
