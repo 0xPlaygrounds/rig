@@ -22,9 +22,9 @@ impl<T: DeserializeOwned + Ord> DecodeAnswer for crate::ChoiceAnswer<T> {
             return Err(wrong_kind());
         };
         let label = |label: &str| -> Result<T, ProviderError> {
-            Ok(T::deserialize(serde::de::value::StrDeserializer::<
-                serde_json::Error,
-            >::new(label))?)
+            Ok(serde_json::from_value(serde_json::Value::String(
+                label.to_owned(),
+            ))?)
         };
         Ok(Self {
             choice: label(choice)?,

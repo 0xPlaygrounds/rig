@@ -12,6 +12,33 @@ enum Route {
     Other,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct RouteLabel(String);
+
+#[test]
+fn string_newtype_choices_decode_the_label_and_probability_keys() -> anyhow::Result<()> {
+    let billing = RouteLabel("billing".to_owned());
+    let technical = RouteLabel("technical".to_owned());
+    let query = crate::Choice::new(
+        "Which team?",
+        [
+            (billing.clone(), "Billing"),
+            (technical.clone(), "Technical"),
+        ],
+    )?;
+    let answer = serde_json::from_value(serde_json::json!({
+        "type": "choice",
+        "choice": "billing",
+        "probabilities": {"billing": 0.75, "technical": 0.25},
+        "confidence": 0.5
+    }))?;
+    let decoded = query.decode(answer)?;
+    ensure!(decoded.choice == billing);
+    ensure!(decoded.probabilities.get(&billing) == Some(&0.75));
+    ensure!(decoded.probabilities.get(&technical) == Some(&0.25));
+    Ok(())
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 enum Urgency {
     NoDeadline,
