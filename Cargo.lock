@@ -4482,7 +4482,6 @@ name = "corpus-ho"
 version = "0.0.0"
 dependencies = [
  "async-channel",
- "bevy_app",
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
@@ -4493,7 +4492,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "glob",
- "libc",
  "regex",
  "rig-basics",
  "rig-core",

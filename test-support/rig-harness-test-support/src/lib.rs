@@ -440,6 +440,7 @@ fn answer_asks(
 /// terminal: its input, key bindings, completion, pickers and questions,
 /// and the transcript it lays out, driven by the keys [`press`] puts in.
 /// Adds the [`TuiPlugin`](rig_tui::TuiPlugin) when the app has none.
+#[cfg(feature = "tui")]
 pub fn tui_view(app: &mut App) -> &mut App {
     if !app.is_plugin_added::<rig_tui::TuiPlugin>() {
         app.add_plugins(rig_tui::TuiPlugin);
@@ -450,6 +451,7 @@ pub fn tui_view(app: &mut App) -> &mut App {
 
 /// Presses `keys`, such as `esc 0 d w` or `ctrl+x ctrl+e`, in one frame of
 /// the terminal view ([`tui_view`]), then runs that frame.
+#[cfg(feature = "tui")]
 pub fn press(app: &mut App, keys: &str) {
     use rig_tui::crossterm::event::{Event, KeyEvent};
     use rig_tui::{KeyInput, Keys, PendingInput};

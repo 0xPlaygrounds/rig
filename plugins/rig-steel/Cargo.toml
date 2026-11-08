@@ -36,4 +36,4 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 # The app on a session store and the scripted model the tests run on.
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support", default-features = false }

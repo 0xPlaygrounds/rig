@@ -11,6 +11,11 @@ workspace = true
 [lib]
 doctest = false
 
+[features]
+# The terminal-view helpers `tui_view` and `press`; headless tests turn it off.
+default = ["tui"]
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the derive of `Ended`; `debug` names the systems of an
 # ambiguity report, and only tests link it.
@@ -24,5 +29,5 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The store a test keeps its session in.
 rig-memory = { path = "../../crates/rig-memory" }
 # The terminal view a test drives by its keys, with no terminal.
-rig-tui = { path = "../../plugins/rig-tui" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde_json = { workspace = true }
