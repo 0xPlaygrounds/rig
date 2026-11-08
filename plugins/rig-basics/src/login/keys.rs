@@ -12,17 +12,23 @@ use std::path::PathBuf;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::catalog::{Catalog, Connector, ModelSpec, Provide, Transport};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, ModelStatus, Provide, Transport};
 use rig_core::providers::chatgpt::auth::{FileTokenStore, TokenStore};
 use rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_ecs::agent::{ActiveTurn, Agent, Notice};
-use rig_ecs::model::{Connection, ModelChoice, Models};
+use rig_ecs::model::{ChoiceKind, Connection, ModelChoice, Models, SetModel};
 use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
+use rig_harness::host::launcher::Invoked;
 use rig_harness::pick::{PickItem, Picked, Picker};
 use rig_harness::services::RigHome;
 use serde::{Deserialize, Serialize};
+
+use crate::models::FirstPick;
+
+/// What the error of a saved key file that cannot be read starts with.
+const UNREADABLE: &str = "cannot read the saved API key";
 
 /// What `/logout` says when `/login` stored nothing.
 pub(super) const NOTHING_STORED: &str = "Nothing stored to remove. /logout removes only what \
@@ -40,6 +46,7 @@ pub(super) fn add(app: &mut App) {
         provide(models, &vendor, &keys);
     }
     app.insert_resource(keys)
+        .add_observer(say_key_passed_over)
         .add_observer(save_typed_key)
         .add_observer(remove_key);
 }
@@ -79,7 +86,7 @@ impl Keys {
         let path = self.path(vendor);
         let unreadable = |why: &dyn std::fmt::Display| {
             let path = path.display();
-            ConnectError::Provider(format!("cannot read the saved API key {path}: {why}"))
+            ConnectError::Provider(format!("{UNREADABLE} {path}: {why}"))
         };
         let record = match std::fs::read_to_string(&path) {
             Err(why) if why.kind() == ErrorKind::NotFound => return Ok(None),
@@ -153,6 +160,43 @@ impl Provide for SavedKey {
             None => ConnectOptions::new(),
         };
         options.handler(spec, catalog, transport)
+    }
+}
+
+/// The error of a saved key file that cannot be read, when that is why
+/// `status` refuses its model.
+pub(crate) fn unreadable_key(status: &ModelStatus) -> Option<String> {
+    let ModelStatus::Unavailable(why) = status else {
+        return None;
+    };
+    why.starts_with(UNREADABLE).then(|| why.clone())
+}
+
+/// Says once per run, naming the file and the model, when an automatic
+/// first pick lands where it does because a saved key cannot be read.
+fn say_key_passed_over(
+    set: On<SetModel>,
+    (models, invoked): (Res<Models>, Option<Res<Invoked>>),
+    mut said: Local<bool>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let named = invoked.is_some_and(|invoked| invoked.args.model.is_some());
+    let auto = !named && set.kind == ChoiceKind::ForThisRun;
+    if *said || !auto || FirstPick::of(&models) != FirstPick::Model(set.model.clone()) {
+        return;
+    }
+    let specs = || models.0.catalog().iter();
+    // A local server is picked only after every model a key reaches.
+    let local = specs()
+        .find(|spec| spec.reference() == set.model)
+        .is_some_and(|spec| {
+            !models.0.is_provided(spec.provider) && !spec.provider.requires_credential()
+        });
+    let mut before = specs().take_while(|spec| local || spec.reference() != set.model);
+    if let Some(why) = before.find_map(|spec| unreadable_key(&models.0.status(spec))) {
+        *said = true;
+        let text = format!("Using {}: {why}.", set.model);
+        notices.write(Notice::warn(set.entity, text));
     }
 }
 

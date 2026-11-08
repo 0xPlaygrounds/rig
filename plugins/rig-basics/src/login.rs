@@ -55,7 +55,7 @@ const PROVIDER: &str = chatgpt::PROVIDER_NAME;
 /// How the user knows [`PROVIDER`].
 const TITLE: &str = chatgpt::PLAN_TITLE;
 
-mod keys;
+pub(crate) mod keys;
 mod offered;
 
 use offered::Offered;
