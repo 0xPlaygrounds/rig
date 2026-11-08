@@ -413,12 +413,15 @@ impl Home {
     /// On unix, creates `sessions/`, `projects/`, `data/` and `run/` and
     /// makes them this user's alone, as they hold what the user said.
     /// Best effort: a directory whose owner or filesystem refuses keeps its
-    /// mode. Elsewhere it does nothing.
+    /// mode, as does a file at one of these paths or a link to the home.
+    /// Elsewhere it does nothing.
     pub fn keep_private(&self) {
         #[cfg(unix)]
         for dir in [self.sessions(), self.projects(), self.data(), self.runs()] {
             std::fs::create_dir_all(&dir).ok();
-            std::fs::set_permissions(&dir, PermissionsExt::from_mode(0o700)).ok();
+            if dir.is_dir() && dir.canonicalize().ok() != self.root.canonicalize().ok() {
+                std::fs::set_permissions(&dir, PermissionsExt::from_mode(0o700)).ok();
+            }
         }
     }
 

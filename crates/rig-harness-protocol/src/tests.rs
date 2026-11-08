@@ -573,29 +573,40 @@ fn a_new_session_directory_is_private_to_the_user() {
 }
 
 /// The four directories that hold what the user said are tightened in a
-/// home of ordinary modes, and the home's own mode is left as it was.
+/// home of ordinary modes, whether old, missing or linked elsewhere. The
+/// home keeps its mode, even through a link to it, and so does a file where
+/// a directory belongs.
 #[cfg(unix)]
 #[test]
 fn keep_private_tightens_the_four_directories_and_not_the_home() {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     let root = std::env::temp_dir().join(format!("rig-keep-private-{}", std::process::id()));
     std::fs::remove_dir_all(&root).ok();
-    let home = Home::at(&root);
-    let dirs = [home.sessions(), home.projects(), home.data(), home.runs()];
     let wide = std::fs::Permissions::from_mode(0o755);
-    for dir in &dirs {
-        std::fs::create_dir_all(dir).ok();
-        std::fs::set_permissions(dir, wide.clone()).ok();
+    let home = Home::at(root.join("home"));
+    let elsewhere = root.join("elsewhere");
+    for dir in [home.sessions(), home.projects(), elsewhere.clone()] {
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::set_permissions(&dir, wide.clone()).ok();
     }
-    std::fs::set_permissions(&root, wide).ok();
+    symlink(&elsewhere, home.runs()).ok();
+    std::fs::set_permissions(home.root(), wide.clone()).ok();
+    let odd = Home::at(root.join("odd"));
+    std::fs::create_dir_all(odd.root()).ok();
+    std::fs::set_permissions(odd.root(), wide).ok();
+    symlink(".", odd.projects()).ok();
+    std::fs::write(odd.data(), "not a directory").ok();
+    std::fs::set_permissions(odd.data(), std::fs::Permissions::from_mode(0o644)).ok();
     let mode = |path: &std::path::Path| {
         std::fs::metadata(path)
             .map(|meta| meta.permissions().mode() & 0o777)
             .ok()
     };
     home.keep_private();
+    odd.keep_private();
+    let dirs = [home.sessions(), home.projects(), home.data(), home.runs()];
     let modes = dirs.each_ref().map(|dir| mode(dir));
-    let own = mode(&root);
+    let kept = [mode(home.root()), mode(odd.root()), mode(&odd.data())];
     std::fs::remove_dir_all(&root).ok();
     assert!(
         modes
@@ -603,5 +614,5 @@ fn keep_private_tightens_the_four_directories_and_not_the_home() {
             .all(|mode| mode.is_some_and(|mode| mode & 0o077 == 0)),
         "{modes:?}"
     );
-    assert_eq!(own, Some(0o755));
+    assert_eq!(kept, [Some(0o755), Some(0o755), Some(0o644)]);
 }
