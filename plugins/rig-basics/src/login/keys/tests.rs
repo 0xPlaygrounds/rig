@@ -74,7 +74,10 @@ fn a_typed_key_is_saved_privately_and_connects_until_logout() {
     app.update();
 
     let keys = Keys::at(&home);
-    assert_eq!(keys.load(vendor).as_deref(), Some("sk-rig-test"));
+    assert_eq!(
+        keys.load(vendor).ok().flatten().as_deref(),
+        Some("sk-rig-test")
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -102,4 +105,72 @@ fn a_typed_key_is_saved_privately_and_connects_until_logout() {
     let last = notices.last().map(|notice| notice.text.as_str());
     assert_eq!(last, Some(NOTHING_STORED));
     std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// An app with the login plugin on `home`, its first frame run.
+fn login_app(home: &rig_harness::harness_protocol::Home) -> App {
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.insert_resource(RigHome(home.clone()))
+        .add_plugins((AgentPlugin, PickPlugin, LoginPlugin));
+    app.finish();
+    app.update();
+    app
+}
+
+/// A saved key file that exists but does not parse refuses the provider's
+/// models, naming the file but not what it holds, instead of connecting
+/// with the environment.
+#[test]
+fn a_saved_key_that_does_not_parse_refuses_the_connect() {
+    let home = scratch_home("rig-login-keys-corrupt");
+    let Some(vendor) = unset_vendor(&Models::default()) else {
+        return;
+    };
+    let path = Keys::at(&home).path(vendor);
+    let written = path.parent().map(|dir| {
+        std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, "\"sk-private\""))
+    });
+    assert!(matches!(written, Some(Ok(()))));
+    let app = login_app(&home);
+    let status = status(&app, vendor);
+    let shown = path.display().to_string();
+    assert!(
+        matches!(&status, Some(ModelStatus::Unavailable(why))
+            if why.contains(&shown) && !why.contains("sk-private")),
+        "{status:?}"
+    );
+    std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// A key directory that cannot be listed refuses the providers' models,
+/// naming the key file, instead of reading as no saved keys.
+#[cfg(unix)]
+#[test]
+fn an_unlistable_key_directory_refuses_the_connect() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = scratch_home("rig-login-keys-unlistable");
+    let Some(vendor) = unset_vendor(&Models::default()) else {
+        return;
+    };
+    let keys = Keys::at(&home);
+    assert!(keys.save(vendor, "sk-rig-test").is_ok());
+    let path = keys.path(vendor);
+    let Some(dir) = path.parent() else {
+        return;
+    };
+    let mode = |mode| std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode));
+    assert!(mode(0o000).is_ok());
+    // Permissions bind no one running as root.
+    let status = std::fs::read_dir(dir)
+        .is_err()
+        .then(|| status(&login_app(&home), vendor));
+    assert!(mode(0o700).is_ok());
+    std::fs::remove_dir_all(home.root()).ok();
+    let shown = path.display().to_string();
+    assert!(
+        status.as_ref().is_none_or(|status| {
+            matches!(status, Some(ModelStatus::Unavailable(why)) if why.contains(&shown))
+        }),
+        "{status:?}"
+    );
 }
