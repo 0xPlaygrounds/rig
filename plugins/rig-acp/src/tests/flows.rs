@@ -837,7 +837,7 @@ fn a_refused_model_change_says_why_and_keeps_the_model() {
     assert!(router.is_some());
 }
 
-/// `rig acp --tools` reaches each session, which checks it against its own
+/// `rig --tools … acp` reaches each session, which checks it against its own
 /// tools: a name none has refuses the session as it opens, and a known
 /// list keeps the session to it.
 #[test]

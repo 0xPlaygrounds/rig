@@ -808,7 +808,7 @@ pub(crate) fn install(app: &mut App) {
             }
         },
     };
-    // Each session checks the tools `rig acp --tools` gives against its own,
+    // Each session checks the tools `rig --tools … acp` gives against its own,
     // the client's MCP servers' among them.
     let invoked = app.world().get_resource::<Invoked>();
     if let Some(tools) = invoked.filter(|invoked| invoked.flag(TOOLS)) {
