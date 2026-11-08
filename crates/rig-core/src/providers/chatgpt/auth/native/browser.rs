@@ -328,13 +328,20 @@ fn escape_html(text: &str) -> String {
 }
 
 /// Asks the desktop to open `url` in the default browser, without waiting
-/// and without writing to the terminal. Returns whether the opener started.
+/// and without writing to the terminal. The opener inherits no `RIG_SECRET_*`
+/// variable. Returns whether it started.
 pub(super) fn open_browser(url: &str) -> bool {
     let mut command = opener(url);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // A literal because rig-core cannot depend on rig-harness-protocol, which owns this prefix.
+    for (name, _) in std::env::vars_os() {
+        if name.as_encoded_bytes().starts_with(b"RIG_SECRET_") {
+            command.env_remove(name);
+        }
+    }
     let Ok(mut child) = command.spawn() else {
         return false;
     };
