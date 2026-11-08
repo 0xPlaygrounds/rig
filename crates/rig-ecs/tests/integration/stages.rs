@@ -2252,6 +2252,54 @@ fn a_failed_turn_keeps_the_results_of_the_reply_before_it() {
     assert_eq!(conversation(&app, agent), held);
 }
 
+/// A user's text beside a result the kept reply is owed, where a made-up
+/// result puts it, still comes back; the result stays. So does a message
+/// shaped like notes on cleared outputs with no owed result beside it.
+#[test]
+fn a_failed_turn_gives_back_a_users_text_beside_a_result() {
+    use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
+    const NOTES_SHAPED: &str = "<cleared-output-notes>\nNotes on the tool outputs above, written \
+         before they were cleared:\nx\n</cleared-output-notes>";
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    collect_recalled(&mut app);
+    let Ok(name) = ToolName::new("look") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), serde_json::json!({})));
+    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        call.clone(),
+    )]));
+    let result = Message::tool_result(call.id, name, "the file");
+    let Message::User { content } = result.clone() else {
+        return;
+    };
+    let mut beside = content;
+    beside.push(UserContent::text("and also this"));
+    let held = [Message::user("read it"), asked, result];
+    let world = app.world_mut();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        for message in held.iter().take(2).cloned() {
+            conversation.push(message);
+        }
+        conversation.push(Message::User { content: beside });
+        conversation.push(Message::user(NOTES_SHAPED));
+    }
+    let model = MockCompletionModel::from_stream_turns([no_credit()]);
+    agent_on(&mut app, &model);
+    let ended = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended), "{:?}", notices(&app));
+    app.update();
+    let recalled = &app.world().resource::<RecalledTexts>().0;
+    assert_eq!(
+        recalled,
+        &[format!("and also this\n\n{NOTES_SHAPED}\n\ngo")]
+    );
+    assert_eq!(conversation(&app, agent), held);
+}
+
 /// A failed reply stored after the results of the last reply that counts
 /// goes when a call that carries on from those results fails, though no
 /// message of the user's comes back.
