@@ -410,6 +410,21 @@ impl Home {
         SessionDir(self.sessions().join(session.as_str()))
     }
 
+    /// On unix, creates `sessions/`, `projects/`, `data/` and `run/` and
+    /// makes them this user's alone, as they hold what the user said.
+    /// Best effort: a directory whose owner or filesystem refuses keeps its
+    /// mode, as does a file at one of these paths or a link to the home.
+    /// Elsewhere it does nothing.
+    pub fn keep_private(&self) {
+        #[cfg(unix)]
+        for dir in [self.sessions(), self.projects(), self.data(), self.runs()] {
+            std::fs::create_dir_all(&dir).ok();
+            if dir.is_dir() && dir.canonicalize().ok() != self.root.canonicalize().ok() {
+                std::fs::set_permissions(&dir, PermissionsExt::from_mode(0o700)).ok();
+            }
+        }
+    }
+
     /// A new session, its directory created: a [`SessionId::generate`]d
     /// id, or, when a session of this home has that one, the first free
     /// one after it, such as `1700000000-42-1`.
@@ -419,10 +434,7 @@ impl Home {
     /// When the directory cannot be created.
     pub fn new_session(&self) -> std::io::Result<(SessionId, SessionDir)> {
         std::fs::create_dir_all(self.sessions())?;
-        // A `sessions/` whose owner or filesystem refuses the mode keeps it,
-        // as before; each new session's own directory is still 0700.
-        #[cfg(unix)]
-        std::fs::set_permissions(self.sessions(), PermissionsExt::from_mode(0o700)).ok();
+        self.keep_private();
         let base = SessionId::generate();
         let mut id = base.clone();
         let mut taken = 0u64;

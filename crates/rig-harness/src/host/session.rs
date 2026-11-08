@@ -11,7 +11,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Seek, SeekFrom};
 use std::ops::Deref;
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -182,9 +182,7 @@ pub(crate) fn paths_in(home: &Home) -> SessionPaths {
     // A build describing itself keeps none.
     if crate::describe::describing().is_none() {
         fs::create_dir_all(home.sessions()).ok();
-        // `sessions/` holds every conversation: the user's alone.
-        #[cfg(unix)]
-        fs::set_permissions(home.sessions(), PermissionsExt::from_mode(0o700)).ok();
+        home.keep_private();
         #[cfg(unix)]
         fs::DirBuilder::new().mode(0o700).create(dir.path()).ok();
         #[cfg(not(unix))]
