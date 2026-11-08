@@ -20,7 +20,7 @@ use rig_memory::{DirStore, Files, MemoryStore, SessionMeta, Store, Strings, save
 
 use super::{
     AppStart, DeleteSession, Scratch, SessionDeleteFailed, SessionDeleted, SessionPaths,
-    SessionPlugin, StoreOpener, log_layer, rewrite_stopped,
+    SessionPlugin, StoreOpener, log_layer, paths_in, rewrite_stopped,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::exit::ExitReason;
@@ -983,4 +983,25 @@ fn the_folders_of_a_project_share_its_data() {
     let read = data("b").and_then(|data| data.project.read_file("test/value").ok());
     assert_eq!(read, Some(b"shared".to_vec()));
     fs::remove_dir_all(home.root()).ok();
+}
+
+/// A harness started without the launcher creates `sessions/` and its
+/// session's directory for the user alone.
+#[cfg(unix)]
+#[test]
+fn a_session_directory_made_without_the_launcher_is_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("rig-private-paths-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let paths = paths_in(&home);
+    let mode = |path: &Path| {
+        fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    let modes = (mode(&home.sessions()), mode(paths.0.path()));
+    fs::remove_dir_all(&root).ok();
+    let private = |mode: Option<u32>| mode.is_some_and(|mode| mode & 0o077 == 0);
+    assert!(private(modes.0) && private(modes.1), "{modes:?}");
 }
