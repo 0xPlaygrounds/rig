@@ -7,7 +7,8 @@
 //!   every agent above it, to the session's [`SessionUsage`] (all saved) and
 //!   to its turn's [`TurnUsage`]. A reply the turn-failure rule rejects
 //!   still counts. A call settled without a reply (stopped, superseded,
-//!   failed mid-stream) counts what its provider reported before the end
+//!   failed mid-stream) or removed unsettled, as a stop removes a summary,
+//!   counts what its provider reported before the end
 //!   ([`ReportedUsage`]), else its [`CallUsage`], else, if anything of its
 //!   reply came, an estimate of what it was sent and streamed. One stopped
 //!   or superseded with nothing come is not known, and counts in no total;
@@ -27,6 +28,8 @@
 
 use std::collections::BTreeMap;
 
+use bevy_ecs::event::{EntityEvent, EventPattern};
+use bevy_ecs::query::QueryFilter;
 use rig_core::completion::{CompletionRequest, ContextUse, Message, Usage, UsageTotals};
 use rig_core::error::ErrorKind;
 use rig_core::streaming::StreamEvent;
@@ -58,7 +61,9 @@ impl Plugin for UsagePlugin {
                 "Show the tokens, cost and context this agent, its subagents and the session used",
                 usage,
             )
-            .add_observer(record_usage)
+            // Each call once: when it settles, else when it goes unsettled.
+            .add_observer(record_usage::<Add<Settled>, ()>)
+            .add_observer(record_usage::<Remove<ModelRequest>, Without<Settled>>)
             .add_observer(account)
             .add_observer(add_column)
             .add_observer(forget_input_limit)
@@ -151,7 +156,7 @@ pub struct Spent {
 #[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct UnknownSpend(pub u64);
 
-/// How many model calls settled without a reply, and without a count of
+/// How many model calls that ended without a reply, and without a count of
 /// what they used, are estimated or not known. Saved with the session.
 #[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[reflect(opaque, Resource, Saved, Default, Clone, Serialize, Deserialize)]
@@ -242,18 +247,18 @@ type UsageCall<'a> = (
     (Option<&'a ForAgent>, Option<&'a CallOf>, Has<TurnCall>),
 );
 
-/// Records a settled model call's usage as a [`Spent`] of its agent and
-/// turn, under the model it went to (where it was sent, else the call's own
-/// connection, else its agent's, else the one its reply names) and its
-/// purpose: its reply's, else its [`ReportedUsage`], else its
-/// [`CallUsage`], else, once anything of its reply came, an estimate. A
-/// call stopped or superseded once sent with nothing of its reply come is
-/// not known; one that failed before anything came counts nothing, as one
-/// never sent. [`StoppedUsage`] counts the last two kinds. A turn's reply
+/// Records the usage of the model call `E` targets, if `F` lets it through,
+/// as a [`Spent`] of its agent and turn, under the model it went to (where
+/// it was sent, else the call's own connection, else its agent's, else the
+/// one its reply names) and its purpose: its reply's, else its
+/// [`ReportedUsage`], else its [`CallUsage`], else, once anything of its
+/// reply came, an estimate. A call stopped or superseded once sent with
+/// nothing of its reply come is not known; one that failed before anything
+/// came counts nothing, as one never sent. [`StoppedUsage`] counts the last two kinds. A turn's reply
 /// that reported its tokens sets its agent's [`InputLimit`].
-fn record_usage(
-    settled: On<Add<Settled>>,
-    calls: Query<UsageCall>,
+fn record_usage<E: EventPattern<Event: EntityEvent>, F: QueryFilter>(
+    ended: On<E>,
+    calls: Query<UsageCall, F>,
     agents: Query<Option<&Connection>>,
     mut stopped: ResMut<StoppedUsage>,
     mut commands: Commands,
@@ -263,7 +268,7 @@ fn record_usage(
         (outcome, reported, given),
         (streamed, came),
         (agent, of, turn_call),
-    )) = calls.get(settled.entity)
+    )) = calls.get(ended.event_target())
     else {
         return;
     };
