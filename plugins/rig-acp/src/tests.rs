@@ -893,3 +893,28 @@ fn sleeping(place: &Place) -> bool {
             .is_ok_and(|line| String::from_utf8_lossy(&line).contains("sleep"))
     })
 }
+
+/// `rig acp --tools=read` is refused, saying to put options before `acp`:
+/// the router reads only the options before it, so one after it would be
+/// dropped.
+#[test]
+fn an_option_after_acp_is_refused() {
+    let args = Invocation::parse(&["acp", "--tools=read"]).unwrap_or_default();
+    assert_eq!(args.arguments, ["--tools=read"]);
+    let mut app = App::new();
+    app.insert_resource(Invoked {
+        args,
+        terminal: false,
+    });
+    crate::router::install(&mut app);
+    let refused = app
+        .world()
+        .get_resource::<rig_harness::host::launcher::Refused>();
+    let why = refused
+        .map(|refused| refused.0.as_str())
+        .unwrap_or_default();
+    assert!(
+        why.contains("`--tools=read`") && why.contains("before `acp`"),
+        "{why}"
+    );
+}
