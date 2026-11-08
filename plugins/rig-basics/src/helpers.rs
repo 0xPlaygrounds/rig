@@ -83,6 +83,7 @@ pub struct HelpersPlugin;
 #[serde(default, deny_unknown_fields)]
 struct HelperSettings {
     /// Seconds, 600 by default.
+    #[serde(deserialize_with = "deadline_secs")]
     timeout_secs: NonZeroU64,
     /// Tasks at once, 4 by default.
     at_once: NonZeroUsize,
@@ -410,15 +411,32 @@ fn start(
 }
 
 /// How long each helper of a call may take: the call's `timeout`, at least
-/// 1 second and as long as it says, else `default`.
+/// 1 second and at most [`MOST_SECS`], else `default`.
 fn timeout(asked: Option<u64>, default: NonZeroU64) -> Result<Duration, String> {
     match asked {
         Some(0) => Err(format!(
             "`timeout` must be at least 1 second; leave it out for {default} s (`[helpers] \
              timeout_secs`)"
         )),
-        asked => Ok(Duration::from_secs(asked.unwrap_or(default.get()))),
+        asked => deadline(asked.unwrap_or(default.get())),
     }
+}
+
+/// The longest a helper may take, about 136 years, which any clock adds to now.
+const MOST_SECS: u64 = u32::MAX as u64;
+/// `secs` as a helper's time limit, refused past [`MOST_SECS`].
+fn deadline(secs: u64) -> Result<Duration, String> {
+    if secs > MOST_SECS {
+        return Err(format!("a timeout of {secs} s is over {MOST_SECS} s"));
+    }
+    Ok(Duration::from_secs(secs))
+}
+
+/// A `timeout_secs` that [`deadline`] takes.
+fn deadline_secs<'de, D: serde::Deserializer<'de>>(read: D) -> Result<NonZeroU64, D::Error> {
+    let secs = NonZeroU64::deserialize(read)?;
+    deadline(secs.get()).map_err(serde::de::Error::custom)?;
+    Ok(secs)
 }
 
 /// Runs a call's children, on a thread of its own.
@@ -557,6 +575,9 @@ impl Runner {
             grace: Some(STOP_WINDOW),
             ..Spawn::default()
         };
+        let Some(deadline) = Instant::now().checked_add(self.timeout) else {
+            return (Err("no deadline".to_owned()), String::new());
+        };
         // Unsettled from before it can spend until what it spent is known.
         self.reports.unsettled.fetch_add(1, Ordering::SeqCst);
         let mut process = match launcher.spawn(&self.command.program, args, how) {
@@ -580,8 +601,7 @@ impl Runner {
             }
         };
         let mut read = Read::new(self.reports.clone());
-        let deadline = Instant::now().checked_add(self.timeout);
-        let ended = process.run(deadline, |piece| {
+        let ended = process.run(Some(deadline), |piece| {
             read.piece(piece);
             true
         });

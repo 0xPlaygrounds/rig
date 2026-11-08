@@ -549,8 +549,8 @@ fn a_helper_in_tilde_is_in_the_home_directory() {
     );
 }
 
-/// A call's `timeout` is each helper's deadline as given, however long; a
-/// call without one gets `[helpers] timeout_secs`, 600 s by default.
+/// A call's `timeout` is each helper's deadline as given; a call without
+/// one gets `[helpers] timeout_secs`, 600 s by default.
 #[test]
 fn a_helpers_deadline_is_the_calls_timeout_or_the_setting() {
     let default = HelperSettings::default().timeout_secs;
@@ -573,6 +573,27 @@ fn the_helpers_table_reads_its_keys_and_refuses_zero() {
     );
     assert!(read("[helpers]\nat_once = 0\n").is_err());
     assert!(read("[helpers]\ntimeout_secs = 0\n").is_err());
+}
+
+/// A timeout too long for a deadline is refused, naming the value: a
+/// call's `timeout` when called, `[helpers] timeout_secs` when read.
+#[test]
+fn a_timeout_too_long_for_a_deadline_is_refused() {
+    let default = HelperSettings::default().timeout_secs;
+    let most = u64::from(u32::MAX);
+    assert_eq!(timeout(Some(most), default), Ok(Duration::from_secs(most)));
+    let past = most.saturating_add(1).to_string();
+    let asked = timeout(Some(most.saturating_add(1)), default);
+    assert!(
+        asked.as_ref().is_err_and(|why| why.contains(&past)),
+        "a call's timeout too long for a deadline: {asked:?}"
+    );
+    let read = Settings::from_toml(&format!("[helpers]\ntimeout_secs = {past}\n"))
+        .get::<HelperSettings>("helpers");
+    assert!(
+        read.as_ref().is_err_and(|why| why.contains(&past)),
+        "a timeout_secs too long for a deadline: {read:?}"
+    );
 }
 
 /// A helper past its deadline fails its task, naming where the deadline
