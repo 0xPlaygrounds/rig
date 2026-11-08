@@ -58,7 +58,7 @@ Servers are named in the `mcpServers` format other agents use, in two files:
 `${VAR}` in `command`, `args`, `env`, `cwd`, `url` and `headers` is the
 environment variable `VAR`, and `${VAR:-default}` is `default` when `VAR` is
 unset or empty. A server that uses an unset `${VAR}` with no default does not
-start, and says which field. Nor does one that names a `${RIG_SECRET_*}`.
+start, and says which field. Nor does one that names a `${RIG_SECRET_*}`, in any letter case.
 
 A server's name is letters, digits, `_` and `-`, starting with a letter or
 `_` (as Gemini requires of tool names), without `__` and not ending in `_`, so
