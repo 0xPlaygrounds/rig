@@ -514,3 +514,35 @@ fn a_group_is_killed_while_it_holds_processes_once_asked() {
         "the unmarked member outlived the cleanup"
     );
 }
+
+/// A new session's directory and `sessions/`, which hold every
+/// conversation, are the user's alone whatever the umask, and an existing
+/// wider `sessions/` is tightened.
+#[cfg(unix)]
+#[test]
+fn a_new_session_directory_is_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("rig-private-session-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    std::fs::create_dir_all(home.sessions()).ok();
+    let wide = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(home.sessions(), wide).ok();
+    let mode = |path: &std::path::Path| {
+        std::fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    let made = home.new_session();
+    let modes = made
+        .as_ref()
+        .map(|(_, dir)| (mode(&home.sessions()), mode(dir.path())));
+    std::fs::remove_dir_all(&root).ok();
+    let private = |mode: Option<u32>| mode.is_some_and(|mode| mode & 0o077 == 0);
+    assert!(
+        modes
+            .as_ref()
+            .is_ok_and(|(sessions, session)| private(*sessions) && private(*session)),
+        "sessions/ and the session directory modes: {modes:?}"
+    );
+}

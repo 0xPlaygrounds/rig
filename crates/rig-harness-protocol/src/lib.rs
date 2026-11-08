@@ -10,6 +10,8 @@ pub mod config;
 
 use std::ffi::OsString;
 use std::fmt;
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -417,12 +419,20 @@ impl Home {
     /// When the directory cannot be created.
     pub fn new_session(&self) -> std::io::Result<(SessionId, SessionDir)> {
         std::fs::create_dir_all(self.sessions())?;
+        // A `sessions/` whose owner or filesystem refuses the mode keeps it,
+        // as before; each new session's own directory is still 0700.
+        #[cfg(unix)]
+        std::fs::set_permissions(self.sessions(), PermissionsExt::from_mode(0o700)).ok();
         let base = SessionId::generate();
         let mut id = base.clone();
         let mut taken = 0u64;
         loop {
             let dir = self.session(&id);
-            match std::fs::create_dir(dir.path()) {
+            #[cfg(unix)]
+            let created = std::fs::DirBuilder::new().mode(0o700).create(dir.path());
+            #[cfg(not(unix))]
+            let created = std::fs::create_dir(dir.path());
+            match created {
                 Ok(()) => return Ok((id, dir)),
                 Err(failure) if failure.kind() == std::io::ErrorKind::AlreadyExists => {
                     taken += 1;
