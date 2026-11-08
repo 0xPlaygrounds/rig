@@ -648,7 +648,9 @@ fn map_spill(scratch: &DirFiles, with: &dyn Rewrite) -> io::Result<()> {
 /// which hides it from listings, then everything its store holds is
 /// destroyed, wherever [`StoreOpener`] keeps it, then its directory is
 /// removed. A delete a crash cut short is finished at the next start.
-/// [`SessionDeleted`] follows, or [`SessionDeleteFailed`] and an error
+/// The delete checks that no rig runs the session, then removes it without
+/// holding its lock, so a session resumed in that instant can be deleted
+/// under it. [`SessionDeleted`] follows, or [`SessionDeleteFailed`] and an error
 /// notice say why not.
 #[derive(Event, Clone, Debug)]
 pub struct DeleteSession(pub SessionId);
@@ -686,6 +688,7 @@ fn delete_session(
     } else if session.runs_elsewhere() {
         Some("another rig runs it".to_owned())
     } else {
+        // No lock is held from the check above on: see `DeleteSession`.
         session
             .mark_deleting()
             .map_err(SessionError::from)
