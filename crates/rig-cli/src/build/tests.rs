@@ -63,11 +63,13 @@ fn a_rebuilt_rejected_build_is_passed_over_out_loud() {
     let restaged = stage(&home, &staged, Staging::OnlyNew).map_err(|why| why.to_string());
     let after = passed_over(&home, &staged);
     let retried = stage(&home, &staged, Staging::Always).is_ok() && !passed_over(&home, &staged);
+    // The retried build started, so it is the good build that runs.
+    let promoted = fs::rename(&staged, home.good()).is_ok() && !passed_over(&home, &staged);
     fs::remove_dir_all(home.root()).ok();
     assert!(matches!(recorded, Ok(Ok(()))), "{recorded:?}");
     assert_eq!(
-        (before, restaged, after, retried),
-        (false, Ok(()), true, true)
+        (before, restaged, after, retried, promoted),
+        (false, Ok(()), true, true, true)
     );
 }
 
