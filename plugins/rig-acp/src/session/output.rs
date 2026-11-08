@@ -141,13 +141,14 @@ pub(super) fn settled(
 }
 
 /// A model call of the main agent settles: its reply's text, unless it
-/// streamed it, as when a plugin answered the call in place.
+/// streamed it or was superseded, as when a plugin answered the call in
+/// place.
 pub(super) fn replied(
     settled: On<Add<Settled>>,
-    calls: Query<(&Outcome, &ForAgent), With<TurnCall>>,
+    calls: Query<(&Outcome, &ForAgent, Has<SupersededBy>), With<TurnCall>>,
     mut out: Out,
 ) {
-    let Ok((Outcome(outcome), &ForAgent(agent))) = calls.get(settled.entity) else {
+    let Ok((Outcome(outcome), &ForAgent(agent), superseded)) = calls.get(settled.entity) else {
         return;
     };
     out.stream();
@@ -155,6 +156,7 @@ pub(super) fn replied(
     if let Ok(Answered::Completion(reply)) = outcome
         && out.main(agent)
         && !streamed
+        && !superseded
     {
         let text = reply.text();
         if !text.is_empty() {
