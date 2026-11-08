@@ -370,9 +370,11 @@ subagent's model calls name the call that gave it its work as their parent.
 `rig -p "fix the failing test"` answers one prompt and exits: the answer goes
 to stdout, failures to stderr, and the exit code is 0 when the turn ended with
 an answer, 1 when it failed or a plugin such as the budget stopped its work
-(answer or not), 2 for a refused slash command, a `RIG_HOME/settings.toml`
-that cannot be read, is not TOML or has a table that does not read, or piped
-input that is over 64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` (`<NUL` on
+(answer or not), or when the agent did not start because
+`RIG_HOME/settings.toml` cannot be read, is not TOML or has a `[plugins]`
+table that does not read (stderr says why), 2 for a refused slash command, a
+plugin's settings table that does not read, or piped input that is over
+64 MiB, fails to read or is not UTF-8. Piped input is read until stdin closes; give `</dev/null` (`<NUL` on
 Windows) for none. A
 command that would open a list to pick from, such as `/model`, `/effort`,
 `/resume`, `/login` or `/fork at`, is refused there with the commands to
