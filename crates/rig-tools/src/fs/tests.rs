@@ -202,3 +202,57 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
     assert!(resolved.exists());
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A private file's temporary copy is never readable by others, watched
+/// across many writes, and a new file gets the default mode, not a private
+/// one.
+#[cfg(unix)]
+#[test]
+fn a_private_file_is_never_staged_readable() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let mode = |path: &std::path::Path| {
+        std::fs::metadata(path).map(|meta| meta.permissions().mode() & 0o777)
+    };
+    let dir = scratch("staged-mode").join("real");
+    let private = dir.join("private");
+    assert!(std::fs::write(&private, "x").is_ok());
+    assert!(std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o600)).is_ok());
+
+    let done = AtomicBool::new(false);
+    let open = std::thread::scope(|scope| {
+        let watcher = scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                    if !entry.file_name().to_string_lossy().ends_with(".tmp") {
+                        continue;
+                    }
+                    let seen = entry
+                        .metadata()
+                        .map(|meta| meta.permissions().mode() & 0o777);
+                    if let Some(open) = seen.ok().filter(|seen| seen & 0o077 != 0) {
+                        return Some(open);
+                    }
+                }
+            }
+            None
+        });
+        for _ in 0..300 {
+            if watcher.is_finished() {
+                break;
+            }
+            assert!(super::write_atomic(&private, b"y").is_ok());
+        }
+        done.store(true, Ordering::Relaxed);
+        watcher.join().ok().flatten()
+    });
+    assert_eq!(open, None, "staged readable by others");
+    assert_eq!(mode(&private).ok(), Some(0o600));
+
+    let default = dir.join("default");
+    let new = dir.join("new");
+    assert!(std::fs::write(&default, "x").is_ok() && super::write_atomic(&new, b"x").is_ok());
+    assert_eq!(mode(&new).ok(), mode(&default).ok());
+    std::fs::remove_dir_all(dir.parent().unwrap_or(&dir)).ok();
+}
