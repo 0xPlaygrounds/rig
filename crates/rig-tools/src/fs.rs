@@ -46,10 +46,13 @@ impl Prefix {
         let mut text = match String::from_utf8(bytes) {
             Ok(text) => text,
             Err(error) => {
-                let valid = error.utf8_error().valid_up_to();
                 let mut bytes = error.into_bytes();
-                if size > cap as u64 && bytes.len().saturating_sub(valid) < 4 {
-                    bytes.truncate(valid);
+                if size > cap as u64
+                    && let Some(tail) = bytes.utf8_chunks().last()
+                    && std::str::from_utf8(tail.invalid())
+                        .is_err_and(|error| error.error_len().is_none())
+                {
+                    bytes.truncate(bytes.len() - tail.invalid().len());
                 }
                 String::from_utf8_lossy(&bytes).into_owned()
             }

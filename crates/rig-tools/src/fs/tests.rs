@@ -5,6 +5,38 @@ use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, 
 use super::resolve;
 use crate::{Read, ReadArgs, Write, WriteArgs};
 
+#[test]
+fn prefixes_replace_bad_bytes_and_drop_only_incomplete_tails() -> std::io::Result<()> {
+    let dir = scratch("prefix-utf8");
+    let path = dir.join("input");
+    let cases: &[(&[u8], usize, &str)] = &[
+        (b"ABCDrest", 4, "ABCD"),
+        (b"A\xffBCrest", 4, "A\u{fffd}BC"),
+        (b"A\xffBC\xe2\x82\xacrest", 5, "A\u{fffd}BC"),
+        (b"A\xffBC\xe2\x82\xacrest", 6, "A\u{fffd}BC"),
+        (b"A\xffBC\xe2\x82\xacrest", 7, "A\u{fffd}BC€"),
+        (b"A\xe2\x82\xacrest", 3, "A"),
+        (b"A\xffrest", 2, "A\u{fffd}"),
+        (b"A\xc0\xafrest", 3, "A\u{fffd}\u{fffd}"),
+        (b"A\xed\xa0\x80rest", 4, "A\u{fffd}\u{fffd}\u{fffd}"),
+        (b"A\xff\xf0\x9f\x98\x80rest", 5, "A\u{fffd}"),
+        (b"A\xffBC", 99, "A\u{fffd}BC"),
+        (b"A\xe2\x82", 3, "A\u{fffd}"),
+        (b"rest", 0, ""),
+    ];
+    for &(bytes, cap, expected) in cases {
+        std::fs::write(&path, bytes)?;
+        let prefix = super::read_prefix(&path, cap)?;
+        if prefix.text != expected {
+            return Err(std::io::Error::other(format!(
+                "{bytes:?}, cap {cap}: expected {expected:?}, got {:?}",
+                prefix.text
+            )));
+        }
+    }
+    std::fs::remove_dir_all(dir)
+}
+
 /// A scratch directory of its own for `name`, resolved, holding `real/`.
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("rig-tools-{name}-{}", std::process::id()));
