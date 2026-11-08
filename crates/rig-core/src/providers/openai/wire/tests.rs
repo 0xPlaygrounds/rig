@@ -562,3 +562,58 @@ fn a_debug_printed_request_hides_the_key_it_sends() {
         );
     }
 }
+
+/// Copilot, native Cohere embeddings, native Ollama and VoyageAI build their
+/// own key headers, so a debug-printed request from each must hide the key.
+/// Copilot is checked on both envelope routes: completion and modality.
+#[test]
+fn a_debug_printed_request_from_a_native_key_header_hides_the_key() {
+    use crate::completion::CompletionRequest;
+    use crate::providers::{cohere, copilot, ollama, voyageai};
+    use crate::wire::{Body, Mode, Wire};
+
+    const KEY: &str = "sk-NOTAREALKEY-0123456789";
+    let bearer = format!("Bearer {KEY}");
+    let probe = || CompletionRequest::new("probe").max_tokens(16);
+    let texts = || vec!["probe".to_owned()];
+    let built: [Result<http::Request<Body>, crate::error::EncodeError>; 5] = [
+        OpenAIConfig::with_key(&copilot::DIALECT, KEY)
+            .completion(copilot::GPT_4O)
+            .encode(probe(), Mode::Unary)
+            .map(|e| e.request),
+        OpenAIConfig::with_key(&copilot::DIALECT, KEY)
+            .embedding(copilot::TEXT_EMBEDDING_3_SMALL, None)
+            .encode(texts(), Mode::Unary)
+            .map(|e| e.request),
+        cohere::CohereConfig::new(KEY)
+            .embedding(cohere::EMBED_V4, None)
+            .encode(texts(), Mode::Unary)
+            .map(|e| e.request),
+        ollama::OllamaConfig::new()
+            .with_api_key(KEY)
+            .native_completion("qwen3:4b")
+            .encode(probe(), Mode::Unary)
+            .map(|e| e.request),
+        voyageai::VoyageAiConfig::new(KEY)
+            .embedding("voyage-3.5", None)
+            .encode(texts(), Mode::Unary)
+            .map(|e| e.request),
+    ];
+    for request in built {
+        let request = request.unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            request
+                .headers()
+                .get(http::header::AUTHORIZATION)
+                .map(|v| v.as_bytes()),
+            Some(bearer.as_bytes()),
+            "{} lost the key",
+            request.uri()
+        );
+        assert!(
+            !format!("{request:?}").contains(KEY),
+            "the debug-printed request to {} leaked the key",
+            request.uri()
+        );
+    }
+}
