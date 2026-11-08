@@ -334,7 +334,7 @@ fn launch(
             run.kill_left_groups().ok();
         }
         promoted?;
-        let rejected = matches!(binary, Binary::Trial(_)) && !started;
+        let rejected = matches!(binary, Binary::Trial(_)) && !started && stop::heard().is_none();
         if rejected {
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
@@ -813,8 +813,17 @@ fn rebuild(
     } else {
         Staging::OnlyNew
     };
-    match build::compile(home, &home.staged_for(session), staging, output) {
-        Ok(()) => Ok(None),
+    let staged = home.staged_for(session);
+    match build::compile(home, &staged, staging, output) {
+        Ok(()) => {
+            if build::passed_over(home, &staged) {
+                eprintln!(
+                    "The new build stopped during startup before, so the previous build is \
+                     running; `rig build` tries it again."
+                );
+            }
+            Ok(None)
+        }
         Err(failure) if failure.at == FailedAt::Settings => Err(failure.reason.into()),
         Err(failure) if first_run || print => Err(failure.told(output).into()),
         Err(failure) => {

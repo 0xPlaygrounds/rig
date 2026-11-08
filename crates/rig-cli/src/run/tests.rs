@@ -697,3 +697,30 @@ fn a_secret_is_read_byte_by_byte_and_ctrl_c_gives_none() {
     assert_eq!(read("pé\x7f".as_bytes()), Some(b"p".to_vec()));
     assert_eq!(read(b"ab\x03\r"), None);
 }
+
+/// A trial build stopped by a Ctrl-C the launcher heard before the trial's
+/// first frame is not rejected: the build never got its chance. The trial
+/// sends SIGINT to this test's process by its pid, which nextest gives the
+/// test alone, and never says it is ready.
+#[cfg(unix)]
+#[test]
+fn a_trial_stopped_by_a_heard_ctrl_c_is_not_rejected() {
+    let interrupt = format!("kill -INT {}; sleep 1; exit 130", std::process::id());
+    let home = builds("heard-ctrl-c", &interrupt, "exit 0");
+    let print = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let ended = locks::hold_run(&home).and_then(|run| {
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        launch(&home, run.dir(), &print, true, claimed, None, None)
+    });
+    let rejected = home.rejected().exists();
+    fs::remove_dir_all(home.root()).ok();
+    assert!(ended.is_ok(), "{:?}", ended.err());
+    assert_eq!(stop::heard(), Some(libc::SIGINT), "the launcher heard it");
+    assert!(
+        !rejected,
+        "the interrupted trial is recorded in bin/rejected"
+    );
+}
