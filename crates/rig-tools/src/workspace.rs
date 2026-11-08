@@ -392,7 +392,8 @@ impl dyn Workspace {
     /// opens it; with `confine`, refused before any other I/O when it lies
     /// outside `base` (`None`: the working directory). The check is of the
     /// path when it is made: a link another process puts in `base` before
-    /// the tool's I/O can still lead that I/O out.
+    /// the tool's I/O can still lead that I/O out. On another machine the
+    /// check compares path text and does not see a link already there.
     ///
     /// ```
     /// use rig_tools::workspace::{Local, Workspace};

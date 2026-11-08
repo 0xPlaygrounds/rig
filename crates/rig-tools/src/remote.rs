@@ -86,9 +86,11 @@ const GONE: &str = "gone() { d=$1; while case $d in ?*/) :;; *) false;; esac; do
 /// docs). Its paths are that machine's: absolute, or under `~`, its user's
 /// home; a relative path is relative to that home, where the transport
 /// starts. Paths are folded without asking the machine
-/// ([`canonical`](Workspace::canonical)), so links there are not followed,
-/// and a write to one is refused: following it would write where no check
-/// of the path looked.
+/// ([`canonical`](Workspace::canonical)), so confinement here compares
+/// path text and cannot see links there: a link already on that machine
+/// can lead a read, or a write through a linked directory, out of the
+/// confined directory. A write to a file that is itself a link is
+/// refused, as following it would write where no check of the path looked.
 #[derive(Clone)]
 pub struct Remote {
     name: String,
