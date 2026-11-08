@@ -571,3 +571,37 @@ fn a_new_session_directory_is_private_to_the_user() {
         "sessions/ and the session directory modes: {modes:?}"
     );
 }
+
+/// The four directories that hold what the user said are tightened in a
+/// home of ordinary modes, and the home's own mode is left as it was.
+#[cfg(unix)]
+#[test]
+fn keep_private_tightens_the_four_directories_and_not_the_home() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("rig-keep-private-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let dirs = [home.sessions(), home.projects(), home.data(), home.runs()];
+    let wide = std::fs::Permissions::from_mode(0o755);
+    for dir in &dirs {
+        std::fs::create_dir_all(dir).ok();
+        std::fs::set_permissions(dir, wide.clone()).ok();
+    }
+    std::fs::set_permissions(&root, wide).ok();
+    let mode = |path: &std::path::Path| {
+        std::fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o777)
+            .ok()
+    };
+    home.keep_private();
+    let modes = dirs.each_ref().map(|dir| mode(dir));
+    let own = mode(&root);
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        modes
+            .iter()
+            .all(|mode| mode.is_some_and(|mode| mode & 0o077 == 0)),
+        "{modes:?}"
+    );
+    assert_eq!(own, Some(0o755));
+}
