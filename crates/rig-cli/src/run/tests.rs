@@ -724,3 +724,43 @@ fn a_trial_stopped_by_a_heard_ctrl_c_is_not_rejected() {
         "the interrupted trial is recorded in bin/rejected"
     );
 }
+
+/// Writes an agent's log holding a user message where the default store
+/// keeps it, `logs/<agent>.jsonl`, as a session whose saved marker could
+/// not be written has it.
+fn log_a_conversation(session: &SessionDir) -> Result<()> {
+    let logs = session.path().join("logs");
+    fs::create_dir_all(&logs)?;
+    let log = r#"{"seq":0,"n":3,"t":1700000000000,"type":"header","format":"rig-session/2","log":"0a589d65-24d0-42bc-ae72-da7e134a17a6","lineage":1}
+{"seq":1,"n":4,"t":1700000000001,"type":"push","entries":[{"message":{"role":"user","content":[{"type":"text","text":"hi"}]},"id":0}]}
+"#;
+    fs::write(logs.join("0a589d65-24d0-42bc-ae72-da7e134a17a6.jsonl"), log)?;
+    Ok(())
+}
+
+/// Neither the launcher's leave nor its startup sweep removes a session
+/// whose agent logs hold a conversation, though it has no saved marker.
+#[test]
+fn a_session_with_a_logged_conversation_outlives_the_leave_and_the_sweep() {
+    let root = std::env::temp_dir().join(format!("rig-logged-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let kept = locks::hold_run(&home).and_then(|run| {
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        let left = home.session(&claimed.id);
+        log_a_conversation(&left)?;
+        claimed.leave(&home, run.dir(), true);
+        let (id, _) = home.new_session()?;
+        let swept = home.session(&id);
+        drop(swept.hold()?.ok_or("held elsewhere")?);
+        log_a_conversation(&swept)?;
+        locks::sweep(&home)?;
+        Ok((left.path().exists(), swept.path().exists()))
+    });
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(
+        kept.ok(),
+        Some((true, true)),
+        "(kept by the leave, kept by the sweep)"
+    );
+}

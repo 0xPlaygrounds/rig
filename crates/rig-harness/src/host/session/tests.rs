@@ -1005,3 +1005,56 @@ fn a_session_directory_made_without_the_launcher_is_private_to_the_user() {
     let private = |mode: Option<u32>| mode.is_some_and(|mode| mode & 0o077 == 0);
     assert!(private(modes.0) && private(modes.1), "{modes:?}");
 }
+
+/// Starts a session, logs a setting, then takes away the right to write in
+/// its directory, so writing the saved marker fails while the agent logs,
+/// in `logs/`, still write, and logs a user message. `None` when the
+/// directory stays writable, as under root.
+#[cfg(unix)]
+fn a_marker_that_cannot_be_written(home: &Home, id: &str) -> Option<(App, SessionDir)> {
+    let (mut app, session) = new_session(home, id)?;
+    assert!(change_a_setting(&mut app), "the log file exists");
+    assert!(read_only(&session, true).is_ok());
+    if fs::write(session.path().join("probe"), b"").is_ok() {
+        assert!(read_only(&session, false).is_ok());
+        return None;
+    }
+    let agent = first_agent(app.world_mut());
+    let said = agent.map(|agent| commit_message(app.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    app.update();
+    let logged = app.world().get_resource::<SessionLog>();
+    assert!(
+        logged.is_some_and(|log| log.failure().is_none()),
+        "the log wrote"
+    );
+    assert!(!session.is_saved(), "the marker write failed");
+    Some((app, session))
+}
+
+#[cfg(unix)]
+fn read_only(session: &SessionDir, read_only: bool) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let bits = if read_only { 0o500 } else { 0o700 };
+    fs::set_permissions(session.path(), fs::Permissions::from_mode(bits))
+}
+
+/// A session whose saved marker could not be written once, while its log
+/// wrote the conversation, is marked once the write can succeed, and its
+/// exit keeps it.
+#[cfg(unix)]
+#[test]
+fn a_failed_saved_marker_write_does_not_lose_the_conversation() {
+    let home = scratch_home("rig-session-marker-fails");
+    let Some((mut app, session)) = a_marker_that_cannot_be_written(&home, "1700000000-77") else {
+        return;
+    };
+    assert!(read_only(&session, false).is_ok());
+    app.update();
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    let kept = (session.path().exists(), session.is_saved());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(kept, (true, true), "(kept on disk, marked saved)");
+}
