@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
 
 use super::resolve;
+use crate::process::Scope;
 use crate::{Read, ReadArgs, Write, WriteArgs};
 
 /// A scratch directory of its own for `name`, resolved, holding `real/`.
@@ -200,5 +201,27 @@ fn a_dangling_link_resolves_to_what_a_write_creates() {
     assert_eq!(resolved, dir.join("real/made.txt"));
     assert!(super::write_atomic(&dir.join("link"), b"x").is_ok());
     assert!(resolved.exists());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A write whose scope was stopped replaces nothing: it is refused at the
+/// rename, the old text stays and its staged file is gone.
+#[test]
+fn a_stopped_write_leaves_the_file_as_it_was() {
+    let dir = scratch("stopped-write");
+    let path = dir.join("real/a.txt");
+    std::fs::write(&path, "old").ok();
+    let scope = Scope::default();
+    scope.stop();
+
+    let written = scope.enter(|| super::write_atomic(&path, b"new"));
+
+    assert_eq!(
+        written.map_err(|error| error.kind()),
+        Err(std::io::ErrorKind::Interrupted)
+    );
+    assert_eq!(std::fs::read_to_string(&path).ok().as_deref(), Some("old"));
+    let files = std::fs::read_dir(dir.join("real")).map(Iterator::count);
+    assert_eq!(files.ok(), Some(1));
     std::fs::remove_dir_all(dir).ok();
 }
