@@ -219,6 +219,48 @@ fn a_part_file_is_never_listed_or_named() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn part_named_directories_keep_their_files_visible_to_rewrites() {
+    use rig_core::conversation::Author;
+
+    let dir = scratch("part-directories");
+    let store = DirStore::open(&dir).expect("opened");
+    let paths = [
+        "plugins/cache/state.txt",
+        "plugins/cache.rig-part/state.txt",
+    ];
+    for name in paths {
+        store.write_file(name, b"original").expect("written");
+        store.append_file(name, b" value").expect("appended");
+        assert_eq!(store.read_file(name).expect("read"), b"original value");
+    }
+    fs::write(
+        store
+            .files
+            .path()
+            .join("plugins/cache.rig-part/state.txt.rig-part"),
+        b"half",
+    )
+    .expect("a part");
+    let files = store.files.files().expect("listed");
+    for name in paths {
+        assert!(files.iter().any(|file| file == name));
+    }
+    assert!(!files.iter().any(|file| file.ends_with(".rig-part")));
+
+    let replace = crate::Strings(|text: &mut String| {
+        let changed = text.contains("original");
+        *text = text.replace("original", "updated");
+        changed
+    });
+    let rewritten = crate::rewrite(&store, Author::plugin("test"), &replace).expect("rewritten");
+    for name in paths {
+        assert!(rewritten.files.iter().any(|file| file == name));
+        assert_eq!(store.read_file(name).expect("read"), b"updated value");
+    }
+    fs::remove_dir_all(dir).expect("removed");
+}
+
 /// Two stores open on one directory, as two processes are: each sees what
 /// the other wrote, a replace included.
 #[test]
