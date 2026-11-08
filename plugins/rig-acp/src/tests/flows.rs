@@ -871,3 +871,21 @@ fn rig_acp_tools_limit_each_session_and_an_unknown_name_refuses_it() {
     });
     assert!(router.is_some());
 }
+
+#[test]
+fn a_reply_a_plugin_gives_in_place_reaches_the_client_once() {
+    let place = Place::new("in-place");
+    let router = drive(&place, acp::ClientCapabilities::new(), async |driven| {
+        let new = driven.new_session(Vec::new()).await;
+        assert!(new.is_some(), "no session");
+        let Some(new) = new else { return };
+        let id = new.session_id;
+        let answer = driven.prompt(&id, IN_PLACE).await;
+        let said = driven.said(&id);
+        assert!(
+            said.matches("hello in place").count() == 1,
+            "stop reason {answer:?}; the agent said {said:?}"
+        );
+    });
+    assert!(router.is_some(), "the router ran");
+}
