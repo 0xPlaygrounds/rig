@@ -16,6 +16,7 @@
 //! ```
 
 use crate::completion::CompletionRequest;
+use crate::providers::internal::credential_header;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, Quirks, ResponsesQuirks, Route,
@@ -96,7 +97,11 @@ fn completion_envelope(
         if let Some(headers) = builder.headers_mut() {
             headers.remove(name);
         }
-        builder = builder.header(name, value);
+        builder = if name == http::header::AUTHORIZATION {
+            credential_header(builder, name, &value)
+        } else {
+            builder.header(name, value)
+        };
     }
     builder
 }
@@ -120,10 +125,10 @@ pub(super) fn stamp(
 ) -> Result<(), http::Error> {
     let map = request.headers_mut();
     for (name, value) in super::default_headers(api_key, initiator, has_vision) {
-        map.insert(
-            http::HeaderName::from_bytes(name.as_bytes())?,
-            http::HeaderValue::from_str(&value)?,
-        );
+        let name = http::HeaderName::from_bytes(name.as_bytes())?;
+        let mut value = http::HeaderValue::from_str(&value)?;
+        value.set_sensitive(name == http::header::AUTHORIZATION);
+        map.insert(name, value);
     }
     Ok(())
 }

@@ -10,6 +10,7 @@
 
 use crate::error::{EncodeError, ProviderError};
 use crate::operation::{Embedding, ImageEmbedding};
+use crate::providers::internal::credential_header;
 use crate::providers::internal::wire::classify_reply_or_message_envelope;
 use crate::wire::{Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Wire};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -65,12 +66,12 @@ impl CohereConfig {
 
     /// One request, authenticated and typed as JSON.
     pub(super) fn post(&self, path: &str) -> http::request::Builder {
-        http::Request::post(format!("{}{path}", self.base_url))
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            )
+        credential_header(
+            http::Request::post(format!("{}{path}", self.base_url))
+                .header(http::header::CONTENT_TYPE, "application/json"),
+            "authorization",
+            &format!("Bearer {}", self.api_key.expose()),
+        )
     }
 }
 

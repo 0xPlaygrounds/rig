@@ -10,6 +10,7 @@ use crate::client::env::{self, EnvError};
 use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::operation::{Embedding, Rerank as RerankOp, RerankRequest};
+use crate::providers::internal::credential_header;
 use crate::rerank::{RerankResponse, RerankResult};
 use crate::wire::{
     Body, Capabilities, Descriptor, DocumentDecoder, Encoded, Framing, Mode, Secret, Wire,
@@ -95,12 +96,12 @@ impl VoyageAiConfig {
 
     /// One request, authenticated and typed as JSON.
     fn post(&self, path: &str) -> http::request::Builder {
-        http::Request::post(format!("{}{path}", self.base_url))
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            )
+        credential_header(
+            http::Request::post(format!("{}{path}", self.base_url))
+                .header(http::header::CONTENT_TYPE, "application/json"),
+            "authorization",
+            &format!("Bearer {}", self.api_key.expose()),
+        )
     }
 }
 
