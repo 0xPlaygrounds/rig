@@ -2439,3 +2439,75 @@ fn a_notice_is_redacted_of_a_secret_learned_after_it() {
     let all = lines.text().concat();
     assert!(!all.contains("hunter2"), "{all}");
 }
+
+/// The `reply` to the request `id`, run until it comes.
+fn reply_to(app: &mut App, wakes: &Receiver<()>, lines: &Lines, id: &str) -> Value {
+    let replied = |lines: &Lines| lines.of("reply").into_iter().find(|r| at(r, "id") == id);
+    test_support::run_until(app, wakes, |_| replied(lines).is_some());
+    replied(lines).unwrap_or_default()
+}
+
+/// An approval, which takes one choice, answered over the pipe with both
+/// `deny` and `allow` is refused, and the call it gates does not run.
+#[test]
+fn several_choices_for_a_question_of_one_are_refused() {
+    let model =
+        MockCompletionModel::from_stream_turns([calls("c1", "wait", json!({})), reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, true);
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "send", "text": "Wait." }),
+    );
+    test_support::run_until(&mut app, &wakes, |_| !lines.of("ask").is_empty());
+    let ask = lines.of("ask").first().cloned().unwrap_or_default();
+    let answer = json!({ "v": VERSION, "type": "answer", "id": "a", "ask": at(&ask, "ask"),
+        "choices": ["deny", "allow"] });
+    send(&input, answer);
+    let refused = reply_to(&mut app, &wakes, &lines, "a");
+    for _ in 0..20 {
+        app.update();
+    }
+    let error = at(&refused, "error").as_str().unwrap_or_default();
+    assert!(
+        error.contains("one choice") && !waits(app.world()),
+        "{refused}"
+    );
+}
+
+/// No choice answers a question of several over the pipe, as in the
+/// picker.
+#[test]
+fn no_choice_answers_a_question_of_several() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    let several = Ask::new("Which?").choice("a", "A").choice("b", "B");
+    let several = app.world_mut().spawn(several.multiple()).id();
+    send(
+        &input,
+        json!({ "v": VERSION, "type": "answer", "id": "none", "ask": several.to_bits(),
+            "choices": [] }),
+    );
+    let replied = reply_to(&mut app, &wakes, &lines, "none");
+    assert_eq!(at(&replied, "ok"), &json!(true), "{replied}");
+}
+
+/// A second answer to a question already answered is refused, not
+/// acknowledged as if it counted.
+#[test]
+fn an_answer_to_a_question_already_answered_is_refused() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes, lines, input) = json_run(&model, false);
+    let ask = app.world_mut().spawn(Ask::yes_no("Run?")).id();
+    for (id, choice) in [("first", "yes"), ("second", "no")] {
+        send(
+            &input,
+            json!({ "v": VERSION, "type": "answer", "id": id, "ask": ask.to_bits(),
+                "choices": [choice] }),
+        );
+    }
+    let replies = ["first", "second"].map(|id| reply_to(&mut app, &wakes, &lines, id));
+    let oks = replies.each_ref().map(|reply| at(reply, "ok").clone());
+    assert_eq!(oks, [json!(true), json!(false)], "{replies:?}");
+    let outcome = app.world().get::<Outcome>(ask).and_then(Answer::of);
+    assert_eq!(outcome, Some(Answer::choice("yes")));
+}
