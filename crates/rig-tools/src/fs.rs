@@ -13,6 +13,7 @@ use rig_core::tool::{FileChange, FileState, Hunk, HunkLine, Lines, ToolExecution
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
+use crate::process::Scope;
 use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace};
 
 /// Reads `path` as text after checking, without opening it, that it is a
@@ -79,6 +80,9 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// gives the file a new inode (a hard link to the old one keeps the old
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
+///
+/// Inside a stopped [`Scope`] it replaces nothing and fails with
+/// [`ErrorKind::Interrupted`]; outside any scope there is no such check.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     let target = real_path(path);
     let permissions = match fs::symlink_metadata(&target) {
@@ -114,7 +118,11 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
         }
         file.write_all(contents)?;
         file.sync_all()?;
-        fs::rename(&temporary, &target)
+        let rename = || fs::rename(&temporary, &target);
+        match Scope::current() {
+            Some(scope) => scope.unless_stopped(rename),
+            None => rename(),
+        }
     });
     written.inspect_err(|_| {
         fs::remove_file(&temporary).ok();

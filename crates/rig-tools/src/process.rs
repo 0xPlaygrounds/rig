@@ -998,6 +998,20 @@ impl Scope {
         stop_groups(groups.iter().filter_map(Group::leader).collect());
     }
 
+    /// Runs `commit` unless this scope is stopped, which is `Interrupted`.
+    /// A stop waits for a commit under way, so `commit` must be one short
+    /// step that never takes this scope's lock.
+    pub(crate) fn unless_stopped(&self, commit: impl FnOnce() -> io::Result<()>) -> io::Result<()> {
+        let calls = self.calls();
+        if calls.stopped {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "the call was stopped before the file was replaced",
+            ));
+        }
+        commit()
+    }
+
     fn calls(&self) -> MutexGuard<'_, Calls> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
