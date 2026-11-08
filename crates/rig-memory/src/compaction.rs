@@ -1541,8 +1541,7 @@ impl ClearPlan {
             let noted = match (notes, &mut message) {
                 (Some(notes), Message::User { content }) => {
                     content.push(UserContent::text(format!(
-                        "<cleared-output-notes>\nNotes on the tool outputs above, written \
-                         before they were cleared:\n{}\n</cleared-output-notes>",
+                        "{NOTES_OPEN}{}{NOTES_CLOSE}",
                         notes.trim()
                     )));
                     true
@@ -1553,6 +1552,19 @@ impl ClearPlan {
         });
         self.cleared
     }
+}
+
+/// What notes on cleared outputs start with ([`ClearPlan::apply`]).
+const NOTES_OPEN: &str = "<cleared-output-notes>\nNotes on the tool outputs above, written \
+     before they were cleared:\n";
+/// What notes on cleared outputs end with.
+const NOTES_CLOSE: &str = "\n</cleared-output-notes>";
+
+/// Whether `text` is the whole of the notes [`ClearPlan::apply`] writes
+/// beside cleared outputs, which belong with those outputs and are no
+/// one's message.
+pub fn is_output_notes(text: &str) -> bool {
+    text.starts_with(NOTES_OPEN) && text.ends_with(NOTES_CLOSE)
 }
 
 /// Replaces the tool results at `items` of `message` with the placeholder.
