@@ -600,14 +600,15 @@ struct Claimed {
 }
 
 impl Claimed {
-    /// Removes the session's directory when no agent logged a message in
-    /// it, such as a `/new` session left at once: a session with nothing
-    /// to resume leaves nothing behind. Call it once the agent exited for
-    /// good or switched away. Best effort: a directory left behind is not
-    /// marked saved, so `/resume` does not list it.
+    /// Removes the session's directory when it is not saved and its agent
+    /// logs hold nothing ([`SessionDir::holds_logs`]), such as a `/new`
+    /// session left at once: a session with nothing to resume leaves
+    /// nothing behind. Call it once the agent exited for good or switched
+    /// away. Best effort: a directory left behind is not marked saved, so
+    /// `/resume` does not list it.
     fn discard_if_unsaved(&self, home: &Home) {
         let session = home.session(&self.id);
-        if !session.is_saved() {
+        if !session.is_saved() && !session.holds_logs() {
             fs::remove_dir_all(session.path()).ok();
         }
     }

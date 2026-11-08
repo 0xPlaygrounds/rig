@@ -751,6 +751,28 @@ impl SessionDir {
         self.saved().exists() && !self.is_deleting()
     }
 
+    /// Whether the agent logs in the directory hold anything: a non-empty
+    /// `logs/<name>.jsonl`, where the default store keeps them. The
+    /// harness and the launcher never discard such a session as unsaved,
+    /// so a [`Self::mark_saved`] that failed loses no conversation. A
+    /// store kept elsewhere leaves nothing there. Only a missing `logs`
+    /// counts as holding nothing: a read that fails counts as a log, so a
+    /// deleter keeps the session.
+    pub fn holds_logs(&self) -> bool {
+        let entries = match std::fs::read_dir(self.0.join("logs")) {
+            Err(failure) => return failure.kind() != std::io::ErrorKind::NotFound,
+            Ok(entries) => entries,
+        };
+        entries.into_iter().any(|entry| {
+            let Ok(entry) = entry else { return true };
+            let log = entry.path().extension().is_some_and(|ext| ext == "jsonl");
+            log && match entry.metadata() {
+                Ok(meta) => meta.is_file() && meta.len() > 0,
+                Err(_) => true,
+            }
+        })
+    }
+
     /// Whether the session is being deleted: it has the marker
     /// [`Self::mark_deleting`] writes. Listings leave it out, and the
     /// agent's next start finishes deleting it.

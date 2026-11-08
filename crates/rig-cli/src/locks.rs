@@ -81,9 +81,15 @@ pub fn sweep(home: &Home) -> Result<()> {
             let session = SessionDir::at(entry?.path());
             // Only a launcher's own session: a fork or an import being
             // written has no launcher lock, and a session being deleted
-            // is finished by an agent, which can reach its store.
+            // is finished by an agent, which can reach its store. One whose
+            // agent logs hold anything is kept, though it is not marked.
             let lock = session.launcher_lock();
-            if lock.exists() && is_free(&lock) && !session.is_saved() && !session.is_deleting() {
+            if lock.exists()
+                && is_free(&lock)
+                && !session.is_saved()
+                && !session.holds_logs()
+                && !session.is_deleting()
+            {
                 fs::remove_dir_all(session.path())?;
             }
         }
