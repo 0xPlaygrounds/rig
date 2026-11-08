@@ -42,6 +42,7 @@ impl Operation for Evaluation {
 ///
 /// Credentials are redacted when this configuration is printed or serialized.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct JevConfig {
     token: Secret,
     model: String,
