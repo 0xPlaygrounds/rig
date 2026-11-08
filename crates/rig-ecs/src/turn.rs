@@ -460,18 +460,18 @@ fn take_unanswered(conversation: &mut Conversation) -> Option<Vec<String>> {
             }
             continue;
         };
+        let is_owed = |item: &UserContent| matches!(item, UserContent::ToolResult(result) if owed.contains(&&result.call));
+        // A text is notes only beside a result that stays; any other is asked.
+        let holds_owed = content.iter().any(is_owed);
         let (results, asked): (Vec<&UserContent>, Vec<&UserContent>) =
             content.iter().partition(|item| match item {
                 UserContent::ToolResult(_) => true,
-                UserContent::Text(text) => is_output_notes(&text.text),
+                UserContent::Text(text) => holds_owed && is_output_notes(&text.text),
                 _ => false,
             });
-        let is_owed = |item: &UserContent| matches!(item, UserContent::ToolResult(result) if owed.contains(&&result.call));
-        // Notes go where the results they sit beside go.
-        let holds_owed = content.iter().any(is_owed);
         let results: Vec<UserContent> = results
             .into_iter()
-            .filter(|item| is_owed(item) || holds_owed && matches!(item, UserContent::Text(_)))
+            .filter(|item| is_owed(item) || matches!(item, UserContent::Text(_)))
             .cloned()
             .collect();
         changed |= results.len() < content.len();

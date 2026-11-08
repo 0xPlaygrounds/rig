@@ -2253,10 +2253,13 @@ fn a_failed_turn_keeps_the_results_of_the_reply_before_it() {
 }
 
 /// A user's text beside a result the kept reply is owed, where a made-up
-/// result puts it, still comes back; the result stays.
+/// result puts it, still comes back; the result stays. So does a message
+/// shaped like notes on cleared outputs with no owed result beside it.
 #[test]
 fn a_failed_turn_gives_back_a_users_text_beside_a_result() {
     use rig_core::message::{AssistantContent, AssistantMessage, ToolCall};
+    const NOTES_SHAPED: &str = "<cleared-output-notes>\nNotes on the tool outputs above, written \
+         before they were cleared:\nx\n</cleared-output-notes>";
     let mut app = app();
     app.init_resource::<Ended>().add_observer(log_ended);
     collect_recalled(&mut app);
@@ -2282,6 +2285,7 @@ fn a_failed_turn_gives_back_a_users_text_beside_a_result() {
             conversation.push(message);
         }
         conversation.push(Message::User { content: beside });
+        conversation.push(Message::user(NOTES_SHAPED));
     }
     let model = MockCompletionModel::from_stream_turns([no_credit()]);
     agent_on(&mut app, &model);
@@ -2289,7 +2293,10 @@ fn a_failed_turn_gives_back_a_users_text_beside_a_result() {
     assert!(run_until(&mut app, ended), "{:?}", notices(&app));
     app.update();
     let recalled = &app.world().resource::<RecalledTexts>().0;
-    assert_eq!(recalled, &["and also this\n\ngo"]);
+    assert_eq!(
+        recalled,
+        &[format!("and also this\n\n{NOTES_SHAPED}\n\ngo")]
+    );
     assert_eq!(conversation(&app, agent), held);
 }
 
