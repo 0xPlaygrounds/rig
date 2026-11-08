@@ -49,7 +49,10 @@ use std::{cmp::Ordering, fmt};
 
 use serde_json::{Map, Number, Value};
 
-use crate::{json_utils::compare_numbers, tool::decode::whole};
+use crate::{
+    json_utils::compare_numbers,
+    tool::decode::{Whole, whole},
+};
 
 /// Where a value does not fit a schema, and how.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -328,7 +331,11 @@ fn count(
     length: usize,
     at: &str,
 ) -> Vec<Problem> {
-    let limit = |key| schema.get(key).and_then(Value::as_u64);
+    // A whole float such as `1.0` is the same bound as `1`.
+    let limit = |key| match schema.get(key).and_then(Value::as_number).and_then(whole) {
+        Some(Whole::Unsigned(limit)) => Some(limit),
+        _ => None,
+    };
     let plural = |n: u64| {
         if n == 1 {
             format!("{n} {unit}")

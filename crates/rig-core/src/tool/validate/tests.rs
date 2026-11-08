@@ -274,3 +274,30 @@ fn combinators_and_local_refs_are_checked_and_a_remote_ref_accepts() {
         assert_eq!(validate(&schema, &json!(42)), Ok(()), "{schema}");
     }
 }
+
+#[test]
+fn a_length_or_item_bound_written_as_a_whole_float_still_holds() {
+    for bound in [json!(1), json!(1.0)] {
+        let cases = [
+            (
+                "minLength",
+                json!(""),
+                "expected at least 1 character, got 0",
+            ),
+            (
+                "maxLength",
+                json!("ab"),
+                "expected at most 1 character, got 2",
+            ),
+            ("minItems", json!([]), "expected at least 1 item, got 0"),
+            ("maxItems", json!([1, 2]), "expected at most 1 item, got 2"),
+        ];
+        for (keyword, value, problem) in cases {
+            let schema = json!({ keyword: bound });
+            assert_eq!(problems(&schema, &value), [problem], "{keyword}: {bound}");
+        }
+    }
+    // A bound that is not a whole number of characters or items stays unread.
+    assert!(problems(&json!({"minLength": 1.5}), &json!("")).is_empty());
+    assert!(problems(&json!({"minItems": -1.0}), &json!([])).is_empty());
+}
