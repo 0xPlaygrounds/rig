@@ -1,5 +1,6 @@
 use rig_core::catalog::ModelStatus;
 use rig_core::providers::registry::ProviderId;
+use rig_ecs::model::{ChoiceKind, SetModel};
 use rig_ecs::prelude::*;
 use rig_harness::commands::RunCommand;
 use rig_harness::pick::{Chosen, Pick, PickPlugin, Picker};
@@ -8,6 +9,7 @@ use rig_harness_test_support::{Collected, MemoryStore, app_on, collect, scratch_
 
 use super::super::LoginPlugin;
 use super::{Keys, NOTHING_STORED, key_vendors};
+use crate::models::FirstPick;
 
 /// A provider a key alone reaches whose variables are all unset here, so
 /// only a saved key connects its models.
@@ -173,4 +175,89 @@ fn an_unlistable_key_directory_refuses_the_connect() {
         }),
         "{status:?}"
     );
+}
+
+/// Writes something that is not a saved key as `vendor`'s, returning the
+/// file's path as errors show it.
+fn write_broken_key(home: &rig_harness::harness_protocol::Home, vendor: &str) -> String {
+    let path = Keys::at(home).path(vendor);
+    let written = path
+        .parent()
+        .map(|dir| std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, "\"x\"")));
+    assert!(matches!(written, Some(Ok(()))));
+    path.display().to_string()
+}
+
+/// With nothing else to reach, the first pick's reason names the saved key
+/// file that cannot be read.
+#[test]
+fn a_first_pick_with_only_an_unreadable_saved_key_names_the_file() {
+    let home = scratch_home("rig-login-keys-first-pick");
+    let Some(vendor) = unset_vendor(&Models::default()) else {
+        return;
+    };
+    let shown = write_broken_key(&home, vendor);
+    let app = login_app(&home);
+    let pick = FirstPick::of(app.world().resource::<Models>());
+    std::fs::remove_dir_all(home.root()).ok();
+    // A key in this machine's environment reaches a model after all.
+    if matches!(pick, FirstPick::Model(_)) {
+        return;
+    }
+    assert!(
+        matches!(&pick, FirstPick::Nothing(Some(why)) if why.contains(&shown)),
+        "{pick:?} does not name {shown}"
+    );
+}
+
+/// A first pick that lands on another provider because a saved key cannot
+/// be read says so once, naming the file and the model picked.
+#[test]
+fn a_first_pick_past_an_unreadable_saved_key_says_so_once() {
+    let home = scratch_home("rig-login-keys-passed-over");
+    let empty = login_app(&home);
+    let models = empty.world().resource::<Models>();
+    let vendors = key_vendors(&models.0);
+    let tooled = models.0.catalog().iter().filter(|spec| spec.tools);
+    let mut ordered = tooled
+        .map(|spec| spec.provider.vendor())
+        .filter(|vendor| vendors.contains(vendor));
+    let Some(broken) = ordered.next() else {
+        return;
+    };
+    let Some(usable) = ordered.find(|vendor| *vendor != broken) else {
+        return;
+    };
+    let shown = write_broken_key(&home, broken);
+    assert!(Keys::at(&home).save(usable, "sk-rig-test").is_ok());
+    let (mut app, _) = app_on(&MemoryStore::default());
+    app.insert_resource(RigHome(home.clone()))
+        .add_plugins((AgentPlugin, PickPlugin, LoginPlugin));
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.update();
+    let pick = FirstPick::of(app.world().resource::<Models>());
+    let model = match pick {
+        FirstPick::Model(model) if model.starts_with(&format!("{usable}/")) => model,
+        // A key in this machine's environment reaches an earlier model.
+        _ => return,
+    };
+    for _ in 0..2 {
+        let entity = spawn_root(app.world_mut()).id();
+        let world = app.world_mut();
+        world.trigger(SetModel {
+            entity,
+            model: model.clone(),
+            kind: ChoiceKind::ForThisRun,
+        });
+        world.flush();
+        app.update();
+    }
+    std::fs::remove_dir_all(home.root()).ok();
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let said = notices
+        .iter()
+        .filter(|notice| notice.text.contains(&shown) && notice.text.contains(&model))
+        .count();
+    assert_eq!(said, 1, "the file {shown} and {model} in {notices:?}");
 }
