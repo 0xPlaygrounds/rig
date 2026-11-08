@@ -100,6 +100,7 @@ fn a_pick_answers_a_question_with_its_choices_and_a_note() {
     let choice = world.spawn((Ask::yes_no("Run?"), ForAgent(agent))).id();
     let both = world.spawn((Ask::yes_no("Both?"), ForAgent(agent))).id();
     let closed = world.spawn((Ask::yes_no("Again?"), ForAgent(agent))).id();
+    let untyped = world.spawn((Ask::yes_no("Typed?"), ForAgent(agent))).id();
     let several = Ask::yes_no("Which?").choice("maybe", "Maybe").multiple();
     let several = world.spawn((several, ForAgent(agent))).id();
     world.trigger(Pick::person(text, Some(Chosen::text("because"))));
@@ -109,18 +110,21 @@ fn a_pick_answers_a_question_with_its_choices_and_a_note() {
     // A question that takes one choice is not answered with two.
     world.trigger(Pick::person(both, Some(Chosen::items([0, 1]))));
     world.trigger(Pick::person(closed, None));
+    // Nor is one that takes no text answered with text alone.
+    world.trigger(Pick::person(untyped, Some(Chosen::text("maybe"))));
     world.trigger(Pick::person(several, Some(Chosen::items([2, 0]))));
     app.update();
     let world = app.world();
     let answer = |ask: Entity| world.get::<Outcome>(ask).map(Answer::of);
     assert_eq!(
-        [text, noted, choice, both, closed, several].map(answer),
+        [text, noted, choice, both, closed, untyped, several].map(answer),
         [
             Some(Some(Answer::text("because"))),
             Some(Some(Answer::choice("no").with_text("not on a Friday"))),
             Some(Some(Answer::choice("no"))),
             None,
             Some(None),
+            None,
             Some(Some(Answer::choices(["yes", "maybe"]))),
         ]
     );

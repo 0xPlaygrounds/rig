@@ -186,19 +186,16 @@ fn answer(ask: &Ask, action: acp::ElicitationAction) -> Option<Answer> {
         }
         _ => None,
     };
-    let offered = |choice: &String| ask.choices.iter().any(|offered| &offered.id == choice);
-    if !choices.iter().flatten().all(offered) {
-        return None;
-    }
     let text = match content.get(TEXT) {
         Some(acp::ElicitationContentValue::String(text)) if ask.free_text => Some(text.clone()),
         _ => None,
     };
     let answered = choices.is_some() || text.is_some();
-    answered.then(|| Answer {
+    let answer = Answer {
         choices: choices.unwrap_or_default(),
         text,
-    })
+    };
+    (answered && ask.check(&answer).is_ok()).then_some(answer)
 }
 
 /// Answers the question on `ask` as the client did, or closes it; a

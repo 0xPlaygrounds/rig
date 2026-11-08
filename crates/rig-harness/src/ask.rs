@@ -202,7 +202,53 @@ impl Ask {
         self.multiple = true;
         self
     }
+
+    /// Whether `answer` answers it, the rule every front applies: each
+    /// choice is one it offers, and it takes one choice, or text alone when
+    /// it takes text ([`Ask::free_text`]), unless it takes several
+    /// ([`Ask::multiple`]), when any number does.
+    ///
+    /// # Errors
+    ///
+    /// [`AnswerRefused`] says what is wrong with `answer`.
+    pub fn check(&self, answer: &Answer) -> Result<(), AnswerRefused> {
+        let offered = |id: &&String| self.choices.iter().any(|choice| &choice.id == *id);
+        if let Some(id) = answer.choices.iter().find(|id| !offered(id)) {
+            return Err(AnswerRefused::NotOffered(id.clone()));
+        }
+        match answer.choices.len() {
+            _ if self.multiple => Ok(()),
+            1 => Ok(()),
+            0 if answer.text.is_some() && self.free_text => Ok(()),
+            0 => Err(AnswerRefused::NoChoice),
+            _ => Err(AnswerRefused::SeveralChoices),
+        }
+    }
 }
+
+/// Why an [`Answer`] does not answer an [`Ask`] ([`Ask::check`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AnswerRefused {
+    /// It takes a choice, by this id, that the question does not offer.
+    NotOffered(String),
+    /// It takes no choice, and no text the question takes.
+    NoChoice,
+    /// It takes several choices for a question that takes one.
+    SeveralChoices,
+}
+
+impl std::fmt::Display for AnswerRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotOffered(id) => write!(f, "the question offers no choice `{id}`"),
+            Self::NoChoice => f.write_str("the answer needs a choice"),
+            Self::SeveralChoices => f.write_str("the question takes one choice"),
+        }
+    }
+}
+
+impl std::error::Error for AnswerRefused {}
 
 /// How an [`Ask`] was answered: the choices taken and the text typed,
 /// either or both, such as a choice with a note on it.
