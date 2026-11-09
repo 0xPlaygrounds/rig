@@ -34,10 +34,6 @@ pub struct AdapterObservation {
     pub operation: String,
     /// One-based HTTP send ordinal; absent only when correlation is exhausted.
     pub attempt: Option<u64>,
-    /// One-based host dispatch attempt, when explicitly supplied by the host.
-    /// Independent of the HTTP send ordinal: a dispatch may send more than once.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host_attempt: Option<std::num::NonZeroU64>,
     /// What the owning boundary observed.
     pub event: AdapterEvent,
     /// Scrubbed volatile diagnostics, excluded from semantic comparison.
@@ -302,7 +298,6 @@ struct AdapterContextInner {
     subject: Subject,
     operation: String,
     next: Arc<Mutex<Option<u64>>>,
-    host_attempt: Option<std::num::NonZeroU64>,
 }
 
 impl std::fmt::Debug for AdapterContext {
@@ -331,26 +326,6 @@ impl AdapterContext {
                 subject,
                 operation: operation.into(),
                 next: Arc::new(Mutex::new(Some(1))),
-                host_attempt: None,
-            }),
-        }
-    }
-
-    /// Bind an explicit host attempt to its current dispatch subject.
-    ///
-    /// The logical operation, witness and HTTP send counter remain shared.
-    /// Existing clones retain their own subject and host ordinal, so an older
-    /// in-flight attempt cannot be relabeled by a concurrent retry. The host
-    /// owns ordinal allocation and must start a new context for a changed
-    /// logical request rather than reusing this operation identity.
-    pub fn for_host_attempt(&self, subject: Subject, attempt: std::num::NonZeroU64) -> Self {
-        Self {
-            inner: Arc::new(AdapterContextInner {
-                sink: self.inner.sink.clone(),
-                subject,
-                operation: self.inner.operation.clone(),
-                next: self.inner.next.clone(),
-                host_attempt: Some(attempt),
             }),
         }
     }
@@ -390,7 +365,6 @@ impl AdapterContext {
                 observation: AdapterObservation {
                     operation: self.inner.operation.clone(),
                     attempt,
-                    host_attempt: self.inner.host_attempt,
                     event,
                     analysis,
                 },

@@ -305,11 +305,7 @@ provider data or effect records and is not inherited by child calls.
 
 Clone the context for attempts of the same operation;
 use a distinct non-sensitive identity for another logical call.
-`for_host_attempt(subject, ordinal)` rebinds a host retry to its current
-dispatch subject while sharing the logical operation and HTTP send counter.
-Facts carry the optional host ordinal separately: multiple HTTP sends within
-one dispatch share its host ordinal. Already-running attempts keep their
-original subjects and ordinals. A changed logical request needs a new context.
+A changed logical request needs a new context.
 
 The Gemini unary and SSE paths emit `Action::Adapter` facts for send, HTTP
 response status, provider metadata, error envelopes and closure through their
@@ -340,10 +336,6 @@ conversion erases HTTP subtypes: request construction, provider response,
 response decoding, typed transport termination, or unknown. An opaque client
 error stays unknown; its message is never used to infer a boundary. This field
 does not change the error returned to the caller or its retryability.
-`ObservationLog::with_clock` optionally stamps individual facts with host elapsed
-time. Rig does not calculate run, handler or transport intervals. These stamps
-describe the executing environment, including replay, and do not establish live
-provider performance.
 Partial-frame facts count raw bytes after the last blank SSE delimiter without
 retaining their contents. Complete-frame counts include only frames passed to
 the adapter driver, excluding provider-recognized analysis-only frames (Gemini
