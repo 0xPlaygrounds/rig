@@ -1063,16 +1063,6 @@ fn document_serializes_citations_and_metadata() {
     );
 }
 
-/// Raw-capture tests: `CompletionResponse::raw` driven end to end over a
-/// mock transport that hands back a Messages body *and* a `request-id`
-/// response header. `raw` is the verbatim reply document — not a
-/// re-serialization of the parsed type — so it answers what the normalized
-/// response does not, and the transport id the driver read off the headers
-/// reaches the normalized response rather than the document.
-/// `with_error_response_headers` with `200 OK` is the one unary double
-/// that carries response headers.
-mod raw_capture {}
-
 /// A `tool_use` whose `input` is not an object keeps its call, with the
 /// arguments normalized, and no provider item: the item could not be sent
 /// back as it is.

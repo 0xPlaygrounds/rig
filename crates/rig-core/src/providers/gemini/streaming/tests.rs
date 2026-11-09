@@ -279,9 +279,6 @@ fn test_deserialize_stream_response_with_empty_parts() {
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-mod terminal_emission {}
-
 /// Open a `streamGenerateContent` stream over the given SSE frames and
 /// collect every item the consumer sees, and whether the reply ended.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

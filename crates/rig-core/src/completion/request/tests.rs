@@ -45,9 +45,6 @@ mod empty_lists_parse_and_are_rejected_when_sent {
     }
 }
 
-/// The request-boundary check accepts what providers accept.
-mod message_content {}
-
 fn tool_call_choice() -> Vec<AssistantContent> {
     vec![AssistantContent::tool_call(
         "call_1",
@@ -327,8 +324,6 @@ fn completion_error_provider_response_helpers_with_http_non_success_body_and_sta
         }))
     );
 }
-
-mod additional_params_precedence {}
 
 /// An unknown finish reason fails the turn by default, and replay leaves the
 /// turn out. A request that accepts unknown reasons gets a response that
