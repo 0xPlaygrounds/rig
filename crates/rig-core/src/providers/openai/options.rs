@@ -1312,6 +1312,18 @@ fn reasoning_object(effort: &str) -> Mapping {
     send("reasoning", json!({"effort": effort}))
 }
 
+fn no_seed(seed: Option<u64>) -> Mapping {
+    Mapping::of(seed, |_| {
+        Mapping::unsupported("Responses has no seed parameter")
+    })
+}
+
+fn no_stop(stop: &[String]) -> Mapping {
+    Mapping::of_stop(stop, |_| {
+        Mapping::unsupported("Responses has no stop parameter")
+    })
+}
+
 fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let spec = openai_spec(facts, model);
     OptionMap {
@@ -1358,62 +1370,40 @@ fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -
         top_p: Mapping::of(fields.top_p, |top_p| {
             openai_top_p(facts, model, top_p, fields.reasoning)
         }),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
 
+/// xAI's Responses route: Chat's cells, with reasoning as an object and no
+/// `verbosity`, `seed` or `stop`.
 fn xai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "xAI's Responses API does not support it";
-    OptionMap {
-        reasoning: Mapping::of(fields.reasoning, |reasoning| {
-            xai_reasoning(facts, model, reasoning, reasoning_object)
-        }),
-        cache: Mapping::of(fields.cache, automatic_cache),
-        service_tier: Mapping::of(fields.service_tier, xai_tier),
-        verbosity: Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED)),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
-        top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
-        seed: Mapping::of(fields.seed, |_| Mapping::unsupported(UNSUPPORTED)),
-        stop: Mapping::of_stop(fields.stop, |_| Mapping::unsupported(UNSUPPORTED)),
-        cache_key: prompt_cache_key(fields.cache_key),
-    }
+    let mut options = xai(facts, model, fields);
+    options.reasoning = Mapping::of(fields.reasoning, |reasoning| {
+        xai_reasoning(facts, model, reasoning, reasoning_object)
+    });
+    options.verbosity = Mapping::of(fields.verbosity, |_| Mapping::unsupported(UNSUPPORTED));
+    options.seed = Mapping::of(fields.seed, |_| Mapping::unsupported(UNSUPPORTED));
+    options.stop = Mapping::of_stop(fields.stop, |_| Mapping::unsupported(UNSUPPORTED));
+    options
 }
 
+/// OpenRouter's Responses route: Chat's cells, with an explicit-cache
+/// opt-out for OpenAI models, `text.verbosity` and no `seed` or `stop`.
 fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
-    OptionMap {
-        reasoning: Mapping::of(fields.reasoning, |reasoning| {
-            openrouter_reasoning(facts, model, reasoning)
-        }),
-        cache: Mapping::of(fields.cache, |cache| match cache {
-            CacheRetention::None
-                if model.starts_with("openai/") && caches_by_options(facts, model) =>
-            {
-                send("prompt_cache_options", json!({"mode": "explicit"}))
-            }
-            cache => openrouter_cache(model, cache),
-        }),
-        service_tier: Mapping::of(fields.service_tier, openrouter_tier),
-        verbosity: Mapping::of(fields.verbosity, text_verbosity),
-        parallel_tool_calls: Mapping::of(fields.parallel_tool_calls, |parallel| {
-            send("parallel_tool_calls", parallel)
-        }),
-        top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
-        cache_key: Mapping::unrouted(fields.cache_key),
-    }
+    let mut options = openrouter(facts, model, fields);
+    options.cache = Mapping::of(fields.cache, |cache| match cache {
+        CacheRetention::None if model.starts_with("openai/") && caches_by_options(facts, model) => {
+            send("prompt_cache_options", json!({"mode": "explicit"}))
+        }
+        cache => openrouter_cache(model, cache),
+    });
+    options.verbosity = Mapping::of(fields.verbosity, text_verbosity);
+    options.seed = no_seed(fields.seed);
+    options.stop = no_stop(fields.stop);
+    options
 }
 
 /// Groq's Responses route (beta): Chat's cells, with reasoning as an
@@ -1423,12 +1413,8 @@ fn groq_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> 
     options.reasoning = Mapping::of(fields.reasoning, |reasoning| {
         groq_reasoning(facts, model, reasoning, reasoning_object)
     });
-    options.seed = Mapping::of(fields.seed, |_| {
-        Mapping::unsupported("Responses has no seed parameter")
-    });
-    options.stop = Mapping::of_stop(fields.stop, |_| {
-        Mapping::unsupported("Responses has no stop parameter")
-    });
+    options.seed = no_seed(fields.seed);
+    options.stop = no_stop(fields.stop);
     options
 }
 
@@ -1469,12 +1455,8 @@ fn minimax_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
         top_p: Mapping::of(fields.top_p, |_| {
             Mapping::unsupported("MiniMax's Responses API ignores `top_p`")
         }),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
@@ -1503,12 +1485,8 @@ fn moonshot_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
             Mapping::unsupported(UNSUPPORTED)
         }),
         top_p: Mapping::of(fields.top_p, |_| Mapping::unsupported(UNSUPPORTED)),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: prompt_cache_key(fields.cache_key),
     }
 }
@@ -1606,12 +1584,8 @@ fn copilot_responses(fields: OptionFields<'_>) -> OptionMap {
             send("parallel_tool_calls", parallel)
         }),
         top_p: Mapping::of(fields.top_p, |top_p| send("top_p", top_p)),
-        seed: Mapping::of(fields.seed, |_| {
-            Mapping::unsupported("Responses has no seed parameter")
-        }),
-        stop: Mapping::of_stop(fields.stop, |_| {
-            Mapping::unsupported("Responses has no stop parameter")
-        }),
+        seed: no_seed(fields.seed),
+        stop: no_stop(fields.stop),
         cache_key: Mapping::unrouted(fields.cache_key),
     }
 }
