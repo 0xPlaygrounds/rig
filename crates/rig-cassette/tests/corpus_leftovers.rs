@@ -1,39 +1,16 @@
-//! Matrix T: the leftovers of the #2443 review, and `Denied`.
+//! Matrix T: host-effect edges and `Denied`.
 //!
-//! The six leftovers were fixed as found (L1–L4); the ones a golden can
-//! show are here: a host effect that does not serialize never reaches the
-//! bus and leaves no record (L3); a required host key of the embed, rerank
-//! or custom family the program registers and never dispatches to is
-//! described from the handler table on replay, and a key nothing describes
-//! is refused by name (L4); the recorder finds its slot from the back — five
-//! thousand kept events on one key beside two hundred other records land in
-//! the last slot, in order (L2). And `ErrorKind::Denied` under every
-//! consumer mapping (L7, ruling 10): on a tool the model sees the skipped
-//! result; on a completion the run fails; on a custom effect from a hook,
-//! the hook sees `Denied`. None of the denials is a record: the layer
-//! decided before any handler served the dispatch. L1 is a loom model and
-//! L2's search order a unit test beside this cell.
+//! A host effect that does not serialize never reaches the bus and leaves
+//! no record. A required host key of the embed, rerank or custom family that
+//! the program registers and never dispatches to is described from the
+//! handler table on replay, and a key nothing describes is refused by name.
+//! The recorder keeps five thousand events on one key beside two hundred
+//! other records, in order, in the last slot.
 //!
-//! # Cells
-//!
-//! | golden | producer | shape |
-//! |---|---|---|
-//! | `mock_leftovers_denied_tool` | `tests/core/golden_leftovers.rs` `denied_tool_…` | `[Completion, Completion]`: the skipped result in the second request |
-//! | `mock_leftovers_denied_tool_streamed` | `denied_tool_streamed_…` | the same, streamed with events |
-//! | `mock_leftovers_denied_completion` | `denied_completion_…` | `[]`: the run fails with `Denied` before any record |
-//! | `mock_leftovers_denied_custom_from_hook` | `denied_custom_from_hook_…` | `[Completion]`: the hook saw `Denied` and went on |
-//! | `mock_leftovers_denied_custom_from_hook_streamed` | `denied_custom_from_hook_streamed_…` | the same, streamed with events |
-//! | `mock_leftovers_unserializable_from_hook` | `unserializable_from_hook_…` | `[Completion]`: the hook saw `Request`, the handler was never entered (L3) |
-//! | `mock_leftovers_required_embed` | `required_embed_…` | `[Completion]`; `host/embed` in the table, in no record (L4) |
-//! | `mock_leftovers_required_rerank` | `required_rerank_…` | `[Completion]`; `host/rerank` likewise |
-//! | `mock_leftovers_required_custom` | `required_custom_…` | `[Completion]`; `host/note` likewise |
-//! | `mock_leftovers_five_thousand_events` | `five_thousand_events_…` | 201 records: two hundred host notes from the run-start hook, then the answer as a stream of 5 000 deltas kept verbatim (L2; the one large golden — its size is in the PR) |
-//!
-//! Pruned: `Rerank` through a mock reranker as a dispatched effect is
-//! Matrix O's `mock_oracle_rerank`; the L1 close race is
-//! `loom_close_for_commands_never_strands_a_late_enqueue`; the required
-//! custom key with no table entry is an in-memory row here
-//! (`a_key_nothing_describes_is_refused_by_name`), not a golden.
+//! `ErrorKind::Denied` holds under every consumer mapping: on a tool the
+//! model sees the skipped result, on a completion the run fails, and on a
+//! custom effect from a hook the hook sees `Denied`. No denial is a record,
+//! since the layer decided before any handler served the dispatch.
 
 use crate::corpus;
 
@@ -172,7 +149,7 @@ fn a_denial_is_never_a_record() {
     }
 }
 
-/// L3: the hook's effect had no wire form — the record holds nothing for
+/// The hook's effect had no wire form, so the record holds nothing for
 /// it, and the host's handler is in the table with no record.
 #[test]
 fn an_unserializable_effect_leaves_no_record() {
@@ -192,9 +169,9 @@ fn an_unserializable_effect_leaves_no_record() {
     );
 }
 
-/// L4: a required host key of any family, described from the handler
-/// table on replay, answers a dispatch with a divergence — the log ran out
-/// before it began.
+/// A required host key of any family, described from the handler table on
+/// replay, answers a dispatch with a divergence: the log ran out before it
+/// began.
 #[tokio::test]
 async fn a_required_key_of_any_family_is_described_from_the_table_and_answers_a_divergence() {
     let cells: [(&Program, &str, EffectKind); 3] = [
@@ -248,7 +225,7 @@ async fn a_required_key_of_any_family_is_described_from_the_table_and_answers_a_
     }
 }
 
-/// L4: a required custom key with no handler-table entry is refused by
+/// A required custom key with no handler-table entry is refused by
 /// name, never dropped.
 #[test]
 fn a_key_nothing_describes_is_refused_by_name() {
@@ -275,7 +252,7 @@ fn a_key_nothing_describes_is_refused_by_name() {
     );
 }
 
-/// L2: five thousand kept events on one key beside two hundred other
+/// Five thousand kept events on one key beside two hundred other
 /// records, every one in the last slot and in order.
 #[test]
 fn the_recorder_kept_five_thousand_events_in_order() {

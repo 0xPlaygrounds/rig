@@ -5,10 +5,8 @@
 //! local Ollama server.
 //!
 //! The non-streaming test additionally asserts the assistant's reasoning is
-//! preserved in the caller-owned chat history — this is the direct regression
-//! for #1926 (non-streaming responses used to drop the reasoning, so it never
-//! entered history and was never sent back to Ollama). Thinking is the
-//! daemon's default for `qwen3:4b`.
+//! preserved in the caller-owned chat history, so it is sent back to Ollama on
+//! the next turn. Thinking is the daemon's default for `qwen3:4b`.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
@@ -40,9 +38,8 @@ async fn nonstreaming() {
                 .expect("[ollama] non-streaming chat failed");
 
             reasoning::assert_nonstreaming_universal(&result.output(), &call_count, "ollama");
-            // #1926: the tool-call turn's `thinking` must survive into history as
-            // an AssistantContent::Reasoning. Pre-fix, the non-streaming choice
-            // contained only the ToolCall and this assertion failed.
+            // The tool-call turn's `thinking` must survive into history as
+            // an AssistantContent::Reasoning.
             reasoning::assert_chat_history_preserves_reasoning_tool_roundtrip(
                 &chat_history,
                 &result.output(),

@@ -1,22 +1,18 @@
 //! The agent corpus matrix: one shape, six copies.
 //!
-//! This module writes the cells once, wire-neutrally, as data ([`cells`]:
-//! the rig-cassette corpus's `Program` table plus what a live cell needs
-//! beside it — the tools it grants, the store it remembers in, the bus it
-//! is served over) and [`agent::run_agent`], the rig-agent producer that
-//! builds the program on the builder, runs it over a cassette and writes the
-//! golden (`crate::goldens::golden_effects`).
+//! This module writes the cells once, wire-neutrally, as data ([`cells`]: the
+//! rig-cassette corpus's `Program` table plus the tools, store and bus a live
+//! cell needs) and [`agent::run_agent`], the rig-agent producer that builds the
+//! program on the builder, runs it over a cassette and writes the golden
+//! (`crate::goldens::golden_effects`). The failure rows ([`faults`]) are the same
+//! shape: a cell names the fault it drives, [`faults::Scripted`] serves the
+//! scripted rows over labelled frames, and the driver asserts the failure, the
+//! record and the history beside the ending.
 //!
-//! The failure rows ([`faults`]) are the same shape: a cell names the
-//! fault it drives, the per-wire file supplies its cassettes and the wire's
-//! own facts, [`faults::Scripted`] serves the scripted rows over labelled
-//! frames, and the driver asserts the failure, the record and the history
-//! beside the ending.
-//!
-//! A per-provider file (`tests/providers/<p>/cassette/corpus_matrix*.rs`)
-//! holds only the scenario literals (the cassette census reads them off
-//! the call sites), the wire's models and the wire-specific `#[ignore]`
-//! reasons.
+//! A per-provider file (`tests/providers/<p>/cassette/corpus_matrix*.rs`) holds
+//! only the scenario literals (the cassette census reads them off the call
+//! sites), its cassettes, the wire's models and facts, and the wire-specific
+//! `#[ignore]` reasons.
 pub(crate) use crate::corpus;
 
 #[path = "corpus_matrix/agent.rs"]

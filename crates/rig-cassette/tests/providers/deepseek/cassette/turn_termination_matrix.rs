@@ -1,4 +1,4 @@
-//! The model-turn termination metadata a hook sees (rig#2184), against the
+//! The model-turn termination metadata a hook sees, against the
 //! real DeepSeek wire: a turn the provider cut short at the cap reaches the
 //! hook as `FinishReason::Length` with the cap that attempt ran under, on
 //! both surfaces. Each cell re-reads its own fixture and fails if the

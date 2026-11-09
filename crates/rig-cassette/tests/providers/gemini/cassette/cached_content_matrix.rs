@@ -1,54 +1,26 @@
 //! The `cachedContents` create matrix.
 //!
-//! Five dimensions change the create body: payload (system instruction /
-//! contents / both), tool count (none / one / three), tool choice (absent /
-//! auto), display name (absent / present), and expiry (relative TTL / absolute
-//! timestamp / provider default). Their full product is 108 combinations.
-//!
-//! **All 108 are asserted, and only 8 are recorded.** That split is deliberate,
-//! and it took recording all 108 to see why: Gemini's create *response* carries
-//! only `name`, `model`, `displayName`, `createTime`, `updateTime`, `expireTime`
-//! and `usageMetadata`. It never echoes `tools` or `toolConfig`. So a recorded
-//! cell cannot tell whether the tools it asked for were sent at all — the cache
-//! could discard them entirely and all 72 tool-bearing fixtures would still have
-//! passed. What those cells actually pinned was the *request* body, through the
-//! cassette matcher.
-//!
-//! So the request body is pinned directly instead, by
-//! [`every_create_combination_serializes_as_expected`], which covers all 108
-//! combinations for free and does assert the tool count — verified by dropping
-//! the tools and watching it fail, which the fixtures did not. The 8 recorded
-//! cells cover one arm of each dimension, keeping the provider's *acceptance* of
-//! each shape under test, plus the edge cells below which pin behaviour no
-//! serialization test could reach.
-//!
-//! That is 164 KB instead of 1.3 MB, for strictly more coverage.
+//! Five dimensions change the create body: payload (system instruction, contents
+//! or both), tool count (none, one or three), tool choice (absent or auto),
+//! display name (absent or present), and expiry (relative TTL, absolute timestamp
+//! or provider default). All 108 combinations are asserted by
+//! [`every_create_combination_serializes_as_expected`], and only one arm of each
+//! dimension is recorded, plus edges no serialization test could reach. Gemini's
+//! create response never echoes `tools` or `toolConfig`, so a recording cannot
+//! tell whether the tools were sent; the request body is pinned directly instead,
+//! and the recordings keep the provider's acceptance of each shape under test.
 //!
 //! Every recorded cell deletes what it created, on the failure path too, because
 //! storage bills until it does. Cells whose checks panic run them inside
-//! `always_deleting_cached_contents` (`tests/providers/gemini/support.rs`),
-//! which issues the delete even when an assertion panics; the rest get the same
-//! guarantee by hand, returning a `Result` from their checks and deleting
-//! before they panic on it.
+//! `always_deleting_cached_contents`; the rest return a `Result` from their checks
+//! and delete before they panic on it. Measured live: the create minimum is 1,024
+//! tokens, `ttl` and `expireTime` together are a 400 (which `CacheExpiry` makes
+//! unrepresentable), omitting both defaults to one hour, a `toolConfig` with no
+//! `tools` is accepted, and an unqualified model id is a 400, which is why
+//! `NewCachedContent::new` qualifies it.
 //!
-//! Behaviours pinned here were measured against the live API first:
-//!
-//! * the create minimum really is 1,024 tokens (720 is rejected with
-//!   `min_total_token_count`, 1,080 is accepted);
-//! * `ttl` and `expireTime` together are a 400 — the API models expiration as a
-//!   `oneof`, which is exactly what `CacheExpiry` makes unrepresentable;
-//! * omitting both defaults to one hour;
-//! * a `toolConfig` with no `tools` is accepted;
-//! * an unqualified model id is a 400, which is why `NewCachedContent::new`
-//!   qualifies it.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     gemini::cassette::cached_content_matrix -- --test-threads=1
-//! ```
-//!
+//! Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features gemini::cassette::cached_content_matrix -- --test-threads=1`.
 
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, GeminiConfig};

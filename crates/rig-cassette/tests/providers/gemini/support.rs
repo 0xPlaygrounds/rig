@@ -109,12 +109,12 @@ pub(super) fn assert_recorded_requests_read_from_a_cache(scenario: &str) {
 ///
 /// `expected` lists the fields the test *did* ask for, as
 /// `(field, Some(json_value))`; every other sampling field must be absent from
-/// the wire so Gemini applies the model's own documented default (rig#2322).
+/// the wire so Gemini applies the model's own documented default.
 pub(super) fn assert_recorded_sampling_fields(
     scenario: &str,
     expected: &[(&str, serde_json::Value)],
 ) {
-    // The fields rig#2322's hardcoded `Default` used to inject.
+    // The fields a non-`None` `Default` would inject.
     const SAMPLING_FIELDS: &[&str] = &["maxOutputTokens", "temperature"];
 
     for (turn, config) in recorded_request_generation_configs(scenario)
@@ -281,7 +281,7 @@ pub(super) async fn with_gemini_checked_cassette<F, Fut>(
     crate::cassettes::finish_checked(cassette, "gemini", spec.scenario(), result, check).await;
 }
 
-/// Bogus-key variant for recording real 401/403s (rig#2314 error matrix).
+/// Bogus-key variant for recording real 401/403s for the error matrix.
 pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

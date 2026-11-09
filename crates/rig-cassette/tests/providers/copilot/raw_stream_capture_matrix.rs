@@ -1,39 +1,18 @@
 //! Matrix for raw terminal-record capture on both Copilot streaming routes
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! Every stream the driver yields carries `raw`: the document the route's
+//! reassembler rebuilds from the stream's frames. On the chat route that is the
+//! `chat.completion` a unary call returns, keeping every top-level chunk field,
+//! so Copilot's `copilot_usage` block and the `system_fingerprint` reach the
+//! caller though the normalized response has no field for them. On the Responses
+//! route it carries the terminal `status`. Which route a stream took is a fact
+//! about the wire, so each typed-access cell asserts it on the bound wire itself.
 //!
-//! Capture is always on. Every stream the driver yields carries `raw`: the
-//! document the route's reassembler rebuilds from the stream's frames, on
-//! the chat-completions route the `chat.completion` a unary call returns.
-//! Nothing about it is sent to Copilot. `raw == Value::Null` means only that
-//! a `CompletionResponse` was built by hand without a provider reply behind
-//! it, which no cell here can produce. Which route a stream took is a fact
-//! about the wire rather than about `raw`, so each typed-access cell asserts
-//! it on the bound wire itself.
-//!
-//! Terminal-only fields per route: on the chat route the rebuilt
-//! `chat.completion` keeps every top-level chunk field where a unary body
-//! states it, which is where Copilot's own `copilot_usage` block (with
-//! `total_nano_aiu`) and the `system_fingerprint` land — neither has a home on the normalized
-//! [`CompletionResponse`](rig::completion::CompletionResponse); on the Responses route the
-//! terminal `status`.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | the wire is `OpenAiWire::Chat`; `raw` is the `chat.completion` document the stream rebuilds | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `chat_stream_raw_exposes_copilot_usage` | chat route, terminal-only fields | `raw.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
-//! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | the wire is `OpenAiWire::Responses`; `raw` reads back as the Responses terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
-//! | 4 | `responses_stream_raw_exposes_terminal_status` | responses route, terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says | unrecorded (no COPILOT credentials in this environment) |
-//!
-//! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
-//! `COPILOT_API_KEY`, `COPILOT_GITHUB_ACCESS_TOKEN`/`GITHUB_TOKEN` nor a Copilot
-//! OAuth cache was present when this matrix was written, and a fixture is
-//! never fabricated. To record: export `GITHUB_COPILOT_API_KEY`, remove the
-//! `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration copilot::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! Every cell is ignored until recorded, because no Copilot credentials were
+//! available and a fixture is never fabricated. To record, export
+//! `GITHUB_COPILOT_API_KEY`, remove the `#[ignore]` attributes, run
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration copilot::raw_stream_capture_matrix -- --nocapture --test-threads=1`,
 //! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_stream_capture_matrix/`.
 
 use rig::providers::copilot;

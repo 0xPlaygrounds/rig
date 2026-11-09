@@ -1,7 +1,7 @@
 //! Streamed-turn coverage for [`AgentRun`]: hand-driving
 //! [`StreamedTurnAssembler`] over real Gemini SSE streams, mid-stream invalid
 //! tool-call recovery, per-call usage recording, and the built-in streaming
-//! driver divergences pinned by #1899.
+//! driver's behavior on cancellation.
 
 use rig::streaming::Item;
 
@@ -362,8 +362,8 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 reason.contains("cancelled by test hook"),
                 "the hook reason must surface: {reason}"
             );
-            // Pins the divergence resolved by #1899: mid-run cancellation
-            // history includes the already-recorded assistant turn.
+            // Mid-run cancellation history includes the already-recorded
+            // assistant turn.
             assert!(
                 history_has_assistant_tool_call(&chat_history, "add"),
                 "cancellation history must include the recorded assistant turn: {chat_history:?}"

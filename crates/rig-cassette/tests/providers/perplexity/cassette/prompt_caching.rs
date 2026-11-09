@@ -1,41 +1,16 @@
 //! Perplexity prompt-caching cassette suite.
 //!
-//! **This provider does not do meaningful prefix caching**, and this suite is
-//! what records that as a measured fact rather than an assumption.
+//! Perplexity does no meaningful prefix caching: a long prompt re-sent byte-identically reads
+//! zero cached tokens on every turn, and its search-grounded API documents no prompt cache. The
+//! cells assert that absence through `assert_no_meaningful_prefix_cache`, which fails the day
+//! the provider ships real prefix caching, so the suite can move to `assert_cache_conformance`.
+//! Perplexity streams the shared chat-completions usage, so rig has a slot for cached tokens
+//! regardless.
 //!
-//! Measured: a 4,365-token prompt re-sent byte-identically reads **zero** cached
-//! tokens on every turn — as expected, since Perplexity's search-grounded API
-//! documents no prompt cache. Recorded rather than assumed so that the day it
-//! gains one, this suite says so.
-//!
-//! The cells assert the *absence* through `assert_no_meaningful_prefix_cache`,
-//! which is self-invalidating: the day this provider ships real prefix caching,
-//! the assertion fails and tells whoever is looking to replace it with the full
-//! `assert_cache_conformance` suite and drop the coverage opt-out.
-//!
-//! Perplexity streams the shared chat-completions usage, so rig has a slot for cached
-//! tokens even though Perplexity's search-grounded API documents no prompt cache.
-//!
-//! # No agent-loop cell, and why
-//!
-//! Most providers in the matrix have an `agent_loop` cell driving a real
-//! multi-turn agent run with a tool round-trip — the only cell that can catch
-//! rig's *driver* disturbing the prefix between iterations. This provider has
-//! none, deliberately: its search-grounded model answers the probe's prompt directly and never calls the tool. A run that
-//! makes one model call records one request, which leaves `assert_prefix_stable`
-//! no pair to compare and the cell proving nothing. A cell that cannot fail is
-//! worse than an acknowledged gap.
-//!
-//! The loop-level guarantee is still covered for this provider by the
-//! corpus-wide scan in `tests/cassette_cache_prefix.rs`, which compares every
-//! recorded multi-turn conversation in its existing suites.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     perplexity::cassette::prompt_caching:: -- --exact --test-threads=1
-//! ```
+//! There is no `agent_loop` cell: the search-grounded model answers the probe's prompt directly
+//! and never calls the tool, and a one-call run leaves `assert_prefix_stable` no pair to
+//! compare. The corpus-wide scan in `tests/cassette_cache_prefix.rs` covers the loop-level
+//! guarantee instead.
 
 use rig::providers::perplexity;
 

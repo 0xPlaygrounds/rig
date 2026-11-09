@@ -1,35 +1,16 @@
-//! The reranking matrix — the capability slot this PR added.
+//! The reranking matrix for llama.cpp's Jina-shaped rerank wire.
 //!
-//! **Server**: `--embeddings --pooling rank --reranking` on
-//! `gpustack/bge-reranker-v2-m3-GGUF` Q4_K_M, `--seed 42 --temp 0 -c 2048`,
-//! `llama-server` b10964-b29c606e2. A cross-encoder is not optional: a causal LM
-//! has no rank pooling head and `llama-server` refuses to start with
-//! `--pooling rank` at all, so there is no "rerank with the wrong model"
-//! degraded path to record.
+//! The server runs `gpustack/bge-reranker-v2-m3-GGUF` with `--pooling rank --reranking`. A
+//! cross-encoder is required: `llama-server` refuses to start with `--pooling rank` on a causal
+//! LM, so there is no degraded path to record. llama.cpp speaks the shared Jina-shaped driver
+//! (`providers::internal::rerank`) behind [`RerankModel`](rig::rerank::RerankModel).
 //!
-//! Rig had a [`RerankModel`](rig::rerank::RerankModel) trait and exactly one
-//! implementation of it — Voyage AI's, written against Voyage's own wire. This
-//! PR adds the shared Jina-shaped driver llama.cpp speaks
-//! (`providers::internal::rerank`), so the next provider on that wire declares
-//! a slot instead of copying a request builder.
-//!
-//! | Cell | Dimension | Pinned |
-//! | --- | --- | --- |
-//! | [`a_single_document_is_still_a_ranking`] | one document | index 0, one result |
-//! | [`top_n_zero_returns_an_empty_ranking`] | `top_n` == 0 | an empty list, not an error and not the whole list |
-//! | empty document list | 0 documents | `error_matrix.rs` — a 400 from the server |
-//! | no reranker loaded | wrong server | `error_matrix.rs` — a 501 |
-//!
-//! # Scores are logits, not probabilities
-//!
-//! [`RerankResult::relevance_score`](rig::rerank::RerankResult::relevance_score)
-//! is documented as "between 0 and 1". llama.cpp returns the cross-encoder's
-//! **raw logit**: measured on b10964-b29c606e2, ranking three documents against
-//! "What is a panda?" gives `0.8225`, `-4.7583` and `-8.3761`. The ordering is
-//! meaningful and is what a reranker is for; the magnitude is not a
-//! probability and negative values are normal. That mismatch is a defect in
-//! the field's *documentation* rather than in any mapping, and the doc comment
-//! states it.
+//! The cells pin that one document is still a ranking ([`a_single_document_is_still_a_ranking`])
+//! and that `top_n == 0` returns an empty list, not an error and not the whole list
+//! ([`top_n_zero_returns_an_empty_ranking`]). An empty document list and a server with no
+//! reranker are errors, recorded in `error_matrix.rs`. llama.cpp returns the cross-encoder's raw
+//! logit as [`RerankResult::relevance_score`](rig::rerank::RerankResult::relevance_score), so
+//! negative values are normal and only the ordering is meaningful.
 
 use rig_test_support::cassette_models::MapWire;
 use serde_json::Value;

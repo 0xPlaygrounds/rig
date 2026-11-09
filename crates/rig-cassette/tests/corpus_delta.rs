@@ -1,77 +1,20 @@
 //! Matrix K: the delta wire.
 //!
-//! A tool call that arrives as a name delta and argument deltas — the
-//! shape of the openai chat-completions and gemini interactions wires —
-//! is not the same turn as a completed block (anthropic, openai
-//! responses, gemini generate): the assembler validates the name when it
-//! arrives, buffers arguments that arrive before it, surfaces an invalid
-//! call at the name delta with the arguments seen so far, and after an
-//! `Ignored` resolution keeps the block's state as a tombstone that
-//! swallows the rest of the block. Matrix G recorded every resolution on
-//! the block shape; this matrix records them on the delta shape, and the
-//! two interpreters agree on what each leaves in the transcript: the
-//! engine through the streamed path, the hand driver through the
-//! assembler and `AgentRun`'s streamed seam.
+//! A tool call that arrives as a name delta and argument deltas, the shape of the
+//! openai chat-completions and gemini interactions wires, is not the same turn as
+//! a completed block (anthropic, openai responses, gemini generate). The
+//! assembler validates the name when it arrives, buffers arguments that arrive
+//! before it, surfaces an invalid call at the name delta with the arguments seen
+//! so far, and after an `Ignored` resolution keeps the block's state as a
+//! tombstone that swallows the rest of the block.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | the call | valid · unknown name · unknown beside a valid call · the output tool |
-//! | argument order | after the name · before the name (buffered) |
-//! | resolution | none · `Retry` · `Repair` · `Skip` · policy `Ignore` · policy `Fail` |
-//! | stop | none · on the name delta · on an arguments delta |
-//! | wire | mock · openai chat-completions (dual id) · gemini interactions (id-less) |
-//!
-//! Full cross-product: 4 × 2 × 6 × 3 × 3 = 432. Recorded: the 13 cells
-//! below. Pruned: every resolution on a live wire (no model in the corpus
-//! emits an unadvertised call on request: #2450 tried twice, Matrix G
-//! scripted); arguments-first under every resolution but `Retry` (the
-//! buffering is the assembler's, decided before the resolution; one cell
-//! pins it); the stops beside a resolution (a stop ends the turn before
-//! any resolution); the output tool arriving as deltas on a live wire
-//! (unrecorded: Matrix N's output-tool rows are on the block-shaped
-//! Responses and generate wires; the mock cell pins the assembly);
-//! `Skip` and `Repair` beside a valid call (Matrix G's mixed cells pin
-//! the pairing; the delta shape changes the surfacing, which the single
-//! cells pin).
-//!
-//! # Cells
-//!
-//! | golden | producer | shape | ending |
-//! |---|---|---|---|
-//! | `mock_delta_baseline` | `tests/core/golden_delta.rs` `delta_baseline_…` | `[Completion, Tool, Completion]`, deltas kept | answer |
-//! | `mock_delta_retry` | `delta_retry_…` | `[Completion, Completion, Tool, Completion]` | answer |
-//! | `mock_delta_retry_arguments_first` | `delta_retry_arguments_first_…` | the same; the arguments buffered before the name | answer |
-//! | `mock_delta_repair` | `delta_repair_…` | `[Completion, Tool, Completion]` | answer |
-//! | `mock_delta_skip` | `delta_skip_…` | `[Completion, Completion]` | answer |
-//! | `mock_delta_ignore` | `delta_ignore_…` | `[Completion]`; the ignored-only turn is the empty answer | answer `""` |
-//! | `mock_delta_ignore_beside_valid` | `delta_ignore_beside_valid_…` | `[Completion, Tool, Completion]`; the ignored block swallowed, `add` runs | answer |
-//! | `mock_delta_fail` | `delta_fail_…` | `[Completion]` | `UnknownToolCall` |
-//! | `mock_delta_output_tool` | `delta_output_tool_…` | `[Completion]`; the output tool assembled from deltas, no dispatch | answer |
-//! | `mock_delta_stop_on_arguments` | `delta_stop_on_arguments_…` | `[Completion]` | `Cancelled` |
-//! | `openai_delta_chat_baseline` | openai `corpus_delta.rs` `chat_baseline_…` | `[Completion, Tool, Completion]`, the chat-completions wire's deltas | answer |
-//! | `gemini_delta_interactions_baseline` | gemini `corpus_delta.rs` `interactions_baseline_…` | the same on the interactions wire | answer |
-//!
-//! # What the matrix found
-//!
-//! - The gemini interactions wire could not round-trip a tool call in
-//!   client-managed history: it nested the call and its result inside
-//!   `model_output` / `user_input` steps ("an invalid argument" — the API
-//!   emits and accepts them as steps of their own), sent a thought
-//!   summary untagged ("The 'type' parameter is required"), sent a
-//!   signature-only thought with an empty summary item (invalid), and
-//!   sent a scalar JSON result as a text block ("Multimodal function
-//!   responses are not supported"). Only `previous_interaction_id`
-//!   (server-side history) ever round-tripped, which is what the wire's
-//!   existing round-trip test used. Four fixes in `rig-core`, each with a
-//!   unit test; the gemini cell records the round trip.
-//! - The mock could not script the delta wire to completion: the adapter
-//!   closes text and reasoning blocks at the final event, never a tool
-//!   block, so a delta-built call with no end event yields an empty
-//!   choice. `MockStreamEvent::tool_call_end` ends it as a wire's
-//!   step-stop does (test support, not a production change: every live
-//!   wire ends its calls explicitly).
+//! Matrix G recorded every resolution on the block shape; this matrix records
+//! them on the delta shape. The two interpreters agree on what each leaves in the
+//! transcript: the engine through the streamed path, the hand driver through the
+//! assembler and `AgentRun`'s streamed seam. Resolutions are mock-scripted
+//! because no model in the corpus emits an unadvertised call on request.
+//! Arguments-first is recorded under `Retry` only, since the buffering is decided
+//! before any resolution.
 
 use crate::corpus;
 

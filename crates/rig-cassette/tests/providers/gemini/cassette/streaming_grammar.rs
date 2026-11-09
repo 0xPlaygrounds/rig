@@ -79,7 +79,7 @@ async fn drain_stream(mut stream: rig::streaming::CompletionStream) -> StreamRun
 
     run.choice = response.choice.clone();
     // The shared lifecycle validator runs over every recorded turn this
-    // suite drains (#2258 C1).
+    // suite drains.
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = Some(response.clone());
     run

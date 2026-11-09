@@ -1,21 +1,15 @@
 //! Message-content shapes, and what the chat template does with each.
 //!
-//! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
-//! Every claim here is about the request rig builds and the template's
-//! tolerance for it, not about whether the model is clever, so the smoke tier
-//! is the right tier for all of them.
+//! The server runs the default configuration (`unsloth/Qwen3-1.7B-GGUF`
+//! Q4_K_M, `--jinja --seed 42 --temp 0 -c 4096`, `llama-server`
+//! b10964-b29c606e2). Every claim here is about the request rig builds and the
+//! template's tolerance for it, not about the model, so the smoke tier fits.
 //!
-//! | Cell | Shape | Pinned |
-//! | --- | --- | --- |
-//! | [`an_answer_fully_consumed_by_a_stop_sequence_is_an_empty_turn`] | empty content | 200 on the wire, an empty successful turn |
-//!
-//! # Why the empty-answer cell exists
-//!
-//! A `stop` sequence that matches the model's very first token leaves
-//! `content: ""` with `finish_reason: "stop"` and a perfectly healthy 200.
-//! Rig keeps that as an empty turn, as pi does: the core fold judges
-//! emptiness once for every wire, and the fixture holds the 200 beside it.
+//! A `stop` sequence that matches the model's first token leaves `content: ""`
+//! with `finish_reason: "stop"` and a healthy 200.
+//! [`an_answer_fully_consumed_by_a_stop_sequence_is_an_empty_turn`] pins that
+//! rig keeps it as an empty successful turn: the core fold judges emptiness
+//! once for every wire.
 
 use serde_json::{Value, json};
 

@@ -9,9 +9,8 @@ use rig::typesafeai::{Evaluate, Noul, Query};
 use super::super::support::with_openrouter_jev_cassette_result;
 use crate::cassettes::CassetteMode;
 
-/// rig#2782: OpenRouter's numeric `usage.cost` failed the whole evaluation,
-/// since it was decoded as rig's `Cost` object. The answer decodes and the
-/// cost is the reported figure.
+/// OpenRouter reports `usage.cost` as a number, not rig's `Cost` object. The
+/// answer decodes and the cost is the reported figure.
 #[tokio::test]
 async fn evaluation_reads_the_reported_cost() -> anyhow::Result<()> {
     with_openrouter_jev_cassette_result(

@@ -1,43 +1,19 @@
-//! Edge matrix for a streamed tool call whose arguments are not JSON
-//! (rig#2447).
+//! A streamed Anthropic tool call whose arguments are not JSON.
 //!
-//! **Bug.** Anthropic streams tool input as `input_json_delta` fragments and
-//! closes the block with `content_block_stop`. When the assembled fragments
-//! were not JSON, the reply failed and the run ended: one bad byte from the
-//! model ended the run, and the model never learned why.
+//! A malformed call never fails the reply. It is kept with the arguments
+//! its text still states, the text itself in `invalid_arguments`, and no
+//! provider item, so it replays from its canonical fields. The agent never
+//! runs the tool: it offers the call to the invalid-call hook with a
+//! `MalformedArguments` reason and, when the hook leaves the decision,
+//! answers it with an `is_error` tool result naming the raw text, and the
+//! run continues.
 //!
-//! **Contract.** A malformed call never fails the reply. It is kept with
-//! the arguments its text still states and the text itself in
-//! `invalid_arguments`, and with no provider item, so it replays from its
-//! canonical fields. The agent never runs the tool. It offers the call to the
-//! invalid-call hook with a `MalformedArguments` reason and the raw text,
-//! and, when the hook leaves the decision, answers the call with an
-//! `is_error` tool result saying "The arguments for tool `X` are not a JSON
-//! object: ...", and the run continues, as pi does.
-//!
-//! **Fixtures.** Every cell is recorded live. Cell 3 caps its first request
-//! at [`CUT_AT`] output tokens, which cuts Sonnet 4.6's `subtract` call
-//! inside its input, so the assembled input is not JSON and the turn stops
-//! on `max_tokens`. Its follow-up carries the call rebuilt from the
-//! arguments the cut text states, with no `caller` (which lived only in the
-//! provider item), and the `is_error` result naming the raw text. The cell
-//! asserts its fixture really holds a cut input, so a re-record that heals
-//! it fails.
-//!
-//! Anthropic is the provider for this matrix because its wire states the
-//! close of every tool-input block. Bedrock (`contentBlockStop`) needs AWS
-//! credentials to record and is left as follow-up.
-//!
-//! | # | cell | transport | input on the wire | fixture |
-//! |---|------|-----------|-------------------|---------|
-//! | 1 | `blocking_healthy_control` | blocking | valid | recorded |
-//! | 2 | `streaming_healthy_control` | streaming | valid | recorded |
-//! | 3 | `streaming_malformed_call_is_answered_with_an_error` | streaming | cut by `max_tokens` | recorded |
-//!
-//! Unit cells for the seam itself live beside the code:
-//! `crates/rig-agent/src/agent/streaming/malformed_tool_args_tests.rs` (what
-//! the model sees on the next request) and the history conformance row
-//! `h06_malformed_arguments`.
+//! The malformed cell caps its first request at [`CUT_AT`] output tokens,
+//! which cuts the `subtract` call inside its input, so the turn stops on
+//! `max_tokens` with an input that is not JSON. The cell asserts its fixture
+//! really holds a cut input, so a re-record that heals it fails. Anthropic
+//! is the provider here because its wire states the close of every
+//! tool-input block.
 
 use std::sync::{Arc, Mutex};
 

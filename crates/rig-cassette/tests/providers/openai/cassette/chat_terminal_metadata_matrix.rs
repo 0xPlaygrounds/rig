@@ -1,37 +1,15 @@
 //! OpenAI Chat Completions terminal metadata and primary-choice matrix.
 //!
-//! Live recordings showed that the provider-native blocking response erased
-//! `service_tier`, while the shared raw-stream terminal erased every unknown
-//! top-level chunk field, including `service_tier` and `system_fingerprint`.
-//! This matrix locks down that metadata together with primary-choice
-//! selection, length/tool-call terminal mapping, response identity, and usage.
+//! The provider-native blocking response and the shared raw-stream terminal
+//! must keep `service_tier`, `system_fingerprint` and other unmodeled
+//! top-level chunk fields. The matrix pins that metadata together with
+//! primary-choice selection, length and tool-call terminal mapping, response
+//! identity, and usage. Each cell proves its request and terminal premise from
+//! the fixture, then compares the native raw response or terminal metadata
+//! with those exact bytes.
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, raw streaming regression |
-//! | model | `gpt-4o-mini`, `gpt-4.1-mini` |
-//! | output budget | roomy, constrained (`1` text token / `16` tool tokens) |
-//! | response shape | one text candidate, two text candidates, forced tool |
-//!
-//! That is 24 cells, of which the three below are tests. Each cell proves its
-//! request and terminal premise from the fixture, then compares the native raw
-//! response/terminal metadata with those exact bytes. The `n = 2` cells
-//! additionally prove that the shared streaming adapter selects candidate zero
-//! without concatenating candidate one into it.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/<test-name>.yaml`.
-//! The inexpensive mini models provide stable text, multi-choice, and tool
-//! controls across two model families. Each test asserts the request and
-//! provider-native terminal; together they cover ids, model, finish reason,
-//! usage, primary-choice routing, `service_tier`, `system_fingerprint`, and
-//! otherwise-unmodeled top-level streaming metadata.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 3 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/{blocking_gpt_4o_mini_tiny_plain_two,blocking_gpt_4o_mini_tiny_tool,streaming_gpt_4o_mini_tiny_plain_two}.yaml` |
+//! The `n = 2` cells also prove that the shared streaming adapter selects
+//! candidate zero without concatenating candidate one into it.
 
 use std::sync::{Arc, Mutex};
 

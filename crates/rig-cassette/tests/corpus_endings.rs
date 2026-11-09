@@ -1,86 +1,23 @@
 //! Matrix F: hook-ended runs.
 //!
-//! Every `Stop` in the hook surface ends the run in
-//! `PromptError::Cancelled` with the hook's reason. Where the stop
-//! fires decides what the log holds: before any dispatch (nothing), before
-//! a tool reaches the bus (the completion only), after a tool answered
-//! (the completion and the tool, the tool's real result in the record),
-//! after a model turn (the completion), or on a streamed delta (the
-//! completion as a cancel: the engine drops the model's stream there).
-//! The hand driver makes each decision at the point the engine does and
-//! must reach the same reason with the same records.
+//! Every `Stop` in the hook surface ends the run in `PromptError::Cancelled`
+//! with the hook's reason. Where the stop fires decides what the log holds:
+//! before any dispatch (nothing), before a tool reaches the bus (the
+//! completion only), after a tool answered (the completion and the tool's
+//! real result), after a model turn (the completion), or on a streamed delta
+//! (the completion as a cancel, since the engine drops the model's stream
+//! there). The hand driver makes each decision at the point the engine does
+//! and must reach the same reason with the same records.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | the stop | `on_run_start` · `on_model_select` · `on_completion_call` · `on_dispatch` Deny(Cancelled) · `on_outcome` Replace(Err) on a tool · on an answer · `on_model_turn_finished` first turn · answer turn of a tool program · `on_text_delta` · `on_tool_call_delta` · `on_reasoning_delta` |
-//! | medium | unary · streamed with events |
-//! | records before the stop | none · one completion · completion + tool · completion + tool + completion |
-//!
-//! Full cross-product: 11 × 2 × 4 = 88 (the third axis is decided by the
-//! stop and the program, so the real space is smaller). Recorded: the 13
-//! cells below.
-//! Pruned: a stop that fires before any dispatch, streamed (the medium is
-//! decided after those hooks fire, so the log is the same empty header —
-//! the unary cell is the cell); the delta stops unary (a delta is a stream
-//! event); `on_outcome` on an answer streamed and the answer-turn stop
-//! streamed (the fold settles a streamed turn through the same
-//! `settle_model_turn`; the streamed turn-finished cell covers the seam);
-//! a stop with two records before it on every medium (one streamed
-//! two-record cell, the outcome cancel, covers the tool-then-stop shape);
-//! the reasoning-delta stop, recorded twice under extended thinking and
-//! stopped: the recording proxy delivered the thinking block whole, the
-//! stop landed after it, and the record was a complete completion that a
-//! replay — which cancels at the delta — cannot reproduce (the
-//! `StopOnReasoningDelta` hook stays in the corpus for a wire that
-//! streams thinking deltas as deltas).
-//!
-//! # Cells
-//!
-//! | golden | producer | records | reason |
-//! |---|---|---|---|
-//! | `mock_endings_stop_at_start` | `tests/core/golden_endings.rs` `endings_stop_at_start_…` | none | `stopped at run start` |
-//! | `mock_endings_stop_at_model_select` | `endings_stop_at_model_select_…` | none | `stopped at model selection` |
-//! | `mock_endings_stop_at_completion_call` | `endings_stop_at_completion_call_…` | none | `stopped before the completion call` |
-//! | `anthropic_endings_tool_dispatch_cancelled` | anthropic `corpus_endings.rs` `tool_dispatch_cancelled_…` | `[Completion]` | `add is cancelled before the bus` |
-//! | `anthropic_endings_tool_outcome_cancelled` | `tool_outcome_cancelled_…` | `[Completion, Tool]`, the tool's real result | `add is cancelled after the bus` |
-//! | `anthropic_endings_answer_outcome_cancelled` | `answer_outcome_cancelled_…` | `[Completion]`, the real answer | `the answer is cancelled` |
-//! | `anthropic_endings_turn_finished_stop` | `turn_finished_stop_…` | `[Completion]` | `stopped after the model turn` |
-//! | `anthropic_endings_answer_turn_stop` | `answer_turn_stop_…` | `[Completion, Tool, Completion]` | `stopped at the answer turn` |
-//! | `anthropic_endings_text_delta_stop` | `text_delta_stop_…` | `[Completion]` as `Cancelled`, events kept | `stopped on the first text delta` |
-//! | `anthropic_endings_tool_call_delta_stop` | `tool_call_delta_stop_…` | the same | `stopped on the first tool-call delta` |
-//! | `anthropic_endings_tool_dispatch_cancelled_streamed` | `tool_dispatch_cancelled_streamed_…` | `[Completion]` whole, events kept | `add is cancelled before the bus` |
-//! | `anthropic_endings_turn_finished_stop_streamed` | `turn_finished_stop_streamed_…` | `[Completion]` whole | `stopped after the model turn` |
-//! | `anthropic_endings_tool_outcome_cancelled_streamed` | `tool_outcome_cancelled_streamed_…` | `[Completion, Tool]` | `add is cancelled after the bus` |
-//!
-//! # What the matrix found
-//!
-//! - `on_run_settled` never fired for a blocking run a hook stopped: the
-//!   engine settles an error ending after yielding it, and the blocking
-//!   fold returned at the yield, dropping the engine; the streaming
-//!   surface's consumer, polling to the end, saw the hook fire. The fold
-//!   now drains the engine before returning the error (`rig-agent`).
-//! - A delta stop's record is the handler's timing: the tap records what
-//!   the handler answered, so a stop lands as a cancel only if the model
-//!   was still streaming when the run dropped its stream. The engine
-//!   surfaced the stop and left the stream to be dropped with the run —
-//!   later than it could be; it now drops the stream before surfacing the
-//!   stop (`rig-agent`), the earliest cancel there is. What remains is
-//!   the wire's: the cells stream long answers (an essay, a 400-word tool
-//!   argument), as the corpus's consumer-cancel cells do, so the drop
-//!   lands live and on replay alike.
-//! - A dispatch a hook cancelled in flight left no record over an agent's
-//!   own bus: the driver settles a cancel only when polled, and nothing
-//!   polls an owned driver between runs, so the log missed the cancelled
-//!   dispatch (a host-driven bus, polled by its host, recorded it). The
-//!   run's drive now settles in-flight cancels before it finishes
-//!   (`rig-agent`).
+//! The delta cells stream long answers so the stream drop lands live and on
+//! replay alike. The reasoning-delta stop is not recorded: the recording
+//! proxy delivers the thinking block whole, so the record is a complete
+//! completion that a replay, which cancels at the delta, cannot reproduce.
 //!
 //! Every producer's stack ends with `RecordSettled`, an observe-only hook
 //! that records what `on_run_settled` saw, so the producer asserts the
-//! settled outcome was the error; the replay's hook of that name observes
-//! nothing (its state is not identity).
+//! settled outcome was the error. The replay's hook of that name observes
+//! nothing, since its state is not identity.
 
 use crate::corpus;
 

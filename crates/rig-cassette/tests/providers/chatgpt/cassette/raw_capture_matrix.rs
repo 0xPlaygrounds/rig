@@ -1,37 +1,20 @@
 //! Matrix for raw response capture on ChatGPT's blocking `/responses` path
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! Every completion the driver returns carries `raw`: the Responses API's
+//! response object from the terminal `response.completed` event of the SSE body
+//! ChatGPT answers even a non-streaming request with, verbatim. The envelope
+//! carries fields the normalized response has no home for (`object`, `status`,
+//! `created_at`), and the cells read them back through `raw`. A terminal event
+//! carrying no items captures the same envelope with an empty `output` while the
+//! assistant content is folded from the preceding events; see
+//! `raw_completion_parity_matrix` for that state.
 //!
-//! Capture is always on. Every completion the driver returns carries `raw`:
-//! the provider's own reply, the Responses API's response object carried by
-//! the terminal `response.completed` event of the SSE body ChatGPT answers
-//! even a non-streaming request with, verbatim. Nothing about it is sent to
-//! ChatGPT. `raw == Value::Null` means only that a `CompletionResponse` was
-//! built by hand without a provider response behind it, which no cell here can
-//! produce. A terminal event carrying no items captures the same envelope with
-//! an empty `output` while the assistant content is folded from the preceding
-//! events; see `raw_completion_parity_matrix` for that state.
-//!
-//! The Responses envelope carries fields the normalized
-//! [`rig::completion::CompletionResponse`] has no home for — `object`,
-//! `status`, `created_at` — and cell 2 reads them back through `raw`.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | provider document | `raw` is the provider's response object, naming the normalized model | unrecorded (no CHATGPT credentials in this environment) |
-//! | 2 | `raw_exposes_response_envelope` | provider-only fields | `object`/`status`/`created_at` in `raw` equal the terminal `response.completed` frame | unrecorded (no CHATGPT credentials in this environment) |
-//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | every normalized field equals the field the envelope on `raw` carries, and that envelope equals the recorded terminal frame's | unrecorded (no CHATGPT credentials in this environment) |
-//!
-//! Every cell is unrecorded: neither `CHATGPT_ACCESS_TOKEN`/`CHATGPT_ACCOUNT_ID`
-//! nor a usable ChatGPT OAuth cache was present when this matrix was written,
-//! and a fixture is never fabricated. The bodies are complete and would pass
-//! once recorded. To record: export `CHATGPT_ACCESS_TOKEN` and
-//! `CHATGPT_ACCOUNT_ID` (the harness placeholders both on disk), remove the
-//! `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
+//! Every cell is ignored until recorded, because no ChatGPT credentials were
+//! available and a fixture is never fabricated. To record, export
+//! `CHATGPT_ACCESS_TOKEN` and `CHATGPT_ACCOUNT_ID`, remove the `#[ignore]`
+//! attributes, run
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`,
 //! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_capture_matrix/`.
 
 use super::GPT_5_4;

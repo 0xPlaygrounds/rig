@@ -1,36 +1,17 @@
 //! Live Chat Completions tool-call lifecycle and argument-integrity matrix.
 //!
-//! The space is 2 transports × 2 models × 3 call shapes × 2
-//! public surfaces = 24 cells, of which the two below are tests. The shapes
-//! cover a deliberate zero-argument call, a nested object containing an array
-//! and Unicode, and two parallel calls. Model cells deserialize the
-//! provider-native response and normalize it; agent cells prove exact-once
-//! invocation. Streaming cells additionally reassemble every id, name, and
-//! argument fragment from their fixtures.
+//! The space is transport, model (`openai/gpt-4o-mini` and `openai/gpt-4.1-mini`, pinned to
+//! OpenAI with fallbacks disabled so the gateway wire is stable), call shape (zero arguments, a
+//! nested object with an array and Unicode, a parallel pair) and surface (normalized model
+//! reply or one-turn agent). Tool choice is fixed to `required` so call shape, not model
+//! discretion, is the independent variable; the request-shape and content matrices own the
+//! other choices and sequential history.
 //!
-//! Auto/none/specific tool-choice controls are assigned to the separate
-//! request-shape matrix; this matrix fixes choice to `required` so call shape
-//! rather than model discretion is the independent variable. Sequential
-//! call/result/follow-up history is assigned to the content/history matrix.
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | model | `openai/gpt-4o-mini`, `openai/gpt-4.1-mini` pinned to OpenAI |
-//! | call shape | zero arguments, nested Unicode/array object, parallel pair |
-//! | surface | raw/normalized model, one-turn agent |
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/<test-name>.yaml`.
-//! Both cheap mini routes are pinned to OpenAI with fallbacks disabled, making
-//! the gateway wire stable across model families. Assertions span request
-//! schemas, native blocking/streaming assembly, normalized ids, names,
-//! arguments and order, and agent exact-once dispatch. Synthetic malformed call
-//! objects remain shared unit tests because they cannot be requested live.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/{blocking_gpt41_zero_agent,streaming_gpt4o_nested_agent}.yaml` |
+//! Model cells deserialize the provider-native response and normalize it, agent cells prove
+//! exact-once dispatch, and streaming cells reassemble every id, name and argument fragment
+//! from their fixtures under
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/`. Malformed call
+//! objects stay in the shared unit tests because they cannot be requested live.
 
 use anyhow::Result;
 use rig_test_support::cassette_models::OpenAiModels;

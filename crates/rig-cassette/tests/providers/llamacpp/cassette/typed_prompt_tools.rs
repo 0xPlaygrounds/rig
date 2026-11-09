@@ -1,4 +1,4 @@
-//! Smoke coverage for issue #1604 against a local llama.cpp OpenAI-compatible server.
+//! Typed-prompt tool smoke coverage against a local llama.cpp OpenAI-compatible server.
 
 use anyhow::Result;
 use schemars::JsonSchema;

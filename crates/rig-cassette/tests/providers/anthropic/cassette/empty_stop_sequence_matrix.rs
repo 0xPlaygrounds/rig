@@ -1,42 +1,18 @@
 //! Edge matrix for normalizing a turn that stopped on a stop sequence before
 //! emitting anything.
 //!
-//! # The bug
+//! Anthropic strips the sequence it stopped on. When the match is the first
+//! thing the model produces, the turn comes back 200 with `"content": []` and
+//! `"stop_reason": "stop_sequence"`. The blocking mapping must normalize that
+//! to an empty choice that keeps the usage, identity and finish reason, as the
+//! streamed twin does, rather than an empty-response error. The mapping's
+//! guard lives beside the wire's decoder in
+//! `crates/rig-core/src/providers/anthropic/`.
 //!
-//! Anthropic strips the sequence it stopped on. When the match is the *first*
-//! thing the model produces, the turn comes back 200 with:
-//!
-//! ```json
-//! {"content":[],"stop_reason":"stop_sequence","stop_sequence":"alpha", ...}
-//! ```
-//!
-//! The blocking response mapping carved out exactly one legal empty case —
-//! `end_turn` — and routed every other empty response through
-//! `require_non_empty_response`. So a completed provider turn became
-//! `CompletionError::ResponseError("Response contained no message or tool call
-//! (empty)")`, destroying the usage, identity and finish-reason the same
-//! response carried. The streamed twin of that request already finished
-//! cleanly with an empty choice, so this was also a blocking/streaming
-//! divergence — with the blocking side the broken one.
-//!
-//! # Matrix
-//!
-//! `expected` is what the *normalized* response must be. Recorded cells
-//! re-derive their premise from their own fixture bytes: a cell whose provider
-//! turn stopped coming back empty would otherwise pass while covering nothing.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 11 | `with_preamble_empty_stop` | system prompt present | empty choice | recorded |
-//! | 12 | `with_tools_empty_stop` | tools advertised | empty choice | recorded |
-//! | 19 | `unit_empty_assistant_turn_cannot_be_replayed` | adjacent request boundary | error | unit |
-//!
-//! Cell 19 is a unit test because it is about a request-side conversion, not
-//! about anything a provider turn can vary.
-//!
-//! The blocking mapping's guard lives beside the wire's decoder in
-//! `crates/rig-core/src/providers/anthropic/`; cells 11 and 12 cover it end to
-//! end on recorded turns.
+//! Recorded cells re-derive their premise from their own fixture bytes, so a
+//! provider turn that stopped coming back empty fails the cell. The replay
+//! boundary cell is a unit test because it is about a request-side
+//! conversion, not anything a provider turn can vary.
 
 use rig::completion::ToolDefinition;
 use rig::providers::anthropic;

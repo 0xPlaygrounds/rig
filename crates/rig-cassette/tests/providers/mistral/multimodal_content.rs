@@ -1,15 +1,11 @@
-//! Cassette-backed matrix for Mistral multimodal request content (#2290).
-//!
-//! `Mistral::finalize_request_body` used to flatten every message `content`
-//! array with the text-only helper, which keeps only parts carrying a
-//! `text`/`refusal` key. Every image, audio clip and document attached to a
-//! Mistral prompt was therefore removed from the request before it was sent,
-//! and the caller got an ordinary completion answering a prompt it never made.
+//! Cassette-backed matrix for Mistral multimodal request content: every image,
+//! audio clip and document attached to a Mistral prompt must reach the request
+//! that `Mistral::finalize_request_body` sends.
 //!
 //! What makes a regressed cell fail is the cassette harness itself: it matches
 //! each outbound request against the recorded one, so a request that stopped
 //! carrying its chunk misses the fixture and 404s. The `assert_recorded_*`
-//! helpers below read the committed YAML, which in replay is a constant — they
+//! helpers below read the committed YAML, which in replay is a constant, so they
 //! do not police the code under test. Their job is at *record* time, where they
 //! fail a cell whose freshly recorded request does not carry the shape the cell
 //! is named for, so a cassette can never be committed that covers nothing.

@@ -189,7 +189,9 @@ uncompressed: it sends `accept-encoding: identity` whatever the client asked
 for, and records the header as sent. It learns header credentials before the
 header allowlist drops them, and scrubs and keeps every exchange the same
 way; when the recording is read, the session's scrubber scrubs every kept
-exchange again with all it learned.
+exchange again with all it learned. A response header off the allowlist is absent
+from every recording, so a test that asserts a header is absent proves
+nothing unless the header is on the allowlist.
 
 A binary body with a binary media type (audio, images, video, PDF,
 `application/octet-stream` and the like) has no text to scrub and is kept as
@@ -357,10 +359,10 @@ the shared library regression sources.
 | P | `corpus_layers.rs` | layers |
 | Q | `corpus_causal.rs` | causal dispatch |
 | S | `corpus_header.rs` | the header's new types |
-| T | `corpus_leftovers.rs` | the leftovers of the #2443 review, and `Denied` |
+| T | `corpus_leftovers.rs` | remaining header and outcome shapes, and `Denied` |
 
-Each module carries its own dimension table, its cells and what it found; that
-header is the census, not this list. Beside the matrices, `golden_refusal.rs`
+Each module's doc states what its matrix pins; its `Cell` and `Program`
+constants are the census. Beside the matrices, `golden_refusal.rs`
 proves a stale golden refuses rather than passing on a different trace,
 `record_replay.rs` and `durable_execution.rs` pin recording and interrupted
 runs, `interpreters_agree.rs` states interpreter agreement as a proptest

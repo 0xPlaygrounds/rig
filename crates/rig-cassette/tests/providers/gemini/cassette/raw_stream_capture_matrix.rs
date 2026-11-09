@@ -1,39 +1,17 @@
-//! Feature matrix for raw provider response capture on the Gemini REST
+//! Raw provider response capture on the Gemini REST
 //! (`streamGenerateContent?alt=sse`) streaming seam.
 //!
-//! # The feature
+//! Raw capture is always on: the GenerateContent reassembler rebuilds, from
+//! the stream's chunks, the `generateContent` body the same turn has unary
+//! (parts joined, the last finish, usage and ids), and the driver puts it on
+//! the terminal [`rig::completion::CompletionResponse::raw`].
 //!
-//! Raw capture is always on: the GenerateContent reassembler rebuilds the
-//! `generateContent` body the same turn has unary from the stream's chunks
-//! (parts joined, the last finish, usage and ids) and the driver puts it
-//! onto the terminal [`rig::completion::CompletionResponse::raw`]. There is
-//! no opt-in and nothing about it reaches the wire.
-//!
-//! # Matrix
-//!
-//! `expected` is what the caller observes on the terminal record. Every
-//! recorded cell re-derives its premise from its own fixture bytes after the
-//! wrapper returns: the recorded stream must end with a frame carrying
-//! `usageMetadata` and a natural `finishReason`, or the terminal it asserts on
-//! is not the one this matrix is about.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` is the unary document; raw `finishReason` spelled `"STOP"` and `finishMessage` == wire while the normalized terminal reports `ToolCalls`; raw carries the streamed `functionCall`; the typed extras equal the unary recording's | recorded |
-//!
-//! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
-//! test is the plain `streamGenerateContent` route.
-//!
-//! Usage is cumulative per chunk and `finishReason` arrives on the last
-//! content frame, so the "wire" side of each premise is the last frame that
-//! carries `usageMetadata`, read with the same `data:` framing the streaming
-//! tests use.
-//!
-//! Cell 3 is the tool-turn twin: Gemini spells a call-only turn's finish
-//! `"STOP"` on the wire and the decoder reconciles the terminal to
-//! `ToolCalls` from the tool call it saw, so this is the one place the
-//! terminal `raw` and the normalized terminal legitimately disagree — `raw`
-//! must keep the wire spelling and the terminal must report the upgrade.
+//! On a forced tool call Gemini spells the finish `"STOP"` on the wire and
+//! the decoder reconciles the terminal to `ToolCalls`, so this is the one
+//! place `raw` and the normalized terminal legitimately disagree: `raw`
+//! keeps the wire spelling. Every cell re-derives its premise from the last
+//! fixture frame carrying `usageMetadata`, which must also carry a natural
+//! `finishReason`.
 
 use futures::StreamExt;
 use rig::completion::FinishReason;

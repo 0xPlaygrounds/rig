@@ -1,31 +1,17 @@
 //! Live Chat Completions matrix for the outer-reason truncation contract.
 //!
-//! A live budget sweep on 2026-08-16 found the same deterministic boundary on
-//! `mistral-small-latest` and `ministral-3b-latest`: cap 4 opens a call with an
-//! empty argument string and ends `length`, cap 16 ends `length` mid-string,
-//! and cap 48 carries the complete object and `tool_calls`. Caps 1 and 2 end
-//! before any call exists; those equivalent no-call states were pruned because
-//! they do not enter the changed deserializer or streaming tool assembler.
+//! `mistral-small-latest` and `ministral-3b-latest` share a deterministic budget
+//! boundary: cap 4 opens a call with an empty argument string and ends `length`,
+//! cap 16 ends `length` mid-string, and cap 48 carries the complete object and
+//! `tool_calls`. Smaller caps end before any call exists, so they never enter the
+//! deserializer or streaming tool assembler.
 //!
-//! The space is 2 transports × 2 models × 3 budgets × 2 public surfaces = 24
-//! cells. The one test is the streaming model cell at cap 4 on
+//! The space is transport, model, output cap and surface (model or one-turn
+//! agent). The recorded cell is the streaming model cell at cap 4 on
 //! `ministral-3b-latest`: it drives the normalized stream and asserts its
 //! request, finish reason, and accumulated argument bytes from the fixture.
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking, streaming |
-//! | model | `mistral-small-latest`, `ministral-3b-latest` |
-//! | output cap | 4 empty/incomplete, 16 partial, 48 complete |
-//! | surface | model, one-turn agent |
-//!
-//! Each test maps to
+//! Compound impossible shapes remain unit tests. Each test records
 //! `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/<test-name>.yaml`.
-//! Compound impossible shapes remain unit tests.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 1 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/streaming_ministral_3b_low_model.yaml` |
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;

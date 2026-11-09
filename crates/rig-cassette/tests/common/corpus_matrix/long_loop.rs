@@ -2,31 +2,17 @@
 //! the programs that drive a model through at least six dependent tool
 //! turns over it, on five provider columns.
 //!
-//! The repository ([`RepoHandle`]) is five small ASCII files and four
-//! tools — `list_files`, `read_file`, `write_file`, `run_tests` — whose
-//! outputs are pure functions of the tree's state. Two files are wrong
-//! (`src/lib.rs`'s `days_in_year`, `src/calendar.rs`'s `days_in_week`);
-//! `run_tests` stops at the first failing test and reports only that
-//! assertion, so a model learns of the second bug only after fixing the
-//! first, and reports `PASS` only when both are right. Every invocation is
-//! logged and exposed for assertions ([`Invocation`]). Two bugs in two
-//! files make a batched loop (gpt-4.1-mini reads all three files in one
-//! turn under [`LOOP_PROMPT`]) still at least seven tool turns long.
+//! The repository ([`RepoHandle`]) is five small ASCII files and four tools
+//! (`list_files`, `read_file`, `write_file`, `run_tests`) whose outputs are
+//! pure functions of the tree's state. Two files are wrong (`src/lib.rs`'s
+//! `days_in_year`, `src/calendar.rs`'s `days_in_week`), and `run_tests` stops
+//! at the first failing test, so a model learns of the second bug only after
+//! fixing the first. Two bugs in two files keep even a batched loop under
+//! [`LOOP_PROMPT`] at least seven tool turns long. Every invocation is logged
+//! ([`Invocation`]).
 //!
-//! The tree is host state. One tree lives per cell name for the duration
-//! of a test ([`lease`]); a second test of the same cell in the same
-//! process waits for it.
-//!
-//! Rows and their disposition (`tests/README.md`, the family's grid):
-//!
-//! | Row | Cell | Disposition |
-//! |---|---|---|
-//! | 1 | [`LONG_UNARY`], [`LONG_STREAMED`] | recorded |
-//! | 2 | [`PARALLEL_CALLS`] | recorded (a live batch of four reads; one missing path) |
-//! | 3 | [`BIG_RESULT`] | recorded (`run_tests` emits a 48 KiB report) |
-//! | 4 | [`TOOL_ERROR_MIDWAY`] | recorded (`run_tests` errs once, the model re-runs) |
-//! | 4 | [`INVALID_ARGS_MIDWAY`] | scripted: a live model cannot be steered into malformed arguments; the row-1 unary recording is served by the sequenced transport with turn k's arguments rewritten ([`UnaryShape::with_invalid_args`]) |
-//! | 5 | [`MAX_TURNS_MIDWAY`], [`OUTPUT_CAP_MIDWAY`] | recorded |
+//! The tree is host state: one tree lives per cell name for the duration of a
+//! test ([`lease`]), and a second test of the same cell waits for it.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};

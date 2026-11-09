@@ -1,24 +1,16 @@
-//! Edge matrix for rig#2354: DeepSeek's blocking normalization appended the
-//! reasoning block *after* the tool calls, while its stream emits reasoning
-//! first — so the two transports returned differently ordered choices for the
-//! same turn.
+//! Edge matrix for DeepSeek's reasoning block order: the blocking and streaming
+//! transports must return the same choice order for the same turn.
 //!
-//! The blocking mapping built `[text?, tool_call…]` and then pushed the
-//! reasoning block onto the end. DeepSeek's own stream delivers every
-//! `reasoning_content` delta before the first `content` delta and before the
-//! tool call (`reasoning_tool_roundtrip/streaming.yaml`: 27 reasoning chunks,
-//! then 12 tool-call chunks, then `finish_reason`), and the shared canonical
-//! chunk lifecycle fixes that same order — reasoning, then text, then tool
-//! events. The order is now structural rather than agreed: one decoder folds
-//! the unary body by synthesizing the events a stream of the same turn would
-//! have pushed, so there is no second mapping left to reorder anything. This
-//! matrix is deliberately scoped to DeepSeek's blocking/streaming parity;
-//! gateway-specific policies such as OpenRouter's own ordering are separate.
+//! DeepSeek's stream delivers every `reasoning_content` delta before the first
+//! `content` delta and before the tool call, and the shared canonical chunk
+//! lifecycle fixes that order: reasoning, then text, then tool events. One
+//! decoder folds the unary body by synthesizing the events a stream of the same
+//! turn would push, so these cells pin that both transports agree. Gateway
+//! policies such as OpenRouter's ordering are tested separately.
 //!
-//! No data was lost, only reordered; these cells pin that both transports
-//! agree. The blocking enumeration over every (reasoning × text × 0/1/2 tool
-//! calls) shape is a wire unit test, because the live model cannot be made to
-//! produce each shape on demand.
+//! The blocking enumeration over every (reasoning × text × 0/1/2 tool calls)
+//! shape is a wire unit test, because the live model cannot be made to produce
+//! each shape on demand.
 
 use rig::completion::ToolDefinition;
 use rig::providers::deepseek;

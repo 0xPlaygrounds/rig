@@ -1,58 +1,22 @@
 //! Matrix B: the hook surface.
 //!
-//! Hooks are program. The header names the stack by type, a different
-//! stack is refused before the first dispatch, and within the same stack
-//! every decision is re-made on replay and must land where it landed at
-//! record time: in the record (a patched call, a hook's own dispatch), in
-//! the transcript only (a replaced result, a denied call's reason), in the
-//! request (an overridden preamble), or in the run's shape (a retried
-//! turn, a retried invalid call). The hand driver makes each decision
-//! itself, so a row proves the decision is a function of the event.
+//! Hooks are program. The header names the stack by type, a different stack is refused before
+//! the first dispatch, and within the same stack every decision is re-made on replay and must
+//! land where it landed at record time: in the record (a patched call, a hook's own dispatch),
+//! in the transcript only (a replaced result, a denied call's reason), in the request (an
+//! overridden preamble), or in the run's shape (a retried turn, a retried invalid call). The
+//! hand driver makes each decision itself, so a cell proves the decision is a function of the
+//! event.
 //!
-//! # Dimensions
+//! One cell per decision, plus streamed twins of the two dispatch decisions and one two-hook
+//! stack whose header shows the order. Other combinations are not recorded: the hook methods
+//! fire at distinct points and compose by the `HookStack` rules, which `rig-agent`'s unit tests
+//! cover. `on_model_select` belongs to Matrix C (routing), and the delta and `on_run_settled`
+//! hooks only observe. The invalid-call retry is mock-scripted, since no live model calls an
+//! unadvertised tool.
 //!
-//! | axis | values recorded |
-//! |---|---|
-//! | `observes` | default · every family |
-//! | `on_dispatch` | Proceed · Patch (tool args) · Deny (skip) |
-//! | `on_outcome` | Proceed · Replace (a tool result) · Replace (a completion) |
-//! | `on_completion_call` | Continue · Patch (preamble) |
-//! | `on_model_turn_finished` | Continue · Retry with feedback |
-//! | `on_invalid_tool_call` | (none) · Retry, twice |
-//! | a hook's own dispatch | none · `on_run_start` calls a tool |
-//! | stack | one hook · two hooks |
-//! | transport | unary · streamed with events (for Patch and Deny) |
-//!
-//! Full cross-product: 2 × 3 × 3 × 2 × 2 × 2 × 2 × 2 × 2 = 1152. Recorded:
-//! the 12 cells below, one per decision plus the streamed twins of the
-//! two dispatch decisions and one two-hook stack. Pruned: every other
-//! combination, because the hook methods fire at distinct points and
-//! compose by the stack's documented rules (`HookStack` docs), which
-//! `rig-agent`'s unit tests cover; the corpus pins where each decision
-//! lands on the record, and a stack of two shows the order the header
-//! names. `on_model_select` is Matrix C's (routing); `on_text_delta`,
-//! `on_reasoning_delta`, `on_tool_call_delta`, `on_run_settled` observe
-//! and cannot change a record.
-//!
-//! # Cells
-//!
-//! | golden | producer | shape | decision lands in |
-//! |---|---|---|---|
-//! | `anthropic_hooks_observe_everything` | `corpus_hooks.rs` `observe_everything_…` | `[Completion, Tool, Completion]` | nowhere; the header names the hook |
-//! | `anthropic_hooks_patch_tool_args` | `patch_tool_args_…` | `[Completion, Tool, Completion]` | the record: `add` runs with `{"x":40,"y":2}`; history keeps `{17, 25}` |
-//! | `anthropic_hooks_patch_tool_args_streamed` | `patch_tool_args_streamed_…` | the same, events kept | the record |
-//! | `anthropic_hooks_deny_tool` | `deny_tool_…` | `[Completion, Completion]` | the transcript: the reason as the tool's result; no tool record |
-//! | `anthropic_hooks_deny_tool_streamed` | `deny_tool_streamed_…` | the same, events kept | the transcript |
-//! | `anthropic_hooks_replace_tool_result` | `replace_tool_result_…` | `[Completion, Tool, Completion]` | the transcript: `99`; the record holds `42` |
-//! | `anthropic_hooks_replace_answer` | `replace_answer_…` | `[Completion]` | the run's output: `REPLACED`; the record holds the model's text |
-//! | `anthropic_hooks_preamble_override` | `preamble_override_…` | `[Completion]` | the request: the pirate preamble; the spec keeps the base |
-//! | `anthropic_hooks_demand_done` | `demand_done_…` | `[Completion, Completion]` | the run's shape: a second completion after feedback |
-//! | `anthropic_hooks_lookup_before_run` | `lookup_before_run_…` | `[Tool, Completion, Tool, Completion]` | the record: the hook's `add(1, 2)` under the tool's key, first |
-//! | `anthropic_hooks_two_hooks` | `two_hooks_…` | `[Completion, Tool, Completion]` | both: the patched call in the record, `99` in the transcript; header `[PatchAddArgs, ReplaceAddResult]` |
-//! | `mock_hooks_retry_twice` | `tests/core/golden_hooks.rs` `hooks_retry_twice_…` | `[Completion, Completion, Completion, Tool, Completion]` | the run's shape: two retries (mock-scripted: no live model calls an unadvertised tool) |
-//!
-//! Every Anthropic cell is recorded on the wire (`CLAUDE_SONNET_4_6`,
-//! temperature 0) into `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
+//! Every Anthropic cell is recorded on the wire (`CLAUDE_SONNET_4_6`, temperature 0) into
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;

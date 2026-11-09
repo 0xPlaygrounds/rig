@@ -1,61 +1,19 @@
 //! Matrix O: the oracle and the header.
 //!
-//! What the corpus's own instruments say, pinned: the record oracle is a
-//! total order (every golden's ids are strictly increasing in log order,
-//! and the replay is compared position by position across every key,
-//! which the earlier passes' risk statements said it was not); two tool
-//! calls served concurrently with a note inside each dispatch replay in
-//! the recorded order; every recorded stream item reads back on its own
-//! to the value it was recorded as; a hook that carries state names itself
-//! in the header, so two programs differing only in that state are two
-//! headers;
-//! `Rerank` has a golden through a mock reranker on a host's bus; a
-//! `Prompted` answer that misses the output schema fails the run; and the handler table, the
-//! signature and the required row are three sets with stated inclusions.
+//! What the corpus's own instruments say, pinned. The record oracle is a total order: every
+//! golden's ids are strictly increasing in log order (`assert_same_records`), and the replay is
+//! compared position by position across every key. Every recorded stream item reads back on its
+//! own to the value it was recorded as. A hook that carries state names itself in the header
+//! (`AgentHook::name`), so two programs differing only in that state are two headers. The
+//! handler table, the signature and the required row are three sets with stated inclusions.
 //!
-//! # Dimensions
-//!
-//! | axis | values recorded |
-//! |---|---|
-//! | instrument | id order · concurrent cross-key order · hook identity · the three header sets |
-//! | family | `Rerank` (mock) · `Prompted` missing the schema |
-//!
-//! Recorded: 4 goldens and 4 corpus-wide tests below (the matrix is the
-//! oracle's, so its rows are assertions over the corpus as much as
-//! cells). Pruned: a keyed rerank wire (none has a cassette suite:
-//! voyageai's is keyless here, llamacpp's local); a `Prompted` violation
-//! reprompted (the one-turn run has no turn left to reprompt in, and
-//! rig-agent's run tests cover the reprompt).
-//!
-//! # Cells
-//!
-//! | golden | producer | shape |
-//! |---|---|---|
-//! | `anthropic_oracle_concurrent_notes` | anthropic `corpus_oracle.rs` `concurrent_notes_…` | `[Completion, (Tool, Custom) × 2 in dispatch order, Completion]` under `tool_concurrency: 2` |
-//! | `anthropic_oracle_stop_after_turn_two` | `stop_after_turn_two_…` | `[Completion, Tool, Completion]`; hooks `["StopAfterTurn(2)"]` |
-//! | `mock_oracle_rerank` | `tests/core/golden_oracle.rs` `oracle_rerank_…` | `[Rerank, Completion]` over a host's bus |
-//! | `mock_oracle_prompted_misses_schema` | `oracle_prompted_misses_schema_…` | `[Completion]`; the prose answer refused |
-//!
-//! # What the matrix found
-//!
-//! - The oracle was already total: these captured programs serve in ID order
-//!   and replay is compared positionally across keys, so #2451's
-//!   "per key only" risk was a misreading. The id assertion is now in
-//!   `assert_same_records`, and no golden failed it. The recorder preserves
-//!   serve order generally; futures may reserve IDs before they are polled.
-//! - The concurrent cell's pin is the interleaving shape — both tool
-//!   dispatches, then both notes (`[Tool, Tool, Custom, Custom]`), since
-//!   the engine mints both dispatches before the driver serves either
-//!   and each note follows its tool's answer — and not which tool's note
-//!   comes first: both notes carry the same payload (`at: "outcome"`),
-//!   so the two orders are one record sequence. The replay reproduces the
-//!   shape under the test runtime (current-thread tokio); a runtime that
-//!   answers the second dispatch before the first would move a note, and
-//!   that is a re-record with the rule restated, not a defect.
-//! - Hook identity by type name could not tell two programs apart whose
-//!   hooks differ only in a value; `AgentHook::name` lets a hook name
-//!   itself, the stack records it, and the stateful stop's header reads
-//!   `StopAfterTurn(2)` (`rig-agent`, with a unit test).
+//! Two tool calls served concurrently with a note inside each dispatch replay as
+//! `[Tool, Tool, Custom, Custom]`: the engine mints both dispatches before the driver serves
+//! either. The pin is that shape, not which note comes first, since both notes carry the same
+//! payload; a runtime that answers the second dispatch first would need a re-record, not a fix.
+//! `Rerank` has a golden through a mock reranker on a host's bus, because no keyed rerank wire
+//! has a cassette suite, and a `Prompted` answer that misses the output schema fails the
+//! one-turn run.
 
 use crate::corpus;
 

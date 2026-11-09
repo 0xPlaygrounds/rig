@@ -1,18 +1,9 @@
 //! Doubleword prompt-caching cassette suite.
 //!
 //! Doubleword serves an OpenAI-compatible wire and reports cache hits in
-//! `prompt_tokens_details.cached_tokens`. It did no measurable prefix caching
-//! when this suite was first recorded; re-recorded, every turn of a
-//! 4,865-token probe read 4,752 cached tokens (97.7%), turn one included,
-//! because the probe's prefix was already warm from an earlier run. The
-//! probes assert the full conformance suite.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     doubleword::cassette::prompt_caching:: -- --exact --test-threads=1
-//! ```
+//! `prompt_tokens_details.cached_tokens`, and the probes assert the full conformance suite. The
+//! recorded probes read cached tokens from turn one, because the probe's prefix was already warm
+//! from an earlier run.
 
 use rig::providers::doubleword;
 

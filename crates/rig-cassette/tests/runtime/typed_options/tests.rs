@@ -218,7 +218,7 @@ mod harness_switch {
 mod no_silent_drop {
     //! A cache asked of a dialect that cannot cache on request is refused,
     //! or skipped with a warning under `Ignore`; it is never dropped
-    //! without a word, as `Chat::with_prompt_caching` was.
+    //! without a word.
     //!
     //! Encode-only: a refused option sends no request to record.
 
@@ -337,7 +337,7 @@ mod no_silent_drop {
 }
 
 mod option_matrix {
-    //! A golden of section 6: each option set alone on each wire gives
+    //! A golden of the option mapping table: each option set alone on each wire gives
     //! exactly the body delta or the refusal its cell names. `omit` passes
     //! only where the cell says "omit", because any other cell expects a
     //! change or an error; a wire that answers `Mapping::Nothing` for a set
@@ -376,7 +376,7 @@ mod option_matrix {
 
     type Encode = Box<dyn Fn(CompletionRequest) -> Result<Value, ProviderError>>;
 
-    /// What one cell of section 6 says the wire does.
+    /// What one cell of the option mapping table says the wire does.
     enum Cell {
         /// The body equals the baseline with this object deep-merged in.
         Merge(Value),
@@ -412,7 +412,7 @@ mod option_matrix {
     }
 
     /// One row per wire, one cell per field of `one_field_each`, read from
-    /// section 6 for the model each wire uses. The request has no tools and
+    /// the option mapping table for the model each wire uses. The request has no tools and
     /// no preamble.
     fn cells() -> Vec<(&'static str, Encode, [Cell; 8])> {
         let mut rows: Vec<(&'static str, Encode, [Cell; 8])> = vec![
@@ -1290,7 +1290,7 @@ mod precedence {
         assert_eq!(sent.get("top_p"), Some(&Value::Null), "{sent}");
         assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
 
-        // Responses skips a raw `null` today; it is now sent as on Chat.
+        // Responses sends a raw `null` as Chat does.
         let sent = encode(
             &openai_responses(),
             CompletionRequest::new("Reply with the single word: pong")

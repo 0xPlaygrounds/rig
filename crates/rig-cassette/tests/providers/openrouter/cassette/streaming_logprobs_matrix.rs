@@ -1,39 +1,16 @@
-//! Exhaustive matrix for streamed Chat Completions log probabilities.
+//! Matrix for streamed Chat Completions log probabilities.
 //!
-//! Before this fix, the streamed choice did not model `logprobs`, so serde
-//! discarded every per-token object before the shared compatible adapter saw
-//! it, while the blocking reply retained the same field on its choice: the
-//! streamed path carried strictly less provider-native information than the
-//! blocking one for the same turn.
+//! The streamed choice must carry the same per-token `logprobs` the blocking
+//! reply carries on its choice. Each cell re-derives the exact expected
+//! log-probability object from its fixture and compares it with the serialized
+//! native response; streaming cells concatenate token arrays in wire order.
+//! Two model families are covered because this is shared Chat Completions
+//! metadata rather than a one-model quirk. Each cell pins the OpenAI upstream
+//! and disables fallbacks, so gateway routing drift cannot change the wire
+//! contract under test.
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, raw streaming regression |
-//! | model | `openai/gpt-4o-mini`, `openai/gpt-4.1-mini` |
-//! | termination | natural `stop`, one-token `length` |
-//! | top candidates | `top_logprobs` absent, `0`, `2` |
-//!
-//! That is 24 cells, of which the four below are tests. Each one re-derives the
-//! exact expected log-probability object from its fixture and compares it with
-//! the serialized native response. Streaming cells recursively concatenate
-//! token arrays in wire order. The two model families are deliberate: this is
-//! shared Chat Completions metadata rather than a one-model quirk. Each test
-//! pins the OpenAI upstream and disables fallbacks, so gateway routing drift
-//! cannot change the wire contract under test.
-//!
-//! Each test maps to
-//! `crates/rig-cassette/fixtures/cassettes/openrouter/streaming_logprobs_matrix/<test-name>.yaml`.
-//! Synthetic `logprobs` values (`null`, `{}`, and a non-object) remain shared
-//! deserializer units because they are not controllable model outputs. The two
-//! cheap mini routes are stable Chat Completions controls; each test asserts
-//! the routed request, provider-native blocking response or raw-stream
-//! terminal, finish reason, and complete probability payload.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | 4 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/streaming_logprobs_matrix/{blocking_gpt_4_1_mini_stop_top_absent,blocking_gpt_4o_mini_length_top_zero,streaming_gpt_4_1_mini_stop_top_absent,streaming_gpt_4_1_mini_stop_top_two}.yaml` |
+//! Synthetic `logprobs` values (`null`, `{}`, and a non-object) stay shared
+//! deserializer unit tests because they are not controllable model outputs.
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};

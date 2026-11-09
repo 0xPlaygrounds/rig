@@ -1,9 +1,7 @@
 //! Groq model listing, recorded from the real API.
 //!
-//! Groq serves `GET /models` — the same path its credential check reads —
-//! but for a long time rig declared no model-listing capability for it, so
-//! listing Groq's catalogue was impossible (rig#2079). Recording the endpoint
-//! proves the shared OpenAI-style envelope actually decodes against Groq's
+//! Groq serves `GET /models`, the same path its credential check reads.
+//! Recording the endpoint proves the shared OpenAI-style envelope actually decodes against Groq's
 //! wire, rather than assuming it because Groq is OpenAI-compatible.
 //!
 //! Run cassette tests in replay mode by default, or set
@@ -31,9 +29,8 @@ async fn list_models_smoke() -> Result<()> {
         );
         // Pin every optional field Groq actually reports. A DTO that decoded
         // into all-`None` optionals would otherwise look identical to a
-        // working one — which is exactly how a provider-reported output
-        // ceiling got dropped on the floor before (rig#2322). `created` is
-        // excluded: the recorder scrubs timestamps to 0.
+        // working one. `created` is excluded: the recorder scrubs timestamps
+        // to 0.
         for (field, present) in [
             ("name", models.data.iter().any(|m| m.name.is_some())),
             ("owned_by", models.data.iter().any(|m| m.owned_by.is_some())),
@@ -54,7 +51,7 @@ async fn list_models_smoke() -> Result<()> {
     .await
 }
 
-/// rig#2079 — the shared fetch path classifies a rejected listing as
+/// The shared fetch path classifies a rejected listing as
 /// the provider's reply, with its status and a route naming provider and path.
 ///
 /// Pins that the Groq lister routes its failures through the same triage as

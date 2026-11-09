@@ -1,11 +1,8 @@
 //! Raw response capture on Ollama's streamed Chat Completions route.
 //!
-//! A streamed reply's `raw` is the terminal record the decoder assembled
-//! from the stream; its usage is the one usage chunk the stream carried.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `stream_terminal_reproduces_the_usage_chunk` | terminal record | the terminal reproduces the recorded usage chunk's id, model and usage | recorded |
+//! A streamed reply's `raw` is the terminal record the decoder assembled from the stream; its
+//! usage is the one usage chunk the stream carried. `stream_terminal_reproduces_the_usage_chunk`
+//! pins that the terminal reproduces the recorded chunk's id, model and usage.
 
 use rig::completion::CompletionRequest;
 

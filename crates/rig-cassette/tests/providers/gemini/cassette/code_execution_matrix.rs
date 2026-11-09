@@ -1,47 +1,20 @@
-//! Edge matrix for the `codeExecution` response-part bug.
+//! Edge matrix for Gemini `codeExecution` response parts.
 //!
-//! # The bug
+//! A caller enables Gemini's built-in code-execution tool by putting it in
+//! `additional_params.tools`, which `create_request_body` lifts onto the request.
+//! Gemini then answers with `executableCode` and `codeExecutionResult` parts
+//! interleaved with the model's text. The part mapper the GenerateContent decoder
+//! runs on both transports must keep the turn, final text answer included, so the
+//! matrix crosses part composition, transport and surface, and pins the streaming
+//! twin of each blocking cell so parity is asserted rather than assumed.
 //!
-//! Rig lets a caller enable Gemini's built-in code-execution tool by putting
-//! it in `additional_params.tools` — `create_request_body` lifts that array
-//! straight onto the request (`extract_tools_from_additional_params`). Gemini
-//! then answers with `executableCode` and `codeExecutionResult` parts
-//! interleaved with the model's text. The blocking mapper had no arm for
-//! either kind, so it fell through to
-//! `ResponseError("Response did not contain a message or tool call")` and
-//! **discarded the whole turn**, final text answer included, while the
-//! streaming adapter skipped the same parts and returned the answer. Blocking
-//! and streaming disagreed about the same bytes.
+//! The unit cells state layouts a live turn cannot produce: a candidate whose
+//! only parts are code-execution parts, the same parts in every ordering, and the
+//! `functionResponse`/`fileData` kinds that must keep failing. Each states its
+//! shape from bytes recorded in this matrix.
 //!
-//! # The matrix
-//!
-//! The fixed code path is the part mapper the GenerateContent decoder runs on
-//! every part it reads, on both transports. Its inputs are the *kinds* of
-//! parts in a candidate, their *order*, and which surface is reading them —
-//! so the matrix multiplies part composition × transport × surface, and pins
-//! the streaming twin of every blocking cell so parity is asserted rather
-//! than assumed.
-//!
-//! | # | cell | transport | surface | dimension pinned |
-//! |---|------|-----------|---------|------------------|
-//! | 11 | `streaming_code_execution_with_visible_thoughts` | streaming | `stream` | parity twin of 10 |
-//! | 22 | `blocking_code_execution_replayed_in_chat_history` | blocking | `Agent::chat` | a code-execution turn replayed as history, code parts included |
-//! | 23 | `code_execution_only_turn_is_a_turn_of_its_code_parts` | — | unit | see below |
-//! | 24 | `code_execution_parts_are_skipped_in_every_position` | — | unit | see below |
-//! | 25 | `unmodeled_part_kinds_still_fail_loudly` | — | unit | see below |
-//!
-//! Cells 23–25 are unit tests rather than recordings because a live turn
-//! cannot be made to produce their states: Gemini never returns a candidate
-//! whose *only* parts are code-execution parts (it always narrates a result),
-//! never returns the same code-execution parts in every ordering, and never
-//! returns the `functionResponse`/`fileData` kinds that must keep failing.
-//! Each states its shape from bytes recorded in this matrix.
-//!
-//! No cell was dropped for cost: every recording here is a flash-class model
-//! with a capped output budget.
-//!
-//! Re-record with:
-//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::code_execution_matrix -- --test-threads=1`
+//! Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig-cassette --all-features --test integration gemini::cassette::code_execution_matrix -- --test-threads=1`.
 
 use futures::StreamExt;
 use rig::message::AssistantContent;

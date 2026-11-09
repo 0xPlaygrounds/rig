@@ -1,4 +1,4 @@
-//! Response identity metadata (rig#2265): OpenAI reports `x-request-id` on
+//! Response identity metadata: OpenAI reports `x-request-id` on
 //! both the Responses and Chat Completions APIs; blocking and streaming turns
 //! carry it identically.
 

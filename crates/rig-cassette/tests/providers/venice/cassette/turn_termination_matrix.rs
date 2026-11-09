@@ -1,50 +1,22 @@
-//! Live-recorded matrix for the model-turn termination metadata a hook sees
-//! (rig#2184 / PR #2341), against the real Venice wire — the OpenAI
-//! Chat Completions dialect; the cells are the OpenAI matrix's, on this
-//! wire's model.
+//! Live-recorded matrix for the model-turn termination metadata a hook sees,
+//! against the real Venice wire. Venice speaks the OpenAI Chat Completions
+//! dialect, so the cells are the OpenAI matrix's, on this wire's model.
 //!
 //! `ModelTurnFinished` carries `finish_reason: Option<&FinishReason>` and
-//! `max_tokens: Option<u64>` — the normalized reason the provider stopped, and
-//! the effective output-token cap *that attempt* ran under, after agent
+//! `max_tokens: Option<u64>`: the normalized reason the provider stopped, and
+//! the effective output-token cap that attempt ran under, after agent
 //! configuration, the runner override, and any completion-call `RequestPatch`.
-//!
-//! **Why cassettes and not mocks.** The unit cells in `rig-agent` drive a
-//! `MockCompletionModel`, so they prove the agent plumbs whatever the model
-//! layer hands it — they cannot prove that OpenAI Chat Completions's wire
-//! `length` becomes `FinishReason::Length` by the time a hook sees it.
 //! These cells replay real recorded bytes through the provider mapper, the
-//! agent, and the hook stack, so they pin the whole chain the word
-//! "normalized" is a claim about. The probe hook and the escalation hook are
-//! the *same* types every provider suite uses (`crate::support`) — if a provider
-//! needed its own, the metadata would not be provider-neutral.
-//!
-//! This provider's vocabulary, and what it normalizes to:
-//!
-//! | normalized | OpenAI Chat Completions wire value | how |
-//! |---|---|---|
-//! | `Stop` | `stop` | direct |
-//! | `Length` | `length` | direct |
-//! | `ToolCalls` | `tool_calls` | direct — OpenAI reports a distinct value for tool turns |
-//!
-//! | # | cell | surface | asserts |
-//! |---|------|---------|---------|
-//! | 1 | `blocking_truncated_turn_reports_length_and_cap` | blocking | `Length` + the cap this attempt ran under |
-//! | 2 | `streaming_truncated_turn_reports_length_and_cap` | streaming | the same, on the other surface |
-//! | 5 | `blocking_tool_turn_reports_tool_calls` | blocking | `ToolCalls` |
-//! | 6 | `streaming_tool_turn_reports_tool_calls` | streaming | `ToolCalls` |
+//! agent, and the hook stack, so they pin that the wire's `stop`, `length` and
+//! `tool_calls` become `Stop`, `Length` and `ToolCalls` by the time a hook sees
+//! them. The probe and escalation hooks are the shared `crate::support` types,
+//! so the metadata stays provider-neutral.
 //!
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
-//! carrying the wire reason the cell is about — otherwise a provider changing
-//! behavior would leave the cell green while covering nothing.
-//!
-//! **Deliberately not covered here.** `ContentFilter` has no benign trigger:
-//! eliciting it means asking a provider to produce content it must refuse.
-//! `Other(_)` has no benign reachable wire value on this endpoint. A provider
-//! reporting *no* reason is not reachable here either — OpenAI Chat Completions always
-//! reports one. All three are pinned by unit cells beside the fix
-//! (`crates/rig-agent/src/agent/runner.rs`, `model_turn_finished_*`) and in
-//! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`), where
-//! the whole vocabulary can be enumerated without a live call.
+//! carrying the wire reason the cell is about. `ContentFilter`, `Other(_)` and
+//! a missing reason have no benign trigger on this endpoint and are pinned by
+//! unit tests in `crates/rig-agent/src/agent/runner.rs` and
+//! `crates/rig-core/src/completion/request.rs`.
 
 use rig::completion::FinishReason;
 use serde_json::Value;

@@ -23,7 +23,7 @@ async fn list_models_smoke() {
     .await;
 }
 
-/// rig#2079 — the shared fetch path classifies a rejected listing as
+/// The shared fetch path classifies a rejected listing as
 /// the provider's reply, with its status and a route naming provider and path.
 ///
 /// Anthropic's listing is the paginated one, so this also pins that a failure

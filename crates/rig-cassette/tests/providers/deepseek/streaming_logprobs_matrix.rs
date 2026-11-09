@@ -1,25 +1,14 @@
-//! Exhaustive matrix for streamed Chat Completions log probabilities.
+//! Matrix for streamed Chat Completions log probabilities on DeepSeek.
 //!
-//! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
-//! discarded every per-token object before the shared compatible adapter saw
-//! it. A blocking reply's captured `raw` kept the same field on its choice;
-//! a streamed reply therefore carried strictly less provider-native
-//! information than a blocking one.
+//! `StreamingChoice` models `logprobs`, so a streamed reply carries the same per-token objects
+//! a blocking reply's captured `raw` keeps on its choice. The space is transport, thinking
+//! (disabled or `reasoning_effort: low`), termination (`stop` or a one-token `length`) and
+//! `top_logprobs` (absent, `0`, `2`).
 //!
-//! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
-//!
-//! | dimension | values |
-//! |---|---|
-//! | transport | blocking control, streamed regression |
-//! | thinking | disabled text, `reasoning_effort: low` |
-//! | termination | natural `stop`, one-token `length` |
-//! | top candidates | `top_logprobs` absent, `0`, `2` |
-//!
-//! That is 24 cells, of which eight are tests. Each re-derives the exact
-//! expected log-probability object from its fixture and compares it with the
-//! captured `raw` view of the reply it rode on. Streaming cells recursively
-//! concatenate token arrays in wire order, including DeepSeek's
-//! `reasoning_content` probability array.
+//! Each recorded cell re-derives the exact expected log-probability object from its fixture and
+//! compares it with the captured `raw` view of the reply it rode on. Streaming cells
+//! concatenate token arrays in wire order, including DeepSeek's `reasoning_content` probability
+//! array.
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};

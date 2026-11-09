@@ -1,32 +1,15 @@
-//! Deepseek prompt-caching cassette suite.
-//!
-//! Rig normalizes `Usage::cached_input_tokens` for this provider, and before
-//! this suite no test had ever seen the field be non-zero. The three-turn probe
-//! below is what makes the provider's actual behavior observable — including the
-//! possibility that it does not cache at all, which is recorded rather than
-//! assumed.
+//! DeepSeek prompt-caching cassette suite.
 //!
 //! DeepSeek caches context automatically and reports hits in its own
-//! `prompt_cache_hit_tokens` field, outside the OpenAI-style details object
-//! (`crates/rig-core/src/providers/deepseek.rs`). Hits and misses partition
-//! `prompt_tokens`, so the denominator is `input_tokens`.
+//! `prompt_cache_hit_tokens` field, outside the OpenAI-style details object,
+//! which rig maps into `Usage::cached_input_tokens`. Hits and misses
+//! partition `prompt_tokens`, so the denominator is `input_tokens`.
 //!
-//! # No agent-loop cell, and why
-//!
-//! Every other caching provider in the matrix has an `agent_loop` cell that
-//! drives a real multi-turn agent run with a tool round-trip — the only cell
-//! that can catch rig's *driver* disturbing the prefix between iterations.
-//! This provider has none, deliberately: its model answers the probe's prompt
-//! from its own knowledge and never calls the tool, even with
-//! `ToolChoice::Required`. A run that makes one model call records one request,
-//! which leaves `assert_prefix_stable` no pair to compare and the cell proving
-//! nothing. A cell that cannot fail is worse than an acknowledged gap.
-//!
-//! The loop-level guarantee is still covered for this provider by the
-//! corpus-wide scan in `tests/cassette_cache_prefix.rs`, which compares every
-//! recorded multi-turn conversation in its existing suites.
-//!
-//! # Recording
+//! There is no `agent_loop` cell: the model answers the probe from its own
+//! knowledge and never calls the tool, even under `ToolChoice::Required`, so
+//! a run records one request and `assert_prefix_stable` would have no pair
+//! to compare. The corpus-wide scan in `tests/cassette_cache_prefix.rs`
+//! covers this provider's recorded multi-turn conversations instead.
 //!
 //! ```text
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \

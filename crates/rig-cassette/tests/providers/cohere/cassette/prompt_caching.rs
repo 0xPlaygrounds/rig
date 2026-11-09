@@ -1,46 +1,21 @@
 //! Cohere prompt-caching cassette suite.
 //!
-//! **Cohere's prompt cache is real, and it warms across turns.** Measured on
-//! `command-a-03-2025`, the **blocking** three-turn probe over a 6,058-token prompt:
-//!
-//! | turn | prompt | cached | ratio |
-//! |---|---:|---:|---:|
-//! | 1 (cold) | 6,058 | 112 | 1.8% |
-//! | 2 (byte-identical repeat) | 6,058 | 992 | 16.4% |
-//! | 3 (prefix grown) | 6,085 | 6,016 | **98.9%** |
-//!
-//! The streaming probe warms the same way, reaching 6,048 of 6,085 (99.4%).
-//!
-//! An earlier revision of this suite got this wrong, and the way it got it wrong
-//! is worth recording. It asserted only over turns 1 and 2, saw 112 and
-//! concluded Cohere reported "a constant 112 cached tokens … not prefix
-//! caching". Turn 3 was never examined, so the mistake would have passed
-//! forever. `assert_no_meaningful_prefix_cache` now folds over *every* turn
-//! precisely so a late-warming cache cannot hide from it.
-//!
-//! The cells therefore assert what is actually true: the cache read never goes
-//! backwards as the conversation grows, and the final turn clears the
-//! provider's floor. A prefix move breaks both.
-//!
-//! Note that turn 2's 16.4% is exactly the reading a bare
-//! `cached_input_tokens > 0` assertion reports as "caching works" — 83% of the
-//! prompt re-billed, and no test that only checks for non-zero could tell.
+//! Cohere's prompt cache is real and warms across turns: on `command-a-03-2025`
+//! the blocking three-turn probe reads a small fraction of the prompt on turns 1
+//! and 2 and nearly all of it on turn 3, and the streaming probe warms the same
+//! way. The cells assert that the cache read never goes backwards as the
+//! conversation grows and that the final turn clears the provider's floor; a
+//! prefix move breaks both. A bare `cached_input_tokens > 0` check would pass on
+//! turn 2 while most of the prompt is re-billed, which is why
+//! `assert_no_meaningful_prefix_cache` folds over every turn.
 //!
 //! Cohere documents `cached_tokens` as a subset of `tokens.input_tokens` and
-//! excludes it from `billed_units`
-//! (`crates/rig-core/src/providers/cohere/completion.rs`).
+//! excludes it from `billed_units`. This suite is also the end-to-end cell for
+//! `Document::data` serializing in a stable key order, without which every
+//! request carrying a document would have a different prefix.
 //!
-//! This suite is also the end-to-end regression cell for the `Document::data`
-//! `HashMap` bug: document metadata used to serialize in a random key order on
-//! every request, so any Cohere request carrying a document had a different
-//! prefix every time.
-//!
-//! # Recording
-//!
-//! ```text
-//! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \
-//!     cohere::cassette::prompt_caching:: -- --exact --test-threads=1
-//! ```
+//! Re-record with
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features cohere::cassette::prompt_caching:: -- --exact --test-threads=1`.
 
 use rig::providers::cohere;
 
@@ -102,10 +77,9 @@ async fn streaming_probe_warms_to_a_full_cache_hit_over_three_turns() {
 /// A real agent loop with a tool round-trip, asserted on **prefix stability
 /// alone**.
 ///
-/// This provider's cache is intermittent or absent (see the module docs), so a
-/// cache-growth assertion here would be a coin flip or trivially unsatisfiable.
-/// What the cell still buys — and what nothing else in the suite covers — is the
-/// loop-level guarantee: across a real multi-turn agent run with a tool
+/// A cache-growth assertion here would depend on the provider's hit rate. What
+/// the cell buys, and nothing else in the suite covers, is the loop-level
+/// guarantee: across a real multi-turn agent run with a tool
 /// round-trip, every outbound request must *extend* its predecessor rather than
 /// rewrite it. A driver that re-advertises tools in a different order, rebuilds
 /// the system prompt on turn N, or re-normalizes an earlier assistant turn would

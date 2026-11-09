@@ -1,53 +1,20 @@
-//! Edge matrix for OpenAI structured-output **refusals**.
+//! Edge matrix for OpenAI structured-output refusals.
 //!
-//! **Bug.** OpenAI spells a Chat Completions refusal as a *sibling* of
-//! `content`, not as a content part:
+//! Chat Completions spells a refusal as a sibling of `content`, not as a
+//! content part, and streams it on its own delta key with `content` held at
+//! `null` for the whole turn. These cells pin one rule in the shared Chat
+//! decoder: a delta's text is its `content`, or else its `refusal`. A whole
+//! reply is read as a single delta carrying its message, so the blocking and
+//! streaming paths apply the same rule to every shape this wire sends, and the
+//! refusal surfaces the same way through the Responses API.
 //!
-//! ```json
-//! {"role": "assistant", "content": null, "refusal": "I'm sorry, I can't …"}
-//! ```
-//!
-//! and streams it on its own delta key (`{"delta": {"refusal": "I'm"}}`) with
-//! `content` held at `null` for the whole turn. Rig modeled only the *content
-//! part* spelling (`{"type": "refusal", …}`), which is the Responses API's
-//! shape and which chat completions never sends — so every chat-completions
-//! path that reads `content` alone dropped the refusal outright:
-//!
-//! * blocking → the turn normalized to **zero** content and failed with the
-//!   opaque `Response contained no message or tool call (empty)`;
-//! * streaming → the stream yielded **no text at all**, then a clean terminal;
-//! * history round-trip (`TryFrom<Message> for message::Message`) → the
-//!   conversion error `Neither `content` nor `tool_calls` was provided`.
-//!
-//! Meanwhile the field was plainly there on the provider's own reply, so the
-//! two views of one recorded turn disagreed about whether it had said
-//! anything — and the same rig-level request driven through the Responses API
-//! surfaced the refusal fine.
-//!
-//! The fix is one rule in the shared Chat decoder: a delta's text is its
-//! `content`, or else its `refusal`. A whole reply is read as a single delta
-//! carrying its message, so the blocking and streaming paths apply the same
-//! rule to every shape this wire sends.
-//!
-//! Because chat completions only populates `refusal` under a strict
-//! structured-output request, every refusal cell asks for `json_schema` output
-//! and uses `gpt-4o` (`gpt-4o-mini` answers the refusable prompt *inside* the
-//! schema instead of refusing).
-//!
+//! Chat completions only populates `refusal` under a strict structured-output
+//! request, so every refusal cell asks for `json_schema` output and uses
+//! `gpt-4o` (`gpt-4o-mini` answers the refusable prompt inside the schema).
 //! Each cell re-reads its own fixture and fails if the recorded bytes do not
-//! actually carry the shape the cell is about — a provider that stopped
-//! refusing would otherwise leave a green test covering nothing.
-//!
-//! | # | cell | surface | transport | level | shape | status |
-//! |---|------|---------|-----------|-------|-------|--------|
-//! | 6 | `chat_streaming_agent_surfaces_refusal` | chat | streaming | agent | refusal deltas | recorded |
-//! | 17 | `responses_agent_streaming_refusal_surfaces` | responses | streaming | agent | refusal deltas | recorded |
-//! | 18 | `cross_surface_refusal_parity` | both | blocking | raw model | cross-API parity | recorded |
-//!
-//! Wire shapes the live provider will not produce on demand (a delta
-//! carrying *both* keys, an empty refusal, a refusal beside tool calls, the
-//! Responses-shaped refusal *part* arriving on the chat wire) are read by the
-//! same rule in `crates/rig-core/src/providers/openai/wire/chat.rs`.
+//! carry a refusal. Wire shapes the live provider will not produce on demand
+//! are read by the same rule in
+//! `crates/rig-core/src/providers/openai/wire/chat.rs`.
 
 use serde_json::{Value, json};
 
@@ -105,7 +72,7 @@ fn responses_text_format() -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// Chat Completions — the buggy surface.
+// Chat Completions.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -132,11 +99,7 @@ async fn chat_streaming_agent_surfaces_refusal() {
 }
 
 // ---------------------------------------------------------------------------
-// Chat Completions controls — ordinary turns must be byte-for-byte unaffected.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Responses API — the surface that already worked, pinned so it stays that way.
+// Responses API.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -162,7 +125,7 @@ async fn responses_agent_streaming_refusal_surfaces() {
     assert_recorded_responses_refusal_stream(SCENARIO);
 }
 
-/// The cross-API parity the bug broke: one client, one prompt, both surfaces,
+/// Cross-API parity: one client, one prompt, both surfaces,
 /// one cassette. Either both deliver the refusal or the matrix is wrong.
 #[tokio::test]
 async fn cross_surface_refusal_parity() {

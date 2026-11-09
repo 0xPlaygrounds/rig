@@ -1,30 +1,19 @@
 //! Raw provider response capture on xAI's streaming path.
 //!
-//! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the provider-native terminal record
-//! behind the stream's finished response — for xAI the Responses terminal
-//! Responses response object,
-//! built from the `response.completed` event —
-//! serialized. Capture is always on: there is no flag to request it, nothing
-//! about it reaches the wire, and a `Value::Null` only ever means a terminal
-//! built by hand with no provider record behind it. It is the terminal record
-//! only, never the stream's events. The terminal carries the response `status`
-//! the normalized terminal folds into a finish reason, so `status` is the
-//! terminal-only field pinned here as reachable only through `raw`.
+//! Every stream's terminal [`rig::completion::CompletionResponse::raw`]
+//! carries the provider-native terminal record behind the stream's finished
+//! response: for xAI, the Responses response object from the
+//! `response.completed` event, never the stream's events. Capture is always on,
+//! and a `Value::Null` only means a terminal built by hand. The normalized
+//! terminal folds the response `status` into a finish reason, so `status` is
+//! the terminal-only field pinned as reachable only through `raw`.
 //!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status` and `raw.usage.output_tokens` equal the recorded `response.completed` event's | recorded |
-//!
-//! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is that the recorded event stream ends with exactly one
-//! `response.completed` event whose `response.usage` is populated — so the
-//! raw terminal record is knowable from the bytes and a recording whose
-//! stream stopped completing fails loudly instead of covering nothing. That
-//! premise, and the comparison it feeds, are this file's own: a Responses
-//! stream's terminal is reproduced from *one event's* `response` object
-//! rather than from a reply body, so neither the premise reader nor
-//! [`assert_terminal_reproduces_event`] is the shared body contract.
+//! Each cell re-derives from its fixture that the recorded stream ends with
+//! exactly one `response.completed` event whose `response.usage` is populated.
+//! The terminal is reproduced from one event's `response` object rather than
+//! from a reply body, so the premise reader and
+//! [`assert_terminal_reproduces_event`] are this file's own, not the shared
+//! body contract.
 
 use rig::completion::{CompletionRequest, FinishReason};
 use rig::providers::xai;

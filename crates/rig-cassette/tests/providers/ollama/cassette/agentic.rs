@@ -2,11 +2,11 @@
 //!
 //! These mirror the way real consumers drive Ollama (e.g. repo-tagger):
 //! `output_schema_raw` (raw JSON Schema) combined with thinking, tools, and the
-//! multi-turn non-streaming agent loop — a combination the other cassettes only
+//! multi-turn non-streaming agent loop, a combination the other cassettes only
 //! exercise separately. rig maps `output_schema` to `response_format` and sends
 //! `tools` on the same request, so this checks that the model's JSON answer is
 //! produced and parsed correctly when a schema, tools and thinking are all set
-//! at once (the path where the #1926 reasoning drop bit).
+//! at once.
 //!
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
@@ -85,12 +85,11 @@ async fn structured_output_raw_with_thinking() {
 }
 
 /// The repo-tagger builder config: `output_schema_raw` + a tool + thinking +
-/// the multi-turn non-streaming agent loop. This is the #1928 regression: by
-/// default rig now uses Tool output mode, so the schema is offered as the
-/// synthetic `final_result` tool (no native `response_format` constraint),
-/// letting the model call `get_weather` *and* return structured output.
-/// Pre-fix (a native constraint on every turn), the model skipped the tool and
-/// answered immediately.
+/// the multi-turn non-streaming agent loop. By default rig uses Tool output
+/// mode, so the schema is offered as the synthetic `final_result` tool (no
+/// native `response_format` constraint), letting the model call `get_weather`
+/// *and* return structured output. A native constraint on every turn makes the
+/// model skip the tool and answer immediately.
 ///
 /// Asserts both: the real tool is invoked, and the final answer parses against
 /// the schema.
@@ -139,7 +138,7 @@ async fn structured_output_with_tools_and_thinking() {
                 );
             }
 
-            // #1928: under Tool output mode the model is free to use its tools,
+            // Under Tool output mode the model is free to use its tools,
             // so the real tool is actually invoked (not suppressed by `response_format`).
             assert!(
                 call_count.load(Ordering::SeqCst) >= 1,
@@ -152,7 +151,7 @@ async fn structured_output_with_tools_and_thinking() {
 
 /// Streaming counterpart of `structured_output_with_tools_and_thinking`. Under
 /// the default Tool output mode the streamed run finalizes via the synthetic
-/// output-tool call, which carries no assistant text. #1928's streaming fix
+/// output-tool call, which carries no assistant text. The streaming path
 /// surfaces that call's arguments as the final response string, so
 /// `collect_stream_final_response` returns parseable JSON while the real
 /// `get_weather` tool is still invoked.
@@ -194,7 +193,7 @@ async fn streaming_structured_output_with_tools() {
                 .expect("streaming agentic structured output should succeed");
 
             // The final streamed response must be the structured output (the
-            // output-tool arguments), not an empty string (#1928 streaming fix).
+            // output-tool arguments), not an empty string.
             let parsed = first_json_object(&response);
             for key in ["city", "summary"] {
                 assert!(
@@ -216,8 +215,7 @@ async fn streaming_structured_output_with_tools() {
 }
 
 /// Explicit `OutputMode::Native` is the opt-out / escape hatch: the schema is
-/// sent as the provider's native `response_format` constraint (the pre-#1928 behavior),
-/// which still produces valid structured output. Callers who know their model
+/// sent as the provider's native `response_format` constraint, which still produces valid structured output. Callers who know their model
 /// handles tools + native structured output together can select it.
 #[tokio::test]
 async fn native_mode_emits_structured_output() {

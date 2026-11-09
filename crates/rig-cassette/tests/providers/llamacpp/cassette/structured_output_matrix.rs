@@ -1,43 +1,23 @@
 //! Structured output: the four ways to constrain llama.cpp's answer, and which
 //! of them actually constrain it.
 //!
-//! **Server**: the competent tier (`unsloth/Qwen3-8B-GGUF` Q4_K_M,
-//! `--jinja --seed 42 --temp 0 -c 8192`, b10964-b29c606e2) for the cells whose
-//! claim is about the *model* holding a shape, and the default smoke tier for
-//! the cells whose claim is about the *server* enforcing one. Grammar
-//! adherence is a capability question, and the split says which side of it
-//! each cell is on.
+//! Cells whose claim is about the model holding a shape run on the competent
+//! tier (`unsloth/Qwen3-8B-GGUF` Q4_K_M, `--jinja --seed 42 --temp 0 -c 8192`,
+//! b10964-b29c606e2); cells whose claim is about the server enforcing one run
+//! on the default smoke tier. A bare `response_format: {type: json_object}`
+//! constrains the answer to a JSON object, so the cell asks for one plain word
+//! that only a grammar turns into JSON
+//! ([`json_object_response_format_is_enforced_as_an_object`]). A `grammar` in
+//! `additional_params` is enforced verbatim
+//! ([`a_gbnf_grammar_through_additional_params_is_enforced`]).
 //!
-//! | Cell | Mechanism | Constrained by | Result |
-//! | --- | --- | --- | --- |
-//! | [`json_object_response_format_is_enforced_as_an_object`] | `response_format: {type: json_object}` | GBNF for any JSON object | a one-word answer comes back wrapped in an object |
-//! | [`a_gbnf_grammar_through_additional_params_is_enforced`] | `grammar` | GBNF verbatim | only the alternatives the grammar allows |
-//! | [`a_schema_and_a_grammar_together_are_rejected`] | top-level `json_schema` + `grammar` | — | 500, `Cannot use both json_schema and grammar` |
-//! | [`response_format_and_a_grammar_silently_let_the_schema_win`] | `response_format` + `grammar` | schema only | 200, the grammar is dropped with no diagnostic |
-//!
-//! # `json_object` constrains the answer to a JSON object
-//!
-//! OpenAI's `response_format: {"type": "json_object"}` guarantees syntactically
-//! valid JSON. llama.cpp b10499 derived an empty schema from a bare
-//! `json_object` and constrained nothing; b10964-b29c606e2 enforces a JSON
-//! object. The cell asks for a single plain word, which only a grammar turns
-//! into JSON, so it tells the two behaviors apart.
-//!
-//! Rig never sends a bare `json_object` on its own: `output_schema` maps to
-//! `json_schema`, which llama.cpp also enforces.
-//!
-//! # The conflict guard has a hole, and rig's route is on the wrong side of it
-//!
-//! llama.cpp refuses a request that carries both a schema and a grammar —
-//! `if (!json_schema.is_null() && !grammar.empty()) throw` — but that check
-//! reads the *top-level* `json_schema` field and runs **before**
-//! `response_format` is unpacked into the same variable. Rig's `output_schema`
-//! travels as `response_format`, so pairing it with an explicit `grammar`
-//! passes the guard and the schema silently wins. The two cells
-//! [`a_schema_and_a_grammar_together_are_rejected`] and
+//! llama.cpp refuses a request with both a top-level `json_schema` and a
+//! `grammar`, but the check runs before `response_format` is unpacked. Rig's
+//! `output_schema` travels as `response_format`, so pairing it with a
+//! `grammar` passes the guard and the schema silently wins with no
+//! diagnostic. [`a_schema_and_a_grammar_together_are_rejected`] and
 //! [`response_format_and_a_grammar_silently_let_the_schema_win`] record both
-//! sides; neither is a rig defect, and a caller who does not know about the
-//! hole gets a constraint they did not ask for with no diagnostic.
+//! sides.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

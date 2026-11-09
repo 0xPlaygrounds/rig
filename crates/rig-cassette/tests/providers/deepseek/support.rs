@@ -59,8 +59,8 @@ where
 }
 
 /// Bogus-key variant for recording real 401s: the shared model-listing fetch
-/// must classify a rejected listing with provider, path and status context
-/// (rig#2079), and only a real rejection proves it.
+/// must classify a rejected listing with provider, path and status context,
+/// and only a real rejection proves it.
 pub(super) async fn with_deepseek_cassette_bogus_key_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

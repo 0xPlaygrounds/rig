@@ -1,40 +1,19 @@
-//! Raw provider response capture on Perplexity's streaming chat-completions
-//! path.
+//! Raw provider response capture on Perplexity's streaming chat-completions path.
 //!
-//! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own
-//! terminal record: for Perplexity the shared chat-completions record, a JSON
-//! object with the keys `usage`, `finish_reason`, `response_id`, `model`,
-//! `logprobs` and `additional_params`. Capture is always on: there is no flag
-//! to request it, nothing about it reaches the wire, and a `Value::Null` only
-//! ever means a terminal built by hand with no provider record behind it. It
-//! is the terminal record only, never the stream's frames. Perplexity reports
-//! usage on *every* frame and the last frame's counts are the terminal's; the
-//! terminal's accumulated `additional_params` carries the `object` tag the
-//! frames repeat. Neither the tag nor the raw usage block has a slot on the
-//! normalized terminal.
+//! Every stream's terminal [`rig::completion::CompletionResponse::raw`] carries the decoder's
+//! own terminal record: for Perplexity the shared chat-completions record, a JSON object with
+//! the keys `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. Capture is always on, and a `Value::Null` only means a terminal built by
+//! hand. Perplexity reports usage on every frame and the last frame's counts are the
+//! terminal's; the record's `usage` is the provider's object, so the unmodeled `cost` and
+//! `search_context_size` survive into `raw`, and `additional_params` carries the frames'
+//! `object` tag. `stream_raw_exposes_terminal_usage_and_object` pins both against a fixture.
 //!
-//! The record's `usage` is the provider's usage object, so it keeps whatever
-//! the dialect sent beside the OpenAI-compatible counters. Perplexity's
-//! `cost` and `search_context_size` survive into `raw`. Cell 2 pins that
-//! against a fixture that carries them.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only fields | `raw.usage` equals the recorded last frame's counters *including* the unmodeled `cost` block; `raw.additional_params.object` equals the frames' tag | recorded |
-//!
-//! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is that the recorded stream's last data frame carries usage and a
-//! finish reason — so the raw terminal record's usage is knowable from the
-//! bytes and a recording whose stream stopped reporting usage fails loudly
-//! instead of covering nothing. That premise is this file's own
-//! [`recorded_terminal_frame`] and deliberately neither of the shared readers:
-//! Perplexity repeats its accounting on *every* frame, content frames
-//! included, so `chat::recorded_sole_usage_frame`'s "exactly one
-//! usage-bearing frame" and `chat::recorded_agreeing_usage_frames`'s "never on
-//! a content frame" are both false here — the rule is "the last frame wins".
-//! Perplexity contracts no request-id header, so the terminal's
-//! `provider_request_id` is `None` — pinned as the documented outcome.
+//! The cell first checks that the recorded stream's last data frame carries usage and a finish
+//! reason, through this file's own [`recorded_terminal_frame`]: the shared readers assume one
+//! usage-bearing frame or none on content frames, and Perplexity repeats its accounting on
+//! every frame. Perplexity contracts no request-id header, so the terminal's
+//! `provider_request_id` is `None`.
 
 use rig::completion::CompletionRequest;
 use rig::providers::perplexity;

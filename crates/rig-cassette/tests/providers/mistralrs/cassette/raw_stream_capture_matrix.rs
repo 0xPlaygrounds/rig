@@ -2,30 +2,18 @@
 //! `/v1/chat/completions` route
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! mistral.rs streams through the plain `OPENAI` chat-completions wire pointed at
+//! its base URL, and every stream's `raw` is the `chat.completion` document its
+//! chunks rebuild: the envelope fields the chunks carried (`object` renamed to
+//! the unary tag, `created`, `system_fingerprint`) where a unary body states
+//! them, and the final frame's usage.
 //!
-//! Capture is always on. mistral.rs streams through the plain `OPENAI`
-//! chat-completions wire pointed at its base URL, and every stream's `raw`
-//! is the `chat.completion` document its chunks rebuild: the envelope fields
-//! the chunks carried (`object` renamed to the unary tag, `created`,
-//! `system_fingerprint`) where a unary body states them, and the final
-//! frame's usage. Nothing about it is sent to the server. `raw ==
-//! Value::Null` means only that a `CompletionResponse` was built by hand
-//! without a provider reply behind it, which no cell here can produce.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `raw` is the rebuilt `chat.completion` and carries the reply's accounting | unrecorded (no mistral.rs server in this environment) |
-//! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `system_fingerprint` in `raw` equals the recorded chunks' and `object` is `chat.completion`; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
-//!
-//! Every cell is unrecorded: no mistral.rs server was listening on
-//! `127.0.0.1:1234` when this matrix was written, and a fixture is never
-//! fabricated. To record: start `mistralrs-server` on that port serving
-//! `Qwen/Qwen3-4B` (or export `MISTRALRS_BASE_URL`/`MISTRALRS_MODEL`), remove
-//! the `#[ignore]` attributes, flip the table to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration mistralrs::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! Every cell is ignored until recorded, because no mistral.rs server was
+//! available and a fixture is never fabricated. To record, start
+//! `mistralrs-server` on `127.0.0.1:1234` serving `Qwen/Qwen3-4B` (or export
+//! `MISTRALRS_BASE_URL`/`MISTRALRS_MODEL`), remove the `#[ignore]` attributes,
+//! run
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration mistralrs::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`,
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_stream_capture_matrix/`.
 
 use rig::completion::CompletionRequest;

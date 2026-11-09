@@ -1,35 +1,15 @@
-//! Feature matrix for raw provider response capture on the Gemini REST
-//! (`generateContent`) unary seam.
+//! Feature matrix for raw provider response capture on the Gemini REST (`generateContent`)
+//! unary seam.
 //!
-//! # The feature
+//! Raw capture is always on: the driver puts Gemini's `generateContent` reply document,
+//! verbatim, onto [`rig::completion::CompletionResponse::raw`]. `raw` is required at
+//! construction, so no response exists without the document that produced it.
 //!
-//! Raw capture is always on: the driver puts the provider's reply body,
-//! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`] — here
-//! Gemini's own `generateContent` document, verbatim, read back as JSON.
-//! There is no opt-in and nothing
-//! about it reaches the wire; `raw` is required at construction, so there is
-//! no response without the document that produced it and no way for
-//! capture to be "not requested".
-//!
-//! # Matrix
-//!
-//! `expected` is what the caller observes on the normalized response. Every
-//! recorded cell re-derives its premise from its own fixture bytes after the
-//! wrapper returns (record mode writes the fixture on the way out): a cell
-//! whose recording lost the wire shape it claims to cover must fail loudly.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 3 | `raw_exposes_forced_function_call` | forced tool call (`ToolChoice::Specific`) | `raw` reads back; `candidates[0].content.parts[].functionCall` and `finishMessage` == fixture; raw `finishReason` spelled `"STOP"` while `finish_reason() == ToolCalls` | recorded |
-//!
-//! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
-//! test is the plain `generateContent` route, so nothing needs a unit stand-in.
-//!
-//! Cell 3 covers a wire shape a text turn never produces. A forced
-//! `functionCall` turn is where Gemini's own `finishReason` (`"STOP"`, even
-//! on a call-only turn) and rig's normalized `ToolCalls` visibly disagree,
-//! so `raw` must keep the wire spelling while the normalized response reports
-//! the upgraded reason.
+//! `raw_exposes_forced_function_call` covers a forced `functionCall` turn, where Gemini's own
+//! `finishReason` is `"STOP"` even on a call-only turn while rig reports `ToolCalls`: `raw` must
+//! keep the wire spelling while the normalized response reports the upgraded reason. The cell
+//! re-derives its premise from its own fixture bytes after the wrapper returns, so a recording
+//! that lost the wire shape fails loudly.
 
 use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, FinishReason,

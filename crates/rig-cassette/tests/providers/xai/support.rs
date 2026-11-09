@@ -56,7 +56,7 @@ where
     cassette.finish_after_test_result(result).await
 }
 
-/// Bogus-key variant for recording real 401s (rig#2314 error matrix).
+/// Bogus-key variant for recording real 401s for the error matrix.
 pub(super) async fn with_xai_cassette_bogus_key<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(OpenAiModels) -> Fut,

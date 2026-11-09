@@ -24,7 +24,7 @@ async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
     (cassette, bound)
 }
 
-/// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
+/// Cassette wrapper for the run-lifecycle matrix: the client sends
 /// through a [`DynHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see

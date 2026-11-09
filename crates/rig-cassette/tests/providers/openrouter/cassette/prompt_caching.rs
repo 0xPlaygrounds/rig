@@ -1,19 +1,13 @@
-//! Openrouter prompt-caching cassette suite.
+//! OpenRouter prompt-caching cassette suite.
 //!
-//! Rig normalizes `Usage::cached_input_tokens` for this provider, and before
-//! this suite no test had ever seen the field be non-zero. The three-turn probe
-//! below is what makes the provider's actual behavior observable — including the
-//! possibility that it does not cache at all, which is recorded rather than
-//! assumed.
-//!
-//! OpenRouter proxies to an upstream provider and is the one gateway in the
-//! matrix that reports cache *writes* as well as reads
-//! (`prompt_tokens_details.cache_write_tokens`, mapped by the shared chat
-//! usage type in `crates/rig-core/src/providers/openai/completion/mod.rs`).
-//! Routed here to an OpenAI model, so the underlying cache is OpenAI's
-//! 1,024-token automatic one.
-//!
-//! # Recording
+//! A three-turn probe makes the provider's caching observable through
+//! `Usage::cached_input_tokens`, including the possibility that it does not
+//! cache at all, which is recorded rather than assumed. OpenRouter reports
+//! cache writes as well as reads (`prompt_tokens_details.cache_write_tokens`,
+//! mapped by the shared chat usage type in
+//! `crates/rig-core/src/providers/openai/completion/mod.rs`). It is routed here
+//! to an OpenAI model, so the underlying cache is OpenAI's 1,024-token
+//! automatic one.
 //!
 //! ```text
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --test integration --all-features \

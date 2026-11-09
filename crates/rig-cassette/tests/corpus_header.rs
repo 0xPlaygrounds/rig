@@ -1,43 +1,16 @@
 //! Matrix S: the header's new types.
 //!
-//! The header carries `required: EffectRow`, `signature: EffectRow` and
-//! handler descriptors. Three readers check
-//! them before the first dispatch: the agent (`check_replayable`), the
-//! replayer (`check_header`, `for_key`) and a host checking a row against
-//! the bus it runs (`EffectRow::is_subset_of` over
-//! `Dispatcher::descriptors()`, a host's startup check). Every cell edits
-//! one header field of an existing golden in memory and pins the *text*
-//! of refusals or accepted compatibility cases. A header has no global
-//! format number, and a key it does not know is refused. No new
-//! recordings.
+//! The header carries `required: EffectRow`, `signature: EffectRow` and handler descriptors.
+//! Three readers check them before the first dispatch: the agent (`check_replayable`), the
+//! replayer (`check_header`, `for_key`) and a host checking a row against the bus it runs
+//! (`EffectRow::is_subset_of` over `Dispatcher::descriptors()`). Every cell edits one header
+//! field of an existing golden in memory and pins the text of the refusal or of an accepted
+//! compatibility case, so the matrix needs no new recordings.
 //!
-//! # Dimensions
-//!
-//! | axis | values |
-//! |---|---|
-//! | field | `required` · `signature` · an unknown key · the handler table |
-//! | mismatch | missing key · extra key · family change · unknown key refused · table entry missing |
-//! | who checks | `check_replayable` (the agent) · `check_header` / `for_key` (the replayer) · `is_subset_of` over a bare bus (a host) |
-//!
-//! Full cross-product: 4 × 5 × 3 = 60. Recorded: the 9 cells below.
-//! Pruned: a mismatch a field cannot have (an unknown key has no family);
-//! the replayer's reading of the required row beyond the table cell (it
-//! describes, it does not compare); the host's reading of the signature
-//! (a host checks the row it needs, the bus it built).
-//!
-//! # Cells
-//!
-//! | cell | field · mismatch · reader |
-//! |---|---|
-//! | `the_agent_names_a_required_key_the_log_never_served` | required · missing key · agent |
-//! | `the_agent_names_a_required_key_served_as_another_family` | required · family change · agent |
-//! | `the_agent_names_a_key_the_log_required_and_it_does_not` | required · extra key · agent |
-//! | `the_agent_names_a_required_family_that_differs_between_the_rows` | required · family change between rows · agent |
-//! | `the_agent_names_a_signature_key_nothing_serves` | signature · missing key · agent |
-//! | `the_agent_names_a_signature_family_the_bus_serves_otherwise` | signature · family change · replayer first (the agent's check begins with `check_header`) |
-//! | `a_log_header_refuses_an_unknown_key` | an unknown key · refused · the decoder, before any reader |
-//! | `the_replayer_refuses_a_key_nothing_describes_by_name` | table · entry missing · replayer |
-//! | `a_host_checks_its_row_against_the_bus_it_built` | required · missing key and family change · host |
+//! The cells cross a missing key, an extra key and a family change in the required row and the
+//! signature, a missing handler-table entry, and an unknown key, with the reader that refuses
+//! first. A header has no global format number, so the decoder refuses a key it does not know
+//! before any reader runs.
 
 use crate::corpus;
 use rig_cassette::agent::AgentReplayExt;

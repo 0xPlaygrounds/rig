@@ -1,59 +1,18 @@
-//! Edge matrix for the OpenAI `/v1/images/generations` request body.
+//! The OpenAI `/v1/images/generations` request body.
 //!
-//! Two defects lived in the same twelve-line body builder
-//! (`providers::openai::image_generation::build_request`):
+//! Rig sends no `response_format`, since the endpoint rejects the field and
+//! returns `data[].b64_json` by default. `additional_params` is merged into
+//! the body last, so `quality`, `background`, `output_format` and the like
+//! reach the API, and a caller of an OpenAI-compatible endpoint that still
+//! wants `response_format` can reinstate it explicitly.
 //!
-//! **D1 — a parameter the endpoint rejects.** Rig added
-//! `"response_format": "b64_json"` for every model *outside* a hardcoded
-//! `gpt-image-1` / `gpt-image-1.5` / `gpt-image-2` allowlist. The endpoint no
-//! longer accepts that field at all:
-//!
-//! ```text
-//! 400 Unknown parameter: 'response_format'.
-//! ```
-//!
-//! so every other image model OpenAI currently serves — `gpt-image-1-mini`,
-//! `chatgpt-image-latest`, and any *dated snapshot* of an allowlisted model
-//! such as `gpt-image-2-2026-04-21` — could not generate an image at all. The
-//! field is also unnecessary: the endpoint returns `data[].b64_json` by
-//! default, which is what rig already decodes.
-//!
-//! **D2 — a parameter rig dropped.**
-//! `ImageGenerationRequestBuilder::additional_params` was never merged into the
-//! body, so `quality`, `background`, `output_format`, `user`, `n` … were
-//! silently inert for OpenAI — while xAI's and Gemini's image bodies honor the
-//! same field. Merging it last also gives a caller back the escape hatch D1
-//! removes: an OpenAI-*compatible* images endpoint that still wants
-//! `response_format` can be handed it explicitly (cell 12).
-//!
-//! **How these cells fail on `origin/main`.** The harness matches the recorded
-//! request body, so every cell is a mock miss on `main`: the D1 cells because
-//! `main` adds `response_format`, the D2 cells because `main` omits the
-//! caller's parameters.
-//!
-//! Cells that assert a **400** are deliberate and free to record: an error
-//! naming the caller's own parameter is direct evidence that the parameter
-//! reached OpenAI, which is exactly what D2 was about. Successful generations
-//! cost money, so the matrix spends them only where a rejection cannot show
-//! the same thing, and uses the cheapest served model at its lowest quality.
-//!
-//! | # | cell | model | params | outcome | status |
-//! |---|------|-------|--------|---------|--------|
-//! | 3 | `additional_params_quality_reaches_the_api` | gpt-image-1-mini | quality | 200 (echoed) | recorded |
-//! | 4 | `additional_params_output_format_reaches_the_api` | gpt-image-1-mini | quality+output_format | 200 (echoed) | recorded |
-//! | 6 | `additional_params_invalid_background_is_rejected` | gpt-image-1-mini | background | 400 background | recorded |
-//! | 7 | `additional_params_invalid_output_format_is_rejected` | gpt-image-1-mini | output_format | 400 output_format | recorded |
-//! | 12 | `caller_can_reinstate_response_format` | gpt-image-1-mini | response_format | 400 response_format | recorded |
-//! | 15 | `retired_model_reaches_model_validation` | dall-e-3 | none | 400 model | recorded |
-//!
-//! Unit cells for the body shape itself (`build_request_*`, beside the fix)
-//! cover: no `response_format` for any model, allowlisted and unlisted models
-//! producing identical keys, `additional_params` merged last, overriding each
-//! derived key, and a non-object payload being ignored.
-//!
-//! Every cell also re-reads its own fixture: the recorded request must carry
-//! the caller's parameter and must not carry `response_format` unless the cell
-//! is the one that reinstates it.
+//! Cells that assert a 400 are deliberate: an error naming the caller's own
+//! parameter proves the parameter reached OpenAI, and rejections cost
+//! nothing. Successful generations cost money, so they are spent only where
+//! a rejection cannot show the same thing, on the cheapest model at its
+//! lowest quality. Every cell also re-reads its own fixture: the recorded
+//! request must carry the caller's parameter and must not carry
+//! `response_format` unless the cell reinstates it.
 
 use rig::error::ProviderError;
 use rig::providers::openai;
@@ -63,8 +22,7 @@ use super::super::support::with_openai_cassette;
 use crate::cassettes;
 use rig::image_generation::ImageGenerationRequestBuilder;
 
-/// The cheapest currently-served image model — and the one `main` cannot use
-/// at all, because it falls outside the old `response_format` allowlist.
+/// The cheapest currently served image model.
 const UNLISTED_MODEL: &str = "gpt-image-1-mini";
 const PROMPT: &str = "a plain red circle on a white background";
 /// Every image model OpenAI currently serves accepts this size.
@@ -79,7 +37,7 @@ fn rejection_body(error: &ProviderError) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// D1: the body the endpoint actually accepts.
+// The body the endpoint accepts.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -114,7 +72,7 @@ async fn retired_model_reaches_model_validation() {
 }
 
 // ---------------------------------------------------------------------------
-// D2: the caller's parameters reach the endpoint.
+// The caller's parameters reach the endpoint.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -236,9 +194,9 @@ async fn additional_params_invalid_output_format_is_rejected() {
     assert_recorded_request_has(SCENARIO, "output_format", &json!("rig-invalid"));
 }
 
-/// The compose story for D1: rig no longer sends `response_format`, and a
-/// caller who needs it for a compatible endpoint can put it back — proven by
-/// OpenAI itself rejecting the reinstated field.
+/// Rig sends no `response_format`, and a caller who needs it for a
+/// compatible endpoint can put it back. OpenAI rejecting the reinstated
+/// field proves it was sent.
 #[tokio::test]
 async fn caller_can_reinstate_response_format() {
     const SCENARIO: &str = "image_params_matrix/caller_can_reinstate_response_format";

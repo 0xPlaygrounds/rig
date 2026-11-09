@@ -1,81 +1,26 @@
 //! Matrix E: request-shape axes that change the spec hash.
 //!
-//! Everything on the builder or the runner that lands in a
-//! `CompletionRequest`, and so in every record and in the header's
-//! `run_spec` hash. Each cell is the `anthropic_completion_smoke` program
-//! with one axis changed; the change is visible in the first record's
-//! request as data and refuses the neighbour cell's golden by spec hash
-//! (`golden_refusal.rs` proves the refusal mechanism; here the axis is the
-//! subject).
+//! Everything on the builder or the runner that lands in a `CompletionRequest`, and so in every
+//! record and in the header's `run_spec` hash. Each cell is the `anthropic_completion_smoke`
+//! program with one axis changed: `tool_choice`, `max_tokens`, thinking via
+//! `additional_params`, the preamble, static `context`, an output schema, or prior runner
+//! history. The change is visible in the first record's request as data and refuses the
+//! neighbour cell's golden by spec hash (`golden_refusal.rs` proves the refusal mechanism; here
+//! the axis is the subject). Multi-axis combinations are not recorded: each axis lands in a
+//! distinct request field and the hash covers the whole spec.
 //!
-//! # Dimensions
+//! Every cell is recorded on the real Anthropic wire (`CLAUDE_SONNET_4_6`, temperature 0 except
+//! the thinking cells, where Anthropic allows only 1 or unset) into
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_request_shape/`, with producers in
+//! `tests/providers/anthropic/cassette/corpus_request_shape.rs`.
 //!
-//! | axis | values recorded |
-//! |---|---|
-//! | `tool_choice` | Auto · Required · Specific(`add`) · None |
-//! | `max_tokens` | unset (the smoke) · 32 |
-//! | `additional_params` | unset · `thinking: enabled, 1024`, unary · the same streamed with events |
-//! | preamble | set (the smoke) · `append_preamble` · `without_preamble` |
-//! | static `context` | none · two documents |
-//! | output | text · `output_schema_raw`, unary · streamed with events |
-//! | runner history | none · two prior turns |
-//!
-//! Full cross-product: 4 × 2 × 3 × 3 × 2 × 3 × 2 = 864. Recorded: the 13
-//! one-axis cells below (each axis against the smoke baseline, plus the
-//! streamed twin where a stream changes what the record holds). Pruned:
-//! every multi-axis combination, because each axis lands in a distinct
-//! request field and the spec hash is over the whole spec — two axes at
-//! once prove nothing one at a time does not, except their interaction in
-//! the provider's answer, which is the provider's, not the bus's.
-//!
-//! # Cells
-//!
-//! | golden | producer (`tests/providers/anthropic/cassette/corpus_request_shape.rs`) | shape | interpreters |
-//! |---|---|---|---|
-//! | `anthropic_request_shape_tool_choice_auto` | `tool_choice_auto_effect_log_is_the_golden_fixture` | `[Completion, Tool, Completion]` | both |
-//! | `anthropic_request_shape_tool_choice_required` | `tool_choice_required_…` | `[Completion, Tool, Completion, Tool]`, then `MaxTurns` at 2 | both |
-//! | `anthropic_request_shape_tool_choice_specific` | `tool_choice_specific_…` | `[Completion, Tool, Completion, Tool]`, then `MaxTurns` at 2 | both |
-//! | `anthropic_request_shape_tool_choice_none` | `tool_choice_none_…` | `[Completion]`, `add` advertised, never called; Sonnet 4.6 answers `none` with empty content, the run's output is `""` | both |
-//! | `anthropic_request_shape_max_tokens` | `max_tokens_…` | `[Completion]`, `max_tokens: 32` | both |
-//! | `anthropic_request_shape_thinking_unary` | `thinking_unary_…` | `[Completion]` with a reasoning block | both |
-//! | `anthropic_request_shape_thinking_streamed` | `thinking_streamed_…` | `[Completion]`, events kept, reasoning deltas and signature | both |
-//! | `anthropic_request_shape_static_context` | `static_context_…` | `[Completion]`, two documents | both |
-//! | `anthropic_request_shape_append_preamble` | `append_preamble_…` | `[Completion]` | both |
-//! | `anthropic_request_shape_without_preamble` | `without_preamble_…` | `[Completion]`, no system prompt | both |
-//! | `anthropic_request_shape_output_schema_unary` | `output_schema_unary_…` | `[Completion]`, the schema's object | both |
-//! | `anthropic_request_shape_output_schema_streamed` | `output_schema_streamed_…` | `[Completion]`, events kept | both |
-//! | `anthropic_request_shape_prior_history` | `prior_history_…` | `[Completion]`, three messages in the request | both |
-//!
-//! Every cell is recorded on the real Anthropic wire (`CLAUDE_SONNET_4_6`,
-//! temperature 0 except the thinking cells, where Anthropic allows only 1
-//! or unset) into `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_request_shape/`.
-//!
-//! # What the matrix found
-//!
-//! - A per-run `tool_choice` of `Required` or `Specific` is applied to
-//!   every turn, so the run can never answer in text: it ends in
-//!   `MaxTurns` with the model still calling the tool. The corpus
-//!   pins that as the ending (`Ending::MaxTurns`) rather than hiding it;
-//!   whether the engine should relax a forced choice after the first call
-//!   is a design decision outside the bus.
-//! - Sonnet 4.6 answers `tool_choice: none` with `content: []` under both
-//!   the tools preamble and the basic one (two recordings, then stop); the
-//!   engine carries the empty answer through as the run's output, and the
-//!   cell pins that.
-//! - The header's `run_spec` hash was over the raw serialization of the
-//!   spec, and the root `rig` package's all-features build enables
-//!   `serde_json/preserve_order` through a dependency while the standalone
-//!   verification package this suite came from did not: a spec holding a
-//!   multi-key `serde_json::Value` (`additional_params`, `output_schema`)
-//!   hashed differently in the producer and the replay, and every such
-//!   golden was refused by the very program that recorded it. The corpus
-//!   prompt's anchor table had ruled key order stable; it is stable per
-//!   build, not per workspace.
-//!   The effect-log hash is over canonical (sorted-key)
-//!   JSON. The thinking and output-schema cells are the ones that found it.
-//! - In `adaptive` thinking mode the model chose not to think about a
-//!   one-line arithmetic prompt; the thinking cells enable thinking with a
-//!   budget so the record holds a reasoning block.
+//! A per-run `tool_choice` of `Required` or `Specific` applies to every turn, so those runs end
+//! in `Ending::MaxTurns` with the model still calling the tool, and the corpus pins that ending.
+//! Sonnet 4.6 answers `tool_choice: none` with empty content, which becomes the run's `""`
+//! output. The spec hash is over canonical sorted-key JSON, because `serde_json/preserve_order`
+//! differs between builds; the thinking and output-schema cells hold multi-key values that
+//! would otherwise hash differently. The thinking cells set a budget because adaptive mode
+//! skips thinking on a one-line prompt.
 
 use crate::corpus;
 

@@ -2,10 +2,8 @@
 //!
 //! Ollama is the `OLLAMA` dialect of the shared Chat wire, and the driver
 //! sets `raw` from the reply's bytes, so `raw` is the reply document itself.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `object` and `created` are on `raw` and absent from the normalized response | recorded |
+//! Provider-only envelope fields such as `object` and `created` are on `raw`
+//! and absent from the normalized response.
 
 use rig::completion::CompletionRequest;
 use serde_json::Value;

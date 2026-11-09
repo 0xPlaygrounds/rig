@@ -1,41 +1,21 @@
 //! Matrix for raw capture on Bedrock's ConverseStream path
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
+//! Every stream the seam yields carries `raw`: the `ConverseOutput` a unary call
+//! returns, rebuilt from the events read off the event-stream body the SDK
+//! decoded, so `messageStop` and `metadata` fields sit at its top level. Bedrock
+//! streams AWS event-stream binary framing, recorded as base64, so the premise
+//! checks decode the fixture body and locate the JSON payloads of those events.
+//! The shared `raw_capture::chat` and `raw_capture::responses` contracts do not
+//! apply: ConverseStream is neither dialect. Both cells stream through
+//! [`capture_terminal`](crate::raw_capture::capture_terminal).
 //!
-//! Capture is always on. Every stream the seam yields carries `raw`: the
-//! `ConverseOutput` a unary call returns, rebuilt from the events read off
-//! the event-stream body the SDK decoded, so `messageStop` and `metadata`
-//! fields sit at its top level. Nothing about it is sent to Bedrock.
-//! `raw == Value::Null` means only that a `CompletionResponse` was built by
-//! hand without a provider terminal behind it, which no cell here can
-//! produce.
-//!
-//! Bedrock streams the AWS event-stream binary framing (recorded base64), so
-//! the premise checks below decode the fixture body and locate the JSON
-//! payloads of the `messageStop` and `metadata` events inside it.
-//!
-//! Both cells stream their one recorded turn through the shared execution
-//! helper [`capture_terminal`](crate::raw_capture::capture_terminal) and
-//! assert against the parked terminal after the wrapper returns. The shared
-//! *format* contracts (`raw_capture::chat`, `raw_capture::responses`) do not
-//! apply: ConverseStream is neither dialect, and its frames are binary rather
-//! than SSE JSON.
-//!
-//! # Matrix
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_is_the_recorded_terminal_events` | provider JSON | `raw.stopReason` and `raw.usage` equal the recorded events' | unrecorded (no valid AWS credentials in this environment) |
-//! | 2 | `stream_raw_exposes_bedrock_stop_reason` | terminal-only field | `raw.stopReason` is Bedrock's own spelling; the normalized terminal lacks it | unrecorded (no valid AWS credentials in this environment) |
-//!
-//! Every cell is unrecorded: no valid AWS credentials were available when
-//! this matrix was written, and a fixture is never fabricated. To record once
-//! valid credentials exist: remove the `#[ignore]` attributes, flip the table
-//! to `recorded`, then run
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration bedrock::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
-//! and review `crates/rig-cassette/fixtures/cassettes/bedrock/raw_stream_capture_matrix/` (the
-//! streaming bodies are base64; decode before scanning).
+//! Every cell is ignored until recorded, because no valid AWS credentials were
+//! available and a fixture is never fabricated. To record, remove the
+//! `#[ignore]` attributes, run
+//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test integration bedrock::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`,
+//! and review `crates/rig-cassette/fixtures/cassettes/bedrock/raw_stream_capture_matrix/`,
+//! decoding the base64 streaming bodies before scanning.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::bedrock;

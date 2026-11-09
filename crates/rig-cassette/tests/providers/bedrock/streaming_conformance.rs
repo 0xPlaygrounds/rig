@@ -149,7 +149,7 @@ rig_core::streaming_conformance_suite! {
 /// lists `bedrock` in `OUT_OF_BINARY_FAMILIES` (executed by the workspace-wide
 /// `--all-features` nextest run). The test below keeps the family name honest
 /// at the definition site, which is the direction the registry loses for
-/// out-of-binary suites (#2258 F3).
+/// out-of-binary suites.
 const SUITE_FAMILIES: &[&str] = &[WIRE_FAMILY];
 
 #[test]

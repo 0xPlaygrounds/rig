@@ -27,7 +27,7 @@ pub(crate) const BROKEN_ORCHARD_PROMPT: &str = "\
 Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. \
 If a tool reports an error, do not call it again. \
 After both tools have answered, respond in one short sentence that includes the harbor label and the orchard tool's error text.";
-/// The setup cells' request: the #2490 stream-fault cells' own.
+/// The setup cells' request: the stream-fault cells' own.
 pub(crate) const SETUP_PROMPT: &str = "Say hi.";
 pub(crate) const SETUP_MAX_TOKENS: u64 = 16;
 /// The orchard tool's error (`FailingOrchard`).

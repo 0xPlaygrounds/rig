@@ -1,64 +1,20 @@
-//! Edge matrix for OpenRouter's **reasoning-token accounting**.
+//! Edge matrix for OpenRouter's reasoning-token accounting.
 //!
-//! **Bug.** OpenRouter documents usage accounting as always included ("Full
-//! usage details are now always included automatically in every response", and
-//! "in the last SSE message for streaming responses"), and every reasoning
-//! route reports the breakdown:
+//! OpenRouter always reports usage, and every reasoning route reports the
+//! breakdown as `usage.completion_tokens_details.reasoning_tokens`. These cells
+//! pin that the breakdown reaches rig's normalized `Usage::reasoning_tokens`
+//! (and so the `gen_ai.usage.reasoning_tokens` span) on both the blocking and
+//! the streaming terminal record. Each reasoning cell asserts
+//! `usage.reasoning_tokens > 0`.
 //!
-//! ```json
-//! "usage": {"completion_tokens": 540,
-//!           "completion_tokens_details": {"reasoning_tokens": 531}, …}
-//! ```
-//!
-//! (verbatim from a recorded Anthropic-routed reply)
-//!
-//! `openrouter::Usage` modeled `prompt_tokens`, `completion_tokens`,
-//! `total_tokens`, `cost` and `prompt_tokens_details` — but no
-//! `completion_tokens_details` field at all, so the whole object was dropped
-//! at deserialization and `From<&Usage> for completion::Usage` ended with a
-//! literal `reasoning_tokens: 0`. rig's normalized `Usage` has a first-class
-//! `reasoning_tokens` slot that every other reasoning-capable provider fills
-//! (openai, deepseek, gemini, anthropic), and it is recorded onto the
-//! `gen_ai.usage.reasoning_tokens` telemetry span — so on OpenRouter that
-//! span, and every caller reading the field, saw a hardcoded zero no matter
-//! how much reasoning the route billed for.
-//!
-//! The streaming terminal record read the same accounting, so it lost the
-//! field too — the zero was consistent across transports, which is exactly why
-//! nothing caught it.
-//!
-//! **How these cells fail on `origin/main`.** Every non-control cell replays
-//! its recorded fixture and asserts `usage.reasoning_tokens > 0`; on
-//! `origin/main` the field is `0` for all of them.
-//!
-//! **Recorded upstreams.** Reasoning cells need a reasoning-capable upstream
-//! and the *shape* of the breakdown is upstream-specific, so every cell pins
-//! `provider.order` + `allow_fallbacks: false` and asserts the recorded
-//! `provider`. Three upstream families are covered so the mapping is not
-//! proven against one dialect only: `OpenAI` (`openai/o4-mini`,
-//! `openai/gpt-5.2`), `Anthropic` (`anthropic/claude-haiku-4.5`, extended
-//! thinking) and an open-weight route (`deepseek/deepseek-r1-0528` via a pinned
-//! upstream). Non-reasoning controls use `openai/gpt-4o-mini`.
-//!
-//! Each cell re-reads its own fixture: a reasoning cell fails if the recorded
-//! body's `usage.completion_tokens_details.reasoning_tokens` is absent or
-//! zero, and a control fails if it is present and non-zero. A route that
-//! stopped reporting the breakdown leaves a red test rather than a green one
-//! covering nothing.
-//!
-//! | # | cell | transport | level | upstream | status |
-//! |---|------|-----------|-------|----------|--------|
-//! | 11 | `blocking_excluded_reasoning_still_counts_tokens` | blocking | raw model | OpenAI / o4-mini | recorded |
-//! | 14 | `transports_agree_on_reasoning_tokens` | both | raw model | OpenAI / o4-mini | recorded |
-//!
-//! Five unit cells — usage payloads the live gateway will not produce on demand
-//! (a real recorded usage object, the breakdown absent / `null` / `{}` /
-//! zero, unmodeled siblings tolerated, the `total - prompt` output-token
-//! fallback undisturbed, and the field omitted on serialization when absent)
-//! — live next to the shared chat usage shape in
-//! `crates/rig-core/src/providers/openai/wire/dto.rs`, which flattens a
-//! dialect's extra usage fields so `completion_tokens_details` reaches both
-//! the normalized `Usage` and the reply document on `raw`.
+//! The breakdown's shape is upstream-specific, so every cell pins
+//! `provider.order` with `allow_fallbacks: false` and asserts the recorded
+//! `provider`. Each cell re-reads its own fixture: a reasoning cell fails if
+//! the recorded breakdown is absent or zero, and a control fails if it is
+//! present and non-zero, so a route that stopped reporting it leaves a red
+//! test rather than a green one covering nothing. Usage payloads the live
+//! gateway will not produce on demand live as unit tests next to the shared
+//! chat usage shape in `crates/rig-core/src/providers/openai/wire/dto.rs`.
 
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -84,14 +40,6 @@ fn openai_reasoning(request: CompletionRequest, effort: Effort) -> CompletionReq
         .reasoning(effort)
         .provider_options(pinned_order(&["OpenAI"]))
 }
-
-// ---------------------------------------------------------------------------
-// The bug: a documented, always-present field with a first-class slot, zeroed.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// A second and third upstream family: the breakdown is not an OpenAI-ism.
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Adjacent shapes on the same code path.
@@ -209,11 +157,7 @@ async fn transports_agree_on_reasoning_tokens() {
 }
 
 // ---------------------------------------------------------------------------
-// Controls — a non-reasoning route must still report zero.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Premise assertions — derived from each cell's own recorded bytes.
+// Premise assertions, derived from each cell's own recorded bytes.
 // ---------------------------------------------------------------------------
 
 fn recorded_response_bodies(scenario: &str) -> Vec<String> {

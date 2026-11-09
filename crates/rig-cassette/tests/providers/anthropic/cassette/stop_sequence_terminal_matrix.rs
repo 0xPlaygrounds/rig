@@ -1,35 +1,18 @@
-//! Edge matrix for the streamed terminal's `stop_sequence`.
+//! The streamed terminal's `stop_sequence` on Anthropic.
 //!
-//! # The bug
-//!
-//! Anthropic's terminal `message_delta` reports *which* of the caller's
-//! `stop_sequences` matched:
+//! Anthropic's terminal `message_delta` reports which of the caller's
+//! `stop_sequences` matched, and strips the matched sequence from the text,
+//! so the wire frame is the only place the value exists. The streamed
+//! terminal record must carry it, as the blocking
+//! `CompletionResponse::stop_sequence` does.
 //!
 //! ```text
 //! {"delta":{"stop_details":null,"stop_reason":"stop_sequence","stop_sequence":"charlie"},...}
 //! ```
 //!
-//! The decoder read that field and then dropped it: the terminal record
-//! had no slot for it, so the streamed terminal
-//! answered a request with strictly less than the blocking response answered
-//! the same request with (`CompletionResponse::stop_sequence` has carried it
-//! all along).
-//! Anthropic strips the matched sequence from the text, so the wire frame is
-//! the only place the value exists — a streamed caller could learn that *a*
-//! sequence fired and never which one.
-//!
-//! # Matrix
-//!
-//! Every row is a recorded live cell unless marked otherwise. `expected` is the
-//! terminal record's `stop_sequence`. Every recorded cell also re-derives its
-//! premise from its own fixture bytes (see
-//! [`assert_recorded_terminal_stop_sequence`]) so a cell whose provider turn
-//! stopped producing the shape it is about fails instead of passing vacuously.
-//!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 16 | `raw_with_tools_sequence_fires` | tools advertised | `charlie` | recorded |
-//! | 18 | `raw_with_preamble_sequence_fires` | system prompt present | `charlie` | recorded |
+//! Every cell re-derives its premise from its own fixture bytes with
+//! [`assert_recorded_terminal_stop_sequence`], so a provider turn that
+//! stops producing the shape fails instead of passing vacuously.
 
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, ToolDefinition};
@@ -165,19 +148,7 @@ pub(super) fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: O
 }
 
 // ---------------------------------------------------------------------------
-// 1–5: which sequence fired
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// 6–10: sequence content shapes that must survive verbatim
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// 11–14: controls — every other terminal must report no sequence
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// 15–20: interaction with the rest of the request surface
+// Interaction with the rest of the request surface
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -225,11 +196,3 @@ async fn raw_with_preamble_sequence_fires() {
         Some("charlie"),
     );
 }
-
-// ---------------------------------------------------------------------------
-// 21–24: blocking twins — the surface that was already correct
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// 25–26: adjacent paths sharing the terminal construction
-// ---------------------------------------------------------------------------
