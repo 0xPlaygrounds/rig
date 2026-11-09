@@ -31,10 +31,12 @@ use super::project::{
 const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
 
 /// `rig plugin`'s usage.
-pub const USAGE: &str = "  rig plugin list        Every plugin, rig's own and the extra crates of
-                         RIG_HOME/settings.toml, `on` or `off`, with its crate
-                         and what it adds: rig's defaults, changed by [plugins]
-                         in RIG_HOME/settings.toml.
+pub const USAGE: &str =
+    "  rig plugin list        Every plugin, `on` or `off`, with its crate and what
+                         it adds: rig's own, with its default, which [plugins]
+                         in RIG_HOME/settings.toml changes, then yours, the
+                         extra crates of RIG_HOME/settings.toml, with where
+                         each comes from.
   rig plugin enable <type>
   rig plugin disable <type>
                          Turn a plugin on or off in RIG_HOME/settings.toml
@@ -178,23 +180,36 @@ fn add_extra(
     Ok(())
 }
 
-/// `rig plugin list`: every plugin of rig's and of the home's extra crates,
-/// one line each: `on` or `off`, the type, its crate and what it adds, with
-/// a note when the settings changed rig's default, and a warning on an
-/// essential plugin turned off. `/plugins` reads these lines.
+/// `rig plugin list`: prints [`listing`].
 fn list(home: &Home) -> Result<()> {
+    print!("{}", listing(home)?);
+    Ok(())
+}
+
+/// Every plugin of rig's, under `rig's plugins:`, then of the home's extra
+/// crates, under `your plugins (extras):`, one line each: `on` or `off`, the
+/// type, its crate and what it adds. A plugin of rig's ends with its default
+/// and whether the settings changed it, with a warning on an essential plugin
+/// turned off; an extra ends with where its crate comes from. `/plugins` reads
+/// the lines that start with `on` or `off`.
+fn listing(home: &Home) -> Result<String> {
     let chosen = config::chosen(home)?;
     let mut rows: Vec<(bool, String, String, String)> = Vec::new();
     for built_in in BUILT_IN {
         let on = chosen.on.iter().any(|plugin| plugin == built_in.plugin);
+        let default = if built_in.on { "on" } else { "off" };
         let mut about = built_in.about.to_owned();
         if !built_in.available() {
             about.push_str(&format!(
-                " (builds on {} only)",
+                " (default {default}; builds on {} only)",
                 built_in.targets.join(" and ")
             ));
         } else if on != built_in.on {
-            about.push_str(" (set by RIG_HOME/settings.toml)");
+            about.push_str(&format!(
+                " (default {default}; set by RIG_HOME/settings.toml)"
+            ));
+        } else {
+            about.push_str(&format!(" (default {default})"));
         }
         if !on && let Some(what) = essential(built_in.plugin) {
             about.push_str(&format!(" (warning: off, which takes away {what})"));
@@ -208,22 +223,32 @@ fn list(home: &Home) -> Result<()> {
     }
     for extra in &chosen.extra {
         let on = chosen.on.contains(&extra.plugin);
-        let about = format!("An extra crate, from {}.", extra.source);
-        rows.push((on, extra.plugin.clone(), extra.krate.clone(), about));
+        rows.push((
+            on,
+            extra.plugin.clone(),
+            extra.krate.clone(),
+            extra.source.to_string(),
+        ));
     }
     let width = |of: fn(&(bool, String, String, String)) -> usize| {
         rows.iter().map(of).max().unwrap_or_default()
     };
     let types = width(|row| row.1.len());
     let crates = width(|row| row.2.len());
-    for (on, plugin, krate, about) in &rows {
+    let mut text = String::from("rig's plugins:\n");
+    for (index, (on, plugin, krate, about)) in rows.iter().enumerate() {
+        if index == BUILT_IN.len() {
+            text.push_str("\nyour plugins (extras):\n");
+        }
         let state = if *on { "on" } else { "off" };
-        println!(
-            "{}",
-            format!("{state:<3} {plugin:<types$}  {krate:<crates$}  {about}").trim_end()
-        );
+        let line = format!("{state:<3} {plugin:<types$}  {krate:<crates$}  {about}");
+        text.push_str(line.trim_end());
+        text.push('\n');
     }
-    Ok(())
+    if chosen.extra.is_empty() {
+        text.push_str("\nyour plugins (extras): none; `rig plugin new <name>` makes one.\n");
+    }
+    Ok(text)
 }
 
 /// `rig plugin enable <type>` and `rig plugin disable <type>`: names
@@ -503,6 +528,8 @@ fn check_plugin(extra: &Extra, source: &RigSource) -> Option<String> {
     }
     foreign_rig_crate(extra, source)
 }
+
+pub mod skill;
 
 #[cfg(test)]
 mod tests;

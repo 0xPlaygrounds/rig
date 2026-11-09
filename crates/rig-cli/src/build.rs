@@ -195,6 +195,7 @@ fn compile_logged(
     if !status.success() {
         return Err(format!("cargo could not build the agent ({status})").into());
     }
+    super::plugin::skill::write(home, source)?;
     stage(home, staged, staging)
 }
 
