@@ -170,3 +170,15 @@ fn a_serialized_config_carries_no_key_material() {
         );
     }
 }
+
+#[test]
+fn voyage_3_5_lite_is_the_id_voyage_serves_with_its_width() {
+    assert_eq!(
+        crate::providers::voyageai::VOYAGE_3_5_LITE,
+        "voyage-3.5-lite"
+    );
+    assert_eq!(
+        crate::providers::voyageai::model_dimensions_from_identifier("voyage-3.5-lite"),
+        Some(1024)
+    );
+}
