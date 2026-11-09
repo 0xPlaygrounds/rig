@@ -6,6 +6,7 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 use crate::providers::openai::responses_api::wire::Responses;
+use crate::providers::openai::wire::HookedModels;
 
 #[cfg(feature = "image")]
 use crate::providers::openai::wire::Images;
@@ -98,7 +99,12 @@ impl OpenAI {
 
     /// The models this provider serves, every page followed.
     pub async fn list_models(&self) -> Result<ModelList, ProviderError> {
-        self.model(self.config.models()).list().await
+        let models = self.config.models();
+        let hooks = self.config.dialect.quirks.hooks;
+        match hooks.and_then(|hooks| hooks.model_listing) {
+            Some(catalogue) => self.model(HookedModels { models, catalogue }).list().await,
+            None => self.model(models).list().await,
+        }
     }
 
     /// Check that the provider accepts the configured credential. A 401 or

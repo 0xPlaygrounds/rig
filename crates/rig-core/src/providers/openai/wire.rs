@@ -40,6 +40,7 @@ pub use modality::{
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 
+pub(crate) use modality::HookedModels;
 #[cfg(feature = "image")]
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
 #[cfg(feature = "audio")]
@@ -265,11 +266,17 @@ pub struct DialectHooks {
     /// request. Runs after shared authentication, so a hook may replace the
     /// credential header rather than add a second one.
     pub modality_envelope: Option<ModalityEnvelope>,
+    /// Read the models from the listing reply's JSON body. `None` reads the
+    /// shared `{ "data": [...] }` entries.
+    pub model_listing: Option<ModelCatalogue>,
 }
 
 /// A dialect's modality-request headers, applied to the built request.
 pub type ModalityEnvelope =
     fn(&OpenAIConfig, &mut http::Request<crate::wire::Body>) -> Result<(), http::Error>;
+
+/// A dialect's reading of its model catalogue, given the listing reply's body.
+pub type ModelCatalogue = fn(serde_json::Value) -> crate::model::ModelList;
 
 /// A dialect's completion headers, applied to the authenticated request builder.
 pub type CompletionEnvelope = fn(

@@ -80,6 +80,7 @@ static HOOKS: DialectHooks = DialectHooks {
     modality_envelope: Some(|provider, request| {
         stamp(request, provider.api_key.expose(), "user", false)
     }),
+    model_listing: Some(super::model_listing::catalogue),
 };
 
 /// The editor envelope of a completion request: the initiator and vision

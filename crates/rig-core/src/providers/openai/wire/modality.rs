@@ -1387,6 +1387,56 @@ impl Wire for Models {
     }
 }
 
+/// The shared listing request, its reply read by the dialect's `model_listing` hook.
+#[derive(Clone, Debug)]
+pub(crate) struct HookedModels {
+    pub(crate) models: Models,
+    pub(crate) catalogue: super::ModelCatalogue,
+}
+
+/// Reads a listing reply with a dialect's `model_listing` hook.
+pub(crate) struct HookedModelsDecoder(super::ModelCatalogue);
+
+impl<'id> Decoder<'id, ModelListing> for HookedModelsDecoder {
+    type Event = serde_json::Value;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        classify_untyped_line(frame.as_str().as_bytes())
+    }
+
+    fn decode(
+        &mut self,
+        event: Self::Event,
+        out: Out<'id, ModelListing>,
+    ) -> Result<Flow, ProviderError> {
+        Ok(out.end(ModelPage {
+            models: (self.0)(event),
+            next: None,
+        }))
+    }
+}
+
+impl Wire for HookedModels {
+    type Op = ModelListing;
+    type Payload = crate::wire::Encoded;
+    type Frame = crate::wire::WireFrame;
+    type Event = serde_json::Value;
+    type Decoder<'id> = HookedModelsDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
+
+    fn describe(&self) -> Descriptor<'_> {
+        self.models.describe()
+    }
+
+    fn encode(&self, cursor: Option<String>, mode: Mode) -> Result<Encoded, EncodeError> {
+        self.models.encode(cursor, mode)
+    }
+
+    fn decoder<'id>(&self) -> Self::Decoder<'id> {
+        HookedModelsDecoder(self.catalogue)
+    }
+}
+
 /// Rerank documents with `{model, query, documents, top_n}` requests.
 /// The dialect must configure a nonempty reranking path.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
