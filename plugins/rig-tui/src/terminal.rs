@@ -36,7 +36,7 @@ use super::keys::KeyBinding;
 use super::panel::{RequestRedraw, TerminalSize};
 use super::theme::Theme;
 use rig_ecs::tasks::Wake;
-use rig_harness::harness_protocol::secret_variables;
+use rig_harness::harness_protocol::without_secrets;
 use rig_harness::prelude::{Exit, ExitReason, Scratch};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
@@ -486,9 +486,7 @@ pub(crate) fn run_in_terminal(world: &mut World) {
 /// Runs `command` until it exits, its output on `screen` when the view
 /// sends its own output elsewhere, without the session's secrets.
 fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, String> {
-    for secret in secret_variables() {
-        command.env_remove(secret);
-    }
+    without_secrets(command);
     if let Some(screen) = screen {
         let output = screen.try_clone().map_err(|failure| failure.to_string())?;
         let errors = screen.try_clone().map_err(|failure| failure.to_string())?;

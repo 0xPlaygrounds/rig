@@ -3,7 +3,7 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use fs2::FileExt;
 use rand::RngCore;
-use rig_harness::harness_protocol::secret_variables;
+use rig_harness::harness_protocol::without_secrets;
 use rig_harness::rig_core::error::retryable_status;
 use rig_harness::rig_tools::process::{self, Process};
 use serde::{Deserialize, Serialize};
@@ -534,9 +534,7 @@ fn browser_command(url: &Url) -> std::process::Command {
             None => command.env_remove(name),
         };
     }
-    for secret in secret_variables() {
-        command.env_remove(secret);
-    }
+    without_secrets(&mut command);
     command
 }
 

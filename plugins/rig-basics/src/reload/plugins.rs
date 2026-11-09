@@ -11,7 +11,7 @@
 use std::process::Command;
 
 use rig_harness::harness_protocol::config::essential;
-use rig_harness::harness_protocol::{self, secret_variables};
+use rig_harness::harness_protocol::{self, without_secrets};
 use rig_harness::pick::{Picked, Picker};
 use rig_harness::prelude::*;
 use rig_tools::process::{Process, Spawn};
@@ -210,9 +210,7 @@ fn launcher(args: &[&str]) -> Result<String, String> {
         .ok_or("/plugins needs the rig launcher: start the agent with `rig`.")?;
     let mut command = Command::new(launcher);
     command.arg("plugin").args(args);
-    for secret in secret_variables() {
-        command.env_remove(secret);
-    }
+    without_secrets(&mut command);
     let output = Process::start(command, Spawn::default())
         .and_then(|launcher| launcher.output(None))
         .map_err(|failure| format!("Could not run the rig launcher: {failure}"))?;
