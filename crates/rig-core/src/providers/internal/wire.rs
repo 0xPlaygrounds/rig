@@ -33,7 +33,7 @@ where
         Ok(None) => unknown(data, String::new()),
         Ok(Some(found)) => match text(found.first().copied().flatten()) {
             Some(event_type) if !is_known_event_type(&event_type) => unknown(data, event_type),
-            _ => decode_known(data),
+            _ => classify_untyped_line(data.as_bytes()),
         },
     }
 }
@@ -70,7 +70,7 @@ where
     let object = text(found.first().copied().flatten());
     let has_choices = found.get(1).is_some_and(Option::is_some);
     if object.as_deref() == Some("chat.completion.chunk") || has_choices {
-        decode_known(data)
+        classify_untyped_line(data.as_bytes())
     } else {
         unknown(data, object.unwrap_or_default())
     }
@@ -87,7 +87,9 @@ where
 {
     match scan(data, marker_keys, false) {
         Err(error) => WireEvent::Corrupt(error),
-        Ok(Some(found)) if found.iter().any(Option::is_some) => decode_known(data),
+        Ok(Some(found)) if found.iter().any(Option::is_some) => {
+            classify_untyped_line(data.as_bytes())
+        }
         Ok(_) => match serde_json::from_str::<Value>(data) {
             Ok(value) => WireEvent::Unknown {
                 event_type: value
@@ -184,12 +186,12 @@ where
         Ok(None) => unknown(data, String::new()),
         Ok(Some(found)) => match found.first().copied().flatten() {
             None => match untagged(data) {
-                WireEvent::Unknown { .. } => decode_known(data).map(tagged),
+                WireEvent::Unknown { .. } => classify_untyped_line(data.as_bytes()).map(tagged),
                 event => event,
             },
             Some(value) => match text(Some(value)) {
                 Some(event_type) if !is_known_event_type(&event_type) => unknown(data, event_type),
-                _ => decode_known(data).map(tagged),
+                _ => classify_untyped_line(data.as_bytes()).map(tagged),
             },
         },
     }
@@ -291,16 +293,6 @@ impl<'de> Visitor<'de> for Key<'_> {
 
     fn visit_str<E>(self, key: &str) -> Result<Self::Value, E> {
         Ok(self.0.iter().position(|candidate| *candidate == key))
-    }
-}
-
-fn decode_known<T>(data: &str) -> WireEvent<T>
-where
-    T: serde::de::DeserializeOwned,
-{
-    match serde_json::from_str::<T>(data) {
-        Ok(event) => WireEvent::Known(event),
-        Err(error) => WireEvent::Corrupt(error),
     }
 }
 
