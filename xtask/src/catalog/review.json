@@ -4097,6 +4097,15 @@
           ]
         }
       },
+      "voyage-3.5-lite": {
+        "source": "https://docs.voyageai.com/docs/embeddings",
+        "name": "voyage-3.5-lite",
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
       "voyage-code-2": {
         "name": "voyage-code-2",
         "modalities": {
@@ -4123,14 +4132,6 @@
       },
       "voyage-law-2": {
         "name": "voyage-law-2",
-        "modalities": {
-          "input": [
-            "text"
-          ]
-        }
-      },
-      "voyage.3-5.lite": {
-        "name": "voyage.3-5.lite",
         "modalities": {
           "input": [
             "text"

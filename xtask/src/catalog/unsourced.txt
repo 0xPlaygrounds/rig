@@ -203,7 +203,6 @@ ef7fb97aff1ee627 voyageai/voyage-3-large
 6298e8062af71fe3 voyageai/voyage-code-3
 c3fab079539e03f9 voyageai/voyage-finance-2
 c8d99f0a519093cb voyageai/voyage-law-2
-a71a2cd1396699d4 voyageai/voyage.3-5.lite
 53e3bd9b5e8aaab3 xai/grok-2-1212
 5d140d140a999c28 xai/grok-2-image-1212
 301cf141d1ad5cda xai/grok-2-vision-1212

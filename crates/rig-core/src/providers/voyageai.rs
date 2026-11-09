@@ -28,8 +28,8 @@ const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
 pub const VOYAGE_3_LARGE: &str = "voyage-3-large";
 /// `voyage-3.5` embedding model (Voyage AI)
 pub const VOYAGE_3_5: &str = "voyage-3.5";
-/// Embedding identifier `voyage.3-5.lite`.
-pub const VOYAGE_3_5_LITE: &str = "voyage.3-5.lite";
+/// `voyage-3.5-lite` embedding model (Voyage AI)
+pub const VOYAGE_3_5_LITE: &str = "voyage-3.5-lite";
 /// `voyage-code-3` embedding model (Voyage AI)
 pub const VOYAGE_CODE_3: &str = "voyage-code-3";
 /// `voyage-finance-2` embedding model (Voyage AI)
@@ -41,9 +41,9 @@ pub const VOYAGE_CODE_2: &str = "voyage-code-2";
 
 pub fn model_dimensions_from_identifier(model_identifier: &str) -> Option<usize> {
     match model_identifier {
-        "voyage-code-2" => Some(1536),
-        "voyage-3-large" | "voyage-3.5" | "voyage.3-5.lite" | "voyage-code-3"
-        | "voyage-finance-2" | "voyage-law-2" => Some(1024),
+        VOYAGE_CODE_2 => Some(1536),
+        VOYAGE_3_LARGE | VOYAGE_3_5 | VOYAGE_3_5_LITE | VOYAGE_CODE_3 | VOYAGE_FINANCE_2
+        | VOYAGE_LAW_2 => Some(1024),
         _ => None,
     }
 }
