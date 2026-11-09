@@ -32,7 +32,7 @@ npx wrangler vectorize create rig-integration-test --dimensions=1536 --metric=co
 export CLOUDFLARE_ACCOUNT_ID="your-account-id"
 export CLOUDFLARE_API_TOKEN="your-api-token"
 export VECTORIZE_INDEX_NAME="rig-integration-test"
-cargo test --package rig-vectorize --test integration_tests -- --test-threads=1
+cargo test -p rig-service-tests --features vectorize --test integrations vectorize -- --nocapture --test-threads=1
 ```
 
 Tests run sequentially (`--test-threads=1`) to avoid conflicts since they clear the index before each test.

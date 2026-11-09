@@ -98,8 +98,9 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 ```
 
-`#[tokio::main]` needs tokio's `macros` and `rt-multi-thread` features
-(`cargo add tokio --features macros,rt-multi-thread`).
+The example also needs tokio, with the `macros` and `rt-multi-thread` features
+that `#[tokio::main]` uses, and anyhow
+(`cargo add tokio --features macros,rt-multi-thread` and `cargo add anyhow`).
 
 - 20+ model providers and 10+ vector stores, each under one interface
 - Agents with tools, multi-turn streaming and typed hooks

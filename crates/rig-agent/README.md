@@ -251,11 +251,7 @@ wasm feature flags anywhere in the workspace. `rig-core` relaxes its
 
 Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
 "unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter
-also matches WASI, which has no JS host. WASI itself does not build: `rig-core`
-depends unconditionally on `reqwest`, which pulls `hyper`/`socket2` and a tokio
-feature set WASI rejects. Supporting it would mean making `reqwest` optional and
-adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
-`cfg` fix.
+also matches WASI, which has no JS host. WASI is not supported.
 
 **MCP (`rig-rmcp`) is native-only.** rmcp's `ClientHandler` is declared
 `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes

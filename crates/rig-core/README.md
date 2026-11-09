@@ -27,7 +27,7 @@ More information about this crate can be found in the [crate documentation](http
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
-- Full WASM compatibility (core library only)
+- Builds for browser WASM (`wasm32-unknown-unknown`); WASI is not supported
 
 ## Installation
 ```bash
