@@ -3,6 +3,7 @@
 use std::io::{BufRead, Write};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
@@ -1392,7 +1393,7 @@ const TOKEN: &str = "loopback-secret";
 /// with the sum, and `mul` is listed once `grown` is set.
 #[derive(Clone, Default)]
 struct Loopback {
-    grown: Arc<std::sync::atomic::AtomicBool>,
+    grown: Arc<AtomicBool>,
     /// The client of each session, once it said it is ready.
     peers: Arc<Mutex<Vec<rmcp::Peer<rmcp::RoleServer>>>>,
 }
@@ -1426,7 +1427,7 @@ impl rmcp::ServerHandler for Loopback {
             "Adds two numbers.",
             schema.clone(),
         )];
-        if self.grown.load(std::sync::atomic::Ordering::SeqCst) {
+        if self.grown.load(Ordering::SeqCst) {
             tools.push(McpDefinition::new("mul", "Multiplies two numbers.", schema));
         }
         Ok(rmcp::model::ListToolsResult::with_all_items(tools))
@@ -1450,7 +1451,7 @@ impl rmcp::ServerHandler for Loopback {
 
 /// Refuses a request without the token, counting it in `refused`.
 async fn token_only(
-    refused: Arc<std::sync::atomic::AtomicUsize>,
+    refused: Arc<AtomicUsize>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
@@ -1458,10 +1459,13 @@ async fn token_only(
     if token.is_some_and(|token| token == TOKEN) {
         return next.run(request).await;
     }
-    refused.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    refused.fetch_add(1, Ordering::SeqCst);
     axum::response::IntoResponse::into_response(http::StatusCode::UNAUTHORIZED)
 }
 
+/// rmcp's HTTP client follows `HTTP_PROXY` and `ALL_PROXY`, and the plugin
+/// cannot change that: with a proxy set, `NO_PROXY` must name 127.0.0.1 for
+/// this test to reach its server.
 #[test]
 fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -1471,7 +1475,7 @@ fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
     assert!(runtime.is_ok(), "{runtime:?}");
     let Ok(runtime) = runtime else { return };
     let server = Loopback::default();
-    let refused = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let refused = Arc::new(AtomicUsize::new(0));
     let factory = server.clone();
     let service = rmcp::transport::StreamableHttpService::new(
         move || Ok(factory.clone()),
@@ -1540,9 +1544,7 @@ fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
 
     // The server's word that its tools changed, outside any request of the
     // client's, brings the new list.
-    server
-        .grown
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+    server.grown.store(true, Ordering::SeqCst);
     let peers = server
         .peers
         .lock()
@@ -1557,7 +1559,7 @@ fn a_streamable_http_server_connects_lists_answers_and_changes_its_tools() {
     let state = status(app.world_mut(), "web").map(|status| (status.state, status.tools));
     assert_eq!(state, Some((McpState::Connected, 2)));
     // Every request carried the header.
-    assert_eq!(refused.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(refused.load(Ordering::SeqCst), 0);
     drop(app);
     runtime.shutdown_background();
     std::fs::remove_dir_all(project).ok();

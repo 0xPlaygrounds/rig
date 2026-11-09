@@ -26,8 +26,10 @@ Date 2026-11-09, rig commit `b1321662b`, rmcp 3.9.0, Node 26.13.0.
 | `@playwright/mcp` with Chromium 156 | 0.0.85 | stdio, `--headless --isolated` | works | 25 tools; `browser_navigate` to a local page, `browser_snapshot`, `browser_close`. |
 | GitHub MCP, `https://api.githubcopilot.com/mcp/` | `github-mcp-server/remote-b104ac9bf784` | streamable HTTP, `Authorization` and `X-MCP-Readonly` headers | fails | See below. |
 
-`get-header-params` answered `"regionHeader": null`: rig does not copy a
-tool argument marked `x-mcp-header` into an `Mcp-Param-*` request header.
+`get-header-params` answered `"regionHeader": null`. rmcp copies a tool
+argument marked `x-mcp-header` into an `Mcp-Param-*` header only on a session
+that negotiated `2026-07-28`, as the conformance run below shows, and this
+session negotiated an earlier version.
 
 GitHub MCP does not connect: `MCP server gh could not connect: ... Transport
 channel closed, when send initialized notification.` rig offers protocol
@@ -48,3 +50,16 @@ Date 2026-11-09, rig commit `b1321662b`.
 | Zed | | | not run | A GUI editor; not run here. |
 | JetBrains | | | not run | A GUI editor; not run here. |
 | Neovim with CodeCompanion | | | not run | Not tried in this run. |
+
+## Conformance suites
+
+Run once by hand on 2026-11-09 against rig commit `b1321662b`.
+
+- MCP conformance suite (`modelcontextprotocol/conformance` at
+  `c37eec888e1c`), rig as the client: 11 of 48 client scenarios pass. Every
+  failure is unsupported OAuth (33) or elicitation (1), or a `2026-07-28`
+  draft item that comes from rmcp 3.9 (3).
+- ACP TCK (`agentclientprotocol/acp-tck` at `b7f40fb3c003`), `rig acp`, ACP
+  v1: all 31 mandatory requirements pass. The 5 failures (`ACP-LOAD-001` to
+  `003`, `ACP-RESUME-001` and `002`) come from rig refusing to load or resume
+  a session the same connection already has open, which it does on purpose.
