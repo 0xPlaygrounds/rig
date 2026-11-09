@@ -86,16 +86,32 @@ pub(crate) fn embedding_column<'a>(
     }
 }
 
-/// Whether every value of `embedding` stays finite in the float type of `column`.
-pub(crate) fn fits_column(column: &Field, embedding: &[f64]) -> bool {
+/// The value to name when `embedding` cannot be stored in `column` and
+/// scored, or `None` when it can: a value that is not finite in the column's
+/// float type, or else the largest value when the squared length is not finite.
+/// Whether a finite squared length gives a finite distance depends on the
+/// distance type each query picks, so search refuses the rest.
+pub(crate) fn unscorable_value(column: &Field, embedding: &[f64]) -> Option<f64> {
     let narrowed = matches!(column.data_type(), DataType::FixedSizeList(item, _)
         if *item.data_type() == DataType::Float32);
-    embedding.iter().all(|&value| {
-        if narrowed {
-            (value as f32).is_finite()
-        } else {
-            value.is_finite()
-        }
+    let values = || embedding.iter().copied();
+    values()
+        .find(|&value| !value.is_finite() || (narrowed && !(value as f32).is_finite()))
+        .or_else(|| {
+            let squared_length: f64 = values().map(|value| value * value).sum();
+            let largest = values().max_by(|a, b| a.abs().total_cmp(&b.abs()));
+            largest.filter(|_| !squared_length.is_finite())
+        })
+}
+
+/// The distance LanceDB computed for `row`. Errors, naming the row's
+/// `id_field` value, when it is missing or not finite, which JSON holds as null.
+pub(crate) fn distance(row: &Value, id_field: &str) -> Result<f64, VectorStoreError> {
+    row.get("_distance").and_then(Value::as_f64).ok_or_else(|| {
+        let id = row.get(id_field).unwrap_or(&Value::Null);
+        VectorStoreError::datastore(lancedb::Error::Runtime {
+            message: format!("row {id} has no finite distance to the query"),
+        })
     })
 }
 

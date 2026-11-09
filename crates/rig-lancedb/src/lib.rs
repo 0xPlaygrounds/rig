@@ -34,7 +34,8 @@ use rig_core::{
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use utils::{
-    embedding_column, execute_query, filter_embeddings, fits_column, invalid_input, rows_to_batch,
+    distance, embedding_column, execute_query, filter_embeddings, invalid_input, rows_to_batch,
+    unscorable_value,
 };
 
 mod utils;
@@ -367,11 +368,12 @@ impl InsertDocuments for LanceDbVectorIndex {
     /// has no embeddings, has a field with no column or one named like the
     /// embedding column, leaves out a non-nullable column, or has a value its
     /// column would store differently, or when an embedding's length differs
-    /// from the column's or a value of it is not finite in the column's float
-    /// type. Values stored differently are a number with a fraction for an
-    /// integer column, such as `1.5`, a number too large for a Float16 or
-    /// Float32 column, such as `1e300`, and a binary value that is not an
-    /// even-length hex string, such as `abc` or a `Vec<u8>`.
+    /// from the column's, a value of it is not finite in the column's float
+    /// type, or its squared length is not finite, such as one holding `1e300`.
+    /// Values stored differently are a number with a fraction for an integer
+    /// column, such as `1.5`, a number too large for a Float16 or Float32
+    /// column, such as `1e300`, and a binary value that is not an even-length
+    /// hex string, such as `abc` or a `Vec<u8>`.
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
@@ -402,9 +404,9 @@ impl InsertDocuments for LanceDbVectorIndex {
                 )));
             }
             let name = column.name();
-            if !fits_column(column, &embedding.vec) {
+            if let Some(value) = unscorable_value(column, &embedding.vec) {
                 return Err(invalid_input(format!(
-                    "embedding of document {} has a value that is not finite in column `{name}`",
+                    "embedding of document {} cannot be scored: with value {value:e} it or its squared length is not finite in column `{name}`",
                     row.get(&self.id_field).unwrap_or(&Value::Null)
                 )));
             }
@@ -432,8 +434,9 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     type Filter = LanceDBFilter;
 
     /// Returns matches scored by distance, with embedding columns projected
-    /// out. A row missing its distance scores zero, and a row whose id column is
-    /// absent or non-textual gets a placeholder id.
+    /// out. Errors when a row's distance is not finite, as for an L2 distance
+    /// past Float32, which LanceDB computes distances in. A row whose id column
+    /// is absent or non-textual gets a placeholder id.
     ///
     /// # Example
     /// ```no_run
@@ -486,10 +489,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .enumerate()
             .map(|(i, value)| {
                 Ok(VectorSearchResult {
-                    score: match value.get("_distance") {
-                        Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
-                        _ => 0.0,
-                    },
+                    score: distance(&value, &self.id_field)?,
                     id: match value.get(self.id_field.as_str()) {
                         Some(Value::String(id)) => id.clone(),
                         _ => format!("unknown{i}"),
@@ -526,10 +526,7 @@ impl VectorStoreIndex for LanceDbVectorIndex {
             .into_iter()
             .map(|value| {
                 Ok(VectorSearchIdResult {
-                    score: match value.get("_distance") {
-                        Some(Value::Number(distance)) => distance.as_f64().unwrap_or_default(),
-                        _ => 0.0,
-                    },
+                    score: distance(&value, &self.id_field)?,
                     id: match value.get(self.id_field.as_str()) {
                         Some(Value::String(id)) => id.clone(),
                         _ => "".to_string(),
