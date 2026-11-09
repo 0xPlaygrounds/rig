@@ -352,8 +352,9 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
 }
 
 /// A start whose settings name a plugin rig does not know, or a local
-/// crate that is not there, refuses, naming the mistake and the fix, and
-/// runs no build: the previous one was built from other settings.
+/// crate that is not there or whose `Cargo.toml` is not TOML, refuses,
+/// naming the mistake and the fix, and runs no build: the previous one was
+/// built from other settings.
 #[cfg(unix)]
 #[test]
 fn an_unknown_plugin_refuses_the_start_instead_of_running_the_previous_build() {
@@ -368,11 +369,19 @@ fn an_unknown_plugin_refuses_the_start_instead_of_running_the_previous_build() {
             "missing-crate",
             "[[plugins.extra]]\ncrate = \"gone\"\npath = \"plugins/gone\"\nplugin = \"gone::GonePlugin\"\n"
                 .to_owned(),
-            "holds no Cargo.toml".to_owned(),
+            "plugins/gone/Cargo.toml: No such file or directory".to_owned(),
+        ),
+        (
+            "malformed-crate",
+            "[[plugins.extra]]\ncrate = \"bad\"\npath = \"plugins/bad\"\nplugin = \"bad::BadPlugin\"\n"
+                .to_owned(),
+            "is not TOML: TOML parse error".to_owned(),
         ),
     ] {
         let home = builds(name, "exit 0", "exit 0");
         fs::write(home.settings(), settings).ok();
+        fs::create_dir_all(home.root().join("plugins/bad")).ok();
+        fs::write(home.root().join("plugins/bad/Cargo.toml"), "[package\n").ok();
         let started =
             run(&home, &["-p".to_owned(), "hi".to_owned()]).map_err(|why| why.to_string());
         let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();

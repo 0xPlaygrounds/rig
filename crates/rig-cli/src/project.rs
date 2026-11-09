@@ -107,17 +107,18 @@ pub fn crate_dir(checkout: &Path, name: &str) -> Option<PathBuf> {
 /// plugins that are on, the rig crates an extra crate on by path depends
 /// on, and what each of those that is a plugin crate depends on in turn.
 /// Without a checkout, [`CORE_CRATES`] and the crates of rig's plugins on.
-pub fn rig_crates(plugins: &Plugins, source: &RigSource) -> BTreeSet<String> {
+/// Fails when one of those crates' `Cargo.toml` cannot be read.
+pub fn rig_crates(plugins: &Plugins, source: &RigSource) -> Result<BTreeSet<String>> {
     let mut used: BTreeSet<String> = CORE_CRATES.map(str::to_owned).into();
     let on = built_in_crates(plugins).into_iter().map(str::to_owned);
     let RigSource::Local(checkout) = source else {
         used.extend(on);
-        return used;
+        return Ok(used);
     };
     let mut pending: Vec<String> = on.collect();
     for extra in plugins.extras_on() {
         if let Source::Path(directory) = &extra.source {
-            pending.extend(dependencies(directory));
+            pending.extend(dependencies(directory)?);
         }
     }
     while let Some(name) = pending.pop() {
@@ -125,27 +126,26 @@ pub fn rig_crates(plugins: &Plugins, source: &RigSource) -> BTreeSet<String> {
             continue;
         };
         if used.insert(name) && directory.starts_with(checkout.join("plugins")) {
-            pending.extend(dependencies(&directory));
+            pending.extend(dependencies(&directory)?);
         }
     }
-    used
+    Ok(used)
 }
 
-/// The manifest of the crate in `directory`, if it reads.
-pub fn read_manifest(directory: &Path) -> Option<DocumentMut> {
-    fs::read_to_string(directory.join("Cargo.toml"))
-        .ok()?
-        .parse()
-        .ok()
+/// The manifest of the crate in `directory`. The error names the file and
+/// says why: the operating system's error, or the TOML error.
+pub fn read_manifest(directory: &Path) -> Result<DocumentMut> {
+    let path = directory.join("Cargo.toml");
+    let text = fs::read_to_string(&path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    Ok((text.parse()).map_err(|error| format!("{} is not TOML: {error}", path.display()))?)
 }
 
 /// The names of the dependencies the crate in `directory` always has: the
 /// keys of its `[dependencies]` tables, its target-specific ones included,
 /// without the optional ones.
-fn dependencies(directory: &Path) -> Vec<String> {
-    let Some(manifest) = read_manifest(directory) else {
-        return Vec::new();
-    };
+fn dependencies(directory: &Path) -> Result<Vec<String>> {
+    let manifest = read_manifest(directory)?;
     let targets = (manifest.get("target").and_then(Item::as_table_like))
         .into_iter()
         .flat_map(|targets| targets.iter().map(|(_, target)| target.get("dependencies")));
@@ -158,14 +158,14 @@ fn dependencies(directory: &Path) -> Vec<String> {
         let optional = item.get("optional").and_then(Item::as_bool);
         optional != Some(true)
     };
-    tables
+    Ok(tables
         .flat_map(|table| {
             (table.iter())
                 .filter(|(_, item)| required(item))
                 .map(|(name, _)| name.to_owned())
                 .collect::<Vec<_>>()
         })
-        .collect()
+        .collect())
 }
 
 /// What is wrong with `extra` when it is a crate of a rig checkout listed
@@ -226,7 +226,7 @@ pub fn rig_version(source: &RigSource) -> String {
     let RigSource::Local(checkout) = source else {
         return VERSION.to_owned();
     };
-    let manifest = read_manifest(checkout);
+    let manifest = read_manifest(checkout).ok();
     let version = manifest.as_ref().and_then(|manifest| {
         let workspace = manifest.get("workspace")?.get("package")?;
         workspace.get("version")?.as_str().map(str::to_owned)
@@ -313,23 +313,23 @@ fn manifest(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<String
     if let RigSource::Local(checkout) = source {
         // A plugin naming the crates.io releases builds against the checkout.
         text.push('\n');
-        text.push_str(&rig_patch(checkout, &rig_crates(plugins, source)));
+        text.push_str(&rig_patch(checkout, &rig_crates(plugins, source)?));
     }
-    text.push_str(&profile(plugins, source));
+    text.push_str(&profile(plugins, source)?);
     Ok(text)
 }
 
 /// The agent's build profile: dependencies at full speed, built once, and
 /// the crates `/reload` rebuilds (rig's own from a checkout, and extras by
 /// path or git) at opt-level 1, so a rebuild stays quick.
-fn profile(plugins: &Plugins, source: &RigSource) -> String {
+fn profile(plugins: &Plugins, source: &RigSource) -> Result<String> {
     let mut text = String::from(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
          \n[profile.dev.package.\"*\"]\nopt-level = 3\ndebug-assertions = false\n\
          overflow-checks = false\n",
     );
     let mut edited: BTreeSet<String> = match source {
-        RigSource::Local(_) => rig_crates(plugins, source),
+        RigSource::Local(_) => rig_crates(plugins, source)?,
         RigSource::Registry => BTreeSet::new(),
     };
     edited.extend(
@@ -340,7 +340,7 @@ fn profile(plugins: &Plugins, source: &RigSource) -> String {
     for name in edited {
         text.push_str(&format!("\n[profile.dev.package.{name}]\nopt-level = 1\n"));
     }
-    text
+    Ok(text)
 }
 
 /// The dependency source of the rig crate `name`: its directory in the

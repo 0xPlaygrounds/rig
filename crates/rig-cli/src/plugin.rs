@@ -10,10 +10,9 @@
 //! making one never touches the rig repository or a project.
 
 use std::fs;
-use std::path::Path;
 use std::process::ExitCode;
 
-use rig_harness_protocol::config::toml_edit::{ArrayOfTables, Item, Table, value};
+use rig_harness_protocol::config::toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 use rig_harness_protocol::config::{
     self, BUILT_IN, Extra, Source, built_in, essential, set_on, table,
 };
@@ -306,10 +305,8 @@ fn extra(file: &config::SettingsFile, plugin: &str) -> bool {
         })
 }
 
-/// The string at `keys` in `directory`'s `Cargo.toml`, such as its
-/// `package.name`, if it can be read.
-fn manifest_string(directory: &Path, keys: &[&str]) -> Option<String> {
-    let manifest = read_manifest(directory)?;
+/// The string at `keys` in `manifest`, such as its `package.name`.
+fn manifest_string(manifest: &DocumentMut, keys: &[&str]) -> Option<String> {
     let mut item = manifest.as_item();
     for key in keys {
         item = item.get(key)?;
@@ -475,17 +472,14 @@ fn check_plugin(extra: &Extra, source: &RigSource) -> Option<String> {
         return None;
     };
     let what = format!("`{}` ({})", extra.plugin, directory.display());
-    let manifest_path = directory.join("Cargo.toml");
-    if read_manifest(directory).is_none() {
-        return Some(format!(
-            "{what}: cannot read {} as TOML",
-            manifest_path.display()
-        ));
-    }
-    let Some(name) = manifest_string(directory, &["package", "name"]) else {
+    let manifest = match read_manifest(directory) {
+        Ok(manifest) => manifest,
+        Err(why) => return Some(format!("{what}: {why}")),
+    };
+    let Some(name) = manifest_string(&manifest, &["package", "name"]) else {
         return Some(format!(
             "{what}: {} has no [package] name",
-            manifest_path.display()
+            directory.join("Cargo.toml").display()
         ));
     };
     if name != extra.krate {
@@ -495,7 +489,7 @@ fn check_plugin(extra: &Extra, source: &RigSource) -> Option<String> {
         ));
     }
     let library =
-        manifest_string(directory, &["lib", "name"]).unwrap_or_else(|| name.replace('-', "_"));
+        manifest_string(&manifest, &["lib", "name"]).unwrap_or_else(|| name.replace('-', "_"));
     let root = extra.plugin.split("::").next().unwrap_or_default();
     if root != library {
         return Some(format!(
@@ -503,7 +497,7 @@ fn check_plugin(extra: &Extra, source: &RigSource) -> Option<String> {
         ));
     }
     let lib =
-        manifest_string(directory, &["lib", "path"]).unwrap_or_else(|| "src/lib.rs".to_owned());
+        manifest_string(&manifest, &["lib", "path"]).unwrap_or_else(|| "src/lib.rs".to_owned());
     if !directory.join(lib).is_file() {
         return Some(format!("{what}: the crate has no library (src/lib.rs)"));
     }

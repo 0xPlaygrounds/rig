@@ -180,7 +180,7 @@ fn compile_logged(
     let checked = home.project().join("Cargo.lock.checked");
     if !status.success() || lock.is_none() || lock != fs::read(&checked).ok() {
         log.say("Resolving dependencies…");
-        let rig_crates = project::rig_crates(plugins, source);
+        let rig_crates = project::rig_crates(plugins, source)?;
         check_bevy(
             home,
             plugins,
@@ -199,19 +199,17 @@ fn compile_logged(
 }
 
 /// Checks that every `[[plugins.extra]]` crate that is on and comes from a
-/// `path` is there: a path that holds no crate is a mistake in the
-/// settings, not in the plugin's code.
+/// `path` has a `Cargo.toml` that reads, and says why when one does not.
 fn local_crates(home: &Home, plugins: &config::Plugins) -> Result<()> {
     for extra in plugins.extras_on() {
         if let config::Source::Path(path) = &extra.source
-            && !path.join("Cargo.toml").is_file()
+            && let Err(why) = project::read_manifest(path)
         {
             return Err(format!(
-                "{} [[plugins.extra]] `{}`: {} holds no Cargo.toml; fix its `path`, \
+                "{} [[plugins.extra]] `{}`: {why}; fix the crate or its `path`, \
                  or take the table out",
                 home.settings().display(),
                 extra.plugin,
-                path.display()
             )
             .into());
         }
