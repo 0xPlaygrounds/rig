@@ -2,9 +2,8 @@
 
 `rig_acp::AcpPlugin` adds `rig acp`, which serves the
 [Agent Client Protocol](https://agentclientprotocol.com) (ACP) on stdin and
-stdout. An editor that speaks ACP, such as Zed or a Neovim ACP plugin, then
-uses rig: its models with your sign-in, its tools and plugins, its sessions
-and its slash commands.
+stdout. An ACP client, such as an editor, then uses rig: its models with
+your sign-in, its tools and plugins, its sessions and its slash commands.
 
 ## Turning it on
 
@@ -14,31 +13,17 @@ It is off by default. Turn it on, and the next start builds it:
 rig plugin enable rig_acp::AcpPlugin
 ```
 
-Sign in with `rig` first (`/login` in the terminal view): the editor gets the
+Sign in with `rig` first (`/login` in the terminal view): the client gets the
 models you can reach. `rig acp` builds the agent first when it is out of date,
 as `rig` does, which can take minutes the first time; build it beforehand so
-the editor does not wait.
+the client does not wait.
 
-## Zed
+## Connecting a client
 
-In Zed's `settings.json`:
-
-```json
-{
-  "agent_servers": {
-    "rig": {
-      "type": "custom",
-      "command": "/home/me/.cargo/bin/rig",
-      "args": ["acp"],
-      "env": {}
-    }
-  }
-}
-```
-
-`command` is the absolute path of `rig` (`which rig`). Add
-`"RIG_HOME": "/path/to/home"` to `env` to use another rig home. Then open the
-agent panel and start a thread with rig.
+A client starts the agent as a command: the absolute path of `rig`
+(`which rig`) with the argument `acp`. Add `RIG_HOME=/path/to/home` to its
+environment to use another rig home. The clients rig was run with are in
+[INTEROP.md](../rig-mcp-client/INTEROP.md).
 
 ## What it does
 

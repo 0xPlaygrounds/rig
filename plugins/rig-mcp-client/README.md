@@ -74,6 +74,9 @@ other transport. OAuth sign-in for remote servers is not supported; a server
 that takes a token in a header works. The files are JSON: one with comments
 is refused.
 
+[INTEROP.md](INTEROP.md) lists the servers rig was run against, with their
+versions and the date.
+
 ## Asking before a project's server starts
 
 Rig trusts a project's `.rig/mcp.json` as it trusts the rest of the
