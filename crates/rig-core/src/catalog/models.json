@@ -1734,11 +1734,11 @@
   "rerank-lite-1": {"name":"rerank-lite-1","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
   "voyage-3-large": {"name":"voyage-3-large","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
   "voyage-3.5": {"name":"voyage-3.5","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
+  "voyage-3.5-lite": {"name":"voyage-3.5-lite","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
   "voyage-code-2": {"name":"voyage-code-2","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
   "voyage-code-3": {"name":"voyage-code-3","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
   "voyage-finance-2": {"name":"voyage-finance-2","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
-  "voyage-law-2": {"name":"voyage-law-2","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}},
-  "voyage.3-5.lite": {"name":"voyage.3-5.lite","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}}
+  "voyage-law-2": {"name":"voyage-law-2","modalities":{"input":["text"]},"rig":{"pinned":["name","modalities"]}}
 }},
 "xai": {"models": {
   "grok-2-1212": {"name":"Grok 2","reasoning":false,"tool_call":true,"structured_output":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":131072},"status":"deprecated","rig":{"cache":["short"],"pinned":["name","reasoning","tool_call","structured_output","temperature","modalities","limit.context","status"]}},
