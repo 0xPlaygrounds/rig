@@ -74,6 +74,13 @@ impl JevConfig {
         Ok(Self::new(token))
     }
 
+    /// Set the bearer credential. A stored configuration loads with an empty
+    /// one, so set it again before sending.
+    pub fn with_token(mut self, token: impl Into<Secret>) -> Self {
+        self.token = token.into();
+        self
+    }
+
     /// Select the provider model identifier.
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = model.into();
