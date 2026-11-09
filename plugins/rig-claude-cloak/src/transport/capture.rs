@@ -14,13 +14,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Clone)]
 struct LocalSender {
-    inner: DynHttpClient,
     uri: Uri,
     capture: Arc<Mutex<Option<Value>>>,
 }
 
-impl LocalSender {
-    #[allow(clippy::result_large_err)]
+impl tests::Reroute for LocalSender {
     fn reroute(&self, mut request: Request<Bytes>) -> http_client::Result<Request<Bytes>> {
         let headers: serde_json::Map<String, Value> = request
             .headers()
@@ -53,40 +51,6 @@ impl LocalSender {
             .map_err(|_| http_client::Error::permanent(Error::Body))? = Some(capture);
         *request.uri_mut() = self.uri.clone();
         Ok(request)
-    }
-}
-impl HttpClientExt for LocalSender {
-    fn send<T, U>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        let this = self.clone();
-        let req = req.map(Into::into);
-        async move { this.inner.send(this.reroute(req)?).await }
-    }
-    #[allow(clippy::manual_async_fn)]
-    fn send_multipart<U>(
-        &self,
-        _: Request<MultipartForm>,
-    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        async { Err(http_client::Error::permanent(Error::Multipart)) }
-    }
-    fn send_streaming<T>(
-        &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        let req = req.map(Into::into);
-        async move { self.inner.send_streaming(self.reroute(req)?).await }
     }
 }
 
@@ -398,10 +362,12 @@ async fn capture_requests(root: &str) -> Result<Vec<Value>, Box<dyn std::error::
         });
         let capture = Arc::new(Mutex::new(None));
         let client = DynHttpClient::new(OAuthTransport {
-            inner: DynHttpClient::new(LocalSender {
+            inner: DynHttpClient::new(tests::Rerouted {
                 inner: DynHttpClient::new(rig_reqwest::ReqwestClient::from(reqwest::Client::new())),
-                uri,
-                capture: capture.clone(),
+                by: LocalSender {
+                    uri,
+                    capture: capture.clone(),
+                },
             }),
             home: Default::default(),
             device: std::fs::read_to_string(format!("{root}/home/.omp/install-id"))?
