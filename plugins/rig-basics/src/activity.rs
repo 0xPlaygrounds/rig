@@ -1,7 +1,6 @@
 //! What the agents are doing, kept for views: every agent's [`Activity`]
-//! (its status and its open tool calls), with the default `tui` feature its
-//! status in the terminal view's status line, and the [`MessageFeed`] of
-//! recent deliveries. The status comes from all of the agent's work
+//! (its status and its open tool calls), and with the default `tui` feature
+//! its status in the terminal view's status line. The status comes from all of the agent's work
 //! (`AgentWork`), not only its turn: a question waiting for the user's
 //! answer, and a plugin's named effect for the agent, such as a review
 //! after the turn, show too. A view reads them instead of
@@ -12,27 +11,19 @@
 //! changes only when what it says changes, so `Changed<Activity>` tells a
 //! view to redraw.
 
-use std::collections::VecDeque;
 use std::fmt;
 
 use rig_harness::prelude::*;
 
-/// The most deliveries the [`MessageFeed`] keeps.
-pub const FEED_LEN: usize = 64;
-/// The most characters a [`FedMessage`] keeps, from the start of the text.
-pub const FEED_CHARS: usize = 1000;
-
-/// Keeps every agent's [`Activity`] and the [`MessageFeed`].
+/// Keeps every agent's [`Activity`].
 #[derive(Default)]
 pub struct ActivityPlugin;
 
 impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Activity>()
-            .init_resource::<MessageFeed>()
             .init_resource::<rig_ecs::retry::RetryPolicy>()
-            .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
-            .add_observer(feed_deliveries);
+            .add_systems(PostUpdate, update_activity.in_set(ActivitySystems));
         #[cfg(feature = "tui")]
         app.configure_sets(
             PostUpdate,
@@ -125,65 +116,6 @@ pub struct ToolActivity {
 
 /// What [`ToolActivity::held_by`] calls a hold without a [`Name`].
 pub const UNNAMED_HOLD: &str = "unnamed hold";
-
-/// Recent deliveries to agents, oldest first: the user's messages (not
-/// their slash commands, nor what a plugin took over), messages between
-/// agents and plugins' messages, at most [`FEED_LEN`].
-/// A delivery is recorded when the agent accepts it, whether its model
-/// reads it now or after its turn.
-#[derive(Resource, Reflect, Default, Debug)]
-#[reflect(Resource)]
-pub struct MessageFeed {
-    entries: VecDeque<FedMessage>,
-}
-
-impl MessageFeed {
-    /// The deliveries, oldest first.
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &FedMessage> + ExactSizeIterator {
-        self.entries.iter()
-    }
-}
-
-/// One delivery of the [`MessageFeed`].
-#[derive(Reflect, Clone, Debug)]
-pub struct FedMessage {
-    /// The agent it went to.
-    pub to: Entity,
-    /// The agent it came from, when an agent sent it.
-    pub from: Option<Entity>,
-    /// Who wrote it.
-    #[reflect(ignore)]
-    pub author: Author,
-    /// Its first [`FEED_CHARS`] characters.
-    pub text: String,
-}
-
-/// Feeds each message an agent accepted: what reached it, not what was
-/// taken over or ran as a command.
-fn feed_deliveries(
-    accepted: On<Add<Started>>,
-    messages: Query<(&Incoming, &ForAgent)>,
-    agents: Query<(Entity, &AgentId), With<Agent>>,
-    mut feed: ResMut<MessageFeed>,
-) {
-    let Ok((message, &ForAgent(to))) = messages.get(accepted.entity) else {
-        return;
-    };
-    let from = message.author.from.as_ref().and_then(|from| {
-        agents
-            .iter()
-            .find_map(|(entity, id)| (id.0 == *from).then_some(entity))
-    });
-    if feed.entries.len() >= FEED_LEN {
-        feed.entries.pop_front();
-    }
-    feed.entries.push_back(FedMessage {
-        to,
-        from,
-        author: message.author.clone(),
-        text: message.text().chars().take(FEED_CHARS).collect(),
-    });
-}
 
 /// A plugin's unsettled effect for an agent, which shows by its name.
 type Named = (
