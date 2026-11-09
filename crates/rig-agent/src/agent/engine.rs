@@ -130,9 +130,7 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     if let Some(usage) = &runner.error_usage {
-        *usage
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = run.usage();
+        *crate::lock(usage) = run.usage();
     }
 }
 
@@ -1528,7 +1526,6 @@ impl TurnSource for UnaryTurnSource {
 }
 
 #[cfg(test)]
-#[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod tests;
 
 /// A tool call answered at the dispatch boundary: the result, whether the

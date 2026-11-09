@@ -2333,13 +2333,9 @@ async fn required_with_empty_active_tools_errors_locally_without_provider_call()
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().active_tools(Vec::<String>::new()))
-            } else {
-                CompletionCallAction::continue_run()
-            }
+            CompletionCallAction::patch(RequestPatch::new().active_tools(Vec::<String>::new()))
         }
     }
 
@@ -2379,13 +2375,9 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
-            } else {
-                CompletionCallAction::continue_run()
-            }
+            CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
         }
     }
 
@@ -2466,13 +2458,9 @@ impl AgentHook for RepairInvalidToHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        _event: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(if let _ = event {
-            InvalidToolCallAction::repair(self.0)
-        } else {
-            InvalidToolCallAction::fail()
-        })
+        Some(InvalidToolCallAction::repair(self.0))
     }
 }
 
@@ -2754,13 +2742,9 @@ impl AgentHook for SkipInvalidHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        _event: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(if let _ = event {
-            InvalidToolCallAction::skip(self.0)
-        } else {
-            InvalidToolCallAction::fail()
-        })
+        Some(InvalidToolCallAction::skip(self.0))
     }
 }
 
@@ -3275,13 +3259,9 @@ impl AgentHook for ExtraContextHook {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        if let CompletionCallEvent { .. } = event {
-            CompletionCallAction::patch(RequestPatch::new().context(hook_doc(self.id, self.text)))
-        } else {
-            CompletionCallAction::continue_run()
-        }
+        CompletionCallAction::patch(RequestPatch::new().context(hook_doc(self.id, self.text)))
     }
 }
 
@@ -3615,13 +3595,9 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         async fn on_completion_call(
             &self,
             _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
+            _event: CompletionCallEvent<'_>,
         ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().history([Message::user(SENTINEL)]))
-            } else {
-                CompletionCallAction::continue_run()
-            }
+            CompletionCallAction::patch(RequestPatch::new().history([Message::user(SENTINEL)]))
         }
     }
 
@@ -3931,13 +3907,9 @@ impl AgentHook for ActiveToolsAddOnly {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
-        if let CompletionCallEvent { .. } = event {
-            CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
-        } else {
-            CompletionCallAction::continue_run()
-        }
+        CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
     }
 }
 

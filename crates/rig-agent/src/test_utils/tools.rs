@@ -91,19 +91,12 @@ pub struct MockContextProbeTool {
 impl MockContextProbeTool {
     /// What the tool observed on its most recent call, if it has been called.
     pub fn observed(&self) -> Option<String> {
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .last()
-            .cloned()
+        crate::lock(&self.seen).last().cloned()
     }
 
     /// Everything the tool observed, one entry per call in call order.
     pub fn observations(&self) -> Vec<String> {
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+        crate::lock(&self.seen).clone()
     }
 }
 
@@ -130,10 +123,7 @@ impl Tool for MockContextProbeTool {
             Some(session) => format!("session:{}", session.0),
             None => "no-session".to_string(),
         };
-        self.seen
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(observed.clone());
+        crate::lock(&self.seen).push(observed.clone());
         Ok(observed)
     }
 }

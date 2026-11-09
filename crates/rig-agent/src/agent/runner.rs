@@ -497,14 +497,9 @@ impl AgentRunner {
         let usage = Arc::new(Mutex::new(Usage::default()));
         self.error_usage = Some(usage.clone());
         let result = self.run_under(ambient).await;
-        let observed = result.as_ref().map_or_else(
-            |_| {
-                *usage
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-            },
-            |response| response.usage,
-        );
+        let observed = result
+            .as_ref()
+            .map_or_else(|_| *crate::lock(&usage), |response| response.usage);
         (result, observed)
     }
 

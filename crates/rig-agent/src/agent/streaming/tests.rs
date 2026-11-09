@@ -990,15 +990,10 @@ impl AgentHook for RepairDefaultApiHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(match event {
-            context => {
-                assert_eq!(context.tool_name, "default_api");
-                InvalidToolCallAction::repair("add")
-            }
-            _ => InvalidToolCallAction::fail(),
-        })
+        assert_eq!(context.tool_name, "default_api");
+        Some(InvalidToolCallAction::repair("add"))
     }
 }
 
@@ -1009,18 +1004,13 @@ impl AgentHook for RetryDefaultApiHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(match event {
-            context => {
-                assert_eq!(context.tool_name, "default_api");
-                if let Some(args) = context.args.as_deref() {
-                    assert!(!args.is_empty());
-                }
-                InvalidToolCallAction::retry("Use the add tool instead")
-            }
-            _ => InvalidToolCallAction::fail(),
-        })
+        assert_eq!(context.tool_name, "default_api");
+        if let Some(args) = context.args.as_deref() {
+            assert!(!args.is_empty());
+        }
+        Some(InvalidToolCallAction::retry("Use the add tool instead"))
     }
 }
 
@@ -1031,15 +1021,10 @@ impl AgentHook for SkipDefaultApiHook {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
-        event: &InvalidToolCallContext,
+        context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        Some(match event {
-            context => {
-                assert_eq!(context.tool_name, "default_api");
-                InvalidToolCallAction::skip("default_api was skipped")
-            }
-            _ => InvalidToolCallAction::fail(),
-        })
+        assert_eq!(context.tool_name, "default_api");
+        Some(InvalidToolCallAction::skip("default_api was skipped"))
     }
 }
 
@@ -1098,17 +1083,13 @@ impl RecordingTextDeltaHook {
 
 impl AgentHook for RecordingTextDeltaHook {
     async fn on_text_delta(&self, _ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        match event {
-            TextDelta { delta, aggregated } => {
-                let record = (delta.to_string(), aggregated.to_string());
-                self.deltas
-                    .lock()
-                    .expect("text delta hook records mutex was poisoned")
-                    .push(record);
-                ObservationAction::continue_run()
-            }
-            _ => ObservationAction::continue_run(),
-        }
+        let TextDelta { delta, aggregated } = event;
+        let record = (delta.to_string(), aggregated.to_string());
+        self.deltas
+            .lock()
+            .expect("text delta hook records mutex was poisoned")
+            .push(record);
+        ObservationAction::continue_run()
     }
 }
 
