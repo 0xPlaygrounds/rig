@@ -8,12 +8,12 @@
 //! recording under `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_causal/`.
 
 use futures::StreamExt;
-use rig::agent::tool::server::ToolServer;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::handlers::Handlers;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::tool::RegisteredTool;
+use rig::tool::server::ToolServer;
 use rig_cassette::agent::AgentReplayExt;
 use rig_test_support::cassette_models::AnthropicModels;
 
