@@ -299,9 +299,8 @@ mapping, so authorization failures do not become recreation loops.
 context)`; `Model::call` and `Model::stream` record nothing. Request builders
 and request literals contain only provider request data.
 
-`ModelAdapter` forwards `Dispatch::adapter_context`;
-explicit caller context takes precedence over Recorder/Observe context for
-that invocation, including through handler layers. It is never serialized into
+`ModelAdapter` forwards `Dispatch::adapter_context`, set with
+`Dispatch::with_adapter_context`, through handler layers. It is never serialized into
 provider data or effect records and is not inherited by child calls.
 
 Clone the context for attempts of the same operation;

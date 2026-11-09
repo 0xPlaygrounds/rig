@@ -373,11 +373,6 @@ impl Serve for ErasedHandler {
 
 /// What an observer of one dispatch sees: its outcome and each streamed item.
 pub trait Observe: Send + Sync {
-    /// Provider witness associated with this dispatch, independently of recording.
-    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
-        None
-    }
-
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
@@ -600,7 +595,6 @@ fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Reply transport and cancellation remain owned by the driver.
 pub struct Dispatch {
     adapter_context: Option<crate::observe::AdapterContext>,
-    adapter_context_explicit: bool,
     id: EffectId,
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
@@ -618,7 +612,6 @@ impl Dispatch {
             id,
             streaming,
             adapter_context: None,
-            adapter_context_explicit: false,
             scopes: Vec::new(),
             observer: None,
             serving: Arc::default(),
@@ -659,9 +652,6 @@ impl Dispatch {
     /// on, is observed once it answered, with what it published by then;
     /// a [`Layer`](super::Layer) hands the observer to the handler it wraps.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
-        if !self.adapter_context_explicit {
-            self.adapter_context = observer.adapter_context();
-        }
         self.observer = Some(Arc::new(Mutex::new(Some(Observed {
             observer,
             told: false,
@@ -686,12 +676,10 @@ impl Dispatch {
 
     /// Supply provider context for this invocation independently of request data.
     ///
-    /// Explicit context takes precedence over context supplied by an observer,
-    /// regardless of installation order, and survives forwarding through layers.
-    /// Reuse an operation context only for attempts of that same logical call.
+    /// It survives forwarding through layers. Reuse an operation context only
+    /// for attempts of that same logical call.
     pub fn with_adapter_context(mut self, context: crate::observe::AdapterContext) -> Self {
         self.adapter_context = Some(context);
-        self.adapter_context_explicit = true;
         self
     }
 
@@ -723,7 +711,6 @@ impl Dispatch {
             id: self.id,
             streaming: self.streaming,
             adapter_context: self.adapter_context.clone(),
-            adapter_context_explicit: self.adapter_context_explicit,
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
             serving: Arc::default(),
