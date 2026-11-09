@@ -48,6 +48,10 @@ See the [examples](./examples) folder for usage examples.
 
 - The `rig-neo4j::vector_index` module offers utility functions to create and query a Neo4j vector index. You can also create indexes using the Neo4j browser or directly call cypther queries with the Neo4rs crate. See the [Neo4j documentation](https://neo4j.com/docs/genai/tutorials/embeddings-vector-indexes/setup/vector-index/) for more information. Example [examples/vector_search_simple.rs](examples/vector_search_simple.rs) shows how to create an index on existing data.
 
+`Neo4jClient::get_index` also loads indexes created without an explicit
+`vector.dimensions` setting. When dimensions are configured, it warns if they
+differ from the embedding model's width.
+
 ```Cypher
 CREATE VECTOR INDEX moviePlots
 FOR (m:Movie)

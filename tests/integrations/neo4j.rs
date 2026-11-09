@@ -152,7 +152,7 @@ async fn vector_search_test() {
     // Create a vector index on our vector store
     // IMPORTANT: Reuse the same model that was used to generate the embeddings
     let index = neo4j_client
-        .get_index(model, "vector_index")
+        .get_index(model.clone(), "vector_index")
         .await
         .expect("");
 
@@ -175,6 +175,53 @@ async fn vector_search_test() {
             "embedding": serde_json::Value::Null
         })
     );
+
+    let unbounded = search_without_configured_dimensions(&neo4j_client, model).await;
+    assert!(unbounded.is_ok(), "{unbounded:?}");
+}
+
+async fn search_without_configured_dimensions(
+    client: &Neo4jClient,
+    model: Model<openai::wire::Embeddings>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    client
+        .graph
+        .run(neo4rs::query(
+            "MATCH (n:DocumentEmbeddings) SET n:UnboundedEmbeddings",
+        ))
+        .await?;
+    client
+        .graph
+        .run(neo4rs::query(
+            "CREATE VECTOR INDEX unbounded_index
+             FOR (n:UnboundedEmbeddings) ON n.embedding
+             OPTIONS {indexConfig: {`vector.similarity_function`: 'cosine'}}",
+        ))
+        .await?;
+    client
+        .graph
+        .run(neo4rs::query("CALL db.awaitIndex('unbounded_index', 180)"))
+        .await?;
+    let index = client.get_index(model, "unbounded_index").await?;
+    let req = VectorSearchRequest::builder()
+        .query("What is a glarb?")
+        .samples(1)
+        .build();
+    let documents = index.top_n::<serde_json::Value>(req.clone()).await?;
+    let ids = index.top_n_ids(req).await?;
+    let correct_document = documents.len() == 1
+        && documents.first().is_some_and(|row| {
+            row.document.get("id").and_then(serde_json::Value::as_str) == Some("doc1")
+        });
+    let same_id =
+        ids.len() == 1 && ids.first().map(|row| &row.id) == documents.first().map(|row| &row.id);
+    if !correct_document || !same_id {
+        return Err(std::io::Error::other(format!(
+            "unexpected search results from an index without dimensions: {documents:?}, {ids:?}"
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 async fn create_embeddings(model: Model<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {

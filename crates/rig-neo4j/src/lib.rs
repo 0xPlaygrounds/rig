@@ -289,8 +289,8 @@ impl Neo4jClient {
     /// adopting its embedding property, similarity function, and node label.
     ///
     /// `model` must be the model whose embeddings populated the index; a
-    /// dimension mismatch is only warned about. Errors when the index does not
-    /// exist or defines no property.
+    /// dimension mismatch is only warned about when the index declares its
+    /// dimensions. Errors when the index does not exist or defines no property.
     pub async fn get_index(
         &self,
         model: impl Into<rig_core::DynModel<rig_core::operation::Embedding>>,
@@ -317,7 +317,7 @@ impl Neo4jClient {
         #[derive(Deserialize)]
         struct IndexConfigDetails {
             #[serde(rename = "vector.dimensions")]
-            vector_dimensions: i64,
+            vector_dimensions: Option<i64>,
             #[serde(rename = "vector.similarity_function")]
             vector_similarity_function: String,
         }
@@ -329,10 +329,12 @@ impl Neo4jClient {
         .await?;
 
         let index_config = if let Some(index) = index_info.first() {
-            if index.options.index_config.vector_dimensions != model.capabilities().ndims as i64 {
+            if let Some(dimensions) = index.options.index_config.vector_dimensions
+                && dimensions != model.capabilities().ndims as i64
+            {
                 tracing::warn!(
                     "The embedding vector dimensions of the existing Neo4j DB index ({}) do not match the provided model dimensions ({}). This may affect search performance.",
-                    index.options.index_config.vector_dimensions,
+                    dimensions,
                     model.capabilities().ndims
                 );
             }
