@@ -6,7 +6,6 @@
 //! and provider metadata preservation.
 
 use rig::streaming::Item;
-use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt;
@@ -16,9 +15,10 @@ use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
+use crate::matrix::agent_tool_sessions::{ComplexSession, InspectManifest, ProbeNote};
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, TWO_TOOL_STREAM_PREAMBLE,
     TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive, assert_nonempty_response,
@@ -40,7 +40,8 @@ const JSON_SCHEMA_MODEL: &str = "openai/gpt-oss-20b";
 /// no-tool step alone runs on `gpt-oss`.
 const TOOL_CHOICE_NONE_MODEL: &str = "openai/gpt-oss-120b";
 
-const COMPLEX_SESSION_PREAMBLE: &str = "\
+const COMPLEX_SESSION: ComplexSession = ComplexSession {
+    preamble: "\
 You are a deterministic Groq tool orchestration test harness. Use the tools instead of inventing values. \
 For the production-readiness scenario, call exactly one tool at a time in this order: \
 1. ping_empty with an empty JSON object. \
@@ -48,413 +49,15 @@ For the production-readiness scenario, call exactly one tool at a time in this o
 3. join_labels with labels [north, beta gamma, quote:\"delta\", slash\\path] and separator |. \
 4. optional_nullable_probe with required name sentinel, optional note omitted if possible, and nullable_code null. \
 5. escape_echo with the exact escaped text from the user. \
-After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.";
-
-const COMPLEX_SESSION_PROMPT: &str = "\
+After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, OPTIONAL-OK, and ESCAPE-OK.",
+    prompt: "\
 Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:/rig/groq`. \
-The escaped text is `Line 1\nLine \"2\" with colon: ok and unicode snowman ☃`.";
-
-#[derive(Clone, Debug, PartialEq)]
-struct ToolInvocation {
-    name: &'static str,
-    args: serde_json::Value,
-}
-
-type InvocationLog = Arc<Mutex<Vec<ToolInvocation>>>;
-
-fn push_invocation<T: Serialize>(log: &InvocationLog, name: &'static str, args: &T) {
-    log.lock()
-        .expect("tool invocation log lock should not be poisoned")
-        .push(ToolInvocation {
-            name,
-            args: serde_json::to_value(args).expect("tool args should serialize"),
-        });
-}
-
-#[derive(Clone)]
-struct PingEmpty {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-struct InspectManifest {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-struct JoinLabels {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-struct OptionalNullableProbe {
-    log: InvocationLog,
-}
-
-#[derive(Clone)]
-struct EscapeEcho {
-    log: InvocationLog,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct EmptyArgs {}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ManifestArgs {
-    project: String,
-    flags: ManifestFlags,
-    steps: Vec<ManifestStep>,
-    note: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ManifestFlags {
-    critical: bool,
-    retries: u8,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ManifestStep {
-    name: String,
-    weight: i32,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct JoinArgs {
-    labels: Vec<String>,
-    separator: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct OptionalNullableArgs {
-    name: String,
-    #[serde(default)]
-    note: Option<String>,
-    #[serde(default)]
-    nullable_code: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct EchoArgs {
-    text: String,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("session tool error")]
-struct SessionToolError;
-
-impl Tool for PingEmpty {
-    const NAME: &'static str = "ping_empty";
-    type Error = SessionToolError;
-    type Args = EmptyArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Return EMPTY-OK. This tool takes no arguments.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "required": []
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok("EMPTY-OK".to_string())
-    }
-}
-
-impl Tool for InspectManifest {
-    const NAME: &'static str = "inspect_manifest";
-    type Error = SessionToolError;
-    type Args = ManifestArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Validate a nested deployment manifest.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "project": { "type": "string" },
-                "flags": {
-                    "type": "object",
-                    "properties": {
-                        "critical": { "type": "boolean" },
-                        "retries": { "type": "integer" }
-                    },
-                    "required": ["critical", "retries"]
-                },
-                "steps": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "weight": { "type": "integer" }
-                        },
-                        "required": ["name", "weight"]
-                    }
-                },
-                "note": { "type": "string" }
-            },
-            "required": ["project", "flags", "steps", "note"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!(
-            "MANIFEST-OK project={} steps={} retries={}",
-            args.project,
-            args.steps.len(),
-            args.flags.retries
-        ))
-    }
-}
-
-impl Tool for JoinLabels {
-    const NAME: &'static str = "join_labels";
-    type Error = SessionToolError;
-    type Args = JoinArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Join label strings with the requested separator.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "labels": { "type": "array", "items": { "type": "string" } },
-                "separator": { "type": "string" }
-            },
-            "required": ["labels", "separator"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
-    }
-}
-
-impl Tool for OptionalNullableProbe {
-    const NAME: &'static str = "optional_nullable_probe";
-    type Error = SessionToolError;
-    type Args = OptionalNullableArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Validate optional and nullable argument serialization.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name": { "type": "string" },
-                "note": { "type": ["string", "null"] },
-                "nullable_code": { "type": ["string", "null"] }
-            },
-            "required": ["name", "nullable_code"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!(
-            "OPTIONAL-OK name={} note={} nullable={}",
-            args.name,
-            args.note.unwrap_or_else(|| "missing".to_string()),
-            args.nullable_code.unwrap_or_else(|| "null".to_string())
-        ))
-    }
-}
-
-impl Tool for EscapeEcho {
-    const NAME: &'static str = "escape_echo";
-    type Error = SessionToolError;
-    type Args = EchoArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Echo a string containing escaping-sensitive characters.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "text": { "type": "string" } },
-            "required": ["text"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        push_invocation(&self.log, Self::NAME, &args);
-        Ok(format!("ESCAPE-OK {}", args.text))
-    }
-}
-
-fn complex_tools(
-    log: &InvocationLog,
-) -> (
-    PingEmpty,
-    InspectManifest,
-    JoinLabels,
-    OptionalNullableProbe,
-    EscapeEcho,
-) {
-    (
-        PingEmpty { log: log.clone() },
-        InspectManifest { log: log.clone() },
-        JoinLabels { log: log.clone() },
-        OptionalNullableProbe { log: log.clone() },
-        EscapeEcho { log: log.clone() },
-    )
-}
-
-fn assert_complex_invocations(log: &InvocationLog) {
-    let invocations = log
-        .lock()
-        .expect("tool invocation log lock should not be poisoned")
-        .clone();
-    let names = invocations
-        .iter()
-        .map(|invocation| invocation.name)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        names,
-        vec![
-            PingEmpty::NAME,
-            InspectManifest::NAME,
-            JoinLabels::NAME,
-            OptionalNullableProbe::NAME,
-            EscapeEcho::NAME,
-        ]
-    );
-    assert_eq!(invocations[0].args, json!({}));
-    assert_eq!(invocations[1].args["project"], "rig-groq");
-    assert_eq!(invocations[1].args["flags"]["critical"], true);
-    assert_eq!(invocations[1].args["flags"]["retries"], 2);
-    assert_eq!(
-        invocations[1].args["steps"].as_array().map(Vec::len),
-        Some(2)
-    );
-    assert_eq!(
-        invocations[2].args["labels"],
-        json!(["north", "beta gamma", "quote:\"delta\"", "slash\\path"])
-    );
-    assert_eq!(invocations[2].args["separator"], "|");
-    assert_eq!(invocations[3].args["name"], "sentinel");
-    assert!(
-        invocations[3].args.get("note").is_none()
-            || invocations[3].args["note"].is_null()
-            || invocations[3].args["note"].as_str().is_some(),
-        "optional note should be omitted, null, or a string when supplied"
-    );
-    assert!(invocations[3].args["nullable_code"].is_null());
-    assert_eq!(
-        invocations[4].args["text"],
-        "Line 1\nLine \"2\" with colon: ok and unicode snowman ☃"
-    );
-}
-
-struct HistoryToolCall {
-    message_index: usize,
-    name: String,
-}
-
-struct HistoryToolResult {
-    message_index: usize,
-}
-
-fn history_tool_calls(history: &[Message]) -> Vec<HistoryToolCall> {
-    history
-        .iter()
-        .enumerate()
-        .flat_map(|(message_index, message)| match message {
-            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
-                .iter()
-                .filter_map(move |content| match content {
-                    AssistantContent::ToolCall(tool_call) => Some(HistoryToolCall {
-                        message_index,
-                        name: tool_call.function.name.clone().into(),
-                    }),
-                    _ => None,
-                })
-                .collect::<Vec<_>>(),
-            _ => Vec::new(),
-        })
-        .collect()
-}
-
-fn history_tool_results(history: &[Message]) -> Vec<HistoryToolResult> {
-    history
-        .iter()
-        .enumerate()
-        .flat_map(|(message_index, message)| match message {
-            Message::User { content } => content
-                .iter()
-                .filter_map(move |content| match content {
-                    rig::message::UserContent::ToolResult(_) => {
-                        Some(HistoryToolResult { message_index })
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>(),
-            _ => Vec::new(),
-        })
-        .collect()
-}
-
-fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expected_tools: &[&str]) {
-    let calls = history_tool_calls(history);
-    let results = history_tool_results(history);
-    assert_eq!(
-        calls
-            .iter()
-            .map(|call| call.name.as_str())
-            .collect::<Vec<_>>(),
-        expected_tools,
-        "caller-owned chat history should preserve tool call order"
-    );
-    assert_eq!(results.len(), expected_tools.len());
-
-    for (index, call) in calls.iter().enumerate() {
-        let result = &results[index];
-        assert!(call.message_index < result.message_index);
-        if let Some(next_call) = calls.get(index + 1) {
-            assert!(result.message_index < next_call.message_index);
-        }
-    }
-}
+The escaped text is `Line 1\nLine \"2\" with colon: ok and unicode snowman ☃`.",
+    project: "rig-groq",
+    note: "line one; line two says \"hello\" and path C:/rig/groq",
+    escaped_text: "Line 1\nLine \"2\" with colon: ok and unicode snowman ☃",
+    optional_probe: Some(ProbeNote::Nullable),
+};
 
 /// The Groq wire metadata the normalized response deliberately does not carry.
 ///
@@ -546,15 +149,15 @@ fn assert_response_metadata(
 crate::matrix::case_matrix! {
     wrapper: with_groq_cassette_result, family: agent_tool_sessions_case;
     # [tokio :: test]
-    sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming_1);
+    sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming);
     # [tokio :: test]
-    sequential_complex_tool_calls_streaming: ("agent_tool_sessions/sequential_complex_tool_calls_streaming", sequential_complex_tool_calls_streaming_2);
+    sequential_complex_tool_calls_streaming: ("agent_tool_sessions/sequential_complex_tool_calls_streaming", sequential_complex_tool_calls_streaming);
     # [tokio :: test]
-    parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming_3);
+    parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming);
     # [tokio :: test]
-    parallel_tool_calls_single_turn_streaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_streaming", parallel_tool_calls_single_turn_streaming_4);
+    parallel_tool_calls_single_turn_streaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_streaming", parallel_tool_calls_single_turn_streaming);
     # [tokio :: test]
-    long_history_replay_with_tool_result_continuation: ("agent_tool_sessions/long_history_replay_with_tool_result_continuation", long_history_replay_with_tool_result_continuation_5);
+    long_history_replay_with_tool_result_continuation: ("agent_tool_sessions/long_history_replay_with_tool_result_continuation", long_history_replay_with_tool_result_continuation);
 }
 
 #[tokio::test]
@@ -562,9 +165,8 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
     with_groq_cassette_result(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
-            let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion(SESSION_MODEL);
-            let tool = InspectManifest { log };
+            let tool = InspectManifest::default();
             let request = CompletionRequest::new(
                     "Call inspect_manifest exactly once for project rig-groq with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \

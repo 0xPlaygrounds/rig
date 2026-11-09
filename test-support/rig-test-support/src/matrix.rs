@@ -44,7 +44,7 @@ macro_rules! case_matrix {
 pub use case_matrix;
 
 #[path = "matrix/agent_tool_sessions.rs"]
-mod agent_tool_sessions;
+pub mod agent_tool_sessions;
 pub use agent_tool_sessions::agent_tool_sessions_case;
 pub use agent_tool_sessions::session_agent;
 
