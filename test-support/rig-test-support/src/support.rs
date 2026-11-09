@@ -312,6 +312,21 @@ pub fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
     }
 }
 
+/// Sends [`BASIC_PROMPT`] through an agent on `model` under [`BASIC_PREAMBLE`]
+/// and asserts a non-empty answer.
+pub async fn assert_completion_smoke(
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+) {
+    let response = rig_agent::AgentBuilder::new(model)
+        .preamble(BASIC_PREAMBLE)
+        .build()
+        .prompt(BASIC_PROMPT)
+        .await
+        .expect("completion should succeed")
+        .output();
+    assert_nonempty_response(&response);
+}
+
 /// Assert that a response contains non-whitespace text.
 pub fn assert_nonempty_response(response: &str) {
     let trimmed = response.trim();
