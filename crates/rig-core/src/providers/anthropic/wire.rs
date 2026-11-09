@@ -238,7 +238,7 @@ impl Dialect {
 /// Z.AI's Anthropic-format endpoint.
 pub const ZAI: Dialect = compatible(
     crate::providers::zai::PROVIDER_NAME,
-    "https://api.z.ai/api/anthropic",
+    crate::providers::zai::ANTHROPIC_API_BASE_URL,
     "ZAI_API_KEY",
     Some("ZAI_ANTHROPIC_API_BASE"),
 );
@@ -246,7 +246,7 @@ pub const ZAI: Dialect = compatible(
 /// MiniMax's Anthropic-format endpoint.
 pub const MINIMAX: Dialect = compatible(
     crate::providers::minimax::PROVIDER_NAME,
-    "https://api.minimax.io/anthropic",
+    crate::providers::minimax::GLOBAL_ANTHROPIC_API_BASE_URL,
     "MINIMAX_API_KEY",
     Some("MINIMAX_ANTHROPIC_API_BASE"),
 );
@@ -260,7 +260,7 @@ pub const MOONSHOT: Dialect = Dialect {
     },
     ..compatible(
         crate::providers::moonshot::PROVIDER_NAME,
-        "https://api.moonshot.ai/anthropic",
+        crate::providers::moonshot::ANTHROPIC_API_BASE_URL,
         "MOONSHOT_API_KEY",
         Some("MOONSHOT_ANTHROPIC_API_BASE"),
     )
@@ -269,7 +269,7 @@ pub const MOONSHOT: Dialect = Dialect {
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
     crate::providers::xiaomimimo::PROVIDER_NAME,
-    "https://api.xiaomimimo.com/anthropic",
+    crate::providers::xiaomimimo::ANTHROPIC_API_BASE_URL,
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );

@@ -356,7 +356,7 @@ pub const VENICE: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::venice::PROVIDER_NAME,
-        "https://api.venice.ai/api/v1",
+        crate::providers::venice::VENICE_API_BASE_URL,
         "VENICE_API_KEY",
     )
 };
@@ -404,7 +404,7 @@ pub const ZAI: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::zai::PROVIDER_NAME,
-        "https://api.z.ai/api/paas/v4",
+        crate::providers::zai::GENERAL_API_BASE_URL,
         "ZAI_API_KEY",
     )
 };
@@ -432,7 +432,7 @@ pub const MINIMAX: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::minimax::PROVIDER_NAME,
-        "https://api.minimax.io/v1",
+        crate::providers::minimax::GLOBAL_API_BASE_URL,
         "MINIMAX_API_KEY",
     )
 };
@@ -462,7 +462,7 @@ pub const MOONSHOT: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::moonshot::PROVIDER_NAME,
-        "https://api.moonshot.ai/v1",
+        crate::providers::moonshot::GLOBAL_API_BASE_URL,
         "MOONSHOT_API_KEY",
     )
 };
@@ -484,7 +484,7 @@ pub const XIAOMIMIMO: Dialect = Dialect {
     },
     ..Dialect::gateway(
         crate::providers::xiaomimimo::PROVIDER_NAME,
-        "https://api.xiaomimimo.com/v1",
+        crate::providers::xiaomimimo::API_BASE_URL,
         "XIAOMI_MIMO_API_KEY",
     )
 };
