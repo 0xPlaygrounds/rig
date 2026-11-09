@@ -314,7 +314,4 @@ fn interrupting_the_agent_stops_its_consultants() {
     assert_eq!(models.b.request_count(), 0);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ConsultPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ConsultPlugin);

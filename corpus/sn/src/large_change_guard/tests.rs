@@ -187,10 +187,7 @@ fn a_run_nobody_answers_denies_a_large_change() {
     assert_eq!(text(&big_rs), big());
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(LargeChangeGuardPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(LargeChangeGuardPlugin);
 
 /// A project's `.rig/settings.toml` is not read: the thresholds stay the
 /// user's.

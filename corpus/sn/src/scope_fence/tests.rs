@@ -171,7 +171,4 @@ fn file_changes_outside_the_scope_are_refused_until_it_is_lifted() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ScopeFencePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ScopeFencePlugin);

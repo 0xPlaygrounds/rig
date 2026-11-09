@@ -277,7 +277,4 @@ fn a_nudge_goes_with_the_first_request_of_an_episode_only() {
     assert!(after.is_some_and(|sent| sent.contains("src/a.rs")));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ChurnMonitorPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ChurnMonitorPlugin);

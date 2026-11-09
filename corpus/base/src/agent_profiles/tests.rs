@@ -209,7 +209,4 @@ fn a_profile_in_a_limited_run_keeps_its_tools_for_later_runs() {
     assert!(access.is_some_and(|access| access.keeps("search") && !access.allows("search")));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AgentProfilesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(AgentProfilesPlugin);

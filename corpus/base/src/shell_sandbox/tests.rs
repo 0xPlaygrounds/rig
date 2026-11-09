@@ -148,7 +148,4 @@ fn without_a_sandbox_program_calls_are_refused() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ShellSandboxPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ShellSandboxPlugin);

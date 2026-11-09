@@ -163,7 +163,4 @@ fn tools_act_on_the_remote_and_a_failed_transport_fails_one_call() {
     std::fs::remove_dir_all(&base).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RemoteWorkspacePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RemoteWorkspacePlugin);

@@ -334,7 +334,4 @@ fn a_prefill_starts_one_stored_reply_and_is_cleared_after_it() {
     assert_eq!(last.as_deref(), Some(r#"{"x": 3}"#));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ReplyPrefillPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ReplyPrefillPlugin);

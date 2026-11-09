@@ -217,10 +217,7 @@ fn commands_see_only_what_the_policy_allows() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ShellEnvPolicyPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ShellEnvPolicyPlugin);
 
 #[test]
 fn commands_name_the_variables_they_read() {

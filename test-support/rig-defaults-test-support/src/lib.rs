@@ -49,15 +49,24 @@ pub fn add_defaults(app: &mut App) {
 /// chance. A closure `|app: &mut App| …` is a plugin too, for one that
 /// needs setting up. The app is built, not run, in a `RIG_HOME` beside the
 /// test binary.
-///
-/// ```ignore
-/// #[test]
-/// fn stages_are_ordered_with_the_defaults() {
-///     rig_defaults_test_support::assert_stages_ordered(PinnedNotesPlugin);
-/// }
-/// ```
 pub fn assert_stages_ordered<M>(plugins: impl Plugins<M>) {
     let _app = assert_ordered("", plugins);
+}
+
+/// A test, `stages_are_ordered_with_the_defaults`, that runs
+/// [`assert_stages_ordered`] on `plugins`.
+///
+/// ```ignore
+/// rig_defaults_test_support::stages_ordered_test!(PinnedNotesPlugin);
+/// ```
+#[macro_export]
+macro_rules! stages_ordered_test {
+    ($plugins:expr) => {
+        #[test]
+        fn stages_are_ordered_with_the_defaults() {
+            $crate::assert_stages_ordered($plugins);
+        }
+    };
 }
 
 /// [`assert_stages_ordered`] for plugins that replace the default `R`:

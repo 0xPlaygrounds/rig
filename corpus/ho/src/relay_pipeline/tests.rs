@@ -210,7 +210,4 @@ fn a_pipeline_running_at_a_restart_starts_its_current_stage_over() {
     }
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(RelayPipelinePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(RelayPipelinePlugin);

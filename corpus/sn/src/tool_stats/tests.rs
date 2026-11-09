@@ -14,10 +14,7 @@ use serde_json::json;
 
 use super::*;
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ToolStatsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ToolStatsPlugin);
 
 /// Whether a `shell` call started.
 #[derive(Resource, Default)]

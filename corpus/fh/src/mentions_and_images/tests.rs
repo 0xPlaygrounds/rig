@@ -210,10 +210,7 @@ fn a_model_that_reads_no_images_gets_a_description() {
     assert_eq!(seen, 1, "the vision model got the image");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(MentionsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(MentionsPlugin);
 
 /// A quoted path is taken as written, its range after the closing quote,
 /// so it never mixes up with an unquoted path and range.

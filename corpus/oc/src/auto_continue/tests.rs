@@ -285,7 +285,4 @@ fn a_reply_cut_too_often_is_kept_with_a_notice() {
     assert_eq!(marks(app.world()), [Some(6), Some(12), Some(20)]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AutoContinuePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(AutoContinuePlugin);

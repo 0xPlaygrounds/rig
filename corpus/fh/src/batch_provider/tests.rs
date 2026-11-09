@@ -393,7 +393,4 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     assert_eq!(fake.with(|api| api.cancelled.clone()), [batch]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(BatchProviderPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(BatchProviderPlugin);

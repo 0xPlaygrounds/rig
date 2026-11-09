@@ -113,7 +113,4 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DryRunPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DryRunPlugin);

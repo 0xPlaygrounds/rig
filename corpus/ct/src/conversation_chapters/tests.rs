@@ -10,10 +10,7 @@ use rig_harness_test_support::{
 
 use super::*;
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ConversationChaptersPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ConversationChaptersPlugin);
 
 /// How many boundary calls settled.
 #[derive(Resource, Default)]

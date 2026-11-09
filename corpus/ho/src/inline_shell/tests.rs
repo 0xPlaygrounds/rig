@@ -111,7 +111,4 @@ fn typed_commands_are_expanded_in_parallel_with_a_timeout() {
     assert_eq!(model.requests().len(), 2);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(InlineShellPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(InlineShellPlugin);

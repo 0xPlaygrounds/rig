@@ -179,7 +179,4 @@ fn edits_runs_edits_and_asks_before_shell_also_for_a_subagent() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PermissionModesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PermissionModesPlugin);

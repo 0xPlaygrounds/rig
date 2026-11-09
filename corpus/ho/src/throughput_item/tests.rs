@@ -94,7 +94,4 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
     assert!(listed, "{notices:?}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ThroughputPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ThroughputPlugin);

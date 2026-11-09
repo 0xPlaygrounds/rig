@@ -70,7 +70,4 @@ fn a_write_is_formatted_and_linted_before_the_next_read() {
     assert_eq!(formatted, "HELLO WORLD WIDE");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(FormatOnWritePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(FormatOnWritePlugin);

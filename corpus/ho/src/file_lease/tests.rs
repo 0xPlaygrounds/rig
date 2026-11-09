@@ -122,10 +122,7 @@ fn wait_of(world: &mut World, agent: Entity) -> Option<(Entity, String)> {
         .map(|(hold, _, name)| (hold, name))
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(FileLeasePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(FileLeasePlugin);
 
 #[test]
 fn writes_to_one_file_wait_for_its_lease_and_its_owner_hears_of_the_change() {

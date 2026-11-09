@@ -235,7 +235,4 @@ fn a_run_nobody_answers_refuses_by_default() {
     assert!(!app.world().resource::<DirtyGuard>().settled);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DirtyTreeGuardPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DirtyTreeGuardPlugin);

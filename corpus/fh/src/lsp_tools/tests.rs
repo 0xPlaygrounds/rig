@@ -338,10 +338,7 @@ fn a_fake_server_answers_follows_edits_restarts_and_shuts_down() {
     std::fs::remove_dir_all(project).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(LspToolsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(LspToolsPlugin);
 
 /// The test `name` of this module as its test binary names it: the module's
 /// path without the crate's name.

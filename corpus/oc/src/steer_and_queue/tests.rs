@@ -237,7 +237,4 @@ fn steer_queue_edit_interrupt_and_restart() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SteerQueuePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SteerQueuePlugin);

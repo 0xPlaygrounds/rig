@@ -428,7 +428,4 @@ fn a_question_asked_outside_a_turn_reaches_the_parent_too() {
     assert_eq!(open(session.app.world()), 1);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(AskParentPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(AskParentPlugin);

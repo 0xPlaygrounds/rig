@@ -222,7 +222,4 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
     assert!(after.contains(USER_LINE), "{after}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ChecklistRunnerPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ChecklistRunnerPlugin);

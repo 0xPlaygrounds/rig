@@ -240,7 +240,4 @@ fn with_nobody_to_answer_every_call_needing_approval_is_denied_without_a_questio
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ApprovalBatchingPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ApprovalBatchingPlugin);

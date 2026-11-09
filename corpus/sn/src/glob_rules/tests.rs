@@ -204,7 +204,4 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     std::fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(GlobRulesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(GlobRulesPlugin);

@@ -396,7 +396,4 @@ fn reasoning_blobs_go_back_to_their_model_alone_and_never_stale() {
     assert!(!logged.contains(B1[0]) && !logged.contains(B2));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(OpaqueReasoningPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(OpaqueReasoningPlugin);

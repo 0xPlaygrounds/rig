@@ -198,10 +198,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     assert_eq!(messages(&app, agent), before);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ReviewableCompactionPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ReviewableCompactionPlugin);
 
 /// A failed editor leaves the summary as the model wrote it, says why,
 /// and the review goes on.

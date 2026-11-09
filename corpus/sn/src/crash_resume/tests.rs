@@ -329,7 +329,4 @@ fn a_turn_killed_in_a_later_model_call_keeps_its_results_and_text() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CrashResumePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CrashResumePlugin);

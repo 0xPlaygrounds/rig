@@ -272,7 +272,4 @@ fn a_notebook_is_read_as_cells_and_edited_one_cell_at_a_time() {
     assert_eq!(created.pointer("/cells/0/source"), Some(&json!(["x = 1"])));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(NotebookCellsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(NotebookCellsPlugin);

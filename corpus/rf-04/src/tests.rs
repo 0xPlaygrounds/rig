@@ -297,7 +297,4 @@ fn a_restart_while_a_call_waits_stops_it_and_keeps_only_this_sessions_approvals(
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered((ApprovalPlugin, PolicyPlugin));
-}
+rig_defaults_test_support::stages_ordered_test!((ApprovalPlugin, PolicyPlugin));

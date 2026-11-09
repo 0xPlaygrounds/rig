@@ -193,7 +193,4 @@ fn saved_ai_comments_start_turns_once_and_are_taken_out() {
     assert_eq!(text(&d), "");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(WatchAiCommentsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(WatchAiCommentsPlugin);

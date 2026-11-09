@@ -263,10 +263,7 @@ fn read_only_calls_of_a_reply_do_not_run_side_by_side() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StepModePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StepModePlugin);
 
 /// When the editor fails, or its file can't be read, a notice says why and
 /// the question waits in the input.

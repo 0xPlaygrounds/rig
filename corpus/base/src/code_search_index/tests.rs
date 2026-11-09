@@ -163,7 +163,4 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     assert!(kept.is_some_and(|kept| !kept.contains("<code-context>")));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(CodeSearchPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(CodeSearchPlugin);

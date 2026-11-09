@@ -147,7 +147,4 @@ fn added_leftovers_get_one_nudge_and_kept_ones_are_not_raised_again() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(LeftoverDetectorPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(LeftoverDetectorPlugin);

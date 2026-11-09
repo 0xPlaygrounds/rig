@@ -244,7 +244,4 @@ fn an_open_pr_gets_the_push_and_its_description_not_a_second_pr() {
     fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(OpenPrPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(OpenPrPlugin);

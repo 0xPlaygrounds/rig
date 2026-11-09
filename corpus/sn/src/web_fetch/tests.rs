@@ -250,7 +250,4 @@ fn asks_once_per_domain() {
     assert_eq!(denied, &["asked.invalid".to_owned()]);
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(WebFetchPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(WebFetchPlugin);

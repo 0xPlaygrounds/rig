@@ -172,7 +172,4 @@ fn notes_follow_the_code_across_sessions_and_go_stale() {
     std::fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(FileAnnotationsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(FileAnnotationsPlugin);

@@ -245,7 +245,4 @@ fn comments_go_with_the_next_message() {
     assert_eq!((drafts(&app, agent), turns(&app)), (0, 4));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ReviewCommentsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ReviewCommentsPlugin);

@@ -163,10 +163,7 @@ fn a_session_without_turns_exits_without_a_note() {
     std::fs::remove_dir_all(root).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ExitNotesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ExitNotesPlugin);
 
 /// Permission modes edit a turn's model requests, the notes their own.
 #[test]

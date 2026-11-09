@@ -222,7 +222,4 @@ fn an_ask_rule_runs_once_the_user_allows() {
     assert_eq!(git(&work, &["log", "-1", "--format=%s"]), "z");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(GitGuardPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(GitGuardPlugin);

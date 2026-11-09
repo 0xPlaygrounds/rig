@@ -232,7 +232,4 @@ fn a_run_nobody_answers_deletes_nothing_and_prints_the_list() {
     fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(StrayFilesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(StrayFilesPlugin);

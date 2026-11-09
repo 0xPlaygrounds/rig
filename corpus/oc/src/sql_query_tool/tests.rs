@@ -138,7 +138,4 @@ fn the_agent_reads_but_cannot_change_the_database() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SqlQueryToolPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SqlQueryToolPlugin);

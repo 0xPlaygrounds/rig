@@ -212,7 +212,4 @@ fn a_tainted_subagent_taints_its_parent_when_it_reports() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(QuarantinePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(QuarantinePlugin);

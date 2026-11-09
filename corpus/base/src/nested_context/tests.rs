@@ -91,7 +91,4 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
     assert!(!second.contains("Use tabs."), "{second}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(NestedContextPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(NestedContextPlugin);

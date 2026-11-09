@@ -144,7 +144,4 @@ fn a_failed_editor_says_why_and_the_files_are_read_again() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(LongTermMemoryPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(LongTermMemoryPlugin);

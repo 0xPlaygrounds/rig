@@ -345,7 +345,4 @@ fn a_list_task_refuses_is_never_answered_from_a_record() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(SubagentResultCachePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(SubagentResultCachePlugin);

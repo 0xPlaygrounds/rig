@@ -144,7 +144,4 @@ fn new_dependencies_wait_for_the_user_unless_the_policy_decides() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DependencyGuardPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DependencyGuardPlugin);

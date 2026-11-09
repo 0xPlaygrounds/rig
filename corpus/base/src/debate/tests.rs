@@ -171,7 +171,4 @@ fn note_still_running(
     still.causes.push((agent, reached.cause().clone()));
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DebatePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DebatePlugin);

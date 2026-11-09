@@ -537,7 +537,4 @@ fn a_chained_session_replays_from_its_record() {
     fs::remove_dir_all(home.root()).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ServerSideStatePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ServerSideStatePlugin);

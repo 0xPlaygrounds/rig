@@ -185,7 +185,4 @@ fn only_a_task_with_inherit_pins_passes_the_pins_on() {
     assert!((3..=4).contains(&parent.count()), "{sent:?}");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(PinnedNotesPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(PinnedNotesPlugin);

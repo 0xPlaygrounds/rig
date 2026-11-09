@@ -261,7 +261,4 @@ fn dead_ends_are_recorded_warned_kept_through_compaction_and_resumed() {
     fs::remove_dir_all(&project).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(DeadEndsLedgerPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(DeadEndsLedgerPlugin);

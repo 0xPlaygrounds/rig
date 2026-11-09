@@ -181,7 +181,4 @@ fn previews_applies_all_or_nothing_and_undoes() {
     assert_eq!(read(&root, "src/b.rs"), "use crate::new_name;\n");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ProjectReplacePlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ProjectReplacePlugin);

@@ -146,7 +146,4 @@ fn a_model_without_reasoning_ignores_keywords_with_one_notice() {
     );
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ThinkingKeywordsPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ThinkingKeywordsPlugin);

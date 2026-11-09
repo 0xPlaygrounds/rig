@@ -288,7 +288,4 @@ fn a_note_left_when_a_busy_agents_turn_ends_is_still_withdrawn_by_a_pass() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(BackgroundVerifyPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(BackgroundVerifyPlugin);

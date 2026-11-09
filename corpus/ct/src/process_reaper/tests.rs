@@ -297,10 +297,7 @@ fn a_crashed_runs_processes_are_reaped_on_the_next_start_and_nothing_else() {
     assert!(untouched, "the user's process was stopped");
 }
 
-#[test]
-fn stages_are_ordered_with_the_defaults() {
-    rig_defaults_test_support::assert_stages_ordered(ProcessReaperPlugin);
-}
+rig_defaults_test_support::stages_ordered_test!(ProcessReaperPlugin);
 
 /// The test `name` of this module as its test binary names it: the module's
 /// path without the crate's name.
