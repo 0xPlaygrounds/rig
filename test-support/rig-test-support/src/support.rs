@@ -505,7 +505,7 @@ pub fn assert_embeddings_nonempty_and_consistent(embeddings: &[Embedding], expec
 }
 
 // ---------------------------------------------------------------------------
-// Model-turn termination metadata (rig#2184).
+// Model-turn termination metadata.
 //
 // One implementation, driven by every provider suite that covers the feature.
 // That is the portability claim as code: if a provider needed its own probe,
@@ -557,7 +557,7 @@ impl rig_agent::agent::AgentHook for TurnTerminationProbe {
 }
 
 /// Raises the output-token cap whenever the provider cut a turn short, then
-/// retries it — the policy rig#2184 exists to make portable. It reads only
+/// retries it. It reads only
 /// `FinishReason` and the reported cap, so the same instance drives every
 /// provider.
 ///
@@ -1492,9 +1492,9 @@ pub fn assert_raw_stream_contains_distinct_tool_calls_before_text(
 }
 
 /// Every tool call surfaced on the raw stream must carry a JSON **object** as
-/// its `function.arguments` (never a bare string), the invariant fixed in #1958:
-/// a downstream object-typed serializer (e.g. Anthropic's `tool_use.input`)
-/// rejects a string input. This guards the streaming aggregator end-to-end on
+/// its `function.arguments` (never a bare string), because a downstream
+/// object-typed serializer (e.g. Anthropic's `tool_use.input`) rejects a
+/// string input. This guards the streaming aggregator end-to-end on
 /// real provider traffic, complementing the in-crate eviction unit tests.
 pub fn assert_raw_stream_tool_call_arguments_are_objects(
     observation: &RawStreamObservation,
@@ -1563,10 +1563,9 @@ pub fn assert_smoke_structured_output(output: &SmokeStructuredOutput) {
     assert_nonempty_response(&output.summary);
 }
 
-/// Shared identity-observing hook for the rig#2265 response-identity
-/// cassettes: captures each event's [`rig_agent::completion::ResponseIdentity`]
-/// so provider suites can assert per-attempt identity on every observer
-/// surface. `CompletionResponse` fires once per accepted model turn on both
+/// Shared identity-observing hook for the response-identity cassettes:
+/// captures each event's [`rig_agent::completion::ResponseIdentity`] so
+/// provider suites can assert per-attempt identity on every observer surface. `CompletionResponse` fires once per accepted model turn on both
 /// drivers, so `responses` fills on blocking and streamed runs alike.
 #[derive(Clone, Default)]
 pub struct IdentityProbe {

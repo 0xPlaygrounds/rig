@@ -109,8 +109,8 @@ pub fn frame_data(frame: &str) -> serde_json::Value {
 
 /// A wire family's SSE shape: where a recorded stream's terminal sits,
 /// what its text deltas carry, and the in-band error frame the adapter's
-/// unit tests pin for it. The failure rows cut a wire's own #2501
-/// recording with these; the #2490 cells read the same shapes.
+/// unit tests pin for it. The failure rows cut a wire's own recording
+/// with these, and the stream-fault cells read the same shapes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SseShape {
     /// OpenAI Chat Completions and every OpenAI-compatible wire (DeepSeek,
@@ -307,8 +307,7 @@ pub const CHAT_REFUSAL_FRAMES: [&str; 5] = [
     r#"{"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":8,"total_tokens":18}}"#,
 ];
 /// The whole body Gemini answered a refused prompt with: one feedback
-/// chunk, no candidates, then the stream closes (#2475; the rigcoder
-/// capture of 2026-09-08).
+/// chunk, no candidates, then the stream closes.
 pub const GEMINI_BLOCKED_FRAME: &str = r#"{"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":795,"totalTokenCount":795}}"#;
 
 /// A recorded Responses frame's event name and data, rewritten by `edit`

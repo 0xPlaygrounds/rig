@@ -334,7 +334,7 @@ pub enum Shape {
     /// reasoning with its signature, a tool call, and an image or a hosted
     /// item where the wire has them.
     Rich,
-    /// `[reasoning, text, reasoning, tool call]`, the #2647 shape.
+    /// `[reasoning, text, reasoning, tool call]`.
     Interleaved,
     /// An item of the invented type `x_rig_invented`, and a known item
     /// carrying the invented field `x_rig_field`.

@@ -234,7 +234,7 @@ fn numbered(rows: &[String]) -> Vec<usize> {
 
 #[test]
 fn a_page_key_keeps_a_line_of_text_and_stops_at_the_ends() {
-    // 20 rows page by 18, more than the 10 lines a page used to be.
+    // 20 rows page by 18.
     for height in [20, 10, 2, 1] {
         let (mut app, _) = view_app();
         app.insert_resource(TuiTestScreen::new(60, 30));

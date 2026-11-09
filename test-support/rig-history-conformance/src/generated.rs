@@ -1,5 +1,5 @@
 //! Generated histories for row H17: a seeded generator of the shapes that
-//! broke replay before (calls sharing ids, orphan, repeated, late and split
+//! stress replay (calls sharing ids, orphan, repeated, late and split
 //! results, system messages mid-loop, failed turns, other models' turns
 //! with hosted pairs, windows a memory policy cuts), a greedy shrinker, and
 //! a walker that finds calls and results in any wire's JSON.
