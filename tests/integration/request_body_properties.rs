@@ -505,7 +505,38 @@ fn report(failures: &[String]) -> String {
 }
 
 #[test]
-fn every_wire_sends_what_the_catalog_allows() -> anyhow::Result<()> {
+fn chat_wires_send_what_the_catalog_allows() -> anyhow::Result<()> {
+    wires_send_what_the_catalog_allows(&["chat|"])
+}
+
+#[test]
+fn responses_and_route_wires_send_what_the_catalog_allows() -> anyhow::Result<()> {
+    wires_send_what_the_catalog_allows(&["responses|", "route|"])
+}
+
+#[test]
+fn messages_wires_send_what_the_catalog_allows() -> anyhow::Result<()> {
+    wires_send_what_the_catalog_allows(&["messages|"])
+}
+
+#[test]
+fn gemini_wires_send_what_the_catalog_allows() -> anyhow::Result<()> {
+    wires_send_what_the_catalog_allows(&["gemini|"])
+}
+
+#[test]
+fn cohere_and_ollama_wires_send_what_the_catalog_allows() -> anyhow::Result<()> {
+    wires_send_what_the_catalog_allows(&["cohere|", "ollama|"])
+}
+
+#[test]
+fn companion_wires_send_what_the_catalog_allows() -> anyhow::Result<()> {
+    wires_send_what_the_catalog_allows(&["bedrock|", "vertex|", "grpc|"])
+}
+
+/// Every check on the wires whose names start with one of `families`. The
+/// families run as separate tests, so a parallel runner runs them at once.
+fn wires_send_what_the_catalog_allows(families: &[&str]) -> anyhow::Result<()> {
     let mut models: Vec<String> = Catalog::builtin()
         .iter()
         .map(|spec| spec.id.clone())
@@ -513,7 +544,14 @@ fn every_wire_sends_what_the_catalog_allows() -> anyhow::Result<()> {
     models.sort_unstable();
     models.dedup();
     let shapes = shapes()?;
-    let encoders = encoders();
+    let encoders: Vec<Encoder> = encoders()
+        .into_iter()
+        .filter(|encoder| {
+            families
+                .iter()
+                .any(|family| encoder.name.starts_with(family))
+        })
+        .collect();
     let mut failures = Failures::default();
     for encoder in &encoders {
         for model in &models {
