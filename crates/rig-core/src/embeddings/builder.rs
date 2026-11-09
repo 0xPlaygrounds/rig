@@ -19,12 +19,9 @@ use std::{cmp::max, ops::Range};
 use futures::{StreamExt, stream};
 
 use crate::driver::DynModel;
+use crate::embeddings::{Embed, EmbedError, Embedding, EmbeddingResponse, embed::TextEmbedder};
 use crate::error::ProviderError;
 use crate::operation::Embedding as EmbeddingOp;
-use crate::{
-    completion::Usage,
-    embeddings::{Embed, EmbedError, Embedding, EmbeddingResponse, embed::TextEmbedder},
-};
 
 /// Accumulates documents and embeds their extracted texts in provider-sized batches.
 /// Text extraction occurs when documents are added; requests start when built.
@@ -81,21 +78,6 @@ where
     /// the document if it produces no text or a batch returns too few embeddings.
     /// Empty embedded collections produce no text. Surplus embeddings are ignored.
     pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, ProviderError> {
-        let (result, _usage) = self.build_with_usage().await?;
-        Ok(result)
-    }
-
-    /// Generate embeddings for all documents in the builder and return accumulated token usage.
-    ///
-    /// Returns `(document, embeddings)` pairs and the total token usage across all
-    /// batches. A document may produce one or many embeddings depending on how its
-    /// [`Embed`] implementation uses [`TextEmbedder`].
-    ///
-    /// Ordering is guaranteed at both levels, and the same two errors originate
-    /// here; both are described on [`Self::build`].
-    pub(crate) async fn build_with_usage(
-        self,
-    ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), ProviderError> {
         use stream::TryStreamExt;
 
         // Per-text slots preserve order even when a document spans batches
@@ -114,29 +96,25 @@ where
         let total_texts = texts.len();
         let max_documents = max(1, self.model.capabilities().max_documents);
 
-        let (slots, usage) = stream::iter(texts.into_iter().enumerate())
+        let slots = stream::iter(texts.into_iter().enumerate())
             .chunks(max_documents)
             .map(|chunk| async {
                 let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
 
                 let response: EmbeddingResponse = self.model.call(batch).await?;
-                Ok::<_, ProviderError>((
+                Ok::<_, ProviderError>(
                     slots
                         .into_iter()
                         .zip(response.embeddings)
                         .collect::<Vec<_>>(),
-                    response.usage,
-                ))
+                )
             })
             .buffer_unordered(max(1, 1024 / max_documents))
             .try_fold(
-                (
-                    (0..total_texts)
-                        .map(|_| None)
-                        .collect::<Vec<Option<Embedding>>>(),
-                    Usage::default(),
-                ),
-                |(mut slots, mut usage_acc), (chunk_embeddings, chunk_usage)| async move {
+                (0..total_texts)
+                    .map(|_| None)
+                    .collect::<Vec<Option<Embedding>>>(),
+                |mut slots, chunk_embeddings| async move {
                     for (slot, embedding) in chunk_embeddings {
                         // Enumerated slots remain in range; zip discards any
                         // surplus provider embeddings.
@@ -144,8 +122,7 @@ where
                             *place = Some(embedding);
                         }
                     }
-                    usage_acc += chunk_usage;
-                    Ok((slots, usage_acc))
+                    Ok(slots)
                 },
             )
             .await?;
@@ -182,7 +159,7 @@ where
             result.push((doc, embeddings));
         }
 
-        Ok((result, usage))
+        Ok(result)
     }
 }
 
