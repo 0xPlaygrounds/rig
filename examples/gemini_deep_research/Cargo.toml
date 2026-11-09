@@ -11,6 +11,4 @@ workspace = true
 rig.workspace = true
 anyhow = { workspace = true }
 futures = { workspace = true }
-serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }

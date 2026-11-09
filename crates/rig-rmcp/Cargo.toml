@@ -35,6 +35,5 @@ rig-core = { path = "../rig-core", version = "0.46.0", default-features = false,
 rig-agent = { path = "../rig-agent", version = "0.46.0", default-features = false, features = ["test-utils"] }
 rmcp = { workspace = true, features = ["client", "server"] }
 tokio = { workspace = true, features = ["full"] }
-tokio-test = { workspace = true }
 serde_json = { workspace = true }
 

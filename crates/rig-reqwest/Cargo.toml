@@ -44,9 +44,7 @@ webpki-root-certs = { workspace = true, optional = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
-tokio-test = { workspace = true }
 futures = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [features]
 # TLS: enable exactly one of `rustls` (the default) and `native-tls`. They are
