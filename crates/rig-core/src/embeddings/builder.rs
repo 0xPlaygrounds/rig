@@ -14,7 +14,7 @@
 //! # }
 //! ```
 
-use std::{cmp::max, ops::Range};
+use std::cmp::max;
 
 use futures::{StreamExt, stream};
 
@@ -74,89 +74,47 @@ where
     /// regardless of batch completion order. Providers must return embeddings
     /// in input order within each batch; this is not checked.
     ///
-    /// Propagates provider and transport errors. Returns an error identifying
-    /// the document if it produces no text or a batch returns too few embeddings.
-    /// Empty embedded collections produce no text. Surplus embeddings are ignored.
+    /// Propagates provider and transport errors, including a reply whose
+    /// embedding count differs from the texts sent. Returns an error
+    /// identifying the document if it produces no text; empty embedded
+    /// collections produce no text.
     pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, ProviderError> {
         use stream::TryStreamExt;
 
-        // Per-text slots preserve order even when a document spans batches
-        // that finish out of order.
-        let mut docs: Vec<T> = Vec::with_capacity(self.documents.len());
-        let mut spans: Vec<Range<usize>> = Vec::with_capacity(self.documents.len());
+        let mut docs: Vec<(T, usize)> = Vec::with_capacity(self.documents.len());
         let mut texts: Vec<String> = Vec::new();
-
         for (doc, doc_texts) in self.documents {
-            let start = texts.len();
+            docs.push((doc, doc_texts.len()));
             texts.extend(doc_texts);
-            spans.push(start..texts.len());
-            docs.push(doc);
         }
 
-        let total_texts = texts.len();
-        let max_documents = max(1, self.model.capabilities().max_documents);
-
-        let slots = stream::iter(texts.into_iter().enumerate())
+        // Batches finish in any order; numbering them keeps a document that
+        // spans batches in order. Every reply holds one embedding per text.
+        let model = &self.model;
+        let max_documents = max(1, model.capabilities().max_documents);
+        let mut batches: Vec<(usize, Vec<Embedding>)> = stream::iter(texts)
             .chunks(max_documents)
-            .map(|chunk| async {
-                let (slots, batch): (Vec<usize>, Vec<String>) = chunk.into_iter().unzip();
-
-                let response: EmbeddingResponse = self.model.call(batch).await?;
-                Ok::<_, ProviderError>(
-                    slots
-                        .into_iter()
-                        .zip(response.embeddings)
-                        .collect::<Vec<_>>(),
-                )
+            .enumerate()
+            .map(|(at, batch)| async move {
+                let response: EmbeddingResponse = model.call(batch).await?;
+                Ok::<_, ProviderError>((at, response.embeddings))
             })
             .buffer_unordered(max(1, 1024 / max_documents))
-            .try_fold(
-                (0..total_texts)
-                    .map(|_| None)
-                    .collect::<Vec<Option<Embedding>>>(),
-                |mut slots, chunk_embeddings| async move {
-                    for (slot, embedding) in chunk_embeddings {
-                        // Enumerated slots remain in range; zip discards any
-                        // surplus provider embeddings.
-                        if let Some(place) = slots.get_mut(slot) {
-                            *place = Some(embedding);
-                        }
-                    }
-                    Ok(slots)
-                },
-            )
+            .try_collect()
             .await?;
+        batches.sort_unstable_by_key(|(at, _)| *at);
+        let mut embeddings = batches.into_iter().flat_map(|(_, batch)| batch);
 
-        let mut slots = slots.into_iter();
         let mut result = Vec::with_capacity(docs.len());
-
-        for (index, (doc, span)) in docs.into_iter().zip(spans).enumerate() {
-            if span.is_empty() {
+        for (index, (doc, len)) in docs.into_iter().enumerate() {
+            if len == 0 {
                 return Err(crate::error::ProviderError::Response(format!(
                     "document {index} produced no text to embed, so it has no \
                      embeddings to return; an empty collection in an `#[embed]` \
                      field embeds nothing"
                 )));
             }
-
-            // Missing slots identify short provider responses without silently
-            // dropping a document's texts.
-            let embeddings = slots
-                .by_ref()
-                .take(span.len())
-                .collect::<Option<Vec<Embedding>>>()
-                .ok_or_else(|| {
-                    crate::error::ProviderError::Response(format!(
-                        "provider returned fewer embeddings than texts sent: \
-                         document {index} is missing at least one of its {} texts \
-                         (slots {}..{} of {total_texts})",
-                        span.len(),
-                        span.start,
-                        span.end
-                    ))
-                })?;
-
-            result.push((doc, embeddings));
+            result.push((doc, embeddings.by_ref().take(len).collect()));
         }
 
         Ok(result)
