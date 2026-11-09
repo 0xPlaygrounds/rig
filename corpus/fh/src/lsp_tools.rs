@@ -581,7 +581,11 @@ impl Job {
 
     /// `path` from the agent's directory, and its extension.
     fn file(&self, path: &str) -> (PathBuf, String) {
-        let path = rig_tools::fs::resolve(Some(&self.base), path);
+        let path = <dyn rig_tools::workspace::Workspace>::resolve(
+            &rig_tools::workspace::Local,
+            Some(&self.base),
+            path,
+        );
         let extension = path
             .extension()
             .map(|ext| ext.to_string_lossy().into_owned())

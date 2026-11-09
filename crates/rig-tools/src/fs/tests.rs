@@ -1,9 +1,8 @@
-use crate::workspace::Root;
+use crate::workspace::{Local, Root, Workspace};
 use std::path::PathBuf;
 
 use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
 
-use super::resolve;
 use crate::{Read, ReadArgs, Write, WriteArgs};
 
 /// A scratch directory of its own for `name`, resolved, holding `real/`.
@@ -23,17 +22,26 @@ fn a_path_resolves_against_the_base_through_links() {
     std::os::unix::fs::symlink(dir.join("real"), dir.join("link")).ok();
     std::fs::write(dir.join("real").join("a.rs"), "").ok();
 
-    assert_eq!(resolve(Some(&dir), "real/a.rs"), dir.join("real/a.rs"));
     assert_eq!(
-        resolve(Some(&dir), "link/../real/a.rs"),
+        <dyn Workspace>::resolve(&Local, Some(&dir), "real/a.rs"),
         dir.join("real/a.rs")
     );
-    assert_eq!(resolve(Some(&dir), "link/a.rs"), dir.join("real/a.rs"));
     assert_eq!(
-        resolve(Some(&dir), "link/new/../b.rs"),
+        <dyn Workspace>::resolve(&Local, Some(&dir), "link/../real/a.rs"),
+        dir.join("real/a.rs")
+    );
+    assert_eq!(
+        <dyn Workspace>::resolve(&Local, Some(&dir), "link/a.rs"),
+        dir.join("real/a.rs")
+    );
+    assert_eq!(
+        <dyn Workspace>::resolve(&Local, Some(&dir), "link/new/../b.rs"),
         dir.join("real/b.rs")
     );
-    assert_eq!(resolve(Some(&dir), "/"), PathBuf::from("/"));
+    assert_eq!(
+        <dyn Workspace>::resolve(&Local, Some(&dir), "/"),
+        PathBuf::from("/")
+    );
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -205,7 +213,7 @@ fn a_confined_write_never_follows_a_link_out_of_its_base() {
 fn a_dangling_link_resolves_to_what_a_write_creates() {
     let dir = scratch("dangling-resolve");
     std::os::unix::fs::symlink("real/new/../made.txt", dir.join("link")).ok();
-    let resolved = resolve(Some(&dir), "link");
+    let resolved = <dyn Workspace>::resolve(&Local, Some(&dir), "link");
     assert_eq!(resolved, dir.join("real/made.txt"));
     assert!(super::write_atomic(&dir.join("link"), b"x").is_ok());
     assert!(resolved.exists());

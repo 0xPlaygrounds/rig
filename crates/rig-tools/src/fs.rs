@@ -20,7 +20,7 @@ use crate::workspace::{Contents, Listed, Listing, Local, Stat, Workspace};
 /// opening a FIFO or a device can block forever. [`Local`]'s
 /// `read_text`.
 pub fn read_text(path: &str) -> Result<String, ToolExecutionError> {
-    local().read_text(Path::new(path))
+    <dyn Workspace>::read_text(&Local, Path::new(path))
 }
 
 /// The start of a file read by [`read_prefix`].
@@ -298,29 +298,6 @@ pub(crate) fn unread(
     )
 }
 
-/// `path` as the file tools open it: made absolute against `base` (`None`:
-/// this process's working directory) or, when its first component is `~`,
-/// against the home directory, with every symbolic link of its
-/// longest existing part followed (the file's own too, when it exists) and
-/// `..` folded. Two spellings of one file resolve alike, so this is how the
-/// facts the tools publish ([`FilesRead`](rig_core::tool::FilesRead),
-/// [`FileChange::path`]) and their footprints name files. A path that
-/// cannot be made absolute (no working directory) stays relative.
-///
-/// ```
-/// use std::path::Path;
-/// use rig_tools::fs::resolve;
-///
-/// let here = std::fs::canonicalize(".")?;
-/// assert_eq!(resolve(None, "src/../Cargo.toml"), here.join("Cargo.toml"));
-/// assert_eq!(resolve(Some(&here), "gone/../new.rs"), here.join("new.rs"));
-/// assert_eq!(resolve(Some(Path::new("/nowhere")), "/nowhere/a/../b"), Path::new("/nowhere/b"));
-/// # Ok::<(), std::io::Error>(())
-/// ```
-pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
-    local().resolve(base, path)
-}
-
 /// `path`, relative to where a tool looked, as the tool shows it: with `./`
 /// in front when its first component is `~`, so that a tool given the
 /// shown path back reaches this file and not one in the home directory.
@@ -329,24 +306,6 @@ pub(crate) fn shown(path: &Path) -> PathBuf {
         true => Path::new(".").join(path),
         false => path.to_path_buf(),
     }
-}
-
-/// `path` [`resolve`]d against `base`, as a file tool opens it; with
-/// `confine`, refused before any I/O when it lies outside `base` (`None`:
-/// the working directory). The rule the file tools follow, for code that
-/// must decide as they would, such as a preview of a write. It is
-/// `<dyn Workspace>::place` on [`Local`].
-pub fn place(
-    base: Option<&Path>,
-    confine: bool,
-    path: &str,
-) -> Result<PathBuf, ToolExecutionError> {
-    local().place(base, confine, path)
-}
-
-/// This machine, as a [`Workspace`].
-fn local() -> &'static dyn Workspace {
-    &Local
 }
 
 /// What turning `before` into `after` did to the file at `path` (`None`:

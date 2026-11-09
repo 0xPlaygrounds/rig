@@ -383,7 +383,9 @@ pub enum Stat {
 impl dyn Workspace {
     /// `path` as the file tools name it: [`join`](Workspace::join)ed onto
     /// `base` (`None`: the working directory), then made
-    /// [`canonical`](Workspace::canonical).
+    /// [`canonical`](Workspace::canonical). Two spellings of one file
+    /// resolve alike, so this is how the facts the tools publish and their
+    /// footprints name files.
     pub fn resolve(&self, base: Option<&Path>, path: &str) -> PathBuf {
         self.canonical(&self.join(base.unwrap_or(Path::new("")), path.as_ref()))
     }

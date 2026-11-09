@@ -69,7 +69,7 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
         .ok()
         .flatten()
         .unwrap_or_default();
-    let a = crate::fs::resolve(Some(&dir), "a.rs");
+    let a = <dyn crate::workspace::Workspace>::resolve(&Local, Some(&dir), "a.rs");
     let a = FileRead::new(a.to_string_lossy(), content_hash(b"todo one\ntodo two\n"));
     assert_eq!(read.0, [a]);
 

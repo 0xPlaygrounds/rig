@@ -24,7 +24,8 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::{Map, Value, from_value};
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_tools::edit::apply;
-use rig_tools::fs::{self, file_change, read_text, write_atomic};
+use rig_tools::fs::{file_change, read_text, write_atomic};
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{EditArgs, ReadArgs, ShellArgs, WriteArgs};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::de::DeserializeOwned;
@@ -239,7 +240,7 @@ fn parse<A: DeserializeOwned>(arguments: &Map<String, Value>) -> Result<A, ToolE
 /// `path`: confined to `dir`, as they are for an agent with a [`WorkDir`].
 fn place(dir: Option<&WorkDir>, path: &str) -> Result<String, ToolExecutionError> {
     let base = dir.map(|WorkDir(dir)| dir.as_path());
-    let path = fs::place(base, base.is_some(), path)?;
+    let path = <dyn Workspace>::place(&Local, base, base.is_some(), path)?;
     Ok(path.to_string_lossy().into_owned())
 }
 

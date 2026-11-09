@@ -20,7 +20,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::message::Message;
-use rig_harness::rig_tools::fs::place;
+use rig_harness::rig_tools::workspace::{Local, Workspace};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -230,7 +230,7 @@ fn is_judged(
             .arguments
             .get("path")
             .and_then(|path| path.as_str());
-        path.is_some_and(|path| place(Some(dir), true, path).is_err())
+        path.is_some_and(|path| <dyn Workspace>::place(&Local, Some(dir), true, path).is_err())
     };
     listed(&config.tools)
         || (listed(&config.outside_project) && outside())

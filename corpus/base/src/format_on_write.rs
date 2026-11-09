@@ -16,8 +16,9 @@ use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::serve::{AfterServe, BeforeServe, Intercept};
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_tools::fs::{resolve, write_atomic};
+use rig_tools::fs::write_atomic;
 use rig_tools::process::Launcher;
+use rig_tools::workspace::{Local, Workspace};
 use rig_tools::{Edit, Shell, ShellArgs, ShellRun, Write};
 use serde::Deserialize;
 
@@ -156,7 +157,13 @@ impl Intercept for Formatting {
         if !result.is_success() {
             return AfterServe::Keep;
         }
-        let notes = self.check(&resolve(self.base.as_deref(), &path)).await;
+        let notes = self
+            .check(&<dyn Workspace>::resolve(
+                &Local,
+                self.base.as_deref(),
+                &path,
+            ))
+            .await;
         if notes.is_empty() {
             return AfterServe::Keep;
         }

@@ -15,9 +15,10 @@ fn writes_and_edits_publish_the_files_they_changed() {
     let write_tool = Write::default();
     let edit_tool = Edit::default();
     let dir = std::env::temp_dir().join(format!("rig-tools-changes-{}", std::process::id()));
-    let path = crate::fs::resolve(Some(&dir), "a.txt")
-        .to_string_lossy()
-        .into_owned();
+    let path =
+        <dyn crate::workspace::Workspace>::resolve(&crate::workspace::Local, Some(&dir), "a.txt")
+            .to_string_lossy()
+            .into_owned();
     let changed = |context: &ToolContext| {
         context
             .result::<FilesChanged>()

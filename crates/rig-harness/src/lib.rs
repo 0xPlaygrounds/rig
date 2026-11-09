@@ -96,7 +96,7 @@ pub use rig_memory;
 /// The tool library this app is built on, for the process runner
 /// [`Processes`](services::Processes) hands out
 /// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules
-/// (`rig_harness::rig_tools::fs::place`).
+/// (`<dyn rig_harness::rig_tools::workspace::Workspace>::place`).
 pub use rig_tools;
 
 /// What a plugin needs, so a typical one imports only this: the kernel's

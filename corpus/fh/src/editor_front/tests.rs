@@ -177,7 +177,7 @@ fn open_buffers_win_and_edits_are_reviewed() {
         .world()
         .resource::<Buffers>()
         .0
-        .get(&resolve(None, &a_path))
+        .get(&<dyn Workspace>::resolve(&Local, None, &a_path))
         .cloned();
     assert_eq!(
         buffer.map(|buffer| buffer.text).as_deref(),
@@ -280,7 +280,7 @@ fn a_gate_that_asks_goes_before_the_review() {
         .world()
         .resource::<Buffers>()
         .0
-        .get(&resolve(None, &a_path))
+        .get(&<dyn Workspace>::resolve(&Local, None, &a_path))
         .cloned();
     assert_eq!(buffer.map(|buffer| buffer.text).as_deref(), Some("draft\n"));
     assert_eq!(std::fs::read_to_string(&a).ok().as_deref(), Some("disk\n"));
