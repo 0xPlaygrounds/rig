@@ -1657,11 +1657,12 @@ fn message_lines(
                             output: at.and_then(|at| look.outputs.get(&at)).map(String::as_str),
                             children: look.children.get(at, from).map_or(&[], Vec::as_slice),
                         };
-                        let (drawn, decorated) = look.renderers.call_decorated(&view);
+                        // Only an archived entry has no id, and no items.
+                        let item = at.map(CallItem::Reply);
+                        let (drawn, decorated) = look.renderers.call_decorated(&view, item);
                         let start = lines.len();
                         lines.extend(on_band(drawn, look.theme.tool));
-                        // Only an archived entry has no id, and no items.
-                        if let Some(at) = at.map(CallItem::Reply) {
+                        if let Some(at) = item {
                             marks.push((TranscriptItem::Call(at), start..lines.len()));
                             for (name, rows) in decorated {
                                 let decoration = TranscriptItem::Decoration(at, name);

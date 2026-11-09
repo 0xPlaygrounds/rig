@@ -1,0 +1,24 @@
+[package]
+name = "rig-fold"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "An optional rig-harness plugin: the terminal view shows a finished tool call's result as its first and last lines, with a key that shows all of it."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_ecs = { workspace = true }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness", version = "0.46.0" }
+# The transcript's render systems, key bindings and selection.
+rig-tui = { path = "../rig-tui", version = "0.46.0" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-core = { workspace = true }
+serde_json = { workspace = true }

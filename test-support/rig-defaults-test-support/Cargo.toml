@@ -28,6 +28,7 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness-test-support = { path = "../rig-harness-test-support" }
 # The optional plugins added on top of the defaults in `tests/removal.rs`.
 rig-inspect = { path = "../../plugins/rig-inspect" }
+rig-fold = { path = "../../plugins/rig-fold" }
 rig-claude-cloak = { path = "../../plugins/rig-claude-cloak" }
 rig-mcp-client = { path = "../../plugins/rig-mcp-client" }
 rig-acp = { path = "../../plugins/rig-acp" }
