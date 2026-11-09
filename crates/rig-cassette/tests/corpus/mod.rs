@@ -202,7 +202,6 @@ pub const SKIP_REASON: &str = "no such tool; skipped";
 /// The builder's `output_mode`, as data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Output {
-    Native,
     Tool,
     Prompted,
 }
@@ -210,7 +209,6 @@ pub enum Output {
 impl Output {
     pub fn mode(self) -> OutputMode {
         match self {
-            Self::Native => OutputMode::Native,
             Self::Tool => OutputMode::Tool,
             Self::Prompted => OutputMode::Prompted,
         }

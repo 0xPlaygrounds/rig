@@ -34,10 +34,8 @@ pub(crate) const SETUP_MAX_TOKENS: u64 = 16;
 pub(crate) const BROKEN_ORCHARD: &str = "the orchard lookup is broken";
 
 const C: &[EffectFamily] = &[Completion];
-const CT: &[EffectFamily] = &[Completion, Tool];
 const CTC: &[EffectFamily] = &[Completion, Tool, Completion];
 const CTTC: &[EffectFamily] = &[Completion, Tool, Tool, Completion];
-const CCCC: &[EffectFamily] = &[Completion, Completion, Completion, Completion];
 
 const SETUP: Program = Program {
     // No system instruction at all: strict matching distinguishes it from

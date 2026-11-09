@@ -39,7 +39,7 @@
 use rig::message::ToolChoice;
 use rig::providers::openai::wire::{LLAMACPP, OpenAIConfig};
 
-use crate::support::{Adder, OperationArgs, Subtract};
+use crate::support::{Adder, Subtract};
 
 use super::super::cassette_support::*;
 use rig::completion::CompletionRequest;
@@ -89,15 +89,4 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
          address would produce: {error:?}"
     );
     assert!(error.to_string().contains("subtract"), "{error}");
-}
-
-// ---------------------------------------------------------------------------
-// Tool result payloads
-// ---------------------------------------------------------------------------
-
-/// Keeps `OperationArgs` referenced from this file so the shared support type
-/// cannot be removed without this matrix noticing.
-#[allow(dead_code)]
-fn _operation_args_is_the_shared_shape(args: OperationArgs) -> (f64, f64) {
-    (args.x as f64, args.y as f64)
 }

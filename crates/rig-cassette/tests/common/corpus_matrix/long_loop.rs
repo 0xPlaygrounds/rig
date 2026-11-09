@@ -27,7 +27,6 @@
 //! | 4 | [`TOOL_ERROR_MIDWAY`] | recorded (`run_tests` errs once, the model re-runs) |
 //! | 4 | [`INVALID_ARGS_MIDWAY`] | scripted: a live model cannot be steered into malformed arguments; the row-1 unary recording is served by the sequenced transport with turn k's arguments rewritten ([`UnaryShape::with_invalid_args`]) |
 //! | 5 | [`MAX_TURNS_MIDWAY`], [`OUTPUT_CAP_MIDWAY`] | recorded |
-#![allow(dead_code, reason = "long-loop cells run on five provider columns")]
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -59,10 +58,6 @@ use rig_core::tool::ToolContext;
 use rig_core::tool::ToolErrorKind;
 
 use rig_core::tool::ToolExecutionError;
-
-use rig_core::http_client::DynHttpClient;
-
-use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 use serde::{Deserialize, Serialize};
 
@@ -155,14 +150,6 @@ pub(crate) const TOOL_ERROR_MIDWAY: Cell = Cell {
     },
     ..LONG_UNARY
 };
-/// Scripted (see the module doc): the row-1 unary recording served by the
-/// sequenced transport, the [`FAULT_TURN`]th tool call's arguments
-/// rewritten to the wrong type. The adapter answers an `invalid_args`
-/// error result, the tool never runs, the loop goes on.
-pub(crate) const INVALID_ARGS_MIDWAY: Cell = Cell {
-    name: "long_loop_invalid_args_midway",
-    ..LONG_UNARY
-};
 pub(crate) const MAX_TURNS_MIDWAY: Cell = Cell {
     name: "long_loop_max_turns_midway",
     program: Program {
@@ -208,42 +195,9 @@ pub(crate) const OUTPUT_CAP_MIDWAY: Cell = output_cap_cell(Ending::Failed(ErrorK
 /// [`output_cap_cell`] on the Chat wires, whose cut call is answered with an
 /// error result until the turn budget ends the run (OpenAI Chat, DeepSeek).
 pub(crate) const OUTPUT_CAP_MIDWAY_MAX_TURNS: Cell = output_cap_cell(Ending::MaxTurns);
-/// [`output_cap_cell`] on Anthropic, whose cut text preamble is the answer
-/// under a `Length` finish.
-pub(crate) const OUTPUT_CAP_MIDWAY_LENGTH_ANSWER: Cell = output_cap_cell(Ending::Answer);
-
-/// The cells whose cassette is a live recording of this family.
-pub(crate) const RECORDED: &[&Cell] = &[
-    &LONG_UNARY,
-    &LONG_STREAMED,
-    &PARALLEL_CALLS,
-    &BIG_RESULT,
-    &TOOL_ERROR_MIDWAY,
-    &MAX_TURNS_MIDWAY,
-    &OUTPUT_CAP_MIDWAY,
-];
 
 pub(crate) fn is_long_loop(cell: &Cell) -> bool {
     cell.name.starts_with("long_loop_")
-}
-
-/// The provider directory and cassette scenario a long-loop cell's live
-/// recording lives under on `thinking`'s wire (`crates/rig-cassette/fixtures/cassettes/<provider>/
-/// long_loop_matrix[_chat|_responses]/<cell>.yaml`). The per-wire file
-/// spells the same literal at its wrapper call site for the census.
-pub(crate) fn scenario(thinking: ThinkingWire, cell: &Cell) -> (&'static str, String) {
-    let suffix = cell
-        .name
-        .strip_prefix("long_loop_")
-        .expect("a long-loop cell");
-    match thinking {
-        ThinkingWire::Anthropic => ("anthropic", format!("long_loop_matrix/{suffix}")),
-        ThinkingWire::OpenAiChat => ("openai", format!("long_loop_matrix_chat/{suffix}")),
-        ThinkingWire::OpenAiResponses => ("openai", format!("long_loop_matrix_responses/{suffix}")),
-        ThinkingWire::Gemini => ("gemini", format!("long_loop_matrix/{suffix}")),
-        ThinkingWire::DeepSeek => ("deepseek", format!("long_loop_matrix/{suffix}")),
-        other => panic!("no long-loop column on the {other:?} wire"),
-    }
 }
 
 // -- the repository -----------------------------------------------------------
@@ -374,10 +328,6 @@ impl RepoHandle {
 
     pub(crate) fn invocations(&self) -> Vec<Invocation> {
         self.with(|repo| repo.invocations.clone())
-    }
-
-    pub(crate) fn file(&self, path: &str) -> Option<String> {
-        self.with(|repo| repo.files.get(path).cloned())
     }
 
     /// The last `run_tests` verdict: `Some(true)` for PASS.
@@ -637,7 +587,6 @@ static SLOTS: LazyLock<Mutex<HashMap<&'static str, Slot>>> =
 /// The tree a test holds for its cell: fresh at acquisition, shared by
 /// every tool bound under the cell's name until the lease drops.
 pub(crate) struct Lease {
-    pub(crate) repo: RepoHandle,
     _guard: tokio::sync::OwnedMutexGuard<()>,
 }
 
@@ -662,11 +611,8 @@ pub(crate) async fn lease(cell: &Cell) -> Lease {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get_mut(cell.name)
         .expect("the slot was created above")
-        .repo = Some(repo.clone());
-    Lease {
-        repo,
-        _guard: guard,
-    }
+        .repo = Some(repo);
+    Lease { _guard: guard }
 }
 
 /// The leased tree of `cell`: the tools bind over it (`agent::typed_tool`).
@@ -1856,363 +1802,11 @@ where
     log
 }
 
-/// A scripted cell: the rig-agent runner over a sequenced transport,
-/// asserted against the cell over its own fresh tree.
-pub(crate) async fn run_scripted<W, T>(
-    cell: &Cell,
-    wire: &super::Wire<rig::driver::Model<W, T>>,
-    golden: impl FnOnce(&EffectLog),
-) -> EffectLog
-where
-    W: rig::wire::Wire<Op = rig::operation::Completion>,
-    T: rig::driver::Transport<W>,
-{
-    let lease = lease(cell).await;
-    let log = super::agent::run_agent(wire, cell, golden).await;
-    drop(lease);
-    log
-}
-
-// -- the scripted rows: the row-1 recording on the sequenced transport --------
-
-/// The unary reply shape of a dialect, for the frame surgery the scripted
-/// rows do on this wire's own row-1 recording (the streamed rows' analogue
-/// is `stream_faults::SseShape`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UnaryShape {
-    /// Anthropic Messages: `content[].{type:"tool_use", input}`.
-    Anthropic,
-    /// OpenAI Chat Completions and every OpenAI-compatible wire (DeepSeek):
-    /// `choices[0].message.tool_calls[].function.arguments`, a JSON string.
-    Chat,
-    /// OpenAI Responses: `output[].{type:"function_call", arguments}`, a
-    /// JSON string.
-    Responses,
-    /// Gemini REST: `candidates[0].content.parts[].functionCall.args`.
-    Gemini,
-}
-
-impl UnaryShape {
-    pub(crate) fn of(thinking: ThinkingWire) -> Self {
-        match thinking {
-            ThinkingWire::Anthropic => Self::Anthropic,
-            ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek => Self::Chat,
-            ThinkingWire::OpenAiResponses => Self::Responses,
-            ThinkingWire::Gemini => Self::Gemini,
-            other => panic!("no long-loop column on the {other:?} wire"),
-        }
-    }
-
-    /// The recorded reply with its first tool call's arguments replaced by
-    /// [`INVALID_ARGS`]: a `path` of the wrong type, which no repository
-    /// tool's arguments accept.
-    pub(crate) fn with_invalid_args(self, body: &str) -> String {
-        let mut reply: serde_json::Value =
-            serde_json::from_str(body).expect("a recorded JSON reply");
-        let invalid = || serde_json::json!({"path": 42});
-        let replaced = match self {
-            Self::Anthropic => reply["content"]
-                .as_array_mut()
-                .expect("content")
-                .iter_mut()
-                .find(|part| part["type"] == "tool_use")
-                .map(|part| part["input"] = invalid()),
-            Self::Chat => reply["choices"][0]["message"]["tool_calls"]
-                .as_array_mut()
-                .expect("tool_calls")
-                .first_mut()
-                .map(|call| {
-                    call["function"]["arguments"] = serde_json::Value::String(invalid().to_string())
-                }),
-            Self::Responses => reply["output"]
-                .as_array_mut()
-                .expect("output")
-                .iter_mut()
-                .find(|item| item["type"] == "function_call")
-                .map(|item| item["arguments"] = serde_json::Value::String(invalid().to_string())),
-            Self::Gemini => reply["candidates"][0]["content"]["parts"]
-                .as_array_mut()
-                .expect("parts")
-                .iter_mut()
-                .find(|part| part["functionCall"].is_object())
-                .map(|part| part["functionCall"]["args"] = invalid()),
-        };
-        assert!(
-            replaced.is_some(),
-            "the recorded reply carries a tool call: {body}"
-        );
-        reply.to_string()
-    }
-}
-
-/// The recorded unary replies of `cell`'s row-1 recording on `thinking`'s
-/// wire, as the sequenced transport serves them, with turn
-/// [`FAULT_TURN`]'s arguments rewritten (`INVALID_ARGS_MIDWAY`).
-pub(crate) fn scripted_replies(thinking: ThinkingWire, cell: &Cell) -> Vec<MockHttpResponse> {
-    let (provider, scenario) = scenario(thinking, &LONG_UNARY);
-    let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, &scenario);
-    assert!(
-        recorded.len() > FAULT_TURN,
-        "{}: the row-1 recording has a turn {FAULT_TURN} to fault",
-        cell.name
-    );
-    let shape = UnaryShape::of(thinking);
-    let mut replies = Vec::new();
-    for (n, (status, body)) in recorded.into_iter().enumerate() {
-        assert_eq!(status, 200, "{}: the row-1 recording succeeded", cell.name);
-        if n + 1 == FAULT_TURN {
-            assert_eq!(
-                cell.name, INVALID_ARGS_MIDWAY.name,
-                "not a scripted long-loop cell"
-            );
-            replies.push(MockHttpResponse::success(shape.with_invalid_args(&body)));
-            continue;
-        }
-        replies.push(MockHttpResponse::success(body));
-    }
-    replies
-}
-
-/// A wire's scripted row-4 cell: its row-1 unary recording served by the
-/// sequenced transport with the row's fault applied ([`scripted_replies`]).
-pub(crate) struct Scripted<M> {
-    /// The wire over a scripted transport. The client's key must never reach
-    /// a recording or a trace.
-    pub(crate) wire: fn(DynHttpClient) -> super::Wire<M>,
-}
-
-impl<W, T> Scripted<rig::driver::Model<W, T>>
-where
-    W: rig::wire::Wire<Op = rig::operation::Completion>,
-    T: rig::driver::Transport<W>,
-{
-    /// The wire over a transport that answers each unary request with the
-    /// next of `replies`.
-    fn unary(&self, replies: Vec<MockHttpResponse>) -> super::Wire<rig::driver::Model<W, T>> {
-        (self.wire)(DynHttpClient::new(SequencedHttpClient::new(replies)))
-    }
-
-    /// `cell`'s replies on this wire's dialect, read off a wire never driven.
-    fn replies(&self, cell: &Cell) -> Vec<MockHttpResponse> {
-        scripted_replies(self.unary(Vec::new()).thinking, cell)
-    }
-
-    /// Turn [`FAULT_TURN`]'s arguments rewritten to the wrong type: the
-    /// runner answers `invalid_args`, runs nothing, and goes on.
-    pub(crate) async fn invalid_args_midway(&self, golden: impl FnOnce(&EffectLog)) {
-        let wire = self.unary(self.replies(&INVALID_ARGS_MIDWAY));
-        run_scripted(&INVALID_ARGS_MIDWAY, &wire, golden).await;
-    }
-}
-
 // -- the negative matcher probe ------------------------------------------------
 
 /// The last tool result's distinctive text, carried by the answering turn's
 /// request: the passing report's summary line.
 const PASS_MARKER: &str = "2 passed; 0 failed; 0 ignored";
-
-/// Matcher sensitivity: send the actual recorded request bodies to the real
-/// replay server, alter only the last byte of the passing report inside the
-/// request that first carries it, and prove the strict matcher refuses it
-/// while every original request still matches.
-pub(crate) async fn assert_request_body_rejected(provider: &'static str, scenario: &'static str) {
-    use futures::FutureExt;
-    use std::panic::AssertUnwindSafe;
-
-    assert_eq!(
-        crate::cassettes::CassetteMode::current(),
-        crate::cassettes::CassetteMode::Replay,
-        "negative matcher tests never record"
-    );
-    let path = crate::cassettes::cassette_path(provider, scenario);
-    let yaml = std::fs::read_to_string(&path).expect("the live recording exists");
-    let interactions: Vec<serde_json::Value> = serde_yaml::Deserializer::from_str(&yaml)
-        .map(|document| serde_json::Value::deserialize(document).expect("recorded YAML document"))
-        .collect();
-    assert!(
-        interactions.len() > MIN_TOOL_TURNS,
-        "the complete recorded long loop: {} interactions",
-        interactions.len()
-    );
-    let bodies = crate::cassettes::recorded_interaction_bodies(provider, scenario);
-    assert_eq!(bodies.len(), interactions.len());
-    let target = bodies
-        .iter()
-        .position(|(request, _)| request.contains(PASS_MARKER))
-        .expect("a request carries the passing report");
-    assert!(target > 0, "the first request carries no tool result");
-    let original = &bodies[target].0;
-    assert_eq!(
-        original.matches(PASS_MARKER).count(),
-        1,
-        "the request carries the passing report exactly once"
-    );
-    let start = original.find(PASS_MARKER).expect("the marker");
-    let at = start + PASS_MARKER.len() - 1;
-    let mut changed = original.as_bytes().to_vec();
-    assert_eq!(changed[at], b'd');
-    changed[at] = b'X';
-    let changed = String::from_utf8(changed).expect("one ASCII substitution");
-    assert_eq!(changed.len(), original.len());
-    assert_eq!(
-        changed
-            .bytes()
-            .zip(original.bytes())
-            .filter(|(left, right)| left != right)
-            .count(),
-        1,
-        "only the last result byte changed"
-    );
-    serde_json::from_str::<serde_json::Value>(&changed).expect("mutation preserves JSON syntax");
-
-    // The exact matcher is this cell's subject, whatever the ambient mode.
-    let cassette = crate::cassettes::ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        provider,
-        crate::cassettes::CassetteSpec::new(scenario).exact_matched(),
-        "https://long-loop.invalid",
-    )
-    .await;
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .build()
-        .expect("local HTTP client");
-    async fn post(
-        client: &reqwest::Client,
-        provider: &str,
-        base: &str,
-        interaction: &serde_json::Value,
-        body: &str,
-    ) -> (u16, String) {
-        let request = &interaction["when"];
-        assert_eq!(request["method"], "POST");
-        let mut url = reqwest::Url::parse(base).expect("local replay URL");
-        assert_eq!(
-            url.host_str(),
-            Some("127.0.0.1"),
-            "only the real local replay server receives the probe"
-        );
-        url.set_path(request["path"].as_str().expect("recorded request path"));
-        // A recording's `key` is a credential the client now sends as a header.
-        for query in request["query_param"]
-            .as_array()
-            .expect("recorded query parameters")
-            .iter()
-            .filter(|query| query["name"] != "key")
-        {
-            url.query_pairs_mut().append_pair(
-                query["name"].as_str().expect("query name"),
-                query["value"].as_str().expect("query value"),
-            );
-        }
-        // Recordings intentionally omit credentials; satisfy the real replay
-        // policy with fixed dummy headers, never credentials from the host.
-        let mut builder = match provider {
-            "anthropic" => client
-                .post(url)
-                .header("x-api-key", "long-loop-replay-only"),
-            "openai" | "deepseek" => client
-                .post(url)
-                .header("authorization", "Bearer long-loop-replay-only"),
-            "gemini" => client
-                .post(url)
-                .header("x-goog-api-key", "long-loop-replay-only"),
-            other => panic!("not a long-loop provider: {other}"),
-        };
-        for header in request["header"].as_array().expect("recorded headers") {
-            builder = builder.header(
-                header["name"].as_str().expect("header name"),
-                header["value"].as_str().expect("header value"),
-            );
-        }
-        let response = builder
-            .body(body.to_owned())
-            .send()
-            .await
-            .expect("local replay response");
-        let status = response.status().as_u16();
-        let body = response.text().await.expect("consume local response body");
-        (status, body)
-    }
-    let base = cassette.base_url();
-    for (interaction, body) in interactions.iter().zip(&bodies).take(target) {
-        let sent = post(&client, provider, &base, interaction, &body.0).await;
-        assert_eq!(
-            u64::from(sent.0),
-            interaction["then"]["status"]
-                .as_u64()
-                .expect("recorded status"),
-            "unmodified earlier request matches: {}",
-            sent.1
-        );
-    }
-    let rejected = post(&client, provider, &base, &interactions[target], &changed).await;
-    assert_eq!(
-        rejected.0, 404,
-        "last-byte result mutation is rejected by real strict matching: {}",
-        rejected.1
-    );
-    let diagnostic: serde_json::Value =
-        serde_json::from_str(&rejected.1).expect("real matcher diagnostic");
-    let candidate = &diagnostic["candidates"][target];
-    assert_eq!(
-        candidate["body_matches"], false,
-        "the body specifically fails matching"
-    );
-    for field in [
-        "method_matches",
-        "path_matches",
-        "query_matches",
-        "headers_match",
-        "required_headers_match",
-    ] {
-        assert_eq!(
-            candidate[field], true,
-            "all other request attributes match: {field}"
-        );
-    }
-    for (interaction, body) in interactions.iter().zip(&bodies).skip(target) {
-        let sent = post(&client, provider, &base, interaction, &body.0).await;
-        assert_eq!(
-            u64::from(sent.0),
-            interaction["then"]["status"]
-                .as_u64()
-                .expect("recorded status"),
-            "original request still matches; the miss consumed nothing: {}",
-            sent.1
-        );
-    }
-    let failed = AssertUnwindSafe(cassette.finish())
-        .catch_unwind()
-        .await
-        .expect_err("finish remembers the rejected mutation");
-    let message = failed
-        .downcast_ref::<String>()
-        .cloned()
-        .or_else(|| {
-            failed
-                .downcast_ref::<&str>()
-                .map(|value| (*value).to_owned())
-        })
-        .expect("matcher failure message");
-    assert!(
-        message.contains("received unexpected replay request(s)"),
-        "specific replay mismatch: {message}"
-    );
-    assert!(
-        !message.contains("left unused interactions"),
-        "all original requests were consumed: {message}"
-    );
-    eprintln!(
-        "LONG_LOOP_NEGATIVE provider={provider} scenario={scenario} request_index={target} body_offset={at} changed_bytes=1 status=404 original_requests_consumed={}",
-        interactions.len()
-    );
-}
-
-/// Mutate the last tool-result continuation of the streamed loop.
-pub(crate) async fn assert_stream_request_rejected(provider: &'static str, scenario: &'static str) {
-    assert_request_body_rejected(provider, scenario).await;
-}
 
 /// The toolset's pure functions, runnable before any recording exists.
 #[cfg(test)]
@@ -2314,59 +1908,6 @@ mod tests {
         assert!(big.starts_with(&report));
         assert!(big.ends_with(&super::super::checkpoint::large_result()));
         assert_eq!(big.len(), report.len() + BIG_REPORT_HEADER.len() + 49152);
-    }
-
-    #[test]
-    fn invalid_args_rewrite_each_dialects_first_call() {
-        let cases = [
-            (
-                UnaryShape::Anthropic,
-                r#"{"content":[{"type":"text","text":"ok"},{"type":"tool_use","id":"toolu_1","name":"read_file","input":{"path":"src/lib.rs"}}]}"#,
-                "/content/1/input",
-                false,
-            ),
-            (
-                UnaryShape::Chat,
-                r#"{"choices":[{"message":{"tool_calls":[{"id":"call_1","function":{"name":"read_file","arguments":"{\"path\":\"src/lib.rs\"}"}}]}}]}"#,
-                "/choices/0/message/tool_calls/0/function/arguments",
-                true,
-            ),
-            (
-                UnaryShape::Responses,
-                r#"{"output":[{"type":"function_call","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"src/lib.rs\"}"}]}"#,
-                "/output/0/arguments",
-                true,
-            ),
-            (
-                UnaryShape::Gemini,
-                r#"{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"src/lib.rs"}}}]}}]}"#,
-                "/candidates/0/content/parts/0/functionCall/args",
-                false,
-            ),
-        ];
-        for (shape, body, pointer, stringified) in cases {
-            let rewritten: serde_json::Value =
-                serde_json::from_str(&shape.with_invalid_args(body)).expect("JSON");
-            let args = rewritten.pointer(pointer).expect("the call's arguments");
-            let args = if stringified {
-                serde_json::from_str(args.as_str().expect("a JSON string")).expect("JSON")
-            } else {
-                args.clone()
-            };
-            assert_eq!(args, serde_json::json!({"path": 42}), "{shape:?}");
-            assert!(
-                serde_json::from_value::<PathArgs>(args.clone()).is_err(),
-                "{shape:?}: no repository tool accepts the rewritten arguments"
-            );
-            assert!(
-                serde_json::from_value::<WriteArgs>(args.clone()).is_err(),
-                "{shape:?}: write_file refuses the rewritten arguments"
-            );
-            assert!(
-                serde_json::from_value::<NoArgs>(args).is_err(),
-                "{shape:?}: list_files/run_tests refuse the rewritten arguments too (a batched loop's {FAULT_TURN}th call is run_tests)"
-            );
-        }
     }
 
     #[tokio::test]

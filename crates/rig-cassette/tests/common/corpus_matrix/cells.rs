@@ -23,7 +23,6 @@ pub(crate) const BASIC_PROMPT: &str = "In one or two sentences, explain what Rus
 pub(crate) const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 pub(crate) const ADD_PROMPT: &str =
     "Use the add tool to add 17 and 25, then reply with just the number.";
-#[allow(dead_code)] // the Gemini wire reuses the breadth recording, whose essay is shorter
 pub(crate) const ESSAY_PROMPT: &str =
     "Write a 600-word essay on the history of the Rust programming language.";
 pub(crate) const NOTE_PREAMBLE: &str =
@@ -53,7 +52,6 @@ pub(crate) fn event_schema() -> serde_json::Value {
 
 /// A Qwen 3.5 wire asked not to think (`reasoning_effort: none`), so a
 /// tiny cap cuts an answer rather than hidden tokens (Doubleword's wire).
-#[allow(dead_code)]
 pub(crate) fn reasoning_off() -> serde_json::Value {
     serde_json::json!({ "reasoning_effort": "none" })
 }
@@ -70,10 +68,6 @@ pub(crate) enum Thinking {
 
 /// The six request dialects, independent of the provider model's Rust type.
 #[derive(Clone, Copy, Debug)]
-#[allow(
-    dead_code,
-    reason = "each provider test target constructs only its own dialect"
-)]
 pub(crate) enum ThinkingWire {
     Anthropic,
     OpenAiChat,
@@ -345,11 +339,6 @@ pub(crate) const REASONING_CAPPED: Cell = Cell {
     },
     ..REASONING_TEXT_UNARY
 };
-
-#[allow(
-    dead_code,
-    reason = "only Responses and Gemini require a streamed cap twin"
-)]
 pub(crate) const REASONING_CAPPED_STREAMED: Cell = Cell {
     name: "reasoning_capped_streamed",
     program: Program {
@@ -363,8 +352,6 @@ pub(crate) const REASONING_CAPPED_STREAMED: Cell = Cell {
 // -- Images: the user's content, verbatim, through record and history ---------
 
 use super::image::{ImageCase, ImageCell, ImageSource};
-
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 const IMAGE_TEXT: Program = Program {
     preamble: Some(super::image::IMAGE_PREAMBLE),
     prompt: super::image::COLOR_PROMPT,
@@ -372,7 +359,6 @@ const IMAGE_TEXT: Program = Program {
     max_tokens: Some(2048),
     ..Program::DEFAULT
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 const IMAGE_TOOLS: Program = Program {
     preamble: Some(super::image::IMAGE_TOOL_PREAMBLE),
     prompt: super::image::IMAGE_TOOL_PROMPT,
@@ -381,18 +367,14 @@ const IMAGE_TOOLS: Program = Program {
     max_turns: Some(3),
     ..Program::DEFAULT
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 const INLINE_TEXT: ImageCell = ImageCell {
     case: ImageCase::Text,
     source: ImageSource::Inline,
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 const INLINE_TOOL: ImageCell = ImageCell {
     case: ImageCase::Tool,
     source: ImageSource::Inline,
 };
-
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_TEXT_UNARY: Cell = Cell {
     name: "image_inline_text_unary",
     program: IMAGE_TEXT,
@@ -400,7 +382,6 @@ pub(crate) const IMAGE_INLINE_TEXT_UNARY: Cell = Cell {
     families: C,
     ..CELL
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_TEXT_STREAMED: Cell = Cell {
     name: "image_inline_text_streamed",
     program: Program {
@@ -410,7 +391,6 @@ pub(crate) const IMAGE_INLINE_TEXT_STREAMED: Cell = Cell {
     events: true,
     ..IMAGE_INLINE_TEXT_UNARY
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_MIXED_ORDER: Cell = Cell {
     name: "image_inline_mixed_order",
     program: Program {
@@ -423,7 +403,6 @@ pub(crate) const IMAGE_INLINE_MIXED_ORDER: Cell = Cell {
     }),
     ..IMAGE_INLINE_TEXT_UNARY
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_TOOL_UNARY: Cell = Cell {
     name: "image_inline_tool_unary",
     program: IMAGE_TOOLS,
@@ -432,7 +411,6 @@ pub(crate) const IMAGE_INLINE_TOOL_UNARY: Cell = Cell {
     families: CTC,
     ..CELL
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_TOOL_STREAMED: Cell = Cell {
     name: "image_inline_tool_streamed",
     program: Program {
@@ -444,7 +422,6 @@ pub(crate) const IMAGE_INLINE_TOOL_STREAMED: Cell = Cell {
 };
 /// The first run answers the image; the second run, a text prompt about
 /// it, starts from the first run's committed history.
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_INLINE_FOLLOWUP: Cell = Cell {
     name: "image_inline_followup",
     program: Program {
@@ -459,7 +436,6 @@ pub(crate) const IMAGE_INLINE_FOLLOWUP: Cell = Cell {
     families: CC,
     ..CELL
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_URL_TEXT_UNARY: Cell = Cell {
     name: "image_url_text_unary",
     image: Some(ImageCell {
@@ -468,7 +444,6 @@ pub(crate) const IMAGE_URL_TEXT_UNARY: Cell = Cell {
     }),
     ..IMAGE_INLINE_TEXT_UNARY
 };
-#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 pub(crate) const IMAGE_URL_TOOL_UNARY: Cell = Cell {
     name: "image_url_tool_unary",
     image: Some(ImageCell {
@@ -528,7 +503,6 @@ pub(crate) const ENDINGS_ANSWER_TURN_STOP: Cell = Cell {
     },
     ..ADD
 };
-#[allow(dead_code)] // the Gemini wire reuses the breadth recording
 pub(crate) const ENDINGS_TEXT_DELTA_STOP: Cell = Cell {
     name: "endings_text_delta_stop",
     program: Program {
@@ -1290,33 +1264,3 @@ pub(crate) const RESUME_TOOL_TURN: Cell = Cell {
 };
 
 // -- Matrix N's shapes, for the cells that reuse a breadth recording ----------
-
-/// The breadth matrix's text-delta stop (`corpus_breadth/text_delta_stop`):
-/// a shorter essay, no settled observer, the run's default budget (the
-/// OpenAI Responses and Gemini wires reuse that recording).
-#[allow(dead_code)]
-pub(crate) const BREADTH_TEXT_DELTA_STOP: Cell = Cell {
-    name: "endings_text_delta_stop",
-    program: Program {
-        prompt: "Write four paragraphs about the history of the Rust programming language.",
-        hooks: &[Hook::StopOnTextDelta],
-        ending: Ending::Cancelled(STOP_ON_TEXT_DELTA),
-        streamed: true,
-        ..BASIC
-    },
-    events: true,
-    ..TEXT
-};
-/// The breadth matrix's cancelled dispatch (`corpus_breadth/tool_dispatch_cancelled`):
-/// no settled observer (the same two wires reuse it).
-#[allow(dead_code)]
-pub(crate) const BREADTH_TOOL_DISPATCH_CANCELLED: Cell = Cell {
-    name: "endings_tool_dispatch_cancelled",
-    program: Program {
-        hooks: &[Hook::CancelAddDispatch],
-        ending: Ending::Cancelled(CANCEL_ADD_DISPATCH),
-        ..TOOLS
-    },
-    families: C,
-    ..ADD
-};
