@@ -30,3 +30,23 @@ pub use tools::{
     MockObjectOutputTool, MockOperationArgs, MockRequestId, MockSubtractTool, MockToolError,
     MockToolIndex, SessionId, mock_math_toolset,
 };
+
+/// Drive a stream to completion, panicking on any stream error, and return
+/// its final response.
+#[cfg(test)]
+pub(crate) async fn drive_to_final_response(
+    mut stream: impl futures::Stream<
+        Item = Result<crate::agent::MultiTurnStreamItem, crate::completion::PromptError>,
+    > + Unpin,
+) -> crate::agent::PromptResponse {
+    use futures::StreamExt;
+    let mut final_response = None;
+    while let Some(item) = stream.next().await {
+        if let crate::agent::MultiTurnStreamItem::FinalResponse(response) =
+            item.unwrap_or_else(|err| panic!("stream item errored: {err}"))
+        {
+            final_response = Some(response);
+        }
+    }
+    final_response.expect("stream should yield a final response")
+}

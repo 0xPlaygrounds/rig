@@ -24,7 +24,7 @@ use crate::run::OutputMode;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,
-    MockSubtractTool, MockToolError, MockTurn,
+    MockSubtractTool, MockToolError, MockTurn, drive_to_final_response,
 };
 use crate::tool::{
     Tool, ToolContext, ToolExecutionError,
@@ -436,9 +436,7 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
         .prompt(Message::user("add 2 and 3"))
         .max_turns(3)
         .stream();
-    while let Some(item) = stream.next().await {
-        item.expect("stream item");
-    }
+    drive_to_final_response(&mut stream).await;
 
     let turns = hook.turns.lock().expect("turn identities").clone();
     let request_ids: Vec<_> = turns
@@ -680,7 +678,6 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
 mod structured_tool_results {
     use std::sync::{Arc, Mutex};
 
-    use futures::StreamExt;
     use serde_json::json;
 
     use crate::agent::{
@@ -689,7 +686,7 @@ mod structured_tool_results {
     };
     use crate::test_utils::{
         MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool, MockHandledFailureTool,
-        MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
+        MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn, drive_to_final_response,
     };
     use crate::tool::{ToolErrorKind, ToolResult};
 
@@ -1052,11 +1049,7 @@ mod structured_tool_results {
                     .prompt("go")
                     .max_turns(3)
                     .stream();
-                while let Some(item) = stream.next().await {
-                    if let Err(err) = item {
-                        panic!("stream item errored: {err}");
-                    }
-                }
+                drive_to_final_response(&mut stream).await;
             } else {
                 AgentBuilder::new(model_one_tool_then_text("add"))
                     .tool(MockAddTool)
@@ -1167,11 +1160,7 @@ mod structured_tool_results {
                     .prompt("go")
                     .max_turns(3)
                     .stream();
-                while let Some(item) = stream.next().await {
-                    if let Err(err) = item {
-                        panic!("stream item errored: {err}");
-                    }
-                }
+                drive_to_final_response(&mut stream).await;
             } else {
                 AgentBuilder::new(model_one_tool_then_text("add"))
                     .tool(MockAddTool)
@@ -1267,11 +1256,7 @@ mod structured_tool_results {
                     .prompt("go")
                     .max_turns(3)
                     .stream();
-                while let Some(item) = stream.next().await {
-                    if let Err(error) = item {
-                        panic!("stream item errored: {error}");
-                    }
-                }
+                drive_to_final_response(&mut stream).await;
             } else {
                 AgentBuilder::new(model_one_tool_then_text("with_meta"))
                     .tool(MockMetadataTool)
@@ -1365,11 +1350,7 @@ mod structured_tool_results {
             .prompt("go")
             .max_turns(3)
             .stream();
-        while let Some(item) = stream.next().await {
-            if let Err(err) = item {
-                panic!("stream item errored: {err}");
-            }
-        }
+        drive_to_final_response(&mut stream).await;
 
         assert_eq!(blocking.outcomes(), vec!["error:timeout".to_string()]);
         assert_eq!(blocking.outcomes(), streaming.outcomes());
@@ -1882,22 +1863,6 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
         })
         .collect();
     assert_eq!(answers, ["2", "4"], "results stay with their calls");
-}
-
-/// Drive a stream to completion, panicking on any stream error, and return
-/// its final response.
-async fn drive_to_final_response(
-    mut stream: crate::agent::streaming::StreamingResult,
-) -> crate::agent::PromptResponse {
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(resp) =
-            item.unwrap_or_else(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    final_response.expect("stream should yield a final response")
 }
 
 /// Tool-result ids, in history order, across a run's message history.
@@ -2721,15 +2686,7 @@ async fn run_streaming_scenario(
         .add_hook(hook.clone())
         .add_hook(extra)
         .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("streaming scenario should yield a final response");
+    let final_response = drive_to_final_response(&mut stream).await;
     ParityOutcome {
         output: final_response.output().to_string(),
         messages: final_response.messages().to_vec(),
@@ -2875,8 +2832,7 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     let blocking_messages = canonical_history(&blocking.messages);
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(canonical_history(&streaming.messages))
-            .expect("serialize streaming"),
+        serde_json::to_value(canonical_history(&streaming.messages)).expect("serialize streaming"),
     );
     // A reason dropped or altered on both paths would still pass the equality.
     assert!(
@@ -3483,9 +3439,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
         .build()
         .prompt("go")
         .stream();
-    while let Some(item) = stream.next().await {
-        let _ = item.map_err(|err| panic!("stream item errored: {err}"));
-    }
+    drive_to_final_response(&mut stream).await;
     assert_docs(streaming_probe.requests().first().expect("one request"));
 }
 
@@ -3554,9 +3508,7 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
             Message::user("latest history query"),
         ])
         .stream();
-    while let Some(item) = stream.next().await {
-        item.expect("streaming dynamic-context run should succeed");
-    }
+    drive_to_final_response(&mut stream).await;
     assert_eq!(
         *streaming_queries.lock().expect("streaming queries"),
         vec![("latest history query".to_string(), 3)]
@@ -3853,9 +3805,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .prompt("add 2 and 3")
         .max_turns(3)
         .stream();
-    while let Some(item) = stream.next().await {
-        let _ = item.map_err(|err| panic!("stream item errored: {err}"));
-    }
+    drive_to_final_response(&mut stream).await;
     assert_eq!(
         stream_recorder.tool_results(),
         vec!["B(A(140))".to_string()],

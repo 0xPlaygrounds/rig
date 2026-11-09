@@ -14,7 +14,7 @@ use crate::run::{AgentRun, AgentRunStep};
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     CapturedSpan, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
-    MockSubtractTool, MockToolError, SessionId, TraceCapture, mock_final,
+    MockSubtractTool, MockToolError, SessionId, TraceCapture, drive_to_final_response, mock_final,
 };
 use crate::tool::{Tool, ToolContext};
 use futures::{StreamExt, TryStreamExt};
@@ -1380,13 +1380,7 @@ async fn tool_context_reaches_tool_through_streaming_loop() {
         .max_turns(3)
         .stream();
 
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-            Ok(_) => {}
-        }
-    }
+    drive_to_final_response(&mut stream).await;
 
     assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
 }
@@ -1827,13 +1821,7 @@ async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history(
         .history(Vec::<Message>::new())
         .stream();
 
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Ok(_) => {}
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-        }
-    }
+    drive_to_final_response(&mut stream).await;
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
@@ -2025,13 +2013,7 @@ async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
         .max_invalid_tool_call_retries(1)
         .stream();
 
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-            Ok(_) => {}
-            Err(err) => panic!("unexpected streaming error: {err:?}"),
-        }
-    }
+    drive_to_final_response(&mut stream).await;
 
     assert_eq!(
         text_hook.observed(),
