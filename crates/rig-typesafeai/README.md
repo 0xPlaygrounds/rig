@@ -89,7 +89,8 @@ the definitions and evaluation validates the provider's answers.
 `Jev::from_env()` reads `JEV_TOKEN` without loading a secrets file. Its default
 model is `jev-latest`; `JevConfig::model(...)` selects another provider model
 identifier. Configure timeouts and retry middleware on the Rig transport and
-pass it with `JevConfig::connect`.
+pass it with `JevConfig::connect`. A serialized `JevConfig` stores no
+credential; set it again with `JevConfig::with_token(...)` after loading.
 
 To reach Jev through OpenRouter, pass an OpenRouter key and set the endpoint
 to `https://openrouter.ai/api/v1/systemone`. `JevConfig::provider(...)` then
