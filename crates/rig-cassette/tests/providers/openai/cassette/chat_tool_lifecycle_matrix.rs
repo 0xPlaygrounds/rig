@@ -32,132 +32,29 @@
 //! |---|---|
 //! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/{blocking_gpt4o_zero_agent,streaming_gpt4o_nested_model}.yaml` |
 
-use rig::streaming::Item;
-use std::sync::{Arc, Mutex};
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, FinishReason};
-use rig::streaming::StreamEvent;
-use rig::tool::Tool;
-use serde::{Deserialize, Serialize};
+use rig::completion::{AssistantContent, CompletionRequest};
+use rig::streaming::{Item, StreamEvent};
 use serde_json::{Value, json};
 
+use crate::matrix::tool_lifecycle_matrix::{
+    Cell, LifecycleWire, Observation, PREAMBLE, Shape, Shape::*, Surface, Surface::*, Transport,
+    Transport::*, cell, expected_names, prompt, tool_definition,
+};
+
 use super::super::support::{OpenAiCassette, with_openai_cassette_result};
-use rig::completion::CompletionRequest;
 
-pub(super) const PREAMBLE: &str =
-    "Follow the user's tool-call instruction exactly. Do not answer in prose.";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Transport {
-    Blocking,
-    Streaming,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Model {
-    Gpt4oMini,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Shape {
-    Zero,
-    Nested,
-    Parallel,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Surface {
-    Model,
-    Agent,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Cell {
-    pub(super) transport: Transport,
-    pub(super) model: Model,
-    pub(super) shape: Shape,
-    pub(super) surface: Surface,
-}
-
-#[derive(Debug, Default)]
-pub(super) struct Observation {
-    pub(super) finish_reason: Option<FinishReason>,
-    pub(super) names: Vec<String>,
-    pub(super) ids: Vec<String>,
-    pub(super) arguments: Vec<Value>,
-    pub(super) errors: Vec<String>,
-    pub(super) invocations: Vec<String>,
-}
-
-type SharedObservation = Arc<Mutex<Option<Observation>>>;
-
-pub(super) fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> Cell {
-    Cell {
-        transport,
-        model,
-        shape,
-        surface,
-    }
-}
-
-pub(super) fn model_name(model: Model) -> &'static str {
-    match model {
-        Model::Gpt4oMini => "gpt-4o-mini",
-    }
-}
-
-pub(super) fn prompt(shape: Shape) -> &'static str {
-    match shape {
-        Shape::Zero => "Call ping exactly once with no arguments.",
-        Shape::Nested => {
-            "Call record_payload exactly once with label café 東京, values [3, 5, 8], and meta.active true."
-        }
-        Shape::Parallel => {
-            "Call alpha with value red and beta with value blue in the same turn, in that order."
-        }
-    }
-}
-
-pub(super) fn expected_names(shape: Shape) -> &'static [&'static str] {
-    match shape {
-        Shape::Zero => &["ping"],
-        Shape::Nested => &["record_payload"],
-        Shape::Parallel => &["alpha", "beta"],
-    }
-}
-
-pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
-    let parameters = match name {
-        "ping" => json!({ "type": "object", "properties": {}, "additionalProperties": false }),
-        "record_payload" => json!({
-            "type": "object",
-            "properties": {
-                "label": { "type": "string" },
-                "values": { "type": "array", "items": { "type": "integer" } },
-                "meta": { "type": "object", "properties": { "active": { "type": "boolean" } }, "required": ["active"] }
-            },
-            "required": ["label", "values", "meta"]
-        }),
-        "alpha" | "beta" => {
-            json!({ "type": "object", "properties": { "value": { "type": "string" } }, "required": ["value"] })
-        }
-        other => panic!("unknown matrix tool {other}"),
-    };
-    rig::completion::ToolDefinition {
-        name: rig_core::message::ToolName::new(name).expect("tool name"),
-        description: format!("Matrix tool {name}"),
-        parameters,
-        annotations: Default::default(),
-    }
-}
+const WIRE: LifecycleWire = LifecycleWire {
+    provider: "openai",
+    tool_choice: "required",
+};
 
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = CompletionRequest::new(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
         .parallel_tool_calls(cell.shape == Shape::Parallel)
-        .additional_params(json!({ "tool_choice": "required" }))
+        .additional_params(json!({ "tool_choice": WIRE.tool_choice }))
         .max_tokens(128);
     for name in expected_names(cell.shape) {
         builder = builder.tool(tool_definition(name));
@@ -187,77 +84,8 @@ fn normalized_calls(choice: &[AssistantContent]) -> (Vec<String>, Vec<String>, V
     )
 }
 
-type InvocationLog = Arc<Mutex<Vec<String>>>;
-
-#[derive(Debug, thiserror::Error)]
-#[error("matrix tool failed")]
-struct MatrixToolError;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct EmptyArgs {}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct PayloadArgs {
-    label: String,
-    values: Vec<i64>,
-    meta: PayloadMeta,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct PayloadMeta {
-    active: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ValueArgs {
-    value: String,
-}
-
-fn note(log: &InvocationLog, name: &str) {
-    log.lock()
-        .expect("invocation log poisoned")
-        .push(name.to_owned());
-}
-
-macro_rules! impl_matrix_tool {
-    ($ty:ident, $name:literal, $args:ty) => {
-        #[derive(Clone)]
-        struct $ty {
-            log: InvocationLog,
-        }
-
-        impl Tool for $ty {
-            const NAME: &'static str = $name;
-            type Error = MatrixToolError;
-            type Args = $args;
-            type Output = String;
-
-            fn description(&self) -> String {
-                format!("Matrix tool {}", Self::NAME)
-            }
-            fn parameters(&self) -> Value {
-                tool_definition(Self::NAME).parameters
-            }
-
-            async fn call(
-                &self,
-                _context: &mut rig::tool::ToolContext,
-                _args: Self::Args,
-            ) -> std::result::Result<Self::Output, Self::Error> {
-                note(&self.log, Self::NAME);
-                Ok(Self::NAME.to_owned())
-            }
-        }
-    };
-}
-
-impl_matrix_tool!(Ping, "ping", EmptyArgs);
-impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
-impl_matrix_tool!(Alpha, "alpha", ValueArgs);
-impl_matrix_tool!(Beta, "beta", ValueArgs);
-
 async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
-    let model = client.openai.chat(model_name(cell.model));
+    let model = client.openai.chat(cell.model);
     match cell.transport {
         // The provider-native reply and the normalized view are one call now:
         // the driver decodes the native response and hands back the
@@ -315,304 +143,21 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
-    let invocations = InvocationLog::default();
-    let builder = rig::AgentBuilder::new(client.chat.completion(model_name(cell.model)))
-        .preamble(PREAMBLE)
-        .parallel_tool_calls(cell.shape == Shape::Parallel)
-        .additional_params(json!({ "tool_choice": "required" }))
-        .max_tokens(128)
-        .default_max_turns(1);
-    let agent = match cell.shape {
-        Shape::Zero => builder
-            .tool(Ping {
-                log: Arc::clone(&invocations),
-            })
-            .build(),
-        Shape::Nested => builder
-            .tool(RecordPayload {
-                log: Arc::clone(&invocations),
-            })
-            .build(),
-        Shape::Parallel => builder
-            .tool(Alpha {
-                log: Arc::clone(&invocations),
-            })
-            .tool(Beta {
-                log: Arc::clone(&invocations),
-            })
-            .build(),
-    };
-    let mut errors = Vec::new();
-    match cell.transport {
-        Transport::Blocking => {
-            if let Err(error) = agent.prompt(prompt(cell.shape)).await {
-                errors.push(error.to_string());
-            }
-        }
-        Transport::Streaming => {
-            let mut stream = agent
-                .prompt(prompt(cell.shape))
-                .history(Vec::<rig::completion::Message>::new())
-                .max_turns(1)
-                .stream();
-            errors = crate::support::collect_stream_observation(&mut stream)
-                .await
-                .errors;
-        }
-    }
-    Observation {
-        errors,
-        invocations: invocations.lock().expect("invocation log poisoned").clone(),
-        ..Default::default()
-    }
-}
-
-async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let observation = match cell.surface {
-        Surface::Model => run_model(client, cell).await,
-        Surface::Agent => run_agent(client, cell).await,
-    };
-    *observed.lock().expect("observation mutex poisoned") = Some(observation);
-    Ok(())
-}
-
-fn recorded_request(scenario: &str) -> Value {
-    crate::cassettes::recorded_json_request("openai", scenario)
-}
-
-fn recorded_response(scenario: &str) -> Value {
-    crate::cassettes::recorded_json_response("openai", scenario)
-}
-
-fn recorded_chunks(scenario: &str) -> Vec<Value> {
-    crate::cassettes::recorded_sse_json_frames("openai", scenario)
-}
-
-#[derive(Debug)]
-struct RecordedCall {
-    id: String,
-    name: String,
-    arguments: String,
-}
-
-fn recorded_finish_and_calls(scenario: &str, transport: Transport) -> (String, Vec<RecordedCall>) {
-    match transport {
-        Transport::Blocking => {
-            let response = recorded_response(scenario);
-            let finish = response["choices"][0]["finish_reason"]
-                .as_str()
-                .unwrap_or_default()
-                .to_owned();
-            let calls = response["choices"][0]["message"]["tool_calls"]
-                .as_array()
-                .map(|calls| {
-                    calls
-                        .iter()
-                        .map(|call| RecordedCall {
-                            id: call["id"].as_str().unwrap_or_default().to_owned(),
-                            name: call["function"]["name"]
-                                .as_str()
-                                .unwrap_or_default()
-                                .to_owned(),
-                            arguments: call["function"]["arguments"]
-                                .as_str()
-                                .unwrap_or_default()
-                                .to_owned(),
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            (finish, calls)
-        }
-        Transport::Streaming => {
-            let mut finish = String::new();
-            let mut calls = Vec::<RecordedCall>::new();
-            for chunk in recorded_chunks(scenario) {
-                for choice in chunk["choices"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter(|choice| choice["index"].as_u64() == Some(0))
-                {
-                    if let Some(reason) = choice["finish_reason"].as_str() {
-                        finish = reason.to_owned();
-                    }
-                    for call in choice["delta"]["tool_calls"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                    {
-                        let index = call["index"].as_u64().unwrap_or(0) as usize;
-                        while calls.len() <= index {
-                            calls.push(RecordedCall {
-                                id: String::new(),
-                                name: String::new(),
-                                arguments: String::new(),
-                            });
-                        }
-                        if let Some(id) = call["id"].as_str().filter(|id| !id.is_empty()) {
-                            calls[index].id = id.to_owned();
-                        }
-                        if let Some(name) = call["function"]["name"]
-                            .as_str()
-                            .filter(|name| !name.is_empty())
-                        {
-                            calls[index].name = name.to_owned();
-                        }
-                        if let Some(fragment) = call["function"]["arguments"].as_str() {
-                            calls[index].arguments.push_str(fragment);
-                        }
-                    }
-                }
-            }
-            (finish, calls)
-        }
-    }
-}
-
-pub(super) fn expected_arguments(shape: Shape) -> Vec<Value> {
-    match shape {
-        Shape::Zero => vec![json!({})],
-        Shape::Nested => {
-            vec![json!({ "label": "café 東京", "values": [3, 5, 8], "meta": { "active": true } })]
-        }
-        Shape::Parallel => vec![json!({ "value": "red" }), json!({ "value": "blue" })],
-    }
-}
-
-pub(super) fn assert_nonempty_distinct_ids(scenario: &str, ids: &[String]) {
-    assert!(
-        ids.iter().all(|id| !id.is_empty()),
-        "{scenario}: every call has an id: {ids:?}"
-    );
-    assert_eq!(
-        ids.iter().collect::<std::collections::BTreeSet<_>>().len(),
-        ids.len(),
-        "{scenario}: call ids are distinct"
-    );
-}
-
-fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
-    let request = recorded_request(scenario);
-    assert_eq!(
-        request["model"],
-        model_name(cell.model),
-        "{scenario}: model"
-    );
-    assert_eq!(request["max_tokens"], 128, "{scenario}: cap");
-    assert!(
-        request.get("max_completion_tokens").is_none(),
-        "{scenario}: these legacy Chat Completions models use max_tokens"
-    );
-    assert_eq!(
-        request["tool_choice"], "required",
-        "{scenario}: forced tool"
-    );
-    assert_eq!(
-        request["tools"].as_array().map(Vec::len),
-        Some(expected_names(cell.shape).len()),
-        "{scenario}: tool schema"
-    );
-    assert_eq!(
-        request["parallel_tool_calls"],
-        cell.shape == Shape::Parallel,
-        "{scenario}: parallel policy"
-    );
-    assert_eq!(
-        request["stream"].as_bool().unwrap_or(false),
-        cell.transport == Transport::Streaming,
-        "{scenario}: transport"
-    );
-
-    let (finish, wire_calls) = recorded_finish_and_calls(scenario, cell.transport);
-    assert_eq!(finish, "tool_calls", "{scenario}: tool terminal");
-    assert_eq!(
-        wire_calls
-            .iter()
-            .map(|call| call.name.as_str())
-            .collect::<Vec<_>>(),
-        expected_names(cell.shape),
-        "{scenario}: wire call order"
-    );
-    assert_nonempty_distinct_ids(
-        scenario,
-        &wire_calls
-            .iter()
-            .map(|call| call.id.clone())
-            .collect::<Vec<_>>(),
-    );
-    let wire_arguments = wire_calls
-        .iter()
-        .map(|call| {
-            serde_json::from_str::<Value>(&call.arguments)
-                .with_context(|| format!("{scenario}: parse {} arguments", call.name))
-                .expect("recorded tool JSON")
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        wire_arguments,
-        expected_arguments(cell.shape),
-        "{scenario}: exact wire arguments"
-    );
-
-    let observation = observed
-        .lock()
-        .expect("observation mutex poisoned")
-        .take()
-        .expect("cell observation");
+async fn run_cell(client: OpenAiCassette, cell: Cell) -> Observation {
     match cell.surface {
-        Surface::Model => {
-            assert!(
-                observation.errors.is_empty(),
-                "{scenario}: {:?}",
-                observation.errors
-            );
-            assert_eq!(
-                observation.finish_reason,
-                Some(FinishReason::ToolCalls),
-                "{scenario}"
-            );
-            assert_eq!(
-                observation
-                    .names
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>(),
-                expected_names(cell.shape),
-                "{scenario}: normalized call order"
-            );
-            assert_nonempty_distinct_ids(scenario, &observation.ids);
-            assert_eq!(
-                observation.arguments,
-                expected_arguments(cell.shape),
-                "{scenario}: normalized arguments"
-            );
-        }
+        Surface::Model => run_model(client, cell).await,
         Surface::Agent => {
-            assert_eq!(
-                observation
-                    .invocations
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>(),
-                expected_names(cell.shape),
-                "{scenario}: exact-once invocation order"
-            );
-            assert!(
-                observation
-                    .errors
-                    .iter()
-                    .all(|error| !error.contains("ProviderResponseError")),
-                "{scenario}: lifecycle reaches agent loop: {:?}",
-                observation.errors
-            );
+            WIRE.run_agent(
+                rig::AgentBuilder::new(client.chat.completion(cell.model)),
+                cell,
+            )
+            .await
         }
     }
 }
 
-pub(super) async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation) {
-    assert_cell(scenario, cell, observed);
+fn assert_cell(scenario: &str, cell: Cell, observation: Observation) {
+    WIRE.assert_cell(scenario, cell, observation);
 }
 
 // The literal wrapper calls below are intentionally explicit: cassette safety
@@ -621,7 +166,7 @@ pub(super) async fn execute(scenario: &'static str, cell: Cell, observed: Shared
 crate::matrix::case_matrix! {
     wrapper: with_openai_cassette_result, family: tool_lifecycle_matrix_case;
     # [tokio :: test]
-    blocking_gpt4o_zero_agent: ("chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Zero , Surface :: Agent ,));
+    blocking_gpt4o_zero_agent: ("chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent", configured, cell(Blocking, "gpt-4o-mini", Zero, Agent));
     # [tokio :: test]
-    streaming_gpt4o_nested_model: ("chat_tool_lifecycle_matrix/streaming_gpt4o_nested_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Nested , Surface :: Model ,));
+    streaming_gpt4o_nested_model: ("chat_tool_lifecycle_matrix/streaming_gpt4o_nested_model", configured, cell(Streaming, "gpt-4o-mini", Nested, Model));
 }

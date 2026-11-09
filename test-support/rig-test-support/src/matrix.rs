@@ -53,7 +53,7 @@ mod turn_termination_matrix;
 pub use turn_termination_matrix::turn_termination_matrix_case;
 
 #[path = "matrix/tool_lifecycle_matrix.rs"]
-mod tool_lifecycle_matrix;
+pub mod tool_lifecycle_matrix;
 pub use tool_lifecycle_matrix::tool_lifecycle_matrix_case;
 
 #[path = "matrix/streaming_logprobs_matrix.rs"]
