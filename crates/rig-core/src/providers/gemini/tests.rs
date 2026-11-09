@@ -42,38 +42,10 @@ fn a_serialized_config_carries_no_key_material() {
     );
 }
 
-/// A built request is what a host logs when it debugs a call, so its `Debug`
-/// must hide the key the header still sends. An unusable key stays an error
-/// from the builder.
+/// An unusable key stays an error from the request builder, not a request
+/// without its key.
 #[test]
-fn a_debug_printed_request_hides_the_key_it_sends() {
-    const KEY: &str = "AIzaSyNOTAREALKEY-0123456789";
-    let gemini = GeminiConfig::new(KEY);
-    let probe = || crate::completion::CompletionRequest::new("probe");
-    let requests = [
-        gemini
-            .completion("gemini-3.8-flash")
-            .encode(probe(), crate::wire::Mode::Unary)
-            .expect("the request encodes")
-            .request,
-        gemini
-            .interactions("gemini-3.8-flash")
-            .encode(probe(), crate::wire::Mode::Unary)
-            .expect("the request encodes")
-            .request,
-    ];
-    for request in requests {
-        let sent = request
-            .headers()
-            .get(GeminiConfig::API_KEY_HEADER)
-            .expect("the request carries the key header");
-        assert_eq!(sent.as_bytes(), KEY.as_bytes(), "the header lost the key");
-        assert!(
-            !format!("{request:?}").contains(KEY),
-            "the debug-printed request leaked the key"
-        );
-    }
-
+fn an_unusable_key_fails_the_request() {
     let unusable = GeminiConfig::new("not\na header value")
         .request(http::Method::GET, "/v1beta/models")
         .body(());

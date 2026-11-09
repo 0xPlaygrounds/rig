@@ -505,23 +505,26 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
 }
 
 /// A built request is what a host logs when it debugs a call, so its `Debug`
-/// must hide the key each credential header still sends. Anthropic's wire
-/// builds its own key headers and is checked alongside OpenAI's dialects.
+/// must hide the key each credential header still sends, on every wire that
+/// builds its own key header. Copilot is checked on both envelope routes.
 #[test]
 fn a_debug_printed_request_hides_the_key_it_sends() {
     use crate::completion::CompletionRequest;
     use crate::providers::anthropic::wire::{AnthropicConfig, OLLAMA as ANTHROPIC_OLLAMA};
+    use crate::providers::{cohere, copilot, gemini, ollama, voyageai};
     use crate::wire::{Mode, Wire};
 
     const KEY: &str = "sk-NOTAREALKEY-0123456789";
     let bearer = format!("Bearer {KEY}");
     let probe = || CompletionRequest::new("probe").max_tokens(16);
+    let texts = || vec!["probe".to_owned()];
     let openai = |config: OpenAIConfig| config.completion("gpt-5").encode(probe(), Mode::Unary);
     let anthropic = |config: AnthropicConfig| {
         config
             .completion("claude-haiku-4-5")
             .encode(probe(), Mode::Unary)
     };
+    let gemini = gemini::GeminiConfig::new(KEY);
     let built = [
         (
             openai(OpenAIConfig::new(KEY)).map(|e| e.request),
@@ -548,71 +551,75 @@ fn a_debug_printed_request_hides_the_key_it_sends() {
             "authorization",
             bearer.as_str(),
         ),
+        (
+            gemini
+                .completion("gemini-3.8-flash")
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "x-goog-api-key",
+            KEY,
+        ),
+        (
+            gemini
+                .interactions("gemini-3.8-flash")
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "x-goog-api-key",
+            KEY,
+        ),
+        (
+            OpenAIConfig::with_key(&copilot::DIALECT, KEY)
+                .completion(copilot::GPT_4O)
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            OpenAIConfig::with_key(&copilot::DIALECT, KEY)
+                .embedding(copilot::TEXT_EMBEDDING_3_SMALL, None)
+                .encode(texts(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            cohere::CohereConfig::new(KEY)
+                .embedding(cohere::EMBED_V4, None)
+                .encode(texts(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            ollama::OllamaConfig::new()
+                .with_api_key(KEY)
+                .native_completion("qwen3:4b")
+                .encode(probe(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
+        (
+            voyageai::VoyageAiConfig::new(KEY)
+                .embedding("voyage-3.5", None)
+                .encode(texts(), Mode::Unary)
+                .map(|e| e.request),
+            "authorization",
+            bearer.as_str(),
+        ),
     ];
     for (request, header, value) in built {
         let request = request.unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             request.headers().get(header).map(|v| v.as_bytes()),
             Some(value.as_bytes()),
-            "{header} lost the key"
-        );
-        assert!(
-            !format!("{request:?}").contains(KEY),
-            "the debug-printed request leaked the key in {header}"
-        );
-    }
-}
-
-/// Copilot, native Cohere embeddings, native Ollama and VoyageAI build their
-/// own key headers, so a debug-printed request from each must hide the key.
-/// Copilot is checked on both envelope routes: completion and modality.
-#[test]
-fn a_debug_printed_request_from_a_native_key_header_hides_the_key() {
-    use crate::completion::CompletionRequest;
-    use crate::providers::{cohere, copilot, ollama, voyageai};
-    use crate::wire::{Body, Mode, Wire};
-
-    const KEY: &str = "sk-NOTAREALKEY-0123456789";
-    let bearer = format!("Bearer {KEY}");
-    let probe = || CompletionRequest::new("probe").max_tokens(16);
-    let texts = || vec!["probe".to_owned()];
-    let built: [Result<http::Request<Body>, crate::error::EncodeError>; 5] = [
-        OpenAIConfig::with_key(&copilot::DIALECT, KEY)
-            .completion(copilot::GPT_4O)
-            .encode(probe(), Mode::Unary)
-            .map(|e| e.request),
-        OpenAIConfig::with_key(&copilot::DIALECT, KEY)
-            .embedding(copilot::TEXT_EMBEDDING_3_SMALL, None)
-            .encode(texts(), Mode::Unary)
-            .map(|e| e.request),
-        cohere::CohereConfig::new(KEY)
-            .embedding(cohere::EMBED_V4, None)
-            .encode(texts(), Mode::Unary)
-            .map(|e| e.request),
-        ollama::OllamaConfig::new()
-            .with_api_key(KEY)
-            .native_completion("qwen3:4b")
-            .encode(probe(), Mode::Unary)
-            .map(|e| e.request),
-        voyageai::VoyageAiConfig::new(KEY)
-            .embedding("voyage-3.5", None)
-            .encode(texts(), Mode::Unary)
-            .map(|e| e.request),
-    ];
-    for request in built {
-        let request = request.unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(
-            request
-                .headers()
-                .get(http::header::AUTHORIZATION)
-                .map(|v| v.as_bytes()),
-            Some(bearer.as_bytes()),
-            "{} lost the key",
+            "{} lost the key in {header}",
             request.uri()
         );
         assert!(
             !format!("{request:?}").contains(KEY),
-            "the debug-printed request to {} leaked the key",
+            "the debug-printed request to {} leaked the key in {header}",
             request.uri()
         );
     }
