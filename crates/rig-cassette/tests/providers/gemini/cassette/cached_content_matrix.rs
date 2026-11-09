@@ -329,7 +329,7 @@ fn every_create_combination_serializes_as_expected() {
 async fn an_agent_with_tools_cannot_read_from_a_cache() {
     use rig::agent::AgentBuilder;
 
-    use super::super::tools_support::CountingPing;
+    use super::super::tools_support::Ping;
 
     let client = GeminiModels::new(
         GeminiConfig::new("not-a-real-key").with_base_url("http://127.0.0.1:1"),
@@ -341,7 +341,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
             .completion(CACHE_MODEL)
             .map_wire(|wire| wire.with_cached_content("cachedContents/agent-guard")),
     )
-    .tool(CountingPing::default())
+    .tool(Ping)
     .build();
 
     let message = agent
