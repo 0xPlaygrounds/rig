@@ -30,7 +30,7 @@ use rig_memory::{Repair, SESSION, Session, SessionError, Store, Writer};
 
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
 use super::restore::SavedKeys;
-use super::{SaveSystems, WriteLogs};
+use super::{SaveSystems, StartupSystems, WriteLogs};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved`, as `#[reflect(Component, Saved)]` or
@@ -373,7 +373,10 @@ pub struct SessionLogPlugin;
 impl Plugin for SessionLogPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, super::restore::restore_session)
-            .add_systems(Startup, super::restore::reconcile)
+            .add_systems(
+                Startup,
+                super::restore::reconcile.in_set(StartupSystems::Reconcile),
+            )
             .add_systems(Last, write_logs.in_set(WriteLogs))
             .add_observer(open_child_log)
             .init_resource::<SavedKeys>();
