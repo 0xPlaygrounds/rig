@@ -7,7 +7,7 @@
 //! fixture needs and a log of live traffic must not have. New captures retain
 //! only size and content type when a complete body cannot be inspected.
 
-use rig_core::http_client::framing::{SseField, SseFramer};
+use rig_core::http_client::framing::{SseBatch, SseField, SseFramer};
 use rig_core::http_client::{
     Bytes, HeaderMap, MultipartForm,
     multipart::{Part, PartContent},
@@ -2734,40 +2734,25 @@ pub(crate) fn parse_sse_chunks(
     let mut framer = SseFramer::new();
     let mut lines = Vec::new();
     let mut parsed = BTreeMap::new();
+    let mut absorb = |batch: SseBatch| {
+        lines.extend(batch.lines);
+        parsed.extend(
+            batch
+                .events
+                .into_iter()
+                .map(|frame| (frame.end, frame.event)),
+        );
+    };
     let mut start = 0;
-    for end in chunk_ends {
+    for end in chunk_ends.into_iter().chain(std::iter::once(text.len())) {
         let end = end.min(text.len());
-        if end < start {
+        if end <= start {
             continue;
         }
-        let batch = framer.push_recording(text.as_bytes().get(start..end).unwrap_or_default());
-        lines.extend(batch.lines);
-        parsed.extend(
-            batch
-                .events
-                .into_iter()
-                .map(|frame| (frame.end, frame.event)),
-        );
+        absorb(framer.push_recording(text.as_bytes().get(start..end).unwrap_or_default()));
         start = end;
     }
-    if start < text.len() {
-        let batch = framer.push_recording(text.as_bytes().get(start..).unwrap_or_default());
-        lines.extend(batch.lines);
-        parsed.extend(
-            batch
-                .events
-                .into_iter()
-                .map(|frame| (frame.end, frame.event)),
-        );
-    }
-    let batch = framer.finish_recording();
-    lines.extend(batch.lines);
-    parsed.extend(
-        batch
-            .events
-            .into_iter()
-            .map(|frame| (frame.end, frame.event)),
-    );
+    absorb(framer.finish_recording());
     if !content_type_hint
         && !lines
             .iter()
