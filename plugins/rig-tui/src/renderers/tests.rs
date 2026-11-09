@@ -240,16 +240,23 @@ fn note_requests(batch: Res<RenderBatch>, mut seen: ResMut<RequestsSeen>) {
 
 #[test]
 fn unchanged_messages_do_not_enter_the_render_schedule_again() {
-    use rig_core::completion::Message;
+    use rig_core::completion::{AssistantContent, AssistantMessage, Message};
     use rig_ecs::agent::Conversation;
 
+    let Ok(name) = ToolName::new("probe") else {
+        return;
+    };
+    let call = |id: String| {
+        let call = AssistantContent::tool_call(id, name.clone(), json!({}));
+        Message::Assistant(AssistantMessage::new(vec![call]))
+    };
     let (mut app, agent) = crate::tests::view_app();
     app.insert_resource(crate::TuiTestScreen::new(80, 24))
         .init_resource::<RequestsSeen>()
         .add_systems(TranscriptRender, note_requests.in_set(RenderSystems::Edit));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         for n in 0..500 {
-            conversation.push(Message::assistant(format!("message {n}")));
+            conversation.push(call(format!("c{n}")));
         }
     }
     app.update();
@@ -266,7 +273,7 @@ fn unchanged_messages_do_not_enter_the_render_schedule_again() {
     app.update();
     assert!(app.world().resource::<RequestsSeen>().0.is_empty());
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(Message::assistant("new tail"));
+        conversation.push(call("tail".to_owned()));
     }
     app.update();
     let added: usize = app

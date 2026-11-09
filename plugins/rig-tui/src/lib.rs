@@ -89,9 +89,9 @@ pub use ratatui;
 pub use render::{TranscriptLayout, TuiFrame};
 pub use renderers::{
     AsideRender, AsideView, CallState, ChildCall, ContentBlock, ContentKind, ContentRender,
-    ContentView, DecoratedMessage, EntryRender, EntryView, LookLine, MessageRender, MessageView,
-    OUTPUT_INDENT, RenderBatch, RenderContent, RenderInput, RenderKey, RenderOutput, RenderRequest,
-    RenderRevision, RenderSystems, Role, ToolCallView, ToolRender, TranscriptRender, text_rows,
+    ContentView, EntryRender, EntryView, LookLine, MessageView, OUTPUT_INDENT, RenderBatch,
+    RenderContent, RenderInput, RenderKey, RenderOutput, RenderRequest, RenderRevision,
+    RenderSystems, Role, ToolCallView, ToolRender, TranscriptRender, text_rows,
 };
 pub use screen::DefaultScreenPlugin;
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusLine, StatusSystems, Tone};

@@ -24,9 +24,8 @@ use rig_core::message::{AssistantMessage, ToolFunction, ToolName, ToolResult, Us
 use super::markdown;
 use super::render::{Lights, light, lit};
 use super::renderers::{
-    AsideView, CallState, ChildCall, ContentBlock, ContentView, DecoratedMessage, EntryView,
-    LookLine, MessageView, Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style,
-    result_text, text_rows,
+    AsideView, CallState, ChildCall, ContentBlock, ContentView, EntryView, LookLine, MessageView,
+    Pass, Place, Renderers, Role, ToolCallView, plugin_name, result_style, result_text, text_rows,
 };
 use super::theme::Theme;
 use super::view::{
@@ -1715,22 +1714,6 @@ fn message_lines(
     }
     if look.stops.under(id) {
         lines.extend(stop_lines(message, look.theme));
-    }
-    if !matches!(message, Message::System { .. }) {
-        let decorated = DecoratedMessage {
-            message,
-            id,
-            author,
-        };
-        let (drawn, decorations) = look.renderers.message_decorations(&decorated);
-        let start = lines.len();
-        lines.extend(drawn);
-        for (name, rows) in decorations {
-            if let Some(id) = id {
-                let decoration = TranscriptItem::MessageDecoration(id, name);
-                marks.push((decoration, start + rows.start..start + rows.end));
-            }
-        }
     }
     if let Some(id) = id {
         marks.insert(0, (TranscriptItem::Message(id), 0..lines.len()));

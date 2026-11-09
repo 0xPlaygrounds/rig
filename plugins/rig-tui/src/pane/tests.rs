@@ -3,6 +3,7 @@ use ratatui::layout::Constraint;
 use ratatui::text::Line;
 use rig_core::completion::Message;
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
+use rig_ecs::prelude::{Aside, Author};
 use rig_harness::prelude::*;
 
 use crate::tests::{main_pane, main_view, press, view_app};
@@ -72,11 +73,14 @@ fn a_pane_over_a_live_subagent_streams_beside_the_main_one() {
 fn a_look_spawned_under_a_pane_applies_in_that_pane_only() {
     let (mut app, agent) = view_app();
     app.insert_resource(TuiTestScreen::new(100, 24));
+    let mark = || Aside::new("test.mark", Author::user(), "marked".into());
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
         conversation.push(Message::user("where is the config read?"));
+        conversation.add_aside(mark());
     }
     let mut saved = rig_core::conversation::Conversation::default();
     saved.push(Message::user("where is the config read?"));
+    saved.add_aside(mark());
     let value = TranscriptPane::new(TranscriptSource::Value(saved)).titled("saved");
     let placement = TuiPanel::new(Placement::Left(Constraint::Length(45)));
     let pane = app.world_mut().spawn((value, placement)).id();
@@ -86,11 +90,11 @@ fn a_look_spawned_under_a_pane_applies_in_that_pane_only() {
             if batch.pane != Some(pane) {
                 return;
             }
-            for (_, output) in batch.messages_mut() {
-                output.decorate("asked", vec![Line::from("asked here")]);
+            for (_, output) in batch.asides_mut("test.mark") {
+                output.lines = vec![Line::from("asked here").into()];
             }
         })
-        .in_set(RenderSystems::Decorate),
+        .in_set(RenderSystems::Render),
     );
     app.update();
     let main = rows_in(&app, main_pane(app.world()));

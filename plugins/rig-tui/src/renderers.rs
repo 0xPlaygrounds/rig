@@ -10,7 +10,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ScheduleLabel;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use rig_core::completion::{AssistantContent, Message};
+use rig_core::completion::AssistantContent;
 use rig_core::message::{
     Audio, Document, Image, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
     Video,
@@ -664,17 +664,6 @@ impl MessageView<'_> {
     }
 }
 
-/// A message the user or the model wrote, as a render system decorating it
-/// sees it.
-pub struct DecoratedMessage<'a> {
-    /// The message.
-    pub message: &'a Message,
-    /// Its id, when it has one.
-    pub id: Option<MessageId>,
-    /// Its author, when it has one.
-    pub author: Option<&'a Author>,
-}
-
 /// Runs presentation systems for the changed items of one pane or export.
 /// Systems may read agent data but write only presentation data. Advance
 /// [`RenderRevision`] when anything else a render system reads changes.
@@ -702,7 +691,7 @@ pub struct RenderRevision(pub u64);
 /// Lines of an item and named contributions after them. Contributions are
 /// ordered and names identify row ranges. An item with no lines and no
 /// contributions is hidden; contributions are drawn even when `lines` is
-/// empty. A message's output only adds to it ([`RenderBatch::messages_mut`]).
+/// empty.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderOutput {
     /// The item's unwrapped lines.
@@ -872,28 +861,6 @@ impl AsideRender {
     }
 }
 
-/// Owned message input for message decorations.
-#[derive(Clone, PartialEq)]
-pub struct MessageRender {
-    /// Message value.
-    pub message: Message,
-    /// Message identity, when available.
-    pub id: Option<MessageId>,
-    /// Message author.
-    pub author: Option<Author>,
-}
-
-impl MessageRender {
-    /// Borrow this input for the formatting helpers.
-    pub fn view(&self) -> DecoratedMessage<'_> {
-        DecoratedMessage {
-            message: &self.message,
-            id: self.id,
-            author: self.author.as_ref(),
-        }
-    }
-}
-
 /// The input of one render request.
 #[derive(Clone, PartialEq)]
 pub enum RenderInput {
@@ -905,8 +872,6 @@ pub enum RenderInput {
     Content(ContentRender),
     /// Non-note aside.
     Aside(AsideRender),
-    /// Message decorations.
-    Message(MessageRender),
 }
 
 /// An item's identity within one batch. Message ordinals distinguish values
@@ -924,8 +889,6 @@ pub enum RenderKey {
     Content(usize, usize),
     /// Message ordinal and delivered text block index.
     Entry(usize, usize),
-    /// Message ordinal.
-    Message(usize),
 }
 
 /// Public input and output of an item that needs rendering.
@@ -1011,15 +974,6 @@ impl RenderBatch {
                 RenderInput::Aside(v) if v.aside.kind == kind => Some((v, &mut r.output)),
                 _ => None,
             })
-    }
-    /// Messages that can receive decorations. A message request's `lines`
-    /// start empty and are drawn after the message, as an unnamed
-    /// decoration; they cannot hide the message.
-    pub fn messages_mut(&mut self) -> impl Iterator<Item = (&MessageRender, &mut RenderOutput)> {
-        self.requests.values_mut().filter_map(|r| match &r.input {
-            RenderInput::Message(v) => Some((v, &mut r.output)),
-            _ => None,
-        })
     }
 }
 
@@ -1283,26 +1237,6 @@ impl Renderers {
             theme: view.theme,
         };
         Some(self.output(key, RenderInput::Aside(input), Vec::new()).0)
-    }
-
-    /// A message's decorations; none outside a message.
-    pub(crate) fn message_decorations(
-        &self,
-        view: &DecoratedMessage<'_>,
-    ) -> (Vec<LookLine>, Decorated) {
-        let Some((index, _)) = self.in_message() else {
-            return (Vec::new(), Vec::new());
-        };
-        let input = MessageRender {
-            message: view.message.clone(),
-            id: view.id,
-            author: view.author.cloned(),
-        };
-        self.output(
-            RenderKey::Message(index),
-            RenderInput::Message(input),
-            Vec::new(),
-        )
     }
 }
 

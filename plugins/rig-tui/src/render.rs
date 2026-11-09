@@ -1200,10 +1200,7 @@ fn cells_in(buffer: &Buffer, areas: &[Rect]) -> Vec<(u16, u16, Cell)> {
 /// Whether a selection moves through `item`: all but a decoration's rows,
 /// which belong to their call.
 pub(crate) fn selectable(item: &TranscriptItem) -> bool {
-    !matches!(
-        item,
-        TranscriptItem::Decoration(..) | TranscriptItem::MessageDecoration(..)
-    )
+    !matches!(item, TranscriptItem::Decoration(..))
 }
 
 /// Where the last frame drew each part of the screen: for a plugin that

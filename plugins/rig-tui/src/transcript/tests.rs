@@ -348,7 +348,7 @@ fn call_item(app: &App, agent: Entity, message: usize, index: u32) -> Option<Tra
 }
 
 #[test]
-fn an_aside_and_a_message_are_drawn_by_their_looks() {
+fn an_aside_is_drawn_by_its_look() {
     let (mut app, agent) = view_app();
     app.add_systems(
         TranscriptRender,
@@ -363,20 +363,6 @@ fn an_aside_and_a_message_are_drawn_by_their_looks() {
         })
         .in_set(RenderSystems::Render),
     );
-    app.add_systems(
-        TranscriptRender,
-        (|mut batch: ResMut<RenderBatch>| {
-            for (message, output) in batch.messages_mut() {
-                let rated =
-                    message.id.is_some() && matches!(message.message, Message::Assistant(_));
-                output.decorate(
-                    "ratings",
-                    rated.then(|| Line::from("★ rate it")).into_iter().collect(),
-                );
-            }
-        })
-        .in_set(RenderSystems::Decorate),
-    );
     say(&mut app, agent, Message::user("first question"));
     say(&mut app, agent, Message::assistant("first answer"));
     if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
@@ -390,26 +376,12 @@ fn an_aside_and_a_message_are_drawn_by_their_looks() {
     let order = [
         "first question",
         "first answer",
-        "★ rate it",
         "↳ marked",
         "second question",
     ];
     let order = order.map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
-    // The decoration is an item of its own inside the reply's rows.
-    crate::tests::keep_drawn(&mut app);
-    on_screen(&mut app, agent, 100);
-    let drawn = crate::tests::drawn(&app);
-    let reply = message_id(&app, agent, 1);
-    let decoration = reply.map(|id| TranscriptItem::MessageDecoration(id, "ratings".into()));
-    let rows = decoration.and_then(|item| drawn.rows_of(&item));
-    let message = reply.and_then(|id| drawn.rows_of(&TranscriptItem::Message(id)));
-    assert!(
-        rows.zip(message)
-            .is_some_and(|(rows, message)| message.start < rows.start && rows.end <= message.end),
-        "{drawn:#?}"
-    );
 }
 
 #[test]
