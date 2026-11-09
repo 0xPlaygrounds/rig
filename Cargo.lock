@@ -414,7 +414,6 @@ dependencies = [
  "rig",
  "serde",
  "serde_json",
- "thiserror 2.0.21",
  "tokio",
 ]
 
@@ -3823,7 +3822,6 @@ dependencies = [
  "anyhow",
  "futures",
  "rig",
- "serde_json",
  "tokio",
 ]
 
@@ -4458,7 +4456,6 @@ dependencies = [
  "corpus-shared",
  "futures",
  "glob",
- "ignore",
  "regex",
  "rig-basics",
  "rig-cassette",
@@ -7174,9 +7171,7 @@ dependencies = [
  "anyhow",
  "futures",
  "rig",
- "serde_json",
  "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -14376,7 +14371,6 @@ dependencies = [
  "http",
  "mime",
  "serde",
- "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "url",
@@ -14551,9 +14545,7 @@ dependencies = [
  "rig-http",
  "thiserror 2.0.21",
  "tokio",
- "tokio-test",
  "tracing",
- "tracing-subscriber",
  "url",
  "webpki-root-certs",
 ]
@@ -14569,7 +14561,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
- "tokio-test",
  "tracing",
 ]
 
@@ -14691,7 +14682,6 @@ name = "rig-test-support"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "async-stream",
  "base64 0.23.1",
  "bytes",
  "futures",
@@ -14707,7 +14697,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2 0.11.1",
  "syn 3.0.3",
  "thiserror 2.0.21",
  "tokio",
@@ -14783,12 +14772,10 @@ dependencies = [
 name = "rig-tungstenite"
 version = "0.46.0"
 dependencies = [
- "anyhow",
  "bytes",
  "futures",
  "http",
  "rig-http",
- "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite 0.29.0",
