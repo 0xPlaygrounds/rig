@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
 
-use super::resolve;
+use super::{Prefix, resolve};
+use crate::workspace::Contents;
 use crate::{Read, ReadArgs, Write, WriteArgs};
 
 /// A scratch directory of its own for `name`, resolved, holding `real/`.
@@ -136,6 +137,26 @@ fn the_unread_note_is_bounded() {
         "{}",
         note.len()
     );
+}
+
+/// A prefix is cut exactly when bytes of the file were left unread, however
+/// decoding changed the text's length.
+#[test]
+fn a_prefix_is_cut_only_when_bytes_were_left_unread() {
+    let cases: [(&[u8], u64, bool); 4] = [
+        (b"hello", 5, false),
+        (b"hell", 5, true),
+        (b"\xef\xbb\xbfhello", 8, false),
+        (b"\xffabc", 5, true),
+    ];
+    for (bytes, size, cut) in cases {
+        let contents = Contents {
+            bytes: bytes.to_vec(),
+            size,
+        };
+        let prefix = Prefix::of(contents, bytes.len());
+        assert_eq!(prefix.cut(), cut, "{:?} of {size} bytes", prefix.text);
+    }
 }
 
 /// A confined write refuses a dangling link in its base that leads out,
