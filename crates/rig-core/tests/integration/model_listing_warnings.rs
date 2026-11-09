@@ -74,7 +74,6 @@ async fn list(pages: Vec<MockHttpResponse>) {
 /// warning is absent has proof that it would have been captured if emitted.
 async fn logs_from_listing(pages: Vec<MockHttpResponse>) -> String {
     tracing_capture::captured_logs(
-        tracing::Level::WARN,
         || async {
             list(budget_exhausting_pages()).await;
             list(repeated_cursor_pages()).await;
