@@ -2550,103 +2550,43 @@ impl AgentHook for RepairInvalidToHook {
 /// output, tool-result content, and final message history.
 #[tokio::test]
 async fn invalid_tool_call_repair_parity_across_run_and_stream() {
-    let blocking_model = MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-        MockTurn::text("the answer is 5"),
-    ]);
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(RepairInvalidToHook("add"))
-        .run()
-        .await
-        .expect("blocking run should recover via repair");
-
-    // Emit the invalid call as a single complete tool call (mirroring the
-    // blocking model). A provider stream carries one tool call via one
-    // mechanism — deltas *or* a complete call — so this is the apples-to-
-    // apples comparison; mixing both would trip the assembler's two
-    // independent invalid-detection sites and fire the event twice.
-    let streaming_model = MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-        vec![
-            MockStreamEvent::text("the answer is 5"),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-    ]);
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(RepairInvalidToHook("add"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should recover and yield a final response");
-
-    // Same recovered output.
-    assert_eq!(blocking.output(), "the answer is 5");
-    assert_eq!(final_response.output(), blocking.output());
-
-    // Both drivers reported the invalid tool call to the hook, then executed
-    // the repaired tool, so the shared event sequences match.
-    assert_eq!(
-        blocking_hook.shared_events(),
-        streaming_hook.shared_events()
-    );
+    let turns = [
+        ScriptedTurn::ToolCalls(vec![default_api_call()]),
+        ScriptedTurn::Text("the answer is 5"),
+    ];
+    // A provider stream carries one tool call as deltas or as a complete call,
+    // so only the complete shape mirrors the blocking turn here.
+    let blocking = run_blocking_scenario("add 2 and 3", &turns, RepairInvalidToHook("add")).await;
+    let streaming = run_streaming_scenario(
+        "add 2 and 3",
+        &turns,
+        StreamShape::Complete,
+        RepairInvalidToHook("add"),
+    )
+    .await;
+    assert_outcomes_match(&blocking, &streaming, "repair");
+    assert_eq!(blocking.output, "the answer is 5");
     assert!(
-        blocking_hook
-            .shared_events()
+        blocking
+            .shared_events
             .contains(&StepEventKind::InvalidToolCall),
         "the hook must observe the invalid tool call"
     );
-    assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-    assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
+    assert_eq!(blocking.tool_results, vec!["5".to_string()]);
+}
 
-    // Same final message history.
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
+fn default_api_call() -> ScriptedToolCall {
+    ScriptedToolCall {
+        id: "tc1",
+        name: "default_api",
+        args: json!({"x": 2, "y": 3}),
+    }
 }
 
 // ----------------------------------------------------------------------
-// Single-source-of-truth parity harness
+// Parity harness: one scripted turn list renders into both a blocking and a
+// streaming model, so run() and stream() are fed identical model behavior.
 // ----------------------------------------------------------------------
-//
-// `run()` and `stream()` are two implementations of one agent loop; testing
-// they agree on the same input is *differential testing*, with each driver
-// acting as the other's oracle. The hazard such tests have (and that bit the
-// invalid-tool-repair test above) is *fixture drift*: when the blocking
-// `MockTurn` list and the streaming `MockStreamEvent` list are hand-written
-// separately, they can silently encode different model behavior, so a
-// passing test proves nothing.
-//
-// The fix — the single-source-of-truth / data-driven principle, embodied by
-// pydantic-ai's `TestModel` (one scripted response replayed as a stream) and
-// litellm's `stream_chunk_builder` (reassemble the stream, compare to the
-// whole) — is to derive *both* encodings from one canonical `ScriptedTurn`
-// list. The two drivers are then provably fed identical model behavior and
-// can be asserted equal on the medium-independent projection (final output,
-// message history, tool-result content, shared hook-event sequence).
 
 /// One tool call inside a scripted turn.
 #[derive(Clone)]
@@ -2738,7 +2678,11 @@ struct ParityOutcome {
     tool_results: Vec<String>,
 }
 
-async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> ParityOutcome {
+async fn run_blocking_scenario(
+    prompt: &'static str,
+    turns: &[ScriptedTurn],
+    extra: impl AgentHook + 'static,
+) -> ParityOutcome {
     let model = MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
     let hook = RecordingHook::default();
     let response = AgentBuilder::new(model)
@@ -2747,6 +2691,7 @@ async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> 
         .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
+        .add_hook(extra)
         .run()
         .await
         .expect("blocking scenario should succeed");
@@ -2762,6 +2707,7 @@ async fn run_streaming_scenario(
     prompt: &'static str,
     turns: &[ScriptedTurn],
     shape: StreamShape,
+    extra: impl AgentHook + 'static,
 ) -> ParityOutcome {
     let model = MockCompletionModel::from_stream_turns(
         turns.iter().map(|turn| turn.as_stream_events(shape)),
@@ -2773,6 +2719,7 @@ async fn run_streaming_scenario(
         .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
+        .add_hook(extra)
         .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
@@ -2816,12 +2763,12 @@ fn assert_outcomes_match(blocking: &ParityOutcome, streaming: &ParityOutcome, la
 /// identical every way. Because both stream shapes are compared against the
 /// same blocking outcome, they are also transitively equal to each other.
 async fn assert_run_stream_parity(prompt: &'static str, turns: &[ScriptedTurn]) {
-    let blocking = run_blocking_scenario(prompt, turns).await;
+    let blocking = run_blocking_scenario(prompt, turns, ()).await;
     for (shape, label) in [
         (StreamShape::Complete, "complete-stream"),
         (StreamShape::Chunked, "chunked-stream"),
     ] {
-        let streaming = run_streaming_scenario(prompt, turns, shape).await;
+        let streaming = run_streaming_scenario(prompt, turns, shape, ()).await;
         assert_outcomes_match(&blocking, &streaming, label);
     }
 }
@@ -2897,81 +2844,43 @@ impl AgentHook for SkipInvalidHook {
 /// An invalid tool call *skipped* by a hook recovers identically under
 /// `run()` and `stream()`: the synthetic skip result enters the history
 /// verbatim (it is never re-parsed as tool output) and both drivers reach
-/// the same output and message history. Complements the repair-parity test.
+/// the same output and message history.
 #[tokio::test]
 async fn invalid_tool_call_skip_parity_across_run_and_stream() {
-    let blocking_model = MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-        MockTurn::text("acknowledged"),
-    ]);
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("do the thing")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(SkipInvalidHook("tool not permitted"))
-        .run()
-        .await
-        .expect("blocking run should recover via skip");
+    let turns = [
+        ScriptedTurn::ToolCalls(vec![default_api_call()]),
+        ScriptedTurn::Text("acknowledged"),
+    ];
+    let reason = "tool not permitted";
+    let blocking = run_blocking_scenario("do the thing", &turns, SkipInvalidHook(reason)).await;
+    let streaming = run_streaming_scenario(
+        "do the thing",
+        &turns,
+        StreamShape::Complete,
+        SkipInvalidHook(reason),
+    )
+    .await;
 
-    // Single complete tool call (mirrors the blocking model; see the
-    // repair-parity test for why deltas are not mixed in here).
-    let streaming_model = MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-        vec![
-            MockStreamEvent::text("acknowledged"),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-    ]);
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("do the thing")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(SkipInvalidHook("tool not permitted"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should recover and yield a final response");
-
-    assert_eq!(blocking.output(), "acknowledged");
-    assert_eq!(final_response.output(), blocking.output());
-    assert_eq!(
-        blocking_hook.shared_events(),
-        streaming_hook.shared_events()
-    );
+    assert_eq!(blocking.output, "acknowledged");
+    assert_eq!(streaming.output, blocking.output);
+    assert_eq!(blocking.shared_events, streaming.shared_events);
     assert!(
-        blocking_hook
-            .shared_events()
+        blocking
+            .shared_events
             .contains(&StepEventKind::InvalidToolCall),
         "the hook must observe the invalid tool call"
     );
-
     // A streamed turn cut short at its invalid call replays canonically;
     // the parity is in the content.
     let blocking_messages = canonical_history(&blocking.messages);
-    let streaming_messages = canonical_history(final_response.messages());
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
+        serde_json::to_value(canonical_history(&streaming.messages))
+            .expect("serialize streaming"),
     );
-    // Pin the actual reason, not just blocking == streaming (see the valid-tool
-    // skip test): a reason dropped or altered on BOTH paths would still pass.
+    // A reason dropped or altered on both paths would still pass the equality.
     assert!(
-        tool_result_text_in_history(&blocking_messages, "tool not permitted"),
+        tool_result_text_in_history(&blocking_messages, reason),
         "the verbatim invalid-tool skip reason must be the tool result content"
     );
 }
@@ -3390,78 +3299,36 @@ impl AgentHook for RewriteToolResultHook {
 /// A hook that rewrites a tool's result (`OutcomeAction::rewrite_tool_result` on
 /// the tool outcome) is honored identically under `run()` and `stream()`: the
 /// model-visible history carries the replacement while the `ToolResult` event
-/// still observed the tool's actual output, and both drivers reach the same
-/// output and history. Both share `run_single_tool`, so they stay in
-/// lock-step.
+/// still observed the tool's actual output.
 #[tokio::test]
 async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
-    // The tool computes 2 + 3 = 5; the hook replaces what the model sees with
-    // "redacted-result".
     let turns = [
         ScriptedTurn::ToolCalls(vec![add_call("tc1", 2, 3)]),
         ScriptedTurn::Text("acknowledged"),
     ];
-
-    let blocking_model =
-        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(RewriteToolResultHook("redacted-result"))
-        .run()
-        .await
-        .expect("blocking run should succeed with a rewritten tool result");
-
-    let streaming_model = MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    );
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("add 2 and 3")
-        .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(RewriteToolResultHook("redacted-result"))
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    assert_eq!(blocking.output(), "acknowledged");
-    assert_eq!(final_response.output(), blocking.output());
-
-    // The ToolResult event observes the tool's ACTUAL output (5) on both
-    // drivers — the replacement is applied after the event fires.
-    assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
-    assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-
-    // The model-visible history carries the REWRITTEN result, not "5", and is
-    // byte-identical across drivers.
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
+    let blocking = run_blocking_scenario(
+        "add 2 and 3",
+        &turns,
+        RewriteToolResultHook("redacted-result"),
+    )
+    .await;
+    let streaming = run_streaming_scenario(
+        "add 2 and 3",
+        &turns,
+        StreamShape::Complete,
+        RewriteToolResultHook("redacted-result"),
+    )
+    .await;
+    assert_outcomes_match(&blocking, &streaming, "result rewrite");
+    assert_eq!(blocking.output, "acknowledged");
+    // The replacement is applied after the ToolResult event fires.
+    assert_eq!(blocking.tool_results, vec!["5".to_string()]);
     assert!(
-        tool_result_text_in_history(&blocking_messages, "redacted-result"),
+        tool_result_text_in_history(&blocking.messages, "redacted-result"),
         "the model-visible tool result must be the hook's replacement"
     );
     assert!(
-        !tool_result_text_in_history(&blocking_messages, "5"),
+        !tool_result_text_in_history(&blocking.messages, "5"),
         "the tool's original output must not reach the model after a rewrite"
     );
 }
@@ -4332,10 +4199,9 @@ impl AgentHook for HumanApprovalHook {
 /// edits the third's arguments behaves identically under `run()` and
 /// `stream()`: approved/edited tools execute (and the edit takes effect),
 /// the denied tool runs nothing while its reason reaches the model, and the
-/// model-visible history is identical across drivers (compared structurally).
+/// model-visible history is identical across drivers.
 #[tokio::test]
 async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
-    // One turn issues three tool calls; the reviewer decides each differently.
     let turns = [
         ScriptedTurn::ToolCalls(vec![
             add_call("tc1", 2, 3),   // approve -> runs, 2 + 3 = 5
@@ -4345,82 +4211,35 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         ScriptedTurn::Text("done"),
     ];
     let denial = "denied by reviewer: amount too large";
-    let decisions = || {
-        vec![
+    let approver = || {
+        HumanApprovalHook::new([
             Decision::Approve,
             Decision::Deny(denial),
             Decision::Edit(json!({"x": 1, "y": 100})),
-        ]
+        ])
     };
+    let blocking_approver = approver();
+    let streaming_approver = approver();
+    let blocking =
+        run_blocking_scenario("carry out the plan", &turns, blocking_approver.clone()).await;
+    let streaming = run_streaming_scenario(
+        "carry out the plan",
+        &turns,
+        StreamShape::Complete,
+        streaming_approver.clone(),
+    )
+    .await;
+    assert_outcomes_match(&blocking, &streaming, "human in the loop");
+    assert_eq!(blocking.output, "done");
 
-    let blocking_model =
-        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-    let blocking_recorder = RecordingHook::default();
-    let blocking_approver = HumanApprovalHook::new(decisions());
-    let blocking = AgentBuilder::new(blocking_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("carry out the plan")
-        .max_turns(3)
-        .add_hook(blocking_recorder.clone())
-        .add_hook(blocking_approver.clone())
-        .run()
-        .await
-        .expect("blocking HITL run should succeed");
-
-    let streaming_model = MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    );
-    let streaming_recorder = RecordingHook::default();
-    let streaming_approver = HumanApprovalHook::new(decisions());
-    let mut stream = AgentBuilder::new(streaming_model)
-        .tool(MockAddTool)
-        .build()
-        .prompt("carry out the plan")
-        .max_turns(3)
-        .add_hook(streaming_recorder.clone())
-        .add_hook(streaming_approver.clone())
-        .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
-            item.map_err(|err| panic!("stream item errored: {err}"))
-        {
-            final_response = Some(resp);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    // Approved (5) and edited (101) tools executed, in call order; the denied
-    // call executed nothing but now fires a ToolResult carrying its verbatim
-    // denial reason (structured `Skipped` outcome) — identically on both
-    // drivers.
+    // The denied call (10 + 20 = 30) executed nothing; its reason stands in as
+    // the result, ruling out deny being silently treated as approve.
     assert_eq!(
-        blocking_recorder.tool_results(),
-        vec![
-            "5".to_string(),
-            "denied by reviewer: amount too large".to_string(),
-            "101".to_string()
-        ]
-    );
-    assert_eq!(
-        blocking_recorder.tool_results(),
-        streaming_recorder.tool_results()
+        blocking.tool_results,
+        vec!["5".to_string(), denial.to_string(), "101".to_string()]
     );
 
-    // The denied call (10 + 20) never executed, so its result 30 is absent —
-    // the denial reason stands in its place, ruling out deny being silently
-    // treated as approve.
-    assert!(
-        !blocking_recorder.tool_results().contains(&"30".to_string()),
-        "the denied call must not have executed"
-    );
-
-    // The reviewer was consulted for all three calls, in order, identically per
-    // driver — pinning each decision to its call (approve=2+3, deny=10+20,
-    // edit=the third).
+    // The reviewer saw all three calls, in order, identically per driver.
     let reviewed = blocking_approver.reviewed();
     assert_eq!(reviewed.len(), 3);
     assert_eq!(reviewed, streaming_approver.reviewed());
@@ -4432,29 +4251,12 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         reviewed[1].contains("10") && reviewed[1].contains("20"),
         "the denied (second) call should be add(10, 20): {reviewed:?}"
     );
-
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_response.output(), blocking.output());
-    assert_eq!(
-        blocking_recorder.shared_events(),
-        streaming_recorder.shared_events()
-    );
-
-    // Model-visible history is identical across drivers (compared structurally
-    // as serde_json::Value) and carries the denial reason and the edited result
-    // 101 (not the model's 1 + 1 = 2).
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
-    assert_eq!(
-        serde_json::to_value(&blocking_messages).expect("serialize blocking"),
-        serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
     assert!(
-        tool_result_text_in_history(&blocking_messages, denial),
+        tool_result_text_in_history(&blocking.messages, denial),
         "the denial reason must be the denied call's tool result in the history"
     );
     assert!(
-        tool_result_json_in_history(&blocking_messages, &json!(101)),
+        tool_result_json_in_history(&blocking.messages, &json!(101)),
         "the edited call must have executed with the rewritten arguments"
     );
 }
