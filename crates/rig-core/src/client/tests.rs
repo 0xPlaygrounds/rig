@@ -1,6 +1,5 @@
-//! Each provider's configuration serializes to the JSON #2600's
-//! configuration of the same name did, written out here, and reads back
-//! from it. The credential is never written.
+//! Each provider's configuration serializes to the JSON written out here,
+//! and reads back from it. The credential is never written.
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;

@@ -79,7 +79,7 @@ pub struct ScenarioReport {
 /// [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
 /// macro cross-checks it against the suite's declared capability flags via
 /// [`check_gated_outcome`], so a fixture cannot vacuously pass a scenario its
-/// capabilities claim to cover (#2258 review, F8 corpus-honesty batch).
+/// capabilities claim to cover.
 #[derive(Debug)]
 pub enum ScenarioOutcome {
     /// The scenario ran and its assertions held.
@@ -342,7 +342,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
     )))
 }
 
-/// Executable stream-lifecycle validator (#2258 C1).
+/// Executable stream-lifecycle validator.
 ///
 /// The invariants every normalized stream must satisfy, stated once and run
 /// over every recorded cassette and corpus fixture that drains through
@@ -806,8 +806,6 @@ impl Checks {
 /// Truncation at every position — EOF before content, mid-text, mid-tool-args,
 /// after a tool call's frames — must preserve the content that ended and
 /// never produce a terminal record.
-///
-/// Pins the truncation family from round one (`rig-2257-code-review-findings-ec9f2625.md`):
 /// EOF without the provider's end event must not synthesize a successful
 /// usage-less terminal.
 pub async fn truncation_preserves_content_without_terminal(
@@ -968,9 +966,6 @@ pub async fn malformed_frame_ends_the_reply(
 
 /// An event type the client does not know must be skipped without an error,
 /// and the stream must still complete.
-///
-/// Pins the unknown-event forward-compatibility policy (round three,
-/// `rig-2257-code-review-findings-8a2f41c7.md`).
 pub async fn unknown_event_is_skipped(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
@@ -995,7 +990,7 @@ pub async fn unknown_event_is_skipped(
         || "the stream must deliver its content and complete around the skipped event",
     )?;
     // The frame is skipped semantically but observable verbatim on the raw
-    // passthrough channel (openai-agents' raw-event precedent, #2258 item 5).
+    // passthrough channel.
     checks.require(drained.unknown_values().len() == 1, || {
         format!(
             "exactly one Unknown passthrough item must surface for the unknown frame, \
@@ -1061,10 +1056,7 @@ pub async fn defective_known_event_ends_the_reply(
 }
 
 /// A delta-less choice (the Azure `prompt_filter_results` prelude) must be a
-/// no-op — no error, no content, and the rest of the stream unaffected.
-///
-/// Pins the Azure prelude no-op from round two
-/// (`rig-2257-code-review-findings-b91d03aa.md`).
+/// no-op: no error, no content, and the rest of the stream unaffected.
 pub async fn delta_less_choice_prelude_is_a_noop(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
@@ -1097,9 +1089,6 @@ pub async fn delta_less_choice_prelude_is_a_noop(
 }
 
 /// Refusal frames must deliver their text to the consumer without an error.
-///
-/// Pins the refusal-delta handling from round three
-/// (`rig-2257-code-review-findings-8a2f41c7.md`).
 pub async fn refusal_frames_deliver_text_without_error(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
@@ -1137,11 +1126,6 @@ pub async fn refusal_frames_deliver_text_without_error(
 /// On the buffered-body pipeline (the ChatGPT backend), a terminal whose body
 /// carries text never seen as a delta must merge that text into the choice
 /// exactly once, and a body restating streamed deltas must not duplicate them.
-///
-/// Pins the terminal-body/delta per-kind merge from round five
-/// (`rig-2257-code-review-findings-5c73639c.md`) and the empty-delta merge
-/// direction verified in round six (`rig-2257-code-review-findings-34ee8ba5.md`
-/// P3-2).
 pub async fn terminal_body_content_merges_per_kind(
     driver: &BufferedBodyDriver,
     cases: Vec<(&'static str, String)>,
@@ -1173,9 +1157,6 @@ pub async fn terminal_body_content_merges_per_kind(
 /// A bare terminal signal after only-unparseable frames must not fabricate a
 /// successful terminal record: the parse errors were already surfaced, and a
 /// default-usage terminal would dress the failure up as success.
-///
-/// Pins the bare-`[DONE]` guard from round six
-/// (`rig-2257-code-review-findings-5c73639c.md`, carried into `34ee8ba5`).
 pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
@@ -1208,10 +1189,9 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
 
 /// The genuine terminal must report the provider's usage; a terminal without
 /// usage metrics must complete with no counter reported rather than being
-/// suppressed or invented.
-///
-/// Pins the absent-usage contract on [`CompletionResponse::usage`](crate::completion::CompletionResponse::usage)
-/// (round one, `rig-2257-code-review-findings-ec9f2625.md`).
+/// suppressed or invented, as
+/// [`CompletionResponse::usage`](crate::completion::CompletionResponse::usage)
+/// documents.
 pub async fn usage_variants_are_reported_or_absent(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioReport, ConformanceError> {
@@ -1272,8 +1252,6 @@ pub async fn usage_variants_are_reported_or_absent(
 /// block must aggregate to the summary exactly once — the full block
 /// supersedes its own deltas, never duplicates them.
 ///
-/// Pins the open P1 in `rig-2257-code-review-findings-34ee8ba5.md` ("OpenAI
-/// Responses reasoning-summary streams duplicate reasoning content"):
 /// `reasoning_summary_text.delta` drops `item_id`, so the strict same-item
 /// table appends the full block beside the delta-built item.
 pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
@@ -1365,8 +1343,7 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
 /// content.
 ///
 /// Pins the interleaved-reasoning replacement contract on
-/// completed reasoning block (round six,
-/// `rig-2257-code-review-findings-34ee8ba5.md`, "Verified sound" section).
+/// completed reasoning block.
 pub async fn interleaved_reasoning_aggregates_to_one_item(
     driver: &WireDriver,
     frames: Vec<WireInput>,
@@ -1402,10 +1379,6 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
 /// output closes the open reasoning item: thought → tool call → thought must
 /// aggregate as `[Reasoning(first), ToolCall, Reasoning(second)]` — two items
 /// in arrival order, never one merged item that misorders history on replay.
-///
-/// Pins the F1b ordering dimension of the #2258 review (main's
-/// "other output closes the reasoning item" boundary, lost when identity
-/// became the per-stream constant).
 pub async fn interleaved_constant_id_reasoning_preserves_order(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioOutcome, ConformanceError> {
@@ -1441,10 +1414,8 @@ pub async fn interleaved_constant_id_reasoning_preserves_order(
 /// full restatement (gemini `thoughtSignature`), a full block *after*
 /// interleaved output must not replace-and-discard the thought accumulated
 /// before the boundary: the choice keeps `[Reasoning(first), ToolCall,
-/// Reasoning(second, signed)]`.
-///
-/// Pins the F1b erasure dimension of the #2258 review, on top of the F1
-/// adapter fix (the signed chunk restates only post-boundary fragments).
+/// Reasoning(second, signed)]`. The signed chunk restates only
+/// post-boundary fragments.
 pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
     driver: &WireDriver,
     frames: Vec<WireInput>,
@@ -1532,8 +1503,7 @@ pub mod fixtures {
             response,
         };
         // Every fixture and cassette that drains through this helper runs
-        // the lifecycle validator — the prose invariants as one executable
-        // artifact (#2258 C1).
+        // the lifecycle validator.
         super::assert_valid_event_stream(&drained.items, &drained.choice);
         drained
     }
@@ -1972,7 +1942,7 @@ pub mod fixtures {
                     "item_id": "ws_1",
                 }))),
                 // The decoder reads only the fields it builds blocks from, and
-                // reads those leniently, so no known event fails a reply (#2668).
+                // reads those leniently, so no known event fails a reply.
                 defective_known_frame: None,
                 delta_less_prelude_frame: None,
                 refusal: Some(RefusalFixture {
@@ -1997,8 +1967,7 @@ pub mod fixtures {
         /// Drives the *real* entry — `Model::call` on the
         /// ChatGPT wire whose HTTP double answers the `/responses` POST with
         /// the scripted SSE body — so the scenario exercises the buffered
-        /// fold itself rather than a mirrored copy of it (#2258 review, F8
-        /// drift risk).
+        /// fold itself rather than a mirrored copy of it.
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
@@ -2049,7 +2018,7 @@ pub mod fixtures {
             frames.iter().map(frame_text).collect()
         }
 
-        /// The ChatGPT envelope-less replay shape (#2258 F3): a summary delta
+        /// The ChatGPT envelope-less replay shape: a summary delta
         /// with NO envelope bookkeeping at all (repair injects
         /// `output_index: 0`, minting the `output-0` identity), then the
         /// item's envelope-full `output_item.done` restating the summary
@@ -2267,7 +2236,7 @@ pub mod fixtures {
         }
 
         /// Thought delta, interleaved tool call, then a signed full thought
-        /// chunk carrying non-empty text — the F1 erasure shape.
+        /// chunk carrying non-empty text, the erasure shape.
         pub fn interleaved_signed_thought_frames()
         -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![

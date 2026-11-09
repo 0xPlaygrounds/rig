@@ -456,7 +456,7 @@ async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
     }
 }
 
-/// Round 4 NEW-3: a part that carries only a thought signature, as a
+/// A part that carries only a thought signature, as a
 /// stream's last chunk can, joins the text before it, so the signature
 /// replays to the same model.
 #[test]

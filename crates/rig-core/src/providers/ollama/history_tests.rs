@@ -60,7 +60,7 @@ fn reply(arguments: Value) -> ToolCall {
     call.clone()
 }
 
-/// #1085, #2447, #2554 on Ollama: double-stringified arguments are an
+/// Double-stringified arguments are an
 /// object, malformed ones never fail the reply, and `null` ones go back as
 /// an object.
 #[test]
@@ -88,7 +88,7 @@ fn arguments_are_always_an_object() {
     );
 }
 
-/// chatA NEW-1, NEW-2, #2380 on Ollama: another model's assistant image and
+/// Another model's assistant image and
 /// a tool result's image reach Ollama downgraded, never refused, and an
 /// image Ollama would have to fetch becomes a placeholder.
 #[test]

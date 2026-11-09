@@ -23,7 +23,7 @@ pub enum MockError {
     Provider(String),
     /// Request construction error.
     Request(String),
-    /// A preserved provider error response (rig#2314), id included.
+    /// A preserved provider error response, id included.
     ProviderResponse(crate::provider_response::ProviderResponseError),
     /// A streamed reply that sent no frame for this long.
     Stalled(std::time::Duration),
@@ -114,8 +114,8 @@ impl MockTurn {
         }
     }
 
-    /// Create a provider-response error turn carrying a transport request id
-    /// (rig#2314): the scripted failure a test uses to assert error-identity
+    /// Create a provider-response error turn carrying a transport request id:
+    /// the scripted failure a test uses to assert error-identity
     /// attribution.
     pub fn provider_response_error(
         status: http::StatusCode,
@@ -209,7 +209,7 @@ impl MockTurn {
     /// Set the terminal finish reason for this turn.
     ///
     /// Without this, a mocked blocking turn always reports `None`, which
-    /// leaves the whole blocking half of the truncation contract (rig#2322)
+    /// leaves the whole blocking half of the truncation contract
     /// unexercisable — the streamed mock could script a reason and the
     /// blocking one could not.
     pub fn with_finish_reason(mut self, finish_reason: crate::completion::FinishReason) -> Self {

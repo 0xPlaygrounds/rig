@@ -714,7 +714,7 @@ fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     );
 }
 
-/// #2357: Codestral Embed answers a request naming no width with
+/// Codestral Embed answers a request naming no width with
 /// 1536-wide vectors, under both its ids, so that is the width a handle
 /// naming none reports, and the request still names none. A caller who
 /// names 1536 still sends it.

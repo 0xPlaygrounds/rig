@@ -150,7 +150,7 @@ fn parse_done_event_exposes_response_id() {
 }
 
 /// A terminal event that states no response object still ends the turn:
-/// nothing in it is needed to build a block (#2668).
+/// nothing in it is needed to build a block.
 #[test]
 fn a_terminal_without_its_response_object_still_ends_the_turn() {
     let payload = json!({

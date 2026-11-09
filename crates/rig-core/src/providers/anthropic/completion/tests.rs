@@ -1042,7 +1042,7 @@ fn blocks_without_a_current_item_rebuild_as_pi_does() {
 }
 
 // -------------------------------------------------------------------
-// Citations (#1767)
+// Citations
 // -------------------------------------------------------------------
 
 #[test]
@@ -1458,7 +1458,7 @@ fn sent_with(
     )
 }
 
-/// #2655: a `tool_use` the provider sent without an id gets an id rig
+/// A `tool_use` the provider sent without an id gets an id rig
 /// issues, and the replayed item carries the spelling its result gets, so
 /// the call and its result always agree, on every dialect.
 #[test]
@@ -1499,7 +1499,7 @@ fn an_idless_call_replays_under_the_id_its_result_gets() {
     }
 }
 
-/// #2703: Claude Opus 5.5 binds its thinking to the tools and system prompt
+/// Claude Opus 5.5 binds its thinking to the tools and system prompt
 /// it was made under. Its turns replay verbatim whatever the tools, and
 /// every request asks Anthropic, under the binding beta, to drop a block
 /// whose binding no longer matches (pi's `drop_block`). A model that does
@@ -1580,7 +1580,7 @@ fn drop_block_joins_the_callers_thinking() {
 
 /// Anthropic A4: thinking that ended without a signature keeps no item, so
 /// it replays as text, as pi sends it. Kimi, which sends thinking unsigned,
-/// takes it back as thinking (#1315).
+/// takes it back as thinking.
 #[test]
 fn unsigned_thinking_keeps_its_item_only_where_the_dialect_takes_it() {
     let unsigned = json!({"type": "thinking", "thinking": "plan", "signature": ""});

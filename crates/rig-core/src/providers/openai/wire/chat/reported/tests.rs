@@ -321,7 +321,7 @@ async fn xai_cost_ticks_are_dollars() {
     assert_eq!(response.usage.input_tokens, Some(1));
 }
 
-/// Ported from #2243: a gateway (OpenCode Go) states the cost in a chunk of
+/// A gateway (OpenCode Go) states the cost in a chunk of
 /// its own after the usage chunk, as a string. The cost is the reported
 /// figure and the counters stay the reported ones.
 #[tokio::test]
@@ -340,7 +340,7 @@ async fn a_gateways_cost_chunk_is_the_turns_cost() {
     assert_eq!(response.usage.total_tokens, Some(15));
 }
 
-/// Ported from #2243: a top-level cost reads as a string or a number, and
+/// A top-level cost reads as a string or a number, and
 /// a reply without one reports none.
 #[test]
 fn a_top_level_cost_reads_as_a_string_or_a_number() {

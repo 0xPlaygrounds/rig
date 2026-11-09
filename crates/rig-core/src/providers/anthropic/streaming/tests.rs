@@ -513,8 +513,8 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
 
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
 /// novel: silently skipping it would turn a compat gateway's untagged
-/// text delta into a successful *empty* completion, so it fails the reply
-/// (#2258 B5). So does a known delta whose text is not text, since the
+/// text delta into a successful *empty* completion, so it fails the reply.
+/// So does a known delta whose text is not text, since the
 /// block is built from it.
 #[test]
 fn a_delta_without_its_type_or_text_fails_the_reply() {
@@ -1132,7 +1132,7 @@ fn progress_update_reply(update_text: &str, mode: Mode) -> crate::completion::Co
     .expect("the reply folds")
 }
 
-/// Ported from #2616: both thinking blocks survive decoding unmerged and in
+/// Both thinking blocks survive decoding unmerged and in
 /// order, whole and streamed, under either display, and the turn replays to
 /// its model exactly as received.
 #[test]
