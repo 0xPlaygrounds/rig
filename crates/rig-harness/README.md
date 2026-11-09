@@ -55,10 +55,16 @@ are ordered against those of the plugins it is used with
 
 ## Install
 
+`rig-cli` is not on crates.io yet. Until the next release, `cargo install rig`
+installs the last release, 0.46.0. To install `main`, build it from a checkout
+(`--force` replaces a `rig` installed by another crate):
+
 ```bash
 git clone https://github.com/0xPlaygrounds/rig && cd rig
-cargo install --path crates/rig-cli
+cargo install --locked --force --path crates/rig-cli
 rig
 ```
 
-It needs Rust 1.97.1 or newer and runs on Linux and macOS.
+It needs Rust 1.97.1 or newer and runs on Linux and macOS. The
+[agent guide](https://github.com/0xPlaygrounds/rig/blob/main/docs/agent.md#install-and-run)
+has the quick start and how to update.

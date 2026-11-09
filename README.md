@@ -45,17 +45,35 @@ coding agent built on it that you extend with Bevy plugins.
 
 ## The coding agent
 
+`rig-cli` is not on crates.io yet. Until the next release, install the last
+release, 0.46.0, whose `rig` crate carries the launcher:
+
 ```bash
-cargo install rig-cli
-rig
+cargo install rig
 ```
 
-In the agent, `/login` signs in with a ChatGPT plan or saves a provider's API
-key, or export the key (such as `OPENAI_API_KEY`) before starting. `/model` picks
-one of the models those reach, and of a local Ollama or llama.cpp server once
-`OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL` names it (or its key is set);
-`/help` lists the commands. `rig -p "fix the failing test"`
-answers one prompt without the terminal view.
+This README describes `main`. 0.46.0 keeps its plugin list in
+`plugins.toml`, and [its guide](https://github.com/0xPlaygrounds/rig/blob/v0.46.0/docs/agent.md)
+is on its tag. Or install `main` from a checkout (`--force` replaces a `rig` installed by
+another crate):
+
+```bash
+git clone https://github.com/0xPlaygrounds/rig && cd rig
+cargo install --locked --force --path crates/rig-cli
+```
+
+Then:
+
+1. `rig` builds the agent, which takes a few minutes the first time, and opens it.
+2. `/login` signs in with a ChatGPT plan or saves a provider's API key. Or
+   export a key, such as `OPENAI_API_KEY`, before starting `rig`.
+3. `/model` picks a model. A local Ollama or llama.cpp server is listed once
+   `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL` names it.
+4. Type a prompt and press Enter. `/help` lists the commands.
+5. `rig -p "fix the failing test"` answers one prompt without the terminal view.
+
+The [agent guide](docs/agent.md#update) says how to update, and what is
+[per home and what is per project](docs/agent.md#what-is-per-home-and-what-is-per-project).
 
 - **Everything is a plugin.** The agent is a [Bevy](https://bevy.org) app; its
   tools, commands, sessions, sign-in and terminal view are each a plugin, turned
@@ -111,33 +129,23 @@ async fn main() -> Result<(), anyhow::Error> {
 More in [`examples/`](examples), the [docs](https://rig.rs/docs) and the
 [API reference](https://docs.rs/rig/latest/rig/).
 
-`rig-core` no longer forces serde_json's `preserve_order` or
-`float_roundtrip` features. Without them, JSON object keys sort by name,
-including schema properties and JSON text embedded in prompts, embeddings
-and tool results. Parsing floating-point numbers can change their low bits.
-To restore the previous configuration, add this to your application's
-`Cargo.toml` dependencies:
-
-```toml
-serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
-```
-
-Cargo unifies features across dependencies. `rig-cassette` with `traffic`
-(and therefore `rig-traffic`) still enables both features. `rig-claude-cloak`,
-`rig-mcp-client` and `rig-mongodb` through BSON still enable `preserve_order`. These are
-application-level serde_json choices; Rig has no forwarding feature.
-
 ## Crates
 
-The `rig` crate re-exports the core and the agent runtime, and each companion
-crate behind a feature.
+The `rig` crate re-exports `rig-core`, and each companion crate behind a
+feature.
+
+| Crate | Feature | What it is |
+| --- | --- | --- |
+| [`rig-core`](crates/rig-core) | always | Provider-neutral messages, completion and embedding models, tool contracts, the conversation type, vector-store contracts, and the providers |
+| [`rig-agent`](crates/rig-agent) | `agent` (default) | The agent builder, prompting and streaming, hooks, the tool registry and the serializable `AgentRun` |
+| [`rig-memory`](crates/rig-memory) | `memory` | Windows, compaction, and saving, resuming and forking conversations |
+| [`rig-cassette`](crates/rig-cassette) | `cassette` | Effect logs: recording, replay and checkpoints |
+
+The coding agent's crates are not facade features. Depend on them directly.
 
 | Crate | What it is |
 | --- | --- |
-| [`rig-core`](crates/rig-core) | Provider-neutral messages, completion and embedding models, tool contracts, the conversation type, vector-store contracts, and the providers |
-| [`rig-agent`](crates/rig-agent) | The agent builder, prompting and streaming, hooks, the tool registry and the serializable `AgentRun` |
-| [`rig-memory`](crates/rig-memory) | Windows, compaction, and saving, resuming and forking conversations |
-| [`rig-cassette`](crates/rig-cassette) | Effect logs: recording, replay and checkpoints |
+| [`rig-cli`](crates/rig-cli) | The `rig` launcher |
 | [`rig-tools`](crates/rig-tools) | Coding tools any rig agent can use: read, write, edit, search, shell |
 | [`rig-ecs`](crates/rig-ecs), [`rig-harness`](crates/rig-harness) | The agent kernel on Bevy's ECS, and the harness the coding agent's plugins build on |
 | [`rig-tui`](plugins/rig-tui), [`rig-basics`](plugins/rig-basics) | The terminal view, and the coding agent's default plugins |
