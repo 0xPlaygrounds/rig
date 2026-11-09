@@ -62,9 +62,9 @@ newer and runs on Linux and macOS. Windows is not supported.
 rig has no update command. Install the new launcher, and the next start
 rebuilds the agent at its version:
 
-- From crates.io: `cargo install rig` again. Once `rig-cli` is released,
-  `cargo install --force rig-cli`; `--force` replaces the `rig` that the
-  `rig` crate installed.
+- From crates.io: 0.46.0 is the latest release. Once `rig-cli` is released,
+  `cargo install --force rig-cli` installs it; `--force` replaces the `rig`
+  that the `rig` crate installed.
 - From a checkout: `git pull`, then `cargo install --locked --force --path
   crates/rig-cli` again.
 
@@ -75,9 +75,10 @@ is refused, unchanged, with `this session was made by another version of rig;
 start a new session`.
 
 Coming from 0.46.0: it kept the plugin list in `RIG_HOME/plugins.toml` and the
-saved model in `RIG_HOME/defaults.json`. `main` reads neither, so turn your
-plugins off again with `rig plugin disable <type>` and pick the model again
-with `/model`.
+saved model in `RIG_HOME/defaults.json`. `main` reads neither. Turn your
+plugins off again with `rig plugin disable <type>`, add the plugin crates it
+listed as `[[plugins.extra]]` tables of `settings.toml` ([Plugins](#plugins)),
+and pick the model again with `/model`.
 
 ## What is per home and what is per project
 
@@ -91,7 +92,7 @@ describes.
 | Model and reasoning (`[model]`) and other settings | `RIG_HOME/settings.toml` | no: a project has no settings |
 | Instructions | `RIG_HOME/AGENTS.md` | `AGENTS.md` from the working directory up to the project root |
 | Skills | `RIG_HOME/skills`, `~/.agents/skills` | `.rig/skills` and `.agents/skills` from the working directory up to the project root |
-| MCP servers | `RIG_HOME/mcp.json` | `.rig/mcp.json` |
+| MCP servers, with the optional `rig-mcp-client` plugin | `RIG_HOME/mcp.json` | `.rig/mcp.json` |
 | Sign-in, sessions, builds | `auth/`, `sessions/`, `target/` | no |
 
 Plugins are compiled into one agent per home, so a repository you clone

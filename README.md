@@ -68,7 +68,8 @@ Then:
 2. `/login` signs in with a ChatGPT plan or saves a provider's API key. Or
    export a key, such as `OPENAI_API_KEY`, before starting `rig`.
 3. `/model` picks a model. A local Ollama or llama.cpp server is listed once
-   `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL` names it.
+   `OLLAMA_API_BASE_URL` or `LLAMACPP_API_BASE_URL` names it, or its key
+   variable is set.
 4. Type a prompt and press Enter. `/help` lists the commands.
 5. `rig -p "fix the failing test"` answers one prompt without the terminal view.
 
