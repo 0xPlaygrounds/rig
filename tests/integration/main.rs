@@ -34,6 +34,7 @@ mod mira;
 #[allow(clippy::expect_used, clippy::panic)]
 #[path = "../providers/moonshot/mod.rs"]
 mod moonshot;
+mod request_body_properties;
 #[allow(clippy::expect_used)]
 #[path = "../providers/together/mod.rs"]
 mod together;
