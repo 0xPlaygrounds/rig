@@ -43,7 +43,7 @@ use rig_harness_protocol::{
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
-use super::{LONG_VERSION, Result, locks};
+use super::{LONG_VERSION, Result, locks, project};
 
 mod stop;
 
@@ -73,14 +73,15 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // cannot read, such as one with an option it does not report, is read
     // as the agent reads its own, which takes any option, so the previous
     // build never answers a `-p` the new build failed on.
-    let last = last_report(home);
-    if let Some(why) = last.as_ref().and_then(|last| unknown_command(last, args)) {
+    if let Some((command, last)) = unknown_command(home, args) {
         eprintln!(
-            "rig: {why} (of the last build; when a plugin just turned on adds it, run `rig build` first)"
+            "rig: unknown command `{command}`; the last build's commands: {}; if a plugin you \
+             just turned on or a newer rig adds it, run `rig build` first",
+            last.command_names().join(", ")
         );
         return Ok(ExitCode::from(REFUSED_EXIT_CODE));
     }
-    let last = last.unwrap_or_default();
+    let last = last_report(home).unwrap_or_default();
     let print = (last.invocation(args))
         .or_else(|_| Invocation::parse(args))
         .is_ok_and(|invocation| invocation.print.is_some());
@@ -190,21 +191,28 @@ fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, Str
     })
 }
 
-/// Why `last` refuses the command line `args`, when its command alone is
-/// what `last` lacks; `None` when it takes the line or refuses something
-/// a new build may add, such as an option, which the new build reads.
-fn unknown_command(last: &AgentDescription, args: &[String]) -> Option<String> {
-    let why = last.invocation(args).err()?;
+/// The command of `args` that the report of the build a new session
+/// starts with refuses as unknown, with that report, when the command
+/// alone is what it refuses and that build is what building now would
+/// make ([`project::is_current`]). `None` otherwise: the new build reads
+/// the line, and may add an option or command.
+fn unknown_command(home: &Home, args: &[String]) -> Option<(String, AgentDescription)> {
+    let binary = [home.staged(), home.good()]
+        .into_iter()
+        .find(|binary| binary.exists())?;
+    let last = build::good_report(home, &binary)?;
+    last.invocation(args).err()?;
     let name = Invocation::parse(args).ok()?.command?;
     let mut with = last.clone();
     with.commands.push(DescribedCommand {
-        name,
+        name: name.clone(),
         usage: String::new(),
         terminal: false,
         sessionless: false,
         help: String::new(),
     });
-    with.invocation(args).is_ok().then_some(why)
+    with.invocation(args).ok()?;
+    project::is_current(home, &binary).then_some((name, last))
 }
 
 /// Says why the command line is refused, and returns its exit code.

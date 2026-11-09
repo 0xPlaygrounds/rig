@@ -25,7 +25,7 @@ use rig_harness_protocol::{
 };
 
 use super::project::{self, PACKAGE, RigSource};
-use super::{BEVY_VERSION, Result, locks};
+use super::{BEVY_VERSION, LONG_VERSION, Result, locks};
 
 /// Whether a build that is already known gets staged again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -164,6 +164,9 @@ fn compile_logged(
     staging: Staging,
     log: &mut BuildLog,
 ) -> Result<()> {
+    // A build that cannot be made, not a settings mistake: the previous
+    // build still starts where a failed build lets it.
+    source.check(LONG_VERSION)?;
     project::generate(home, plugins, source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Compiling the agent…");

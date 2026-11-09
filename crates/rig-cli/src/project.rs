@@ -12,10 +12,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
-use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
+use rig_harness_protocol::config::{self, BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::{Home, env};
 
-use super::{LONG_VERSION, Result, VERSION};
+use super::{Result, VERSION};
 
 /// The terminal view, whose plugin alone needs rig-basics' `tui` feature.
 const TUI: &str = "rig_tui::TuiPlugin";
@@ -46,8 +46,7 @@ pub enum RigSource {
 impl RigSource {
     /// `RIG_SOURCE` when set; else the checkout this launcher was installed
     /// from (`cargo install --path`), when it is still there; else
-    /// crates.io, for a launcher built from a crates.io package
-    /// ([`Self::registry`]). A checkout in cargo's own cache (`cargo install
+    /// crates.io. A checkout in cargo's own cache (`cargo install
     /// --git`) does not count: cargo may delete it at any time.
     pub fn detect() -> Result<Self> {
         if let Some(checkout) = std::env::var_os(env::SOURCE).filter(|path| !path.is_empty()) {
@@ -67,19 +66,19 @@ impl RigSource {
             .map(PathBuf::from)
             .or_else(|| std::env::home_dir().map(|home| home.join(".cargo")));
         let in_cargo_cache = cargo_home.is_some_and(|cargo| installed_from.starts_with(cargo));
-        if is_checkout(&installed_from) && !in_cargo_cache {
-            Ok(Self::Local(installed_from))
+        Ok(if is_checkout(&installed_from) && !in_cargo_cache {
+            Self::Local(installed_from)
         } else {
-            Self::registry(LONG_VERSION)
-        }
+            Self::Registry
+        })
     }
 
-    /// crates.io at [`VERSION`], for a launcher whose [`LONG_VERSION`] is
-    /// `long`. A launcher built from a commit fails: its generated agent
-    /// needs that commit's crates, which crates.io's release may not be.
-    fn registry(long: &str) -> Result<Self> {
-        if long == VERSION {
-            return Ok(Self::Registry);
+    /// Fails when this is crates.io and the launcher, whose [`LONG_VERSION`](super::LONG_VERSION)
+    /// is `long`, was built from a commit: its generated agent needs that
+    /// commit's crates, which crates.io's release may not be.
+    pub fn check(&self, long: &str) -> Result<()> {
+        if matches!(self, Self::Local(_)) || long == VERSION {
+            return Ok(());
         }
         Err(format!(
             "rig {long} was built from a rig checkout that is gone or in cargo's cache \
@@ -249,6 +248,32 @@ pub fn rig_version(source: &RigSource) -> String {
         workspace.get("version")?.as_str().map(str::to_owned)
     });
     version.unwrap_or_else(|| VERSION.to_owned())
+}
+
+/// Whether the build `binary` is what building now would make, as far as
+/// the launcher can tell without cargo: the agent project generated from
+/// the settings and source of now is the one on disk, and `binary` is
+/// newer than its files and than this launcher. False when that cannot be
+/// read.
+pub fn is_current(home: &Home, binary: &Path) -> bool {
+    let current = || -> Result<bool> {
+        let plugins = config::chosen(home)?;
+        let source = RigSource::detect()?;
+        let built = fs::metadata(binary)?.modified()?;
+        let launcher = fs::metadata(std::env::current_exe()?)?.modified()?;
+        let mut same = launcher <= built;
+        for (file, text) in [
+            ("Cargo.toml", manifest(home, &plugins, &source)?),
+            ("src/main.rs", main_rs(home, &plugins, &source)),
+        ] {
+            let path = home.project().join(file);
+            same = same
+                && fs::read_to_string(&path).is_ok_and(|written| written == text)
+                && fs::metadata(&path)?.modified()? <= built;
+        }
+        Ok(same)
+    };
+    current().unwrap_or(false)
 }
 
 /// Writes the agent project with the plugins on of `plugins`.

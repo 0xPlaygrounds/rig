@@ -775,42 +775,70 @@ fn a_session_with_a_logged_conversation_outlives_the_leave_and_the_sweep() {
 }
 
 /// A command the last build does not have is refused before anything
-/// builds: here a build would fail on the settings, so a refusal with
-/// exit code 2 shows nothing was built. A command line whose first word
-/// the last build cannot place, such as after an option it does not know,
-/// is left to the new build.
+/// builds, while that build is what building now would make. Once a
+/// plugin is turned on, which may add the command, the build runs first:
+/// here it fails on the settings, which shows it ran. So does a command
+/// line whose first word the last build cannot place, such as after an
+/// option it does not know.
 #[cfg(unix)]
 #[test]
-fn an_unknown_command_is_refused_before_the_build() {
+fn an_unknown_command_is_refused_before_the_build_only_while_that_build_is_current() {
     let home = builds(
         "unknown-command",
         &describing("stats"),
         &describing("stats"),
     );
+    let generated = rig_harness_protocol::config::chosen(&home)
+        .map_err(|why| why.to_string())
+        .and_then(|plugins| {
+            let source = project::RigSource::detect().map_err(|why| why.to_string())?;
+            project::generate(&home, &plugins, &source).map_err(|why| why.to_string())
+        });
+    // Built after the project was written, as cargo builds it.
     for binary in [home.staged(), home.good()] {
+        File::options()
+            .write(true)
+            .open(&binary)
+            .and_then(|file| file.set_modified(std::time::SystemTime::now()))
+            .ok();
         build::described(&home, &binary).ok();
     }
     fs::remove_file(home.root().join("ran")).ok();
-    fs::write(
-        home.settings(),
-        "[plugins]\nenable = [\"rig_basics::gone::GonePlugin\"]\n",
-    )
-    .ok();
     let words = |words: &[&str]| {
         words
             .iter()
             .map(|word| (*word).to_owned())
             .collect::<Vec<_>>()
     };
+    let current = project::is_current(&home, &home.staged());
     let update = run(&home, &words(&["update"])).map_err(|why| why.to_string());
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_acp::AcpPlugin\"]\n",
+    )
+    .ok();
+    let turned_on = project::is_current(&home, &home.staged());
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_basics::gone::GonePlugin\"]\n",
+    )
+    .ok();
+    let after_change = run(&home, &words(&["update"])).map_err(|why| why.to_string());
     let unplaced = run(&home, &words(&["--new-option", "update"])).map_err(|why| why.to_string());
     let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
     fs::remove_dir_all(home.root()).ok();
-    assert_eq!(update, Ok(ExitCode::from(REFUSED_EXIT_CODE)));
+    assert_eq!(generated, Ok(()));
     assert!(
-        matches!(&unplaced, Err(why) if why.contains("unknown plugin")),
-        "{unplaced:?}"
+        current && !turned_on,
+        "current {current}, after turning a plugin on {turned_on}"
     );
+    assert_eq!(update, Ok(ExitCode::from(REFUSED_EXIT_CODE)));
+    for built in [after_change, unplaced] {
+        assert!(
+            matches!(&built, Err(why) if why.contains("unknown plugin")),
+            "{built:?}"
+        );
+    }
     assert_eq!(ran, "");
 }
 

@@ -1,3 +1,4 @@
+use crate::LONG_VERSION;
 use rig_harness_protocol::config::SettingsFile;
 
 use super::*;
@@ -237,12 +238,11 @@ fn the_lock_is_seeded_again_when_the_checkouts_changes() {
 /// agent from crates.io, whose release is other code; it says what to do.
 #[test]
 fn a_launcher_from_a_commit_does_not_build_from_crates_io() {
-    assert!(matches!(
-        RigSource::registry(VERSION),
-        Ok(RigSource::Registry)
-    ));
     let commit = format!("{VERSION} (b1321662b)");
-    let refused = RigSource::registry(&commit)
+    assert!(RigSource::Registry.check(VERSION).is_ok());
+    assert!(RigSource::Local(checkout()).check(&commit).is_ok());
+    let refused = RigSource::Registry
+        .check(&commit)
         .err()
         .map(|why| why.to_string());
     let refused = refused.unwrap_or_default();
@@ -251,4 +251,28 @@ fn a_launcher_from_a_commit_does_not_build_from_crates_io() {
         "{refused}"
     );
     assert_eq!(refused.lines().count(), 1, "{refused}");
+}
+
+/// Built in a rig checkout, the launcher's version names the checkout's
+/// commit, the one checked out now; built elsewhere, it is the version.
+#[test]
+fn the_version_names_the_commit_of_the_checkout_it_was_built_in() {
+    let git = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(checkout())
+            .args(args)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())?;
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    };
+    let root = git(&["rev-parse", "--show-toplevel"]).map(PathBuf::from);
+    let in_checkout =
+        root.and_then(|root| root.canonicalize().ok()) == checkout().canonicalize().ok();
+    let expected = match git(&["rev-parse", "--short=9", "HEAD"]) {
+        Some(head) if in_checkout => format!("{VERSION} ({head})"),
+        _ => VERSION.to_owned(),
+    };
+    assert_eq!(LONG_VERSION, expected);
 }

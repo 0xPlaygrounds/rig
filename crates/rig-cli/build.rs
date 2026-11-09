@@ -29,17 +29,27 @@ fn main() {
         .flatten();
     println!("cargo::rerun-if-changed=build.rs");
     if commit.is_some() {
-        // A checkout, commit, pull or reset rewrites HEAD or its log; a
-        // commit on a branch rewrites the branch's file. `--git-path` finds
-        // them in a worktree's own git directory too.
-        let branch = git(&["rev-parse", "--symbolic-full-name", "HEAD"]);
-        let files = ["HEAD", "logs/HEAD"].into_iter().map(str::to_owned);
-        for file in files.chain(branch.filter(|branch| branch.starts_with("refs/"))) {
-            let path = git(&["rev-parse", "--git-path", &file]).map(|path| checkout.join(path));
-            // A file that is not there would rerun this script every build.
-            if let Some(path) = path.filter(|path| path.exists()) {
-                println!("cargo::rerun-if-changed={}", path.display());
-            }
+        // HEAD names the branch, or the commit when detached. A commit on a
+        // branch rewrites its loose ref file, or creates one under
+        // `refs/heads` when the branch was packed; a reftable repository
+        // writes new tables under `reftable` instead. `--git-path` finds each
+        // for a worktree too. Only paths that exist are watched: a missing
+        // one would rerun this script on every build.
+        let path = |file: &str| {
+            let path = git(&["rev-parse", "--git-path", file]).map(|path| checkout.join(path));
+            path.filter(|path| path.exists())
+        };
+        let branch = git(&["rev-parse", "--symbolic-full-name", "HEAD"])
+            .filter(|branch| branch.starts_with("refs/"))
+            .and_then(|branch| path(&branch))
+            .filter(|branch| branch.is_file());
+        let watched = [
+            path("HEAD"),
+            branch.or_else(|| path("refs/heads")),
+            path("reftable"),
+        ];
+        for path in watched.into_iter().flatten() {
+            println!("cargo::rerun-if-changed={}", path.display());
         }
     }
     let long = match commit {
