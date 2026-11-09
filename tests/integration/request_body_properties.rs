@@ -257,6 +257,10 @@ fn encoders() -> Vec<Encoder> {
 
 /// The companion crates' wires this build enables. They send no HTTP
 /// request of their own, so only their bodies are checked.
+#[cfg_attr(
+    not(any(feature = "bedrock", feature = "vertexai", feature = "gemini-grpc")),
+    allow(unused_variables)
+)]
 fn companions(out: &mut Vec<Encoder>) {
     #[cfg(feature = "bedrock")]
     out.push(encoder(
@@ -284,7 +288,6 @@ fn companions(out: &mut Vec<Encoder>) {
         |model: &str| rig::gemini_grpc::completion::GenerateContent::new(model),
         |payload| data(rig::gemini_grpc::rest::to_rest(payload)),
     ));
-    let _ = out;
 }
 
 /// The request shapes, by name.
@@ -339,16 +342,57 @@ fn has_key(value: &Value, key: &str) -> bool {
     }
 }
 
-/// The model a request addresses: its body's `model` field, else the URL.
+/// `url` split into its scheme and authority, and its path without the
+/// query.
+fn split_url(url: &str) -> Option<(&str, &str)> {
+    let after_scheme = url.find("://")? + 3;
+    let path_at = url
+        .get(after_scheme..)?
+        .find('/')
+        .map_or(url.len(), |at| after_scheme + at);
+    let path = url.get(path_at..)?;
+    Some((
+        url.get(..path_at)?,
+        path.split('?').next().unwrap_or_default(),
+    ))
+}
+
+/// The model a request addresses: its body's `model` field, else a whole
+/// segment of the URL path, which may end in a `:method` suffix.
 fn names_model(sent: &Sent, body: &Value, model: &str) -> bool {
-    let field = body.get("model").and_then(Value::as_str);
-    field.is_some_and(|field| field == model || field.ends_with(&format!("/{model}")))
-        || (field.is_none()
-            && sent.uri.as_ref().is_some_and(|uri| {
-                uri.split('?')
-                    .next()
-                    .is_some_and(|path| path.contains(&format!("/{model}")))
-            }))
+    let needle = format!("/{model}");
+    match body.get("model").and_then(Value::as_str) {
+        Some(field) => field == model || field.ends_with(&needle),
+        None => sent
+            .uri
+            .as_deref()
+            .and_then(split_url)
+            .is_some_and(|(_, path)| {
+                path.match_indices(&needle).any(|(at, _)| {
+                    path.get(at + needle.len()..)
+                        .is_some_and(|rest| rest.is_empty() || rest.starts_with(['/', ':']))
+                })
+            }),
+    }
+}
+
+/// Whether `url` has `base`'s scheme and authority exactly, and a path at or
+/// under `base`'s path. An empty base (Azure has no default endpoint) leaves
+/// a URL that is only a path.
+fn under_base(url: &str, base: &str) -> bool {
+    let base = base.trim_end_matches('/');
+    if base.is_empty() {
+        return url.starts_with('/');
+    }
+    match (split_url(url), split_url(base)) {
+        (Some((origin, path)), Some((base_origin, base_path))) => {
+            origin == base_origin
+                && path
+                    .strip_prefix(base_path)
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        }
+        _ => false,
+    }
 }
 
 /// Why `shape`'s request should not reach `spec`'s model, if the catalog
@@ -373,6 +417,8 @@ fn unsupported(spec: &ModelSpec, shape: &str) -> Option<&'static str> {
 fn sends(body: &Value, shape: &str, plain: Option<&Value>) -> bool {
     match shape {
         "temperature" => has_key(body, "temperature"),
+        // A refused plain request leaves nothing to compare, so any effort
+        // body counts as sending the reasoning the catalog refuses.
         _ => plain != Some(body),
     }
 }
@@ -430,11 +476,7 @@ fn check(
             carriers.as_slice(),
             [(name, _, true)] if Some(name.as_str()) == route.credential
         );
-        if !uri.starts_with(route.base.trim_end_matches('/'))
-            || !path_ok
-            || !header_ok
-            || uri.contains(KEY)
-        {
+        if !under_base(uri, &route.base) || !path_ok || !header_ok || uri.contains(KEY) {
             failures.route.push(format!(
                 "{at}: sent to {uri} with credential headers {carriers:?}; the settings say \
                  base {}, path {:?}, header {:?} marked sensitive",
