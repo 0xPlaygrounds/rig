@@ -213,10 +213,6 @@ policies; the credential-free `retry_on_truncation` example demonstrates cap
 growth on both surfaces. The `run_budget` example caps a run's total tokens
 and tool calls the same way, with counts kept in the scratchpad.
 
-With `test-utils`, `test_utils::HookTestHarness` gives a hook stack the run
-context a runner would, so a hook's actions and scratchpad state can be tested
-without running an agent.
-
 Tools implement `rig_core::tool::Tool`, work in both runtimes, and receive
 each call's `&mut ToolContext`.
 
