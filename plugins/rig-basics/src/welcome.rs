@@ -74,7 +74,7 @@ fn welcome(
         return;
     };
     let says = Welcome {
-        version: env!("CARGO_PKG_VERSION").to_owned(),
+        version: rig_harness::harness_protocol::long_version(),
         model: label
             .map(|label| label.0.clone())
             .or_else(|| model.map(|model| model.0.clone())),

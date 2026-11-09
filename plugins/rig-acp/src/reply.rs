@@ -121,7 +121,10 @@ pub(crate) fn initialized() -> acp::InitializeResponse {
         .session_capabilities(sessions);
     acp::InitializeResponse::new(ProtocolVersion::V1)
         .agent_capabilities(capabilities)
-        .agent_info(acp::Implementation::new("rig", env!("CARGO_PKG_VERSION")))
+        .agent_info(acp::Implementation::new(
+            "rig",
+            rig_harness::harness_protocol::long_version(),
+        ))
 }
 
 /// An error of `kind` that says `why` as its message, which a client shows

@@ -15,7 +15,7 @@ use rig_harness_protocol::config::toml_edit::{DocumentMut, Item};
 use rig_harness_protocol::config::{BUILT_IN, Extra, Plugins, Source, built_in};
 use rig_harness_protocol::{Home, env};
 
-use super::{Result, VERSION};
+use super::{LONG_VERSION, Result, VERSION};
 
 /// The terminal view, whose plugin alone needs rig-basics' `tui` feature.
 const TUI: &str = "rig_tui::TuiPlugin";
@@ -46,8 +46,9 @@ pub enum RigSource {
 impl RigSource {
     /// `RIG_SOURCE` when set; else the checkout this launcher was installed
     /// from (`cargo install --path`), when it is still there; else
-    /// crates.io. A checkout in cargo's own cache (`cargo install --git`)
-    /// does not count: cargo may delete it at any time.
+    /// crates.io, for a launcher built from a crates.io package
+    /// ([`Self::registry`]). A checkout in cargo's own cache (`cargo install
+    /// --git`) does not count: cargo may delete it at any time.
     pub fn detect() -> Result<Self> {
         if let Some(checkout) = std::env::var_os(env::SOURCE).filter(|path| !path.is_empty()) {
             let checkout = std::path::absolute(PathBuf::from(checkout))?;
@@ -66,11 +67,27 @@ impl RigSource {
             .map(PathBuf::from)
             .or_else(|| std::env::home_dir().map(|home| home.join(".cargo")));
         let in_cargo_cache = cargo_home.is_some_and(|cargo| installed_from.starts_with(cargo));
-        Ok(if is_checkout(&installed_from) && !in_cargo_cache {
-            Self::Local(installed_from)
+        if is_checkout(&installed_from) && !in_cargo_cache {
+            Ok(Self::Local(installed_from))
         } else {
-            Self::Registry
-        })
+            Self::registry(LONG_VERSION)
+        }
+    }
+
+    /// crates.io at [`VERSION`], for a launcher whose [`LONG_VERSION`] is
+    /// `long`. A launcher built from a commit fails: its generated agent
+    /// needs that commit's crates, which crates.io's release may not be.
+    fn registry(long: &str) -> Result<Self> {
+        if long == VERSION {
+            return Ok(Self::Registry);
+        }
+        Err(format!(
+            "rig {long} was built from a rig checkout that is gone or in cargo's cache \
+             (`cargo install --git`), so its agent cannot build from crates.io's rig {VERSION}: \
+             run `cargo install --path crates/rig-cli` in a checkout you keep, or set \
+             RIG_SOURCE to one"
+        )
+        .into())
     }
 }
 

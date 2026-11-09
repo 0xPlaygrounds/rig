@@ -232,3 +232,23 @@ fn the_lock_is_seeded_again_when_the_checkouts_changes() {
     assert_eq!(kept.as_deref(), Ok("first, resolved"));
     assert_eq!(pulled.as_deref(), Ok("pulled"));
 }
+
+/// A launcher built from a commit of a checkout that is gone builds no
+/// agent from crates.io, whose release is other code; it says what to do.
+#[test]
+fn a_launcher_from_a_commit_does_not_build_from_crates_io() {
+    assert!(matches!(
+        RigSource::registry(VERSION),
+        Ok(RigSource::Registry)
+    ));
+    let commit = format!("{VERSION} (b1321662b)");
+    let refused = RigSource::registry(&commit)
+        .err()
+        .map(|why| why.to_string());
+    let refused = refused.unwrap_or_default();
+    assert!(
+        refused.contains(&commit) && refused.contains("cargo install --path"),
+        "{refused}"
+    );
+    assert_eq!(refused.lines().count(), 1, "{refused}");
+}
