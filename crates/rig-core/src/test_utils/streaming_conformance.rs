@@ -194,31 +194,8 @@ pub const WIRE_FAMILIES: &[&str] = &[
     "candle",
 ];
 
-/// The sanctioned reason for an expected-failure scenario, from `xfail`
-/// entries of the form `"scenario_name: reason (finding reference)"`.
-pub fn xfail_reason<'a>(xfail: &[&'a str], scenario: &str) -> Option<&'a str> {
-    xfail.iter().find_map(|entry| {
-        let (name, reason) = entry.split_once(':')?;
-        (name.trim() == scenario).then(|| reason.trim())
-    })
-}
-
-/// `xfail` entries that do not name a canonical scenario or carry no reason.
-pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
-    xfail
-        .iter()
-        .filter(|entry| match entry.split_once(':') {
-            Some((name, reason)) => {
-                !CANONICAL_SCENARIOS.contains(&name.trim()) || reason.trim().is_empty()
-            }
-            None => true,
-        })
-        .map(std::string::ToString::to_string)
-        .collect()
-}
-
 /// Enforce a capability-gated scenario's outcome against the suite's declared
-/// capability flag and its `xfail` list.
+/// capability flag.
 ///
 /// A `Skipped` outcome passes only when the capability is disclaimed; a `Ran`
 /// outcome passes only when it is declared — so a vacuous pass (fixture lacks
@@ -227,19 +204,11 @@ pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
 pub fn check_gated_outcome(
     scenario: &'static str,
     capability: bool,
-    xfail: &[&str],
     outcome: Result<ScenarioOutcome, ConformanceError>,
 ) -> Result<(), String> {
-    match (xfail_reason(xfail, scenario), outcome) {
-        (Some(reason), Err(error)) => {
-            eprintln!("xfail {scenario}: {reason} ({error})");
-            Ok(())
-        }
-        (Some(reason), Ok(_)) => Err(format!(
-            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
-        )),
-        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
-        (None, Ok(ScenarioOutcome::Ran(_))) => {
+    match outcome {
+        Err(error) => Err(format!("{scenario} failed: {error}")),
+        Ok(ScenarioOutcome::Ran(_)) => {
             if capability {
                 Ok(())
             } else {
@@ -248,7 +217,7 @@ pub fn check_gated_outcome(
                 ))
             }
         }
-        (None, Ok(ScenarioOutcome::Skipped { reason, .. })) => {
+        Ok(ScenarioOutcome::Skipped { reason, .. }) => {
             if capability {
                 Err(format!(
                     "{scenario} skipped ({reason}) but the suite declares the capability; \
@@ -262,14 +231,13 @@ pub fn check_gated_outcome(
     }
 }
 
-/// Enforce an always-runnable scenario's result against the `xfail` list.
+/// Enforce an always-runnable scenario's result.
 pub fn check_ungated_outcome(
     scenario: &'static str,
-    xfail: &[&str],
     result: Result<ScenarioReport, ConformanceError>,
 ) -> Result<(), String> {
     // A run always declares its capability.
-    check_gated_outcome(scenario, true, xfail, result.map(ScenarioOutcome::Ran))
+    check_gated_outcome(scenario, true, result.map(ScenarioOutcome::Ran))
 }
 
 /// One scripted wire input frame.

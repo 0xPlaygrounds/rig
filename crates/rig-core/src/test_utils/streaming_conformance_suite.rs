@@ -4,10 +4,9 @@
 //! expands the canonical scenario set for one wire family, one named
 //! `#[tokio::test]` per scenario, plus `suite_is_complete`, which checks that
 //! the expanded list equals
-//! [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS)
-//! and that every `xfail` entry names a canonical scenario with a reason. The
-//! list it checks is generated from the same entries as the test functions,
-//! so deleting a scenario fails it.
+//! [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS).
+//! The list it checks is generated from the same entries as the test
+//! functions, so deleting a scenario fails it.
 //!
 //! Each gated test derives its capability flags from the fixture
 //! ([`ProviderWireFixture::capabilities`](crate::test_utils::streaming_conformance::ProviderWireFixture::capabilities)).
@@ -33,7 +32,6 @@ macro_rules! __streaming_conformance_scenario {
             let result = $crate::test_utils::streaming_conformance::$name(&suite_fixture()).await;
             let verdict = $crate::test_utils::streaming_conformance::check_ungated_outcome(
                 stringify!($name),
-                SUITE_XFAIL,
                 result,
             );
             assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
@@ -52,7 +50,6 @@ macro_rules! __streaming_conformance_scenario {
             let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
                 stringify!($name),
                 capability,
-                SUITE_XFAIL,
                 outcome,
             );
             assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
@@ -92,7 +89,6 @@ macro_rules! __streaming_conformance_scenarios {
 ///         provider: "anthropic",
 ///         fixture: anthropic::fixture(),
 ///         manifest: [partial_tool_args, malformed_frame, unknown_event_frame],
-///         xfail: ["unknown_event_is_skipped: warn-skip pending a fix"],
 ///     }
 /// }
 /// ```
@@ -103,23 +99,19 @@ macro_rules! __streaming_conformance_scenarios {
 /// [`ProviderWireFixture`](crate::test_utils::streaming_conformance::ProviderWireFixture)
 /// per test. `manifest` is the required snapshot of the fixture-derived
 /// capability set, so losing a fixture sample fails
-/// `derived_capabilities_match_the_manifest`. `xfail` lists sanctioned known
-/// failures as `"<scenario>: <reason>"`.
+/// `derived_capabilities_match_the_manifest`.
 #[macro_export]
 macro_rules! streaming_conformance_suite {
     (
         provider: $family:literal,
         fixture: $fixture:expr,
         manifest: [$($cap:ident),* $(,)?]
-        $(, xfail: [$($xfail:literal),* $(,)?])?
         $(,)?
     ) => {
         /// Wire family this suite covers; the workspace registry test keys
         /// invocations on the `provider:` field naming it.
         #[allow(dead_code)]
         pub const WIRE_FAMILY: &str = $family;
-
-        const SUITE_XFAIL: &[&str] = &[$($($xfail),*)?];
 
         fn suite_fixture() -> $crate::test_utils::streaming_conformance::ProviderWireFixture {
             $fixture
@@ -159,7 +151,7 @@ macro_rules! streaming_conformance_suite {
         }
 
         /// Anti-tamper: the expanded suite covers exactly the canonical
-        /// scenario list, and every `xfail` entry is well-formed.
+        /// scenario list.
         #[test]
         fn suite_is_complete() {
             assert_eq!(
@@ -167,11 +159,6 @@ macro_rules! streaming_conformance_suite {
                 $crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS,
                 "the {} suite's expanded scenarios diverge from the canonical list",
                 $family,
-            );
-            let invalid = $crate::test_utils::streaming_conformance::invalid_xfail_entries(SUITE_XFAIL);
-            assert!(
-                invalid.is_empty(),
-                "xfail entries must name a canonical scenario and carry a finding reference: {invalid:?}",
             );
         }
     };
