@@ -226,7 +226,7 @@ fn drain(reported: &Reported, commands: &mut Commands) -> u64 {
 fn settle(unsettled: &AtomicU64) {
     let fewer = |count: u64| count.checked_sub(1);
     unsettled
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, fewer)
+        .try_update(Ordering::SeqCst, Ordering::SeqCst, fewer)
         .ok();
 }
 
