@@ -19,7 +19,7 @@ use serde_json::Value;
 
 use super::PROVIDER_NAME;
 use super::wire::{REQUEST_ID_HEADER, stamp};
-use crate::error::{EncodeError, ProviderError};
+use crate::error::EncodeError;
 use crate::json_utils::Lenient;
 use crate::model::{ModelInfo, ModelList};
 use crate::operation::{ModelListing, ModelPage};
@@ -49,8 +49,8 @@ impl Models {
 
 /// The catalogue's `data`, each entry naming its id, its name, its vendor,
 /// its modality under `capabilities.type` and its tool-call support under
-/// `capabilities.supports.tool_calls`.
-fn page(event: Value) -> Result<ModelPage, ProviderError> {
+/// `capabilities.supports.tool_calls`. Copilot's `model_listing` hook.
+pub(super) fn catalogue(event: Value) -> ModelList {
     let text =
         |entry: &Value, pointer: &str| entry.at(pointer).and_then(Value::as_str).map(str::to_owned);
     let models = event
@@ -67,10 +67,7 @@ fn page(event: Value) -> Result<ModelPage, ProviderError> {
             Some(model)
         })
         .collect();
-    Ok(ModelPage {
-        models: ModelList::new(models),
-        next: None,
-    })
+    ModelList::new(models)
 }
 
 impl Wire for Models {
@@ -98,6 +95,14 @@ impl Wire for Models {
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        DocumentDecoder::new(|body| classify_untyped_line(body.as_bytes()), page)
+        DocumentDecoder::new(
+            |body| classify_untyped_line(body.as_bytes()),
+            |event| {
+                Ok(ModelPage {
+                    models: catalogue(event),
+                    next: None,
+                })
+            },
+        )
     }
 }

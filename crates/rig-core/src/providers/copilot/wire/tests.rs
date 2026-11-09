@@ -467,6 +467,7 @@ fn named_dialect_persistence_rejects_replaced_hook_definitions() {
         model_route: HOOKS.model_route,
         completion_envelope: HOOKS.completion_envelope,
         modality_envelope: None,
+        model_listing: HOOKS.model_listing,
     };
     let changed = Dialect {
         quirks: Quirks {
