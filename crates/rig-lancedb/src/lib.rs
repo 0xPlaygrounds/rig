@@ -368,8 +368,8 @@ impl InsertDocuments for LanceDbVectorIndex {
     /// has no embeddings, has a field with no column or one named like the
     /// embedding column, leaves out a non-nullable column, or has a value its
     /// column would store differently, or when an embedding's length differs
-    /// from the column's or its squared length is not finite in Float32, which
-    /// LanceDB computes distances in, such as one holding `1e300` or `NaN`.
+    /// from the column's, a value of it is not finite in the column's float
+    /// type, or its squared length is not finite, such as one holding `1e300`.
     /// Values stored differently are a number with a fraction for an integer
     /// column, such as `1.5`, a number too large for a Float16 or Float32
     /// column, such as `1e300`, and a binary value that is not an even-length
@@ -404,9 +404,9 @@ impl InsertDocuments for LanceDbVectorIndex {
                 )));
             }
             let name = column.name();
-            if let Some(value) = unscorable_value(&embedding.vec) {
+            if let Some(value) = unscorable_value(column, &embedding.vec) {
                 return Err(invalid_input(format!(
-                    "embedding of document {} cannot be scored: with value {value:e} its squared length is not finite in Float32, the type LanceDB computes distances in",
+                    "embedding of document {} cannot be scored: with value {value:e} it or its squared length is not finite in column `{name}`",
                     row.get(&self.id_field).unwrap_or(&Value::Null)
                 )));
             }
@@ -434,9 +434,9 @@ impl VectorStoreIndex for LanceDbVectorIndex {
     type Filter = LanceDBFilter;
 
     /// Returns matches scored by distance, with embedding columns projected
-    /// out. Errors when a row's distance is not finite, as for a row written
-    /// outside Rig with a value too large to square in Float32. A row whose id
-    /// column is absent or non-textual gets a placeholder id.
+    /// out. Errors when a row's distance is not finite, as for an L2 distance
+    /// past Float32, which LanceDB computes distances in. A row whose id column
+    /// is absent or non-textual gets a placeholder id.
     ///
     /// # Example
     /// ```no_run

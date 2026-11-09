@@ -86,19 +86,22 @@ pub(crate) fn embedding_column<'a>(
     }
 }
 
-/// The value to name when LanceDB cannot score `embedding`, or `None` when it
-/// can. LanceDB computes distances in Float32 for Float32 and Float64 columns
-/// alike, so an embedding whose squared length is not finite in Float32 is
-/// refused, naming a value that is not finite or else the largest one.
-pub(crate) fn unscorable_value(embedding: &[f64]) -> Option<f64> {
-    let squared_length: f64 = embedding.iter().map(|value| value * value).sum();
-    if (squared_length as f32).is_finite() {
-        return None;
-    }
+/// The value to name when `embedding` cannot be stored in `column` and
+/// scored, or `None` when it can: a value that is not finite in the column's
+/// float type, or else the largest value when the squared length is not finite.
+/// Whether a finite squared length gives a finite distance depends on the
+/// distance type each query picks, so search refuses the rest.
+pub(crate) fn unscorable_value(column: &Field, embedding: &[f64]) -> Option<f64> {
+    let narrowed = matches!(column.data_type(), DataType::FixedSizeList(item, _)
+        if *item.data_type() == DataType::Float32);
     let values = || embedding.iter().copied();
     values()
-        .find(|value| !value.is_finite())
-        .or_else(|| values().max_by(|a, b| a.abs().total_cmp(&b.abs())))
+        .find(|&value| !value.is_finite() || (narrowed && !(value as f32).is_finite()))
+        .or_else(|| {
+            let squared_length: f64 = values().map(|value| value * value).sum();
+            let largest = values().max_by(|a, b| a.abs().total_cmp(&b.abs()));
+            largest.filter(|_| !squared_length.is_finite())
+        })
 }
 
 /// The distance LanceDB computed for `row`. Errors, naming the row's

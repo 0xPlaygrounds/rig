@@ -235,5 +235,9 @@ async fn insert_refuses_documents_the_table_cannot_hold() -> anyhow::Result<()> 
         message.contains("\"a\" cannot be scored: with value 1e300"),
         "1e300 in a Float64 embedding should be refused, got {message:?}"
     );
+    // Its L2 distance overflows Float32, but a dot product query can score it.
+    index
+        .insert_documents(vec![(json!({"id": "b"}), vec![embedding(&[1e20, 0.0])])])
+        .await?;
     Ok(())
 }
