@@ -676,3 +676,21 @@ fn a_misspelled_configuration_key_fails_to_load() {
         "{error:?}"
     );
 }
+
+/// A stored configuration loads without its credential and refuses to send
+/// until one is set again; then its request carries that bearer credential.
+#[test]
+fn a_reloaded_configuration_sends_once_its_token_is_set() -> anyhow::Result<()> {
+    use rig_core::wire::{Mode, Wire};
+
+    let stored = serde_json::to_value(JevConfig::new("stored-token").model("jev-1"))?;
+    let loaded: JevConfig = serde_json::from_value(stored)?;
+    let request = || serde_json::from_value(json!({"state": 1, "questions": {}}));
+    ensure!(loaded.encode(request()?, Mode::Unary).is_err());
+    let encoded = loaded
+        .with_token("fresh-token")
+        .encode(request()?, Mode::Unary)?;
+    let authorization = encoded.request.headers().get(http::header::AUTHORIZATION);
+    ensure!(authorization.is_some_and(|value| value == "Bearer fresh-token"));
+    Ok(())
+}
