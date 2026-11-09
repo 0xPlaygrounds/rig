@@ -24,6 +24,8 @@ pub use rig_core::test_utils::*;
 pub fn without_temperature(builder: crate::agent::AgentBuilder) -> crate::agent::AgentBuilder {
     builder.clear_temperature()
 }
+#[cfg(test)]
+pub(crate) use tools::Counted;
 pub use tools::{
     MockAddTool, MockContextProbeTool, MockDeniedTool, MockExampleTool, MockFailingTool,
     MockFailure, MockHandledFailureTool, MockImageGeneratorTool, MockMetadataTool,

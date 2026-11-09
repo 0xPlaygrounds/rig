@@ -23,7 +23,7 @@ use crate::completion::{Message, PromptError, Usage};
 use crate::run::OutputMode;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,
+    Counted, MockAddTool, MockCompletionModel, MockOperationArgs, MockScript, MockStreamEvent,
     MockSubtractTool, MockToolError, MockTurn, drive_to_final_response,
 };
 use crate::tool::{
@@ -2140,9 +2140,7 @@ impl AgentHook for TerminateOnFirstToolHook {
 async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
     let blocking_calls = Arc::new(AtomicU32::new(0));
     AgentBuilder::new(two_terminating_tools_blocking_model())
-        .tool(CountingAddTool {
-            calls: blocking_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, blocking_calls.clone()))
         .build()
         .prompt("go")
         .max_turns(3)
@@ -2158,9 +2156,7 @@ async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
 
     let streaming_calls = Arc::new(AtomicU32::new(0));
     let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
-        .tool(CountingAddTool {
-            calls: streaming_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, streaming_calls.clone()))
         .build()
         .prompt("go")
         .max_turns(3)
@@ -2211,9 +2207,7 @@ async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() 
 
     let calls = Arc::new(AtomicU32::new(0));
     let err = AgentBuilder::new(two_terminating_tools_blocking_model())
-        .tool(CountingAddTool {
-            calls: calls.clone(),
-        })
+        .tool(Counted(MockAddTool, calls.clone()))
         .build()
         .prompt("go")
         .max_turns(3)
@@ -2288,9 +2282,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         ],
     ]);
     let stream = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: calls.clone(),
-        })
+        .tool(Counted(MockAddTool, calls.clone()))
         .add_hook(SkipHook)
         .build()
         .prompt("go")
@@ -2425,32 +2417,6 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         msg.contains("active_tools"),
         "error should name active_tools: {msg}"
     );
-}
-
-/// A tool that counts how many times it executes.
-#[derive(Clone)]
-struct CountingAddTool {
-    calls: Arc<AtomicU32>,
-}
-impl Tool for CountingAddTool {
-    const NAME: &'static str = "add";
-    type Error = MockToolError;
-    type Args = MockOperationArgs;
-    type Output = i32;
-    fn description(&self) -> String {
-        MockAddTool.description()
-    }
-    fn parameters(&self) -> serde_json::Value {
-        MockAddTool.parameters()
-    }
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.calls.fetch_add(1, SeqCst);
-        MockAddTool.call(_context, args).await
-    }
 }
 
 /// The shared driver events a hook can terminate the run from.
@@ -4424,9 +4390,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
         "add",
         json!({"x": 1, "y": 2}),
     )]))
-    .tool(CountingAddTool {
-        calls: executions.clone(),
-    })
+    .tool(Counted(MockAddTool, executions.clone()))
     .add_hook(recorder.clone())
     .add_hook(AlwaysRepeatModelTurn)
     .build()
@@ -4460,9 +4424,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
         MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
         MockStreamEvent::final_response_with_default_usage(),
     ]]))
-    .tool(CountingAddTool {
-        calls: executions.clone(),
-    })
+    .tool(Counted(MockAddTool, executions.clone()))
     .add_hook(recorder.clone())
     .add_hook(AlwaysRepeatModelTurn)
     .build()
@@ -5559,9 +5521,7 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
 
     let calls = Arc::new(AtomicU32::new(0));
     let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
-        .tool(CountingAddTool {
-            calls: calls.clone(),
-        })
+        .tool(Counted(MockAddTool, calls.clone()))
         .build();
     let mut run = AgentRun::from_spec(&agent.run_spec(), Message::user("go"), None).max_turns(2);
     let Ok(AgentRunStep::CallModel { turn, .. }) = run.next_step() else {

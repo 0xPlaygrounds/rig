@@ -13,16 +13,15 @@ use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefini
 use crate::run::{AgentRun, AgentRunStep};
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
-    CapturedSpan, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
-    MockSubtractTool, MockToolError, SessionId, TraceCapture, drive_to_final_response, mock_final,
+    CapturedSpan, Counted, MockAddTool, MockCompletionModel, MockContextProbeTool, MockStreamEvent,
+    MockSubtractTool, SessionId, TraceCapture, drive_to_final_response, mock_final,
 };
-use crate::tool::{Tool, ToolContext};
+use crate::tool::ToolContext;
 use futures::{StreamExt, TryStreamExt};
 use rig_core::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
 use rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
-use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -265,22 +264,6 @@ impl AgentHook for PanicOnUnknownToolHook {
     }
 }
 
-#[derive(Clone)]
-struct CountingAddTool {
-    calls: Arc<AtomicU32>,
-}
-
-#[derive(Clone)]
-struct CountingSubtractTool {
-    calls: Arc<AtomicU32>,
-}
-
-#[derive(Deserialize)]
-struct CountingOperationArgs {
-    x: i32,
-    y: i32,
-}
-
 fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
     ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
@@ -300,54 +283,6 @@ fn arithmetic_tool_definition(name: &str, description: &str) -> ToolDefinition {
             "required": ["x", "y"],
         }),
         annotations: Default::default(),
-    }
-}
-
-impl Tool for CountingAddTool {
-    const NAME: &'static str = "add";
-    type Error = MockToolError;
-    type Args = CountingOperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Add x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        arithmetic_tool_definition(Self::NAME, "Add x and y together").parameters
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(args.x + args.y)
-    }
-}
-
-impl Tool for CountingSubtractTool {
-    const NAME: &'static str = "subtract";
-    type Error = MockToolError;
-    type Args = CountingOperationArgs;
-    type Output = i32;
-
-    fn description(&self) -> String {
-        "Subtract y from x".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        arithmetic_tool_definition(Self::NAME, "Subtract y from x").parameters
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(args.x - args.y)
     }
 }
 
@@ -1376,9 +1311,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1471,9 +1404,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1594,9 +1525,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1775,9 +1704,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -1953,9 +1880,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
         .build();
 
     let mut stream = agent
@@ -2096,12 +2021,8 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
     ]);
     let recorded = model.clone();
     let agent = AgentBuilder::new(model)
-        .tool(CountingAddTool {
-            calls: add_calls.clone(),
-        })
-        .tool(CountingSubtractTool {
-            calls: subtract_calls.clone(),
-        })
+        .tool(Counted(MockAddTool, add_calls.clone()))
+        .tool(Counted(MockSubtractTool, subtract_calls.clone()))
         .build();
 
     let mut stream = agent.prompt("use tools").max_turns(3).stream();

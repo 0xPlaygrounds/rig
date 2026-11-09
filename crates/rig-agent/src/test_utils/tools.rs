@@ -482,3 +482,33 @@ impl Tool for MockMetadataTool {
         Ok("done".to_string())
     }
 }
+
+/// Wraps a tool and counts how many times its body runs.
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct Counted<T>(pub T, pub Arc<std::sync::atomic::AtomicU32>);
+
+#[cfg(test)]
+impl<T: Tool> Tool for Counted<T> {
+    const NAME: &'static str = T::NAME;
+    type Error = T::Error;
+    type Args = T::Args;
+    type Output = T::Output;
+
+    fn description(&self) -> String {
+        self.0.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.0.parameters()
+    }
+
+    async fn call(
+        &self,
+        context: &mut crate::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.call(context, args).await
+    }
+}
