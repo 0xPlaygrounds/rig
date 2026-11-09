@@ -144,12 +144,6 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SurrealSearchFilter(String);
 
-impl SurrealSearchFilter {
-    fn inner(self) -> String {
-        self.0
-    }
-}
-
 impl DynamicSearchFilter for SurrealSearchFilter {
     fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
         filter.try_interpret(|v| Ok(Value::from_t(v)))
@@ -281,9 +275,8 @@ where
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
-    /// Embeds the query and runs the search. The request filter is bound as a
-    /// query parameter, defaulting to `true` when absent, and an absent threshold
-    /// binds zero.
+    /// Embeds the query and runs the search with the filter's predicate.
+    /// An absent filter matches every record, and an absent threshold binds zero.
     async fn run_search_query(
         &self,
         req: &VectorSearchRequest<SurrealSearchFilter>,
@@ -292,24 +285,19 @@ where
         let embedded_query: Vec<f64> = self.model.embed_text(req.query()).await?.vec;
 
         self.surreal
-            .query(self.search_query(with_document).as_str())
+            .query(self.search_query(with_document, req.filter()).as_str())
             .bind(("vec", embedded_query))
             .bind(("tablename", self.documents_table.clone()))
             .bind(("threshold", req.threshold().unwrap_or(0.)))
             .bind(("limit", req.samples() as usize))
-            .bind((
-                "filter",
-                req.filter()
-                    .cloned()
-                    .map_or("true".into(), SurrealSearchFilter::inner),
-            ))
             .await
             .map_err(VectorStoreError::datastore)
     }
 
-    fn search_query(&self, with_document: bool) -> String {
+    fn search_query(&self, with_document: bool, filter: Option<&SurrealSearchFilter>) -> String {
         let document = if with_document { ", document" } else { "" };
         let embedded_text = if with_document { ", embedded_text" } else { "" };
+        let filter = filter.map_or("true", |filter| filter.0.as_str());
 
         let Self {
             distance_function, ..
@@ -319,7 +307,7 @@ where
             "
             SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
               from type::table($tablename) \
-              where {distance_function}($vec, embedding) >= $threshold AND $filter \
+              where {distance_function}($vec, embedding) >= $threshold AND ({filter}) \
               order by distance desc \
             LIMIT $limit",
         )

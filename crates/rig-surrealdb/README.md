@@ -12,6 +12,11 @@ rig-core = "0.46.0"
 You can also run `cargo add rig-surrealdb rig-core` to add the latest published
 versions. The root `rig` facade exposes this crate behind the `surrealdb` feature.
 
+Both search methods evaluate `SurrealSearchFilter` predicates on each record
+before selecting the requested number of results. Filter values use SurrealDB's
+SQL escaping; field names, full-text queries, and regex patterns must come from
+trusted application code.
+
 There's a few different ways you can run SurrealDB:
 - [Install it locally and run it](https://surrealdb.com/docs/surrealdb/installation/linux)
 - [Through a Docker container, either locally or on Docker-compatible architecture](https://surrealdb.com/docs/surrealdb/installation/running/docker)
