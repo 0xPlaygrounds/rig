@@ -151,7 +151,7 @@ async fn insert_refuses_documents_the_table_cannot_hold() -> anyhow::Result<()> 
     let dir = TempDir::new()?;
     let index = index_on_disk(&dir, DataType::Float32, SearchParams::default()).await?;
     let fits = || vec![embedding(&[1.0, 0.0])];
-    let not_finite = "embedding of document \"a\"";
+    let not_finite = "\"a\" cannot be scored";
     let refused = [
         (json!({"definition": "no id"}), fits(), "`id`"),
         (json!({"id": null}), fits(), "`id`"),
