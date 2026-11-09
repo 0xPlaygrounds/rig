@@ -6,6 +6,7 @@
 # builds the agent five times (a few minutes each) and needs crates.io.
 #
 # Usage: scripts/version-switch.sh OLD NEW --work DIR [--expected FILE]
+#                                  [--lock FILE] [--seed-target DIR]
 #                                  [--port N] [--timeout SECONDS]
 #   OLD, NEW         a git ref of this repository, built into a launcher
 #                    under DIR, or the path of an installed `rig` launcher
@@ -15,6 +16,12 @@
 #                    (`#` starts a comment); they report XFAIL, and one that
 #                    passes reports XPASS and fails the run so the list stays
 #                    current. See scripts/version-switch-expected.txt.
+#   --lock FILE      run each agent build under `flock FILE`, for a machine
+#                    that allows one build at a time
+#   --seed-target DIR  start RIG_HOME/target as a copy of DIR (a reflink
+#                    where the filesystem has them), such as an earlier
+#                    run's home/.rig/target; builds then show a warm target,
+#                    not what a user's first switch costs
 #   --port N         the fake model's port (default 11434: v0.46.0 talks to
 #                    Ollama on localhost:11434 only)
 #   --timeout S      limit for one rig command, build included (default 1800)
@@ -23,7 +30,9 @@
 # with the user turns it was sent and can hold a turn open. Every rig command
 # runs with `env -i` and a fresh HOME, XDG_*, RIG_HOME, CLAUDE_CONFIG_DIR,
 # CODEX_HOME and GIT_CONFIG_GLOBAL, so no login, key or setting of the caller
-# leaks in. Builds use CARGO_BUILD_JOBS (default 4). Linux, bash 4+, python3.
+# leaks in. Each turn's agent build runs first as `rig build`, so a turn held
+# open never holds the lock. Builds use CARGO_BUILD_JOBS (default 4). Linux,
+# bash 4+, python3, and flock with --lock.
 #
 # Exits 0 when every check passes or fails as expected, 1 otherwise, 2 on
 # bad arguments.
@@ -40,11 +49,13 @@ die() {
     exit 1
 }
 
-old_arg="" new_arg="" work="" expected_file="" port=11434 timeout_s=1800
+old_arg="" new_arg="" work="" expected_file="" lock="" seed="" port=11434 timeout_s=1800
 while (($#)); do
     case "$1" in
         --work) work="${2:?}"; shift 2 ;;
         --expected) expected_file="${2:?}"; shift 2 ;;
+        --lock) lock="${2:?}"; shift 2 ;;
+        --seed-target) seed="${2:?}"; shift 2 ;;
         --port) port="${2:?}"; shift 2 ;;
         --timeout) timeout_s="${2:?}"; shift 2 ;;
         -h | --help) usage ;;
@@ -87,6 +98,10 @@ mkdir -p "$logs" "$project" "$home"/{.config,.local/share,.local/state,.cache,.c
 chmod 700 "$home/run"
 printf '[user]\n\tname = version switch\n\temail = switch@example.invalid\n' >"$home/.gitconfig"
 printf 'alpha\nbeta\n' >"$project/notes.txt"
+if [[ -n "$seed" ]]; then
+    mkdir -p "$rig_home"
+    cp -a --reflink=auto "$seed" "$rig_home/target"
+fi
 caller_path="$PATH"
 cargo_home="${CARGO_HOME:-$HOME/.cargo}"
 rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
@@ -128,8 +143,8 @@ launcher_for() {
 
 # rig LABEL NAME ARGS…: runs launcher LABEL in the project directory with the
 # disposable home; output in logs/NAME.{out,err}, exit code in $rc, wall
-# seconds in $wall.
-rc=0 wall=0
+# seconds in $wall. A non-empty $wrap prefixes the launcher.
+rc=0 wall=0 wrap=()
 rig() {
     local label="$1" name="$2" start
     shift 2
@@ -144,7 +159,7 @@ rig() {
         RIG_HOME="$rig_home" TMPDIR="$home/tmp" CARGO_HOME="$cargo_home" \
         RUSTUP_HOME="$rustup_home" CARGO_BUILD_JOBS="$jobs" \
         OLLAMA_API_BASE_URL="http://127.0.0.1:$port" \
-        timeout "$timeout_s" "${launcher[$label]}" "$@") \
+        "${wrap[@]}" timeout "$timeout_s" "${launcher[$label]}" "$@") \
         </dev/null >"$logs/$name.out" 2>"$logs/$name.err" || rc=$?
     wall=$(awk -v a="$start" -v b="$EPOCHREALTIME" 'BEGIN { printf "%.0f", b - a }')
 }
@@ -183,20 +198,39 @@ build_since() {
     echo "$compiled crates compiled, $changed locked versions changed"
 }
 
-switches=()
-built=""
-# turn LABEL NAME ARGS…: a turn that may rebuild; records its time, what
-# its build compiled (in $built) and the disk RIG_HOME/target uses.
-turn() {
+# none_compiled SUMMARY: true when a build_since summary compiled nothing.
+none_compiled() { [[ -z "$1" || "$1" == "0 crates"* ]]; }
+
+switches=() built="" again=""
+# prebuild LABEL NAME: `rig build` with launcher LABEL, under --lock when
+# given; records its time, what it compiled (in $built) and the disk
+# RIG_HOME/target uses.
+prebuild() {
     local label="$1" name="$2" before
     before=$(target_bytes)
     touch "$logs/.stamp"
     sleep 1
-    rig "$@"
-    built=$(build_since "$name")
+    [[ -z "$lock" ]] || wrap=(flock "$lock")
+    rig "$label" "$name.build" build
+    wrap=()
+    built=$(build_since "$name.build")
+    ((rc == 0)) || built="rig build exit $rc: $(first_error "$name.build"); $built"
     switches+=("$(printf '%-16s %-4s %5ss  target %s -> %s  %s' "$name" "$label" "$wall" \
         "$(gb "$before")" "$(gb "$(target_bytes)")" "${built:-no build}")")
-    echo "  $name: exit $rc, ${wall}s, ${built:-no build}"
+    echo "  $name: rig build ${wall}s, ${built:-no build}"
+}
+
+# turn LABEL NAME ARGS…: prebuild, then the turn, which should compile
+# nothing (anything it does compile is in $again and the turn table).
+turn() {
+    local label="$1" name="$2"
+    prebuild "$label" "$name"
+    touch "$logs/.stamp"
+    sleep 1
+    rig "$@"
+    again=$(build_since "$name")
+    none_compiled "$again" || switches+=("$(printf '%-16s %-4s turn compiled again: %s' "$name" "$label" "$again")")
+    echo "  $name: exit $rc, turn ${wall}s"
 }
 
 # plugin_off LABEL NAME PLUGIN ID: checks that launcher LABEL lists PLUGIN off,
@@ -255,8 +289,10 @@ hand_line_kept settings-file-upgrade
 
 echo "== new again: same version, no rebuild"
 turn new restart "${model[@]}" -r "$session" -p "turn three on new"
-check no-rebuild-same-version "$(status grep -q '^0 crates\|^$' <<<"$built")" \
-    "${wall}s, ${built:-no build} on a second start of the same version"
+quiet=1
+none_compiled "$built" && none_compiled "$again" && quiet=0
+check no-rebuild-same-version "$quiet" \
+    "${built:-no build} on a second start of the same version"
 rig new disable-new plugin disable "$plugin_by_new"
 ((rc == 0)) || die "rig plugin disable failed on the new version: $(first_error disable-new)"
 
@@ -269,8 +305,7 @@ hand_line_kept settings-file-downgrade
 
 echo "== one home, both versions at once: new holds a turn while old runs"
 rm -f "$hold"
-touch "$logs/.stamp"
-sleep 1
+prebuild new shared-new
 start=$EPOCHREALTIME
 (rig new shared-new "${model[@]}" -p "[hold] new keeps running"; echo "$rc $wall" >"$logs/shared-new.rc") &
 held_pid=$!
@@ -278,8 +313,7 @@ until grep -q '"held": true' "$model_log" 2>/dev/null || ! kill -0 "$held_pid" 2
     sleep 1
 done
 wall=$(awk -v a="$start" -v b="$EPOCHREALTIME" 'BEGIN { printf "%.0f", b - a }')
-built=$(build_since shared-new)
-switches+=("$(printf '%-16s %-4s %5ss  until its held turn reached the model  %s' shared-new new "$wall" "${built:-no build}")")
+echo "  shared-new: its turn reached the model after ${wall}s and is held"
 turn old shared-old "${model[@]}" -p "old turn while new runs"
 check shared-home-old-turn "$(status answered shared-old "old turn while new runs")" \
     "exit $rc while a new agent ran on the same home"
@@ -292,11 +326,12 @@ check shared-home-running-new "$(status answered shared-new "new keeps running")
 
 {
     echo "version switch: old $old_arg ($old_version) -> new $new_arg ($new_version)"
+    [[ -z "$seed" ]] || echo "RIG_HOME/target seeded from $seed"
     echo
     echo "checks:"
     printf '  %s\n' "${results[@]}"
     echo
-    echo "turns (wall time includes any agent build; target is RIG_HOME/target):"
+    echo "agent builds (\`rig build\` before each turn; target is RIG_HOME/target${lock:+; the time includes waiting for $lock}):"
     printf '  %s\n' "${switches[@]}"
     echo
     echo "logs: $logs"
