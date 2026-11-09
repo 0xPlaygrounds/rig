@@ -69,10 +69,17 @@ impl LSH {
 }
 
 /// Document IDs by bucket, one table of buckets per [`LSH`] table.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LSHIndex {
     lsh: LSH,
     tables: Vec<HashMap<u64, Vec<String>>>,
+}
+
+impl Default for LSHIndex {
+    /// An empty index with one bucket, returning every inserted ID for any query.
+    fn default() -> Self {
+        Self::new(0, 0, 0)
+    }
 }
 
 impl LSHIndex {
