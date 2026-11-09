@@ -1,79 +1,29 @@
 //! The declarative per-wire-family conformance suite macro.
 //!
 //! [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
-//! expands the full canonical scenario set for one wire family — one named
-//! `#[tokio::test]` per scenario — plus an anti-tamper test (the langchain
-//! `standard-tests` precedent: capability flags gate skips inside test
-//! bodies, never test deletion, and an inherited completeness check proves no
-//! scenario was dropped):
+//! expands the canonical scenario set for one wire family, one named
+//! `#[tokio::test]` per scenario, plus `suite_is_complete`, which checks that
+//! the expanded list equals
+//! [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS)
+//! and that every `xfail` entry names a canonical scenario with a reason. The
+//! list it checks is generated from the same entries as the test functions,
+//! so deleting a scenario fails it.
 //!
-//! - `suite_is_complete`: the expanded scenario list equals
-//!   [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS),
-//!   and every `xfail` entry names a canonical scenario with a reason. The
-//!   list it checks (`EMITTED_SCENARIOS`) is *generated from the same entries
-//!   as the test functions* by
-//!   [`__streaming_conformance_scenarios`](crate::__streaming_conformance_scenarios),
-//!   so it cannot be a hand-written twin that agrees with itself: deleting a
-//!   scenario deletes it from both sides and the check fails (#2258 G6).
-//!
-//! Capability flags are not written in the invocation at all: each gated test
-//! derives them from the fixture itself
-//! ([`ProviderWireFixture::capabilities`](crate::test_utils::streaming_conformance::ProviderWireFixture::capabilities)),
-//! so a flag structurally cannot drift from the wire fixture that backs it —
-//! the shapes the fixture supplies *are* the declared capability set.
-//!
-//! Capability-gated scenarios expand to *visible named skips*, never absence
-//! and never a vacuous pass: a scenario that skips while its capability is
-//! declared fails, and one that runs while the capability is disclaimed also
-//! fails (#2258 review, F8 corpus-honesty batch).
-//!
-//! The workspace registry test (`all_wire_families_have_conformance_suites`
-//! in `tests/core/streaming_conformance_registry.rs`) enumerates
+//! Each gated test derives its capability flags from the fixture
+//! ([`ProviderWireFixture::capabilities`](crate::test_utils::streaming_conformance::ProviderWireFixture::capabilities)).
+//! A scenario that skips while its capability is declared fails, and so does
+//! one that runs while the capability is disclaimed. The registry test in
+//! `tests/core/streaming_conformance_registry.rs` fails when a
 //! [`WIRE_FAMILIES`](crate::test_utils::streaming_conformance::WIRE_FAMILIES)
-//! and fails CI when any family lacks an invocation naming it.
+//! entry has no invocation.
 
-/// Expand the canonical wire-conformance suite for one wire family.
-///
-/// Invoke inside a dedicated module (the test names are fixed):
-///
-/// ```ignore
-/// mod anthropic_suite {
-///     use super::*;
-///
-///     rig_core::streaming_conformance_suite! {
-///         provider: "anthropic",
-///         fixture: anthropic::fixture(),
-///         // Snapshot of the fixture-derived capability set (required); the
-///         // `derived_capabilities_match_the_manifest` test keeps it honest.
-///         manifest: [partial_tool_args, malformed_frame, unknown_event_frame],
-///         // Sanctioned known failures only, each with a finding reference.
-///         xfail: ["unknown_event_is_skipped: warn-skip pending F2 (#2258)"],
-///     }
-/// }
-/// ```
-///
-/// `provider` is the wire-family name from
-/// [`WIRE_FAMILIES`](crate::test_utils::streaming_conformance::WIRE_FAMILIES);
-/// the workspace registry test matches invocations on it. `fixture` is an
-/// expression producing a fresh
-/// [`ProviderWireFixture`](crate::test_utils::streaming_conformance::ProviderWireFixture)
-/// per test. The gating flags themselves derive from the fixture's populated
-/// optional fields, so they cannot be written out of sync with the frames the
-/// suite actually drives; `manifest:` is a required snapshot of that derived
-/// set, so losing a fixture sample (and its scenario) is a loud diff rather
-/// than a silent skip.
 /// One scenario entry of [`__streaming_conformance_scenarios`].
 ///
 /// `ungated <name>` drives the scenario unconditionally; `gated <name> =>
 /// <field> && <field>…` reads the gate off the fixture-derived
 /// [`SuiteCapabilities`](crate::test_utils::streaming_conformance::SuiteCapabilities)
-/// fields it names, so the gate is written as data instead of hand-copied test
-/// bodies.
-///
-/// `$name` is used *both* as the emitted `fn` name and (via `stringify!`) as
-/// the scenario label passed to the outcome checkers, so the label cannot drift
-/// from the function or from the shared scenario fn in
-/// `crate::test_utils::streaming_conformance` that it calls.
+/// fields it names. `$name` is both the emitted `fn` name and the scenario
+/// label passed to the outcome checkers.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __streaming_conformance_scenario {
@@ -110,22 +60,12 @@ macro_rules! __streaming_conformance_scenario {
     };
 }
 
-/// Expand a scenario list into the suite's test functions AND the
-/// `EMITTED_SCENARIOS` const that `suite_is_complete` checks.
-///
-/// This exists to make `suite_is_complete` structural (#2258 G6). It used to
-/// compare two hand-written lists — the nine `#[tokio::test] fn`s and a
-/// literal `EMITTED_SCENARIOS` array — neither derived from the other, so
-/// deleting a scenario meant deleting its name from both and the "anti-tamper"
-/// test passed. Now each name is written ONCE and expands into both, so a
-/// removed scenario disappears from `EMITTED_SCENARIOS` too and the comparison
-/// against
-/// [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS)
-/// fails.
-///
-/// The list is order-sensitive: `suite_is_complete` compares it to
-/// `CANONICAL_SCENARIOS` with `assert_eq!`, so entries stay in canonical order
-/// and gated/ungated entries interleave.
+/// Expand a scenario list into the suite's test functions and the
+/// `EMITTED_SCENARIOS` const that `suite_is_complete` checks. Each name is
+/// written once and expands into both, so a removed scenario leaves the
+/// completeness list too and the check fails instead of agreeing with itself.
+/// Entries stay in canonical order, since `suite_is_complete` compares the
+/// lists with `assert_eq!`.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __streaming_conformance_scenarios {
@@ -134,13 +74,37 @@ macro_rules! __streaming_conformance_scenarios {
             $crate::__streaming_conformance_scenario!($kind $name $(=> $($field)&&+)?);
         )+
 
-        /// The scenarios this suite actually expanded, generated from the same
-        /// entries as the test functions above — not a parallel hand-written
-        /// list.
+        /// The scenarios this suite expanded, from the same entries as the
+        /// test functions above.
         const EMITTED_SCENARIOS: &[&str] = &[ $( stringify!($name) ),+ ];
     };
 }
 
+/// Expand the canonical wire-conformance suite for one wire family.
+///
+/// Invoke inside a dedicated module, since the test names are fixed:
+///
+/// ```ignore
+/// mod anthropic_suite {
+///     use super::*;
+///
+///     rig_core::streaming_conformance_suite! {
+///         provider: "anthropic",
+///         fixture: anthropic::fixture(),
+///         manifest: [partial_tool_args, malformed_frame, unknown_event_frame],
+///         xfail: ["unknown_event_is_skipped: warn-skip pending a fix"],
+///     }
+/// }
+/// ```
+///
+/// `provider` is the wire-family name from
+/// [`WIRE_FAMILIES`](crate::test_utils::streaming_conformance::WIRE_FAMILIES).
+/// `fixture` is an expression producing a fresh
+/// [`ProviderWireFixture`](crate::test_utils::streaming_conformance::ProviderWireFixture)
+/// per test. `manifest` is the required snapshot of the fixture-derived
+/// capability set, so losing a fixture sample fails
+/// `derived_capabilities_match_the_manifest`. `xfail` lists sanctioned known
+/// failures as `"<scenario>: <reason>"`.
 #[macro_export]
 macro_rules! streaming_conformance_suite {
     (
@@ -161,12 +125,8 @@ macro_rules! streaming_conformance_suite {
             $fixture
         }
 
-        /// Snapshot of the fixture-derived capability set. Flags still derive
-        /// from the fixture (drift between flags and fixture is structurally
-        /// impossible); this manifest exists so a capability LOSS is loud —
-        /// dropping a fixture sample cannot silently turn a scenario into a
-        /// passing named skip. Editing the fixture's shape requires editing
-        /// this list, restoring the two-sided review diff.
+        /// The fixture-derived capability set equals the manifest, so losing
+        /// a fixture sample cannot turn a scenario into a passing named skip.
         #[test]
         fn derived_capabilities_match_the_manifest() {
             let derived = suite_fixture().capabilities();
@@ -183,12 +143,7 @@ macro_rules! streaming_conformance_suite {
             );
         }
 
-        // The canonical scenario set, in canonical order. Each entry expands
-        // ONCE into both its `#[tokio::test] fn` and the `EMITTED_SCENARIOS`
-        // const that `suite_is_complete` below compares against
-        // `CANONICAL_SCENARIOS` — deleting a scenario here deletes it from the
-        // completeness list too, so the check fails instead of agreeing with
-        // itself (#2258 G6).
+        // The canonical scenario set, in canonical order.
         $crate::__streaming_conformance_scenarios! {
             ungated truncation_preserves_content_without_terminal;
             ungated transport_error_after_tool_call_yields_err_then_end;

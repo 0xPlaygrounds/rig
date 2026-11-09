@@ -1,26 +1,19 @@
 //! Wire-sequence conformance scenarios for provider streaming pipelines.
 //!
-//! The streaming sibling of `rig-agent`'s `model_conformance`: each scenario
-//! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
-//! streaming path — bytes → decode → the writer's parts →
-//! [`CompletionStream`](crate::streaming::CompletionStream) → its response
-//! — and asserts the streaming contract: an error is the stream's last item,
-//! a reply the provider did not end has no response, and every part the
-//! stream emits reaches the response exactly once. Scenarios state the contract; a per-provider
+//! Each scenario drives raw wire bytes (SSE or NDJSON) through a provider's
+//! complete streaming path, from decode through the writer's parts and
+//! [`CompletionStream`](crate::streaming::CompletionStream) to its response,
+//! and asserts the streaming contract: an error is the stream's last item, a
+//! reply the provider did not end has no response, and every part the stream
+//! emits reaches the response exactly once. A per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
 //! the same event differently.
 //!
-//! Every sequence family here pins a shipped bug from the #2257 review rounds
-//! (`rig-2257-code-review-findings-*.md`); the per-scenario comments cite the
-//! specific finding.
-//!
-//! Suites are expanded per wire family by
-//! [`streaming_conformance_suite!`](crate::streaming_conformance_suite).
-//! Scenarios a wire cannot spell return an explicit
-//! [`ScenarioOutcome::Skipped`] that the macro cross-checks against the
-//! suite's declared [`SuiteCapabilities`] — a skip is always visible and can
-//! never masquerade as a pass, so the executed count is exactly the declared
-//! grid minus the named skips (#2258 review, F8 corpus honesty).
+//! [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
+//! expands the suites per wire family. A scenario a wire cannot spell returns
+//! [`ScenarioOutcome::Skipped`], which the macro checks against the suite's
+//! declared [`SuiteCapabilities`], so the executed count is the declared grid
+//! minus the named skips.
 
 use bytes::Bytes;
 use futures::StreamExt;
