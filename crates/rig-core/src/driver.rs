@@ -787,28 +787,17 @@ where
     D: Decoder<'id, Op, F>,
     R: Reassemble<D::Event>,
 {
-    let fed = feed_until_end(decoder, reassembler.as_mut(), reply, frames);
+    let feed_frames = || {
+        for frame in frames {
+            if let Flow::Ended(_) = step(decoder, reassembler.as_mut(), reply, frame, None)? {
+                return Ok(());
+            }
+        }
+        eof(decoder, reply, None).map(drop)
+    };
+    let fed = feed_frames();
     record(reply, reassembler.map(|document| document.finish()));
     fed
-}
-
-fn feed_until_end<'id, Op, F, D, R>(
-    decoder: &mut D,
-    mut reassembler: Option<&mut R>,
-    reply: &'id Mutex<Shared<Op>>,
-    frames: impl IntoIterator<Item = F>,
-) -> Result<(), ProviderError>
-where
-    Op: Operation,
-    D: Decoder<'id, Op, F>,
-    R: Reassemble<D::Event>,
-{
-    for frame in frames {
-        if let Flow::Ended(_) = step(decoder, reassembler.as_deref_mut(), reply, frame, None)? {
-            return Ok(());
-        }
-    }
-    eof(decoder, reply, None).map(drop)
 }
 
 /// Record `document`, what a reassembler rebuilt, as the reply's `raw`. A
