@@ -377,6 +377,42 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
     assert_eq!(opus.supports_tool_calls, Some(true));
 }
 
+/// The client's listing reads Copilot's catalogue as the Copilot wire does,
+/// from the dialect's own models path.
+#[tokio::test]
+async fn the_client_listing_reads_the_copilot_catalogue() {
+    let body = cassette_body("models/list_models_smoke.yaml", "then");
+    let dialect = Dialect {
+        quirks: Quirks {
+            models_path: "/catalogue",
+            ..DIALECT.quirks
+        },
+        ..DIALECT
+    };
+    let config = OpenAIConfig::with_key(&dialect, "tid=copilot-session-token");
+    let base = config.base_url.clone();
+    let transport = RecordingHttpClient::new(Bytes::from(body));
+    let models = config
+        .connect(transport.clone())
+        .list_models()
+        .await
+        .expect("the recorded catalogue folds");
+
+    let opus = models
+        .iter()
+        .find(|model| model.id == "claude-opus-4.7")
+        .expect("the recorded catalogue names claude-opus-4.7");
+    assert_eq!(opus.supports_tool_calls, Some(true));
+    assert_eq!(opus.r#type.as_deref(), Some("chat"));
+    assert_eq!(opus.owned_by.as_deref(), Some("Anthropic"));
+    let uris: Vec<_> = transport
+        .requests()
+        .into_iter()
+        .map(|request| request.uri)
+        .collect();
+    assert_eq!(uris, [format!("{base}/catalogue")]);
+}
+
 /// The recording reports only `true`, so this catalogue covers the other cases.
 #[tokio::test]
 async fn the_model_listing_keeps_tool_call_support_distinct() {
