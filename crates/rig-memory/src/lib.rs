@@ -14,7 +14,7 @@
 //! - [`CompactionPolicy`], [`apply_summary`], [`undo_summary`]: compacting a long conversation.
 //! - [`load`], [`save`], [`Session`], [`Writer`]: saving and resuming, in the one format
 //!   [`FORMAT`]. Reading is strict: a session of another format, or that does not read whole,
-//!   is refused and nothing is written, unless [`migration`] brings it to the format first.
+//!   is refused and nothing is written.
 //!   [`load_async`] and [`save_async`] keep a conversation
 //!   in any [`AsyncStore`], such as a database or IndexedDB.
 //! - [`history`], [`as_of`]: how a conversation got where it is.
@@ -57,7 +57,6 @@ mod fork;
 mod format;
 mod listing;
 mod meta;
-pub mod migration;
 pub mod recent;
 mod rewrite;
 mod saved;

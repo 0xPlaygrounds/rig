@@ -72,9 +72,7 @@ pub trait Files: Send + Sync + 'static {
 /// Where a session is kept: its [`Files`], with the content-addressed
 /// blobs its messages name under `blobs/`, and a log per agent plus the
 /// session's own, appended to and read whole. Log names are one part of a
-/// name ([`check_name`] without `/`). The files under
-/// [`migration::KEPT`](crate::migration::KEPT) are the copies a migration
-/// kept of the session as it was.
+/// name ([`check_name`] without `/`).
 pub trait Store: Files {
     /// The names of the logs, in no particular order.
     fn logs(&self) -> io::Result<Vec<String>>;
