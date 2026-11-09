@@ -1,3 +1,4 @@
+use crate::workspace::Root;
 use std::path::PathBuf;
 
 use rig_core::tool::{FilesChanged, FilesRead, Tool, ToolContext, ToolErrorKind, ToolOutput};
@@ -45,10 +46,12 @@ fn a_confined_tool_stays_in_its_base() {
     std::fs::write(base.join("a.txt"), "one\n").ok();
     std::fs::write(dir.join("outside.txt"), "secret\n").ok();
     let read = Read {
-        base: Some(base.clone()),
-        confine: true,
+        root: Root {
+            base: Some(base.clone()),
+            confine: true,
+            ..Root::default()
+        },
         seen: crate::Seen::default(),
-        ..Default::default()
     };
 
     let mut context = ToolContext::new();
@@ -74,8 +77,11 @@ fn a_confined_tool_stays_in_its_base() {
         );
     }
     let write = Write {
-        base: Some(base),
-        confine: true,
+        root: Root {
+            base: Some(base),
+            confine: true,
+            ..Root::default()
+        },
         ..Default::default()
     };
     let args = WriteArgs::new("../new.txt", "x");
@@ -156,8 +162,11 @@ fn a_confined_write_never_follows_a_link_out_of_its_base() {
     symlink(dir.join("out/missing"), base.join("folder")).ok();
     symlink("inside/new.txt", base.join("stays")).ok();
     let write = Write {
-        base: Some(base.clone()),
-        confine: true,
+        root: Root {
+            base: Some(base.clone()),
+            confine: true,
+            ..Root::default()
+        },
         ..Default::default()
     };
     let call = |path: &str, context: &mut ToolContext| {

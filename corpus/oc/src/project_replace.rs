@@ -10,8 +10,7 @@
 //! `/replace-undo` puts the last apply's files back, if nothing changed them since.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use regex::{NoExpand, Regex};
@@ -24,9 +23,9 @@ use rig_harness::rig_core::tool::{
     ContentHash, ContextValue, FileRead, FilesChanged, FilesRead, ToolContext, content_hash,
 };
 use rig_harness::rig_ecs::effects::Handler;
+use rig_harness::rig_tools::excerpt;
 use rig_harness::rig_tools::fs::{file_change, io_error};
-use rig_harness::rig_tools::workspace::{Listing, Stat, Workspace};
-use rig_harness::rig_tools::{excerpt, workspace::Local};
+use rig_harness::rig_tools::workspace::{Listing, Root, Stat, Workspace};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -144,31 +143,17 @@ impl ReplaceArgs {
 
 impl PerCallTool for ReplaceInFiles {
     fn at(&self, at: CallPlace) -> Self {
-        Self {
+        Self(Root {
             workspace: at.workspace,
             base: Some(at.base),
             confine: at.confine,
-        }
+        })
     }
 }
 
 /// The tool, built for each call's place.
-#[derive(Clone)]
-struct ReplaceInFiles {
-    workspace: Arc<dyn Workspace>,
-    base: Option<PathBuf>,
-    confine: bool,
-}
-
-impl Default for ReplaceInFiles {
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
-}
+#[derive(Clone, Default)]
+struct ReplaceInFiles(Root);
 
 /// One file the replacement changes.
 struct Planned {
@@ -231,7 +216,7 @@ impl Tool for ReplaceInFiles {
     }
 
     fn footprint(&self, args: &ReplaceArgs) -> Touches {
-        let root = self.workspace.resolve(self.base.as_deref(), ".");
+        let root = self.0.resolve(".");
         match args.apply {
             true => Touches::Writes(Scope::Paths(vec![root])),
             false => Touches::Reads(Scope::Paths(vec![root])),
@@ -243,10 +228,8 @@ impl Tool for ReplaceInFiles {
         context: &mut ToolContext,
         args: ReplaceArgs,
     ) -> Result<String, ToolExecutionError> {
-        let root = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, ".")?;
-        let workspace = self.workspace.clone();
+        let root = self.0.place(".")?;
+        let workspace = self.0.workspace.clone();
         let planned = {
             let args = args.clone();
             blocking(move || plan(&*workspace, &root, &args)).await?
@@ -261,7 +244,7 @@ impl Tool for ReplaceInFiles {
         if planned.is_empty() && args.previewed.as_ref().is_none_or(BTreeMap::is_empty) {
             return Ok("No matches: nothing was written.".to_owned());
         }
-        let workspace = self.workspace.clone();
+        let workspace = self.0.workspace.clone();
         let previewed = args.previewed.clone();
         let planned = blocking(move || {
             check(&*workspace, &planned, previewed.as_ref())?;

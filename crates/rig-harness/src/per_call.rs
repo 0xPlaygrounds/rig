@@ -31,7 +31,7 @@ use rig_ecs::prelude::{
     Admitted, AgentPass, CallHandler, Footprint, ForAgent, PrepareSystems, Tool, ToolCalls,
     ToolDef, ToolOptions, ToolRequest, Wake, WorldToolsExt,
 };
-use rig_tools::workspace::Workspace;
+use rig_tools::workspace::{Root, Workspace};
 use rig_tools::{Delete, Edit, LineFilter, List, Live, Read, Search, Shell, Spill, Write};
 
 use crate::host::session::Scratch;
@@ -76,6 +76,17 @@ pub trait PerCallTool: Tool + Clone + 'static {
     fn at(&self, place: CallPlace) -> Self;
 }
 
+impl From<CallPlace> for Root {
+    /// The place's workspace, from its base, confined as the place is.
+    fn from(place: CallPlace) -> Self {
+        Self {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+        }
+    }
+}
+
 /// The file tools work in the place's workspace, from its base, keeping
 /// the fields named from the tool as registered.
 macro_rules! file_tools_per_call {
@@ -83,9 +94,7 @@ macro_rules! file_tools_per_call {
         impl PerCallTool for $tool {
             fn at(&self, place: CallPlace) -> Self {
                 Self {
-                    workspace: place.workspace,
-                    base: Some(place.base),
-                    confine: place.confine,
+                    root: place.into(),
                     $($keep: self.$keep.clone(),)*
                 }
             }

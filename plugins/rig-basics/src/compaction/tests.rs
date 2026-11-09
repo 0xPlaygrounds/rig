@@ -91,8 +91,11 @@ impl Files {
     /// What the `read` tool shows of the file `name`.
     fn shown(self: &Arc<Self>, name: &str) -> String {
         let read = rig_tools::Read {
-            workspace: self.clone(),
-            base: Some(PROJECT.into()),
+            root: rig_tools::workspace::Root {
+                workspace: self.clone(),
+                base: Some(PROJECT.into()),
+                confine: false,
+            },
             ..rig_tools::Read::default()
         };
         let args = rig_tools::ReadArgs::new(name);

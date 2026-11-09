@@ -1,5 +1,6 @@
 #![allow(clippy::disallowed_methods, reason = "test fixtures")]
 
+use crate::workspace::Root;
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, ErrorKind};
@@ -153,37 +154,26 @@ fn befores(context: &ToolContext) -> Vec<Option<ContentHash>> {
 #[test]
 fn every_file_tool_goes_through_its_workspace() {
     let memory = Arc::new(Memory::default());
-    let workspace: Arc<dyn Workspace> = memory.clone();
-    let base = Some(PathBuf::from("/project"));
+    let root = Root {
+        workspace: memory.clone(),
+        base: Some(PathBuf::from("/project")),
+        confine: true,
+    };
     let (read, write, edit, search, delete) = (
         Read {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
+            root: root.clone(),
             seen: crate::Seen::default(),
         },
         Write {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
+            root: root.clone(),
             seen: Default::default(),
         },
         Edit {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
+            root: root.clone(),
             seen: crate::Seen::default(),
         },
-        Search {
-            workspace: workspace.clone(),
-            base: base.clone(),
-            confine: true,
-        },
-        Delete {
-            workspace,
-            base,
-            confine: true,
-        },
+        Search { root: root.clone() },
+        Delete { root },
     );
 
     let (written, context) = call(&write, WriteArgs::new("src/a.rs", "fn one() {}\n"));
@@ -279,11 +269,17 @@ fn tilde_is_the_home_directory() {
     let project = home.with_file_name("project");
     let base = Some(project.clone());
     let write = Write {
-        base: base.clone(),
+        root: Root {
+            base: base.clone(),
+            ..Root::default()
+        },
         ..Write::default()
     };
     let read = Read {
-        base: base.clone(),
+        root: Root {
+            base: base.clone(),
+            ..Root::default()
+        },
         ..Read::default()
     };
     let text = |shown: ToolOutput| shown.as_text().unwrap_or_default().to_owned();
@@ -305,8 +301,10 @@ fn tilde_is_the_home_directory() {
     let (found, _) = call(&Search::default(), everywhere);
     // From a base the home is under, a `~` path is still shown whole.
     let above = Search {
-        base: home.parent().map(Path::to_path_buf),
-        ..Search::default()
+        root: Root {
+            base: home.parent().map(Path::to_path_buf),
+            ..Root::default()
+        },
     };
     let mut from_above = SearchArgs::new("home");
     from_above.path = Some("~/notes".into());
@@ -319,7 +317,10 @@ fn tilde_is_the_home_directory() {
     }
 
     let confined = Write {
-        confine: true,
+        root: Root {
+            confine: true,
+            ..Root::default()
+        },
         ..write.clone()
     };
     let (refused, _) = call(&confined, WriteArgs::new("~/b.txt", "no\n"));
@@ -328,14 +329,18 @@ fn tilde_is_the_home_directory() {
     let (own, _) = call(&write, WriteArgs::new("./~/own.txt", "own\n"));
     assert!(own.is_ok() && project.join("~/own.txt").is_file());
     let list = crate::List {
-        workspace: Arc::new(super::Local),
-        base: base.clone(),
-        confine: true,
+        root: Root {
+            workspace: Arc::new(super::Local),
+            base: base.clone(),
+            confine: true,
+        },
     };
     let (listed, _) = call(&list, crate::ListArgs::new("."));
     let search = Search {
-        base: base.clone(),
-        ..Search::default()
+        root: Root {
+            base: base.clone(),
+            ..Root::default()
+        },
     };
     let (found, _) = call(&search, SearchArgs::new("own"));
     // Without a base, from the project as this process's directory.

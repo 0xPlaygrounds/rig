@@ -532,6 +532,60 @@ pub(crate) fn home_path(path: &Path) -> Option<PathBuf> {
     })
 }
 
+/// Where a file tool works: a [`Workspace`], the directory a relative
+/// path is taken from, and whether a path outside it is refused.
+#[derive(Clone, Debug)]
+pub struct Root {
+    /// Where the files are.
+    pub workspace: Arc<dyn Workspace>,
+    /// The directory a relative path is taken from; `None` is the
+    /// workspace's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before any
+    /// other I/O.
+    pub confine: bool,
+}
+
+impl Default for Root {
+    /// This machine's files, from this process's working directory.
+    fn default() -> Self {
+        Self {
+            workspace: Arc::new(Local),
+            base: None,
+            confine: false,
+        }
+    }
+}
+
+impl From<Arc<dyn Workspace>> for Root {
+    /// `workspace`, from its working directory, unconfined.
+    fn from(workspace: Arc<dyn Workspace>) -> Self {
+        Self {
+            workspace,
+            base: None,
+            confine: false,
+        }
+    }
+}
+
+impl Root {
+    /// `path` resolved against the base, as `<dyn Workspace>::resolve` does.
+    pub fn resolve(&self, path: &str) -> PathBuf {
+        self.workspace.resolve(self.base.as_deref(), path)
+    }
+
+    /// `path` placed in the base, as `<dyn Workspace>::place` does.
+    ///
+    /// # Errors
+    ///
+    /// [`ToolExecutionError::permission_denied`] when confined and `path`
+    /// lies outside the base.
+    pub fn place(&self, path: &str) -> Result<PathBuf, ToolExecutionError> {
+        self.workspace
+            .place(self.base.as_deref(), self.confine, path)
+    }
+}
+
 /// This machine: its file system and its processes.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Local;

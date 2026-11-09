@@ -18,7 +18,6 @@
 //! `FilesChanged`, with its diff.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use rig_harness::prelude::{
     App, AppPerCallExt, CallPlace, PerCallTool, Plugin, Tool, ToolOptions, blocking,
@@ -28,7 +27,7 @@ use rig_harness::rig_core::tool::{
     FileChange, FilesChanged, Scope, ToolContext, ToolExecutionError, Touches, args_schema,
 };
 use rig_harness::rig_tools::fs::{file_change, io_error};
-use rig_harness::rig_tools::workspace::{Local, Workspace};
+use rig_harness::rig_tools::workspace::Root;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
@@ -282,42 +281,13 @@ fn check(edited: &str, format: Format, path: &[Seg], change: &Change) -> Result<
     }
 }
 
-/// Where a call works: the workspace, the directory its relative paths
-/// start from, and whether it is confined there.
-#[derive(Clone, Debug)]
-pub struct At {
-    /// The disk it reads and writes.
-    pub workspace: Arc<dyn Workspace>,
-    /// The directory a relative path starts from; `None`: the working
-    /// directory.
-    pub base: Option<PathBuf>,
-    /// Whether a path outside `base` is refused.
-    pub confine: bool,
-}
-
-impl Default for At {
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
-}
-
-impl From<CallPlace> for At {
-    fn from(place: CallPlace) -> Self {
-        Self {
-            workspace: place.workspace,
-            base: Some(place.base),
-            confine: place.confine,
-        }
-    }
-}
+/// Where a call works.
+#[derive(Clone, Debug, Default)]
+pub struct At(pub Root);
 
 impl At {
     fn resolve(&self, path: &str) -> PathBuf {
-        self.workspace.resolve(self.base.as_deref(), path)
+        self.0.resolve(path)
     }
 
     /// Reads the file `path`, answers `work` with its text, and writes what
@@ -327,10 +297,8 @@ impl At {
         path: &str,
         work: impl FnOnce(&str) -> Result<(Option<String>, T), String> + Send + 'static,
     ) -> Result<(T, Option<FileChange>), ToolExecutionError> {
-        let resolved = self
-            .workspace
-            .place(self.base.as_deref(), self.confine, path)?;
-        let workspace = self.workspace.clone();
+        let resolved = self.0.place(path)?;
+        let workspace = self.0.workspace.clone();
         let shown = path.to_owned();
         blocking(move || {
             let before = workspace.read_text(&resolved)?;
@@ -533,18 +501,18 @@ impl Plugin for StructuredConfigEditPlugin {
 
 impl PerCallTool for ConfigGet {
     fn at(&self, place: CallPlace) -> Self {
-        Self(place.into())
+        Self(At(place.into()))
     }
 }
 
 impl PerCallTool for ConfigSet {
     fn at(&self, place: CallPlace) -> Self {
-        Self(place.into())
+        Self(At(place.into()))
     }
 }
 
 impl PerCallTool for ConfigDelete {
     fn at(&self, place: CallPlace) -> Self {
-        Self(place.into())
+        Self(At(place.into()))
     }
 }

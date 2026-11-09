@@ -11,8 +11,7 @@
 //! creates the notebook. `edit` and `write` calls on a `.ipynb` path are refused in
 //! [`NotebookSystems::Guard`].
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolAnnotations;
@@ -21,7 +20,7 @@ use rig_harness::rig_core::serve::adapters::ToolAdapter;
 use rig_harness::rig_core::tool::{FileRead, FilesChanged, FilesRead, ToolContext, content_hash};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::fs::{file_change, io_error};
-use rig_tools::workspace::{Local, Stat, Workspace};
+use rig_tools::workspace::{Root, Stat};
 use rig_tools::{Edit, Read, ReadArgs, Write};
 
 mod notebook;
@@ -97,7 +96,7 @@ fn give_handlers(
             continue;
         }
         let dir = dirs.get(agent).ok();
-        let place = Place {
+        let place = Root {
             workspace: workspace.0.clone(),
             base: Some(dir.map_or_else(|| root.0.clone(), |dir| dir.0.clone())),
             confine: dir.is_some(),
@@ -126,41 +125,8 @@ fn refuse_text_edits(mut calls: Query<(&ToolRequest, &mut Decision), (ReadyToSta
     }
 }
 
-/// Where a call works: the workspace, the directory its relative paths
-/// start from (`None`: the process's), and whether a path outside it is
-/// refused.
-#[derive(Clone, Debug)]
-struct Place {
-    workspace: Arc<dyn Workspace>,
-    base: Option<PathBuf>,
-    confine: bool,
-}
-
-impl Default for Place {
-    fn default() -> Self {
-        Self {
-            workspace: Arc::new(Local),
-            base: None,
-            confine: false,
-        }
-    }
-}
-
-impl Place {
-    /// `path` as the call opens it, refused outside a confining base.
-    fn open(&self, path: &str) -> Result<PathBuf, ToolExecutionError> {
-        self.workspace
-            .place(self.base.as_deref(), self.confine, path)
-    }
-
-    /// `path` as the call's footprint names it.
-    fn resolve(&self, path: &str) -> PathBuf {
-        self.workspace.resolve(self.base.as_deref(), path)
-    }
-}
-
 /// `read` of a notebook: its cells rendered, paged as `read` pages a file.
-struct NotebookRead(Place);
+struct NotebookRead(Root);
 
 impl Tool for NotebookRead {
     const NAME: &'static str = Read::NAME;
@@ -189,7 +155,7 @@ impl Tool for NotebookRead {
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = self.0.open(&args.path)?;
+        let path = self.0.place(&args.path)?;
         let workspace = self.0.workspace.clone();
         let (output, read) = blocking(move || {
             let shown = path.to_string_lossy().into_owned();
@@ -213,7 +179,7 @@ impl Tool for NotebookRead {
 
 /// The `notebook_edit` tool.
 #[derive(Default)]
-struct NotebookEdit(Place);
+struct NotebookEdit(Root);
 
 impl Tool for NotebookEdit {
     const NAME: &'static str = "notebook_edit";
@@ -255,7 +221,7 @@ impl Tool for NotebookEdit {
                 args.path
             )));
         }
-        let path = self.0.open(&args.path)?;
+        let path = self.0.place(&args.path)?;
         let workspace = self.0.workspace.clone();
         let (output, change) = blocking(move || {
             let shown = path.to_string_lossy().into_owned();
