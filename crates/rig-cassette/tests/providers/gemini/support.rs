@@ -1,7 +1,6 @@
 use futures::FutureExt;
 use rig::providers::gemini::GeminiConfig;
 use rig_test_support::cassette_models::GeminiModels;
-use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 
@@ -44,24 +43,13 @@ pub(super) fn recorded_request_generation_configs(scenario: &str) -> Vec<serde_j
 /// completion, and those carry no body by construction. The non-empty assert
 /// still catches a scenario that recorded nothing to read.
 pub(super) fn recorded_request_bodies(scenario: &str) -> Vec<serde_json::Value> {
-    let path = crate::cassettes::cassette_path("gemini", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
     let bodies: Vec<serde_json::Value> =
-        serde_yaml::Deserializer::from_str(&contents)
-            .filter_map(|document| {
-                let document = serde_yaml::Value::deserialize(document)
-                    .unwrap_or_else(|error| panic!("cassette document should parse: {error}"));
-                let body = document
-                    .get("when")
-                    .and_then(|when| when.get("body"))
-                    .and_then(serde_yaml::Value::as_str)
-                    .filter(|body| !body.is_empty())?
-                    .to_owned();
-                Some(serde_json::from_str(&body).unwrap_or_else(|error| {
-                    panic!("recorded request body should be JSON: {error}")
-                }))
+        crate::cassettes::recorded_interaction_bodies("gemini", scenario)
+            .into_iter()
+            .filter(|(request, _)| !request.is_empty())
+            .map(|(request, _)| {
+                serde_json::from_str(&request)
+                    .unwrap_or_else(|error| panic!("recorded request body should be JSON: {error}"))
             })
             .collect();
 
@@ -164,21 +152,9 @@ pub(super) fn assert_recorded_sampling_fields(
 /// matrix cell asks of the bytes ("did the provider actually send the part
 /// kind this cell is about?") is the same either way.
 pub(super) fn recorded_response_bodies(scenario: &str) -> Vec<String> {
-    let path = crate::cassettes::cassette_path("gemini", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
-    let bodies: Vec<String> = serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let document = serde_yaml::Value::deserialize(document)
-                .unwrap_or_else(|error| panic!("cassette document should parse: {error}"));
-            document
-                .get("then")
-                .and_then(|then| then.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-                .unwrap_or_default()
-                .to_owned()
-        })
+    let bodies: Vec<String> = crate::cassettes::recorded_interaction_bodies("gemini", scenario)
+        .into_iter()
+        .map(|(_, response)| response)
         .collect();
 
     assert!(

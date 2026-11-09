@@ -49,9 +49,7 @@
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    recorded_interactions, with_deepseek_cassette_bogus_key_result, with_deepseek_cassette_result,
-};
+use super::support::{with_deepseek_cassette_bogus_key_result, with_deepseek_cassette_result};
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -136,7 +134,7 @@ async fn forced_tool_choice_under_thinking_is_rejected_upstream() {
     );
 
     assert_eq!(
-        recorded_interactions(SCENARIO).len(),
+        crate::cassettes::recorded_interaction_bodies("deepseek", SCENARIO).len(),
         2,
         "both forced shapes are recorded"
     );

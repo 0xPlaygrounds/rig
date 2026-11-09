@@ -47,7 +47,6 @@
 //! the whole vocabulary can be enumerated without a live call.
 
 use rig::completion::FinishReason;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_venice_cassette;
@@ -89,38 +88,12 @@ crate::matrix::case_matrix! {
 // claims, or the cell passes while covering nothing.
 // ---------------------------------------------------------------------------
 
-fn recorded_interactions(scenario: &str) -> Vec<serde_yaml::Value> {
-    {
-        let path = cassettes::cassette_path("venice", scenario);
-        let contents = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-            {
-                panic!(
-                    "provider cassette {} should be readable after recording: {error}",
-                    path.display()
-                )
-            }
-        });
-        serde_yaml::Deserializer::from_str(&contents)
-            .map(|document| serde_yaml::Value::deserialize(document).expect("cassette interaction"))
-            .collect()
-    }
-}
-
 fn interaction_bodies(scenario: &str, side: &str) -> Vec<String> {
-    {
-        recorded_interactions(scenario)
-            .iter()
-            .filter_map(|interaction| {
-                {
-                    interaction
-                        .get(side)
-                        .and_then(|side| side.get("body"))
-                        .and_then(serde_yaml::Value::as_str)
-                        .map(ToOwned::to_owned)
-                }
-            })
-            .collect()
-    }
+    cassettes::recorded_interaction_bodies("venice", scenario)
+        .into_iter()
+        .map(|(request, response)| if side == "when" { request } else { response })
+        .filter(|body| !body.is_empty())
+        .collect()
 }
 
 /// Every JSON object in a recorded body. A blocking response is one object; a

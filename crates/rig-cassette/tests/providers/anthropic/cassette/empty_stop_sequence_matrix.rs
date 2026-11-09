@@ -42,7 +42,7 @@ use rig::completion::ToolDefinition;
 use rig::providers::anthropic;
 use serde_json::json;
 
-use super::super::support::{recorded_response_body, with_anthropic_cassette};
+use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequest;
 
 /// Asks for exactly one word so a stop sequence naming that word matches
@@ -67,7 +67,7 @@ fn weather_tool() -> ToolDefinition {
 /// **no** content blocks and stopped on a sequence. Read after the cassette
 /// wrapper returns — record mode writes the fixture on the way out.
 pub(super) fn assert_recorded_empty_stop(scenario: &str) {
-    let body = recorded_response_body(scenario);
+    let body = crate::cassettes::recorded_json_response("anthropic", scenario);
     assert_eq!(
         body.get("stop_reason").and_then(serde_json::Value::as_str),
         Some("stop_sequence"),

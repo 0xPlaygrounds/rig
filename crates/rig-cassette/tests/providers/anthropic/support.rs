@@ -256,51 +256,6 @@ fn normalize_anthropic_base_url(base_url: &str) -> String {
     }
 }
 
-/// The JSON response body a *blocking* Anthropic cassette recorded.
-///
-/// Reading the fixture back is how a cell asserts its own premise: a recorded
-/// turn that quietly stopped producing the shape the cell is about would
-/// otherwise keep the cell green while it covers nothing.
-pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
-    let path = crate::cassettes::cassette_path("anthropic", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-
-    let (_, response) = contents.split_once("\nthen:\n").unwrap_or_else(|| {
-        panic!(
-            "cassette {} should have a `then:` response section",
-            path.display()
-        )
-    });
-    // The harness can record a non-UTF-8 body as base64 (`body_encoding`).
-    // No caller of this helper records one, and reading such a body as JSON
-    // would be silently wrong — so refuse rather than guess.
-    assert!(
-        !response.contains("body_encoding: base64"),
-        "cassette {} records a base64 body; this helper reads JSON response \
-         bodies only",
-        path.display()
-    );
-    let line = response
-        .lines()
-        .find_map(|line| line.trim_start().strip_prefix("body: "))
-        .unwrap_or_else(|| panic!("cassette {} should record a response body", path.display()));
-
-    // The harness writes the body as a single-line YAML single-quoted scalar,
-    // in which a literal quote is doubled.
-    let json = line
-        .strip_prefix('\'')
-        .and_then(|rest| rest.strip_suffix('\''))
-        .map_or_else(|| line.to_string(), |body| body.replace("''", "'"));
-
-    serde_json::from_str(&json).unwrap_or_else(|err| {
-        panic!(
-            "response body in cassette {} should be JSON: {err}",
-            path.display()
-        )
-    })
-}
-
 /// Like [`with_anthropic_cassette`], but the client authenticates with a
 /// deliberately invalid API key — for recording real 401 responses without a
 /// secret anywhere near the fixture (auth headers are neither recorded nor
@@ -341,34 +296,15 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
 /// reported one. Reading it back from the fixture is how the raw-capture and
 /// parity matrices assert that premise instead of assuming it.
 pub(super) fn recorded_request_id_headers(scenario: &str) -> Vec<Option<String>> {
-    let path = crate::cassettes::cassette_path("anthropic", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-
-    let mut ids = Vec::new();
-    let mut in_response = false;
-    let mut pending_request_id_header = false;
-    for line in contents.lines() {
-        if line == "when:" {
-            in_response = false;
-        } else if line == "then:" {
-            in_response = true;
-            ids.push(None);
-        } else if in_response {
-            let trimmed = line.trim_start();
-            if pending_request_id_header {
-                pending_request_id_header = false;
-                if let Some(value) = trimmed.strip_prefix("value: ")
-                    && let Some(slot) = ids.last_mut()
-                {
-                    *slot = Some(value.trim().to_string());
-                }
-            } else if trimmed == "- name: request-id" {
-                pending_request_id_header = true;
-            }
-        }
-    }
-    ids
+    crate::cassettes::recorded_response_header_pairs("anthropic", scenario)
+        .into_iter()
+        .map(|headers| {
+            headers
+                .into_iter()
+                .find(|(name, _)| name == "request-id")
+                .map(|(_, value)| value)
+        })
+        .collect()
 }
 
 /// Assert that a sequence of ids the code under test observed is the sequence

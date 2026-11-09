@@ -29,9 +29,7 @@ use futures::StreamExt as _;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    recorded_request, recorded_response, recorded_stream_chunks, with_deepseek_cassette_result,
-};
+use super::support::with_deepseek_cassette_result;
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -187,7 +185,7 @@ fn merge_json(existing: &mut Value, incoming: Value) {
 
 fn recorded_stream_logprobs(scenario: &str) -> Value {
     let mut accumulated = Value::Null;
-    for chunk in recorded_stream_chunks(scenario) {
+    for chunk in crate::cassettes::recorded_sse_json_frames("deepseek", scenario) {
         let Some(choice) = chunk["choices"].as_array().and_then(|choices| {
             choices
                 .iter()
@@ -210,8 +208,8 @@ fn recorded_stream_logprobs(scenario: &str) -> Value {
 
 fn recorded_finish_reason(scenario: &str, transport: Transport) -> Value {
     match transport {
-        Transport::Blocking => recorded_response(scenario)["choices"][0]["finish_reason"].clone(),
-        Transport::Streaming => recorded_stream_chunks(scenario)
+        Transport::Blocking => crate::cassettes::recorded_json_response("deepseek", scenario)["choices"][0]["finish_reason"].clone(),
+        Transport::Streaming => crate::cassettes::recorded_sse_json_frames("deepseek", scenario)
             .into_iter()
             .filter_map(|chunk| {
                 chunk["choices"]
@@ -228,7 +226,7 @@ fn recorded_finish_reason(scenario: &str, transport: Transport) -> Value {
 }
 
 fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
-    let request = recorded_request(scenario);
+    let request = crate::cassettes::recorded_json_request("deepseek", scenario);
     assert_eq!(request["logprobs"], true, "{scenario}: request premise");
     match cell.top {
         Top::Absent => assert!(
@@ -248,7 +246,10 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     }
 
     let expected_logprobs = match cell.transport {
-        Transport::Blocking => recorded_response(scenario)["choices"][0]["logprobs"].clone(),
+        Transport::Blocking => {
+            crate::cassettes::recorded_json_response("deepseek", scenario)["choices"][0]["logprobs"]
+                .clone()
+        }
         Transport::Streaming => recorded_stream_logprobs(scenario),
     };
     assert!(

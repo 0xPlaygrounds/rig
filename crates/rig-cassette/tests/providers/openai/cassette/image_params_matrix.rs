@@ -57,7 +57,6 @@
 
 use rig::error::ProviderError;
 use rig::providers::openai;
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
@@ -273,22 +272,11 @@ async fn caller_can_reinstate_response_format() {
 // ---------------------------------------------------------------------------
 
 fn recorded_bodies(scenario: &str, side: &str) -> Vec<Value> {
-    let path = cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            path.display()
-        )
-    });
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| serde_yaml::Value::deserialize(document).expect("cassette interaction"))
-        .filter_map(|interaction| {
-            interaction
-                .get(side)
-                .and_then(|side| side.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-                .and_then(|body| serde_json::from_str::<Value>(body).ok())
+    cassettes::recorded_interaction_bodies("openai", scenario)
+        .into_iter()
+        .filter_map(|(request, response)| {
+            let body = if side == "when" { request } else { response };
+            serde_json::from_str(&body).ok()
         })
         .collect()
 }

@@ -279,37 +279,13 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
 /// the same YAML decoder the harness writes with, so a layout change in the
 /// fixture format fails here loudly rather than silently reading `None`.
 pub(super) fn recorded_request_id_headers(scenario: &str) -> Vec<Option<String>> {
-    #[derive(serde::Deserialize)]
-    struct Interaction {
-        then: Response,
-    }
-    #[derive(serde::Deserialize)]
-    struct Response {
-        #[serde(default)]
-        header: Vec<NameValue>,
-    }
-    #[derive(serde::Deserialize)]
-    struct NameValue {
-        name: String,
-        value: String,
-    }
-
-    let path = crate::cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let interaction = <Interaction as serde::Deserialize>::deserialize(document)
-                .unwrap_or_else(|err| {
-                    panic!("cassette {} should deserialize: {err}", path.display())
-                });
-            interaction
-                .then
-                .header
+    crate::cassettes::recorded_response_header_pairs("openai", scenario)
+        .into_iter()
+        .map(|headers| {
+            headers
                 .into_iter()
-                .find(|header| header.name.eq_ignore_ascii_case("x-request-id"))
-                .map(|header| header.value)
+                .find(|(name, _)| name == "x-request-id")
+                .map(|(_, value)| value)
         })
         .collect()
 }

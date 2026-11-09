@@ -49,7 +49,6 @@
 //! Responses-shaped refusal *part* arriving on the chat wire) are read by the
 //! same rule in `crates/rig-core/src/providers/openai/wire/chat.rs`.
 
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
@@ -213,23 +212,10 @@ async fn cross_surface_refusal_parity() {
 // ---------------------------------------------------------------------------
 
 fn recorded_response_bodies(scenario: &str) -> Vec<String> {
-    let path = cassettes::cassette_path("openai", scenario);
-    let contents = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable after recording: {error}",
-            path.display()
-        )
-    });
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| serde_yaml::Value::deserialize(document).expect("cassette interaction"))
-        .filter_map(|interaction| {
-            interaction
-                .get("then")
-                .and_then(|then| then.get("body"))
-                .and_then(serde_yaml::Value::as_str)
-                .map(ToOwned::to_owned)
-        })
+    cassettes::recorded_interaction_bodies("openai", scenario)
+        .into_iter()
+        .map(|(_, response)| response)
+        .filter(|response| !response.is_empty())
         .collect()
 }
 

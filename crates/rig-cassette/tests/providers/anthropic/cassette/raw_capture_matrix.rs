@@ -55,8 +55,7 @@ use rig::providers::minimax::extension::MiniMaxExt;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_ids_match_recording, recorded_request_id_headers, recorded_response_body,
-    with_anthropic_cassette,
+    assert_ids_match_recording, recorded_request_id_headers, with_anthropic_cassette,
 };
 
 use super::super::support::canonical_without_raw;
@@ -160,7 +159,7 @@ fn assert_matches_fixture(scenario: &str, response: &RigCompletionResponse) {
 /// fixture's. Returns the recorded body for the cell's own premise checks.
 fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionResponse) -> Value {
     let identity = response.identity();
-    let body = recorded_response_body(scenario);
+    let body = crate::cassettes::recorded_json_response("anthropic", scenario);
     assert_ids_match_recording(
         std::slice::from_ref(&identity.response_id),
         &[body["id"].as_str().map(str::to_string)],
@@ -242,7 +241,7 @@ async fn raw_round_trips_into_provider_type() {
 
     // `raw` is Anthropic's reply document, verbatim: every field the recorded
     // body carries is on it.
-    let body = recorded_response_body(ROUND_TRIP_SCENARIO);
+    let body = crate::cassettes::recorded_json_response("anthropic", ROUND_TRIP_SCENARIO);
     assert_ids_match_recording(
         &[raw["id"].as_str().map(str::to_string)],
         &[body["id"].as_str().map(str::to_string)],
@@ -297,7 +296,7 @@ async fn raw_exposes_stop_sequence() {
 
     // Premise, from the fixture: the recorded turn stopped on the sequence and
     // named it — the shape `empty_stop_sequence_matrix.rs` established.
-    let body = recorded_response_body(STOP_SEQUENCE_SCENARIO);
+    let body = crate::cassettes::recorded_json_response("anthropic", STOP_SEQUENCE_SCENARIO);
     assert_eq!(
         body["stop_reason"], "stop_sequence",
         "premise: the recorded turn stopped on a sequence"

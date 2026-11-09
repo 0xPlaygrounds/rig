@@ -42,10 +42,7 @@ use rig::message::AssistantContent;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
-    with_deepseek_cassette_result,
-};
+use super::support::{collect_raw_stream_outcome, with_deepseek_cassette_result};
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -150,7 +147,7 @@ fn assert_one_cut_call<'a>(calls: impl IntoIterator<Item = &'a rig::message::Too
 
 /// The `arguments` strings the recorded blocking turn carried, in wire order.
 pub(super) fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
-    let response = recorded_response(scenario);
+    let response = crate::cassettes::recorded_json_response("deepseek", scenario);
     response["choices"][0]["message"]["tool_calls"]
         .as_array()
         .map(|calls| {
@@ -168,7 +165,7 @@ pub(super) fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
 }
 
 pub(super) fn recorded_blocking_finish_reason(scenario: &str) -> String {
-    recorded_response(scenario)["choices"][0]["finish_reason"]
+    crate::cassettes::recorded_json_response("deepseek", scenario)["choices"][0]["finish_reason"]
         .as_str()
         .unwrap_or_default()
         .to_owned()
@@ -178,7 +175,7 @@ pub(super) fn recorded_blocking_finish_reason(scenario: &str) -> String {
 /// `tool_calls[].index`.
 pub(super) fn recorded_stream_arguments(scenario: &str) -> Vec<String> {
     let mut accumulated: Vec<String> = Vec::new();
-    for chunk in recorded_stream_chunks(scenario) {
+    for chunk in crate::cassettes::recorded_sse_json_frames("deepseek", scenario) {
         let Some(calls) = chunk["choices"][0]["delta"]["tool_calls"].as_array() else {
             continue;
         };

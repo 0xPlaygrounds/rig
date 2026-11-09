@@ -8,10 +8,7 @@
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 
-use super::support::{
-    collect_raw_stream_outcome, recorded_request, recorded_response, recorded_stream_chunks,
-    with_deepseek_cassette_result,
-};
+use super::support::{collect_raw_stream_outcome, with_deepseek_cassette_result};
 use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -24,7 +21,7 @@ fn non_thinking_stop() -> GenerationOptions {
 }
 
 fn first_blocking_choice(scenario: &str) -> Value {
-    recorded_response(scenario)["choices"]
+    crate::cassettes::recorded_json_response("deepseek", scenario)["choices"]
         .as_array()
         .and_then(|choices| choices.first())
         .cloned()
@@ -32,7 +29,7 @@ fn first_blocking_choice(scenario: &str) -> Value {
 }
 
 fn stream_choices(scenario: &str) -> Vec<Value> {
-    recorded_stream_chunks(scenario)
+    crate::cassettes::recorded_sse_json_frames("deepseek", scenario)
         .into_iter()
         .flat_map(|chunk| chunk["choices"].as_array().cloned().unwrap_or_default())
         .collect()
@@ -62,7 +59,10 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
     .await
     .expect("blocking stop-sequence census should replay");
 
-    assert_eq!(recorded_request(SCENARIO)["stop"], json!(["ZEBRA"]));
+    assert_eq!(
+        crate::cassettes::recorded_json_request("deepseek", SCENARIO)["stop"],
+        json!(["ZEBRA"])
+    );
     let choice = first_blocking_choice(SCENARIO);
     assert_eq!(choice["finish_reason"], "stop");
     assert!(
@@ -104,7 +104,10 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
     .await
     .expect("streaming stop-sequence census should replay");
 
-    assert_eq!(recorded_request(SCENARIO)["stop"], json!(["ZEBRA"]));
+    assert_eq!(
+        crate::cassettes::recorded_json_request("deepseek", SCENARIO)["stop"],
+        json!(["ZEBRA"])
+    );
     assert!(
         stream_choices(SCENARIO)
             .iter()
@@ -136,7 +139,10 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
     .await
     .expect("reasoning-effort census should replay");
 
-    assert_eq!(recorded_request(SCENARIO)["reasoning_effort"], "low");
+    assert_eq!(
+        crate::cassettes::recorded_json_request("deepseek", SCENARIO)["reasoning_effort"],
+        "low"
+    );
     assert!(
         first_blocking_choice(SCENARIO)["message"]["reasoning_content"]
             .as_str()
