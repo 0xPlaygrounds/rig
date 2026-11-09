@@ -392,31 +392,47 @@ fn repair_json(text: &str) -> String {
     repaired
 }
 
-/// `text` without a `\u` escape its end cuts short, which would otherwise
-/// cost the whole string it ends.
+/// `text` without an escape or surrogate pair its end cuts short, which
+/// would otherwise cost the whole string it ends.
 fn without_partial_escape(text: &str) -> &str {
     let bytes = text.as_bytes();
-    let tail = bytes.len().saturating_sub(5);
-    let Some(at) = (tail..bytes.len())
-        .rev()
-        .find(|at| bytes.get(*at..*at + 2) == Some(b"\\u"))
-    else {
-        return text;
-    };
-    let digits = bytes.get(at + 2..).unwrap_or_default();
     // A preceding backslash run of odd length escapes this backslash itself.
-    let escaping = bytes
-        .get(..at)
-        .unwrap_or_default()
-        .iter()
-        .rev()
-        .take_while(|byte| **byte == b'\\')
-        .count();
-    if digits.len() < 4 && digits.iter().all(u8::is_ascii_hexdigit) && escaping % 2 == 0 {
-        text.get(..at).unwrap_or(text)
-    } else {
-        text
+    let unescaped = |at| {
+        bytes
+            .get(..at)
+            .unwrap_or_default()
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'\\')
+            .count()
+            % 2
+            == 0
+    };
+    let mut end = bytes.len();
+    let tail = end.saturating_sub(6);
+    if let Some(at) = (tail..end).rev().find(|at| bytes.get(*at) == Some(&b'\\'))
+        && unescaped(at)
+    {
+        let rest = bytes.get(at + 1..).unwrap_or_default();
+        if rest.is_empty()
+            || rest
+                .strip_prefix(b"u")
+                .is_some_and(|digits| digits.len() < 4 && digits.iter().all(u8::is_ascii_hexdigit))
+        {
+            end = at;
+        }
     }
+    if let Some(at) = end.checked_sub(6)
+        && bytes.get(at..at + 2) == Some(b"\\u")
+        && unescaped(at)
+        && text
+            .get(at + 2..end)
+            .and_then(|digits| u16::from_str_radix(digits, 16).ok())
+            .is_some_and(|value| (0xd800..=0xdbff).contains(&value))
+    {
+        end = at;
+    }
+    text.get(..end).unwrap_or(text)
 }
 
 /// Deserializes a string or object as one item, a sequence as multiple items,

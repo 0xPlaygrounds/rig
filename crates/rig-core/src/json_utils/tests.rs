@@ -180,6 +180,38 @@ mod partial_arguments {
     }
 
     #[test]
+    fn split_surrogate_pairs_keep_the_preceding_string() {
+        for escape in [r"\uD83D\uDE00", r"\ud83d\ude00", r"\uDBFF\uDFFF"] {
+            for end in 0..escape.len() {
+                let fragment = escape.get(..end).unwrap_or_default();
+                let text = format!(r#"{{"path":"a.txt","content":"hello {fragment}"#);
+                assert_eq!(
+                    parsed(&text),
+                    json!({"path": "a.txt", "content": "hello "}),
+                    "{text}"
+                );
+            }
+            let text = format!(r#"{{"path":"a.txt","content":"hello {escape}"}}"#);
+            assert_eq!(
+                Some(parsed(&text)),
+                serde_json::from_str::<Value>(&text).ok()
+            );
+        }
+        assert_eq!(
+            parsed(r#"{"content":"hello \uD83D\uDE00"#),
+            json!({"content": "hello 😀"})
+        );
+        assert_eq!(
+            parsed(r#"{"content":"hello \\uD83D"#),
+            json!({"content": r"hello \uD83D"})
+        );
+        assert_eq!(
+            parsed(r#"{"content":"hello \\uD83D\\uDE"#),
+            json!({"content": r"hello \uD83D\uDE"})
+        );
+    }
+
+    #[test]
     fn numbers_and_literals_cut_short_are_dropped_until_valid() {
         for (text, expected) in [
             (r#"{"n": 1"#, json!({"n": 1})),
