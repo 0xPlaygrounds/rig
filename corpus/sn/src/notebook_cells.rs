@@ -1,17 +1,14 @@
-//! Jupyter notebooks as cells (held-out spec 07).
+//! Jupyter notebooks as cells. A `read` of a `.ipynb` file gets a handler of this plugin's, in
+//! [`NotebookSystems::Handlers`]: it shows the notebook's cells, each as `[3] code (exec 7)` or
+//! `[4] markdown`, its source, then its outputs, text cut at 40 lines, images and other rich
+//! data as `[image/png, 34 KB]`, an error as its name and message; a file that is no notebook
+//! is shown as text, with a note saying so.
 //!
-//! A `read` of a `.ipynb` file gets a handler of this plugin's, in
-//! [`NotebookSystems::Handlers`]: it shows the notebook's cells, each as
-//! `[3] code (exec 7)` or `[4] markdown`, its source, then its outputs,
-//! text cut at 40 lines, images and other rich data as `[image/png, 34
-//! KB]`, an error as its name and message; a file that is no notebook is
-//! shown as text, with a note saying so. The `notebook_edit` tool replaces,
-//! inserts or deletes one cell by index or id, changing only that cell's
-//! bytes in the file, so every other cell, the metadata, key order,
-//! indentation and the trailing newline stay as they were; a replaced or
-//! new code cell has no outputs and a null execution count, a new cell a
-//! fresh id. `insert_after` of cell -1 on a missing file creates the
-//! notebook. `edit` and `write` calls on a `.ipynb` path are refused in
+//! The `notebook_edit` tool replaces, inserts or deletes one cell by index or id, changing only
+//! that cell's bytes in the file, so every other cell, the metadata, key order, indentation and
+//! the trailing newline stay as they were. A replaced or new code cell has no outputs and a
+//! null execution count, a new cell a fresh id. `insert_after` of cell -1 on a missing file
+//! creates the notebook. `edit` and `write` calls on a `.ipynb` path are refused in
 //! [`NotebookSystems::Guard`].
 
 use std::path::{Path, PathBuf};

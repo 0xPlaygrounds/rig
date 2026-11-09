@@ -1,17 +1,15 @@
-//! CT-20: paste chips. A long paste in the terminal view's input becomes a
-//! chip, `[Pasted #1 · 412 lines]`, instead of its text; a pasted image (a
-//! dropped image file, or the clipboard's image on Ctrl+V) becomes
-//! `[Image #2 · 1280×720]`. A chip moves and deletes as one character,
-//! Alt+E on it opens it in place for editing and closes it again, keeping
-//! the edits, and an identical paste right after a chip may be merged into
-//! it as `×2` if the user says so. When the message is sent, each text
-//! chip becomes its contents in a fence, and each image chip goes as an
-//! image attachment; Enter on a message with an image warns first when the
-//! model reads no images.
+//! Paste chips. A long paste in the terminal view's input becomes a chip, `[Pasted #1 · 412
+//! lines]`, instead of its text; a pasted image (a dropped image file, or the clipboard's
+//! image on Ctrl+V) becomes `[Image #2 · 1280×720]`. A chip moves and deletes as one
+//! character, Alt+E on it opens it in place for editing and closes it again, keeping the
+//! edits, and an identical paste right after a chip may be merged into it as `×2` if the
+//! user says so. When the message is sent, each text chip becomes its contents in a fence,
+//! and each image chip goes as an image attachment; Enter on a message with an image warns
+//! first when the model reads no images.
 //!
-//! The input is plain text (an [`Editor`]), so a chip is its token in the
-//! text, which the plugin's [`PasteChips`] maps to its contents; a draft
-//! kept for a reload keeps its chips too.
+//! The input is plain text (an [`Editor`]), so a chip is its token in the text, which the
+//! plugin's [`PasteChips`] maps to its contents; a draft kept for a reload keeps its chips
+//! too.
 
 use std::io;
 use std::ops::Range;

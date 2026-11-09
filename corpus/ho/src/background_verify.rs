@@ -1,22 +1,14 @@
-//! Plugin corpus (held-out): H15: Debounced background check after edits
-//! (spec `H15-background-verify.md`).
+//! A debounced background check after edits. A tool call by any agent that changed a file matching
+//! `[verify] files` (default `*.rs`) schedules the project's check (`[verify] command`, default
+//! `cargo check --message-format short`) after a quiet period (`[verify] quiet_ms`, default 1500).
+//! A later edit puts it off ([`WakeAt`]) and kills a check that runs. The check is a `verify`
+//! effect of the app, one at a time.
 //!
-//! A tool call by any agent that changed a file matching `[verify] files`
-//! (default `*.rs`) schedules the project's check (`[verify] command`,
-//! default `cargo check --message-format short`) after a quiet period
-//! (`[verify] quiet_ms`, default 1500), a [`WakeAt`] that a later edit puts
-//! off; the edit also kills a check that runs. The check is a `verify`
-//! effect of the app, one at a time, whose command runs as `Processes` say.
-//!
-//! A failure goes to each agent that edited since the last pass, with the
-//! first error lines, and starts no turn. A busy agent gets it as a
-//! [`DeliveryMode::Inform`], which goes with its next model call; an idle
-//! one with its next message from the user, as an attachment added in
-//! Prepare. A note whose agent's turn would end before another call
-//! waits for the user's message instead, so that it stays withdrawable.
-//! Only the newest result counts: a result withdraws every note not sent
-//! yet, and a pass after a failure an agent saw tells it the check passes
-//! again. `/verify on|off|now`.
+//! A failure goes to each agent that edited since the last pass, with the first error lines, and
+//! starts no turn. A busy agent gets it as a [`DeliveryMode::Inform`] with its next model call; an
+//! idle one with its next message from the user. Only the newest result counts: a result withdraws
+//! every note not sent yet, and a pass after a failure an agent saw tells it the check passes
+//! again. `/verify on|off|now` controls it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

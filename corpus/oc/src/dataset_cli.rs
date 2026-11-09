@@ -1,13 +1,10 @@
-//! OC-24: `rig dataset export`, the saved sessions as a fine-tuning or
-//! evaluation dataset. The command reads each saved session through its
-//! store ([`StoreOpener`]) without writing to it: every agent's log with
-//! rig-memory, and the session's effect log for the system prompt and the
-//! tools its requests sent. Each main agent's conversation becomes one
-//! JSON line in OpenAI chat format, and each subagent's a line of its own
-//! that names the parent ([`dataset`]). How each turn ended comes from its
-//! saved turn record: `--exclude-errors` drops the turns that failed, were
-//! stopped or were cut short. It exits with status 2 when no session
-//! matched or an option is wrong.
+//! `rig dataset export`, the saved sessions as a fine-tuning or evaluation dataset. The command
+//! reads each saved session through its store ([`StoreOpener`]) without writing to it: every
+//! agent's log with rig-memory, and the session's effect log for the system prompt and the tools
+//! its requests sent. Each main agent's conversation becomes one JSON line in OpenAI chat format,
+//! and each subagent's a line of its own that names the parent ([`dataset`]). How each turn ended
+//! comes from its saved turn record: `--exclude-errors` drops the turns that failed, were stopped
+//! or were cut short. It exits with status 2 when no session matched or an option is wrong.
 
 pub mod dataset;
 

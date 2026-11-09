@@ -1,15 +1,12 @@
-//! Architect and editor models (held-out spec 15). `/architect on` (or
-//! `--architect`) puts the shown agent in architect mode: its turns go to
-//! the architect model of the `[architect]` settings table, offer only the
-//! read-only tools and `implement`, and any other call is refused. An
-//! `implement` call starts a one-job editor helper on the editor model,
-//! with the file tools, a short system prompt, the change description and
-//! the listed files, and none of the architect's conversation. The call
-//! answers with the files the editor changed and their diffs, how its
-//! checks ended and its final message. The editor's work is recorded under
-//! the call, so the terminal view nests it there, and `rig_basics::telemetry` counts
-//! each model's usage apart. `/architect off` gives the agent back its own
-//! model and tools.
+//! Architect and editor models. `/architect on` (or `--architect`) puts the shown agent in
+//! architect mode: its turns go to the architect model of the `[architect]` settings table, offer
+//! only the read-only tools and `implement`, and any other call is refused. An `implement` call
+//! starts a one-job editor helper on the editor model, with the file tools, a short system prompt,
+//! the change description and the listed files, and none of the architect's conversation. The call
+//! answers with the files the editor changed and their diffs, how its checks ended and its final
+//! message. The editor's work is recorded under the call, so the terminal view nests it there, and
+//! `rig_basics::telemetry` counts each model's usage apart. `/architect off` gives the agent back
+//! its own model and tools.
 //!
 //! ```toml
 //! [architect]

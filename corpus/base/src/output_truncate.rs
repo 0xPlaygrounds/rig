@@ -1,14 +1,9 @@
-//! Plugin corpus: 21. Tool output truncation with spill files (spec
-//! `21-output-truncate.md`).
-//!
-//! A tool result longer than [`Truncate::max_lines`] or
-//! [`Truncate::max_bytes`] is cut to its first and last lines around a
-//! marker naming a spill file, which holds the whole text. A Review system
-//! cuts the call's [`Outcome`] before the turn commits it, so the model,
-//! the conversation and the transcript all see the same cut result, and an
-//! error stays an error. Another result post-processor orders itself
-//! `.before(TruncateResults)`; a result it shrank under the limits is left
-//! alone.
+//! Tool output truncation with spill files. A tool result longer than [`Truncate::max_lines`]
+//! or [`Truncate::max_bytes`] is cut to its first and last lines around a marker naming a spill
+//! file, which holds the whole text. A Review system cuts the call's [`Outcome`] before the
+//! turn commits it, so the model, the conversation and the transcript all see the same cut
+//! result, and an error stays an error. Another result post-processor orders itself
+//! `.before(TruncateResults)`; a result it shrank under the limits is left alone.
 
 use std::borrow::Cow;
 use std::fs;

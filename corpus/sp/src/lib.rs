@@ -1,7 +1,5 @@
-//! The plugins of the splits series (SP): one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The plugins of the splits series: one plugin per module, each written only against the
+//! harness's public API. They share a crate so their tests link one binary instead of one each.
 
 pub mod changelog_fragments;
 pub mod churn_monitor;

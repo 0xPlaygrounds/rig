@@ -1,24 +1,17 @@
-//! Background jobs (spec `22-background-jobs.md`): the `job_start`,
-//! `job_output`, `job_kill` and `job_list` tools, `/jobs`, and a status
-//! item with the running count.
+//! Background jobs: the `job_start`, `job_output`, `job_kill` and `job_list` tools, `/jobs`,
+//! and a status item with the running count.
 //!
-//! A job is `sh -c`, started as every child process starts ([`Processes`],
-//! so a sandbox plugin's wrapper applies), writing its output straight to a
-//! log file in the session's `jobs` directory, so it outlives the turn that
-//! started it and, with [`JobSettings::survive_reload`], the process. A
-//! small wrapper shell writes the job's exit code next to the log, for a
-//! process that re-attaches by pid after `/reload`. While it runs, a
-//! [`Running`] task on a job entity waits for it on a thread of its own and
-//! ends as a [`Done<JobExit>`]; an observer of that tells the agent that
-//! started it with a [`Deliver`]: a `Note` (with its next model call,
-//! whenever that is), or with [`JobSettings::notify_idle`] a `Steer`, which
-//! also starts a turn of an idle agent.
+//! A job is `sh -c`, started as every child process starts ([`Processes`], so a sandbox
+//! plugin's wrapper applies). It writes its output to a log file in the session's `jobs`
+//! directory, so it outlives the turn that started it and, with
+//! [`JobSettings::survive_reload`], the process. When it ends, the agent that started it is
+//! told with a [`Deliver`]: a `Note` with its next model call, or with
+//! [`JobSettings::notify_idle`] a `Steer`, which also starts a turn of an idle agent.
 //!
-//! What each agent started is its [`AgentJobs`], saved with the session.
-//! The job entity is [`JobOf`] its agent and holds the process group: it is
-//! killed when the entity goes (the agent despawned, the app dropped), and
-//! on any exit but a `/reload` ([`ExitReason::Reload`]) with
-//! `survive_reload`.
+//! What each agent started is its [`AgentJobs`], saved with the session. The job entity is
+//! [`JobOf`] its agent and holds the process group: it is killed when the entity goes (the
+//! agent despawned, the app dropped), and on any exit but a `/reload` ([`ExitReason::Reload`])
+//! with `survive_reload`.
 
 use std::fs::{self, File};
 use std::io::{Read as _, Seek as _, SeekFrom};

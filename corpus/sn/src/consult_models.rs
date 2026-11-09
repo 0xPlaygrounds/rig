@@ -1,28 +1,21 @@
-//! Second opinions from other models: the `consult` tool and `/consult`.
+//! Second opinions from other models: the `consult` tool and `/consult`. The `[consult]` settings
+//! table ([`ConsultConfig`]) names two or three consultant models, a step limit per consultant and
+//! a timeout. A `consult` call (`question`, optional `paths`) starts one read-only helper agent per
+//! model, all at once, through `rig_basics::subagents`' [`SpawnSubagent`]: each gets the question,
+//! the listed files and a short summary of the asking agent's task, and only the asking agent's
+//! tools that only read. The call's result lists each answer under its model, with the steps it
+//! took and what it cost. A consultant that fails, times out or hits the step limit shows as
+//! `model: failed (why)` while the others still answer.
 //!
-//! The `[consult]` settings table ([`ConsultConfig`]) names two or three
-//! consultant models, a step limit per consultant and a timeout. A
-//! `consult` call (`question`, optional `paths`) starts one read-only helper
-//! agent per model, all at once, through `rig_basics::subagents`' [`SpawnSubagent`]:
-//! each gets the question, the listed files and a short summary of the
-//! asking agent's task, and only the asking agent's tools that only read.
-//! The call's result lists each answer under its model, with the steps it
-//! took and what it cost; a consultant that fails, times out or hits the
-//! step limit shows as `model: failed (why)` while the others still answer.
+//! The consultants' requests are effects under the `consult` call, so the session's effect log
+//! keeps their work under it, and their model calls count toward the session's spending per model.
+//! With the default `tui` feature the call draws each consultant's model and tool calls nested
+//! under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)), live and after a resume.
+//! Interrupting the asking agent, or the call ending any other way, retires every consultant still
+//! at work.
 //!
-//! The consultants' requests are effects under the `consult` call, so the
-//! session's effect log keeps their work under it. With the default `tui`
-//! feature the call's render system draws each consultant's model and tool
-//! calls nested under it ([`ToolCallView::children`](rig_tui::ToolCallView::children)),
-//! live and after a resume. Their model calls are ordinary model calls, so
-//! they count toward the session's spending per model (`rig_basics::telemetry`),
-//! which also gives each consultant's cost.
-//! Interrupting the asking agent, or the call ending any other way, retires
-//! every consultant still at work, briefed or not.
-//!
-//! `/consult <question>` asks the same for the user: the answers show in a
-//! picker, whose **Send to agent** adds them to the agent's conversation as
-//! a note.
+//! `/consult <question>` asks the same for the user: the answers show in a picker, whose Send to
+//! agent adds them to the agent's conversation as a note.
 
 use std::path::PathBuf;
 use std::sync::Arc;

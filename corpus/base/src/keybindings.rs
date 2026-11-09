@@ -1,6 +1,4 @@
-//! Plugin corpus: 53. Custom key bindings (spec `53-keybindings.md`).
-//!
-//! `RIG_HOME/keys.toml` binds keys of the terminal view's input:
+//! Custom key bindings. `RIG_HOME/keys.toml` binds keys of the terminal view's input:
 //!
 //! ```toml
 //! "alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
@@ -10,13 +8,12 @@
 //! "ctrl+e" = { editor = true, override = true }
 //! ```
 //!
-//! Each is a `rig_tui` [`KeyBinding`] in the input's scope. One whose keys
-//! another binding takes, such as the view's own `ctrl+e` (the end of the
-//! line), replaces it only with `override = true`; otherwise it is refused
-//! at startup with a notice naming the binding in the way. Other plugins
-//! bind keys with `rig_tui`'s `add_key_binding`, and `/keys` lists every
-//! binding with the plugin it came from. The file is read when the app is
-//! built, so `/reload` takes a change.
+//! Each is a `rig_tui` [`KeyBinding`] in the input's scope. One whose keys another binding
+//! takes, such as the view's own `ctrl+e` (the end of the line), replaces it only with
+//! `override = true`; otherwise it is refused at startup with a notice naming the binding in
+//! the way. Other plugins bind keys with `rig_tui`'s `add_key_binding`, and `/keys` lists every
+//! binding with the plugin it came from. The file is read when the app is built, so `/reload`
+//! takes a change.
 
 use std::path::PathBuf;
 

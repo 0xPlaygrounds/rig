@@ -1,26 +1,20 @@
-//! SP-12: a commit message drafted from the staged diff, for commits made
-//! by hand.
+//! A commit message drafted from the staged diff, for commits made by hand. Both commands are
+//! sessionless fronts whose session is kept in memory, so a run leaves no saved session behind.
 //!
-//! Two commands, each a sessionless front of its own whose session is kept
-//! in memory, so a run leaves no saved session behind:
+//! `rig hook install [--chain]` writes a `prepare-commit-msg` hook into the current repository
+//! (where `git rev-parse --git-path hooks` points), which runs `rig commit-msg` with git's
+//! arguments. A hook that is not rig's makes it refuse with exit code 1, unless `--chain`,
+//! which keeps that hook and runs it first. `rig hook uninstall` removes the hook only if rig
+//! wrote it, and puts a chained one back ([`hook`]).
 //!
-//! - `rig hook install [--chain]` writes a `prepare-commit-msg` hook into
-//!   the current repository (where git looks for hooks, `git rev-parse
-//!   --git-path hooks`), which runs `rig commit-msg` with git's arguments.
-//!   A hook that is not rig's makes it refuse with exit code 1, unless
-//!   `--chain`, which keeps that hook and runs it first. `rig hook
-//!   uninstall` removes the hook only if rig wrote it, and puts a chained
-//!   one back ([`hook`]).
-//! - `rig commit-msg <msg-file> [<source> [<sha>]]` does nothing when git
-//!   says the message is already there (`message`, `merge`, `squash`,
-//!   `commit`). Otherwise it makes one model call of its own, without
-//!   tools, given the staged diff (cut past `max_diff_bytes`, keeping a
-//!   summary of every file, and saying so) and the last five commit
-//!   subjects, and writes the message it answers above what the file holds
-//!   ([`draft`]). `--dry-run` prints the message instead. Whatever goes
-//!   wrong, including no model, a failed call or one past `timeout_secs`,
-//!   it says so on one line of stderr, leaves the file as it was and exits
-//!   0, so it never stops a commit.
+//! `rig commit-msg <msg-file> [<source> [<sha>]]` does nothing when git says the message is
+//! already there (`message`, `merge`, `squash`, `commit`). Otherwise it makes one model call of
+//! its own, without tools, given the staged diff (cut past `max_diff_bytes`, keeping a summary
+//! of every file, and saying so) and the last five commit subjects, and writes the message it
+//! answers above what the file holds ([`draft`]). `--dry-run` prints the message instead.
+//! Whatever goes wrong, including no model, a failed call or one past `timeout_secs`, it says
+//! so on one line of stderr, leaves the file as it was and exits 0, so it never stops a commit.
+//! The settings are the `[commit_msg]` table:
 //!
 //! ```toml
 //! [commit_msg]

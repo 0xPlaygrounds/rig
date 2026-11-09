@@ -1,21 +1,17 @@
-//! CT-07: conversation chapters.
+//! Conversation chapters. A session is divided into named chapters, each a run of turns.
+//! The first turn starts one; after each turn a cheap model call of the plugin's own (no
+//! turn's, so it never delays the next) says whether that turn started a new topic and
+//! titles it; `/chapter <title>` starts one at the current turn (or the next, when idle)
+//! and always wins.
 //!
-//! A session is divided into named chapters, each a run of turns. The
-//! first turn starts one; after each turn a cheap model call of the
-//! plugin's own (no turn's, so it never delays the next) says whether that
-//! turn started a new topic and titles it; `/chapter <title>` starts one at
-//! the current turn (or the next, when idle) and always wins.
+//! Chapters live in the agent's conversation as asides of kind [`KIND`], each following the
+//! first message of its chapter, beside a transcript [`Note`] that fronts draw. Asides
+//! never reach a model, and are saved and restored with the conversation.
 //!
-//! Chapters live in the agent's conversation as asides of kind [`KIND`],
-//! each following the first message of its chapter, beside a transcript
-//! [`Note`] that fronts draw. Asides never reach a model, and are saved and
-//! restored with the conversation.
-//!
-//! `/fold <n>` has a model (`[chapters] summary_model`, else the agent's)
-//! summarize chapter `n`; from then on a Prepare system replaces that
-//! chapter's messages in every request's `history` (a view, never saved)
-//! with the summary, which is the only place a chapter title reaches a
-//! model. `/unfold <n>` brings the originals back. The stored conversation
+//! `/fold <n>` has a model (`[chapters] summary_model`, else the agent's) summarize chapter
+//! `n`; from then on a Prepare system replaces that chapter's messages in every request's
+//! `history` (a view, never saved) with the summary, which is the only place a chapter
+//! title reaches a model. `/unfold <n>` brings the originals back. The stored conversation
 //! never changes.
 
 use std::ops::Range;

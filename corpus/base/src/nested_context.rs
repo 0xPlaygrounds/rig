@@ -1,17 +1,13 @@
-//! Nested project context (spec `29-nested-context.md`): the instruction
-//! files (`AGENTS.md`) of the project's subdirectories
+//! Nested project context: the instruction files (`AGENTS.md`) of the project's subdirectories
 //! reach an agent when it first works there, not up front.
 //!
-//! When a tool call names a `path` or a `cwd` under the project root, each
-//! directory between the root and that place is checked for an instruction
-//! file. The root is left out: rig's `AgentsMdPlugin` puts the root's file
-//! in the system prompt, so adding it here would give it twice. A Review
-//! system adds each one this agent was not given yet to the call's result
-//! before it is committed, and again, as a change, one whose text changed
-//! since. What each agent was given is saved with the session and
-//! forgotten when its conversation is condensed, so a compacted agent is
-//! told again on its next access. The Review system is in the public
-//! [`NestedContextSystems`] set, so another reviewer that replaces tool
+//! When a tool call names a `path` or a `cwd` under the project root, each directory between
+//! the root and that place is checked for an instruction file; the root's own file is left out,
+//! as it is already in the system prompt. Each file this agent was not given yet is added to
+//! the call's result before it is committed, and again, as a change, one whose text changed
+//! since. What each agent was given is saved with the session and forgotten when its
+//! conversation is condensed, so a compacted agent is told again on its next access. The Review
+//! system is in the public [`NestedContextSystems`] set, so another reviewer that replaces tool
 //! outcomes orders against it.
 
 use std::collections::BTreeMap;

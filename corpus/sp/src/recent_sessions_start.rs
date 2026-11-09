@@ -1,22 +1,16 @@
-//! SP-15: a start screen of the project's recent sessions.
-//!
-//! A new session started at the terminal with no prompt (no `--print`, no
-//! command, `AppStart` `New`, an empty conversation and a front that
-//! answers) reads the saved sessions' listings off the main thread
-//! ([`SessionEntry::read`]: no log is folded). When some ran in this
-//! project, a [`Picker`] lists the 8 newest: name or first prompt, age,
-//! turns and last model, a session whose store or listing does not read as
-//! `unreadable`, and one a launcher runs now as `open elsewhere`. Turns
-//! come from [`SessionShape`], a value this plugin lists with each session
-//! it runs (`saved_as(..).listed()`).
+//! A start screen of the project's recent sessions. A new session started at the terminal with
+//! no prompt (no `--print`, no command, `AppStart` `New`, an empty conversation and a front
+//! that answers) reads the saved sessions' listings off the main thread
+//! ([`SessionEntry::read`]: no log is folded). When some ran in this project, a [`Picker`]
+//! lists the 8 newest: name or first prompt, age, turns and last model, a session whose store
+//! or listing does not read as `unreadable`, and one a launcher runs now as `open elsewhere`.
+//! Turns come from [`SessionShape`], a value this plugin lists with each session it runs.
 //!
 //! The terminal view's keys: Up and Down move, Enter resumes (`rig_basics::sessions`'
-//! [`SwitchSession`]), `n` or
-//! Esc closes it for the new session, `/` filters by name or first prompt
-//! over every session in scope, and `a` toggles every project's sessions.
-//! Enter on an unreadable session says why and stays; on one open
-//! elsewhere it offers a read-only view of its conversation.
-//! Nothing is written until the user picks: the new session stays unsaved.
+//! [`SwitchSession`]), `n` or Esc closes it for the new session, `/` filters by name or first
+//! prompt over every session in scope, and `a` toggles every project's sessions. Enter on an
+//! unreadable session says why and stays; on one open elsewhere it offers a read-only view of
+//! its conversation. Nothing is written until the user picks: the new session stays unsaved.
 //! `start_screen = false` in `[recent_sessions]` turns it off.
 
 use std::cmp::Reverse;

@@ -1,14 +1,11 @@
-//! Plugin corpus: 50. Notifications (spec `50-notify.md`).
+//! Notifications. A desktop notification, or the terminal's OSC 9 / OSC 777 escape, and the
+//! bell, when a top-level agent's long turn ends or a picker or question waits on the user.
+//! Nothing is sent while the terminal view has the user's focus ([`TerminalFocus`]), nor in a
+//! `--print` run. The escapes go through the view's own writer ([`TerminalWrite`]). `/notify
+//! on|off`.
 //!
-//! A desktop notification, or the terminal's OSC 9 / OSC 777 escape, and
-//! the bell, when a top-level agent's long turn ends or a picker or
-//! question waits on the user. Nothing is sent while the terminal view has
-//! the user's focus ([`TerminalFocus`]), nor in a `--print` run. The
-//! escapes go through the view's own writer ([`TerminalWrite`]).
-//! `/notify on|off`.
-//!
-//! The `[notify]` table of the settings: `min_seconds = 20`,
-//! `via = "desktop" | "osc9" | "osc777" | "bell"`.
+//! The `[notify]` table of the settings: `min_seconds = 20`, `via = "desktop" | "osc9" |
+//! "osc777" | "bell"`.
 
 use std::process::Stdio;
 use std::sync::Arc;

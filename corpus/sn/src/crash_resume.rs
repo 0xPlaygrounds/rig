@@ -1,34 +1,19 @@
-//! Recovers a turn a crash cut short.
+//! Recovers a turn a crash cut short. After a crash the kernel restores every call left without a
+//! result as [`Restored`] work, those that may change something [`Interrupted`], and stops the turn
+//! unless a plugin lets it [`CarryOn`]. This plugin also keeps the text a model call streamed, in
+//! its session data `crash-resume/<agent>.json`, written at least every second and removed when the
+//! turn ends.
 //!
-//! The kernel keeps what a running turn's calls did: a call that may
-//! change something is marked on the conversation before it starts, any
-//! call that settles while its reply runs is marked with its result, and a
-//! restart after a crash spawns every call left without a result as
-//! [`Restored`] work, the marked ones [`Interrupted`], in the same turn,
-//! which the kernel stops unless a plugin lets it [`CarryOn`]. What the
-//! kernel does not keep is the text a model call streamed; this plugin
-//! keeps it in its session data, `crash-resume/<agent>.json`, at least
-//! every second. A turn that ends removes the file.
+//! On resume, each agent with restored work is [`Recovering`]: its restored calls and model call
+//! are held, an "Interrupted turn" note goes in its transcript, and the user is asked what to do.
+//! Continue gives each call its result, else "may or may not have completed" if it started or "not
+//! run (interrupted)" if it never started or only reads; it keeps the cut model call's partial
+//! text, marked incomplete, and carries the turn on. Discard stops the turn and puts the
+//! conversation back to before its user message, which goes back in the input. Leave changes
+//! nothing; the question comes back with the next message, which waits for the answer.
 //!
-//! On resume, each agent with restored work is [`Recovering`]: its
-//! restored turn carries on as this plugin decides, its restored calls and
-//! model call are held, the "Interrupted turn" note goes in its
-//! transcript, and the user is asked:
-//!
-//! - **Continue**: each call gets its result, else "may or may not have
-//!   completed" (started) or "not run (interrupted)" (not run: it never
-//!   started, or it only reads and changed nothing); the
-//!   partial text of a model call the crash cut is kept, marked incomplete;
-//!   the turn carries on;
-//! - **Discard**: the turn is stopped and the conversation goes back to
-//!   before its user message, which goes back in the input;
-//! - **Leave**: nothing changes; the question comes back with the next
-//!   message, which waits for the answer.
-//!
-//! Subagents the crash interrupted are listed in their parent's note and
-//! follow its choice. A run nobody can answer, such as `--resume --print`,
-//! continues. A torn last line in an agent's log is reported by the
-//! kernel's restore, which sets it aside.
+//! Subagents the crash interrupted are listed in their parent's note and follow its choice. A run
+//! nobody can answer, such as `--resume --print`, continues.
 
 use std::collections::HashMap;
 

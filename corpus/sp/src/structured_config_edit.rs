@@ -1,30 +1,21 @@
-//! SP-03: structured config edits. Three tools change or read one value of
-//! a JSON, TOML or YAML file by its key path and leave every other byte
-//! alone: `config_get {path, key}`, `config_set {path, key, value,
-//! create?}` and `config_delete {path, key}`. The format comes from the
+//! Structured config edits. Three tools change or read one value of a JSON, TOML or YAML file
+//! by its key path and leave every other byte alone: `config_get {path, key}`, `config_set
+//! {path, key, value, create?}` and `config_delete {path, key}`. The format comes from the
 //! file's extension unless a `format` argument names it.
 //!
-//! - TOML goes through `toml_edit`, which keeps comments, order, spacing
-//!   and quoting; a replaced value keeps the spacing around the old one.
-//! - JSON and YAML are checked and read by `serde_json` and `serde_yaml`;
-//!   a change is a splice of the text where the value lies (a JSON
-//!   member's span; a YAML block entry's lines), new keys going after the
-//!   last one, indented as it is. YAML flow collections are set or removed
-//!   whole.
-//! - Every change is read back before it is written: the file must still
-//!   parse and hold the new value, or nothing is written.
-//! - A file that does not parse is refused with its line and column.
+//! TOML keeps its comments, order, spacing and quoting, and a replaced value keeps the spacing
+//! around the old one. In JSON and YAML a change splices the text where the value lies, new
+//! keys going after the last one, indented as it is; YAML flow collections are set or removed
+//! whole. Every change is read back before it is written: the file must still parse and hold
+//! the new value, or nothing is written. A file that does not parse is refused with its line
+//! and column.
 //!
-//! Each tool is registered per call ([`AppPerCallExt::add_tool_per_call`])
-//! as the built-in file tools are, so it works in the agent's
-//! [`WorkDir`](rig_harness::prelude::WorkDir) or the project, in the app's
-//! workspace, and says what each call touches: `config_get` reads its file
-//! and `config_set`/`config_delete` write theirs (`Touches::Writes` of the
-//! one path, as `edit`), so every approval, path rule and read-only mode
-//! that judges calls by their footprint judges these as it judges `edit`.
-//! The write is the workspace's atomic one (a temporary file renamed over
-//! the old), and the change is published as `FilesChanged`, with its diff,
-//! for previews and reviews.
+//! Each tool is registered per call ([`AppPerCallExt::add_tool_per_call`]) as the built-in file
+//! tools are, so it works in the agent's [`WorkDir`](rig_harness::prelude::WorkDir) or the
+//! project. `config_get` reads its file and `config_set` and `config_delete` write theirs
+//! (`Touches::Writes` of the one path, as `edit`), so every approval, path rule and read-only
+//! mode judges them as it judges `edit`. The write is atomic, and the change is published as
+//! `FilesChanged`, with its diff.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

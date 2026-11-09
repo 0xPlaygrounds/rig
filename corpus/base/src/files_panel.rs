@@ -1,12 +1,9 @@
-//! Plugin corpus: 52. Touched-files panel (spec `52-files-panel.md`).
-//!
-//! Every file an agent of the session read or changed, with the lines its
-//! changes added and removed and their diffs, kept as a saved resource so
-//! `/resume` brings the same list back. It is what tools publish
-//! ([`FilesRead`], [`FilesChanged`]), whatever the tool. In the terminal
-//! view, `ctrl+f` opens the panel on the right with the keys, up and down
-//! select, Enter shows the selected file's session diff over the screen
-//! and Esc closes it; `/files` lists the files in any front.
+//! Touched-files panel. Every file an agent of the session read or changed, with the lines its
+//! changes added and removed and their diffs, kept as a saved resource so `/resume` brings the
+//! same list back. It is what tools publish ([`FilesRead`], [`FilesChanged`]), whatever the
+//! tool. In the terminal view, `ctrl+f` opens the panel on the right with the keys, up and down
+//! select, Enter shows the selected file's session diff over the screen and Esc closes it;
+//! `/files` lists the files in any front.
 
 use std::collections::HashMap;
 use std::path::Path;

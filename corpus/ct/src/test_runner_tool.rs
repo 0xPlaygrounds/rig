@@ -1,23 +1,18 @@
-//! CT-04: a structured test runner tool, `run_tests {filter?, only_failed?,
-//! timeout_secs?}`.
+//! A structured test runner tool, `run_tests {filter?, only_failed?, timeout_secs?}`. The
+//! command comes from the `[tests]` table of `settings.toml` (`command = "cargo test"`,
+//! `kind = "cargo"`), else from what the project looks like (`Cargo.toml`, `go.mod`,
+//! `pyproject.toml`, `package.json`).
 //!
-//! The command comes from the `[tests]` table of `settings.toml` (`command =
-//! "cargo test"`, `kind = "cargo"`), else from what the project looks like
-//! (`Cargo.toml`, `go.mod`, `pyproject.toml`, `package.json`). `run_tests`
-//! is an open tool: each call starts the command through the project's
-//! workspace and the shared launcher ([`Processes`]) on a thread of its
-//! own, whose output lines come back through a [`Running::stream`] on the
-//! call's job entity.
-//! Each line is read by the kind's [`Parser`] and kept in a tail of 80, and
-//! becomes the call's [`ToolProgress`] (shown by every front) and its
-//! [`IfStopped`]: the counts and failures so far, which the kernel answers
-//! with when the call is interrupted or its turn stopped.
+//! Each call runs the command through the project's workspace and the shared launcher
+//! ([`Processes`]). Each output line is read by the kind's [`Parser`] and becomes the
+//! call's [`ToolProgress`] (shown by every front) and its [`IfStopped`]: the counts and
+//! failures so far, which the kernel answers with when the call is interrupted or its turn
+//! stopped.
 //!
-//! The result gives the counts, the duration and each failure's name,
-//! `file:line`, message and first 30 lines; passing tests are never named.
-//! Output no parser can read falls back to the exit code and the last 80
-//! lines, and says so. The last finished run's failures are [`LastRun`],
-//! saved with the session, which `only_failed: true` reruns exactly.
+//! The result gives the counts, the duration and each failure's name, `file:line`, message
+//! and first 30 lines; passing tests are never named. Output no parser can read falls back
+//! to the exit code and the last 80 lines, and says so. The last finished run's failures
+//! are [`LastRun`], saved with the session, which `only_failed: true` reruns exactly.
 
 use std::collections::VecDeque;
 use std::ffi::OsString;

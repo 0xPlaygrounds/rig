@@ -1,16 +1,12 @@
-//! Tool calls for models without native tool calling (spec `59-text-tool-calls.md`).
+//! Tool calls for models without native tool calling. A model call is adapted ([`Adapted`])
+//! when the model it finally goes to cannot call tools by its catalog entry, or the
+//! `[text_tools]` settings name it.
 //!
-//! Every model call is adapted ([`Adapted`]): on the model the call finally
-//! goes to, it acts when that model's catalog entry says it
-//! cannot call tools, or the `[text_tools]` settings name it: the model is
-//! then said to take tools, and its handler is wrapped. The request side
-//! (an [`Intercept`]) describes the offered tools in the system prompt with
-//! the `<tool name="…">{…}</tool>` format and sends no native tool, and
-//! writes earlier tool calls as those blocks and tool results as user text
-//! ("Result of read: …"). The reply side (`map_stream`) cuts the blocks out
-//! of the streamed text and turns them into real tool calls, with ids rig
-//! issues. The kernel then checks and runs those calls like any other, and
-//! the conversation keeps real calls and results.
+//! The adapted request describes the offered tools in the system prompt in the `<tool
+//! name="…">{…}</tool>` format and sends no native tool. Earlier tool calls are written as
+//! those blocks and tool results as user text ("Result of read: …"). The blocks are cut out
+//! of the streamed reply and become real tool calls with ids rig issues, so the kernel
+//! checks and runs them like any other and the conversation keeps real calls and results.
 
 use std::sync::Arc;
 

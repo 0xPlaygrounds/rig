@@ -1,7 +1,6 @@
-//! The plugins of the conversation-over-time series (CT): one plugin per module, each written only against the harness's public API.
-//!
-//! Each module was its own package; they share a crate so their tests
-//! link one binary instead of one each.
+//! The plugins of the conversation-over-time series: one plugin per module, each
+//! written only against the harness's public API. They share a crate so their tests link
+//! one binary instead of one each.
 
 pub mod ask_session_cli;
 pub mod clarify_first;

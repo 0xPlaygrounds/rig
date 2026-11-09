@@ -1,17 +1,12 @@
-//! Plugin corpus: 17. Conversation bookmarks (held-out spec `17-bookmarks.md`).
+//! Conversation bookmarks. `/bookmark [label]` marks the latest message of the agent the line was
+//! typed for, labelled with its first words when no label is given; `/bookmark rm <label>` takes
+//! one away, and `/bookmarks` lists them in a picker, where choosing one scrolls the terminal view
+//! to the message and selects it.
 //!
-//! `/bookmark [label]` marks the latest message of the agent the line was
-//! typed for, labelled with its first words when no label is given;
-//! `/bookmark rm <label>` takes one away, and `/bookmarks` lists them in a
-//! picker, where choosing one scrolls the terminal view to the message and
-//! selects it.
-//!
-//! A bookmark is a saved aside of kind [`KIND`] after its message: it is
-//! saved and restored with the conversation, never reaches a model, and is
-//! drawn as the marker. A condensing leaves the aside in place; opening
-//! it reads the agent's log as it was just before the splice that took
-//! the message out (`rig_memory::as_of`) and shows that in a transcript
-//! pane over the screen, scrolled to the message.
+//! A bookmark is a saved aside of kind [`KIND`] after its message: it is saved and restored with
+//! the conversation, never reaches a model, and is drawn as the marker. A condensing leaves the
+//! aside in place. Opening it then shows the agent's log as it was just before the message was
+//! taken out, in a transcript pane over the screen, scrolled to the message.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::{Change, Conversation as Saved};

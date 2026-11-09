@@ -1,8 +1,6 @@
-//! Per-model request parameters, set in a file and tweaked live.
-//!
-//! `RIG_HOME/models.toml`, and over it the project's `.rig/models.toml`,
-//! hold one table per model id (`"scripted-strong"`), catalog reference
-//! (`"anthropic/claude-opus-4"`) or glob of either (`"gpt-*"`):
+//! Per-model request parameters, set in a file and tweaked live. `RIG_HOME/models.toml`, and
+//! over it the project's `.rig/models.toml`, hold one table per model id (`"scripted-strong"`),
+//! catalog reference (`"anthropic/claude-opus-4"`) or glob of either (`"gpt-*"`):
 //!
 //! ```toml
 //! ["gpt-*"]
@@ -18,24 +16,18 @@
 //! system_suffix = "Answer tersely."
 //! ```
 //!
-//! Every model request, whichever agent or plugin makes it, gets the
-//! parameters of the model it goes to, in Prepare's edit phase
-//! ([`ModelParamsSystems`]): a session override (`/params set`) over the
-//! project file over the user file over the provider's default, and within
-//! a file an exact match over a glob, a longer glob over a shorter one.
-//! `extra_body` is deep-merged into the request body and `headers` go on
-//! the HTTP request, as given; `system_suffix` is the system prompt's last
-//! section. A value that does not fit (`temperature = "hot"`) is reported
-//! with its file and line as the file loads, and its table is ignored. The
-//! files are read again for each batch of requests, the project's through
-//! the project's workspace (off the main thread, the requests held, when
-//! it is elsewhere), so an edit takes effect at the next request. A
-//! parameter the model does not take, by its catalog entry or its wire
-//! (`seed` on Anthropic), is left out with one warning naming the model.
+//! Every model request, whichever agent or plugin makes it, gets the parameters of the model it
+//! goes to: a session override (`/params set`) over the project file over the user file over
+//! the provider's default, and within a file an exact match over a glob, a longer glob over a
+//! shorter one. `extra_body` is deep-merged into the request body and `headers` go on the HTTP
+//! request, as given; `system_suffix` is the system prompt's last section. A value that does
+//! not fit (`temperature = "hot"`) is reported with its file and line as the file loads, and
+//! its table is ignored. The files are read again for each batch of requests, so an edit takes
+//! effect at the next request. A parameter the model does not take, by its catalog entry or its
+//! wire (`seed` on Anthropic), is left out with one warning naming the model.
 //!
-//! `/params` shows what the shown agent's model gets and where each value
-//! comes from; `/params set <name> <value>` and `/params unset <name>`
-//! override one for this session, saved with it.
+//! `/params` shows what the shown agent's model gets and where each value comes from; `/params
+//! set <name> <value>` and `/params unset <name>` override one for this session, saved with it.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;

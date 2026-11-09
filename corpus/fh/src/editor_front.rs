@@ -1,21 +1,17 @@
-//! FH-21: an editor front (Neovim, VS Code). `rig --editor` speaks a JSON
-//! protocol over stdio, one object per line ([`FromEditor`] in,
-//! [`ToEditor`] out); other editor windows join the same session over
-//! the session directory's `editor.sock`, the same protocol, and any other
-//! transport hands its lines to [`connect`]. Every
-//! connected editor sees the transcript as it streams, the questions and
-//! pickers, and answers them.
+//! An editor front (Neovim, VS Code). `rig --editor` speaks a JSON protocol over stdio, one object
+//! per line ([`FromEditor`] in, [`ToEditor`] out); other editor windows join the same session over
+//! the session directory's `editor.sock`, the same protocol, and any other transport hands its
+//! lines to [`connect`]. Every connected editor sees the transcript as it streams, the questions
+//! and pickers, and answers them.
 //!
-//! Open buffers win. A `read` of a file an editor has open is answered,
-//! once every gate had its say, from the buffer. An `edit` or `write` of an open file is held by an
-//! open `editor_review` effect: the editors get its hunks, the first
-//! editor that answers applies the hunks it accepted to its buffer, and
-//! the others are told the review is closed. The call's result says
-//! `applied`, `rejected by user` or `partially applied: hunk 2 rejected`,
-//! followed by the editor's diagnostics of the file, awaited at most 2 s.
-//! `/auto-accept` has the editor apply and save every edit unreviewed.
-//! Files no editor has open are edited on disk as usual, and the editors
-//! are told which changed.
+//! Open buffers win. A `read` of a file an editor has open is answered, once every gate had its
+//! say, from the buffer. An `edit` or `write` of an open file is held by an open `editor_review`
+//! effect: the editors get its hunks, the first editor that answers applies the hunks it accepted
+//! to its buffer, and the others are told the review is closed. The call's result says `applied`,
+//! `rejected by user` or `partially applied: hunk 2 rejected`, followed by the editor's diagnostics
+//! of the file, awaited at most 2 s. `/auto-accept` has the editor apply and save every edit
+//! unreviewed. Files no editor has open are edited on disk as usual, and the editors are told which
+//! changed.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;

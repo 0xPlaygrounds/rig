@@ -1,21 +1,16 @@
-//! SP-11: reply prefill (splits fresh held-out spec `11-reply-prefill.md`).
+//! Reply prefill. `/prefill <text>` puts a [`Prefill`] on the agent the command was typed for:
+//! the words its next reply starts with (`/prefill` alone shows it, `/prefill clear` takes it
+//! off; a plugin inserts or removes the component the same way). A model that continues a
+//! request ending in its own message (the catalog's [`Compat::prefill`] while its reasoning is
+//! off, or the `[prefill] models` table of the settings) gets the prefill as a last, unfinished
+//! assistant message, and the call's [`Partial`] starts with it, so the view shows it before
+//! any token streams.
 //!
-//! `/prefill <text>` puts a [`Prefill`] on the agent the command was typed
-//! for: the words its next reply starts with (`/prefill` alone shows it,
-//! `/prefill clear` takes it off; a plugin inserts or removes the component
-//! the same way). As the agent's next turn call is admitted, the plugin
-//! looks at the model it goes to. One that continues a request ending in
-//! its own message (the catalog's [`Compat::prefill`] while its reasoning
-//! is off, or the `[prefill] models` table of the settings) gets the
-//! prefill as a last, unfinished assistant message, and the call's
-//! [`Partial`] starts with it, so the view shows it before any token
-//! streams. In Review the prefill is joined in front of the reply's text,
-//! so the conversation keeps one assistant message, its tool calls as the
-//! model made them. Another model is refused at Gate with a notice, the
-//! prefill kept (`fallback = "refuse"`, the default), or asked in a last
-//! user message to begin its reply with the text (`fallback =
-//! "instruct"`). The prefill goes once a reply of a call that carried it
-//! is stored; a failed or superseded call keeps it for the next try.
+//! The stored reply is one assistant message with the prefill joined in front of its text, its
+//! tool calls as the model made them. Another model is refused at Gate with a notice, the
+//! prefill kept (`fallback = "refuse"`, the default), or asked in a last user message to begin
+//! its reply with the text (`fallback = "instruct"`). The prefill goes once a reply of a call
+//! that carried it is stored; a failed or superseded call keeps it for the next try.
 //!
 //! [`Compat::prefill`]: rig_harness::rig_core::catalog::Compat::prefill
 

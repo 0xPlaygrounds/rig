@@ -1,15 +1,11 @@
-//! Plugin corpus: 31. Checkpoints and rewind (spec `31-checkpoint-rewind.md`).
-//!
-//! Before each turn of a top-level agent, the working tree, with its
-//! untracked files that are not ignored, is written as a commit under a
-//! private ref, `refs/rig/checkpoints/<session>/<turn>`, through a
-//! temporary index: the user's branch, index and stash stay as they are.
-//! The snapshot runs off the main thread while it holds the turn's first
-//! model call, after the files the turn before left are noted, so the
-//! user's edits between turns are told apart from the agent's. `/rewind`
-//! picks one of the user's messages and puts the files back as they were
-//! before it, cuts the conversation back to just before it, and puts the
-//! message back in the input line. Other plugins rewind the same way by
+//! Checkpoints and rewind. Before each turn of a top-level agent, the working tree, with its
+//! untracked files that are not ignored, is written as a commit under a private ref,
+//! `refs/rig/checkpoints/<session>/<turn>`, through a temporary index: the user's branch, index
+//! and stash stay as they are. The snapshot runs off the main thread while it holds the turn's
+//! first model call, after the files the turn before left are noted, so the user's edits
+//! between turns are told apart from the agent's. `/rewind` picks one of the user's messages
+//! and puts the files back as they were before it, cuts the conversation back to just before
+//! it, and puts the message back in the input line. Other plugins rewind the same way by
 //! spawning a [`Rewind`] request and waiting for its [`Rewound`].
 
 use std::collections::BTreeSet;

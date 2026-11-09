@@ -1,29 +1,22 @@
-//! SN-23: a provider that keeps the conversation on its server.
+//! A provider that keeps the conversation on its server. Some APIs, such as OpenAI's Responses
+//! API with `previous_response_id`, keep each conversation on the server: a request that names
+//! the last reply's id needs only what was added since. This plugin sends a turn's request that
+//! way to the models of the [`StatefulVendors`] whenever it safely can, and the whole
+//! conversation whenever it cannot.
 //!
-//! Some APIs, such as OpenAI's Responses API with `previous_response_id`,
-//! keep each conversation on the server: a request that names the last
-//! reply's id needs only what was added since. This plugin sends a turn's
-//! request that way to the models of the [`StatefulVendors`] whenever it
-//! safely can, and the whole conversation whenever it cannot.
-//!
-//! Each agent keeps its own chain, [`ServerChain`], saved with the session:
-//! the id of the last reply its model sent and fingerprints of what the
-//! server holds under it (the system prompt, the tools, every message sent
-//! and the reply). A system wraps the handler of a turn's model call
-//! ([`Adapted`]), for that call only, with the chain as it stands. The
-//! wrapper runs inside the outermost adapters, such as secret redaction,
-//! so it compares the request as they changed it with the chain, and
-//! uploads only the messages after the reply with the reply's id, or the
-//! whole request with the reason. A server that no longer knows the id
-//! (`previous_response_not_found`) gets the whole request at once, in the
-//! same call, so the user never sees the failure. What was sent comes back
-//! to the app as a fact the call publishes ([`ChainReport`]), which moves
+//! Each agent keeps its own chain, [`ServerChain`], saved with the session: the id of the last
+//! reply its model sent and fingerprints of what the server holds under it (the system prompt,
+//! the tools, every message sent and the reply). A turn's request, as outer adapters such as
+//! secret redaction changed it, is compared with the chain: only the messages after the reply
+//! go up with the reply's id, or the whole request with the reason. A server that no longer
+//! knows the id (`previous_response_not_found`) gets the whole request in the same call, so the
+//! user never sees the failure. What was sent is published as a [`ChainReport`], which moves
 //! the agent's chain on.
 //!
-//! The reasoning a model returns, opaque encrypted items included, is part
-//! of its reply in the conversation, so a full send carries it back.
-//! `/state` says, for the agent it is typed for, the chain's id, how many
-//! requests went incrementally and in full, and why the last full one was.
+//! The reasoning a model returns, opaque encrypted items included, is part of its reply in the
+//! conversation, so a full send carries it back. `/state` says, for the agent it is typed for,
+//! the chain's id, how many requests went incrementally and in full, and why the last full one
+//! was.
 
 use std::sync::Arc;
 

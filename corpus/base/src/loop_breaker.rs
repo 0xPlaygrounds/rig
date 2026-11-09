@@ -1,11 +1,8 @@
-//! Plugin corpus: 08. Loop breaker (spec `08-loop-breaker.md`).
-//!
-//! A Gate system counts each turn's tool calls by fingerprint, the tool's
-//! name and its arguments, as they are about to run, in the reply's order.
-//! The [`LoopLimits::refuse_at`]th identical call of a turn, and every later
-//! one, is refused; the [`LoopLimits::stop_at`]th, or a turn past
-//! [`LoopLimits::max_calls_per_turn`] calls, stops the turn with a notice.
-//! `/loops off` turns it off for the session.
+//! Loop breaker. A Gate system counts each turn's tool calls by fingerprint, the tool's name
+//! and its arguments, as they are about to run, in the reply's order. The
+//! [`LoopLimits::refuse_at`]th identical call of a turn, and every later one, is refused; the
+//! [`LoopLimits::stop_at`]th, or a turn past [`LoopLimits::max_calls_per_turn`] calls, stops
+//! the turn with a notice. `/loops off` turns it off for the session.
 
 use rig_harness::prelude::*;
 use serde::Deserialize;

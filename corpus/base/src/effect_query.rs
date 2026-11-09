@@ -1,10 +1,7 @@
-//! Plugin corpus: 55. Effect log query tool (spec `55-effect-query.md`).
-//!
-//! The `effects` and `effects_detail` tools, and `/effects`, read the
-//! session's effect log back through `rig_basics::telemetry`'s [`EffectLog`], so
-//! they see every model and tool call of the session, plugins' own and
-//! those from before a `/reload`, with the turn each was made in. They
-//! only read it.
+//! Effect log query tools. The `effects` and `effects_detail` tools, and `/effects`, read the
+//! session's effect log back through `rig_basics::telemetry`'s [`EffectLog`], so they see every
+//! model and tool call of the session, plugins' own and those from before a `/reload`, with the
+//! turn each was made in. They only read it.
 
 mod query;
 

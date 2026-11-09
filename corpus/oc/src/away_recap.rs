@@ -1,20 +1,14 @@
-//! OC-07: Welcome-back recap (one-conversation fresh held-out spec).
+//! Welcome-back recap. When a session is resumed ([`AppStart`] says [`StartReason::Resumed`]), or
+//! the user starts typing after it sat idle longer than `[recap] idle`, and the main agent's
+//! conversation has at least three turns, a model call of the plugin's own (on `[recap] model`,
+//! else the agent's model) reads the newest messages within a token budget and writes a short
+//! recap: the goal, what was done, what is pending. It is shown in a panel of the terminal view
+//! just above the input, never in the conversation, so no model reads it and the log never keeps
+//! it; Esc on an empty input, or the user's next message, takes it away. The latest recap is kept
+//! with the session ([`LatestRecap`]) for `/recap`, which shows it again and asks for a fresh one.
 //!
-//! When a session is resumed ([`AppStart`] says [`StartReason::Resumed`]),
-//! or the user starts typing after it sat idle longer than `[recap] idle`,
-//! and the main agent's conversation has at least three turns, a model
-//! call of the plugin's own (on `[recap] model`, else the agent's model)
-//! reads the newest messages within a token budget and writes a short
-//! recap: the goal, what was done, what is pending. It is shown in a panel
-//! of the terminal view just above the input, never in the conversation,
-//! so no model reads it and the log never keeps it; Esc on an empty input,
-//! or the user's next message, takes it away. The latest recap is kept
-//! with the session ([`LatestRecap`]) for `/recap`, which shows it again
-//! and asks for a fresh one.
-//!
-//! The call runs beside the work: a message the user sends first discards
-//! it, and one that fails or takes longer than `[recap] timeout` shows
-//! nothing and leaves one line in the log.
+//! The call runs beside the work: a message the user sends first discards it, and one that fails or
+//! takes longer than `[recap] timeout` shows nothing and leaves one line in the log.
 
 use bevy_log::warn;
 use rig_harness::prelude::*;

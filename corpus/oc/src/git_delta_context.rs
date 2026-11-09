@@ -1,23 +1,16 @@
-//! OC-03: what changed in the git repository since the agent's last turn,
-//! told to the model with the user's next message.
+//! Tells the model, with the user's next message, what changed in the git repository since the
+//! agent's last turn. As the app starts, and as each turn of an agent ends, the plugin snapshots
+//! the agent's directory (its [`WorkDir`], else the [`ProjectRoot`]) as a git tree written with a
+//! private index in the session's [`Scratch`]. When a turn the user's own message started sends its
+//! first request, a new snapshot is compared with the last one: a branch switch or a moved `HEAD`
+//! and the files changed since, with their line counts, become a note. Changes the agent's own
+//! calls made are never reported.
 //!
-//! As the app starts, and as each turn of an agent ends, the plugin takes a
-//! snapshot of the agent's directory (its [`WorkDir`], else the
-//! [`ProjectRoot`]): a git tree written with a private index in the
-//! session's [`Scratch`], beside the branch and `HEAD`. When a turn the
-//! user's own message started sends its first request, a new snapshot is
-//! compared with the last one: a branch switch or a moved `HEAD` and the
-//! files changed since, with their line counts, become a note. Changes the
-//! agent's own `edit`, `write` and `shell` calls made are in the snapshot
-//! its turn ended with, so they are never reported.
-//!
-//! The note goes into every request of that turn, as a message before the
-//! user's, in the request's `history` view, which is never saved; the
-//! conversation keeps it as a transcript [`Note`] (an aside, which no model
-//! reads), so a resumed session and an export show it, a restarted turn
-//! sends it again, and later turns never repeat it. Nothing is added when
-//! nothing changed, or outside a git work tree on this machine.
-//! `/gitdelta off|on` turns it off and on for the session.
+//! The note goes into every request of that turn as a message before the user's, and is never saved
+//! as one; the conversation keeps it as a transcript [`Note`], which no model reads, so a resumed
+//! session and an export show it, a restarted turn sends it again, and later turns never repeat it.
+//! Nothing is added when nothing changed, or outside a git work tree on this machine. `/gitdelta
+//! off|on` turns it off and on for the session.
 
 use std::ffi::OsStr;
 use std::hash::{DefaultHasher, Hash as _, Hasher as _};

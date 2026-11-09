@@ -1,21 +1,13 @@
-//! Plugin corpus (held-out): H30: Cut looping and role-play replies
-//! mid-stream (spec `H30-degenerate-stream-cutter.md`).
+//! Cuts looping and role-play replies mid-stream. Small local models sometimes repeat a line
+//! forever or start writing the user's next message. For a watched model the plugin adapts every
+//! model call ([`Adapted`]), rewrites the reply stream ([`map_stream`]) and watches its text.
 //!
-//! Small local models sometimes repeat a line forever or start writing the
-//! user's next message. This plugin adapts every model call
-//! ([`Adapted`]); for a watched model it rewrites the reply stream ([`map_stream`])
-//! and watches its text. When a line (or a block of up to 400 characters)
-//! comes a fourth time in a row, or a role marker such as `User:` starts a
-//! line, the rewrite ends the reply there: it ends the text part with the
-//! text cut back and passes on a response made of the parts that ended
-//! before the cut. The kernel takes that as the reply and drops the
-//! provider's stream, so nothing more is read. A tool call whose arguments
-//! were still streaming is left out; finished ones run as usual. The view
-//! draws the reply from the conversation once it is in, so what streamed
-//! past the cut point is taken back. The cut is published on the call, and
-//! an observer counts it per model (`/cuts`) and tells the user.
-//!
-//! Settings, `[stream_cutter]` in `RIG_HOME/settings.toml`:
+//! When a line, or a block of up to `max_block` characters, comes `repeats` times in a row, or a
+//! role marker such as `User:` starts a line, the reply ends there with its text cut back, and
+//! nothing more of the provider's stream is read. A tool call whose arguments were still streaming
+//! is left out; finished ones run as usual. What streamed past the cut is taken back from the view.
+//! `/cuts` counts the cuts per model, and the user is told of each. Settings go in
+//! `[stream_cutter]` in `RIG_HOME/settings.toml`:
 //!
 //! ```toml
 //! [stream_cutter]

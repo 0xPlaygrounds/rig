@@ -1,8 +1,6 @@
-//! Path-scoped project rules (spec `09-glob-rules.md`), like Cursor rules.
-//!
-//! A rule is a Markdown file in `<project>/.rig/rules/` or, for the user's
-//! own, `RIG_HOME/rules/` (a project rule replaces a personal one of the
-//! same name), whose front matter says when it reaches the agent:
+//! Path-scoped project rules. A rule is a Markdown file in `<project>/.rig/rules/` or, for the
+//! user's own, `RIG_HOME/rules/` (a project rule replaces a personal one of the same name), whose
+//! front matter says when it reaches the agent:
 //!
 //! ```markdown
 //! ---
@@ -13,27 +11,19 @@
 //! Never use SELECT *.
 //! ```
 //!
-//! - `always: true`: the body is in every agent's system prompt.
-//! - `globs`: the body is added to the result of an agent's first tool
-//!   call that touches a matching path, as "Rules for `src/db/**`
-//!   (db.md): …". The paths a call touched are what it published: the
-//!   files it read (rig-core's `FilesRead`, a read or a search's hits) or
-//!   changed (`FilesChanged`), and the directory and entries it listed
-//!   (rig-tools' `FilesListed`, the `list` tool). Globs follow gitignore's
-//!   rules from the agent's directory: one without `/` matches a name at
-//!   any depth. Each rule reaches an agent once, again once its text
-//!   changed, and again once the result that carried it is no longer in
-//!   the agent's conversation as it was given (condensed into a summary,
-//!   its output cleared, or cut).
-//! - `description`: the rule is listed in the system prompt by name, and
-//!   the `rule` tool returns its body; a glob rule loaded so counts as
-//!   delivered.
+//! With `always: true` the body is in every agent's system prompt. With `globs` the body is added
+//! to the result of an agent's first tool call that touches a matching path, as "Rules for
+//! `src/db/**` (db.md): …". The paths a call touched are the files it read (`FilesRead`) or changed
+//! (`FilesChanged`) and the directory and entries it listed (`FilesListed`). Globs follow
+//! gitignore's rules from the agent's directory. Each rule reaches an agent once, again once its
+//! text changed, and again once the result that carried it is no longer in the agent's conversation
+//! as it was given. With a `description` the rule is listed in the system prompt by name, and the
+//! `rule` tool returns its body; a glob rule loaded so counts as delivered.
 //!
-//! `/rules` lists the rules, where each comes from and which reached the
-//! agent. Both rule directories are watched, so a rule added, changed or
-//! removed applies once the watch sees it; a file whose front matter is
-//! broken is skipped with a warning naming it. The Review system is in the
-//! public [`GlobRulesSystems`] set.
+//! `/rules` lists the rules, where each comes from and which reached the agent. Both rule
+//! directories are watched, so a rule added, changed or removed applies once the watch sees it; a
+//! file whose front matter is broken is skipped with a warning naming it. The Review system is in
+//! the public [`GlobRulesSystems`] set.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};

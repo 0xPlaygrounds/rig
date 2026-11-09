@@ -1,17 +1,13 @@
-//! SP-01: 01. Environment policy for agent commands (splits fresh held-out
-//! spec `01-shell-env-policy.md`).
+//! Environment policy for agent commands. [`ShellEnvPolicyPlugin`] builds the environment of
+//! every process the agents start from a policy: `~/.config/rig/env-policy.toml` with the
+//! project's `.rig/env-policy.toml` merged over it ([`EnvPolicy`]). Every process gets the
+//! variables `allow` names (always with [`DEFAULT_ALLOW`]) that no `deny` glob matches, and the
+//! `set` pairs; every other variable of this process is absent.
 //!
-//! [`ShellEnvPolicyPlugin`] builds the environment of every process the
-//! agents start from a policy: `~/.config/rig/env-policy.toml` with the
-//! project's `.rig/env-policy.toml` merged over it ([`EnvPolicy`]). Every
-//! process gets the variables `allow` names (always with [`DEFAULT_ALLOW`])
-//! that no `deny` glob matches, and the `set` pairs; every other variable
-//! of this process is absent. The policy is read again as each tool call
-//! comes in and set on the app's [`Processes`]; an agent with an
-//! `[agent.<name>]` section gets a `shell` of its own with its extras. A
-//! `shell` command that names a denied variable is refused before it
-//! starts, a malformed file keeps the last good policy with one warning,
-//! and `/env` lists what the focused agent's commands see.
+//! The policy is read again as each tool call comes in and set on the app's [`Processes`]; an
+//! agent with an `[agent.<name>]` section gets a `shell` of its own with its extras. A `shell`
+//! command that names a denied variable is refused before it starts, a malformed file keeps the
+//! last good policy with one warning, and `/env` lists what the focused agent's commands see.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;

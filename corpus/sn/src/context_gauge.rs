@@ -1,13 +1,11 @@
-//! SN-19: a context gauge. Each agent's status line item reads
-//! `ctx 43% · 86k/200k`: the tokens its latest model reply read and wrote
-//! (the kernel's [`LastUsage`]) against the input limit of its current model
-//! (its [`Connection`]'s catalog spec), dimmed below 70%, yellow to 90%
-//! and red above. Without a known input limit it reads `ctx 86k`, before the
-//! agent's first reply `ctx —`. The terminal view shows the focused
-//! agent's items, so focusing a subagent shows its own gauge.
+//! A context gauge. Each agent's status line item reads `ctx 43% · 86k/200k`: the tokens its latest
+//! model reply read and wrote (the kernel's [`LastUsage`]) against the input limit of its current
+//! model (its [`Connection`]'s catalog spec), dimmed below 70%, yellow to 90% and red above.
+//! Without a known input limit it reads `ctx 86k`, before the agent's first reply `ctx —`. The
+//! terminal view shows the focused agent's items, so focusing a subagent shows its own gauge.
 //!
-//! The first time an agent goes above 90% in a session, a notice suggests
-//! condensing or handing off; that it was given is saved with the agent.
+//! The first time an agent goes above 90% in a session, a notice suggests condensing or handing
+//! off; that it was given is saved with the agent.
 //!
 //! The gauge replaces `rig_basics::telemetry`'s item named `context` (right, 40) in
 //! `StatusSystems::Edit`, so the line shows one context item, not two.

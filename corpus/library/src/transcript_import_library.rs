@@ -1,14 +1,13 @@
-//! CT-25: build a rig session from a chat transcript saved as Markdown.
+//! Builds a rig session from a chat transcript saved as Markdown. A plain program on rig's library
+//! crates (rig-core, rig-memory and the `rig` crate's launcher protocol), no Bevy and no harness:
+//! `transcript-to-session in.md [-o DIR] [--name N] [--model vendor/model] [--user H] [--assistant
+//! H] [--tools]`.
 //!
-//! A plain program on rig's library crates (rig-core, rig-memory and the
-//! `rig` crate's launcher protocol), no Bevy and no harness:
-//! `transcript-to-session in.md [-o DIR] [--name N] [--model vendor/model]
-//! [--user H] [--assistant H] [--tools]`. Speaker headings (`## User`,
-//! `**Assistant:**`, …) split the transcript into messages kept verbatim;
-//! text before the first heading becomes a system note; with `--tools`
-//! a fence tagged `tool:<name>` in an assistant section becomes a recorded
-//! tool call and its result. The session is written where `-o` says, or as
-//! a new session of the rig home, so `rig --resume <name>` resumes it.
+//! Speaker headings (`## User`, `**Assistant:**`, …) split the transcript into messages kept
+//! verbatim; text before the first heading becomes a system note; with `--tools` a fence tagged
+//! `tool:<name>` in an assistant section becomes a recorded tool call and its result. The session
+//! is written where `-o` says, or as a new session of the rig home, so `rig --resume <name>`
+//! resumes it.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};

@@ -1,10 +1,9 @@
-//! FH-04: thinking keywords. A user's message that says `think`, `think
-//! hard` or `ultrathink` (whole words, any case, the longest match, outside
-//! code) raises the reasoning setting of every model request of the turn it
-//! goes with, then the next turn is back to the agent's own setting. The
-//! message itself is left as typed, and the agent's [`ReasoningSetting`] is never
-//! changed. Keywords, budgets and whether subagents inherit the raised
-//! level are read from `RIG_HOME/think.toml`.
+//! Thinking keywords. A user's message that says `think`, `think hard` or `ultrathink` (whole
+//! words, any case, the longest match, outside code) raises the reasoning setting of every model
+//! request of the turn it goes with, then the next turn is back to the agent's own setting. The
+//! message itself is left as typed, and the agent's [`ReasoningSetting`] is never changed.
+//! Keywords, budgets and whether subagents inherit the raised level are read from
+//! `RIG_HOME/think.toml`.
 
 use std::collections::{BTreeMap, HashSet};
 

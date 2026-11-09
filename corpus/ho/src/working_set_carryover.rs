@@ -1,13 +1,11 @@
-//! The working set, kept across compaction: each agent's files read and
-//! changed and its last test or build commands, tracked from the facts its
-//! tool calls publish ([`FilesRead`], [`FilesChanged`], [`ExitStatus`]).
-//! Whenever a compaction splices a summary into an agent's conversation
-//! (a [`ConversationChanged`] splice that took messages out and put in an entry by
-//! [`summary_author`](rig_basics::compaction::summary_author), from `rig_basics::compaction` or `/compact`), a "Working set"
-//! entry goes into the conversation right after the summary, and into the
-//! request already built from it, so it goes with the next request and a
-//! resumed session has it. The tracking is saved with the
-//! session ([`WorkingSet`]).
+//! The working set, kept across compaction: each agent's files read and changed and its last test
+//! or build commands, tracked from the facts its tool calls publish ([`FilesRead`],
+//! [`FilesChanged`], [`ExitStatus`]). Whenever a compaction splices a summary into an agent's
+//! conversation (a [`ConversationChanged`] splice that took messages out and put in an entry by
+//! [`summary_author`](rig_basics::compaction::summary_author), from `rig_basics::compaction` or
+//! `/compact`), a "Working set" entry goes into the conversation right after the summary, and into
+//! the request already built from it, so it goes with the next request and a resumed session has
+//! it. The tracking is saved with the session ([`WorkingSet`]).
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};

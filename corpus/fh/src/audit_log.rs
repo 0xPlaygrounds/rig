@@ -1,11 +1,8 @@
-//! FH-22: a tamper-evident audit log. Every tool call that may change
-//! something or reach outside, every question that decided whether one
-//! runs, and the session's start, resume and end are appended to
-//! `RIG_HOME/audit/<date>.jsonl` ([`chain`]), hash-chained, before the
-//! call's result reaches the model. When the log cannot be written, the
-//! calls it would record are refused. `rig audit verify [from-date]`
-//! checks the chain and `rig audit show --session <id>` lists a session's
-//! entries.
+//! A tamper-evident audit log. Every tool call that may change something or reach outside, every
+//! question that decided whether one runs, and the session's start, resume and end are appended to
+//! `RIG_HOME/audit/<date>.jsonl` ([`chain`]), hash-chained, before the call's result reaches the
+//! model. When the log cannot be written, the calls it would record are refused. `rig audit verify
+//! [from-date]` checks the chain and `rig audit show --session <id>` lists a session's entries.
 
 pub mod chain;
 

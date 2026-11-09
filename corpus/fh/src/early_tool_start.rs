@@ -1,27 +1,19 @@
-//! FH-24: start read-only tool calls while the reply that asks for them is
-//! still streaming.
+//! Starts read-only tool calls while the reply that asks for them is still streaming. As a turn's
+//! reply streams, each tool call it ends ([`StreamDelta`]'s `End`) of a tool whose [`Footprint`]
+//! only reads, with arguments that parsed, starts at once as a call of its own, [`StartedEarly`].
+//! Every Prepare and Gate system sees it before it starts. One that a gate holds or decides, or
+//! whose own footprint writes, is withdrawn before it starts, with the early calls after it. So is
+//! every one after a call that may not start early, such as a `write`. Its outcome is held from
+//! Review until the reply ends.
 //!
-//! As a turn's reply streams, each tool call it ends ([`StreamDelta`]'s
-//! `End`) of a tool whose [`Footprint`] only reads, with arguments that
-//! parsed, starts at once as a call of its own, [`StartedEarly`]: every
-//! Prepare and Gate system sees it before it starts. One that a gate holds
-//! or decides, or whose own footprint writes, is withdrawn before it
-//! starts, with the early calls after it; so is every one after a call
-//! that may not start early, such as a `write`, which may change what a
-//! later read sees. Once started, its outcome is held from Review until
-//! the reply ends.
+//! When the reply ends, its own calls go through the gates as usual. Each one that an early call
+//! answers (same id, same request) is decided with the early call's outcome, so the conversation
+//! gets the reply's calls in the reply's order, as if they ran after it. A failed, cut off or
+//! interrupted reply, or one that did not ask for the call after all, withdraws it.
 //!
-//! When the reply ends, its own calls go through the gates as usual. In
-//! [`GateSystems::After`], each one the gates let through that an early
-//! call answers (same id, same request as Prepare left it) is decided with
-//! the early call's outcome, held until it has one, and the early call is
-//! withdrawn: the conversation gets the reply's calls, in the reply's
-//! order, as if they ran after it. A failed, cut off or interrupted
-//! reply, or one that did not ask for the call after all, withdraws it.
-//!
-//! `/early off` and `/early on` switch it, `/early stats` says the tool
-//! time saved per turn. The running turn's status line counts its early
-//! calls, and a reply's call that waits for its early call says so.
+//! `/early off` and `/early on` switch it, `/early stats` says the tool time saved per turn. The
+//! running turn's status line counts its early calls, and a reply's call that waits for its early
+//! call says so.
 
 use std::collections::{BTreeMap, HashSet};
 use std::time::SystemTime;

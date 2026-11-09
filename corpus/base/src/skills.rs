@@ -1,14 +1,13 @@
-//! Skills loaded on demand (spec `28-skills.md`). A skill is a directory
-//! `RIG_HOME/skills/<name>/` or `<project>/.rig/skills/<name>/` with a
-//! `SKILL.md` whose frontmatter has a `name` and a `description`, and maybe
-//! more files its body names. The system prompt lists only each skill's
-//! name and description; the model loads a body with `load_skill`, and the
-//! user with `/skill <name> [text]`, which sends it with their message.
-//! `/skills` lists them and which were loaded this session.
+//! Skills loaded on demand. A skill is a directory `RIG_HOME/skills/<name>/` or
+//! `<project>/.rig/skills/<name>/` with a `SKILL.md` whose frontmatter has a `name` and a
+//! `description`, and maybe more files its body names. The system prompt lists only each
+//! skill's name and description; the model loads a body with `load_skill`, and the user
+//! with `/skill <name> [text]`, which sends it with their message. `/skills` lists them and
+//! which were loaded this session.
 //!
-//! Both skill directories are watched, so skills appear and disappear as
-//! they change; a `SKILL.md` whose frontmatter is broken is skipped and
-//! reported once. A skill loaded in a turn is not loaded again in it.
+//! Both skill directories are watched, so skills appear and disappear as they change; a
+//! `SKILL.md` whose frontmatter is broken is skipped and reported once. A skill loaded in a
+//! turn is not loaded again in it.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};

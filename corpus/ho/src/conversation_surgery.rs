@@ -1,14 +1,9 @@
-//! Plugin corpus (held-out): H20: Cut messages out of a conversation (spec
-//! `H20-conversation-surgery.md`).
-//!
-//! `/history` lists the focused agent's messages, numbered, with their
-//! rough size. `/stub <n>` replaces the content of the tool results in
-//! message `n` with a stub naming their size. `/drop <n>` or
-//! `/drop <a>-<b>` cuts messages out, taking each tool call and its result
-//! together and joining the messages the cut leaves side by side.
-//! `/drop undo` puts back what the agent's last edit changed. Every edit
-//! is a logged splice, so the session log keeps the edited conversation;
-//! it is refused while the agent's turn runs.
+//! Cut messages out of a conversation. `/history` lists the focused agent's messages, numbered,
+//! with their rough size. `/stub <n>` replaces the content of the tool results in message `n` with
+//! a stub naming their size. `/drop <n>` or `/drop <a>-<b>` cuts messages out, taking each tool
+//! call and its result together and joining the messages the cut leaves side by side. `/drop undo`
+//! puts back what the agent's last edit changed. Every edit is a logged splice, so the session log
+//! keeps the edited conversation; it is refused while the agent's turn runs.
 
 #[cfg(test)]
 mod tests;

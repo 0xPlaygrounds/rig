@@ -1,17 +1,14 @@
-//! SP-05: Changelog fragments (splits fresh held-out spec).
+//! Changelog fragments. When a turn of the main agent ends having changed files that match
+//! `[changelog] include` (default `src/**`) and are not all matched by `exclude` (tests, docs,
+//! the fragment directory), a model call of the plugin's own on `[changelog] model` reads the
+//! turn's request and diff and answers `category: line`. The line is written to
+//! `<dir>/<session>-<turn>.<category>.md` (dir `changes` by default), unless every such file is
+//! back as it was before the turn by then.
 //!
-//! When a turn of the main agent ends having changed files that match
-//! `[changelog] include` (default `src/**`) and are not all matched by
-//! `exclude` (tests, docs, the fragment directory), a model call of the
-//! plugin's own on `[changelog] model` reads the turn's request and diff
-//! and answers `category: line`. The line is written to
-//! `<dir>/<session>-<turn>.<category>.md` (dir `changes` by default), unless
-//! every such file is back as it was before the turn by then. The call is
-//! no turn's: the next prompt starts at once, and nothing of it reaches the
-//! main agent's model. A failed or timed-out call writes nothing, says so
-//! once and is not tried again. `/changelog` lists the session's
-//! fragments, `/changelog edit <n>` opens one in `$VISUAL` or `$EDITOR` and
-//! `/changelog drop <n>` deletes it.
+//! The call is no turn's: the next prompt starts at once, and nothing of it reaches the main
+//! agent's model. A failed or timed-out call writes nothing, says so once and is not tried
+//! again. `/changelog` lists the session's fragments, `/changelog edit <n>` opens one in
+//! `$VISUAL` or `$EDITOR` and `/changelog drop <n>` deletes it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

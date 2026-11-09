@@ -1,15 +1,13 @@
-//! OC-06: a project-wide find and replace tool, `replace_in_files`.
+//! A project-wide find and replace tool, `replace_in_files`. The tool searches the files of the
+//! calling agent's directory (its `WorkDir`, else the project root) as the workspace lists them,
+//! honouring `.gitignore` and skipping hidden files, `target`, binary files and files over 2 MB,
+//! narrowed by `glob`.
 //!
-//! The tool searches the files of the calling agent's directory (its
-//! `WorkDir`, else the project root) as the workspace lists them, honouring
-//! `.gitignore` and skipping hidden files, `target`, binary files and files
-//! over 2 MB, narrowed by `glob`. Without `apply` it previews: matches per
-//! file, up to three changed lines each, and a total, writing nothing. With
-//! `apply` it writes every changed file or none, in one call that publishes
-//! each change as `FilesChanged`, so approval and file-watching plugins see
-//! them all. An apply that follows a preview of the same search checks each
-//! file against the hash that preview published; `/replace-undo` puts the
-//! last apply's files back, if nothing changed them since.
+//! Without `apply` it previews: matches per file, up to three changed lines each, and a total,
+//! writing nothing. With `apply` it writes every changed file or none, in one call that publishes
+//! each change as `FilesChanged`, so approval and file-watching plugins see them all. An apply that
+//! follows a preview of the same search checks each file against the hash that preview published;
+//! `/replace-undo` puts the last apply's files back, if nothing changed them since.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

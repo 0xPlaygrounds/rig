@@ -1,28 +1,21 @@
-//! Plugin corpus (held-out): H23: Attach to a running session over a socket
-//! (spec `H23-socket-attach.md`).
+//! Attach to a running session over a socket. A running session listens on
+//! `RIG_HOME/sockets/<session-id>.sock` (mode 0600, in a directory of mode 0700), removed on exit;
+//! sockets no session listens on are removed at startup. `rig --attach` makes the run a thin client
+//! of the newest live session, or of `--attach-session=ID`: it prints what arrives as plain lines
+//! and sends what is typed; while a picker is open, the typed line answers it. Ctrl-D detaches and
+//! leaves the session running.
 //!
-//! A running session listens on `RIG_HOME/sockets/<session-id>.sock` (mode
-//! 0600, in a directory of mode 0700), removed on exit; sockets no session
-//! listens on are removed at startup. The protocol is JSON lines.
+//! The protocol is JSON lines. On connect the server sends `backlog` (the focused agent's last 50
+//! messages), then live events: `delivery`, `text` and `reasoning` (streamed), `tool_start`,
+//! `tool_end`, `notice`, `picker` (a plugin's [`Picker`] or [`Ask`]), `closed` (answered in any
+//! front), `turn_end`, `error` (to the one client whose line failed) and, on the session's exit,
+//! `ended`.
 //!
-//! - **Server to client:** on connect, `backlog` (the focused agent's last
-//!   50 messages), then live events: `delivery`, `text` and `reasoning`
-//!   (streamed), `tool_start`, `tool_end`, `notice`, `picker` (a plugin's
-//!   [`Picker`] or [`Ask`]), `closed` (answered in any front), `turn_end`,
-//!   `error` (to the one client whose line failed) and, on the session's
-//!   exit, `ended` ("session ended").
-//! - **Client to server:** `{"text": "…"}`, a line the user typed, to the
-//!   focused agent, or `@<agent name> …` to that one; a `/` line runs as a
-//!   command in the session. `{"pick": id, "choice": n | "text" | null}`
-//!   answers an open picker; the first answer from any front wins.
-//!
-//! A client more than 1 MB behind is dropped with a notice: the app queues
-//! each line and never waits on a client.
-//!
-//! `rig --attach` makes the run a thin client of the newest live session,
-//! or of `--attach-session=ID`: it prints what arrives as plain lines and
-//! sends what is typed; while a picker is open, the typed line answers it.
-//! Ctrl-D detaches and leaves the session running.
+//! A client sends `{"text": "…"}`, a line the user typed, to the focused agent, or `@<agent name>
+//! …` to that one; a `/` line runs as a command in the session. `{"pick": id, "choice": c}` answers
+//! an open picker, where `c` is an option's index, a typed text or `null`; the first answer from
+//! any front wins. A client more than 1 MB behind is dropped with a notice: the app never waits on
+//! a client.
 
 use std::sync::Arc;
 

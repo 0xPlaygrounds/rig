@@ -1,29 +1,19 @@
-//! Plugin corpus (held-out): H21: Prompt history across sessions and saved
-//! drafts (spec `H21-history-and-drafts.md`).
+//! Prompt history across sessions, and saved drafts. Every message the user sends, in any front, is
+//! appended to `RIG_HOME/history/<project-hash>.jsonl` as `{text, time, session}`, at most
+//! [`MAX_ENTRIES`] per project, the oldest trimmed. Not recorded: a repeat of the previous entry, a
+//! message starting with a space, one holding a well-known secret (`rig_core::redact`), and one
+//! matching a regular expression of `[history] secrets = [..]` in `settings.toml` (`sk-…` by
+//! default).
 //!
-//! **History.** Every message the user sends, in any front (`Incoming`
-//! from `Author::user()`), is appended to
-//! `RIG_HOME/history/<project-hash>.jsonl` as `{text, time, session}`. At
-//! most [`MAX_ENTRIES`] are kept per project, the oldest trimmed. Not
-//! recorded: a repeat of the previous entry, a message starting with a
-//! space, one holding a well-known secret (`rig_core::redact`), and one
-//! matching a pattern of `[history] secrets = [..]` in `settings.toml`
-//! (regular expressions; `sk-…` by default).
+//! The terminal view's Up and Down browse its [`PromptHistory`], which this plugin fills with this
+//! project's prompts, this session's newest; the view's own history file is turned off, so nothing
+//! the rules above leave out is browsed or saved. Ctrl+R opens a fuzzy search of the history: typed
+//! characters match in order, the closest together first, and Enter puts the prompt in the input.
 //!
-//! **Browsing.** The terminal view's Up and Down browse its
-//! [`PromptHistory`]; this plugin supplies its entries, this project's
-//! prompts with this session's newest, in place of the conversation's
-//! prompts the view seeds, and turns the view's own file off,
-//! so nothing the rules above leave out is browsed or saved. Ctrl+R opens a
-//! fuzzy search of the history: typed characters match in order, the
-//! closest together first; Enter puts the prompt in the input.
-//!
-//! **Drafts.** What is typed for an agent and not sent is its [`Draft`],
-//! saved with the session once typing paused for [`QUIET`], so `/reload`,
-//! a restart or `/resume` puts it back in the input with the cursor at its
-//! end. Showing another agent keeps the draft of the one left and shows
-//! the other's. Sending (the input emptied) clears it at once. A `--print`
-//! run types nothing in the input, so it has no draft.
+//! What is typed for an agent and not sent is its [`Draft`], saved with the session once typing
+//! paused for [`QUIET`], so `/reload`, a restart or `/resume` puts it back in the input with the
+//! cursor at its end. Each agent keeps its own draft, and sending clears it at once. A `--print`
+//! run has no draft.
 
 use std::fs;
 use std::io::Write as _;

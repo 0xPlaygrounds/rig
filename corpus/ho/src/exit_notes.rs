@@ -1,12 +1,9 @@
-//! Plugin corpus (held-out): H14: Session notes written on exit (spec `H14-exit-notes.md`).
-//!
-//! When the app is about to exit for good (`/quit`, Ctrl-D, the end of a
-//! `--print` run, a signal), a session that changed files or had at least
-//! three turns gets a note in `.rig/notes/<date>-<session>.md`: what the
-//! main agent's conversation was about, summarized by a model call of the
-//! plugin's own, and the files its tool calls changed. The plugin holds the
-//! exit effect until the note is written, at most 15 s; Esc, or a second
-//! quit, skips the summary. `/notes-now` writes the note without quitting.
+//! Session notes written on exit. When the app is about to exit for good (`/quit`, Ctrl-D, the end
+//! of a `--print` run, a signal), a session that changed files or had at least three turns gets a
+//! note in `.rig/notes/<date>-<session>.md`: what the main agent's conversation was about,
+//! summarized by a model call of the plugin's own, and the files its tool calls changed. The plugin
+//! holds the exit effect until the note is written, at most 15 s; Esc, or a second quit, skips the
+//! summary. `/notes-now` writes the note without quitting.
 
 use std::path::Path;
 

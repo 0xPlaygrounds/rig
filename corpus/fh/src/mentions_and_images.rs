@@ -1,35 +1,21 @@
-//! FH-05: `@path` mentions and image attachments.
+//! `@path` mentions and image attachments. Each file the user names as `@path` in a message goes
+//! with it, so the agent spends no turn reading it. Paths resolve from the agent's [`WorkDir`],
+//! else the [`ProjectRoot`], in the app's [`ProjectWorkspace`].
 //!
-//! Each file the user names as `@path` in a message goes with it, so the
-//! agent spends no turn reading it. Paths resolve from the agent's
-//! [`WorkDir`], else the [`ProjectRoot`], in the app's
-//! [`ProjectWorkspace`]:
+//! A text file is attached whole, headed with its path; one over [`Mentions::max_bytes`] keeps its
+//! first and last lines with a note on what was cut. `@file:10-40` attaches those lines, as `read`
+//! shows them, and `@dir/` attaches a listing of the files under the directory. An image (`png`,
+//! `jpg`, `gif`, `webp`) is attached as an image when the agent's model reads images. Otherwise a
+//! configured vision model ([`Mentions::vision_model`]) describes it and the message waits for the
+//! description; without one, the image is dropped with a notice and the model is told so. A path
+//! with nothing there stays plain text, with a warning.
 //!
-//! - a text file is attached whole, headed with its path; one over
-//!   [`Mentions::max_bytes`] keeps its first and last lines with a note on
-//!   what was cut;
-//! - `@file:10-40` attaches those lines, as `read` shows them;
-//! - `@dir/` attaches a listing of the files under the directory;
-//! - an image (`png`, `jpg`, `gif`, `webp`) is attached as an image when
-//!   the agent's model reads images; otherwise a configured vision model
-//!   ([`Mentions::vision_model`]) describes it, and the message waits for
-//!   the description (the description call holds it); without one, the
-//!   image is dropped with a notice and the model is told so;
-//! - a path reference with nothing there stays plain text, with a warning.
-//!
-//! Each attachment goes after the message's text: pasted images, then the
-//! `@` mentions in the order the message names them. They go into the conversation as they were sent, so a
-//! resumed session shows the file contents of send time and the images
-//! are stored with the session. Each attached text file is published as
-//! read ([`FilesRead`]) on the message's effect, which the effect log
-//! records.
-//!
-//! This plugin replaces `rig_basics::coding_tools::AttachPlugin`: it turns that
-//! plugin's [`AttachSystems`] off, so the two can be loaded together.
-//! Ctrl+V in the terminal view pastes the clipboard's image as
-//! `[image N]`, in place of the view's own `@path` of it, and the message
-//! attaches it as it would an `@` image. Completion of `@` paths as you
-//! type is the view's own.
+//! Attachments go after the message's text: pasted images, then the `@` mentions in order. They are
+//! stored as sent, so a resumed session shows the file contents of send time. Each attached text
+//! file is published as read ([`FilesRead`]) on the message's effect. The plugin turns off
+//! `rig_basics::coding_tools::AttachPlugin`'s [`AttachSystems`], so the two can be loaded together.
+//! Ctrl+V in the terminal view pastes the clipboard's image as `[image N]`, attached as an `@`
+//! image would be.
 
 use std::path::Path;
 

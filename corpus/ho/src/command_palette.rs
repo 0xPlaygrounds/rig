@@ -1,16 +1,11 @@
-//! Plugin corpus (held-out): H24: Command palette (spec `H24-command-palette.md`).
+//! A command palette: one fuzzy list over everything the user can do, built afresh from what exists
+//! each time the filter changes. It lists the slash commands (with their help), the catalog models
+//! that can be reached (`/model <id>`), the agents (shown), the tools (with their description, and
+//! whether they are off), and the [`PaletteEntry`]s any plugin spawns. A filter matches a
+//! subsequence of an entry's label, scored by the word starts it hits ([`rank`]); with an empty
+//! filter the recent picks come first, kept in `RIG_HOME` ([`RecentPicks`]).
 //!
-//! One fuzzy list over everything the user can do, built afresh from what
-//! exists each time the filter changes: the slash commands (with their
-//! help), the catalog models that can be reached (`/model <id>`), the
-//! agents (shown), the tools (with their description, and whether they are
-//! off), and the [`PaletteEntry`]s any plugin spawns. A filter matches a
-//! subsequence of an entry's label, scored by the word starts it hits
-//! ([`rank`]); with an empty filter the recent picks come first, kept in
-//! `RIG_HOME` ([`RecentPicks`]).
-//!
-//! Under the default `tui` feature, Ctrl-P opens it over the terminal view
-//! (see the `tui` module).
+//! Under the default `tui` feature, Ctrl-P opens it over the terminal view (see the `tui` module).
 
 use std::cmp::{Reverse, max};
 use std::path::PathBuf;

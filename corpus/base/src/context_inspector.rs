@@ -1,27 +1,17 @@
-//! Context inspector (spec `57-context-inspector.md`): `/why` shows what an
-//! agent's last model request held, part by part, and how it differed
-//! from what the agent's state alone would have sent.
+//! Context inspector: `/why` shows what an agent's last model request held, part by part, and
+//! how it differed from what the agent's state alone would have sent.
 //!
-//! A turn's model call is an effect entity whose [`ModelRequest`] the
-//! kernel builds in Admit, its system prompt in parts and its messages as
-//! a view of the agent's conversation beside it; Prepare systems then edit
-//! it, each message edit recorded with its author, and Start renders the
-//! prompt in front of the messages and sends it. The kernel's own prompt
-//! and tools are kept as the call's [`Built`] when the `ModelRequest` is
-//! inserted, before any Prepare system ran. After Prepare, the prompt in
-//! parts as Start will send it ([`ModelRequest::prompt`]), who wrote each
-//! message and the attributed edits of the messages are kept as the
-//! call's [`Prepared`]. When the call is `Started`, the request as sent
-//! goes to the agent's [`LastRequest`] with the model it went to after
-//! every adapter ([`SentTo`]) and, for each prompt section, the plugin that
-//! spawned it ([`ProvidedBy`]).
+//! Each model call keeps the kernel's own prompt and tools as its [`Built`], and after Prepare
+//! the prompt in parts as Start will send it ([`ModelRequest::prompt`]), who wrote each message
+//! and the attributed edits as its [`Prepared`]. When the call is `Started`, the request as
+//! sent goes to the agent's [`LastRequest`] with the model it went to after every adapter
+//! ([`SentTo`]) and, for each prompt section, the plugin that spawned it ([`ProvidedBy`]).
 //!
-//! `/why [full] [agent]` (or `/context --last`) then shows the request's
-//! estimated tokens, a bar of the model's input limit by part, the system
-//! prompt by section and plugin, the tools with their schema sizes, the
-//! messages by kind, the options, and how the sent request differs from
-//! the built one. `/why full` writes the request as JSON in the session's
-//! directory. Nothing calls a model.
+//! `/why [full] [agent]` (or `/context --last`) then shows the request's estimated tokens, a
+//! bar of the model's input limit by part, the system prompt by section and plugin, the tools
+//! with their schema sizes, the messages by kind, the options, and how the sent request differs
+//! from the built one. `/why full` writes the request as JSON in the session's directory.
+//! Nothing calls a model.
 
 use std::fmt::Write as _;
 use std::sync::Arc;

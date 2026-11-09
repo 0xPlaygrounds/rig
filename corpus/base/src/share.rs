@@ -1,16 +1,11 @@
-//! Plugin corpus: 42. Share a session (spec `42-share.md`).
-//!
-//! `/share` renders the agent's conversation as an HTML page with every
-//! secret found redacted, and spawns the upload as a `share` effect held
-//! by a question listing what goes and the secrets taken out. Confirmed,
-//! the effect starts and uploads in the background to the `[share]`
-//! target: a secret GitHub gist (with a token from `GH_TOKEN`,
-//! `GITHUB_TOKEN` or `gh auth token`), or an `http` paste server that
-//! answers a POST with `{"url": …}`. The link is shown, copied to the
-//! clipboard through the terminal view (`CopyToClipboard`, OSC 52), and
-//! saved with the session, so `/share` again updates the same page and
-//! `/unshare` deletes it. A run nobody answers questions in shares only
-//! when started with `--yes`.
+//! Share a session. `/share` renders the agent's conversation as an HTML page with every secret
+//! found redacted, and spawns the upload as a `share` effect held by a question listing what
+//! goes and the secrets taken out. Confirmed, the effect starts and uploads in the background
+//! to the `[share]` target: a secret GitHub gist (with a token from `GH_TOKEN`, `GITHUB_TOKEN`
+//! or `gh auth token`), or an `http` paste server that answers a POST with `{"url": …}`. The
+//! link is shown, copied to the clipboard through the terminal view (`CopyToClipboard`, OSC
+//! 52), and saved with the session, so `/share` again updates the same page and `/unshare`
+//! deletes it. A run nobody answers questions in shares only when started with `--yes`.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;

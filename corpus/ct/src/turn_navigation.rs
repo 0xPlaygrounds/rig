@@ -1,15 +1,12 @@
-//! CT-17: turn navigation and a sticky prompt header in the terminal view.
-//!
-//! `Ctrl+Up` and `Ctrl+Down` scroll the transcript of the agent shown to
-//! the prompt before or after the top row, `Ctrl+Home` to the first prompt
-//! and `Ctrl+End` back to the live bottom; the `[turn-navigation]` table of
-//! the settings rebinds them ([`NavigationKeys`]). While the view is
-//! scrolled up, a one-row panel over the transcript shows the prompt the
-//! top row belongs to ([`PromptHeader`]): its turn number, its first line
-//! cut to the width, how long the turn took and how many tools it called.
-//! A prompt is a request by the user or by an agent (a subagent's task),
-//! never a plugin's message. The view itself keeps a scrolled view where it
-//! is as output arrives and marks the new output below it.
+//! Turn navigation and a sticky prompt header in the terminal view. `Ctrl+Up` and
+//! `Ctrl+Down` scroll the transcript of the agent shown to the prompt before or after the
+//! top row, `Ctrl+Home` to the first prompt and `Ctrl+End` back to the live bottom; the
+//! `[turn-navigation]` table of the settings rebinds them ([`NavigationKeys`]). While the
+//! view is scrolled up, a one-row panel over the transcript shows the prompt the top row
+//! belongs to ([`PromptHeader`]): its turn number, its first line cut to the width, how
+//! long the turn took and how many tools it called. A prompt is a request by the user or by
+//! an agent (a subagent's task), never a plugin's message. The view itself keeps a scrolled
+//! view where it is as output arrives and marks the new output below it.
 
 use std::collections::HashSet;
 use std::str::FromStr;

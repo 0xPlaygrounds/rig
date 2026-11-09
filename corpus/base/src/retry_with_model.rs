@@ -1,12 +1,9 @@
-//! Plugin corpus: 17. Retry with another model (spec `17-retry-with-model.md`).
-//!
-//! `/retry-with [--force] <vendor/model>` rewinds the agent's conversation
-//! to the last turn's user message, keeps the answer it takes out as an
-//! alternative, and runs that turn again on the model named, for this turn
-//! only: the agent's own [`ModelChoice`] stays. `/alternatives` lists the
-//! kept answers and `/pick N` swaps the conversation to one of them. The
-//! conversation changes are splices by this plugin, so the session log
-//! keeps them, and the alternatives are saved with the session. The input completes
+//! Retry with another model. `/retry-with [--force] <vendor/model>` rewinds the agent's
+//! conversation to the last turn's user message, keeps the answer it takes out as an
+//! alternative, and runs that turn again on the model named, for this turn only: the agent's
+//! own [`ModelChoice`] stays. `/alternatives` lists the kept answers and `/pick N` swaps the
+//! conversation to one of them. The conversation changes are splices by this plugin, so the
+//! session log keeps them, and the alternatives are saved with the session. The input completes
 //! `/retry-with`'s argument to the models the agent can reach.
 
 use rig_harness::prelude::*;

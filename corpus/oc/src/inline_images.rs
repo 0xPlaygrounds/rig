@@ -1,22 +1,16 @@
-//! OC-17: images in the terminal transcript. Every image in the transcript
-//! (the user's, the model's, and those in tool results) is drawn below its
-//! message or call, scaled to at most [`ImagesSettings::max_width_percent`]
-//! of the terminal's width and [`ImagesSettings::max_rows`] rows, keeping
-//! its aspect ratio:
+//! Images in the terminal transcript. Every image in the transcript (the user's, the model's, and
+//! those in tool results) is drawn below its message or call, scaled to at most
+//! [`ImagesSettings::max_width_percent`] of the terminal's width and [`ImagesSettings::max_rows`]
+//! rows, keeping its aspect ratio.
 //!
-//! - with a terminal that shows images ([`ImagesSettings::protocol`]: the
-//!   kitty graphics protocol, iTerm2's inline images or sixel, inside tmux
-//!   only with its passthrough on), the transcript keeps blank rows, and after
-//!   each frame the image is placed over the rows of them on screen, and
-//!   taken off once they scroll away, the screen is resized or a box opens
-//!   over it;
-//! - otherwise half-block characters coloured as the image
-//!   ([`Mode::Blocks`]), or with [`Mode::Off`] one line saying what it is.
+//! A terminal that shows images ([`ImagesSettings::protocol`]: the kitty graphics protocol,
+//! iTerm2's inline images or sixel, inside tmux only with its passthrough on) gets the image placed
+//! over blank rows the transcript keeps, and taken off once they scroll away, the screen is resized
+//! or a box opens over it. Otherwise the image is drawn in half-block characters coloured as the
+//! image ([`Mode::Blocks`]), or with [`Mode::Off`] as one line saying what it is.
 //!
-//! A render system draws a message's images in place of the block and a
-//! call's under it, as a decoration. `o` on a selected image or call opens the image in the
-//! system viewer and `y` copies the path it was saved to. The images are
-//! drawn from the conversation, so a resumed session draws them again.
+//! `o` on a selected image or call opens the image in the system viewer and `y` copies the path it
+//! was saved to. The images are drawn from the conversation, so a resumed session draws them again.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;

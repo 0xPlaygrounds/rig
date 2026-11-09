@@ -1,6 +1,5 @@
-//! Plugin corpus (held-out): H05, an API-key pool with failover.
-//!
-//! `RIG_HOME/key-pool.toml` lists, per provider, keys by reference only:
+//! An API-key pool with failover. `RIG_HOME/key-pool.toml` lists, per provider, keys by reference
+//! only:
 //!
 //! ```toml
 //! [deepseek]
@@ -8,21 +7,17 @@
 //! # base_url = "http://127.0.0.1:8080/v1"; format = "openai"
 //! ```
 //!
-//! The provider's models connect with a stand-in key, and the pool wraps
-//! the HTTP client every model is reached through
-//! ([`Connector::wrap_http`]). Each request a model call of a pooled
-//! provider sends (its [`Serving`] names the provider) goes out on that
-//! pool's current key, which it stays on for the prompt cache. A rate limit
-//! or a spent quota cools the key (`Retry-After`, else 60 s doubling to 15
-//! minutes) and a refused key is disabled for the session; either way the
-//! same request is sent again at once on the next key, so no model call,
-//! a turn's, a subagent's or a plugin's own, sees the failure. With every
-//! key cooling, the failure goes up, and a Review system makes the kernel's
-//! retry wait for the key that cools down first. What each call's requests
-//! did is kept by its effect id and read back when the call settles: the
-//! requests and tokens of each key, saved with the session and shown by
-//! `/keys`, and one warning per refused key. Key values live only in the
-//! pool, never in a request an effect sees, a notice or a record.
+//! The pool wraps the HTTP client every model is reached through ([`Connector::wrap_http`]). Each
+//! request of a pooled provider's model call (its [`Serving`] names the provider) goes out on the
+//! pool's current key, which it stays on for the prompt cache. A rate limit or a spent quota cools
+//! the key (`Retry-After`, else 60 s doubling to 15 minutes), and a refused key is disabled for the
+//! session. Either way the same request is sent again at once on the next key, so no model call
+//! sees the failure. With every key cooling, the failure goes up and the kernel's retry waits for
+//! the key that cools down first.
+//!
+//! The requests and tokens of each key are saved with the session and shown by `/keys`, with one
+//! warning per refused key. Key values live only in the pool, never in a request an effect sees, a
+//! notice or a record.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

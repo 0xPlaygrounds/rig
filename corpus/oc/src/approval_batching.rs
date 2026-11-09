@@ -1,30 +1,19 @@
-//! OC-01: batched approvals for parallel tool calls.
+//! Batched approvals for parallel tool calls. Any plugin that wants the user to approve a tool call
+//! says so with [`NeedsApproval`]. After every gate and before the harness asks about each call
+//! alone ([`ApprovalSystems`]), this plugin holds every call of a reply that needs approval
+//! ([`BatchHold`]) and asks one question ([`Ask`]) for all of them: one choice per call, grouped by
+//! agent, each ticked at first with its full arguments as its [`Choice::more`], plus a note
+//! ([`Answer`]'s text). In the terminal view Space ticks, `a` ticks all, `n` none and `e` shows the
+//! full arguments. The ticked calls are [`Approved`] and run; the others are refused with "denied
+//! by user" and the note, and closing the question denies them all. Calls that need no approval are
+//! never held.
 //!
-//! Any plugin that wants the user to approve a tool call says so with
-//! [`NeedsApproval`]; this plugin's own `approve.toml` rules do it in
-//! Prepare, so they mark every call of a reply, the ones that wait behind
-//! an earlier call of it included. After every gate and before the
-//! harness asks about each call alone ([`ApprovalSystems`]), this plugin
-//! holds every call of a reply that needs approval with a hold of its own
-//! ([`BatchHold`]) and asks one question ([`Ask`]) for all of them, one
-//! choice per call, grouped by agent, each ticked at first with its full
-//! arguments as its [`Choice::more`], any number ticked, with a note
-//! ([`Answer`]'s text). Every front shows it; in the terminal view Space
-//! ticks, `a` ticks all, `n` none and `e` shows the full arguments. The
-//! ticked calls are [`Approved`] and run; the others are refused with
-//! "denied by user" and the note, and closing the question denies them
-//! all. Calls that need no approval are never held.
+//! A call of the reply the open question shows joins it, and the fronts keep the user's ticks; a
+//! call of another reply waits in [`QueuedRows`] for the next question. An interrupt cancels the
+//! held calls and the question closes. With nobody to answer, every call that needs approval is
+//! refused at once; `fallback = "allow"` keeps this plugin's own rules from asking then.
 //!
-//! A call of a reply the open question shows joins it: a new question
-//! supersedes the open one, and the fronts keep the user's ticks. A call
-//! of another reply waits in [`QueuedRows`] for the next one. An
-//! interrupt despawns the holds, as it does any hold, so the kernel
-//! answers the calls as cancelled, and the question closes once its last
-//! call went. With nobody to answer, the harness
-//! refuses every call that needs approval at once; `fallback = "allow"`
-//! keeps this plugin's own rules from asking then.
-//!
-//! The rules are `approve.toml` in this plugin's user data
+//! The plugin's own rules are `approve.toml` in its user data
 //! (`$RIG_HOME/data/approval-batching/approve.toml`):
 //!
 //! ```toml

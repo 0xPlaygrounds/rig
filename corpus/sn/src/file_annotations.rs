@@ -1,20 +1,15 @@
-//! Notes on lines of code that follow the code (spec SN-10).
+//! Notes on lines of code that follow the code. The `annotate` tool, and the user's `/note
+//! path:12-14 text` and `/note rm n3`, attach a note to lines of a file, or update or delete one.
+//! The notes are kept per project in `RIG_HOME/annotations/<project>.json`, never in the file, so
+//! every later session has them. Each successful `read` of a file with notes gets them in its
+//! result, right after their lines (a partial read only those whose lines it shows), and each stale
+//! note at its end, once per turn.
 //!
-//! The `annotate` tool, and the user's `/note path:12-14 text` and
-//! `/note rm n3`, attach a note to lines of a file, or update or delete one.
-//! The notes are kept per project in `RIG_HOME/annotations/<project>.json`,
-//! never in the file, so every later session has them. Each successful
-//! `read` of a file with notes gets them in its result, in Review, right
-//! after their lines (a partial read only those whose lines it shows), and
-//! each stale note at its end, once per turn. Before that, the notes are
-//! found in the file as it is again, by their lines' text and context: they
-//! follow the code wherever it moved, whoever moved it, and a note whose
-//! lines are gone is stale. A file that is gone gives its notes to a read
-//! file that has their lines unchanged, as after a rename. `/notes` lists
-//! them by file, stale ones first.
-//!
-//! The files are read off the main thread, under a hold on the read's
-//! outcome, so a workspace on another machine never stalls a frame.
+//! The notes are found in the file as it is again, by their lines' text and context: they follow
+//! the code wherever it moved, whoever moved it, and a note whose lines are gone is stale. A file
+//! that is gone gives its notes to a read file that has their lines unchanged, as after a rename.
+//! `/notes` lists them by file, stale ones first. The files are read off the main thread, so a
+//! workspace on another machine never stalls a frame.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;

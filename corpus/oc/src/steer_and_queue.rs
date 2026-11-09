@@ -1,36 +1,21 @@
-//! OC-19: steer or queue messages while the agent works.
+//! Steer or queue messages while the agent works. What the user sends a busy agent waits as a
+//! pending message of one of two kinds. A steering message (`DeliveryMode::Steer`, Enter in the
+//! terminal view) waits in the agent's saved inbox for the running turn's next model call, after
+//! the reply's running tool calls settle, without stopping them; a turn that would end with it
+//! waiting carries on with it. A queued message (`DeliveryMode::Queue`, Alt+Enter) is kept in the
+//! agent's saved [`Kept`] and starts a new turn of its own once a turn ends answered, one per turn,
+//! in order. A stopped or failed turn leaves them queued.
 //!
-//! **Any front.** What the user sends a busy agent waits as a pending
-//! message of one of two kinds:
+//! When the user stops a turn, and when a restart brings the inbox back to an idle agent, the
+//! user's unsent steering messages ([`Unsent`]) move into [`Kept`] too and join the start of the
+//! user's next message, in order. [`PendingMessages`] lists an agent's pending messages and
+//! [`EditPending`] edits, deletes, toggles or moves one, from any front. A changed steering message
+//! the kernel holds is taken back with those after it and sent again as it is now.
 //!
-//! - **Steer** (`DeliveryMode::Steer`, Enter in the terminal view): the
-//!   kernel's own. It waits in the agent's inbox for the running turn's
-//!   next model call, after the reply's running tool calls settle, without
-//!   stopping them; a turn that would end with it waiting carries on with
-//!   it, and the inbox is saved.
-//! - **Queued** (`DeliveryMode::Queue`, Alt+Enter): taken over in Gate,
-//!   because the kernel's queue gives everything queued in one step of the
-//!   same turn. The plugin keeps it in the agent's saved [`Kept`], and
-//!   each one starts a new turn of its own once a turn ends answered, one
-//!   per turn, in order. A stopped or failed turn leaves them queued.
-//!
-//! When the user stops a turn, and when a restart brings the inbox back to
-//! an idle agent, the user's unsent steering messages ([`Unsent`]) are
-//! taken over into [`Kept`] too: they join the start of the user's next
-//! message, in order, as the guide's "With the user's next message" says.
-//! A steering message kept while the agent is busy goes to the kernel.
-//!
-//! [`PendingMessages`] lists an agent's pending messages and
-//! [`EditPending`] edits, deletes, toggles or moves one, from any front; a
-//! changed steering message the kernel holds is taken back (decided) with
-//! those after it and sent again as it is now.
-//!
-//! **The terminal view.** Alt+Enter queues while the shown agent is busy
-//! (the view's Tab) and sends while it is idle. A strip above the status
-//! line lists the pending messages with their kind; Up on an empty input
-//! selects them: Up and Down move, `e` edits in the input (Enter saves, Esc
-//! cancels), `d` deletes, `t` toggles the kind, `k` and `j` move it up and
-//! down, Esc or Enter leaves.
+//! In the terminal view, Alt+Enter queues while the shown agent is busy and sends while it is idle.
+//! A strip above the status line lists the pending messages with their kind. Up on an empty input
+//! selects them: Up and Down move, `e` edits in the input (Enter saves, Esc cancels), `d` deletes,
+//! `t` toggles the kind, `k` and `j` move it up and down, and Esc or Enter leaves.
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;

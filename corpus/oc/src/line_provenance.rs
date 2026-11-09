@@ -1,27 +1,19 @@
-//! OC-21: which prompt wrote this line? `git blame` for agent work.
+//! Line provenance: which prompt wrote each line, like `git blame` for agent work. Every file
+//! change an agent's tool call makes is recorded per project in the project's [`PluginData`]
+//! (outside the repository, kept across sessions): the session, agent, turn, the prompt the user
+//! typed to start the turn, the tool call, the time, and which lines it wrote. Only changes the
+//! file tools publish (`FilesChanged`) are recorded. A call that may write anywhere, such as
+//! `shell`, publishes none, so its lines count as the user's.
 //!
-//! Every file change an agent's tool call makes is recorded per project,
-//! in the project's [`PluginData`] (outside the repository, kept across
-//! sessions): the session, agent, turn, the prompt the user typed to start
-//! the turn, the tool call and the time, and which lines it wrote. The
-//! file tools publish what they changed (`FilesChanged`), each change with
-//! the file's text before and its hunks; a call that may write anywhere,
-//! such as `shell`, publishes none, so its lines count as the user's.
+//! Each line's origin is carried forward through every later change, so it follows code that moves.
+//! A line of an agent's that the user changed is marked "changed by you", and a line the user added
+//! is no agent's.
 //!
-//! Each line's origin is carried forward through every later change, by
-//! the change's hunks for an agent's and by a line diff against the text
-//! last seen for the user's, so it follows code that moves. A change the
-//! user made is found where the text an agent's change found, or the file
-//! when asked, is not what was last seen: a line of an agent's they
-//! changed is marked "changed by you", a line they added is no agent's.
-//!
-//! - `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one
-//!   origin, and offers a picker of the agents' entries: choosing one opens
-//!   that turn's session, read from its store, in a read-only
-//!   [`TranscriptPane`] over the screen scrolled to the turn; Esc closes it.
-//! - `/provenance --forget <session>` drops one session's records.
-//! - `rig provenance <file>[:<line>[-<line>]] [--json]` prints the same from
-//!   the command line, without a session; `--forget` works there too.
+//! `/provenance <file>[:<line>[-<line>]]` lists the lines in runs of one origin and offers a picker
+//! of the agents' entries. Choosing one opens that turn's session in a read-only [`TranscriptPane`]
+//! over the screen, scrolled to the turn; Esc closes it. `/provenance --forget <session>` drops one
+//! session's records. `rig provenance <file>[:<line>[-<line>]] [--json]` prints the same from the
+//! command line, without a session, and takes `--forget` too.
 
 use std::io::Write as _;
 use std::path::Path;

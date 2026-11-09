@@ -1,15 +1,11 @@
-//! Plugin corpus: 20. Ask the user (spec `20-ask-user.md`).
-//!
-//! The `ask_user` tool stops the turn on a question for the user. It is an
-//! open tool: each call spawns an [`Ask`] that holds the call (`HoldOf`), so
-//! every front that answers questions shows it (the terminal view as a
-//! picker of the choices, with a typed answer for free text) and answers
-//! it with a `Pick`, and its answer becomes the call's result. Nobody to answer (`--print`, no
-//! front) answers at once [`NO_USER`]. An interrupt despawns the turn's
-//! holds, which closes the question everywhere, and the kernel answers the
-//! call as interrupted. The `[ask_user] timeout` setting refuses a question
-//! left waiting, answered [`NO_ANSWER`]. The tool is exclusive, so the
-//! calls of one reply are asked one after another.
+//! The `ask_user` tool stops the turn on a question for the user. It is an open tool: each call
+//! spawns an [`Ask`] that holds the call (`HoldOf`), so every front that answers questions
+//! shows it (the terminal view as a picker of the choices, with a typed answer for free text)
+//! and answers it with a `Pick`, and its answer becomes the call's result. Nobody to answer
+//! (`--print`, no front) answers at once [`NO_USER`]. An interrupt despawns the turn's holds,
+//! which closes the question everywhere, and the kernel answers the call as interrupted. The
+//! `[ask_user] timeout` setting refuses a question left waiting, answered [`NO_ANSWER`]. The
+//! tool is exclusive, so the calls of one reply are asked one after another.
 
 use rig_harness::prelude::*;
 use schemars::JsonSchema;

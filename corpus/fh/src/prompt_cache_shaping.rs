@@ -1,30 +1,18 @@
-//! Prompt cache shaping: lays every turn's model request out so the
-//! provider's prompt cache hits as often as it can, and shows how often it
-//! did.
+//! Prompt cache shaping: lays every turn's model request out so the provider's prompt cache hits as
+//! often as it can, and shows how often it did. Only the requests change, never the conversation.
 //!
-//! - **Stable order.** A request's tools are sorted by name, after every
-//!   other plugin's edits. The kernel already keeps the prompt sections in
-//!   a fixed order and sends a cache key per agent for providers that cache
-//!   prefixes on their own.
-//! - **Volatile parts move to the end.** A prompt section that changes (a
-//!   clock, a status block) is taken out of the system prompt and its text
-//!   added to the request's last message, after every cache marker. A
-//!   section counts as changing once its [`PromptSection`] changed after it
-//!   was added, or once its text differed from the agent's previous request
-//!   while the tools stayed the same. One in a request without a prompt in
-//!   parts is reported, never dropped.
-//! - **Markers.** Every request asks for cache points at the end of the
-//!   tools and of the system prompt, and one after the first, at the end of
-//!   the previous request's messages. A provider that caches by marker
-//!   places them within its budget; others ignore them.
-//! - **Breaks.** Each agent keeps the prefix of its last request; where the
-//!   next one differs, the first change (a tool, a prompt section by name,
-//!   a message index) is kept, and `/cache why` lists the last ten.
-//! - **Hit rate.** Each turn call's cache reads over its input tokens; the
-//!   agent's status line shows the last request's and the session's rate.
+//! A request's tools are sorted by name, after every other plugin's edits. A prompt section that
+//! changes (a clock, a status block) is moved out of the system prompt and its text added to the
+//! request's last message, after every cache marker. A section counts as changing once its
+//! [`PromptSection`] changed after it was added, or once its text differed from the agent's
+//! previous request while the tools stayed the same. Every request asks for cache points at the end
+//! of the tools and of the system prompt, and, after the first, at the end of the previous
+//! request's messages.
 //!
-//! Without the plugin the requests are laid out as the kernel builds them;
-//! the conversation itself is never changed, only the requests.
+//! Each agent keeps the prefix of its last request and records the first change in the next one (a
+//! tool, a prompt section by name, a message index); `/cache why` lists the last ten. The agent's
+//! status line shows the cache hit rate, cache reads over input tokens, of the last request and of
+//! the session.
 
 use std::collections::{BTreeSet, VecDeque};
 use std::sync::Arc;

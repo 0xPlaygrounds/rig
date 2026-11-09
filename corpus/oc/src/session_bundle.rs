@@ -1,26 +1,18 @@
-//! OC-12: a portable session bundle.
+//! A portable session bundle. `/bundle [path] [--allow-secrets]` writes the running session to one
+//! gzip-compressed tar file (`<session-name>.rigbundle` in the project by default): every log and
+//! file of the session's store (all agents and subagents, its blobs, and every plugin's saved
+//! values and session files), the project-relative paths and current contents of the files the
+//! session's tools changed, and a [`Manifest`]. The user is asked first about secrets that
+//! rig-core's `redact` finds (redact, keep or cancel). With nobody to ask, the bundle is refused
+//! unless `--allow-secrets`.
 //!
-//! `/bundle [path] [--allow-secrets]` writes the running session to one
-//! gzip-compressed tar file (`<session-name>.rigbundle` in the project by
-//! default): every log and file of the session's store (all agents and
-//! subagents, its blobs, and every plugin's saved values and session
-//! files, exactly as a restore reads them), the project-relative paths and
-//! current contents of the files the session's tools changed, and a
-//! [`Manifest`]. Secrets that rig-core's `redact` finds (key shapes and
-//! assignments such as `AWS_SECRET_ACCESS_KEY=…`), through a rig-memory
-//! rewrite of a copy of the store, are asked about first (redact, keep or
-//! cancel); with nobody to ask the bundle is refused unless
-//! `--allow-secrets`.
-//!
-//! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]`
-//! and `/unbundle <file> …` import a bundle as a new saved session of the
-//! project: the bundled store is copied and rewritten in place through a
-//! [`Rewrite`] that remaps every path under the original project root to
-//! the new one and drops a model this build cannot reach (its agent takes
-//! the default model); the bundled files are written as chosen when they
-//! differ on disk or the project is at another commit; plugins named in
-//! the manifest that are not installed are listed (their saved values and
-//! files stay in the session for a later build).
+//! `rig bundle open <file> [--project <dir>] [--replace] [--apply|--keep|--apply-file <path>…]` and
+//! `/unbundle <file> …` import a bundle as a new saved session of the project. The bundled store is
+//! copied and rewritten through a [`Rewrite`] that remaps every path under the original project
+//! root to the new one and drops a model this build cannot reach (its agent takes the default
+//! model). The bundled files are written as chosen when they differ on disk or the project is at
+//! another commit. Plugins named in the manifest that are not installed are listed, and their saved
+//! values and files stay in the session for a later build.
 
 #[cfg(test)]
 mod tests;

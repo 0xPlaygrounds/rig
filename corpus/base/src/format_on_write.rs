@@ -1,13 +1,10 @@
-//! Format and lint on every write (spec `33-format-on-write.md`).
-//!
-//! Each `write` and `edit` call is wrapped, as it is admitted, in a layer
-//! that runs once the tool answered: on a success it runs the written
-//! file's formatter, then its linter, chosen by its extension in
-//! [`FormatOnWrite`], and appends what they did to the result, which stays
-//! a success: "(formatted with rustfmt)" and the changed lines as they now
-//! read, a formatter's failure (the file is then put back as written), or
-//! the linter's diagnostics. The call settles only once they are done, so
-//! a later `read` sees the formatted file.
+//! Format and lint on every write. Each `write` and `edit` call is wrapped, as it is admitted,
+//! in a layer that runs once the tool answered: on a success it runs the written file's
+//! formatter, then its linter, chosen by its extension in [`FormatOnWrite`], and appends what
+//! they did to the result, which stays a success: "(formatted with rustfmt)" and the changed
+//! lines as they now read, a formatter's failure (the file is then put back as written), or the
+//! linter's diagnostics. The call settles only once they are done, so a later `read` sees the
+//! formatted file.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;

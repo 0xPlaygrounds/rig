@@ -1,17 +1,13 @@
-//! Plugin corpus (held-out): H07: Structured result tool that ends the turn
-//! (spec `H07-submit-result.md`).
+//! A structured result tool that ends the turn. `--schema FILE` (or `/schema FILE`) offers the
+//! top-level agent the `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
+//! schema whose root is no object refuses the start. A valid call is the run's result
+//! ([`SubmitResult`]): once the other calls of its reply settled, the turn ends answered with the
+//! JSON itself, which `--print` prints alone, on one line.
 //!
-//! `--schema FILE` (or `/schema FILE`) offers the top-level agent the
-//! `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
-//! schema whose root is no object refuses the start. A valid call is the
-//! run's result ([`SubmitResult`]): once the other calls of its reply
-//! settled, a Gate system answers the turn's next model call with the JSON
-//! itself, so nothing more is sent and the turn ends answered with it, which
-//! `--print` prints alone, on one line. The stack refuses arguments that do
-//! not fit the schema with its complaints, and the third such call fails the run
-//! (exit code 2). A turn that ends in text gets one reminder; the second
-//! such end fails the run (exit code 3). In the terminal view the answer is
-//! a JSON block and the tool goes after one success, unless `--schema-keep`.
+//! Arguments that do not fit the schema are refused with the schema's complaints, and the third
+//! such call fails the run (exit code 2). A turn that ends in text gets one reminder; the second
+//! such end fails the run (exit code 3). In the terminal view the answer is a JSON block and the
+//! tool goes after one success, unless `--schema-keep`.
 
 use std::path::{Path, PathBuf};
 

@@ -1,22 +1,15 @@
-//! OC-02: Dependency change guard (one-conversation fresh held-out spec
-//! `02-dependency-guard.md`).
+//! Dependency change guard. Each `shell`, `edit` and `write` call is checked before it runs. A
+//! `shell` command that installs packages (`cargo add`, `npm install <pkg>`, `pnpm add`, `yarn
+//! add`, `pip install`, `uv add`, `go get`), or an `edit` or `write` of a manifest (`Cargo.toml`,
+//! `package.json`, `pyproject.toml`, `requirements*.txt`, `go.mod`) whose result has a dependency
+//! entry the file had not, is held while the policy is read. Packages the policy denies refuse the
+//! call at once; packages it allows, or the user allowed for the session, pass; any other waits for
+//! an [`Ask`]: allow, allow for this session, or deny. With nobody to answer, unlisted packages are
+//! denied. `/deps` lists what was allowed and denied this session.
 //!
-//! A Gate system looks at each `shell`, `edit` and `write` call about to
-//! run. A `shell` command that installs packages (`cargo add`, `npm install
-//! <pkg>`, `pnpm add`, `yarn add`, `pip install`, `uv add`, `go get`), or an
-//! `edit`/`write` of a manifest (`Cargo.toml`, `package.json`,
-//! `pyproject.toml`, `requirements*.txt`, `go.mod`) whose result has a
-//! dependency entry the file had not, is held while the policy files are
-//! read (and the manifest, through the project's workspace, off the main
-//! thread). Packages the policy denies refuse the call at once; packages it
-//! allows, or the user allowed for the session, pass; any other waits for
-//! an [`Ask`]: allow, allow for this session, or deny. With nobody to
-//! answer, unlisted packages are denied. `/deps` lists what was allowed and
-//! denied this session.
-//!
-//! The policy is `deps.toml` in `RIG_HOME` and in the project's `.rig/`,
-//! their lists added together: `allow = ["serde", "tokio*"]`,
-//! `deny = ["openssl"]`, where `*` matches any run of characters.
+//! The policy is `deps.toml` in `RIG_HOME` and in the project's `.rig/`, their lists added
+//! together: `allow = ["serde", "tokio*"]`, `deny = ["openssl"]`, where `*` matches any run of
+//! characters.
 
 use std::fmt;
 use std::path::{Path, PathBuf};

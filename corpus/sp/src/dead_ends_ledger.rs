@@ -1,17 +1,15 @@
-//! SP-04: a dead-ends ledger. Each agent keeps a short list of approaches
-//! known not to work: the model records one with the `dead_end` tool, the
-//! user with `/dead-end <text>`, and the plugin records one itself when a
-//! failing `shell` command is run again, unchanged, in the same directory,
-//! with no file changed in between, and fails the same way. `/dead-ends`
-//! lists an agent's entries, `/dead-ends drop <n>` removes one.
+//! A dead-ends ledger. Each agent keeps a short list of approaches known not to work: the model
+//! records one with the `dead_end` tool, the user with `/dead-end <text>`, and the plugin
+//! records one itself when a failing `shell` command is run again, unchanged, in the same
+//! directory, with no file changed in between, and fails the same way. `/dead-ends` lists an
+//! agent's entries, `/dead-ends drop <n>` removes one.
 //!
-//! The ledger is a saved [`DeadEnds`] component: kept with the session and
-//! restored on resume. Each turn's model request gets a
-//! `<known_dead_ends>` section of its system prompt with the agent's
-//! newest entries (a subagent's ancestors' too), never a message, so no
-//! compaction drops it and the conversation never holds it. A `shell` call
-//! that repeats an automatic entry's command while no file has changed
-//! since still runs, and its result starts with a warning naming the entry.
+//! The ledger is a saved [`DeadEnds`] component: kept with the session and restored on resume.
+//! Each turn's model request gets a `<known_dead_ends>` section of its system prompt with the
+//! agent's newest entries (a subagent's ancestors' too), never a message, so no compaction
+//! drops it and the conversation never holds it. A `shell` call that repeats an automatic
+//! entry's command while no file has changed since still runs, and its result starts with a
+//! warning naming the entry.
 
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
