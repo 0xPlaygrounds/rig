@@ -1,7 +1,7 @@
 use super::{render, render_marked};
 
 /// `text` rendered and drawn, colored.
-fn rendered(
+pub(super) fn rendered(
     text: &str,
     theme: &crate::Theme,
     width: Option<usize>,

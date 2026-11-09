@@ -2,13 +2,7 @@ use ratatui::style::Modifier;
 use unicode_width::UnicodeWidthStr;
 
 use crate::Theme;
-use crate::markdown::render;
-
-/// `text` rendered and drawn, colored.
-fn rendered(text: &str, theme: &Theme, width: Option<usize>) -> Vec<ratatui::text::Line<'static>> {
-    let lines = render(text, theme, width);
-    lines.iter().map(crate::LookLine::colored).collect()
-}
+use crate::markdown::tests::rendered;
 
 fn text(markdown: &str, width: usize) -> Vec<String> {
     let lines = rendered(markdown, &Theme::default(), Some(width));

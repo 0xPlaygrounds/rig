@@ -55,6 +55,19 @@ pub(crate) fn view_app() -> (App, Entity) {
     (app, agent)
 }
 
+/// Adds `message` to `agent`'s conversation, then runs a frame.
+pub(crate) fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
+    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
+        conversation.push(message);
+    }
+    app.update();
+}
+
+/// Where in `lines` the first that contains `text` is.
+pub(crate) fn line_of(lines: &[String], text: &str) -> Option<usize> {
+    lines.iter().position(|line| line.contains(text))
+}
+
 /// Writes `kind` events of `keys` (such as `ctrl+x ctrl+e`), then runs a
 /// frame.
 pub(crate) fn key_events(app: &mut App, keys: &str, kind: KeyEventKind) {
@@ -371,12 +384,11 @@ fn a_screen_built_from_the_public_widgets_draws_and_sends() {
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
     let Ok(agent) = agent else { return };
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(rig_core::completion::Message::user(
-            "where is the config read?",
-        ));
-    }
-    app.update();
+    say(
+        &mut app,
+        agent,
+        rig_core::completion::Message::user("where is the config read?"),
+    );
     let rows = app.world().resource::<TuiTestScreen>().rows();
     let area = app.world().resource::<TuiFrame>().area(pane);
     assert!(area.is_some_and(|area| area.y == 3), "{area:?}");

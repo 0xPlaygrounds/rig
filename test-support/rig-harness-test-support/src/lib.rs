@@ -124,6 +124,18 @@ pub fn log_ended(settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut log:
     log.0.extend(turns.get(settled.entity).cloned());
 }
 
+/// Holds every model call of a turn, as an approval nobody gave, so the
+/// turn keeps running: `app.add_systems(AgentPass,
+/// hold_turn_calls.in_set(Stage::Gate))`.
+pub fn hold_turn_calls(
+    calls: Query<Entity, (ReadyToStart, With<TurnCall>)>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands.spawn(HoldOf(call));
+    }
+}
+
 /// `model` as the catalog's DeepSeek model.
 pub fn connect(model: &MockCompletionModel) -> Option<Connection> {
     let spec = Catalog::builtin()

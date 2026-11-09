@@ -33,7 +33,7 @@ use super::{
     Transcript,
 };
 use crate::render::CallStates;
-use crate::tests::{drawn_rows, on_screen, press, view_app};
+use crate::tests::{drawn_rows, line_of, on_screen, press, say, view_app};
 use crate::{
     CallItem, CallState, ContentKind, DrawnRow, DrawnTranscript, Highlight, ItemRow, LineSpan,
     LookLine, MarkIn, PastEffects, ScrollTo, TextMark, TranscriptItem, TranscriptLayout,
@@ -325,14 +325,6 @@ fn a_running_calls_renderer_gets_all_its_output_so_far() {
     assert_eq!(shown, "> cc a.c\n> cc b.c\n> ld app");
 }
 
-/// Adds `message` to `agent`'s conversation.
-fn say(app: &mut App, agent: Entity, message: Message) {
-    if let Some(mut conversation) = app.world_mut().get_mut::<Conversation>(agent) {
-        conversation.push(message);
-    }
-    app.update();
-}
-
 /// Adds `aside` to `agent`'s conversation; its id.
 fn add_aside(app: &mut App, agent: Entity, aside: Aside) -> Option<AsideId> {
     let mut conversation = app.world_mut().get_mut::<Conversation>(agent)?;
@@ -353,11 +345,6 @@ fn call_item(app: &App, agent: Entity, message: usize, index: u32) -> Option<Tra
         reply,
         index,
     })))
-}
-
-/// Where in `lines` the first that contains `text` is.
-fn line_of(lines: &[String], text: &str) -> Option<usize> {
-    lines.iter().position(|line| line.contains(text))
 }
 
 #[test]

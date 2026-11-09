@@ -3,6 +3,45 @@ use rig_harness::prelude::*;
 
 use super::BasicCommandsPlugin;
 
+/// The `Workspace` methods of a test workspace that removes, renames, lists
+/// and runs nothing, and takes each path as canonical.
+macro_rules! workspace_stubs {
+    () => {
+        fn remove(&self, _: &::std::path::Path) -> ::std::io::Result<()> {
+            Err(::std::io::ErrorKind::Unsupported.into())
+        }
+
+        fn rename(&self, _: &::std::path::Path, _: &::std::path::Path) -> ::std::io::Result<()> {
+            Err(::std::io::ErrorKind::Unsupported.into())
+        }
+
+        fn canonical(&self, path: &::std::path::Path) -> ::std::path::PathBuf {
+            path.to_path_buf()
+        }
+
+        fn files(
+            &self,
+            _: &::std::path::Path,
+            _: Option<&str>,
+            _: ::rig_tools::workspace::Listing,
+        ) -> ::std::io::Result<::rig_tools::workspace::Listed> {
+            Ok(::rig_tools::workspace::Listed::default())
+        }
+
+        fn spawn(
+            &self,
+            _: &::rig_tools::process::Launcher,
+            _: Option<&::std::path::Path>,
+            _: &::std::ffi::OsStr,
+            _: &[::std::ffi::OsString],
+            _: ::rig_tools::process::Spawn,
+        ) -> ::std::io::Result<::rig_tools::process::Process> {
+            Err(::std::io::ErrorKind::Unsupported.into())
+        }
+    };
+}
+pub(crate) use workspace_stubs;
+
 #[test]
 fn retry_is_an_unknown_command() {
     let mut app = App::new();
