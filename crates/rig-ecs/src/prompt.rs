@@ -26,7 +26,6 @@ pub struct PromptSection {
     pub order: i32,
     /// The tag around the text, such as `skills`.
     pub tag: String,
-    /// The text.
     pub text: String,
 }
 

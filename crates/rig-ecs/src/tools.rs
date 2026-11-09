@@ -178,7 +178,6 @@ pub struct CallHandler(pub Handler);
 pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
     pub entity: Entity,
-    /// The call.
     pub call: Entity,
     /// The calling agent.
     pub agent: Entity,

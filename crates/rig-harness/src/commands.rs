@@ -44,7 +44,6 @@ use rig_ecs::stage::{
 /// the text after the command name, and how its line was sent.
 #[derive(Clone, Debug)]
 pub struct CommandArgs {
-    /// The agent.
     pub agent: Entity,
     /// The arguments, trimmed.
     pub args: String,
@@ -56,7 +55,6 @@ pub struct CommandArgs {
 /// What a command system receives when it accepts no text after its name.
 #[derive(Clone, Debug)]
 pub struct NoArgs {
-    /// The agent.
     pub agent: Entity,
     /// How the line was sent, as [`RunCommand::mode`] says.
     pub mode: DeliveryMode,

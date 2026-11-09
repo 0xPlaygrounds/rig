@@ -228,7 +228,6 @@ pub enum Source {
     Git {
         /// The repository URL.
         url: String,
-        /// The branch.
         branch: Option<String>,
         /// The revision.
         rev: Option<String>,
@@ -287,7 +286,6 @@ pub enum Error {
     },
     /// A plugin turned on that does not build on this target.
     Unavailable {
-        /// The plugin.
         plugin: String,
         /// The `target_os` values it builds on.
         targets: &'static [&'static str],

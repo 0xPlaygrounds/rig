@@ -1198,7 +1198,6 @@ pub struct AgentDescription {
 /// A plugin's command, `rig <name> <usage>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedCommand {
-    /// Its name.
     pub name: String,
     /// What its arguments are, such as `<tool> [path]`; may be empty.
     pub usage: String,
@@ -1214,7 +1213,6 @@ pub struct DescribedCommand {
 /// A plugin's option, `--name` or `--name VALUE`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedFlag {
-    /// Its name.
     pub name: String,
     /// What its value is, such as `ADDR`, when it takes one.
     pub value: Option<String>,
@@ -1226,7 +1224,6 @@ pub struct DescribedFlag {
 /// [`secret_variable`] of its name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DescribedSecret {
-    /// Its name.
     pub name: String,
     /// What to ask for.
     pub help: String,

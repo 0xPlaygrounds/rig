@@ -81,7 +81,6 @@ pub enum DeliveryMode {
 pub struct Attachment {
     /// How the user knows it, such as its path.
     pub label: String,
-    /// The content.
     pub content: UserContent,
 }
 
@@ -215,7 +214,6 @@ impl Incoming {
 pub struct Deliver {
     /// The agent.
     pub entity: Entity,
-    /// The message.
     pub message: Incoming,
 }
 
@@ -257,9 +255,7 @@ impl Deliver {
 /// a restart unless sent again.
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
-    /// The agent.
     pub agent: Entity,
-    /// The text.
     pub text: String,
     /// Why a command was refused.
     pub why: Option<String>,
@@ -669,7 +665,6 @@ pub(crate) fn settle_unsent(
 /// joined text, author and mode, without its attachments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageRecord {
-    /// The text.
     pub text: String,
     /// Who wrote it.
     pub author: Author,
