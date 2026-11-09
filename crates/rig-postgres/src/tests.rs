@@ -107,7 +107,7 @@ fn threshold_renders_minimum_similarity_per_distance_function() {
         ),
         (
             PgVectorDistanceFunction::Jaccard,
-            "WHERE (1 - (embedding <%> $1) >= $3)",
+            "WHERE (1 - (embedding <%> binary_quantize($1::vector)) >= $3)",
         ),
         (
             PgVectorDistanceFunction::InnerProduct,
@@ -123,7 +123,7 @@ fn threshold_renders_minimum_similarity_per_distance_function() {
         ),
         (
             PgVectorDistanceFunction::Hamming,
-            "WHERE (-(embedding <~> $1) >= $3)",
+            "WHERE (-(embedding <~> binary_quantize($1::vector)) >= $3)",
         ),
     ];
     for (distance, expected) in cases {

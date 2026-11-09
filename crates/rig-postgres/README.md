@@ -102,6 +102,12 @@ USING hnsw(embedding vector_cosine_ops); -- recommended for text embeddings
 
 You can change the table name and the number of dimensions but keep the same fields schema.
 
+For `PgVectorDistanceFunction::Hamming` or `Jaccard`, use a `bit(1536)`
+embedding column instead of `vector(1536)` and pgvector 0.7 or newer. Inserts
+and queries use pgvector's `binary_quantize`: positive components become one
+and the others zero. An HNSW index on this column uses `bit_hamming_ops` or
+`bit_jaccard_ops`, matching the selected distance.
+
 You can use different indexes depending the type of distance method you want to use, check [PgVector documentation](https://github.com/pgvector/pgvector?tab=readme-ov-file#querying).
 
 ## Usage

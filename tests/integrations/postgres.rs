@@ -291,6 +291,168 @@ async fn vector_search_test() {
     assert_eq!(matched, ["flurbo", "linglingdong"]);
 }
 
+/// Binary distances search a bit column with the same sign quantization
+/// used to insert embeddings, including thresholds and bound filters.
+#[tokio::test]
+async fn binary_distances_search_and_insert_bit_vectors() -> Result<(), Box<dyn std::error::Error>>
+{
+    use rig::embeddings::Embedding;
+    use rig::postgres::PgVectorDistanceFunction::{Hamming, Jaccard};
+
+    let container = start_container().await;
+    let pool = connect_to_postgres(
+        container.get_host().await?.to_string(),
+        container.get_host_port_ipv4(POSTGRES_PORT).await?,
+    )
+    .await;
+    sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+        .execute(&pool)
+        .await?;
+    sqlx::query(
+        "CREATE TABLE binary_docs (id uuid, document jsonb, embedded_text text, embedding bit(10))",
+    )
+    .execute(&pool)
+    .await?;
+    let query = vec![0.0, -1.0, 0.25, -0.25, 1.0, -1.0, 0.0, 3.0, -2.0, 4.0];
+    let server = httpmock::MockServer::start();
+    mock_embeddings(
+        &server,
+        json!({"dimensions": 10, "input": ["q"], "model": "text-embedding-3-small"}),
+        [query.clone()],
+    );
+    let model = openai_client(&server).embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(10));
+
+    for (distance, threshold, [near_score, far_score, opposite_score]) in [
+        (Hamming, -1.0, [0.0, 1.0, 10.0]),
+        (Jaccard, 0.75, [0.0, 0.25, 1.0]),
+    ] {
+        let store = PostgresVectorStore::new(
+            model.clone(),
+            pool.clone(),
+            Some("binary_docs".into()),
+            distance,
+        );
+        for via_store in [false, true] {
+            sqlx::query("TRUNCATE binary_docs").execute(&pool).await?;
+            if via_store {
+                let mut far = query.clone();
+                if let Some(last) = far.last_mut() {
+                    *last = -4.0;
+                }
+                let opposite = query
+                    .iter()
+                    .map(|value| if *value > 0.0 { -1.0 } else { 1.0 })
+                    .collect();
+                let documents = [
+                    ("near", query.clone()),
+                    ("far", far),
+                    ("opposite", opposite),
+                ]
+                .into_iter()
+                .map(|(name, vec)| {
+                    (
+                        Word {
+                            id: name.into(),
+                            name: name.into(),
+                            definition: name.into(),
+                        },
+                        vec![Embedding {
+                            document: name.into(),
+                            vec,
+                        }],
+                    )
+                })
+                .collect();
+                store.insert_documents(documents).await?;
+            } else {
+                for (id, name, bits) in [
+                    ("00000000-0000-0000-0000-000000000001", "near", "0010100101"),
+                    ("00000000-0000-0000-0000-000000000002", "far", "0010100100"),
+                    (
+                        "00000000-0000-0000-0000-000000000003",
+                        "opposite",
+                        "1101011010",
+                    ),
+                ] {
+                    sqlx::query("INSERT INTO binary_docs VALUES ($1::text::uuid, $2, $3, $4::text::bit(10))")
+                        .bind(id).bind(json!({"id": name, "name": name, "definition": name})).bind(name).bind(bits).execute(&pool).await?;
+                }
+            }
+            let stored: Vec<(String, String)> = sqlx::query_as("SELECT document->>'name', embedding::text FROM binary_docs ORDER BY document->>'name'").fetch_all(&pool).await?;
+            if stored
+                != [
+                    ("far".into(), "0010100100".into()),
+                    ("near".into(), "0010100101".into()),
+                    ("opposite".into(), "1101011010".into()),
+                ]
+            {
+                return Err(
+                    std::io::Error::other(format!("incorrect stored bits: {stored:?}")).into(),
+                );
+            }
+
+            for (limit, minimum, filter, expected) in [
+                (
+                    3,
+                    None,
+                    None,
+                    vec![
+                        ("near", near_score),
+                        ("far", far_score),
+                        ("opposite", opposite_score),
+                    ],
+                ),
+                (1, None, None, vec![("near", near_score)]),
+                (
+                    3,
+                    Some(threshold),
+                    None,
+                    vec![("near", near_score), ("far", far_score)],
+                ),
+                (
+                    3,
+                    Some(threshold),
+                    Some(PgSearchFilter::eq("document->>'name'", json!("far"))),
+                    vec![("far", far_score)],
+                ),
+            ] {
+                let mut request = VectorSearchRequest::builder().query("q").samples(limit);
+                if let Some(minimum) = minimum {
+                    request = request.threshold(minimum);
+                }
+                if let Some(filter) = filter {
+                    request = request.filter(filter);
+                }
+                let request = request.build();
+                let documents = store.top_n::<Word>(request.clone()).await?;
+                let ids = store.top_n_ids(request).await?;
+                let actual: Vec<_> = documents
+                    .iter()
+                    .map(|result| (result.document.name.as_str(), result.score))
+                    .collect();
+                if actual != expected {
+                    return Err(std::io::Error::other(format!("{actual:?} != {expected:?}")).into());
+                }
+                let document_ids: Vec<_> = documents
+                    .iter()
+                    .map(|result| (&result.id, result.score))
+                    .collect();
+                let id_scores: Vec<_> = ids
+                    .iter()
+                    .map(|result| (&result.id, result.score))
+                    .collect();
+                if id_scores != document_ids {
+                    return Err(std::io::Error::other(format!(
+                        "id and document results differ: {id_scores:?} != {document_ids:?}"
+                    ))
+                    .into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn start_container() -> ContainerAsync<GenericImage> {
     // Setup a local postgres container for testing. NOTE: docker service must be running.
     GenericImage::new("pgvector/pgvector", "pg17")

@@ -40,6 +40,9 @@ pub struct PostgresVectorStore {
 
 /// pgvector distance operators. `Hamming` and `Jaccard` apply to binary vectors,
 /// and all operators except L2, inner product, and cosine require pgvector 0.7.
+/// Binary distances use a `bit(n)` embedding column and quantize inserted
+/// embeddings and queries with pgvector's `binary_quantize`: positive
+/// components become one, all others zero.
 pub enum PgVectorDistanceFunction {
     L2,
     InnerProduct,
@@ -63,6 +66,13 @@ impl Display for PgVectorDistanceFunction {
 }
 
 impl PgVectorDistanceFunction {
+    fn embedding_expression(&self, parameter: &str) -> String {
+        match self {
+            Self::Hamming | Self::Jaccard => format!("binary_quantize({parameter}::vector)"),
+            _ => parameter.to_owned(),
+        }
+    }
+
     /// Builds a SQL expression increasing with similarity so a minimum-similarity
     /// threshold applies as `score >= $n`. `embedding` and `query` are spliced
     /// verbatim and must not carry untrusted input.
@@ -326,13 +336,14 @@ fn render_search_query(
     req: &VectorSearchRequest<PgSearchFilter>,
 ) -> (String, Vec<serde_json::Value>) {
     let document = if with_document { ", document" } else { "" };
+    let embedding = distance_function.embedding_expression("$1");
 
     // The threshold binds before filter values.
     let mut params = Vec::new();
     let mut conditions = Vec::new();
 
     if let Some(threshold) = req.threshold() {
-        let score = distance_function.score_expression("embedding", "$1");
+        let score = distance_function.score_expression("embedding", &embedding);
         conditions.push(format!("({score} >= $3)"));
         params.push(serde_json::Value::from(threshold));
     }
@@ -353,7 +364,7 @@ fn render_search_query(
     let query = format!(
         "
             SELECT id{}, distance FROM ( \
-              SELECT DISTINCT ON (id) id{}, embedding {} $1 as distance \
+              SELECT DISTINCT ON (id) id{}, embedding {} {embedding} as distance \
               FROM {} \
               {where_clause} \
               ORDER BY id, distance \
@@ -371,6 +382,7 @@ impl InsertDocuments for PostgresVectorStore {
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
+        let embedding_parameter = self.distance_function.embedding_expression("$4");
         for (document, embeddings) in documents {
             let id = Uuid::new_v4();
             let json_document = serde_json::to_value(&document)?;
@@ -380,7 +392,7 @@ impl InsertDocuments for PostgresVectorStore {
                 let embedding: Vec<f64> = embedding.vec;
 
                 sqlx::query(sqlx::AssertSqlSafe(format!(
-                    "INSERT INTO {} (id, document, embedded_text, embedding) VALUES ($1, $2, $3, $4)",
+                    "INSERT INTO {} (id, document, embedded_text, embedding) VALUES ($1, $2, $3, {embedding_parameter})",
                     self.documents_table
                 )))
                 .bind(id)
