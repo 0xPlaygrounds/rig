@@ -1205,6 +1205,10 @@ impl AgentHook for () {
 /// hand-written below.
 macro_rules! for_each_boxed_hook_event {
     ($m:ident) => {
+        $m!(run_start, on_run_start, RunStart, RunStartAction);
+        $m!(run_settled, on_run_settled, RunSettled, ());
+        $m!(dispatch, on_dispatch, DispatchEvent, DispatchAction);
+        $m!(outcome, on_outcome, OutcomeEvent, OutcomeAction);
         $m!(
             completion_call,
             on_completion_call,
@@ -1234,7 +1238,7 @@ macro_rules! for_each_boxed_hook_event {
 }
 
 macro_rules! erased_hook_decl {
-    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+    ($erased:ident, $on:ident, $event:ident, $action:ty) => {
         fn $erased<'a>(
             &'a self,
             ctx: &'a HookContext,
@@ -1244,7 +1248,7 @@ macro_rules! erased_hook_decl {
 }
 
 macro_rules! erased_hook_forward {
-    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+    ($erased:ident, $on:ident, $event:ident, $action:ty) => {
         fn $erased<'a>(
             &'a self,
             ctx: &'a HookContext,
@@ -1256,32 +1260,12 @@ macro_rules! erased_hook_forward {
 }
 
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
-    fn run_start<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction>;
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()>;
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
-    fn dispatch<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction>;
-    fn outcome<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction>;
     for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
@@ -1290,22 +1274,6 @@ impl<H> DynAgentHook for H
 where
     H: AgentHook,
 {
-    fn run_start<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunStart<'a>,
-    ) -> WasmBoxedFuture<'a, RunStartAction> {
-        Box::pin(self.on_run_start(ctx, event))
-    }
-
-    fn run_settled<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: RunSettled<'a>,
-    ) -> WasmBoxedFuture<'a, ()> {
-        Box::pin(self.on_run_settled(ctx, event))
-    }
-
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction {
         self.on_model_select(ctx, event)
     }
@@ -1316,20 +1284,6 @@ where
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
-    }
-    fn dispatch<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: DispatchEvent<'a>,
-    ) -> WasmBoxedFuture<'a, DispatchAction> {
-        Box::pin(self.on_dispatch(ctx, event))
-    }
-    fn outcome<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: OutcomeEvent<'a>,
-    ) -> WasmBoxedFuture<'a, OutcomeAction> {
-        Box::pin(self.on_outcome(ctx, event))
     }
     for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
