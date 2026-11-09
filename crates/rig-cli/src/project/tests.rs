@@ -204,3 +204,31 @@ fn a_crate_of_another_rig_checkout_by_path_is_refused() {
     );
     assert_eq!(foreign_rig_crate(&gone, &RigSource::Registry), None);
 }
+
+/// The project's `Cargo.lock` starts from the checkout's, and again
+/// whenever the checkout's changes, such as after a pull or a switch to
+/// another checkout; between those it keeps what cargo resolved.
+#[test]
+fn the_lock_is_seeded_again_when_the_checkouts_changes() {
+    let root = std::env::temp_dir().join(format!("rig-lock-{}", std::process::id()));
+    fs::remove_dir_all(&root).ok();
+    let checkout = root.join("checkout");
+    fs::create_dir_all(checkout.join("crates/rig-harness")).ok();
+    fs::write(checkout.join("crates/rig-harness/Cargo.toml"), "").ok();
+    let home = Home::at(root.join("home"));
+    let source = RigSource::Local(checkout.clone());
+    let lock = home.project().join("Cargo.lock");
+    let generated = |checkouts: &str| {
+        fs::write(checkout.join("Cargo.lock"), checkouts).ok();
+        generate(&home, &only(&[]), &source).map_err(|why| why.to_string())?;
+        Ok::<_, String>(fs::read_to_string(&lock).unwrap_or_default())
+    };
+    let first = generated("first");
+    fs::write(&lock, "first, resolved").ok();
+    let kept = generated("first");
+    let pulled = generated("pulled");
+    fs::remove_dir_all(&root).ok();
+    assert_eq!(first.as_deref(), Ok("first"));
+    assert_eq!(kept.as_deref(), Ok("first, resolved"));
+    assert_eq!(pulled.as_deref(), Ok("pulled"));
+}

@@ -773,3 +773,43 @@ fn a_session_with_a_logged_conversation_outlives_the_leave_and_the_sweep() {
         "(kept by the leave, kept by the sweep)"
     );
 }
+
+/// A command the last build does not have is refused before anything
+/// builds: here a build would fail on the settings, so a refusal with
+/// exit code 2 shows nothing was built. A command line whose first word
+/// the last build cannot place, such as after an option it does not know,
+/// is left to the new build.
+#[cfg(unix)]
+#[test]
+fn an_unknown_command_is_refused_before_the_build() {
+    let home = builds(
+        "unknown-command",
+        &describing("stats"),
+        &describing("stats"),
+    );
+    for binary in [home.staged(), home.good()] {
+        build::described(&home, &binary).ok();
+    }
+    fs::remove_file(home.root().join("ran")).ok();
+    fs::write(
+        home.settings(),
+        "[plugins]\nenable = [\"rig_basics::gone::GonePlugin\"]\n",
+    )
+    .ok();
+    let words = |words: &[&str]| {
+        words
+            .iter()
+            .map(|word| (*word).to_owned())
+            .collect::<Vec<_>>()
+    };
+    let update = run(&home, &words(&["update"])).map_err(|why| why.to_string());
+    let unplaced = run(&home, &words(&["--new-option", "update"])).map_err(|why| why.to_string());
+    let ran = fs::read_to_string(home.root().join("ran")).unwrap_or_default();
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(update, Ok(ExitCode::from(REFUSED_EXIT_CODE)));
+    assert!(
+        matches!(&unplaced, Err(why) if why.contains("unknown plugin")),
+        "{unplaced:?}"
+    );
+    assert_eq!(ran, "");
+}

@@ -115,8 +115,8 @@ fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_pr
         )?;
         script(
             &home.join("bin/good"),
-            "[ -z \"$RIG_DESCRIBE\" ] || { printf 'rig-describe 1\\nflag\\tjson\\t-\\tJSON\\n' \
-             > \"$RIG_DESCRIBE\"; exit 0; }\necho good >> \"$RIG_HOME/ran\"",
+            "[ -z \"$RIG_DESCRIBE\" ] || { printf 'rig-describe 1\\nflag\\tjson\\t-\\tJSON\\n\
+             command\\techo\\t-\\theadless\\tsession\\tEcho\\n' > \"$RIG_DESCRIBE\"; exit 0; }\necho good >> \"$RIG_HOME/ran\"",
         )?;
         let path = std::env::join_paths(std::iter::once(tools).chain(std::env::split_paths(
             &std::env::var_os("PATH").unwrap_or_default(),
@@ -145,8 +145,8 @@ fn a_print_run_refuses_a_build_that_does_not_compile_and_other_runs_start_the_pr
         let piped = start(&[])?;
         let ran = fs::read_to_string(home.join("ran")).unwrap_or_default();
         anyhow::ensure!(ran == "good\n", "{piped:?}");
-        // A `-p` that is not the option, such as a word after `--`.
-        let word = start(&["--", "-p"])?;
+        // A `-p` that is not the option, such as a command's word after `--`.
+        let word = start(&["--", "echo", "-p"])?;
         let said = String::from_utf8(word.stderr)?;
         anyhow::ensure!(
             said.contains("starting the previous build"),

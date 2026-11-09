@@ -13,7 +13,8 @@
 //!
 //! The command line is read once the agent is built, against what its
 //! plugins add ([`AgentDescription::invocation`]), and the agent gets it in its
-//! canonical form ([`Invocation`]). A plugin's command runs in a new
+//! canonical form ([`Invocation`]). A command the last build lacks is refused
+//! before building, so a typo never waits for a build. A plugin's command runs in a new
 //! session, or with `--resume` in that one, unless its front keeps no
 //! session, which the agent refuses. A headless run (`--print`, stdin piped
 //! in, which the agent answers as `--print` does, or a plugin's command
@@ -36,8 +37,9 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig_harness_protocol::{
-    AgentDescription, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE, RELOAD_EXIT_CODE,
-    RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env, secret_variable,
+    AgentDescription, DescribedCommand, DescribedSecret, Home, Invocation, REFUSED_EXIT_CODE,
+    RELOAD_EXIT_CODE, RunDir, SIGNAL_EXIT_CODE, SessionDir, SessionId, StartReason, env,
+    secret_variable,
 };
 
 use super::build::{self, BuildFailure, BuildOutput, FailedAt, Staging, child};
@@ -71,7 +73,14 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     // cannot read, such as one with an option it does not report, is read
     // as the agent reads its own, which takes any option, so the previous
     // build never answers a `-p` the new build failed on.
-    let last = last_report(home).unwrap_or_default();
+    let last = last_report(home);
+    if let Some(why) = last.as_ref().and_then(|last| unknown_command(last, args)) {
+        eprintln!(
+            "rig: {why} (of the last build; when a plugin just turned on adds it, run `rig build` first)"
+        );
+        return Ok(ExitCode::from(REFUSED_EXIT_CODE));
+    }
+    let last = last.unwrap_or_default();
     let print = (last.invocation(args))
         .or_else(|_| Invocation::parse(args))
         .is_ok_and(|invocation| invocation.print.is_some());
@@ -179,6 +188,23 @@ fn start_of(home: &Home, resume: Option<&str>) -> std::result::Result<Start, Str
     resume.map_or(Ok(Start::New), |session| {
         home.find(session).map(Start::Resume)
     })
+}
+
+/// Why `last` refuses the command line `args`, when its command alone is
+/// what `last` lacks; `None` when it takes the line or refuses something
+/// a new build may add, such as an option, which the new build reads.
+fn unknown_command(last: &AgentDescription, args: &[String]) -> Option<String> {
+    let why = last.invocation(args).err()?;
+    let name = Invocation::parse(args).ok()?.command?;
+    let mut with = last.clone();
+    with.commands.push(DescribedCommand {
+        name,
+        usage: String::new(),
+        terminal: false,
+        sessionless: false,
+        help: String::new(),
+    });
+    with.invocation(args).is_ok().then_some(why)
 }
 
 /// Says why the command line is refused, and returns its exit code.

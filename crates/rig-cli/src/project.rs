@@ -246,12 +246,16 @@ pub fn generate(home: &Home, plugins: &Plugins, source: &RigSource) -> Result<()
         &main_rs(home, plugins, source),
     )?;
     write_if_changed(&project.join(".cargo/config.toml"), &cargo_config(home))?;
-    // A checkout's lock seeds the versions CI tested.
+    // A checkout's lock seeds the versions CI tested, again whenever it
+    // changes, so a version switch builds offline with that version's lock.
     let lock = project.join("Cargo.lock");
-    if let RigSource::Local(checkout) = source
-        && !lock.exists()
-    {
-        fs::copy(checkout.join("Cargo.lock"), lock)?;
+    let seed = project.join("Cargo.lock.seed");
+    if let RigSource::Local(checkout) = source {
+        let checkouts = fs::read(checkout.join("Cargo.lock"))?;
+        if !lock.exists() || fs::read(&seed).ok().as_deref() != Some(checkouts.as_slice()) {
+            fs::write(&lock, &checkouts)?;
+            fs::write(&seed, checkouts)?;
+        }
     }
     Ok(())
 }
