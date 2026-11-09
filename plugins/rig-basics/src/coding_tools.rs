@@ -56,11 +56,7 @@ pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        let seen = app
-            .world_mut()
-            .get_resource_or_init::<SeenFiles>()
-            .0
-            .clone();
+        let seen = seen_files(app);
         app.add_tool_per_call(
             Read {
                 seen,
@@ -69,12 +65,7 @@ impl Plugin for ReadTool {
             ToolOptions::default(),
         );
         #[cfg(feature = "tui")]
-        app.add_systems(
-            TranscriptRender,
-            looks::draw_read
-                .in_set(CodingToolLooks)
-                .in_set(RenderSystems::Render),
-        );
+        add_look(app, looks::draw_read);
     }
 }
 
@@ -84,11 +75,7 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        let seen = app
-            .world_mut()
-            .get_resource_or_init::<SeenFiles>()
-            .0
-            .clone();
+        let seen = seen_files(app);
         app.add_tool_per_call(
             Edit {
                 seen,
@@ -97,12 +84,7 @@ impl Plugin for EditTool {
             ToolOptions::default(),
         );
         #[cfg(feature = "tui")]
-        app.add_systems(
-            TranscriptRender,
-            looks::draw_edit
-                .in_set(CodingToolLooks)
-                .in_set(RenderSystems::Render),
-        );
+        add_look(app, looks::draw_edit);
     }
 }
 
@@ -112,11 +94,7 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        let seen = app
-            .world_mut()
-            .get_resource_or_init::<SeenFiles>()
-            .0
-            .clone();
+        let seen = seen_files(app);
         app.add_tool_per_call(
             Write {
                 seen,
@@ -125,12 +103,7 @@ impl Plugin for WriteTool {
             ToolOptions::default(),
         );
         #[cfg(feature = "tui")]
-        app.add_systems(
-            TranscriptRender,
-            looks::draw_write
-                .in_set(CodingToolLooks)
-                .in_set(RenderSystems::Render),
-        );
+        add_look(app, looks::draw_write);
     }
 }
 
@@ -161,13 +134,25 @@ impl Plugin for ShellTool {
         };
         app.add_live_tool_per_call(shell, ToolOptions::default());
         #[cfg(feature = "tui")]
-        app.add_systems(
-            TranscriptRender,
-            looks::draw_shell
-                .in_set(CodingToolLooks)
-                .in_set(RenderSystems::Render),
-        );
+        add_look(app, looks::draw_shell);
     }
+}
+
+/// The app's [`SeenFiles`], added if missing.
+fn seen_files(app: &mut App) -> Seen {
+    app.world_mut()
+        .get_resource_or_init::<SeenFiles>()
+        .0
+        .clone()
+}
+
+/// Draws a tool's calls with `look`, in [`CodingToolLooks`].
+#[cfg(feature = "tui")]
+fn add_look<M>(app: &mut App, look: impl IntoScheduleConfigs<bevy_ecs::system::ScheduleSystem, M>) {
+    app.add_systems(
+        TranscriptRender,
+        look.in_set(CodingToolLooks).in_set(RenderSystems::Render),
+    );
 }
 
 /// How much of a command's output the `shell` tool gives the model, read
