@@ -5,7 +5,6 @@
 //! let future: WasmBoxedFuture<'_, u32> = Box::pin(async { 42 });
 //! ```
 
-use bytes::Bytes;
 use std::pin::Pin;
 
 use futures::Stream;
@@ -46,36 +45,6 @@ pub trait WasmCompatSend {}
 impl<T> WasmCompatSend for T where T: Send {}
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 impl<T> WasmCompatSend for T {}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Streaming response bound that includes `Send` on native targets.
-pub trait WasmCompatSendStream:
-    Stream<Item = Result<Bytes, crate::http_client::Error>> + Send
-{
-    type InnerItem: Send;
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Streaming response bound without `Send` on browser wasm.
-pub trait WasmCompatSendStream: Stream<Item = Result<Bytes, crate::http_client::Error>> {
-    type InnerItem;
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSendStream for T
-where
-    T: Stream<Item = Result<Bytes, crate::http_client::Error>> + Send,
-{
-    type InnerItem = Result<Bytes, crate::http_client::Error>;
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSendStream for T
-where
-    T: Stream<Item = Result<Bytes, crate::http_client::Error>>,
-{
-    type InnerItem = Result<Bytes, crate::http_client::Error>;
-}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// `Sync` on native targets, a no-op marker on browser wasm.
