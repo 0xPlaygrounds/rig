@@ -99,21 +99,9 @@ use crate::json_utils::remove_preserving_order;
 /// Unix seconds.
 pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
 
-/// Seconds since the Unix epoch, from the system clock where the target has
-/// one. On `wasm32-unknown-unknown` there is none: pass a clock with
-/// [`CacheBook::with_clock`] there, or every cache looks forever young and
-/// expiry is found by Gemini's 403 instead.
+/// Seconds since the Unix epoch, also on the web.
 fn system_now() -> u64 {
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_secs())
-    }
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    {
-        0
-    }
+    crate::now_ms() / 1000
 }
 
 /// The longest TTL the book gives a cache: past about 81 minutes between
