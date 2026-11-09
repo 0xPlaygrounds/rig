@@ -714,7 +714,7 @@ pub fn assert_prefix_stable(provider: &str, scenario: &str) {
         interactions.len()
     );
 
-    let path = recorded_request_paths(provider, scenario);
+    let path = crate::cassettes::recorded_request_paths(provider, scenario);
     let mut previous: Option<(String, Vec<cache_prefix::PrefixBlock>)> = None;
     let mut compared = 0usize;
 
@@ -775,29 +775,6 @@ pub fn assert_prefix_stable(provider: &str, scenario: &str) {
     );
 }
 
-/// The request path each recorded interaction targeted, in wire order.
-///
-/// `recorded_interaction_bodies` returns bodies only, and the prefix rule is
-/// keyed on the endpoint, so the paths are read alongside them.
-fn recorded_request_paths(provider: &str, scenario: &str) -> Vec<String> {
-    let path = crate::cassettes::cassette_path(provider, scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
-    let mut paths = Vec::new();
-    let mut in_request = false;
-    for line in contents.lines() {
-        if line == "when:" {
-            in_request = true;
-        } else if line == "then:" {
-            in_request = false;
-        } else if in_request && let Some(value) = line.trim_start().strip_prefix("path: ") {
-            paths.push(value.trim().to_string());
-        }
-    }
-    paths
-}
-
 /// Where the provider exposes an explicit cache key, it must reach the wire and
 /// be identical on all three turns.
 ///
@@ -812,7 +789,7 @@ pub fn assert_cache_key_stable(provider: &str, scenario: &str, support: &CacheSu
     let interactions = crate::cassettes::recorded_interaction_bodies(provider, scenario);
     let mut seen: Option<serde_json::Value> = None;
 
-    let paths = recorded_request_paths(provider, scenario);
+    let paths = crate::cassettes::recorded_request_paths(provider, scenario);
     for (index, ((request, _), path)) in interactions.iter().zip(paths.iter()).enumerate() {
         // Only conversation turns carry a cache key. A scenario that manages a
         // cache resource also records the create/get/update/delete calls — those
