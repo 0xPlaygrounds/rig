@@ -441,12 +441,12 @@ fn piece_end(bytes: &[u8]) -> Option<usize> {
         return Some(at + 1);
     }
     let head = bytes.get(..MAX_PIECE)?;
-    match std::str::from_utf8(head) {
-        Err(error) if error.error_len().is_none() && error.valid_up_to() > 0 => {
-            Some(error.valid_up_to())
-        }
-        _ => Some(head.len()),
+    if let Some(tail) = head.utf8_chunks().last()
+        && std::str::from_utf8(tail.invalid()).is_err_and(|error| error.error_len().is_none())
+    {
+        return Some(head.len() - tail.invalid().len());
     }
+    Some(head.len())
 }
 
 /// `read`, counted in `reading` while it runs.

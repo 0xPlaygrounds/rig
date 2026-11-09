@@ -230,6 +230,41 @@ fn a_piece_ends_after_a_newline_or_before_a_character() {
     assert_eq!(piece_end(&long), Some(super::MAX_PIECE - 1));
 }
 
+#[test]
+fn output_pieces_keep_valid_characters_after_malformed_bytes() {
+    for malformed in [
+        &b""[..],
+        &b"\xff"[..],
+        &b"\xe0\x80"[..],
+        &b"\xed\xa0\x80"[..],
+    ] {
+        for character in ["é", "€", "😀"] {
+            for split in 1..character.len() {
+                let mut bytes = malformed.to_vec();
+                bytes.resize(super::MAX_PIECE - split, b'a');
+                bytes.extend_from_slice(character.as_bytes());
+                bytes.extend_from_slice(b"end\n");
+
+                let (sender, receiver) = std::sync::mpsc::channel();
+                forward(bytes.as_slice(), OutputLine::Out, &sender);
+                drop(sender);
+                let pieces: Vec<_> = receiver.iter().collect();
+                let raw: Vec<_> = pieces
+                    .iter()
+                    .flat_map(|piece| piece.bytes())
+                    .copied()
+                    .collect();
+                let text: String = pieces.iter().map(|piece| piece.text()).collect();
+                assert_eq!(raw, bytes);
+                assert!(
+                    text == String::from_utf8_lossy(&bytes),
+                    "text changed after {malformed:?}, splitting {character} at byte {split}"
+                );
+            }
+        }
+    }
+}
+
 /// Whether the process `pid` runs: there and not a zombie waiting for its
 /// parent.
 #[cfg(target_os = "linux")]
