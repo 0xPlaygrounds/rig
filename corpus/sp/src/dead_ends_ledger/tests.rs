@@ -55,12 +55,7 @@ fn start(
 
 /// The user says `text`; the turn runs to its end.
 fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    rig_harness_test_support::say(app, wakes, agent, text);
     app.update();
 }
 

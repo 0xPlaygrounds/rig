@@ -372,6 +372,28 @@ pub fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&World) -> b
     );
 }
 
+/// Triggers `message` and runs frames until one more turn ended
+/// ([`Ended`]).
+///
+/// # Panics
+///
+/// When the app keeps no [`Ended`], or no turn ends in time ([`run_until`]).
+#[track_caller]
+pub fn deliver(app: &mut App, wakes: &Receiver<()>, message: Deliver) {
+    let ended = app.world().resource::<Ended>().0.len();
+    app.world_mut().trigger(message);
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() > ended
+    });
+}
+
+/// Sends `agent` `text` to steer its turn, or start one, and runs frames
+/// until one more turn ended, as [`deliver`] does.
+#[track_caller]
+pub fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Steer));
+}
+
 /// A model reply of `text`, then the end of the stream.
 pub fn reply(text: &str) -> Vec<MockStreamEvent> {
     vec![

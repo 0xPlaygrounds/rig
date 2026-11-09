@@ -5,7 +5,7 @@ use rig_basics::coding_tools::{EditTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{
-    Ended, app_in, calls, connect, first_agent, log_ended, press, reply, run_until, scratch_home,
+    Ended, app_in, calls, connect, first_agent, log_ended, press, reply, say, scratch_home,
     tui_view,
 };
 use rig_tui::TuiTestScreen;
@@ -54,12 +54,7 @@ fn session(home: &Home, dir: &Path, model: &MockCompletionModel) -> (App, Receiv
 
 /// Sends `text` from the user and runs until its turn ended.
 fn prompt(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    say(app, wakes, agent, text);
     for _ in 0..5 {
         app.update();
     }

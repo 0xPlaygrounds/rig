@@ -10,7 +10,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness::prelude::*;
 use rig_harness_test_support::{
     Ended, MemoryStore, app_on, calls, first_agent, log_ended, pass_wall_clock, press, reply,
-    run_until, scripted_models, tui_view,
+    run_until, say, scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 
@@ -94,12 +94,7 @@ fn edited(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decis
 /// Sends `text` as the user and runs until the turn ended.
 fn turn(app: &mut App, wakes: &Receiver<()>, text: &str) {
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    say(app, wakes, agent, text);
 }
 
 /// The recap's card shown, if any.

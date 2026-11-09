@@ -6,7 +6,7 @@ use std::sync::mpsc::Receiver;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
-    Collected, Ended, app_in, collect, first_agent, log_ended, run_until, scratch_home,
+    Collected, Ended, app_in, collect, first_agent, log_ended, run_until, say, scratch_home,
 };
 
 use super::*;
@@ -61,12 +61,7 @@ fn read(called: On<ToolCalled<Value>>, mut commands: Commands) {
 
 /// Sends `text` to `agent` and runs until its turn ended; how it ended.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> Option<TurnOutcome> {
-    let before = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > before
-    });
+    say(app, wakes, agent, text);
     app.world().resource::<Ended>().0.last().cloned()
 }
 

@@ -5,7 +5,7 @@ use std::sync::mpsc::Receiver;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
     Ended, MemoryStore, ToolOutputs, app_on, calls, connect, first_agent, log_ended,
-    log_tool_outputs, reply, run_until, scratch_home,
+    log_tool_outputs, reply, run_until, say, scratch_home,
 };
 use serde_json::json;
 
@@ -51,12 +51,7 @@ fn set_read_only(root: &Path, path: &str, read_only: bool) {
 /// Sends `agent` a message, runs its turn to its end, and returns what
 /// call `id` answered.
 fn turn(app: &mut App, wakes: &Receiver<()>, agent: Entity, id: &str) -> String {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, "Go on.", DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    say(app, wakes, agent, "Go on.");
     let outputs = &app.world().resource::<ToolOutputs>().0;
     outputs.get(id).cloned().unwrap_or_default()
 }

@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::MemoryStore;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, first_agent, log_ended, reply, run_until};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -66,13 +66,6 @@ fn watch(mut deltas: MessageReader<StreamDelta>, mut shown: ResMut<Shown>) {
             None => shown.0.push((delta.effect, fragment.clone())),
         }
     }
-}
-
-fn first_agent(world: &mut World) -> Option<Entity> {
-    world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
 }
 
 /// The arguments of the `read` calls in `messages`.

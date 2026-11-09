@@ -6,7 +6,7 @@ use rig_harness::pick::PickPlugin;
 use rig_harness::rig_memory::LogRecord;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Ended, MemoryStore, app_on, commit_message, connect, first_agent,
-    log_ended, reply, run_until,
+    log_ended, reply, run_until, say,
 };
 
 use super::*;
@@ -44,14 +44,6 @@ fn until_ended(app: &mut App, wakes: &Receiver<()>, count: usize) {
     run_until(app, wakes, |world| {
         world.resource::<Ended>().0.len() >= count
     });
-}
-
-/// Sends `text` to `agent` and runs frames until its turn ended.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    let message = Deliver::new(agent, text, DeliveryMode::Steer);
-    app.world_mut().trigger(message);
-    until_ended(app, wakes, ended + 1);
 }
 
 /// The text of the request's messages, and of its first user message.
@@ -129,7 +121,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     assert_eq!(asked.len(), 4, "{asked:?}");
 
     // The summary, then the last 2 turns as they were.
-    ask(&mut app, &wakes, agent, "Q13: next");
+    say(&mut app, &wakes, agent, "Q13: next");
     let requests = model.requests();
     let (all, first) = shape(requests.get(2));
     assert!(first.contains("SUMMARY v2 and file x.rs"), "{first}");
@@ -149,7 +141,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
         reply("SUMMARY v3"),
     ]);
     let (mut app, wakes, agent) = start(&store, &model, vec![Answer::choice("cancel")]);
-    ask(&mut app, &wakes, agent, "Q14: after reload");
+    say(&mut app, &wakes, agent, "Q14: after reload");
     let (all, first) = shape(model.requests().first());
     assert!(first.contains("SUMMARY v2 and file x.rs"), "{first}");
     assert!(all.contains("Q12:") && !all.contains("Q01:"), "{all}");
@@ -181,7 +173,7 @@ fn a_reviewed_compaction_is_edited_saved_and_undone() {
     app.update();
     let restored = ids(&app, agent);
     assert_eq!(restored.get(..original.len()), Some(original.as_slice()));
-    ask(&mut app, &wakes, agent, "Q15: after uncompact");
+    say(&mut app, &wakes, agent, "Q15: after uncompact");
     let (all, _) = shape(model.requests().get(1));
     assert!(!all.contains("SUMMARY"), "{all}");
     let at = |text: &str| all.find(text).unwrap_or(usize::MAX);
@@ -252,7 +244,7 @@ fn a_failed_editor_keeps_the_summary_and_says_why() {
         said.contains(&"The editor failed (exit status 3); the summary is unchanged.".to_owned()),
         "{said:?}"
     );
-    ask(&mut app, &wakes, agent, "Q13: next");
+    say(&mut app, &wakes, agent, "Q13: next");
     let requests = model.requests();
     let (_, first) = shape(requests.get(1));
     assert!(

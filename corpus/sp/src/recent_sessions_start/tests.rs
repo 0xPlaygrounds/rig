@@ -9,8 +9,8 @@ use rig_harness::commands::CommandPlugin;
 use rig_harness::pick::PickPlugin;
 use rig_harness::rig_core::message::Message;
 use rig_harness_test_support::{
-    Ended, app_in, first_agent, log_ended, press, reply, run_until, scratch_home, scripted_models,
-    tui_view,
+    Ended, app_in, first_agent, log_ended, press, reply, run_until, say, scratch_home,
+    scripted_models, tui_view,
 };
 use rig_tui::TuiTestScreen;
 
@@ -62,12 +62,7 @@ fn talk(app: &mut App, wakes: &Receiver<()>, ask: &str) {
         model,
         kind: ChoiceKind::ForThisRun,
     });
-    let before = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, ask, DeliveryMode::Steer));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > before
-    });
+    say(app, wakes, agent, ask);
     app.update();
 }
 

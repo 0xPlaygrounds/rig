@@ -7,8 +7,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::{
-    Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, connect, first_agent,
-    log_ended, log_tool_outputs, pass_wall_clock, reply, run_until, scratch_dir,
+    Collected, Ended, MemoryStore, ToolOutputs, app_on, calls, collect, connect, deliver,
+    first_agent, log_ended, log_tool_outputs, pass_wall_clock, reply, scratch_dir,
 };
 use serde_json::json;
 
@@ -91,12 +91,7 @@ fn start(
 }
 
 fn turn(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
-    let ended = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > ended
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
 }
 
 fn command(app: &mut App, agent: Entity, line: &str) {

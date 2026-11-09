@@ -10,7 +10,7 @@ use rig_basics::telemetry::effect_log::{EffectLog, EffectLogPlugin};
 use rig_core::message::Text;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
-    Collected, Ended, MemoryStore, app_on, collect, first_agent, log_ended, run_until, tui_view,
+    Collected, Ended, MemoryStore, app_on, collect, deliver, first_agent, log_ended, tui_view,
 };
 use rig_tui::{MainPane, TranscriptLayout, TranscriptView};
 use serde_json::{Value, json};
@@ -246,12 +246,7 @@ fn start(store: &MemoryStore, settings: &str) -> (App, Receiver<()>, Entity) {
 
 /// Sends `text` to `agent` and runs until its turn ended; how it ended.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> String {
-    let before = app.world().resource::<Ended>().0.len();
-    app.world_mut()
-        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| {
-        world.resource::<Ended>().0.len() > before
-    });
+    deliver(app, wakes, Deliver::new(agent, text, DeliveryMode::Queue));
     match app.world().resource::<Ended>().0.last() {
         Some(TurnOutcome::Answered(message)) => message.final_answer().unwrap_or_default(),
         other => format!("{other:?}"),
