@@ -42,8 +42,8 @@ where
 
 /// Measure applied to the stored embeddings.
 ///
-/// Results are always thresholded and ordered as if larger values rank better,
-/// which holds for the similarity measures but inverts the distance ones.
+/// Cosine and Jaccard return similarities. Euclidean and Hamming return
+/// negated distances, so nearer vectors have greater scores.
 pub enum SurrealDistanceFunction {
     Knn,
     Hamming,
@@ -60,6 +60,16 @@ impl Display for SurrealDistanceFunction {
             SurrealDistanceFunction::Euclidean => write!(f, "vector::distance::euclidean"),
             SurrealDistanceFunction::Hamming => write!(f, "vector::distance::hamming"),
             SurrealDistanceFunction::Jaccard => write!(f, "vector::similarity::jaccard"),
+        }
+    }
+}
+
+impl SurrealDistanceFunction {
+    fn score_expression(&self) -> String {
+        let value = format!("{self}($vec, embedding)");
+        match self {
+            Self::Euclidean | Self::Hamming => format!("(-<float>({value}))"),
+            _ => value,
         }
     }
 }
@@ -282,8 +292,8 @@ where
     }
 
     /// Embeds the query and runs the search. The request filter is bound as a
-    /// query parameter, defaulting to `true` when absent, and an absent threshold
-    /// binds zero.
+    /// query parameter, defaulting to `true` when absent. An absent threshold
+    /// leaves scores unrestricted.
     async fn run_search_query(
         &self,
         req: &VectorSearchRequest<SurrealSearchFilter>,
@@ -295,7 +305,7 @@ where
             .query(self.search_query(with_document).as_str())
             .bind(("vec", embedded_query))
             .bind(("tablename", self.documents_table.clone()))
-            .bind(("threshold", req.threshold().unwrap_or(0.)))
+            .bind(("threshold", req.threshold()))
             .bind(("limit", req.samples() as usize))
             .bind((
                 "filter",
@@ -311,15 +321,13 @@ where
         let document = if with_document { ", document" } else { "" };
         let embedded_text = if with_document { ", embedded_text" } else { "" };
 
-        let Self {
-            distance_function, ..
-        } = self;
+        let score = self.distance_function.score_expression();
 
         format!(
             "
-            SELECT id {document} {embedded_text}, {distance_function}($vec, embedding) as distance \
+            SELECT id {document} {embedded_text}, {score} as distance \
               from type::table($tablename) \
-              where {distance_function}($vec, embedding) >= $threshold AND $filter \
+              where ($threshold = NONE OR {score} >= $threshold) AND $filter \
               order by distance desc \
             LIMIT $limit",
         )
@@ -332,8 +340,9 @@ where
 {
     type Filter = SurrealSearchFilter;
 
-    /// Returns matches scored by distance and keyed by record id, ordered by descending
-    /// distance value. Errors when a stored document does not deserialize into `T`.
+    /// Returns matches keyed by record id, ordered by descending score.
+    /// Euclidean and Hamming scores are negated distances. Errors when a stored
+    /// document does not deserialize into `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,

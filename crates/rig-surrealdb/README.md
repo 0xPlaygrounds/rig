@@ -12,6 +12,11 @@ rig-core = "0.46.0"
 You can also run `cargo add rig-surrealdb rig-core` to add the latest published
 versions. The root `rig` facade exposes this crate behind the `surrealdb` feature.
 
+Euclidean and Hamming searches return negative distances as scores: an exact
+match scores `0`, and nearer matches rank first. A threshold is a minimum
+score, so `.threshold(-2.0)` admits distances at most `2.0`. With no threshold,
+all scores are eligible, including negative cosine similarities.
+
 There's a few different ways you can run SurrealDB:
 - [Install it locally and run it](https://surrealdb.com/docs/surrealdb/installation/linux)
 - [Through a Docker container, either locally or on Docker-compatible architecture](https://surrealdb.com/docs/surrealdb/installation/running/docker)
