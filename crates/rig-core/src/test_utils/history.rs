@@ -70,7 +70,7 @@ pub fn assert_restated_agrees<W: Wire<Op = Completion>>(
 
 /// `turn` with each rig-issued call id replaced by its position, and the
 /// fingerprints that cover those ids left out.
-fn numbered(mut turn: serde_json::Value) -> serde_json::Value {
+pub fn numbered(mut turn: serde_json::Value) -> serde_json::Value {
     fn walk(value: &mut serde_json::Value, next: &mut usize) {
         match value {
             serde_json::Value::Object(fields) => {
