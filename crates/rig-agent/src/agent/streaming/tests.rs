@@ -1111,6 +1111,8 @@ impl AgentHook for SkipDefaultApiHook {
 #[derive(Clone, Default)]
 struct RecordingToolCallDeltaHook {
     deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
+    /// Stop the run at the first delta instead of continuing.
+    stop: bool,
 }
 
 impl RecordingToolCallDeltaHook {
@@ -1137,7 +1139,11 @@ impl AgentHook for RecordingToolCallDeltaHook {
             .lock()
             .expect("tool call delta hook records mutex was poisoned")
             .push(record);
-        ObservationAction::continue_run()
+        if self.stop {
+            ObservationAction::stop("stop on tool call delta")
+        } else {
+            ObservationAction::continue_run()
+        }
     }
 }
 
@@ -1251,101 +1257,6 @@ impl AgentHook for RetryFirstReasoningTurnHook {
         } else {
             ModelTurnAction::repeat()
         }
-    }
-}
-
-#[derive(Clone)]
-struct RecordingTextAndRetryInvalidToolHook {
-    text: RecordingTextDeltaHook,
-}
-
-impl AgentHook for RecordingTextAndRetryInvalidToolHook {
-    async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        self.text.on_text_delta(ctx, event).await
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        RetryDefaultApiHook.on_invalid_tool_call(ctx, event).await
-    }
-}
-
-#[derive(Clone)]
-struct RecordingDeltaAndRetryInvalidToolHook {
-    delta: RecordingToolCallDeltaHook,
-}
-
-impl AgentHook for RecordingDeltaAndRetryInvalidToolHook {
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        self.delta.on_tool_call_delta(ctx, event).await
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        RetryDefaultApiHook.on_invalid_tool_call(ctx, event).await
-    }
-}
-
-#[derive(Clone)]
-struct RecordingDeltaAndSkipInvalidToolHook {
-    delta: RecordingToolCallDeltaHook,
-}
-
-impl AgentHook for RecordingDeltaAndSkipInvalidToolHook {
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        self.delta.on_tool_call_delta(ctx, event).await
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
-    }
-}
-
-#[derive(Clone, Default)]
-struct TerminatingToolCallDeltaHook {
-    deltas: Arc<Mutex<Vec<RecordedToolCallDelta>>>,
-}
-
-impl TerminatingToolCallDeltaHook {
-    fn observed(&self) -> Vec<RecordedToolCallDelta> {
-        self.deltas
-            .lock()
-            .expect("tool call delta hook records mutex was poisoned")
-            .clone()
-    }
-}
-
-impl AgentHook for TerminatingToolCallDeltaHook {
-    async fn on_tool_call_delta(
-        &self,
-        _ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        let record = (
-            event.part.index(),
-            event.tool_name.to_string(),
-            event.delta.to_string(),
-        );
-        self.deltas
-            .lock()
-            .expect("tool call delta hook records mutex was poisoned")
-            .push(record);
-        ObservationAction::stop("stop on tool call delta")
     }
 }
 
@@ -1871,9 +1782,8 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
 
     let mut stream = agent
         .prompt("use the tool")
-        .add_hook(RecordingDeltaAndRetryInvalidToolHook {
-            delta: delta_hook.clone(),
-        })
+        .add_hook(delta_hook.clone())
+        .add_hook(RetryDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
@@ -2005,9 +1915,8 @@ async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
 
     let mut stream = agent
         .prompt("use the tool")
-        .add_hook(RecordingTextAndRetryInvalidToolHook {
-            text: text_hook.clone(),
-        })
+        .add_hook(text_hook.clone())
+        .add_hook(RetryDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
@@ -2051,9 +1960,8 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
 
     let mut stream = agent
         .prompt("use the tool")
-        .add_hook(RecordingDeltaAndSkipInvalidToolHook {
-            delta: delta_hook.clone(),
-        })
+        .add_hook(delta_hook.clone())
+        .add_hook(SkipDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
         .stream();
@@ -2589,7 +2497,10 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
         MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
         MockStreamEvent::final_response_with_total_tokens(3),
     ]]);
-    let hook = TerminatingToolCallDeltaHook::default();
+    let hook = RecordingToolCallDeltaHook {
+        stop: true,
+        ..Default::default()
+    };
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
     let mut stream = agent
