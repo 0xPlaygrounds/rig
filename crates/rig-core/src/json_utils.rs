@@ -1,10 +1,6 @@
 use serde::Deserialize;
-use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::de::Deserializer;
 use std::cmp::Ordering;
-use std::convert::Infallible;
-use std::fmt;
-use std::marker::PhantomData;
-use std::str::FromStr;
 use std::sync::LazyLock;
 
 /// `skip_serializing_if` helper: serde requires a `fn(&bool) -> bool`, so the
@@ -417,66 +413,6 @@ fn without_partial_escape(text: &str) -> &str {
     } else {
         text
     }
-}
-
-/// Deserializes a string or object as one item, a sequence as multiple items,
-/// and null as an empty list. Strings use [`FromStr`]; objects use [`Deserialize`].
-pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    T: Deserialize<'de> + FromStr<Err = Infallible>,
-    D: Deserializer<'de>,
-{
-    struct StringOrVec<T>(PhantomData<fn() -> T>);
-
-    impl<'de, T> Visitor<'de> for StringOrVec<T>
-    where
-        T: Deserialize<'de> + FromStr<Err = Infallible>,
-    {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, sequence, or null")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            let item = FromStr::from_str(value).map_err(de::Error::custom)?;
-            Ok(vec![item])
-        }
-
-        fn visit_seq<A>(self, seq: A) -> Result<Vec<T>, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
-        }
-
-        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
-        where
-            M: MapAccess<'de>,
-        {
-            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
-            Ok(vec![item])
-        }
-
-        fn visit_none<E>(self) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            Ok(vec![])
-        }
-
-        fn visit_unit<E>(self) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            Ok(vec![])
-        }
-    }
-
-    deserializer.deserialize_any(StringOrVec(PhantomData))
 }
 
 /// Deserializes `T`, mapping an explicit `null` to `T::default()`.
