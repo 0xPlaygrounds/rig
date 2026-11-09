@@ -1203,9 +1203,8 @@ mod precedence {
     //! `additional_params.tools` join rig's own tools rather than replacing
     //! them, a `null` in `additional_params` is a value that is sent, and
     //! the writes a wire makes after the merge read the merged body, so a
-    //! raw key still drives them. Two wires change, as section 12.0 states:
-    //! OpenAI Responses now sends a raw `null`, and Gemini Interactions
-    //! refuses a raw `tools` that is not an array. The ChatGPT backend still
+    //! raw key still drives them. OpenAI Responses sends a raw `null`, and
+    //! Gemini Interactions refuses a raw `tools` that is not an array. The ChatGPT backend still
     //! gets no typed field it does not accept.
 
     use rig::completion::{CompletionRequest, ServiceTier, ToolDefinition, Verbosity};

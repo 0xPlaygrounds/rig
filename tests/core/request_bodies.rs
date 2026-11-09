@@ -5,7 +5,7 @@
 //! of its body (and of the headers and URL, which the catalog can drive) is
 //! compared with the committed golden. A body that changes fails here, so a
 //! change to what rig sends must be deliberate: list it in
-//! `crates/rig-core/TYPED_OPTIONS.md` section 12.0, then regenerate with
+//! `crates/rig-core/TYPED_OPTIONS.md` section 5, then regenerate with
 //! `RIG_REGENERATE_REQUEST_BODIES=1` (all features, so every companion wire
 //! is encoded) and review the golden's diff.
 //!

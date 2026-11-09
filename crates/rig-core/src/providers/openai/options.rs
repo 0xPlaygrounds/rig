@@ -477,7 +477,7 @@ fn automatic_cache(cache: &CacheRetention) -> Mapping {
 }
 
 /// How the Chat Completions wire answers `fields` for `request`, by
-/// dialect (section 6.2 of `TYPED_OPTIONS.md`).
+/// dialect (section 2.2 of `TYPED_OPTIONS.md`).
 pub(crate) fn chat_options(
     chat: &Chat,
     request: &CompletionRequest,
@@ -1274,7 +1274,7 @@ fn text_verbosity(verbosity: &Verbosity) -> Mapping {
 }
 
 /// How the Responses wire answers `fields` for `request`, by dialect
-/// (section 6.3 of `TYPED_OPTIONS.md`). Responses has no `seed` and no
+/// (section 2.3 of `TYPED_OPTIONS.md`). Responses has no `seed` and no
 /// `stop`.
 pub(crate) fn responses_options(
     responses: &super::responses_api::wire::Responses,

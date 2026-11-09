@@ -166,7 +166,7 @@ pub(super) fn map_options(
     }
 }
 
-/// Anthropic's own API (section 6.1 of `TYPED_OPTIONS.md`).
+/// Anthropic's own API (section 2.1 of `TYPED_OPTIONS.md`).
 fn anthropic(
     wire: &Messages,
     request: &CompletionRequest,

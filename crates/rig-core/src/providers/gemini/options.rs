@@ -155,7 +155,7 @@ fn config(value: serde_json::Value) -> Mapping {
 }
 
 /// How a GenerateContent wire on `route` answers `fields` for `model`, by
-/// the Gemini API facts `facts` give it (section 6.4 of
+/// the Gemini API facts `facts` give it (section 2.4 of
 /// `TYPED_OPTIONS.md`). Every GenerateContent wire calls it, so the REST,
 /// Vertex AI and gRPC wires agree.
 ///

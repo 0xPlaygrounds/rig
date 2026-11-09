@@ -214,7 +214,7 @@ check of its own (`checks::guard`), or its builds become the check's steps.
 `cargo xtask catalog sync` regenerates `crates/rig-core/src/catalog/models.json`
 from models.dev and `xtask/src/catalog/review.json` (module docs:
 `xtask/src/catalog.rs`; the schema: `crates/rig-core/TYPED_OPTIONS.md`
-section 8). Save models.dev once, so every run reads the same data:
+section 4). Save models.dev once, so every run reads the same data:
 
 ```sh
 curl -sSfL https://models.dev/api.json -o ../api.json   # curl.exe in PowerShell

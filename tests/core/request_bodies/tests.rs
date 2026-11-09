@@ -158,7 +158,7 @@ fn encoding_stays_within_the_runners_threads() {
 
 /// What each wire sends for each model id and shape is what the golden
 /// pins; a change fails here until it is listed in `TYPED_OPTIONS.md`
-/// section 12.0 and the golden is regenerated.
+/// section 5 and the golden is regenerated.
 #[test]
 fn every_wire_sends_the_pinned_bodies() {
     let golden = fixture("bodies.txt");
@@ -225,7 +225,7 @@ fn every_wire_sends_the_pinned_bodies() {
     assert!(
         count == 0,
         "{count} request bodies changed. List each change in \
-         crates/rig-core/TYPED_OPTIONS.md section 12.0 (with its Migration line), then run \
+         crates/rig-core/TYPED_OPTIONS.md section 5 (with its Migration line), then run \
          with {REGENERATE}=1 --all-features. The first {}:\n{}",
         changed.len(),
         changed.join("\n")
